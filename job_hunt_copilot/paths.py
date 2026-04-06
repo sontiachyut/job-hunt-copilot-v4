@@ -212,6 +212,24 @@ class ProjectPaths:
     def lead_capture_bundle_path(self, company_name: str, role_title: str, lead_id: str) -> Path:
         return self.lead_workspace_dir(company_name, role_title, lead_id) / "capture-bundle.json"
 
+    def lead_post_path(self, company_name: str, role_title: str, lead_id: str) -> Path:
+        return self.lead_workspace_dir(company_name, role_title, lead_id) / "post.md"
+
+    def lead_jd_path(self, company_name: str, role_title: str, lead_id: str) -> Path:
+        return self.lead_workspace_dir(company_name, role_title, lead_id) / "jd.md"
+
+    def lead_poster_profile_path(self, company_name: str, role_title: str, lead_id: str) -> Path:
+        return self.lead_workspace_dir(company_name, role_title, lead_id) / "poster-profile.md"
+
+    def lead_split_metadata_path(self, company_name: str, role_title: str, lead_id: str) -> Path:
+        return self.lead_workspace_dir(company_name, role_title, lead_id) / "source-split.yaml"
+
+    def lead_split_review_path(self, company_name: str, role_title: str, lead_id: str) -> Path:
+        return self.lead_workspace_dir(company_name, role_title, lead_id) / "source-split-review.yaml"
+
+    def lead_manifest_path(self, company_name: str, role_title: str, lead_id: str) -> Path:
+        return self.lead_workspace_dir(company_name, role_title, lead_id) / "lead-manifest.yaml"
+
     def lead_history_dir(self, company_name: str, role_title: str, lead_id: str) -> Path:
         return self.lead_workspace_dir(company_name, role_title, lead_id) / "history"
 

@@ -98,3 +98,11 @@ Suggested format per session:
 - key files changed: job_hunt_copilot/linkedin_scraping.py; job_hunt_copilot/paths.py; scripts/linkedin_scraping/ingest_manual_capture.py; bin/jhc-linkedin-ingest; tests/test_linkedin_scraping.py; README.md; docs/ARCHITECTURE.md; build-agent/state/build-board.yaml; build-agent/state/build-journal.md; build-agent/state/codex-progress.txt; build-agent/state/IMPLEMENTATION_PLAN.md
 - validation summary: `python3.11 -m pytest tests/test_linkedin_scraping.py` passed (4 tests); `python3.11 -m pytest tests/test_bootstrap.py tests/test_artifacts.py tests/test_linkedin_scraping.py` passed (11 tests); full `python3.11 -m pytest` passed (35 tests); `bin/jhc-linkedin-ingest --help` passed after fixing the script-path import bootstrap; captured leads now persist `lead_status = captured`, `split_review_status = not_started`, `capture-bundle.json`, and registered `lead_raw_source` metadata without stepping into split/review yet
 - next recommended slice: BA-04-S2 rule-based split and review pipeline
+
+- 2026-04-06 15:52:32 MST
+- role owner: ingestion-engineer
+- slice attempted: BA-04-S2 rule-based split and review pipeline
+- result: done
+- key files changed: job_hunt_copilot/linkedin_scraping.py; job_hunt_copilot/paths.py; tests/test_linkedin_scraping.py; README.md; docs/ARCHITECTURE.md; build-agent/state/build-board.yaml; build-agent/state/build-journal.md; build-agent/state/codex-progress.txt; build-agent/state/IMPLEMENTATION_PLAN.md
+- validation summary: `python3.11 -m py_compile job_hunt_copilot/linkedin_scraping.py job_hunt_copilot/paths.py` passed; `python3.11 -m pytest tests/test_linkedin_scraping.py` passed (7 tests); `python3.11 -m pytest tests/test_bootstrap.py tests/test_artifacts.py tests/test_linkedin_scraping.py` passed (14 tests); full `python3.11 -m pytest` passed (38 tests); `bin/jhc-linkedin-ingest --help` now exposes the new `derive` subcommand and manual leads now persist `source-split.yaml`, `source-split-review.yaml`, blocked-or-ready `lead-manifest.yaml`, and canonical `split_review_status` updates without mutating `raw/source.md`
+- next recommended slice: BA-04-S3 manual lead entity materialization and refresh history

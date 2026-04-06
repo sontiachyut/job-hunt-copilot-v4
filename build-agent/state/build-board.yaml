@@ -16,7 +16,7 @@ global_status:
     - Shared artifact publication utilities now cover YAML/JSON contract envelopes, canonical workspace paths, and `artifact_records` registration for lead, posting, contact, and message roots.
     - BA-02 is now complete: the repo has canonical supervisor-state helpers, a bounded heartbeat executor, terminal-run review packet artifacts, expert review decisions, and override-event lineage persisted in canonical state.
     - BA-03 is now complete in code: runtime-pack materialization, local launchd/start-stop-cycle helpers, and the direct `jhc-chat` operator entrypoint now exist for the macOS runtime surface.
-    - BA-04 is now in progress: the repo has a bounded `linkedin_scraping` ingestion path that reads `paste/paste.txt` or browser-style capture bundles, creates canonical lead workspaces, persists `capture-bundle.json`, copies or assembles `raw/source.md`, and registers `lead_raw_source` metadata.
+    - BA-04 is now in progress: the repo has a bounded `linkedin_scraping` ingestion path that reads `paste/paste.txt` or browser-style capture bundles, creates canonical lead workspaces, persists `capture-bundle.json`, copies or assembles `raw/source.md`, derives deterministic manual split artifacts, and publishes blocked-or-ready lead manifests for manual leads.
     - "`jhc-chat` now records canonical begin/end state, pauses autonomous work on open, resumes on clean explicit close when chat caused the pause, and leaves unexpected-exit pauses intact for later explicit resume or future idle-timeout handling."
     - Host-side `launchctl bootstrap` success still needs follow-up validation outside the current sandboxed session even though the plist, wrapper wiring, and failed-start rollback all validate locally.
   execution_principles:
@@ -333,6 +333,7 @@ epics:
     completed_notes:
       - "`BA-04-S1` landed the shared manual lead-workspace conventions, including the repo-local `jhc-linkedin-ingest` entrypoint, `capture-bundle.json`, canonical `raw/source.md`, and `lead_raw_source` artifact registration."
       - "Captured manual leads now persist a canonical `linkedin_leads` shell row immediately with `lead_status = captured` and the explicit pre-split placeholder `split_review_status = not_started` until `BA-04-S2` publishes deterministic split artifacts."
+      - "`BA-04-S2` now derives `post.md`, `jd.md`, and `poster-profile.md` when evidence exists, persists `source-split.yaml` plus `source-split-review.yaml`, and publishes a blocked-or-ready `lead-manifest.yaml` with canonical `split_review_status` updates for manual leads."
     near_term_slices:
       - id: BA-04-S1
         name: Paste inbox and manual capture bundle persistence
@@ -354,13 +355,22 @@ epics:
       - id: BA-04-S2
         name: Rule-based split and review pipeline
         owner_role: ingestion-engineer
-        status: pending
+        status: completed
         dependencies:
           - BA-04-S1
         deliverables:
           - deterministic source splitting into `post.md`, `jd.md`, and `poster-profile.md`
           - "`source-split.yaml`, `source-split-review.yaml`, and blocked-manifest behavior"
           - ambiguity handling that preserves raw source unchanged
+        completed_notes:
+          - Added `derive_manual_lead_context` plus the repo-local `bin/jhc-linkedin-ingest derive --lead-id ...` path so manual leads can run a deterministic first pass over canonical `raw/source.md` without mutating the raw evidence.
+          - Manual lead workspaces now publish `post.md`, `jd.md`, and `poster-profile.md` when evidence exists, clean obvious post or profile chrome conservatively, and persist `source-split.yaml`, `source-split-review.yaml`, and `lead-manifest.yaml` with blocked-or-ready handoff metadata.
+          - Repeated split-review reruns now replace the lead-local `lead_split_metadata`, `lead_split_review`, and `lead_manifest` registry rows idempotently instead of accumulating duplicate `artifact_records`.
+        validation:
+          - "`python3.11 -m pytest tests/test_linkedin_scraping.py`"
+          - "`python3.11 -m pytest tests/test_bootstrap.py tests/test_artifacts.py tests/test_linkedin_scraping.py`"
+          - "`python3.11 -m pytest`"
+          - "`bin/jhc-linkedin-ingest --help`"
       - id: BA-04-S3
         name: Manual lead entity materialization and refresh history
         owner_role: ingestion-engineer
@@ -681,13 +691,13 @@ epics:
 
 current_focus:
   epic_id: BA-04
-  slice_id: BA-04-S2
+  slice_id: BA-04-S3
   owner_role: ingestion-engineer
-  reason: Manual lead workspaces now exist, so the next highest-value dependency is the deterministic split/review slice that turns canonical `raw/source.md` into reviewable derived artifacts and a blocked-or-ready handoff manifest.
+  reason: Manual split and review artifacts now exist, so the next highest-value dependency is canonical posting and contact materialization plus refresh history for reviewed manual leads.
   exit_criteria:
-    - deterministic rule-based splitting can derive `post.md`, `jd.md`, and `poster-profile.md` from canonical `raw/source.md` when evidence exists
-    - the lead workspace publishes `source-split.yaml`, `source-split-review.yaml`, and `lead-manifest.yaml` with blocked-when-ambiguous behavior
-    - split and manifest artifacts are queryable from `artifact_records` without mutating the canonical raw source
+    - reviewed manual leads with a valid non-ambiguous `jd.md` create canonical `job_postings` linked back through `lead_id`
+    - identifiable poster profiles create canonical `contacts`, `linkedin_lead_contacts`, and `job_posting_contacts` without duplicating relationship rows
+    - refresh-in-place lead reruns preserve prior source or review snapshots under lead-local history while keeping the live workspace and manifest honest
 
 focus_order:
   - epic_id: BA-04

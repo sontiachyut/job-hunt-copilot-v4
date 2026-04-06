@@ -2,11 +2,13 @@ from __future__ import annotations
 
 import json
 import sqlite3
+import yaml
 
 from job_hunt_copilot.bootstrap import run_bootstrap
 from job_hunt_copilot.linkedin_scraping import (
     SUBMISSION_PATH_IMMEDIATE_SELECTED_TEXT,
     SUBMISSION_PATH_TRAY_REVIEW,
+    derive_manual_lead_context,
     ingest_manual_capture_submission,
     ingest_paste_inbox,
 )
@@ -204,3 +206,215 @@ def test_manual_capture_without_selected_text_defaults_to_tray_review_submission
     capture_bundle = json.loads(result.capture_bundle_path.read_text(encoding="utf-8"))
 
     assert capture_bundle["submission_path"] == SUBMISSION_PATH_TRAY_REVIEW
+
+
+def test_manual_lead_derivation_publishes_split_review_and_manifest_artifacts(tmp_path):
+    project_root = bootstrap_project(tmp_path)
+
+    ingestion = ingest_manual_capture_submission(
+        project_root,
+        submission={
+            "source_mode": "manual_capture",
+            "source_type": "manual_capture_bundle",
+            "submission_id": "manual-submission-derive-001",
+            "source_reference": "http://127.0.0.1:8765/submissions/manual-submission-derive-001",
+            "summary": {
+                "company_name": "Guidewire Software",
+                "role_title": "Software Engineer (Full-Stack)",
+                "location": "Bedford, MA",
+                "work_mode": "Hybrid",
+                "poster_name": "Alex Kordun",
+                "poster_title": "Director of Engineering, Guidewire",
+            },
+            "captures": [
+                {
+                    "capture_order": 1,
+                    "capture_mode": "selected_text",
+                    "page_type": "post",
+                    "selected_text": "We're hiring backend and frontend engineers.",
+                    "full_text": "View job\nWe're hiring backend and frontend engineers.\n1 school alumni works here",
+                },
+                {
+                    "capture_order": 2,
+                    "capture_mode": "full_page",
+                    "page_type": "job",
+                    "full_text": (
+                        "About the job\n"
+                        "Build product surfaces with Python and TypeScript.\n"
+                        "Qualifications\n"
+                        "3+ years of experience."
+                    ),
+                },
+                {
+                    "capture_order": 3,
+                    "capture_mode": "full_page",
+                    "page_type": "profile",
+                    "full_text": (
+                        "Alex Kordun\n"
+                        "Director of Engineering, Guidewire\n"
+                        "HighlightsHighlights\n"
+                        "Introduce myself\n"
+                        "About\n"
+                        "Leads distributed product teams.\n"
+                        "Experience\n"
+                        "Guidewire"
+                    ),
+                },
+            ],
+        },
+    )
+
+    derived = derive_manual_lead_context(project_root, lead_id=ingestion.lead_id)
+
+    post_text = derived.post_path.read_text(encoding="utf-8")
+    jd_text = derived.jd_path.read_text(encoding="utf-8")
+    profile_text = derived.poster_profile_path.read_text(encoding="utf-8")
+    split_metadata = yaml.safe_load(derived.split_metadata_path.read_text(encoding="utf-8"))
+    split_review = yaml.safe_load(derived.split_review_path.read_text(encoding="utf-8"))
+    manifest = yaml.safe_load(derived.lead_manifest_path.read_text(encoding="utf-8"))
+
+    assert derived.lead_status == "reviewed"
+    assert derived.split_review_status == "confident"
+    assert "We're hiring backend and frontend engineers." in post_text
+    assert "1 school alumni works here" in post_text
+    assert "View job" not in post_text
+    assert "About the job" in jd_text
+    assert "Build product surfaces with Python and TypeScript." in jd_text
+    assert "HighlightsHighlights" not in profile_text
+    assert "Introduce myself" not in profile_text
+    assert "Director of Engineering, Guidewire" in profile_text
+    assert "Leads distributed product teams." in profile_text
+    assert split_metadata["selected_method"] == "rule_based_first_pass"
+    assert split_metadata["sections"]["post"]["section_ranges"]
+    assert split_metadata["sections"]["jd"]["section_ranges"]
+    assert split_review["split_status"] == "confident"
+    assert split_review["recommended_action"] == "materialize_manual_lead_entities"
+    assert manifest["lead_status"] == "reviewed"
+    assert manifest["handoff_targets"]["posting_materialization"]["ready"] is True
+    assert manifest["artifact_availability"]["poster_profile"]["available"] is True
+
+    connection = connect_database(project_root / "job_hunt_copilot.db")
+    lead_row = connection.execute(
+        "SELECT lead_status, split_review_status FROM linkedin_leads WHERE lead_id = ?",
+        (ingestion.lead_id,),
+    ).fetchone()
+    artifact_types = {
+        row["artifact_type"]
+        for row in connection.execute(
+            """
+            SELECT artifact_type
+            FROM artifact_records
+            WHERE lead_id = ?
+            """,
+            (ingestion.lead_id,),
+        ).fetchall()
+    }
+    connection.close()
+
+    assert dict(lead_row) == {
+        "lead_status": "reviewed",
+        "split_review_status": "confident",
+    }
+    assert {
+        "lead_raw_source",
+        "lead_split_metadata",
+        "lead_split_review",
+        "lead_manifest",
+    }.issubset(artifact_types)
+
+
+def test_ambiguous_manual_lead_derivation_publishes_blocked_manifest(tmp_path):
+    project_root = bootstrap_project(tmp_path)
+    paths = ProjectPaths.from_root(project_root)
+    raw_text = (
+        "Guidewire Software\n"
+        "Software Engineer (Full-Stack)\n"
+        "Interesting company.\n"
+        "Reach out if this sounds interesting.\n"
+    )
+    paths.paste_inbox_path.write_text(raw_text, encoding="utf-8")
+
+    ingestion = ingest_paste_inbox(
+        project_root,
+        company_name="Guidewire Software",
+        role_title="Software Engineer (Full-Stack)",
+    )
+    raw_before = ingestion.raw_source_path.read_bytes()
+
+    derived = derive_manual_lead_context(project_root, lead_id=ingestion.lead_id)
+
+    split_review = yaml.safe_load(derived.split_review_path.read_text(encoding="utf-8"))
+    manifest = yaml.safe_load(derived.lead_manifest_path.read_text(encoding="utf-8"))
+
+    assert derived.lead_status == "split_ready"
+    assert derived.split_review_status == "ambiguous"
+    assert derived.jd_path is None
+    assert ingestion.raw_source_path.read_bytes() == raw_before
+    assert split_review["split_status"] == "ambiguous"
+    assert split_review["recommended_action"] == "review_split_before_materialization"
+    assert manifest["handoff_targets"]["posting_materialization"]["ready"] is False
+    assert manifest["handoff_targets"]["posting_materialization"]["reason_code"] == "ambiguous_split_review"
+
+    connection = connect_database(project_root / "job_hunt_copilot.db")
+    lead_row = connection.execute(
+        "SELECT lead_status, split_review_status FROM linkedin_leads WHERE lead_id = ?",
+        (ingestion.lead_id,),
+    ).fetchone()
+    connection.close()
+
+    assert dict(lead_row) == {
+        "lead_status": "split_ready",
+        "split_review_status": "ambiguous",
+    }
+
+
+def test_manual_lead_derivation_is_idempotent_for_artifact_records(tmp_path):
+    project_root = bootstrap_project(tmp_path)
+
+    ingestion = ingest_manual_capture_submission(
+        project_root,
+        submission={
+            "source_mode": "manual_capture",
+            "source_type": "manual_capture_bundle",
+            "submission_id": "manual-submission-derive-002",
+            "source_reference": "http://127.0.0.1:8765/submissions/manual-submission-derive-002",
+            "summary": {
+                "company_name": "Guidewire Software",
+                "role_title": "Software Engineer (Full-Stack)",
+            },
+            "captures": [
+                {
+                    "capture_order": 1,
+                    "capture_mode": "full_page",
+                    "page_type": "job",
+                    "full_text": "About the job\nBuild product surfaces with Python and TypeScript.",
+                }
+            ],
+        },
+    )
+
+    first = derive_manual_lead_context(project_root, lead_id=ingestion.lead_id)
+    second = derive_manual_lead_context(project_root, lead_id=ingestion.lead_id)
+
+    connection = connect_database(project_root / "job_hunt_copilot.db")
+    artifact_counts = {
+        row["artifact_type"]: row["artifact_count"]
+        for row in connection.execute(
+            """
+            SELECT artifact_type, COUNT(*) AS artifact_count
+            FROM artifact_records
+            WHERE lead_id = ?
+              AND artifact_type IN ('lead_split_metadata', 'lead_split_review', 'lead_manifest')
+            GROUP BY artifact_type
+            """,
+            (ingestion.lead_id,),
+        ).fetchall()
+    }
+    connection.close()
+
+    assert first.lead_manifest_path == second.lead_manifest_path
+    assert artifact_counts == {
+        "lead_manifest": 1,
+        "lead_split_metadata": 1,
+        "lead_split_review": 1,
+    }

@@ -322,3 +322,34 @@ Use this file as an append-only implementation log for the build agent.
 - Explicit implementation inference: the spec names post-split review states but does not define a canonical pre-split placeholder, so this slice uses `split_review_status = not_started` for newly captured manual leads until `BA-04-S2` publishes the first deterministic split result.
 - Paste fallback now converges into the same persisted `capture-bundle.json` contract as browser-style manual capture, but it still copies the inbox bytes unchanged into canonical `raw/source.md` per the acceptance requirement.
 - `OPS-LAUNCHD-001` and `BUILD-CLI-001` remain open and untouched because this slice stayed within ingestion ownership.
+
+### Session
+- Date: 2026-04-06 15:52:32 MST
+- Slice: BA-04-S2 rule-based split and review pipeline
+- Goal: Add the deterministic manual-lead split, split-review, and blocked-or-ready manifest path on top of the canonical manual raw-source workspace.
+
+### Work Done
+- Extended `job_hunt_copilot.paths` with explicit helpers for `post.md`, `jd.md`, `poster-profile.md`, `source-split.yaml`, `source-split-review.yaml`, and `lead-manifest.yaml` under the canonical lead workspace.
+- Extended `job_hunt_copilot.linkedin_scraping` with `derive_manual_lead_context`, rule-based section extraction seeded by capture-bundle page-type hints, conservative post/profile chrome cleanup, blocked-when-missing-JD or ambiguous review logic, and idempotent replacement of the lead-local split/manifest `artifact_records`.
+- Added the repo-local `bin/jhc-linkedin-ingest derive --lead-id ...` flow through the existing CLI so manual leads can run split-review without inventing a second entrypoint.
+- Added focused pytest coverage for confident structured manual splits, ambiguous blocked manifests that preserve `raw/source.md`, and rerun idempotency for split-review metadata registration.
+- Updated `README.md` and `docs/ARCHITECTURE.md` so the repo-facing surfaces now reflect that manual split-review artifacts and blocked-or-ready manifests exist while canonical posting and contact materialization still remain the next slice.
+- Updated the build board, implementation plan, and handoff note to mark `BA-04-S2` complete and advance the active focus to `BA-04-S3`.
+
+### Validation
+- Ran `python3.11 -m py_compile job_hunt_copilot/linkedin_scraping.py job_hunt_copilot/paths.py`.
+- Ran `python3.11 -m pytest tests/test_linkedin_scraping.py` and confirmed all 7 LinkedIn ingestion and split-review tests passed.
+- Ran `python3.11 -m pytest tests/test_bootstrap.py tests/test_artifacts.py tests/test_linkedin_scraping.py` and confirmed all 14 targeted regression tests passed.
+- Ran full `python3.11 -m pytest` and confirmed all 38 tests passed across bootstrap, schema, artifacts, ingestion, local runtime, runtime pack, and supervisor coverage.
+- Ran `bin/jhc-linkedin-ingest --help` and confirmed the repo-local CLI now exposes `paste`, `capture-bundle`, and `derive` subcommands cleanly.
+
+### Result
+- `done`
+
+### Next
+- Implement `BA-04-S3`: materialize canonical `job_postings`, `contacts`, `linkedin_lead_contacts`, and `job_posting_contacts` from reviewed manual leads, then add refresh-in-place history snapshots for later reruns.
+
+### Notes
+- Explicit implementation inference: until `BA-04-S3` lands a canonical `job_posting_id`, `lead-manifest.yaml` now reports readiness for `posting_materialization` instead of overstating downstream tailoring readiness.
+- The current rule-based split intentionally treats missing JD evidence as `ambiguous`; optional AI second-pass handling remains deferred and the raw source stays untouched regardless.
+- `OPS-LAUNCHD-001` and `BUILD-CLI-001` remain open and untouched because this slice stayed within ingestion ownership.

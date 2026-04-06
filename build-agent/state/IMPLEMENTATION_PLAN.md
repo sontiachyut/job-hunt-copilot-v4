@@ -20,10 +20,12 @@ It should stay aligned with:
 - `BA-03-S1` is complete: bootstrap and `scripts/ops/build_runtime_pack.py` now render the product-side runtime identity, policies, action catalog, service goals, escalation policy, progress-log scaffold, ops-plan scaffold, and chat or supervisor bootstrap prompts under `ops/agent/`.
 - `BA-03` is now complete in code overall: the repo has product-side plist rendering, canonical control-state CLI helpers, `scripts/ops/run_supervisor_cycle.py`, repo-local `jhc-agent-start`, `jhc-agent-stop`, `jhc-agent-cycle`, and the direct `jhc-chat` operator wrapper for the local supervisor heartbeat and expert-entry surface.
 - `BA-04-S1` is complete: the repo now has `job_hunt_copilot.linkedin_scraping`, the repo-local `jhc-linkedin-ingest` entrypoint, canonical manual lead workspace creation, `capture-bundle.json` persistence, exact-copy paste fallback, and `lead_raw_source` artifact registration for accepted manual leads.
+- `BA-04-S2` is complete: manual leads can now run a deterministic first-pass split over canonical `raw/source.md`, derive `post.md`, `jd.md`, and `poster-profile.md` when evidence exists, publish `source-split.yaml` plus `source-split-review.yaml`, and persist a blocked-or-ready `lead-manifest.yaml` with canonical `split_review_status` updates.
 - Explicit implementation note: failed startup no longer leaves dishonest control state behind; `jhc-agent-start` now rolls canonical state back to `stopped` if `launchctl bootstrap` fails before the job is actually loaded.
 - Explicit implementation note: the generated `ops/agent/` files remain runtime-local artifacts under `.gitignore`, so the repo tracks the materialization code and tests rather than checking in those mutable rendered outputs.
 - Explicit implementation note: `jhc-chat` now records begin/end metadata plus `active_chat_session_id` in canonical control state, pauses autonomous work immediately on open, resumes on clean explicit close when chat itself caused the pause, and intentionally keeps unexpected-exit pauses active until later explicit resume or future idle-timeout automation exists.
 - Explicit implementation inference: freshly captured manual leads now persist immediately as `linkedin_leads` rows with `lead_status = captured` and `split_review_status = not_started` so pre-split work is queryable before `BA-04-S2` generates deterministic split/review artifacts.
+- Explicit implementation inference: until `BA-04-S3` creates canonical postings, manual `lead-manifest.yaml` now exposes readiness for `posting_materialization` rather than claiming downstream tailoring is already ready without a persisted `job_posting_id`.
 - Known operational blocker: live `launchctl bootstrap gui/$UID ...` still returns `Input/output error` in this sandboxed session, and the system log needed for richer launchd diagnostics is itself blocked by sandbox restrictions.
 - Known operational risk: unattended build-lead execution needs a follow-up validation pass for the `codex exec` CLI compatibility fix already present in the worktree.
 
@@ -91,12 +93,12 @@ It should stay aligned with:
 
 ## Next Slice
 
-- Current focus: `BA-04-S2` rule-based split and review pipeline.
-- Why next: `BA-04-S1` established the canonical manual lead workspace, so the next missing dependency is the deterministic split/review layer that converts `raw/source.md` into reviewable `post.md`, `jd.md`, `poster-profile.md`, split metadata, and a blocked-or-ready lead manifest.
+- Current focus: `BA-04-S3` manual lead entity materialization and refresh history.
+- Why next: `BA-04-S2` now leaves reviewed manual lead bundles with deterministic split artifacts and blocked-or-ready manifests, so the next dependency is to materialize canonical postings and traceable contact links from those reviewed leads and support refresh-in-place history.
 - Done when:
-  - a rule-based first pass can derive `post.md`, `jd.md`, and `poster-profile.md` from canonical manual raw sources when evidence exists
-  - `source-split.yaml`, `source-split-review.yaml`, and `lead-manifest.yaml` persist the selected split method, review status, artifact availability, and blocked-when-ambiguous downstream readiness
-  - split and manifest artifacts are registered in `artifact_records`, and ambiguous reviews preserve the canonical raw source unchanged
+  - reviewed manual leads with a valid non-ambiguous `jd.md` create canonical `job_postings` linked back to `linkedin_leads.lead_id`
+  - identifiable poster profiles create canonical `contacts`, `linkedin_lead_contacts`, and `job_posting_contacts` for reviewed manual leads without duplicate relationship rows
+  - manual lead reruns can refresh the live workspace while preserving prior source or review snapshots under lead-local history and updating the manifest for downstream tailoring honestly
 
 ## Working Rules
 
