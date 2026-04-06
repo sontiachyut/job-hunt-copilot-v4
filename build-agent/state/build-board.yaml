@@ -1,128 +1,619 @@
 project: job-hunt-copilot-v4
-board_version: 1
+board_version: 2
 last_reset_note: Initial seeded build board created from the finalized PRD and acceptance spec.
+last_planning_update: 2026-04-05
 
 global_status:
-  current_build_goal: Implement the current-build PRD and acceptance spec in this repository.
+  current_build_goal: Implement the current-build PRD and acceptance spec in this repository with bounded, validated slices.
   canonical_inputs:
     - prd/spec.md
     - prd/test-spec.feature
-  current_phase: not_started
-  overall_risk: medium
+  current_phase: implementation_ready
+  overall_risk: high
+  summary:
+    - Planning now reflects the PRD and acceptance spec instead of the initial seeded checklist.
+    - The repository still lacks the core product runtime, canonical DB implementation, and acceptance harness.
+  execution_principles:
+    - One primary slice per unattended build session.
+    - Prefer DB-first state, artifact contracts, and runtime scaffolding before higher-level agent behavior.
+    - Reuse shared lead, posting, contact, and artifact primitives across manual and Gmail intake paths.
+
+phases:
+  - id: P0
+    name: Planning and build-loop readiness
+    objective: Replace the seed backlog with a dependency-aware implementation program and keep unattended build execution trustworthy.
+    epics:
+      - BA-00
+
+  - id: P1
+    name: Canonical platform
+    objective: Stand up shared runtime scaffolding, canonical schema, supervisor state, and local operator entrypoints.
+    epics:
+      - BA-01
+      - BA-02
+      - BA-03
+
+  - id: P2
+    name: Lead acquisition
+    objective: Materialize manual and Gmail lead intake into canonical lead and posting state.
+    epics:
+      - BA-04
+      - BA-05
+
+  - id: P3
+    name: Tailoring and review gate
+    objective: Build eligibility, tailoring, finalize, and the mandatory agent review boundary.
+    epics:
+      - BA-06
+
+  - id: P4
+    name: Outreach execution
+    objective: Build people search, discovery, drafting, sending, delivery feedback, and queryable review surfaces.
+    epics:
+      - BA-07
+      - BA-08
+      - BA-09
+
+  - id: P5
+    name: Validation and hardening
+    objective: Add acceptance traceability, smoke coverage, and blocker burn-down across the implemented system.
+    epics:
+      - BA-10
 
 epics:
   - id: BA-00
     name: Planning and decomposition
-    status: pending
+    status: completed
     owner_role: planning-engineer
+    phase: P0
+    dependencies: []
     objective: Turn the finalized PRD and acceptance spec into a clear, dependency-aware implementation program for the rest of the team.
+    acceptance_focus:
+      - Build bootstrap and prerequisites
+      - Current-build orchestration remains sequential
+      - Supervisor Agent behavior
+      - End-to-end acceptance
     done_when:
       - implementation plan is explicitly phased and dependency-aware
       - major epics are decomposed into bounded near-term slices
       - build-board focus ordering is justified and current
+    completed_notes:
+      - The build board now groups work into phased implementation waves with explicit cross-epic dependencies.
+      - Each implementation epic now lists bounded near-term slices that map back to the PRD and acceptance rules.
 
   - id: BA-01
     name: Foundation and schema
     status: pending
     owner_role: foundation-engineer
-    objective: Materialize the core SQLite schema, shared artifact metadata, and basic runtime scaffolding.
+    phase: P1
+    dependencies:
+      - BA-00
+    objective: Materialize the runtime bootstrap, canonical SQLite schema, shared artifact metadata, and contract-writing helpers.
+    acceptance_focus:
+      - Build bootstrap and prerequisites
+      - Machine handoff contracts and canonical state
+      - State transitions and relationship records
     done_when:
-      - canonical DB tables exist for the current build
-      - migrations or init flow are stable
-      - shared artifact metadata flow exists
+      - bootstrap checks can initialize or migrate `job_hunt_copilot.db`
+      - canonical tables, indexes, and review views exist for the next-build schema
+      - shared artifact contract helpers can publish machine handoff artifacts plus `artifact_records`
+    near_term_slices:
+      - id: BA-01-S1
+        name: Runtime bootstrap and DB init skeleton
+        owner_role: foundation-engineer
+        status: pending
+        deliverables:
+          - Python package or module skeleton for the fresh-build runtime
+          - repo-local runtime support directories such as `paste/` and component output roots
+          - bootstrap checks for required assets, secrets materialization, and DB initialization entrypoint
+      - id: BA-01-S2
+        name: Canonical schema and views
+        owner_role: foundation-engineer
+        status: pending
+        dependencies:
+          - BA-01-S1
+        deliverables:
+          - tables, indexes, and core views from PRD section 7.1.1 and the acceptance schema scenario
+          - stable ID generation and lifecycle timestamp conventions
+          - migration or re-init flow that can run cleanly on a fresh repo
+      - id: BA-01-S3
+        name: Artifact contract and registry utilities
+        owner_role: foundation-engineer
+        status: pending
+        dependencies:
+          - BA-01-S2
+        deliverables:
+          - shared contract envelope writer for YAML and JSON handoff artifacts
+          - "`artifact_records` registration helpers keyed by lead, posting, contact, and message IDs"
+          - canonical file-path and reference helpers for downstream components
 
   - id: BA-02
     name: Supervisor control plane
     status: pending
     owner_role: build-lead
-    objective: Implement the autonomous supervisor state model, control state, incidents, review packets, and cycle tracking.
+    phase: P1
+    dependencies:
+      - BA-01
+    objective: Implement the autonomous supervisor state model, bounded cycle execution, incidents, review packets, and override recording.
+    acceptance_focus:
+      - Supervisor Agent behavior
+      - Failure, retry, and idempotency behavior
+      - Current-build orchestration remains sequential
     done_when:
-      - supervisor tables and runtime state exist
-      - bounded action execution path exists
-      - expert review packets can be produced
+      - control-state tables and runtime persistence exist
+      - one bounded supervisor cycle can select, validate, and record a single work unit
+      - incidents, review packets, and override events are queryable from canonical state
+    near_term_slices:
+      - id: BA-02-S1
+        name: Control-state persistence and run lifecycle helpers
+        owner_role: build-lead
+        status: pending
+        deliverables:
+          - "`pipeline_runs`, `supervisor_cycles`, `agent_control_state`, and `agent_runtime_leases` access layer"
+          - canonical status transitions for paused, stopped, in-progress, failed, escalated, and completed run states
+          - safe lease acquisition and stale-recovery helpers for the product supervisor
+      - id: BA-02-S2
+        name: Bounded cycle executor
+        owner_role: build-lead
+        status: pending
+        dependencies:
+          - BA-02-S1
+        deliverables:
+          - one-work-unit supervisor selection loop with prerequisite and output validation
+          - action-catalog-backed dispatch skeleton
+          - cycle summaries and incident emission on blocked or failed progression
+      - id: BA-02-S3
+        name: Review packet and override plumbing
+        owner_role: build-lead
+        status: pending
+        dependencies:
+          - BA-02-S2
+        deliverables:
+          - "`expert_review_packets` and `expert_review_decisions` persistence"
+          - "`override_events` persistence and lineage to prior agent decisions"
+          - terminal run packet generation hooks for review-worthy outcomes
 
   - id: BA-03
     name: macOS local runtime helpers
     status: pending
     owner_role: build-lead
-    objective: Implement the local helper entrypoints and launchd heartbeat wiring.
+    phase: P1
+    dependencies:
+      - BA-01
+      - BA-02
+    objective: Implement the product-side runtime pack, launchd wiring, and local operator entrypoints.
+    acceptance_focus:
+      - Build bootstrap and prerequisites
+      - Supervisor Agent behavior
+      - Review surfaces and chat-based control
     done_when:
-      - `jhc-agent-start` behavior exists
-      - `jhc-agent-stop` behavior exists
-      - `jhc-chat` entrypoint behavior exists
+      - "`ops/agent/` runtime pack artifacts are materialized from repo state"
+      - repo-local `jhc-agent-start`, `jhc-agent-stop`, `jhc-agent-cycle`, and `jhc-chat` behaviors exist
+      - launchd and chat pause or resume wiring match the current-build control model
+    near_term_slices:
+      - id: BA-03-S1
+        name: Runtime pack materialization
+        owner_role: build-lead
+        status: pending
+        deliverables:
+          - generated `ops/agent/identity.yaml`, `policies.yaml`, `action-catalog.yaml`, `service-goals.yaml`, `escalation-policy.yaml`, and bootstrap markdown files
+          - absolute-path rendering for repo-local runtime pack consumers
+          - product-side runtime pack validation hooks
+      - id: BA-03-S2
+        name: launchd and helper entrypoints
+        owner_role: build-lead
+        status: pending
+        dependencies:
+          - BA-03-S1
+        deliverables:
+          - repo-local `bin/jhc-agent-start`, `bin/jhc-agent-stop`, and `bin/jhc-agent-cycle`
+          - launchd template rendering with the required label, interval, and log paths
+          - idempotent bootstrap or bootout behavior for repeated start or stop commands
+      - id: BA-03-S3
+        name: "`jhc-chat` operator bootstrap"
+        owner_role: build-lead
+        status: pending
+        dependencies:
+          - BA-03-S1
+          - BA-02-S3
+        deliverables:
+          - chat session begin or end bookkeeping
+          - startup dashboard bootstrap from persisted state
+          - pause-on-chat and safe-resume control integration
 
   - id: BA-04
     name: Manual capture path
     status: pending
     owner_role: ingestion-engineer
-    objective: Build the manual browser-capture ingestion path, capture bundle handling, and paste fallback.
+    phase: P2
+    dependencies:
+      - BA-01
+    objective: Build the manual browser-capture ingestion path, paste fallback, split-review flow, and lead materialization.
+    acceptance_focus:
+      - External integrations and bootstrap configuration
+      - LinkedIn Scraping acceptance
+      - Machine handoff contracts and canonical state
     done_when:
-      - capture bundle intake works
-      - selected-text and full-page defaults are respected
-      - canonical lead raw source is materialized
+      - manual capture bundles and paste fallback persist canonical lead raw sources
+      - split metadata, split review, and lead manifests are published for manual leads
+      - valid manual leads materialize canonical postings and traceable contact link records
+    near_term_slices:
+      - id: BA-04-S1
+        name: Paste inbox and manual capture bundle persistence
+        owner_role: ingestion-engineer
+        status: pending
+        deliverables:
+          - "`paste/paste.txt` bootstrap and paste-ingestion entrypoint"
+          - capture-bundle schema handling for selected-text and full-page submissions
+          - canonical manual lead workspace creation with `raw/source.md`
+      - id: BA-04-S2
+        name: Rule-based split and review pipeline
+        owner_role: ingestion-engineer
+        status: pending
+        dependencies:
+          - BA-04-S1
+        deliverables:
+          - deterministic source splitting into `post.md`, `jd.md`, and `poster-profile.md`
+          - "`source-split.yaml`, `source-split-review.yaml`, and blocked-manifest behavior"
+          - ambiguity handling that preserves raw source unchanged
+      - id: BA-04-S3
+        name: Manual lead entity materialization and refresh history
+        owner_role: ingestion-engineer
+        status: pending
+        dependencies:
+          - BA-04-S2
+        deliverables:
+          - canonical `linkedin_leads`, `job_postings`, `contacts`, and relationship-row creation from reviewed manual leads
+          - refresh-in-place workspace updates with history snapshots
+          - lead-manifest handoff readiness flags for downstream tailoring
 
   - id: BA-05
     name: Gmail alert intake
     status: pending
     owner_role: ingestion-engineer
-    objective: Build agent-invoked Gmail LinkedIn job-alert intake and lead fan-out.
+    phase: P2
+    dependencies:
+      - BA-01
+      - BA-04
+    objective: Build agent-invoked Gmail LinkedIn job-alert collection, parsing, JD recovery, and autonomous lead fan-out.
+    acceptance_focus:
+      - External integrations and bootstrap configuration
+      - LinkedIn Scraping acceptance
+      - End-to-end acceptance
     done_when:
-      - Gmail collection artifacts are persisted
-      - parsed job cards fan out into leads
-      - JD recovery and manifest handoff work
+      - collected Gmail alert units are persisted idempotently before lead fan-out
+      - parsed alert cards create autonomous lead workspaces with JD recovery provenance
+      - autonomous lead dedupe, mismatch review, and blocked-no-jd behavior are queryable
+    near_term_slices:
+      - id: BA-05-S1
+        name: Gmail collection unit and parser
+        owner_role: ingestion-engineer
+        status: pending
+        deliverables:
+          - Gmail collection storage keyed by message id
+          - plain-text-first LinkedIn alert parser with multi-card fan-out
+          - zero-card retention and threshold-based review triggering
+      - id: BA-05-S2
+        name: Autonomous lead fan-out and JD recovery
+        owner_role: ingestion-engineer
+        status: pending
+        dependencies:
+          - BA-05-S1
+        deliverables:
+          - per-card lead workspace creation and dedupe by job id or normalized URL
+          - LinkedIn guest or accepted-source JD recovery into canonical `jd.md`
+          - autonomous lead lifecycle states including `incomplete` and `blocked_no_jd`
+      - id: BA-05-S3
+        name: JD provenance merge and mismatch review
+        owner_role: ingestion-engineer
+        status: pending
+        dependencies:
+          - BA-05-S2
+        deliverables:
+          - merged JD persistence with LinkedIn conflict precedence
+          - company or role mismatch review logic with tolerated normalization differences
+          - autonomous lead manifest and posting materialization handoff updates
 
   - id: BA-06
     name: Resume tailoring runtime
     status: pending
     owner_role: tailoring-engineer
-    objective: Build eligibility, workspace bootstrap, structured tailoring steps, finalize, and agent review.
+    phase: P3
+    dependencies:
+      - BA-01
+      - BA-04
+      - BA-05
+    objective: Build eligibility, workspace bootstrap, structured tailoring steps, finalize, and mandatory agent review.
+    acceptance_focus:
+      - Resume Tailoring behavior
+      - Machine handoff contracts and canonical state
+      - Current-build safety, privacy, and evidence-grounding boundaries
     done_when:
-      - tailoring runs persist correctly
-      - compile and one-page verification work
-      - agent review gates are enforced
+      - eligible postings create tailoring workspaces with the required artifacts and metadata
+      - finalize enforces scope, compile safety, and one-page output
+      - tailoring runs persist from bootstrap through agent approval or explicit override history
+    near_term_slices:
+      - id: BA-06-S1
+        name: Eligibility and tailoring-run lifecycle
+        owner_role: tailoring-engineer
+        status: pending
+        deliverables:
+          - hard-eligibility evaluation with evidence-grounded audit artifact
+          - "`resume_tailoring_runs` lifecycle bootstrap and posting gating"
+          - current global greater-than-5-years experience threshold and explicit unknown handling
+      - id: BA-06-S2
+        name: Workspace bootstrap and step artifact scaffolding
+        owner_role: tailoring-engineer
+        status: pending
+        dependencies:
+          - BA-06-S1
+        deliverables:
+          - per-posting workspace with `meta.yaml`, mirrored context, baseline snapshot, and Step 3-7 artifact slots
+          - base resume track selection and persisted scope constraints
+          - DB-first linkage from `job_posting_id` rather than raw-lead dependence
+      - id: BA-06-S3
+        name: Structured edit generation and finalize verification
+        owner_role: tailoring-engineer
+        status: pending
+        dependencies:
+          - BA-06-S2
+        deliverables:
+          - Step 3 through Step 7 intelligence generation with honest evidence mapping
+          - structured Step 6 edit payload, scope guard, and claim discipline
+          - compile-safe finalize path producing one-page `Achyutaram Sonti.pdf`
+      - id: BA-06-S4
+        name: Mandatory agent review and override handling
+        owner_role: tailoring-engineer
+        status: pending
+        dependencies:
+          - BA-06-S3
+        deliverables:
+          - "`resume_review_pending` to `approved` review transition"
+          - retailoring history preservation across multiple runs
+          - override persistence with prior-decision context and timestamps
 
   - id: BA-07
     name: People search and discovery
     status: pending
     owner_role: outreach-engineer
-    objective: Build Apollo-first people search, shortlist materialization, enrichment, recipient profile handling, and email discovery.
+    phase: P4
+    dependencies:
+      - BA-01
+      - BA-06
+    objective: Build Apollo-first people search, shortlist materialization, enrichment, recipient profile capture, and email discovery.
+    acceptance_focus:
+      - Email Discovery behavior
+      - State transitions and relationship records
+      - Current-build orchestration remains sequential
     done_when:
-      - people search artifacts persist
-      - shortlisted contacts are materialized correctly
-      - discovery cascade and results persist
+      - Apollo-first company-scoped search persists broad results and shortlisted canonical contacts
+      - selective enrichment and recipient-profile capture exist for shortlisted contacts
+      - discovery cascade, provider budgets, and exhaustion or unresolved review surfaces are queryable
+    near_term_slices:
+      - id: BA-07-S1
+        name: Apollo search and shortlist materialization
+        owner_role: outreach-engineer
+        status: pending
+        deliverables:
+          - company resolution and broad `people_search_result.json` persistence
+          - shortlist selection capped to the current policy and canonical contact/link creation
+          - recipient-type inference and relationship-state bootstrap
+      - id: BA-07-S2
+        name: Contact enrichment and recipient profiles
+        owner_role: outreach-engineer
+        status: pending
+        dependencies:
+          - BA-07-S1
+        deliverables:
+          - selective enrichment for shortlisted contacts only
+          - optional `recipient_profile.json` capture from public LinkedIn context
+          - dead-end shortlist removal without losing broad search artifacts
+      - id: BA-07-S3
+        name: Email discovery cascade and budget tracking
+        owner_role: outreach-engineer
+        status: pending
+        dependencies:
+          - BA-07-S2
+        deliverables:
+          - Prospeo to GetProspect to Hunter cascade with normalized outcomes
+          - provider-budget state and budget-event persistence
+          - working-email reuse, bounce-aware retries, and unresolved or bounced review views
 
   - id: BA-08
     name: Drafting and sending
     status: pending
     owner_role: outreach-engineer
-    objective: Build send-set assembly, role-targeted drafting, pacing-aware sending, and outreach message persistence.
+    phase: P4
+    dependencies:
+      - BA-01
+      - BA-06
+      - BA-07
+    objective: Build send-set assembly, role-targeted draft generation, pacing-aware sending, and outreach message persistence.
+    acceptance_focus:
+      - Email Drafting and Sending behavior
+      - Failure, retry, and idempotency behavior
+      - Current-build safety, privacy, and evidence-grounding boundaries
     done_when:
-      - ready send sets are assembled correctly
-      - drafts persist
-      - send results and pacing rules work
+      - ready send sets are assembled only after the current prerequisite contacts are fully ready
+      - drafts and send artifacts persist with canonical message records
+      - autonomous sending enforces repeat-contact guardrails and company pacing rules
+    near_term_slices:
+      - id: BA-08-S1
+        name: Send-set readiness and pacing selection
+        owner_role: outreach-engineer
+        status: pending
+        deliverables:
+          - current send-set formation rules across recruiter, manager-adjacent, and engineer contacts
+          - posting readiness evaluation for `requires_contacts` versus `ready_for_outreach`
+          - company-level pacing windows and randomized send gaps
+      - id: BA-08-S2
+        name: Draft generation and artifact persistence
+        owner_role: outreach-engineer
+        status: pending
+        dependencies:
+          - BA-08-S1
+        deliverables:
+          - role-targeted and general-learning draft generation paths
+          - "`email_draft.md` and `send_result.json` publication with stable IDs"
+          - persisted final subject, body, and optional HTML body on `outreach_messages`
+      - id: BA-08-S3
+        name: Send execution and repeat-outreach guardrails
+        owner_role: outreach-engineer
+        status: pending
+        dependencies:
+          - BA-08-S2
+        deliverables:
+          - send execution with canonical send timestamps and provider or thread metadata
+          - ambiguous-send under-sending policy and repeat-contact review routing
+          - per-contact and per-posting state advancement into outreach-in-progress and completed states
 
   - id: BA-09
     name: Delivery feedback and review surfaces
     status: pending
     owner_role: outreach-engineer
-    objective: Build mailbox feedback observation, feedback event persistence, and review surfaces.
+    phase: P4
+    dependencies:
+      - BA-01
+      - BA-02
+      - BA-08
+    objective: Build mailbox feedback observation, delivery event persistence, and queryable operational review surfaces.
+    acceptance_focus:
+      - Delivery Feedback behavior
+      - Review surfaces and chat-based control
+      - End-to-end acceptance
     done_when:
-      - delayed feedback sync works
-      - bounce, not-bounced, and reply events persist
-      - review surfaces are queryable
+      - immediate and delayed feedback sync can persist bounced, not-bounced, and replied events
+      - canonical review queries can surface postings, contacts, messages, unresolved discovery cases, incidents, and review packets
+      - feedback reuse policy remains bounded to the current build rules
+    near_term_slices:
+      - id: BA-09-S1
+        name: Feedback event ingestion and observation windows
+        owner_role: outreach-engineer
+        status: pending
+        deliverables:
+          - immediate post-send poll plus delayed 5-minute sync within the 30-minute window
+          - "`feedback_sync_runs` and `delivery_feedback_events` persistence"
+          - "`delivery_outcome.json` publication per observed event"
+      - id: BA-09-S2
+        name: Review queries and traceability surfaces
+        owner_role: outreach-engineer
+        status: pending
+        dependencies:
+          - BA-09-S1
+          - BA-02-S3
+        deliverables:
+          - query paths for pending review, unresolved discovery, bounced-email, and sent-message history
+          - per-object traceability joining artifacts, state transitions, and downstream records
+          - clean-first grouping rules needed by `jhc-chat`
+      - id: BA-09-S3
+        name: Feedback reuse and reply-safe handling
+        owner_role: outreach-engineer
+        status: pending
+        dependencies:
+          - BA-09-S1
+        deliverables:
+          - not-bounced recording at observation-window close
+          - bounce-aware discovery reuse boundaries and reply retention for review only
+          - idempotent feedback ingestion for repeated mailbox signals
 
   - id: BA-10
     name: Validation and hardening
     status: pending
     owner_role: quality-engineer
-    objective: Add implementation validation, acceptance-driven checks, and hardening passes across components.
+    phase: P5
+    dependencies:
+      - BA-01
+      - BA-02
+      - BA-03
+      - BA-04
+      - BA-05
+      - BA-06
+      - BA-07
+      - BA-08
+      - BA-09
+    objective: Add implementation validation, acceptance traceability, smoke checks, and blocker burn-down across the assembled system.
+    acceptance_focus:
+      - Build bootstrap and prerequisites
+      - End-to-end acceptance
+      - Current-build safety, privacy, and evidence-grounding boundaries
     done_when:
-      - acceptance coverage is traceable
-      - smoke checks exist for key flows
-      - major blockers are either fixed or explicitly recorded
+      - acceptance coverage is traceable from feature rules to implemented slices
+      - smoke checks exist for bootstrap, tailoring, discovery, send, feedback, and review-query flows
+      - unresolved defects are either fixed or explicitly recorded with evidence
+    near_term_slices:
+      - id: BA-10-S1
+        name: Acceptance trace matrix
+        owner_role: quality-engineer
+        status: pending
+        deliverables:
+          - scenario-to-component traceability for the feature file
+          - explicit gap list for not-yet-implemented or deferred behavior
+          - validation ownership notes for each epic
+      - id: BA-10-S2
+        name: Smoke harness and fixtures
+        owner_role: quality-engineer
+        status: pending
+        dependencies:
+          - BA-10-S1
+          - BA-06-S3
+          - BA-07-S3
+          - BA-08-S2
+          - BA-09-S1
+        deliverables:
+          - bootstrap smoke test covering DB init, assets, secrets loading, and paste or runtime-pack directories
+          - sample posting and contact fixtures for tailoring, discovery, send, and feedback checks
+          - machine-valid artifact checks for `discovery_result.json`, `send_result.json`, and review surfaces
+      - id: BA-10-S3
+        name: Cross-component regression and blocker burn-down
+        owner_role: quality-engineer
+        status: pending
+        dependencies:
+          - BA-10-S2
+        deliverables:
+          - targeted regression coverage for failure or retry, idempotency, and safety constraints
+          - explicit blocker confirmation or closure for any acceptance gaps
+          - final readiness notes for recruiter- or manager-facing repo surfaces
 
 current_focus:
-  epic_id: BA-00
-  reason: Start with a planning pass so the specialist engineers inherit a clear executable program instead of improvising slice order.
+  epic_id: BA-01
+  slice_id: BA-01-S1
+  owner_role: foundation-engineer
+  reason: Foundation bootstrap and schema work unblock every later product epic and directly cover the first acceptance rule cluster.
+  exit_criteria:
+    - DB initialization or migration entrypoint exists
+    - runtime support directories and bootstrap checks exist
+    - the bootstrap path validates locally
 
-known_blockers: []
+focus_order:
+  - epic_id: BA-01
+    why_now: The schema, contract, and bootstrap layer is required before any component can publish canonical state or artifacts.
+  - epic_id: BA-02
+    why_now: Supervisor state semantics depend on the canonical schema but should land before product-side autonomous orchestration grows.
+  - epic_id: BA-03
+    why_now: Product-side runtime helpers and chat entrypoints depend on both schema and supervisor state.
+  - epic_id: BA-04
+    why_now: Manual capture is the smallest lead-ingestion path and establishes shared lead workspace conventions.
+  - epic_id: BA-05
+    why_now: Gmail intake reuses lead materialization conventions and adds autonomous parsing and JD recovery on top.
+  - epic_id: BA-06
+    why_now: Tailoring depends on canonical postings and must be in place before outreach can begin.
+  - epic_id: BA-07
+    why_now: Search, enrichment, and discovery depend on approved tailoring state and canonical contact relationships.
+  - epic_id: BA-08
+    why_now: Drafting and sending should wait until discovery, ready-send-set logic, and pacing rules can be implemented coherently.
+  - epic_id: BA-09
+    why_now: Feedback and review queries depend on canonical messages, supervisor review packets, and downstream state history.
+  - epic_id: BA-10
+    why_now: Hardening is most effective after the main component boundaries and artifacts exist.
+
+known_blockers:
+  - blocker_id: BUILD-CLI-001
+    status: open
+    severity: medium
+    owner_role: build-lead
+    summary: "`codex exec` no longer accepts `--ask-for-approval`, and unattended build-cycle logs show BA-00 sessions failing before work starts when that flag is present."
+    evidence:
+      - build-agent/logs/cycles/build-cycle-20260406T032821Z-8f48507c.log
+      - build-agent/scripts/run_build_lead_cycle.py
+    impact: Launchd-driven unattended build sessions should not be trusted until the build-lead CLI invocation is revalidated.
+    next_action: Preserve the existing carryover diff in `run_build_lead_cycle.py` and validate it in a dedicated build-lead hygiene slice before relying on unattended execution.

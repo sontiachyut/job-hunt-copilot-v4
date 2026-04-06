@@ -372,8 +372,6 @@ def main() -> int:
             "--ephemeral",
             "--sandbox",
             "workspace-write",
-            "--ask-for-approval",
-            "never",
             "-C",
             str(project_root),
             "-o",
