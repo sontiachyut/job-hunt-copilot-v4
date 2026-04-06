@@ -16,7 +16,7 @@ global_status:
     - Shared artifact publication utilities now cover YAML/JSON contract envelopes, canonical workspace paths, and `artifact_records` registration for lead, posting, contact, and message roots.
     - BA-02 is now complete: the repo has canonical supervisor-state helpers, a bounded heartbeat executor, terminal-run review packet artifacts, expert review decisions, and override-event lineage persisted in canonical state.
     - BA-03 is now complete in code: runtime-pack materialization, local launchd/start-stop-cycle helpers, and the direct `jhc-chat` operator entrypoint now exist for the macOS runtime surface.
-    - BA-04 is now in progress: the repo has a bounded `linkedin_scraping` ingestion path that reads `paste/paste.txt` or browser-style capture bundles, creates canonical lead workspaces, persists `capture-bundle.json`, copies or assembles `raw/source.md`, derives deterministic manual split artifacts, and publishes blocked-or-ready lead manifests for manual leads.
+    - BA-04 is now in progress: the repo has a bounded `linkedin_scraping` ingestion path that reads `paste/paste.txt` or browser-style capture bundles, creates canonical lead workspaces, persists `capture-bundle.json`, copies or assembles `raw/source.md`, derives deterministic manual split artifacts, materializes canonical manual postings and poster links, and publishes `resume_tailoring`-ready lead manifests; refresh-history snapshotting remains the open manual-ingestion gap.
     - "`jhc-chat` now records canonical begin/end state, pauses autonomous work on open, resumes on clean explicit close when chat caused the pause, and leaves unexpected-exit pauses intact for later explicit resume or future idle-timeout handling."
     - Host-side `launchctl bootstrap` success still needs follow-up validation outside the current sandboxed session even though the plist, wrapper wiring, and failed-start rollback all validate locally.
   execution_principles:
@@ -330,10 +330,12 @@ epics:
       - manual capture bundles and paste fallback persist canonical lead raw sources
       - split metadata, split review, and lead manifests are published for manual leads
       - valid manual leads materialize canonical postings and traceable contact link records
+      - refresh-in-place manual lead reruns preserve prior source or review snapshots under lead-local history while keeping the live workspace honest
     completed_notes:
       - "`BA-04-S1` landed the shared manual lead-workspace conventions, including the repo-local `jhc-linkedin-ingest` entrypoint, `capture-bundle.json`, canonical `raw/source.md`, and `lead_raw_source` artifact registration."
       - "Captured manual leads now persist a canonical `linkedin_leads` shell row immediately with `lead_status = captured` and the explicit pre-split placeholder `split_review_status = not_started` until `BA-04-S2` publishes deterministic split artifacts."
       - "`BA-04-S2` now derives `post.md`, `jd.md`, and `poster-profile.md` when evidence exists, persists `source-split.yaml` plus `source-split-review.yaml`, and publishes a blocked-or-ready `lead-manifest.yaml` with canonical `split_review_status` updates for manual leads."
+      - "`BA-04-S3` now materializes canonical `job_postings`, poster `contacts`, `linkedin_lead_contacts`, and `job_posting_contacts` from reviewed manual leads, keeps reruns idempotent, and upgrades `lead-manifest.yaml` to carry created entity ids plus `resume_tailoring` readiness."
     near_term_slices:
       - id: BA-04-S1
         name: Paste inbox and manual capture bundle persistence
@@ -372,15 +374,36 @@ epics:
           - "`python3.11 -m pytest`"
           - "`bin/jhc-linkedin-ingest --help`"
       - id: BA-04-S3
-        name: Manual lead entity materialization and refresh history
+        name: Manual lead entity materialization
         owner_role: ingestion-engineer
-        status: pending
+        status: completed
         dependencies:
           - BA-04-S2
         deliverables:
           - canonical `linkedin_leads`, `job_postings`, `contacts`, and relationship-row creation from reviewed manual leads
+          - "`lead-manifest.yaml` updates that expose created entity ids plus `resume_tailoring` readiness"
+          - idempotent reruns for manual posting/contact materialization
+        completed_notes:
+          - Added `materialize_manual_lead_entities` plus the repo-local `bin/jhc-linkedin-ingest materialize --lead-id ...` flow so reviewed manual leads can materialize canonical postings and poster contact links without duplicating relationship rows on rerun.
+          - Materialized postings now persist `posting_status = sourced`, a conservative `posting_identity_key`, the relative `jd_artifact_path`, and lead linkage through `lead_id`, while materialized poster contacts now infer recipient typing from captured title evidence, including the first-class `founder` value.
+          - Manual `lead-manifest.yaml` now upgrades from `posting_materialization` readiness to include actual created entity ids plus `handoff_targets.resume_tailoring.ready = true` whenever a canonical `job_posting_id` exists.
+        validation:
+          - "`python3.11 -m py_compile job_hunt_copilot/linkedin_scraping.py tests/test_linkedin_scraping.py`"
+          - "`python3.11 -m pytest tests/test_linkedin_scraping.py`"
+          - "`python3.11 -m pytest tests/test_bootstrap.py tests/test_artifacts.py tests/test_linkedin_scraping.py`"
+          - "`python3.11 -m pytest`"
+          - "`bin/jhc-linkedin-ingest --help`"
+          - "`bin/jhc-linkedin-ingest materialize --help`"
+      - id: BA-04-S4
+        name: Lead refresh history and workspace snapshotting
+        owner_role: ingestion-engineer
+        status: pending
+        dependencies:
+          - BA-04-S3
+        deliverables:
           - refresh-in-place workspace updates with history snapshots
-          - lead-manifest handoff readiness flags for downstream tailoring
+          - preserved prior source or review snapshots under `history/` without regressing downstream canonical state
+          - honest manifest updates for refreshed manual leads
 
   - id: BA-05
     name: Gmail alert intake
@@ -691,12 +714,10 @@ epics:
 
 current_focus:
   epic_id: BA-04
-  slice_id: BA-04-S3
+  slice_id: BA-04-S4
   owner_role: ingestion-engineer
-  reason: Manual split and review artifacts now exist, so the next highest-value dependency is canonical posting and contact materialization plus refresh history for reviewed manual leads.
+  reason: Manual posting and poster-contact materialization now exist, so the remaining BA-04 acceptance gap is refresh-in-place lead history snapshotting for reruns.
   exit_criteria:
-    - reviewed manual leads with a valid non-ambiguous `jd.md` create canonical `job_postings` linked back through `lead_id`
-    - identifiable poster profiles create canonical `contacts`, `linkedin_lead_contacts`, and `job_posting_contacts` without duplicating relationship rows
     - refresh-in-place lead reruns preserve prior source or review snapshots under lead-local history while keeping the live workspace and manifest honest
 
 focus_order:

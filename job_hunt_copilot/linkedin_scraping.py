@@ -20,11 +20,30 @@ LINKEDIN_SCRAPING_COMPONENT = "linkedin_scraping"
 LEAD_STATUS_CAPTURED = "captured"
 LEAD_STATUS_SPLIT_READY = "split_ready"
 LEAD_STATUS_REVIEWED = "reviewed"
+LEAD_STATUS_HANDED_OFF = "handed_off"
 LEAD_SPLIT_REVIEW_NOT_STARTED = "not_started"
 LEAD_SPLIT_REVIEW_CONFIDENT = "confident"
 LEAD_SPLIT_REVIEW_NEEDS_REVIEW = "needs_review"
 LEAD_SPLIT_REVIEW_AMBIGUOUS = "ambiguous"
 LEAD_SHAPE_POSTING_ONLY = "posting_only"
+LEAD_SHAPE_POSTING_PLUS_CONTACTS = "posting_plus_contacts"
+
+JOB_POSTING_STATUS_SOURCED = "sourced"
+CONTACT_STATUS_IDENTIFIED = "identified"
+POSTING_CONTACT_STATUS_IDENTIFIED = "identified"
+LEAD_CONTACT_ROLE_POSTER = "poster"
+
+RECIPIENT_TYPE_HIRING_MANAGER = "hiring_manager"
+RECIPIENT_TYPE_RECRUITER = "recruiter"
+RECIPIENT_TYPE_ENGINEER = "engineer"
+RECIPIENT_TYPE_ALUMNI = "alumni"
+RECIPIENT_TYPE_FOUNDER = "founder"
+RECIPIENT_TYPE_OTHER_INTERNAL = "other_internal"
+
+MANIFEST_REASON_AMBIGUOUS_SPLIT_REVIEW = "ambiguous_split_review"
+MANIFEST_REASON_MISSING_JD = "missing_jd"
+MANIFEST_REASON_SPLIT_REVIEW_NOT_READY = "split_review_not_ready"
+MANIFEST_REASON_POSTING_NOT_MATERIALIZED = "posting_not_materialized"
 
 SOURCE_MODE_MANUAL_CAPTURE = "manual_capture"
 SOURCE_MODE_MANUAL_PASTE = "manual_paste"
@@ -329,6 +348,41 @@ class ManualLeadDerivationResult:
         }
 
 
+@dataclass(frozen=True)
+class ManualLeadMaterializationResult:
+    lead_id: str
+    lead_status: str
+    lead_shape: str
+    split_review_status: str
+    materialized: bool
+    reason_code: str | None
+    job_posting_id: str | None
+    job_posting_created: bool
+    contact_id: str | None
+    contact_created: bool
+    linkedin_lead_contact_id: str | None
+    job_posting_contact_id: str | None
+    lead_manifest_path: Path
+
+    def as_dict(self) -> dict[str, Any]:
+        return {
+            "status": "ok",
+            "lead_id": self.lead_id,
+            "lead_status": self.lead_status,
+            "lead_shape": self.lead_shape,
+            "split_review_status": self.split_review_status,
+            "materialized": self.materialized,
+            "reason_code": self.reason_code,
+            "job_posting_id": self.job_posting_id,
+            "job_posting_created": self.job_posting_created,
+            "contact_id": self.contact_id,
+            "contact_created": self.contact_created,
+            "linkedin_lead_contact_id": self.linkedin_lead_contact_id,
+            "job_posting_contact_id": self.job_posting_contact_id,
+            "lead_manifest_path": str(self.lead_manifest_path),
+        }
+
+
 def infer_submission_path(
     captures: Sequence[CaptureItem],
     *,
@@ -567,6 +621,142 @@ def ingest_paste_inbox(
     return ingest_manual_capture_submission(paths.project_root, submission=submission)
 
 
+def materialize_manual_lead_entities(
+    project_root: Path | str | None = None,
+    *,
+    lead_id: str,
+) -> ManualLeadMaterializationResult:
+    paths = ProjectPaths.from_root(project_root)
+    connection = sqlite3.connect(paths.db_path)
+    connection.row_factory = sqlite3.Row
+    connection.execute("PRAGMA foreign_keys = ON;")
+
+    try:
+        lead_row = _load_manual_lead_row(connection, lead_id=lead_id)
+        artifact_paths = _manual_lead_artifact_paths(
+            paths,
+            company_name=lead_row["company_name"],
+            role_title=lead_row["role_title"],
+            lead_id=lead_id,
+        )
+        if not artifact_paths["lead_manifest_path"].exists():
+            raise LinkedInScrapingError(
+                f"Lead `{lead_id}` has not completed derivation yet; `{artifact_paths['lead_manifest_path']}` is missing."
+            )
+
+        capture_bundle = _load_capture_bundle(artifact_paths["capture_bundle_path"])
+        lead_state = dict(lead_row)
+        existing_posting = _find_existing_posting_for_lead(connection, lead_id=lead_id)
+
+        materialization_ready, reason_code = _posting_materialization_status(
+            split_review_status=lead_state["split_review_status"],
+            jd_path=artifact_paths["jd_path"],
+        )
+
+        job_posting_created = False
+        contact_created = False
+        materialized_contact: dict[str, Any] | None = None
+        job_posting_id = existing_posting["job_posting_id"] if existing_posting is not None else None
+
+        if materialization_ready:
+            job_posting_id, job_posting_created = _upsert_job_posting(
+                connection,
+                paths,
+                lead_row=lead_state,
+                jd_path=artifact_paths["jd_path"],
+            )
+            materialized_contact = _materialize_manual_poster_contact(
+                connection,
+                lead_row=lead_state,
+                capture_bundle=capture_bundle,
+                poster_profile_path=artifact_paths["poster_profile_path"],
+                job_posting_id=job_posting_id,
+            )
+            if materialized_contact is not None:
+                contact_created = materialized_contact["contact_created"]
+                lead_state["poster_name"] = materialized_contact["display_name"]
+                lead_state["poster_title"] = materialized_contact["position_title"]
+            reason_code = None
+        elif job_posting_id is None:
+            reason_code = reason_code or MANIFEST_REASON_POSTING_NOT_MATERIALIZED
+
+        created_entities = _collect_created_entities(
+            connection,
+            lead_id=lead_id,
+            job_posting_id=job_posting_id,
+        )
+        if created_entities["job_posting_id"] is not None:
+            job_posting_id = created_entities["job_posting_id"]
+            lead_status = LEAD_STATUS_HANDED_OFF
+            reason_code = None
+        else:
+            lead_status = lead_state["lead_status"]
+
+        lead_shape = (
+            LEAD_SHAPE_POSTING_PLUS_CONTACTS
+            if created_entities["contact_ids"]
+            else LEAD_SHAPE_POSTING_ONLY
+        )
+        handoff_targets = {
+            "posting_materialization": _build_posting_materialization_target(
+                split_review_status=lead_state["split_review_status"],
+                jd_path=artifact_paths["jd_path"],
+                job_posting_id=job_posting_id,
+            ),
+            "resume_tailoring": _build_resume_tailoring_target(
+                job_posting_id=job_posting_id,
+                jd_path=artifact_paths["jd_path"],
+            ),
+        }
+
+        updated_at = now_utc_iso()
+        with connection:
+            connection.execute(
+                """
+                UPDATE linkedin_leads
+                SET lead_status = ?, lead_shape = ?, poster_name = ?, poster_title = ?, updated_at = ?
+                WHERE lead_id = ?
+                """,
+                (
+                    lead_status,
+                    lead_shape,
+                    lead_state["poster_name"],
+                    lead_state["poster_title"],
+                    updated_at,
+                    lead_id,
+                ),
+            )
+            _write_manual_lead_manifest(
+                connection,
+                paths,
+                lead_row=lead_state,
+                lead_status=lead_status,
+                lead_shape=lead_shape,
+                split_review_status=lead_state["split_review_status"],
+                artifact_paths=artifact_paths,
+                created_entities=created_entities,
+                handoff_targets=handoff_targets,
+            )
+    finally:
+        connection.close()
+
+    return ManualLeadMaterializationResult(
+        lead_id=lead_id,
+        lead_status=lead_status,
+        lead_shape=lead_shape,
+        split_review_status=lead_state["split_review_status"],
+        materialized=job_posting_id is not None,
+        reason_code=reason_code,
+        job_posting_id=job_posting_id,
+        job_posting_created=job_posting_created,
+        contact_id=(materialized_contact or {}).get("contact_id"),
+        contact_created=contact_created,
+        linkedin_lead_contact_id=(materialized_contact or {}).get("linkedin_lead_contact_id"),
+        job_posting_contact_id=(materialized_contact or {}).get("job_posting_contact_id"),
+        lead_manifest_path=artifact_paths["lead_manifest_path"],
+    )
+
+
 def derive_manual_lead_context(
     project_root: Path | str | None = None,
     *,
@@ -595,43 +785,21 @@ def derive_manual_lead_context(
                 f"Lead `{lead_id}` is not a manual lead and cannot use the manual split pipeline."
             )
 
-        workspace_dir = paths.lead_workspace_dir(
-            lead_row["company_name"],
-            lead_row["role_title"],
-            lead_id,
+        artifact_paths = _manual_lead_artifact_paths(
+            paths,
+            company_name=lead_row["company_name"],
+            role_title=lead_row["role_title"],
+            lead_id=lead_id,
         )
-        raw_source_path = paths.lead_raw_source_path(
-            lead_row["company_name"],
-            lead_row["role_title"],
-            lead_id,
-        )
-        capture_bundle_path = paths.lead_capture_bundle_path(
-            lead_row["company_name"],
-            lead_row["role_title"],
-            lead_id,
-        )
-        post_path = paths.lead_post_path(lead_row["company_name"], lead_row["role_title"], lead_id)
-        jd_path = paths.lead_jd_path(lead_row["company_name"], lead_row["role_title"], lead_id)
-        poster_profile_path = paths.lead_poster_profile_path(
-            lead_row["company_name"],
-            lead_row["role_title"],
-            lead_id,
-        )
-        split_metadata_path = paths.lead_split_metadata_path(
-            lead_row["company_name"],
-            lead_row["role_title"],
-            lead_id,
-        )
-        split_review_path = paths.lead_split_review_path(
-            lead_row["company_name"],
-            lead_row["role_title"],
-            lead_id,
-        )
-        lead_manifest_path = paths.lead_manifest_path(
-            lead_row["company_name"],
-            lead_row["role_title"],
-            lead_id,
-        )
+        workspace_dir = artifact_paths["workspace_dir"]
+        raw_source_path = artifact_paths["raw_source_path"]
+        capture_bundle_path = artifact_paths["capture_bundle_path"]
+        post_path = artifact_paths["post_path"]
+        jd_path = artifact_paths["jd_path"]
+        poster_profile_path = artifact_paths["poster_profile_path"]
+        split_metadata_path = artifact_paths["split_metadata_path"]
+        split_review_path = artifact_paths["split_review_path"]
+        lead_manifest_path = artifact_paths["lead_manifest_path"]
 
         if not raw_source_path.exists():
             raise LinkedInScrapingError(
@@ -715,69 +883,26 @@ def derive_manual_lead_context(
             },
         )
 
-        posting_handoff_ready = review_status != LEAD_SPLIT_REVIEW_AMBIGUOUS and sections["jd"]["available"]
-        posting_handoff_reason = None
-        if review_status == LEAD_SPLIT_REVIEW_AMBIGUOUS:
-            posting_handoff_reason = "ambiguous_split_review"
-        elif not sections["jd"]["available"]:
-            posting_handoff_reason = "missing_jd"
-
-        lead_manifest_contract = write_yaml_contract(
-            lead_manifest_path,
-            producer_component=LINKEDIN_SCRAPING_COMPONENT,
-            result="success",
-            linkage=linkage,
-            payload={
-                "lead_status": lead_status,
-                "lead_shape": lead_row["lead_shape"],
-                "split_review_status": review_status,
-                "source": {
-                    "source_type": lead_row["source_type"],
-                    "source_reference": lead_row["source_reference"],
-                    "source_mode": lead_row["source_mode"],
-                    "source_url": lead_row["source_url"],
-                },
-                "summary": {
-                    "company_name": lead_row["company_name"],
-                    "role_title": lead_row["role_title"],
-                    "location": lead_row["location"],
-                    "work_mode": lead_row["work_mode"],
-                    "compensation_summary": lead_row["compensation_summary"],
-                    "poster_name": lead_row["poster_name"],
-                    "poster_title": lead_row["poster_title"],
-                },
-                "artifacts": {
-                    "capture_bundle_path": str(capture_bundle_path.resolve()) if capture_bundle_path.exists() else None,
-                    "raw_source_path": str(raw_source_path.resolve()),
-                    "post_path": str(post_path.resolve()) if sections["post"]["available"] else None,
-                    "jd_path": str(jd_path.resolve()) if sections["jd"]["available"] else None,
-                    "poster_profile_path": (
-                        str(poster_profile_path.resolve()) if sections["poster_profile"]["available"] else None
-                    ),
-                    "split_metadata_path": str(split_metadata_path.resolve()),
-                    "split_review_path": str(split_review_path.resolve()),
-                },
-                "artifact_availability": {
-                    name: _section_availability_payload(section)
-                    for name, section in sections.items()
-                },
-                "created_entities": {
-                    "job_posting_id": None,
-                    "contact_ids": [],
-                    "job_posting_contact_ids": [],
-                    "linkedin_lead_contact_ids": [],
-                },
-                "handoff_targets": {
-                    "posting_materialization": {
-                        "ready": posting_handoff_ready,
-                        "reason_code": posting_handoff_reason,
-                        "required_artifacts": [
-                            str(jd_path.resolve())
-                        ]
-                        if sections["jd"]["available"]
-                        else [],
-                    }
-                },
+        lead_manifest_contract = _write_manual_lead_manifest(
+            connection,
+            paths,
+            lead_row=lead_row,
+            lead_status=lead_status,
+            lead_shape=lead_row["lead_shape"],
+            split_review_status=review_status,
+            artifact_paths=artifact_paths,
+            created_entities={
+                "job_posting_id": None,
+                "contact_ids": [],
+                "job_posting_contact_ids": [],
+                "linkedin_lead_contact_ids": [],
+            },
+            handoff_targets={
+                "posting_materialization": _build_posting_materialization_target(
+                    split_review_status=review_status,
+                    jd_path=jd_path,
+                    job_posting_id=None,
+                )
             },
         )
 
@@ -811,14 +936,6 @@ def derive_manual_lead_context(
                 artifact_path=split_review_path,
                 lead_id=lead_id,
                 created_at=split_review_contract["produced_at"],
-            )
-            _replace_lead_artifact_record(
-                connection,
-                paths,
-                artifact_type=LEAD_MANIFEST_ARTIFACT_TYPE,
-                artifact_path=lead_manifest_path,
-                lead_id=lead_id,
-                created_at=lead_manifest_contract["produced_at"],
             )
     finally:
         connection.close()
@@ -894,6 +1011,26 @@ def _load_capture_bundle(capture_bundle_path: Path) -> Mapping[str, Any] | None:
         return None
     payload = json.loads(capture_bundle_path.read_text(encoding="utf-8"))
     return payload if isinstance(payload, Mapping) else None
+
+
+def _manual_lead_artifact_paths(
+    paths: ProjectPaths,
+    *,
+    company_name: str,
+    role_title: str,
+    lead_id: str,
+) -> dict[str, Path]:
+    return {
+        "workspace_dir": paths.lead_workspace_dir(company_name, role_title, lead_id),
+        "raw_source_path": paths.lead_raw_source_path(company_name, role_title, lead_id),
+        "capture_bundle_path": paths.lead_capture_bundle_path(company_name, role_title, lead_id),
+        "post_path": paths.lead_post_path(company_name, role_title, lead_id),
+        "jd_path": paths.lead_jd_path(company_name, role_title, lead_id),
+        "poster_profile_path": paths.lead_poster_profile_path(company_name, role_title, lead_id),
+        "split_metadata_path": paths.lead_split_metadata_path(company_name, role_title, lead_id),
+        "split_review_path": paths.lead_split_review_path(company_name, role_title, lead_id),
+        "lead_manifest_path": paths.lead_manifest_path(company_name, role_title, lead_id),
+    }
 
 
 def _derive_sections(
@@ -1334,6 +1471,15 @@ def _section_availability_payload(section: Mapping[str, Any]) -> dict[str, Any]:
     }
 
 
+def _artifact_availability_from_path(path: Path, *, unavailable_reason: str = "not_detected") -> dict[str, Any]:
+    available = path.exists()
+    return {
+        "available": available,
+        "artifact_path": str(path.resolve()) if available else None,
+        "reason_code": None if available else unavailable_reason,
+    }
+
+
 def _validation_check(*, name: str, status: str, message: str) -> dict[str, str]:
     return {
         "name": name,
@@ -1373,6 +1519,715 @@ def _replace_lead_artifact_record(
         linkage=ArtifactLinkage(lead_id=lead_id),
         created_at=created_at,
     )
+
+
+def _write_manual_lead_manifest(
+    connection: sqlite3.Connection,
+    paths: ProjectPaths,
+    *,
+    lead_row: Mapping[str, Any],
+    lead_status: str,
+    lead_shape: str,
+    split_review_status: str,
+    artifact_paths: Mapping[str, Path],
+    created_entities: Mapping[str, Any],
+    handoff_targets: Mapping[str, Any],
+) -> dict[str, Any]:
+    lead_manifest_path = artifact_paths["lead_manifest_path"]
+    contract = write_yaml_contract(
+        lead_manifest_path,
+        producer_component=LINKEDIN_SCRAPING_COMPONENT,
+        result="success",
+        linkage=ArtifactLinkage(lead_id=lead_row["lead_id"]),
+        payload=_build_manual_lead_manifest_payload(
+            lead_row=lead_row,
+            lead_status=lead_status,
+            lead_shape=lead_shape,
+            split_review_status=split_review_status,
+            artifact_paths=artifact_paths,
+            created_entities=created_entities,
+            handoff_targets=handoff_targets,
+        ),
+    )
+    _replace_lead_artifact_record(
+        connection,
+        paths,
+        artifact_type=LEAD_MANIFEST_ARTIFACT_TYPE,
+        artifact_path=lead_manifest_path,
+        lead_id=lead_row["lead_id"],
+        created_at=contract["produced_at"],
+    )
+    return contract
+
+
+def _build_manual_lead_manifest_payload(
+    *,
+    lead_row: Mapping[str, Any],
+    lead_status: str,
+    lead_shape: str,
+    split_review_status: str,
+    artifact_paths: Mapping[str, Path],
+    created_entities: Mapping[str, Any],
+    handoff_targets: Mapping[str, Any],
+) -> dict[str, Any]:
+    capture_bundle_path = artifact_paths["capture_bundle_path"]
+    raw_source_path = artifact_paths["raw_source_path"]
+    post_path = artifact_paths["post_path"]
+    jd_path = artifact_paths["jd_path"]
+    poster_profile_path = artifact_paths["poster_profile_path"]
+    split_metadata_path = artifact_paths["split_metadata_path"]
+    split_review_path = artifact_paths["split_review_path"]
+    return {
+        "lead_status": lead_status,
+        "lead_shape": lead_shape,
+        "split_review_status": split_review_status,
+        "source": {
+            "source_type": lead_row["source_type"],
+            "source_reference": lead_row["source_reference"],
+            "source_mode": lead_row["source_mode"],
+            "source_url": lead_row["source_url"],
+        },
+        "summary": {
+            "company_name": lead_row["company_name"],
+            "role_title": lead_row["role_title"],
+            "location": lead_row["location"],
+            "work_mode": lead_row["work_mode"],
+            "compensation_summary": lead_row["compensation_summary"],
+            "poster_name": lead_row["poster_name"],
+            "poster_title": lead_row["poster_title"],
+        },
+        "artifacts": {
+            "capture_bundle_path": str(capture_bundle_path.resolve()) if capture_bundle_path.exists() else None,
+            "raw_source_path": str(raw_source_path.resolve()) if raw_source_path.exists() else None,
+            "post_path": str(post_path.resolve()) if post_path.exists() else None,
+            "jd_path": str(jd_path.resolve()) if jd_path.exists() else None,
+            "poster_profile_path": str(poster_profile_path.resolve()) if poster_profile_path.exists() else None,
+            "split_metadata_path": str(split_metadata_path.resolve()) if split_metadata_path.exists() else None,
+            "split_review_path": str(split_review_path.resolve()) if split_review_path.exists() else None,
+        },
+        "artifact_availability": {
+            "post": _artifact_availability_from_path(post_path),
+            "jd": _artifact_availability_from_path(jd_path),
+            "poster_profile": _artifact_availability_from_path(poster_profile_path),
+        },
+        "created_entities": dict(created_entities),
+        "handoff_targets": dict(handoff_targets),
+    }
+
+
+def _build_posting_materialization_target(
+    *,
+    split_review_status: str,
+    jd_path: Path,
+    job_posting_id: str | None,
+) -> dict[str, Any]:
+    ready, reason_code = _posting_materialization_status(
+        split_review_status=split_review_status,
+        jd_path=jd_path,
+    )
+    if job_posting_id is not None:
+        ready = True
+        reason_code = None
+    target = {
+        "ready": ready,
+        "reason_code": reason_code,
+        "required_artifacts": [str(jd_path.resolve())] if jd_path.exists() else [],
+    }
+    if job_posting_id is not None:
+        target["created_entities"] = {"job_posting_id": job_posting_id}
+    return target
+
+
+def _build_resume_tailoring_target(
+    *,
+    job_posting_id: str | None,
+    jd_path: Path,
+) -> dict[str, Any]:
+    ready = job_posting_id is not None and jd_path.exists()
+    if ready:
+        reason_code = None
+    elif job_posting_id is None:
+        reason_code = MANIFEST_REASON_POSTING_NOT_MATERIALIZED
+    else:
+        reason_code = MANIFEST_REASON_MISSING_JD
+    target = {
+        "ready": ready,
+        "reason_code": reason_code,
+        "required_artifacts": [str(jd_path.resolve())] if jd_path.exists() else [],
+    }
+    if job_posting_id is not None:
+        target["created_entities"] = {"job_posting_id": job_posting_id}
+    return target
+
+
+def _posting_materialization_status(
+    *,
+    split_review_status: str,
+    jd_path: Path,
+) -> tuple[bool, str | None]:
+    if split_review_status == LEAD_SPLIT_REVIEW_AMBIGUOUS:
+        return False, MANIFEST_REASON_AMBIGUOUS_SPLIT_REVIEW
+    if split_review_status == LEAD_SPLIT_REVIEW_NOT_STARTED:
+        return False, MANIFEST_REASON_SPLIT_REVIEW_NOT_READY
+    if not jd_path.exists():
+        return False, MANIFEST_REASON_MISSING_JD
+    return True, None
+
+
+def _collect_created_entities(
+    connection: sqlite3.Connection,
+    *,
+    lead_id: str,
+    job_posting_id: str | None,
+) -> dict[str, Any]:
+    lead_contact_rows = connection.execute(
+        """
+        SELECT linkedin_lead_contact_id, contact_id
+        FROM linkedin_lead_contacts
+        WHERE lead_id = ?
+        ORDER BY created_at ASC, linkedin_lead_contact_id ASC
+        """,
+        (lead_id,),
+    ).fetchall()
+    posting_contact_rows = []
+    if job_posting_id is not None:
+        posting_contact_rows = connection.execute(
+            """
+            SELECT job_posting_contact_id, contact_id
+            FROM job_posting_contacts
+            WHERE job_posting_id = ?
+            ORDER BY created_at ASC, job_posting_contact_id ASC
+            """,
+            (job_posting_id,),
+        ).fetchall()
+
+    contact_ids: list[str] = []
+    seen_contact_ids: set[str] = set()
+    for row in [*lead_contact_rows, *posting_contact_rows]:
+        contact_id = row["contact_id"]
+        if contact_id in seen_contact_ids:
+            continue
+        seen_contact_ids.add(contact_id)
+        contact_ids.append(contact_id)
+
+    return {
+        "job_posting_id": job_posting_id,
+        "contact_ids": contact_ids,
+        "job_posting_contact_ids": [row["job_posting_contact_id"] for row in posting_contact_rows],
+        "linkedin_lead_contact_ids": [row["linkedin_lead_contact_id"] for row in lead_contact_rows],
+    }
+
+
+def _upsert_job_posting(
+    connection: sqlite3.Connection,
+    paths: ProjectPaths,
+    *,
+    lead_row: Mapping[str, Any],
+    jd_path: Path,
+) -> tuple[str, bool]:
+    existing_posting = _find_existing_posting_for_lead(connection, lead_id=lead_row["lead_id"])
+    posting_identity_key = _build_posting_identity_key(lead_row, jd_path=jd_path)
+    jd_artifact_path = paths.relative_to_root(jd_path).as_posix()
+    updated_at = now_utc_iso()
+    if existing_posting is not None:
+        connection.execute(
+            """
+            UPDATE job_postings
+            SET posting_identity_key = ?, company_name = ?, role_title = ?, location = ?,
+                jd_artifact_path = ?, updated_at = ?
+            WHERE job_posting_id = ?
+            """,
+            (
+                posting_identity_key,
+                lead_row["company_name"],
+                lead_row["role_title"],
+                lead_row["location"],
+                jd_artifact_path,
+                updated_at,
+                existing_posting["job_posting_id"],
+            ),
+        )
+        return existing_posting["job_posting_id"], False
+
+    timestamps = lifecycle_timestamps(updated_at)
+    job_posting_id = new_canonical_id("job_postings")
+    connection.execute(
+        """
+        INSERT INTO job_postings (
+          job_posting_id, lead_id, posting_identity_key, company_name, role_title, posting_status,
+          location, employment_type, posted_at, jd_artifact_path, archived_at, created_at, updated_at
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        """,
+        (
+            job_posting_id,
+            lead_row["lead_id"],
+            posting_identity_key,
+            lead_row["company_name"],
+            lead_row["role_title"],
+            JOB_POSTING_STATUS_SOURCED,
+            lead_row["location"],
+            None,
+            None,
+            jd_artifact_path,
+            None,
+            timestamps["created_at"],
+            timestamps["updated_at"],
+        ),
+    )
+    return job_posting_id, True
+
+
+def _build_posting_identity_key(lead_row: Mapping[str, Any], *, jd_path: Path) -> str:
+    normalized_jd = " ".join(jd_path.read_text(encoding="utf-8").split())
+    jd_fingerprint = hashlib.sha256(normalized_jd.encode("utf-8")).hexdigest()[:16]
+    return "|".join(
+        [
+            "manual_lead",
+            workspace_slug(lead_row["company_name"] or "unknown"),
+            workspace_slug(lead_row["role_title"] or "unknown"),
+            workspace_slug(lead_row["location"] or "unknown"),
+            jd_fingerprint,
+        ]
+    )
+
+
+def _materialize_manual_poster_contact(
+    connection: sqlite3.Connection,
+    *,
+    lead_row: Mapping[str, Any],
+    capture_bundle: Mapping[str, Any] | None,
+    poster_profile_path: Path,
+    job_posting_id: str,
+) -> dict[str, Any] | None:
+    poster_candidate = _extract_poster_candidate(
+        lead_row=lead_row,
+        capture_bundle=capture_bundle,
+        poster_profile_path=poster_profile_path,
+    )
+    if poster_candidate is None:
+        return None
+
+    existing_lead_contact = connection.execute(
+        """
+        SELECT llc.linkedin_lead_contact_id, llc.contact_id
+        FROM linkedin_lead_contacts AS llc
+        WHERE llc.lead_id = ? AND llc.is_primary_poster = 1
+        ORDER BY llc.created_at ASC, llc.linkedin_lead_contact_id ASC
+        """,
+        (lead_row["lead_id"],),
+    ).fetchall()
+    if len(existing_lead_contact) > 1:
+        raise LinkedInScrapingError(
+            f"Lead `{lead_row['lead_id']}` has multiple primary-poster lead links."
+        )
+
+    contact_created = False
+    if existing_lead_contact:
+        contact_id = existing_lead_contact[0]["contact_id"]
+        linkedin_lead_contact_id = existing_lead_contact[0]["linkedin_lead_contact_id"]
+    else:
+        reusable_contact = _find_reusable_contact(connection, poster_candidate)
+        if reusable_contact is None:
+            contact_id = new_canonical_id("contacts")
+            timestamps = lifecycle_timestamps()
+            connection.execute(
+                """
+                INSERT INTO contacts (
+                  contact_id, identity_key, display_name, company_name, origin_component, contact_status,
+                  full_name, first_name, last_name, linkedin_url, position_title, location,
+                  discovery_summary, current_working_email, identity_source, provider_name,
+                  provider_person_id, name_quality, created_at, updated_at
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                """,
+                (
+                    contact_id,
+                    poster_candidate["identity_key"],
+                    poster_candidate["display_name"],
+                    poster_candidate["company_name"],
+                    LINKEDIN_SCRAPING_COMPONENT,
+                    CONTACT_STATUS_IDENTIFIED,
+                    poster_candidate["full_name"],
+                    poster_candidate["first_name"],
+                    poster_candidate["last_name"],
+                    poster_candidate["linkedin_url"],
+                    poster_candidate["position_title"],
+                    None,
+                    None,
+                    None,
+                    poster_candidate["identity_source"],
+                    None,
+                    None,
+                    "manual_capture_exact",
+                    timestamps["created_at"],
+                    timestamps["updated_at"],
+                ),
+            )
+            contact_created = True
+        else:
+            contact_id = reusable_contact["contact_id"]
+        linkedin_lead_contact_id = new_canonical_id("linkedin_lead_contacts")
+        timestamps = lifecycle_timestamps()
+        connection.execute(
+            """
+            INSERT INTO linkedin_lead_contacts (
+              linkedin_lead_contact_id, lead_id, contact_id, contact_role, recipient_type_inferred,
+              is_primary_poster, extraction_confidence, created_at, updated_at
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """,
+            (
+                linkedin_lead_contact_id,
+                lead_row["lead_id"],
+                contact_id,
+                LEAD_CONTACT_ROLE_POSTER,
+                poster_candidate["recipient_type"],
+                1,
+                "high",
+                timestamps["created_at"],
+                timestamps["updated_at"],
+            ),
+        )
+
+    existing_contact = connection.execute(
+        """
+        SELECT contact_id, company_name, origin_component, contact_status, current_working_email,
+               provider_name, provider_person_id, name_quality, created_at
+        FROM contacts
+        WHERE contact_id = ?
+        """,
+        (contact_id,),
+    ).fetchone()
+    updated_at = now_utc_iso()
+    connection.execute(
+        """
+        UPDATE contacts
+        SET identity_key = ?, display_name = ?, company_name = ?, origin_component = ?, contact_status = ?,
+            full_name = ?, first_name = ?, last_name = ?, linkedin_url = ?, position_title = ?,
+            identity_source = ?, name_quality = ?, updated_at = ?
+        WHERE contact_id = ?
+        """,
+        (
+            poster_candidate["identity_key"],
+            poster_candidate["display_name"],
+            poster_candidate["company_name"],
+            existing_contact["origin_component"] if existing_contact is not None else LINKEDIN_SCRAPING_COMPONENT,
+            existing_contact["contact_status"] if existing_contact is not None else CONTACT_STATUS_IDENTIFIED,
+            poster_candidate["full_name"],
+            poster_candidate["first_name"],
+            poster_candidate["last_name"],
+            poster_candidate["linkedin_url"],
+            poster_candidate["position_title"],
+            poster_candidate["identity_source"],
+            "manual_capture_exact",
+            updated_at,
+            contact_id,
+        ),
+    )
+
+    existing_posting_contact = connection.execute(
+        """
+        SELECT job_posting_contact_id
+        FROM job_posting_contacts
+        WHERE job_posting_id = ? AND contact_id = ?
+        ORDER BY created_at ASC, job_posting_contact_id ASC
+        """,
+        (job_posting_id, contact_id),
+    ).fetchall()
+    if len(existing_posting_contact) > 1:
+        raise LinkedInScrapingError(
+            f"Posting `{job_posting_id}` has multiple contact links for contact `{contact_id}`."
+        )
+
+    if existing_posting_contact:
+        job_posting_contact_id = existing_posting_contact[0]["job_posting_contact_id"]
+        connection.execute(
+            """
+            UPDATE job_posting_contacts
+            SET recipient_type = ?, relevance_reason = ?, updated_at = ?
+            WHERE job_posting_contact_id = ?
+            """,
+            (
+                poster_candidate["recipient_type"],
+                poster_candidate["relevance_reason"],
+                updated_at,
+                job_posting_contact_id,
+            ),
+        )
+    else:
+        job_posting_contact_id = new_canonical_id("job_posting_contacts")
+        timestamps = lifecycle_timestamps(updated_at)
+        connection.execute(
+            """
+            INSERT INTO job_posting_contacts (
+              job_posting_contact_id, job_posting_id, contact_id, recipient_type, relevance_reason,
+              link_level_status, created_at, updated_at
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+            """,
+            (
+                job_posting_contact_id,
+                job_posting_id,
+                contact_id,
+                poster_candidate["recipient_type"],
+                poster_candidate["relevance_reason"],
+                POSTING_CONTACT_STATUS_IDENTIFIED,
+                timestamps["created_at"],
+                timestamps["updated_at"],
+            ),
+        )
+
+    if not existing_lead_contact:
+        connection.execute(
+            """
+            UPDATE linkedin_lead_contacts
+            SET extraction_confidence = ?, updated_at = ?
+            WHERE linkedin_lead_contact_id = ?
+            """,
+            (
+                "high",
+                updated_at,
+                linkedin_lead_contact_id,
+            ),
+        )
+    else:
+        connection.execute(
+            """
+            UPDATE linkedin_lead_contacts
+            SET recipient_type_inferred = ?, extraction_confidence = ?, updated_at = ?
+            WHERE linkedin_lead_contact_id = ?
+            """,
+            (
+                poster_candidate["recipient_type"],
+                "high",
+                updated_at,
+                linkedin_lead_contact_id,
+            ),
+        )
+
+    return {
+        "contact_id": contact_id,
+        "contact_created": contact_created,
+        "linkedin_lead_contact_id": linkedin_lead_contact_id,
+        "job_posting_contact_id": job_posting_contact_id,
+        "display_name": poster_candidate["display_name"],
+        "position_title": poster_candidate["position_title"],
+    }
+
+
+def _extract_poster_candidate(
+    *,
+    lead_row: Mapping[str, Any],
+    capture_bundle: Mapping[str, Any] | None,
+    poster_profile_path: Path,
+) -> dict[str, Any] | None:
+    parsed_profile_name, parsed_profile_title = _parse_poster_profile(poster_profile_path)
+    display_name = lead_row["poster_name"] or parsed_profile_name
+    position_title = lead_row["poster_title"] or parsed_profile_title
+    linkedin_url = _profile_source_url(capture_bundle)
+    if display_name is None:
+        return None
+    if not poster_profile_path.exists() and position_title is None and linkedin_url is None:
+        return None
+
+    first_name, last_name = _split_person_name(display_name)
+    recipient_type = _infer_recipient_type(position_title)
+    return {
+        "display_name": display_name,
+        "full_name": display_name if " " in display_name.strip() else None,
+        "first_name": first_name,
+        "last_name": last_name,
+        "position_title": position_title,
+        "linkedin_url": linkedin_url,
+        "company_name": lead_row["company_name"],
+        "identity_key": _build_contact_identity_key(
+            company_name=lead_row["company_name"],
+            display_name=display_name,
+            position_title=position_title,
+            linkedin_url=linkedin_url,
+        ),
+        "identity_source": "manual_capture_profile" if poster_profile_path.exists() else "manual_capture_summary",
+        "recipient_type": recipient_type,
+        "relevance_reason": _recipient_relevance_reason(
+            recipient_type=recipient_type,
+            position_title=position_title,
+        ),
+    }
+
+
+def _find_reusable_contact(
+    connection: sqlite3.Connection,
+    poster_candidate: Mapping[str, Any],
+) -> sqlite3.Row | None:
+    linkedin_url = poster_candidate["linkedin_url"]
+    if linkedin_url:
+        rows = connection.execute(
+            """
+            SELECT contact_id
+            FROM contacts
+            WHERE linkedin_url = ? AND company_name = ?
+            ORDER BY created_at ASC, contact_id ASC
+            """,
+            (linkedin_url, poster_candidate["company_name"]),
+        ).fetchall()
+        if len(rows) == 1:
+            return rows[0]
+        if len(rows) > 1:
+            return None
+
+    rows = connection.execute(
+        """
+        SELECT contact_id
+        FROM contacts
+        WHERE identity_key = ? AND company_name = ?
+        ORDER BY created_at ASC, contact_id ASC
+        """,
+        (poster_candidate["identity_key"], poster_candidate["company_name"]),
+    ).fetchall()
+    if len(rows) == 1:
+        return rows[0]
+    return None
+
+
+def _parse_poster_profile(poster_profile_path: Path) -> tuple[str | None, str | None]:
+    if not poster_profile_path.exists():
+        return None, None
+    lines = [line.strip() for line in poster_profile_path.read_text(encoding="utf-8").splitlines() if line.strip()]
+    if not lines:
+        return None, None
+    display_name = lines[0]
+    position_title = None
+    for line in lines[1:]:
+        if line.lower() in {"about", "experience", "activity"}:
+            break
+        if PROFILE_MARKER_RE.search(line):
+            continue
+        position_title = line
+        break
+    return display_name, position_title
+
+
+def _profile_source_url(capture_bundle: Mapping[str, Any] | None) -> str | None:
+    if capture_bundle is None:
+        return None
+    raw_captures = capture_bundle.get("captures")
+    if not isinstance(raw_captures, Sequence) or isinstance(raw_captures, (str, bytes)):
+        return None
+    for raw_capture in raw_captures:
+        if not isinstance(raw_capture, Mapping):
+            continue
+        page_type = _normalize_optional_text(raw_capture.get("page_type")) or "unknown"
+        if page_type != "profile":
+            continue
+        source_url = _normalize_optional_text(raw_capture.get("source_url"))
+        if source_url:
+            return source_url
+    return None
+
+
+def _build_contact_identity_key(
+    *,
+    company_name: str,
+    display_name: str,
+    position_title: str | None,
+    linkedin_url: str | None,
+) -> str:
+    if linkedin_url:
+        return "|".join(
+            [
+                "linkedin_profile",
+                workspace_slug(company_name),
+                workspace_slug(linkedin_url),
+            ]
+        )
+    return "|".join(
+        [
+            "manual_poster",
+            workspace_slug(company_name),
+            workspace_slug(display_name),
+            workspace_slug(position_title or "unknown"),
+        ]
+    )
+
+
+def _split_person_name(display_name: str) -> tuple[str | None, str | None]:
+    parts = [part for part in display_name.strip().split() if part]
+    if not parts:
+        return None, None
+    if len(parts) == 1:
+        return parts[0], None
+    return parts[0], " ".join(parts[1:])
+
+
+def _infer_recipient_type(position_title: str | None) -> str:
+    normalized = (position_title or "").lower()
+    if "founder" in normalized or "co-founder" in normalized or "cofounder" in normalized:
+        return RECIPIENT_TYPE_FOUNDER
+    if any(token in normalized for token in ("recruit", "talent", "sourcer", "people ops")):
+        return RECIPIENT_TYPE_RECRUITER
+    if "alumni" in normalized:
+        return RECIPIENT_TYPE_ALUMNI
+    if any(token in normalized for token in ("manager", "director", "head", "vp", "vice president", "chief")):
+        return RECIPIENT_TYPE_HIRING_MANAGER
+    if any(token in normalized for token in ("engineer", "developer", "architect", "swe", "software")):
+        return RECIPIENT_TYPE_ENGINEER
+    return RECIPIENT_TYPE_OTHER_INTERNAL
+
+
+def _recipient_relevance_reason(*, recipient_type: str, position_title: str | None) -> str:
+    if recipient_type == RECIPIENT_TYPE_FOUNDER:
+        return "Poster title indicates founder-level internal routing context."
+    if recipient_type == RECIPIENT_TYPE_RECRUITER:
+        return "Poster title indicates a recruiting contact for this role."
+    if recipient_type == RECIPIENT_TYPE_HIRING_MANAGER:
+        return "Poster title indicates leadership close to the likely hiring loop."
+    if recipient_type == RECIPIENT_TYPE_ENGINEER:
+        return "Poster title indicates a role-relevant internal engineer."
+    if recipient_type == RECIPIENT_TYPE_ALUMNI:
+        return "Poster evidence suggests an alumni-style networking contact."
+    if position_title:
+        return f"Poster identified directly from manual lead evidence as `{position_title}`."
+    return "Poster identified directly from manual lead evidence."
+
+
+def _load_manual_lead_row(connection: sqlite3.Connection, *, lead_id: str) -> sqlite3.Row:
+    lead_row = connection.execute(
+        """
+        SELECT lead_id, lead_status, lead_shape, split_review_status, source_type, source_reference,
+               source_mode, source_url, company_name, role_title, location, work_mode,
+               compensation_summary, poster_name, poster_title
+        FROM linkedin_leads
+        WHERE lead_id = ?
+        """,
+        (lead_id,),
+    ).fetchone()
+    if lead_row is None:
+        raise LinkedInScrapingError(f"Lead `{lead_id}` was not found.")
+    if lead_row["source_mode"] not in {SOURCE_MODE_MANUAL_CAPTURE, SOURCE_MODE_MANUAL_PASTE}:
+        raise LinkedInScrapingError(
+            f"Lead `{lead_id}` is not a manual lead and cannot use the manual lead-materialization pipeline."
+        )
+    return lead_row
+
+
+def _find_existing_posting_for_lead(
+    connection: sqlite3.Connection,
+    *,
+    lead_id: str,
+) -> sqlite3.Row | None:
+    rows = connection.execute(
+        """
+        SELECT job_posting_id, posting_status
+        FROM job_postings
+        WHERE lead_id = ?
+        ORDER BY created_at ASC, job_posting_id ASC
+        """,
+        (lead_id,),
+    ).fetchall()
+    if not rows:
+        return None
+    if len(rows) > 1:
+        raise LinkedInScrapingError(
+            f"Lead `{lead_id}` already has multiple `job_postings` rows."
+        )
+    return rows[0]
 
 
 def _find_existing_lead(
@@ -1433,6 +2288,9 @@ def _build_parser() -> argparse.ArgumentParser:
     derive_parser = subparsers.add_parser("derive")
     derive_parser.add_argument("--lead-id", required=True)
 
+    materialize_parser = subparsers.add_parser("materialize")
+    materialize_parser.add_argument("--lead-id", required=True)
+
     return parser
 
 
@@ -1455,6 +2313,11 @@ def main(argv: Sequence[str] | None = None) -> int:
         else:
             if args.command == "derive":
                 result = derive_manual_lead_context(
+                    args.project_root,
+                    lead_id=args.lead_id,
+                )
+            elif args.command == "materialize":
+                result = materialize_manual_lead_entities(
                     args.project_root,
                     lead_id=args.lead_id,
                 )

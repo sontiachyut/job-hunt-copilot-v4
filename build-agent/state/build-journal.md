@@ -353,3 +353,33 @@ Use this file as an append-only implementation log for the build agent.
 - Explicit implementation inference: until `BA-04-S3` lands a canonical `job_posting_id`, `lead-manifest.yaml` now reports readiness for `posting_materialization` instead of overstating downstream tailoring readiness.
 - The current rule-based split intentionally treats missing JD evidence as `ambiguous`; optional AI second-pass handling remains deferred and the raw source stays untouched regardless.
 - `OPS-LAUNCHD-001` and `BUILD-CLI-001` remain open and untouched because this slice stayed within ingestion ownership.
+
+### Session
+- Date: 2026-04-06 16:19:28 MST
+- Slice: BA-04-S3 manual lead entity materialization
+- Goal: Materialize canonical postings and poster-contact links from reviewed manual leads, then upgrade the lead manifest for downstream tailoring without duplicating rows on rerun.
+
+### Work Done
+- Extended `job_hunt_copilot.linkedin_scraping` with `materialize_manual_lead_entities`, shared manual-manifest builders, conservative posting identity-key generation, poster-profile extraction helpers, recipient-type inference including `founder`, and canonical upsert logic for `job_postings`, `contacts`, `linkedin_lead_contacts`, and `job_posting_contacts`.
+- Added the repo-local `bin/jhc-linkedin-ingest materialize --lead-id ...` flow through the existing ingestion CLI so reviewed manual leads can materialize canonical entities through the same entrypoint family as capture and derivation.
+- Upgraded manual `lead-manifest.yaml` publication so materialized leads now record created entity ids and `handoff_targets.resume_tailoring.ready = true` when a canonical `job_posting_id` exists, while ambiguous leads still remain blocked honestly without creating a posting.
+- Added focused pytest coverage for successful manual posting/contact materialization, founder-recipient typing, ambiguous no-op materialization, and rerun idempotency across postings, links, and manifest artifact registration.
+- Updated `README.md` and `docs/ARCHITECTURE.md` so repo-facing surfaces now reflect that reviewed manual leads can materialize canonical postings and poster links, while refresh-history snapshotting remains the next ingestion gap.
+- Updated the build board and implementation plan to split the old combined `BA-04-S3` into completed materialization plus pending refresh-history work, keeping BA-04 itself in progress until the refresh acceptance scenario lands.
+
+### Validation
+- Ran `python3.11 -m py_compile job_hunt_copilot/linkedin_scraping.py tests/test_linkedin_scraping.py`.
+- Ran `python3.11 -m pytest tests/test_linkedin_scraping.py` and confirmed all 11 manual-ingestion, derivation, and materialization tests passed.
+- Ran `python3.11 -m pytest tests/test_bootstrap.py tests/test_artifacts.py tests/test_linkedin_scraping.py` and confirmed all 18 targeted regression tests passed.
+- Ran full `python3.11 -m pytest` and confirmed all 42 tests passed across bootstrap, schema, artifacts, ingestion, local runtime, runtime pack, and supervisor coverage.
+- Ran `bin/jhc-linkedin-ingest --help` plus `bin/jhc-linkedin-ingest materialize --help` and confirmed the repo-local wrapper now exposes the new materialization subcommand cleanly.
+
+### Result
+- `done`
+
+### Next
+- Implement `BA-04-S4`: refresh an existing manual lead in place while preserving prior source or review snapshots under the lead-local `history/` directory and keeping the live manifest honest.
+
+### Notes
+- Explicit implementation inference: automatic posting reuse remains conservative and lead-rooted for now; this slice reuses the same lead's existing `job_posting` and only reuses poster contacts when captured profile identity matches strongly enough to avoid a risky merge.
+- `OPS-LAUNCHD-001` and `BUILD-CLI-001` remain open and untouched because this slice stayed within ingestion ownership.

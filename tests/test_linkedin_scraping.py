@@ -11,6 +11,7 @@ from job_hunt_copilot.linkedin_scraping import (
     derive_manual_lead_context,
     ingest_manual_capture_submission,
     ingest_paste_inbox,
+    materialize_manual_lead_entities,
 )
 from job_hunt_copilot.paths import ProjectPaths
 from tests.support import create_minimal_project
@@ -29,6 +30,67 @@ def connect_database(db_path):
     connection.row_factory = sqlite3.Row
     connection.execute("PRAGMA foreign_keys = ON;")
     return connection
+
+
+def build_materializable_submission(
+    *,
+    submission_id,
+    poster_name="Alex Kordun",
+    poster_title="Director of Engineering, Guidewire",
+    profile_source_url="https://www.linkedin.com/in/alex-kordun/",
+):
+    return {
+        "source_mode": "manual_capture",
+        "source_type": "manual_capture_bundle",
+        "submission_id": submission_id,
+        "source_reference": f"http://127.0.0.1:8765/submissions/{submission_id}",
+        "summary": {
+            "company_name": "Guidewire Software",
+            "role_title": "Software Engineer (Full-Stack)",
+            "location": "Bedford, MA",
+            "work_mode": "Hybrid",
+            "poster_name": poster_name,
+            "poster_title": poster_title,
+        },
+        "captures": [
+            {
+                "capture_order": 1,
+                "capture_mode": "selected_text",
+                "page_type": "post",
+                "source_url": "https://www.linkedin.com/feed/update/example",
+                "selected_text": "We're hiring backend and frontend engineers.",
+                "full_text": "View job\nWe're hiring backend and frontend engineers.\n1 school alumni works here",
+            },
+            {
+                "capture_order": 2,
+                "capture_mode": "full_page",
+                "page_type": "job",
+                "source_url": "https://www.linkedin.com/jobs/view/example",
+                "full_text": (
+                    "About the job\n"
+                    "Build product surfaces with Python and TypeScript.\n"
+                    "Qualifications\n"
+                    "3+ years of experience."
+                ),
+            },
+            {
+                "capture_order": 3,
+                "capture_mode": "full_page",
+                "page_type": "profile",
+                "source_url": profile_source_url,
+                "full_text": (
+                    f"{poster_name}\n"
+                    f"{poster_title}\n"
+                    "HighlightsHighlights\n"
+                    "Introduce myself\n"
+                    "About\n"
+                    "Leads distributed product teams.\n"
+                    "Experience\n"
+                    "Guidewire"
+                ),
+            },
+        ],
+    }
 
 
 def test_paste_ingestion_copies_raw_source_unchanged_and_registers_lead_artifact(tmp_path):
@@ -418,3 +480,249 @@ def test_manual_lead_derivation_is_idempotent_for_artifact_records(tmp_path):
         "lead_split_metadata": 1,
         "lead_split_review": 1,
     }
+
+
+def test_manual_lead_materialization_creates_posting_contact_links_and_tailoring_handoff(tmp_path):
+    project_root = bootstrap_project(tmp_path)
+    paths = ProjectPaths.from_root(project_root)
+
+    ingestion = ingest_manual_capture_submission(
+        project_root,
+        submission=build_materializable_submission(submission_id="manual-submission-materialize-001"),
+    )
+    derived = derive_manual_lead_context(project_root, lead_id=ingestion.lead_id)
+    materialized = materialize_manual_lead_entities(project_root, lead_id=ingestion.lead_id)
+    manifest = yaml.safe_load(materialized.lead_manifest_path.read_text(encoding="utf-8"))
+
+    connection = connect_database(project_root / "job_hunt_copilot.db")
+    lead_row = connection.execute(
+        """
+        SELECT lead_status, lead_shape, poster_name, poster_title
+        FROM linkedin_leads
+        WHERE lead_id = ?
+        """,
+        (ingestion.lead_id,),
+    ).fetchone()
+    posting_row = connection.execute(
+        """
+        SELECT lead_id, company_name, role_title, posting_status, jd_artifact_path
+        FROM job_postings
+        WHERE job_posting_id = ?
+        """,
+        (materialized.job_posting_id,),
+    ).fetchone()
+    contact_row = connection.execute(
+        """
+        SELECT display_name, company_name, origin_component, contact_status, position_title, linkedin_url
+        FROM contacts
+        WHERE contact_id = ?
+        """,
+        (materialized.contact_id,),
+    ).fetchone()
+    lead_contact_row = connection.execute(
+        """
+        SELECT contact_role, recipient_type_inferred, is_primary_poster
+        FROM linkedin_lead_contacts
+        WHERE linkedin_lead_contact_id = ?
+        """,
+        (materialized.linkedin_lead_contact_id,),
+    ).fetchone()
+    posting_contact_row = connection.execute(
+        """
+        SELECT recipient_type, link_level_status
+        FROM job_posting_contacts
+        WHERE job_posting_contact_id = ?
+        """,
+        (materialized.job_posting_contact_id,),
+    ).fetchone()
+    connection.close()
+
+    assert derived.lead_status == "reviewed"
+    assert materialized.materialized is True
+    assert materialized.job_posting_created is True
+    assert materialized.contact_created is True
+    assert materialized.lead_status == "handed_off"
+    assert materialized.lead_shape == "posting_plus_contacts"
+    assert manifest["lead_status"] == "handed_off"
+    assert manifest["lead_shape"] == "posting_plus_contacts"
+    assert manifest["created_entities"]["job_posting_id"] == materialized.job_posting_id
+    assert manifest["created_entities"]["contact_ids"] == [materialized.contact_id]
+    assert manifest["created_entities"]["job_posting_contact_ids"] == [materialized.job_posting_contact_id]
+    assert manifest["created_entities"]["linkedin_lead_contact_ids"] == [materialized.linkedin_lead_contact_id]
+    assert manifest["handoff_targets"]["posting_materialization"]["ready"] is True
+    assert manifest["handoff_targets"]["resume_tailoring"]["ready"] is True
+    assert manifest["handoff_targets"]["resume_tailoring"]["created_entities"]["job_posting_id"] == (
+        materialized.job_posting_id
+    )
+    assert dict(lead_row) == {
+        "lead_status": "handed_off",
+        "lead_shape": "posting_plus_contacts",
+        "poster_name": "Alex Kordun",
+        "poster_title": "Director of Engineering, Guidewire",
+    }
+    assert dict(posting_row) == {
+        "lead_id": ingestion.lead_id,
+        "company_name": "Guidewire Software",
+        "role_title": "Software Engineer (Full-Stack)",
+        "posting_status": "sourced",
+        "jd_artifact_path": paths.relative_to_root(derived.jd_path).as_posix(),
+    }
+    assert dict(contact_row) == {
+        "display_name": "Alex Kordun",
+        "company_name": "Guidewire Software",
+        "origin_component": "linkedin_scraping",
+        "contact_status": "identified",
+        "position_title": "Director of Engineering, Guidewire",
+        "linkedin_url": "https://www.linkedin.com/in/alex-kordun/",
+    }
+    assert dict(lead_contact_row) == {
+        "contact_role": "poster",
+        "recipient_type_inferred": "hiring_manager",
+        "is_primary_poster": 1,
+    }
+    assert dict(posting_contact_row) == {
+        "recipient_type": "hiring_manager",
+        "link_level_status": "identified",
+    }
+
+
+def test_manual_lead_materialization_skips_ambiguous_leads_and_keeps_manifest_blocked(tmp_path):
+    project_root = bootstrap_project(tmp_path)
+    paths = ProjectPaths.from_root(project_root)
+    paths.paste_inbox_path.write_text(
+        "Guidewire Software\nSoftware Engineer (Full-Stack)\nInteresting company.\nReach out if this sounds interesting.\n",
+        encoding="utf-8",
+    )
+
+    ingestion = ingest_paste_inbox(
+        project_root,
+        company_name="Guidewire Software",
+        role_title="Software Engineer (Full-Stack)",
+    )
+    derive_manual_lead_context(project_root, lead_id=ingestion.lead_id)
+    materialized = materialize_manual_lead_entities(project_root, lead_id=ingestion.lead_id)
+    manifest = yaml.safe_load(materialized.lead_manifest_path.read_text(encoding="utf-8"))
+
+    connection = connect_database(project_root / "job_hunt_copilot.db")
+    lead_row = connection.execute(
+        "SELECT lead_status, lead_shape FROM linkedin_leads WHERE lead_id = ?",
+        (ingestion.lead_id,),
+    ).fetchone()
+    posting_count = connection.execute(
+        "SELECT COUNT(*) FROM job_postings WHERE lead_id = ?",
+        (ingestion.lead_id,),
+    ).fetchone()[0]
+    connection.close()
+
+    assert materialized.materialized is False
+    assert materialized.reason_code == "ambiguous_split_review"
+    assert dict(lead_row) == {
+        "lead_status": "split_ready",
+        "lead_shape": "posting_only",
+    }
+    assert posting_count == 0
+    assert manifest["handoff_targets"]["posting_materialization"]["ready"] is False
+    assert manifest["handoff_targets"]["posting_materialization"]["reason_code"] == "ambiguous_split_review"
+    assert manifest["handoff_targets"]["resume_tailoring"]["ready"] is False
+    assert manifest["handoff_targets"]["resume_tailoring"]["reason_code"] == "posting_not_materialized"
+
+
+def test_manual_lead_materialization_is_idempotent_for_postings_and_links(tmp_path):
+    project_root = bootstrap_project(tmp_path)
+
+    ingestion = ingest_manual_capture_submission(
+        project_root,
+        submission=build_materializable_submission(submission_id="manual-submission-materialize-002"),
+    )
+    derive_manual_lead_context(project_root, lead_id=ingestion.lead_id)
+
+    first = materialize_manual_lead_entities(project_root, lead_id=ingestion.lead_id)
+    second = materialize_manual_lead_entities(project_root, lead_id=ingestion.lead_id)
+
+    connection = connect_database(project_root / "job_hunt_copilot.db")
+    counts = {
+        "job_postings": connection.execute(
+            "SELECT COUNT(*) FROM job_postings WHERE lead_id = ?",
+            (ingestion.lead_id,),
+        ).fetchone()[0],
+        "contacts": connection.execute(
+            """
+            SELECT COUNT(*)
+            FROM contacts
+            WHERE company_name = 'Guidewire Software'
+              AND display_name = 'Alex Kordun'
+            """
+        ).fetchone()[0],
+        "linkedin_lead_contacts": connection.execute(
+            "SELECT COUNT(*) FROM linkedin_lead_contacts WHERE lead_id = ?",
+            (ingestion.lead_id,),
+        ).fetchone()[0],
+        "job_posting_contacts": connection.execute(
+            "SELECT COUNT(*) FROM job_posting_contacts WHERE job_posting_id = ?",
+            (first.job_posting_id,),
+        ).fetchone()[0],
+        "lead_manifest_artifacts": connection.execute(
+            """
+            SELECT COUNT(*)
+            FROM artifact_records
+            WHERE lead_id = ? AND artifact_type = 'lead_manifest'
+            """,
+            (ingestion.lead_id,),
+        ).fetchone()[0],
+    }
+    connection.close()
+
+    assert first.job_posting_id == second.job_posting_id
+    assert first.contact_id == second.contact_id
+    assert first.linkedin_lead_contact_id == second.linkedin_lead_contact_id
+    assert first.job_posting_contact_id == second.job_posting_contact_id
+    assert first.job_posting_created is True
+    assert second.job_posting_created is False
+    assert first.contact_created is True
+    assert second.contact_created is False
+    assert counts == {
+        "job_postings": 1,
+        "contacts": 1,
+        "linkedin_lead_contacts": 1,
+        "job_posting_contacts": 1,
+        "lead_manifest_artifacts": 1,
+    }
+
+
+def test_founder_title_is_preserved_as_a_first_class_recipient_type(tmp_path):
+    project_root = bootstrap_project(tmp_path)
+
+    ingestion = ingest_manual_capture_submission(
+        project_root,
+        submission=build_materializable_submission(
+            submission_id="manual-submission-materialize-founder",
+            poster_name="Jordan Vale",
+            poster_title="Co-Founder & CTO",
+            profile_source_url="https://www.linkedin.com/in/jordan-vale/",
+        ),
+    )
+    derive_manual_lead_context(project_root, lead_id=ingestion.lead_id)
+    materialized = materialize_manual_lead_entities(project_root, lead_id=ingestion.lead_id)
+
+    connection = connect_database(project_root / "job_hunt_copilot.db")
+    lead_contact_row = connection.execute(
+        """
+        SELECT recipient_type_inferred
+        FROM linkedin_lead_contacts
+        WHERE linkedin_lead_contact_id = ?
+        """,
+        (materialized.linkedin_lead_contact_id,),
+    ).fetchone()
+    posting_contact_row = connection.execute(
+        """
+        SELECT recipient_type
+        FROM job_posting_contacts
+        WHERE job_posting_contact_id = ?
+        """,
+        (materialized.job_posting_contact_id,),
+    ).fetchone()
+    connection.close()
+
+    assert materialized.materialized is True
+    assert lead_contact_row["recipient_type_inferred"] == "founder"
+    assert posting_contact_row["recipient_type"] == "founder"

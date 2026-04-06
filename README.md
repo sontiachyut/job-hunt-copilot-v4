@@ -37,10 +37,10 @@ What already exists:
 - persisted expert review packets, expert review decisions, and override audit events with filesystem review-packet artifacts under `ops/review-packets/`
 - a generated product-side runtime pack under `ops/agent/` with identity, policy, action-catalog, service-goal, escalation, progress-log, ops-plan, and bootstrap prompt surfaces
 - repo-local supervisor launchd wiring under `ops/launchd/` plus `bin/jhc-agent-start`, `bin/jhc-agent-stop`, `bin/jhc-agent-cycle`, and `bin/jhc-chat` for local heartbeat and operator control
-- the manual-ingestion and split-review slices under `job_hunt_copilot.linkedin_scraping`, including `bin/jhc-linkedin-ingest`, canonical lead workspace creation, `capture-bundle.json`, deterministic `post.md` / `jd.md` / `poster-profile.md` derivation, `source-split.yaml`, `source-split-review.yaml`, and blocked-or-ready `lead-manifest.yaml` publication for manual leads
+- the manual-ingestion and materialization slices under `job_hunt_copilot.linkedin_scraping`, including `bin/jhc-linkedin-ingest`, canonical lead workspace creation, `capture-bundle.json`, deterministic `post.md` / `jd.md` / `poster-profile.md` derivation, `source-split.yaml`, `source-split-review.yaml`, blocked-or-ready `lead-manifest.yaml` publication, and canonical `job_postings` / poster-contact link creation for reviewed manual leads
 
 What is still in progress:
-- Gmail lead intake, downstream posting materialization, and the later runtime components on top of the now-landed local operator plus manual-ingestion and split-review entrypoints
+- Gmail lead intake, manual refresh-history snapshotting, and the later runtime components on top of the now-landed local operator plus manual-ingestion, split-review, and manual materialization entrypoints
 
 ## System Overview
 
