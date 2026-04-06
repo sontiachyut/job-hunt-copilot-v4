@@ -19,6 +19,7 @@ ops/agent/
 ops/review-packets/
 ops/maintenance/
 ops/incidents/
+ops/logs/
 ops/launchd/
 
 # Generated build-agent runtime artifacts

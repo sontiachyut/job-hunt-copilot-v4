@@ -202,3 +202,32 @@ Use this file as an append-only implementation log for the build agent.
 ### Notes
 - Explicit implementation scope stayed bounded to canonical supervisor persistence and review artifacts; object-specific canonical state mutation helpers for later chat control slices are still downstream work.
 - `BUILD-CLI-001` remains open and untouched.
+
+### Session
+- Date: 2026-04-06 14:21:43 MST
+- Slice: BA-03-S1 runtime pack materialization
+- Goal: Materialize the product-side `ops/agent/` runtime pack from current repo state so later launchd and chat entrypoints can reuse shared identity, policy, and control-model surfaces without rereading the full PRD each time.
+
+### Work Done
+- Added `job_hunt_copilot/runtime_pack.py` with product-side runtime-pack rendering for `identity.yaml`, `policies.yaml`, `action-catalog.yaml`, `service-goals.yaml`, `escalation-policy.yaml`, `chat-bootstrap.md`, and `supervisor-bootstrap.md`, driven by canonical paths, current supervisor constants, and the registered bounded action catalog.
+- Added `scripts/ops/build_runtime_pack.py` as the repo-local CLI entrypoint for runtime-pack materialization, and extended `job_hunt_copilot/bootstrap.py` so a fresh bootstrap now seeds the runtime pack automatically.
+- Extended `job_hunt_copilot/paths.py` with explicit `ops/agent`, `ops/logs`, launchd, script, and future helper-entrypoint paths so the generated runtime pack can render absolute project-root references cleanly.
+- Added focused bootstrap and runtime-pack tests covering generated artifact existence, absolute-path rendering, current registered action-catalog contents, and preservation of existing `ops/agent/progress-log.md` plus `ops/agent/ops-plan.yaml` on rerender.
+- Updated `.gitignore`, `README.md`, and `docs/ARCHITECTURE.md` so the repo now treats `ops/logs/` and the bootstrap-generated `ops/agent/` surfaces honestly as local runtime artifacts while still documenting that the runtime pack now exists.
+
+### Validation
+- Ran `python3.11 -m pytest tests/test_bootstrap.py tests/test_runtime_pack.py` and confirmed all 5 targeted tests passed.
+- Ran `python3.11 -m pytest tests/test_bootstrap.py tests/test_schema.py tests/test_artifacts.py tests/test_supervisor.py tests/test_runtime_pack.py` and confirmed all 24 targeted regression tests passed.
+- Ran `python3.11 scripts/ops/build_runtime_pack.py --project-root /Users/achyutaramsonti/Projects/job-hunt-copilot-v4` and confirmed the real repo rendered the full `ops/agent/` artifact set with `agent_mode = stopped` and `latest_cycle_result = not_started`.
+- Ran `python3.11 -m job_hunt_copilot.bootstrap --project-root /Users/achyutaramsonti/Projects/job-hunt-copilot-v4` and confirmed real-repo bootstrap still succeeds, preserves the generated `progress-log.md` and `ops-plan.yaml`, and now creates `ops/logs/`.
+
+### Result
+- `done`
+
+### Next
+- Implement `BA-03-S2`: render the supervisor plist plus repo-local `jhc-agent-start`, `jhc-agent-stop`, and `jhc-agent-cycle` wrappers that consume the generated runtime pack and persist canonical control-state transitions around `launchctl`.
+
+### Notes
+- The generated `ops/agent/` files are intentionally ignored by git as runtime-local artifacts, so the tracked deliverable for this slice is the materialization code, tests, and bootstrap integration rather than checked-in rendered copies.
+- The current action catalog remains intentionally narrow to the already-implemented supervisor behaviors; unsupported later-stage work still escalates instead of being overstated in the generated runtime pack.
+- `BUILD-CLI-001` remains open and untouched.

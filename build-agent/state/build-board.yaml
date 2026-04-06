@@ -1,7 +1,7 @@
 project: job-hunt-copilot-v4
 board_version: 2
 last_reset_note: Initial seeded build board created from the finalized PRD and acceptance spec.
-last_planning_update: 2026-04-05
+last_planning_update: 2026-04-06
 
 global_status:
   current_build_goal: Implement the current-build PRD and acceptance spec in this repository with bounded, validated slices.
@@ -15,7 +15,8 @@ global_status:
     - BA-01 is now complete: the repo has runtime bootstrap checks, canonical SQLite schema migration, review views, and shared record-ID/timestamp helpers.
     - Shared artifact publication utilities now cover YAML/JSON contract envelopes, canonical workspace paths, and `artifact_records` registration for lead, posting, contact, and message roots.
     - BA-02 is now complete: the repo has canonical supervisor-state helpers, a bounded heartbeat executor, terminal-run review packet artifacts, expert review decisions, and override-event lineage persisted in canonical state.
-    - The next dependency is BA-03-S1 runtime pack materialization so the product-side `ops/agent/` artifacts can catch up to the supervisor control plane now present in code.
+    - BA-03-S1 is now complete: bootstrap and `scripts/ops/build_runtime_pack.py` materialize the product-side `ops/agent/` runtime pack, progress-log scaffold, and ops-plan scaffold from current repo state.
+    - The next dependency is BA-03-S2 launchd and helper entrypoints so the generated runtime pack can drive the local start or stop and heartbeat wiring.
   execution_principles:
     - One primary slice per unattended build session.
     - Prefer DB-first state, artifact contracts, and runtime scaffolding before higher-level agent behavior.
@@ -228,7 +229,7 @@ epics:
 
   - id: BA-03
     name: macOS local runtime helpers
-    status: pending
+    status: in_progress
     owner_role: build-lead
     phase: P1
     dependencies:
@@ -243,15 +244,27 @@ epics:
       - "`ops/agent/` runtime pack artifacts are materialized from repo state"
       - repo-local `jhc-agent-start`, `jhc-agent-stop`, `jhc-agent-cycle`, and `jhc-chat` behaviors exist
       - launchd and chat pause or resume wiring match the current-build control model
+    progress_notes:
+      - Bootstrap now renders the runtime identity, policies, action catalog, service goals, escalation policy, bootstrap prompts, and initial progress surfaces under `ops/agent/`.
+      - Those `ops/agent/` artifacts remain repo-local generated runtime surfaces under the existing `.gitignore`, so validation relies on materialization hooks rather than checked-in generated files.
     near_term_slices:
       - id: BA-03-S1
         name: Runtime pack materialization
         owner_role: build-lead
-        status: pending
+        status: completed
         deliverables:
           - generated `ops/agent/identity.yaml`, `policies.yaml`, `action-catalog.yaml`, `service-goals.yaml`, `escalation-policy.yaml`, and bootstrap markdown files
           - absolute-path rendering for repo-local runtime pack consumers
           - product-side runtime pack validation hooks
+        completed_notes:
+          - Added `job_hunt_copilot.runtime_pack` plus `scripts/ops/build_runtime_pack.py` so the product-side runtime pack can be rendered from canonical paths, registered supervisor actions, and current control-state semantics.
+          - Extended bootstrap to materialize `ops/agent/identity.yaml`, `policies.yaml`, `action-catalog.yaml`, `service-goals.yaml`, `escalation-policy.yaml`, `chat-bootstrap.md`, and `supervisor-bootstrap.md`, and to seed initial `progress-log.md` and `ops-plan.yaml` without clobbering later operator-maintained state.
+          - Added targeted validation for absolute-path rendering, narrow current action-catalog contents, and preservation of existing `progress-log.md` plus `ops-plan.yaml` on rerender; bootstrap now also creates `ops/logs/` for the later launchd slice.
+        validation:
+          - "`python3.11 -m pytest tests/test_bootstrap.py tests/test_runtime_pack.py`"
+          - "`python3.11 -m pytest tests/test_bootstrap.py tests/test_schema.py tests/test_artifacts.py tests/test_supervisor.py tests/test_runtime_pack.py`"
+          - "`python3.11 scripts/ops/build_runtime_pack.py --project-root /Users/achyutaramsonti/Projects/job-hunt-copilot-v4`"
+          - "`python3.11 -m job_hunt_copilot.bootstrap --project-root /Users/achyutaramsonti/Projects/job-hunt-copilot-v4`"
       - id: BA-03-S2
         name: launchd and helper entrypoints
         owner_role: build-lead

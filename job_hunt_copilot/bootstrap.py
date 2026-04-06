@@ -12,6 +12,7 @@ from .contracts import CONTRACT_VERSION
 from .db import initialize_database
 from .paths import ProjectPaths
 from .records import now_utc_iso
+from .runtime_pack import materialize_runtime_pack
 from .secrets import materialize_runtime_secrets
 
 REQUIRED_PYTHON = (3, 11)
@@ -145,6 +146,7 @@ def run_bootstrap(
         "applied_migrations": migration_result.applied_migrations,
         "user_version": migration_result.user_version,
     }
+    report["runtime_pack"] = materialize_runtime_pack(paths.project_root)
 
     if check_prerequisites:
         report["prerequisites"] = check_runtime_prerequisites()

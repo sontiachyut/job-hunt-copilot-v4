@@ -35,9 +35,10 @@ What already exists:
 - supervisor control-plane persistence helpers for canonical control state, pipeline runs, supervisor cycles, and runtime leases
 - a bounded supervisor cycle executor with incident-aware work selection, cycle snapshots, lease-guarded single-flight execution, and auto-pause or escalation handling for unsupported progression
 - persisted expert review packets, expert review decisions, and override audit events with filesystem review-packet artifacts under `ops/review-packets/`
+- a generated product-side runtime pack under `ops/agent/` with identity, policy, action-catalog, service-goal, escalation, progress-log, ops-plan, and bootstrap prompt surfaces
 
 What is still in progress:
-- the downstream runtime components, runtime pack materialization, and local operator entrypoints
+- the downstream runtime components plus the local launchd and operator entrypoints that will consume the generated runtime pack
 
 ## System Overview
 

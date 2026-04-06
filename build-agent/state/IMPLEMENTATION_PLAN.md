@@ -17,6 +17,8 @@ It should stay aligned with:
 - Explicit implementation inference: the PRD currently conflicts on whether escalated runs are immutable history or resumable after clearance; this slice implemented the explicit `escalated -> in_progress` transition rule while still creating new posting runs only when no non-terminal run exists.
 - Explicit implementation inference: the initial action catalog intentionally stays narrow to posting-run bootstrap, durable lead-handoff checkpointing, and unresolved-incident escalation so unsupported later-stage work becomes a canonical incident instead of improvised behavior.
 - `BA-02-S3` is complete: review-worthy terminal runs can now emit `review_packet.json` plus `review_packet.md`, persist `expert_review_packets` and `expert_review_decisions`, register those artifacts in `artifact_records`, and record expert override lineage through canonical `override_events`.
+- `BA-03-S1` is complete: bootstrap and `scripts/ops/build_runtime_pack.py` now render the product-side runtime identity, policies, action catalog, service goals, escalation policy, progress-log scaffold, ops-plan scaffold, and chat or supervisor bootstrap prompts under `ops/agent/`.
+- Explicit implementation note: the generated `ops/agent/` files remain runtime-local artifacts under `.gitignore`, so the repo tracks the materialization code and tests rather than checking in those mutable rendered outputs.
 - Known operational risk: unattended build-lead execution needs a follow-up validation pass for the `codex exec` CLI compatibility fix already present in the worktree.
 
 ## Phase Order
@@ -83,12 +85,12 @@ It should stay aligned with:
 
 ## Next Slice
 
-- Current focus: `BA-03-S1` Runtime pack materialization.
-- Why next: the supervisor control-plane state is now implemented in code, but the acceptance surface still requires the product-side `ops/agent/` runtime pack artifacts that later helper entrypoints and chat controls will consume.
+- Current focus: `BA-03-S2` launchd and helper entrypoints.
+- Why next: the runtime pack now exists, but the acceptance surface still needs repo-local `jhc-agent-start`, `jhc-agent-stop`, and `jhc-agent-cycle` behavior plus `ops/launchd/job-hunt-copilot-supervisor.plist` rendering that consumes those generated runtime artifacts.
 - Done when:
-  - generated `ops/agent/identity.yaml`, `policies.yaml`, `action-catalog.yaml`, `service-goals.yaml`, and `escalation-policy.yaml` exist
-  - `ops/agent/chat-bootstrap.md` and `ops/agent/supervisor-bootstrap.md` are materialized from repo state with absolute-path-ready content
-  - runtime-pack validation can confirm the rendered artifact set without depending on the later launchd entrypoint slice
+  - repo-local `bin/jhc-agent-start`, `bin/jhc-agent-stop`, and `bin/jhc-agent-cycle` exist and resolve the absolute project root
+  - `ops/launchd/job-hunt-copilot-supervisor.plist` is rendered with the required label, heartbeat interval, working directory, program arguments, and log paths
+  - start or stop validation confirms idempotent `launchctl` wiring plus canonical control-state persistence without depending on the later `jhc-chat` slice
 
 ## Working Rules
 

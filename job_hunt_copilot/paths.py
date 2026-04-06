@@ -38,12 +38,132 @@ class ProjectPaths:
         return self.project_root / "job_hunt_copilot.db"
 
     @property
+    def bin_dir(self) -> Path:
+        return self.project_root / "bin"
+
+    @property
+    def scripts_dir(self) -> Path:
+        return self.project_root / "scripts"
+
+    @property
+    def ops_scripts_dir(self) -> Path:
+        return self.scripts_dir / "ops"
+
+    @property
     def paste_dir(self) -> Path:
         return self.project_root / "paste"
 
     @property
     def paste_inbox_path(self) -> Path:
         return self.paste_dir / "paste.txt"
+
+    @property
+    def ops_dir(self) -> Path:
+        return self.project_root / "ops"
+
+    @property
+    def ops_agent_dir(self) -> Path:
+        return self.ops_dir / "agent"
+
+    @property
+    def ops_agent_identity_path(self) -> Path:
+        return self.ops_agent_dir / "identity.yaml"
+
+    @property
+    def ops_agent_policies_path(self) -> Path:
+        return self.ops_agent_dir / "policies.yaml"
+
+    @property
+    def ops_agent_action_catalog_path(self) -> Path:
+        return self.ops_agent_dir / "action-catalog.yaml"
+
+    @property
+    def ops_agent_service_goals_path(self) -> Path:
+        return self.ops_agent_dir / "service-goals.yaml"
+
+    @property
+    def ops_agent_escalation_policy_path(self) -> Path:
+        return self.ops_agent_dir / "escalation-policy.yaml"
+
+    @property
+    def ops_agent_progress_log_path(self) -> Path:
+        return self.ops_agent_dir / "progress-log.md"
+
+    @property
+    def ops_agent_ops_plan_path(self) -> Path:
+        return self.ops_agent_dir / "ops-plan.yaml"
+
+    @property
+    def ops_agent_chat_bootstrap_path(self) -> Path:
+        return self.ops_agent_dir / "chat-bootstrap.md"
+
+    @property
+    def ops_agent_supervisor_bootstrap_path(self) -> Path:
+        return self.ops_agent_dir / "supervisor-bootstrap.md"
+
+    @property
+    def ops_agent_context_snapshots_dir(self) -> Path:
+        return self.ops_agent_dir / "context-snapshots"
+
+    @property
+    def ops_review_packets_dir(self) -> Path:
+        return self.ops_dir / "review-packets"
+
+    @property
+    def ops_maintenance_dir(self) -> Path:
+        return self.ops_dir / "maintenance"
+
+    @property
+    def ops_incidents_dir(self) -> Path:
+        return self.ops_dir / "incidents"
+
+    @property
+    def ops_logs_dir(self) -> Path:
+        return self.ops_dir / "logs"
+
+    @property
+    def ops_launchd_dir(self) -> Path:
+        return self.ops_dir / "launchd"
+
+    @property
+    def supervisor_plist_path(self) -> Path:
+        return self.ops_launchd_dir / "job-hunt-copilot-supervisor.plist"
+
+    @property
+    def supervisor_stdout_log_path(self) -> Path:
+        return self.ops_logs_dir / "supervisor.stdout.log"
+
+    @property
+    def supervisor_stderr_log_path(self) -> Path:
+        return self.ops_logs_dir / "supervisor.stderr.log"
+
+    @property
+    def build_runtime_pack_script_path(self) -> Path:
+        return self.ops_scripts_dir / "build_runtime_pack.py"
+
+    @property
+    def run_supervisor_cycle_script_path(self) -> Path:
+        return self.ops_scripts_dir / "run_supervisor_cycle.py"
+
+    @property
+    def chat_session_script_path(self) -> Path:
+        return self.ops_scripts_dir / "chat_session.py"
+
+    @property
+    def agent_start_entrypoint_path(self) -> Path:
+        return self.bin_dir / "jhc-agent-start"
+
+    @property
+    def agent_stop_entrypoint_path(self) -> Path:
+        return self.bin_dir / "jhc-agent-stop"
+
+    @property
+    def agent_cycle_entrypoint_path(self) -> Path:
+        return self.bin_dir / "jhc-agent-cycle"
+
+    @property
+    def chat_entrypoint_path(self) -> Path:
+        return self.bin_dir / "jhc-chat"
 
     def relative_to_root(self, path: Path | str) -> Path:
         candidate = Path(path)
@@ -108,7 +228,7 @@ class ProjectPaths:
         )
 
     def review_packet_dir(self, pipeline_run_id: str) -> Path:
-        return self.project_root / "ops" / "review-packets" / pipeline_run_id
+        return self.ops_review_packets_dir / pipeline_run_id
 
     def review_packet_json_path(self, pipeline_run_id: str) -> Path:
         return self.review_packet_dir(pipeline_run_id) / "review_packet.json"
@@ -138,11 +258,12 @@ class ProjectPaths:
             self.project_root / "resume-tailoring" / "output" / "tailored",
             self.project_root / "discovery" / "output",
             self.project_root / "outreach" / "output",
-            self.project_root / "ops" / "agent" / "context-snapshots",
-            self.project_root / "ops" / "review-packets",
-            self.project_root / "ops" / "maintenance",
-            self.project_root / "ops" / "incidents",
-            self.project_root / "ops" / "launchd",
+            self.ops_agent_context_snapshots_dir,
+            self.ops_review_packets_dir,
+            self.ops_maintenance_dir,
+            self.ops_incidents_dir,
+            self.ops_logs_dir,
+            self.ops_launchd_dir,
         ]
 
     def runtime_secrets_candidates(self) -> list[Path]:
