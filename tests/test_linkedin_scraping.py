@@ -193,6 +193,97 @@ def test_paste_ingestion_is_idempotent_for_the_same_input(tmp_path):
     assert artifact_count == 1
 
 
+def test_paste_refresh_with_explicit_lead_id_updates_live_workspace_and_preserves_history(tmp_path):
+    project_root = bootstrap_project(tmp_path)
+    paths = ProjectPaths.from_root(project_root)
+    original_source = (
+        "Guidewire Software\n"
+        "Software Engineer (Full-Stack)\n"
+        "We're hiring backend engineers.\n"
+        "About the job\n"
+        "Build product surfaces with Python and TypeScript.\n"
+        "Qualifications\n"
+        "3+ years of experience.\n"
+    )
+    paths.paste_inbox_path.write_bytes(original_source.encode("utf-8"))
+
+    first = ingest_paste_inbox(
+        project_root,
+        company_name="Guidewire Software",
+        role_title="Software Engineer (Full-Stack)",
+        location="Bedford, MA",
+    )
+    derive_manual_lead_context(project_root, lead_id=first.lead_id)
+
+    refreshed_source = (
+        "Guidewire Software\n"
+        "Software Engineer (Full-Stack)\n"
+        "We're hiring platform engineers.\n"
+        "About the job\n"
+        "Build agent workflows with Python and SQLite.\n"
+        "Qualifications\n"
+        "5+ years of experience.\n"
+    )
+    paths.paste_inbox_path.write_bytes(refreshed_source.encode("utf-8"))
+
+    refreshed = ingest_paste_inbox(
+        project_root,
+        company_name="Guidewire Software",
+        role_title="Software Engineer (Full-Stack)",
+        location="Boston, MA",
+        existing_lead_id=first.lead_id,
+    )
+
+    history_dir = paths.lead_history_dir("Guidewire Software", "Software Engineer (Full-Stack)", first.lead_id)
+    snapshot_dirs = sorted(path for path in history_dir.iterdir() if path.is_dir())
+    manifest = yaml.safe_load(
+        paths.lead_manifest_path("Guidewire Software", "Software Engineer (Full-Stack)", first.lead_id).read_text(
+            encoding="utf-8"
+        )
+    )
+
+    connection = connect_database(project_root / "job_hunt_copilot.db")
+    lead_row = connection.execute(
+        """
+        SELECT lead_status, split_review_status, location
+        FROM linkedin_leads
+        WHERE lead_id = ?
+        """,
+        (first.lead_id,),
+    ).fetchone()
+    split_artifact_count = connection.execute(
+        """
+        SELECT COUNT(*)
+        FROM artifact_records
+        WHERE lead_id = ?
+          AND artifact_type IN ('lead_split_metadata', 'lead_split_review')
+        """,
+        (first.lead_id,),
+    ).fetchone()[0]
+    connection.close()
+
+    assert refreshed.lead_id == first.lead_id
+    assert refreshed.created is False
+    assert refreshed.refreshed is True
+    assert refreshed.raw_source_path.read_bytes() == refreshed_source.encode("utf-8")
+    assert len(snapshot_dirs) == 1
+    assert (snapshot_dirs[0] / "raw" / "source.md").read_bytes() == original_source.encode("utf-8")
+    assert (snapshot_dirs[0] / "source-split-review.yaml").exists()
+    assert (snapshot_dirs[0] / "lead-manifest.yaml").exists()
+    assert dict(lead_row) == {
+        "lead_status": "captured",
+        "split_review_status": "not_started",
+        "location": "Boston, MA",
+    }
+    assert split_artifact_count == 0
+    assert manifest["lead_status"] == "captured"
+    assert manifest["split_review_status"] == "not_started"
+    assert manifest["summary"]["location"] == "Boston, MA"
+    assert manifest["artifacts"]["jd_path"] is None
+    assert manifest["handoff_targets"]["posting_materialization"]["ready"] is False
+    assert manifest["handoff_targets"]["posting_materialization"]["reason_code"] == "split_review_not_ready"
+
+
 def test_manual_capture_bundle_persists_bundle_and_selected_text_verbatim(tmp_path):
     project_root = bootstrap_project(tmp_path)
 
@@ -268,6 +359,93 @@ def test_manual_capture_without_selected_text_defaults_to_tray_review_submission
     capture_bundle = json.loads(result.capture_bundle_path.read_text(encoding="utf-8"))
 
     assert capture_bundle["submission_path"] == SUBMISSION_PATH_TRAY_REVIEW
+
+
+def test_manual_capture_refresh_updates_live_workspace_and_preserves_review_history(tmp_path):
+    project_root = bootstrap_project(tmp_path)
+    paths = ProjectPaths.from_root(project_root)
+
+    original_submission = build_materializable_submission(submission_id="manual-submission-refresh-001")
+    first = ingest_manual_capture_submission(project_root, submission=original_submission)
+    derive_manual_lead_context(project_root, lead_id=first.lead_id)
+    materialized = materialize_manual_lead_entities(project_root, lead_id=first.lead_id)
+
+    refreshed_submission = build_materializable_submission(
+        submission_id="manual-submission-refresh-001",
+        poster_title="Senior Director of Engineering, Guidewire",
+    )
+    refreshed_submission["summary"]["location"] = "Boston, MA"
+    refreshed_submission["captures"][0]["selected_text"] = "We're hiring platform and AI engineers."
+    refreshed_submission["captures"][0]["full_text"] = (
+        "View job\nWe're hiring platform and AI engineers.\n1 school alumni works here"
+    )
+    refreshed_submission["captures"][1]["full_text"] = (
+        "About the job\nBuild agent workflows with Python and SQLite.\nQualifications\n5+ years of experience."
+    )
+
+    refreshed = ingest_manual_capture_submission(project_root, submission=refreshed_submission)
+
+    history_dir = paths.lead_history_dir("Guidewire Software", "Software Engineer (Full-Stack)", first.lead_id)
+    snapshot_dirs = sorted(path for path in history_dir.iterdir() if path.is_dir())
+    live_manifest_path = paths.lead_manifest_path("Guidewire Software", "Software Engineer (Full-Stack)", first.lead_id)
+    live_manifest = yaml.safe_load(live_manifest_path.read_text(encoding="utf-8"))
+
+    connection = connect_database(project_root / "job_hunt_copilot.db")
+    lead_row = connection.execute(
+        """
+        SELECT lead_status, lead_shape, split_review_status, location, poster_title
+        FROM linkedin_leads
+        WHERE lead_id = ?
+        """,
+        (first.lead_id,),
+    ).fetchone()
+    posting_row = connection.execute(
+        """
+        SELECT jd_artifact_path
+        FROM job_postings
+        WHERE job_posting_id = ?
+        """,
+        (materialized.job_posting_id,),
+    ).fetchone()
+    split_artifact_count = connection.execute(
+        """
+        SELECT COUNT(*)
+        FROM artifact_records
+        WHERE lead_id = ?
+          AND artifact_type IN ('lead_split_metadata', 'lead_split_review')
+        """,
+        (first.lead_id,),
+    ).fetchone()[0]
+    connection.close()
+
+    assert refreshed.lead_id == first.lead_id
+    assert refreshed.created is False
+    assert refreshed.refreshed is True
+    assert "platform and AI engineers" in refreshed.raw_source_path.read_text(encoding="utf-8")
+    assert len(snapshot_dirs) == 1
+    assert (snapshot_dirs[0] / "raw" / "source.md").exists()
+    assert (snapshot_dirs[0] / "source-split-review.yaml").exists()
+    assert (snapshot_dirs[0] / "lead-manifest.yaml").exists()
+    assert (snapshot_dirs[0] / "jd.md").exists()
+    assert dict(lead_row) == {
+        "lead_status": "captured",
+        "lead_shape": "posting_plus_contacts",
+        "split_review_status": "not_started",
+        "location": "Boston, MA",
+        "poster_title": "Senior Director of Engineering, Guidewire",
+    }
+    assert paths.lead_jd_path("Guidewire Software", "Software Engineer (Full-Stack)", first.lead_id).exists() is False
+    assert posting_row["jd_artifact_path"] == paths.relative_to_root(snapshot_dirs[0] / "jd.md").as_posix()
+    assert split_artifact_count == 0
+    assert live_manifest["lead_status"] == "captured"
+    assert live_manifest["split_review_status"] == "not_started"
+    assert live_manifest["summary"]["location"] == "Boston, MA"
+    assert live_manifest["summary"]["poster_title"] == "Senior Director of Engineering, Guidewire"
+    assert live_manifest["created_entities"]["job_posting_id"] == materialized.job_posting_id
+    assert live_manifest["handoff_targets"]["posting_materialization"]["ready"] is False
+    assert live_manifest["handoff_targets"]["posting_materialization"]["reason_code"] == "split_review_not_ready"
+    assert live_manifest["handoff_targets"]["resume_tailoring"]["ready"] is False
+    assert live_manifest["handoff_targets"]["resume_tailoring"]["reason_code"] == "missing_jd"
 
 
 def test_manual_lead_derivation_publishes_split_review_and_manifest_artifacts(tmp_path):

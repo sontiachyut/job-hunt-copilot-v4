@@ -16,7 +16,7 @@ global_status:
     - Shared artifact publication utilities now cover YAML/JSON contract envelopes, canonical workspace paths, and `artifact_records` registration for lead, posting, contact, and message roots.
     - BA-02 is now complete: the repo has canonical supervisor-state helpers, a bounded heartbeat executor, terminal-run review packet artifacts, expert review decisions, and override-event lineage persisted in canonical state.
     - BA-03 is now complete in code: runtime-pack materialization, local launchd/start-stop-cycle helpers, and the direct `jhc-chat` operator entrypoint now exist for the macOS runtime surface.
-    - BA-04 is now in progress: the repo has a bounded `linkedin_scraping` ingestion path that reads `paste/paste.txt` or browser-style capture bundles, creates canonical lead workspaces, persists `capture-bundle.json`, copies or assembles `raw/source.md`, derives deterministic manual split artifacts, materializes canonical manual postings and poster links, and publishes `resume_tailoring`-ready lead manifests; refresh-history snapshotting remains the open manual-ingestion gap.
+    - BA-04 is now complete in code: the repo has a bounded `linkedin_scraping` ingestion path that reads `paste/paste.txt` or browser-style capture bundles, creates canonical lead workspaces, persists `capture-bundle.json`, copies or assembles `raw/source.md`, derives deterministic manual split artifacts, materializes canonical manual postings and poster links, publishes `resume_tailoring`-ready lead manifests, and refreshes existing manual leads in place while snapshotting prior source or review artifacts under each lead-local `history/` directory.
     - "`jhc-chat` now records canonical begin/end state, pauses autonomous work on open, resumes on clean explicit close when chat caused the pause, and leaves unexpected-exit pauses intact for later explicit resume or future idle-timeout handling."
     - Host-side `launchctl bootstrap` success still needs follow-up validation outside the current sandboxed session even though the plist, wrapper wiring, and failed-start rollback all validate locally.
   execution_principles:
@@ -316,7 +316,7 @@ epics:
 
   - id: BA-04
     name: Manual capture path
-    status: in_progress
+    status: completed
     owner_role: ingestion-engineer
     phase: P2
     dependencies:
@@ -336,6 +336,7 @@ epics:
       - "Captured manual leads now persist a canonical `linkedin_leads` shell row immediately with `lead_status = captured` and the explicit pre-split placeholder `split_review_status = not_started` until `BA-04-S2` publishes deterministic split artifacts."
       - "`BA-04-S2` now derives `post.md`, `jd.md`, and `poster-profile.md` when evidence exists, persists `source-split.yaml` plus `source-split-review.yaml`, and publishes a blocked-or-ready `lead-manifest.yaml` with canonical `split_review_status` updates for manual leads."
       - "`BA-04-S3` now materializes canonical `job_postings`, poster `contacts`, `linkedin_lead_contacts`, and `job_posting_contacts` from reviewed manual leads, keeps reruns idempotent, and upgrades `lead-manifest.yaml` to carry created entity ids plus `resume_tailoring` readiness."
+      - "`BA-04-S4` now refreshes existing manual leads in place, snapshots replaced source or review artifacts under `history/<timestamp>-source-refresh/`, clears stale live split artifacts, rewrites an honest refresh-state `lead-manifest.yaml`, and preserves prior posting `jd_artifact_path` references by repointing them to the snapped historical `jd.md` when needed."
     near_term_slices:
       - id: BA-04-S1
         name: Paste inbox and manual capture bundle persistence
@@ -397,13 +398,23 @@ epics:
       - id: BA-04-S4
         name: Lead refresh history and workspace snapshotting
         owner_role: ingestion-engineer
-        status: pending
+        status: completed
         dependencies:
           - BA-04-S3
         deliverables:
           - refresh-in-place workspace updates with history snapshots
           - preserved prior source or review snapshots under `history/` without regressing downstream canonical state
           - honest manifest updates for refreshed manual leads
+        completed_notes:
+          - Existing manual lead ingestion no longer silently no-ops on rerun; matching manual-capture submissions now refresh the live workspace in place, and paste fallback can refresh an existing lead explicitly through `--lead-id`.
+          - Refreshes snapshot the replaced lead-local source and review artifacts under `history/`, clear stale live `post.md` or `jd.md` or split-review files, and delete stale split artifact registry rows so the live workspace stays honest.
+          - When a refreshed lead already has a canonical posting, the old live `jd.md` is preserved under the history snapshot and the posting row is repointed to that snapped artifact path before the live workspace is cleared for the new source.
+        validation:
+          - "`python3.11 -m py_compile job_hunt_copilot/linkedin_scraping.py`"
+          - "`python3.11 -m pytest tests/test_linkedin_scraping.py`"
+          - "`python3.11 -m pytest`"
+          - "`bin/jhc-linkedin-ingest --help`"
+          - "`bin/jhc-linkedin-ingest paste --help`"
 
   - id: BA-05
     name: Gmail alert intake
@@ -713,16 +724,16 @@ epics:
           - final readiness notes for recruiter- or manager-facing repo surfaces
 
 current_focus:
-  epic_id: BA-04
-  slice_id: BA-04-S4
+  epic_id: BA-05
+  slice_id: BA-05-S1
   owner_role: ingestion-engineer
-  reason: Manual posting and poster-contact materialization now exist, so the remaining BA-04 acceptance gap is refresh-in-place lead history snapshotting for reruns.
+  reason: Manual ingestion is now complete in code, so the next bounded ingestion gap is Gmail alert collection, parsing, and zero-card review-threshold persistence.
   exit_criteria:
-    - refresh-in-place lead reruns preserve prior source or review snapshots under lead-local history while keeping the live workspace and manifest honest
+    - Gmail collection units persist idempotently by message id before lead fan-out begins
+    - plain-text-first LinkedIn alert parsing publishes retained card-level artifacts even when JD recovery is still downstream work
+    - zero-card Gmail collections remain queryable and review-threshold aware without fabricating lead workspaces
 
 focus_order:
-  - epic_id: BA-04
-    why_now: Manual capture is the next smallest product path once the runtime pack and operator surfaces exist.
   - epic_id: BA-05
     why_now: Gmail intake reuses lead materialization conventions and adds autonomous parsing and JD recovery on top.
   - epic_id: BA-06

@@ -22,11 +22,12 @@ It should stay aligned with:
 - `BA-04-S1` is complete: the repo now has `job_hunt_copilot.linkedin_scraping`, the repo-local `jhc-linkedin-ingest` entrypoint, canonical manual lead workspace creation, `capture-bundle.json` persistence, exact-copy paste fallback, and `lead_raw_source` artifact registration for accepted manual leads.
 - `BA-04-S2` is complete: manual leads can now run a deterministic first-pass split over canonical `raw/source.md`, derive `post.md`, `jd.md`, and `poster-profile.md` when evidence exists, publish `source-split.yaml` plus `source-split-review.yaml`, and persist a blocked-or-ready `lead-manifest.yaml` with canonical `split_review_status` updates.
 - `BA-04-S3` is complete: reviewed manual leads can now materialize canonical `job_postings`, auto-create poster `contacts`, persist `linkedin_lead_contacts` plus `job_posting_contacts`, expose founder recipient typing when titles warrant it, and upgrade `lead-manifest.yaml` with created entity ids plus `handoff_targets.resume_tailoring.ready = true`.
+- `BA-04-S4` is complete: existing manual leads can now refresh in place, snapshot replaced source or review artifacts under `history/`, clear stale live split outputs, rewrite an honest refresh-state `lead-manifest.yaml`, and preserve prior posting `jd_artifact_path` history by repointing canonical postings to the snapped `jd.md` when a refreshed source retires the live one.
 - Explicit implementation note: failed startup no longer leaves dishonest control state behind; `jhc-agent-start` now rolls canonical state back to `stopped` if `launchctl bootstrap` fails before the job is actually loaded.
 - Explicit implementation note: the generated `ops/agent/` files remain runtime-local artifacts under `.gitignore`, so the repo tracks the materialization code and tests rather than checking in those mutable rendered outputs.
 - Explicit implementation note: `jhc-chat` now records begin/end metadata plus `active_chat_session_id` in canonical control state, pauses autonomous work immediately on open, resumes on clean explicit close when chat itself caused the pause, and intentionally keeps unexpected-exit pauses active until later explicit resume or future idle-timeout automation exists.
 - Explicit implementation inference: freshly captured manual leads now persist immediately as `linkedin_leads` rows with `lead_status = captured` and `split_review_status = not_started` so pre-split work is queryable before `BA-04-S2` generates deterministic split/review artifacts.
-- Explicit implementation inference: manual posting materialization currently reuses only per-lead `job_postings` plus conservative poster-contact reuse keyed to company plus captured profile identity; refresh-in-place lead-history snapshotting remains the separate follow-up slice.
+- Explicit implementation inference: paste fallback refresh now requires an explicit `lead_id` because paste submissions intentionally fingerprint the scratch-buffer contents for new-lead creation, while matching manual-capture reruns refresh automatically when the lead identity key is reused.
 - Known operational blocker: live `launchctl bootstrap gui/$UID ...` still returns `Input/output error` in this sandboxed session, and the system log needed for richer launchd diagnostics is itself blocked by sandbox restrictions.
 - Known operational risk: unattended build-lead execution needs a follow-up validation pass for the `codex exec` CLI compatibility fix already present in the worktree.
 
@@ -95,12 +96,12 @@ It should stay aligned with:
 
 ## Next Slice
 
-- Current focus: `BA-04-S4` lead refresh history and workspace snapshotting.
-- Why next: `BA-04-S3` now leaves reviewed manual leads with canonical postings, poster links, and `resume_tailoring`-ready manifests, so the remaining BA-04 gap is refreshing an existing lead in place while preserving prior source or review snapshots under `history/`.
+- Current focus: `BA-05-S1` Gmail collection unit and parser.
+- Why next: `BA-04` is complete in code, and the next bounded ingestion gap is collecting LinkedIn Gmail alerts idempotently by message id, parsing multi-card alerts, and retaining zero-card cases for later review without fabricating lead workspaces.
 - Done when:
-  - refreshing an existing manual lead updates the live workspace in place instead of silently no-oping the rerun
-  - prior source or review snapshots remain preserved under lead-local history artifacts
-  - refreshed `lead-manifest.yaml` stays honest about current artifacts and downstream readiness without regressing existing canonical posting/contact state
+  - Gmail collection units persist idempotently with readable `email.md` plus machine-readable `email.json`
+  - parsed LinkedIn alert cards persist under a retained collection artifact even before per-card lead fan-out lands
+  - zero-card Gmail collections remain retained and can contribute to the future review-threshold logic instead of being silently dropped
 
 ## Working Rules
 

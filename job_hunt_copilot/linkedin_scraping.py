@@ -302,6 +302,7 @@ class ManualLeadIngestionResult:
     capture_bundle_path: Path
     raw_source_path: Path
     created: bool
+    refreshed: bool
 
     def as_dict(self) -> dict[str, Any]:
         return {
@@ -311,6 +312,7 @@ class ManualLeadIngestionResult:
             "source_mode": self.source_mode,
             "source_type": self.source_type,
             "created": self.created,
+            "refreshed": self.refreshed,
             "workspace_path": str(self.workspace_dir),
             "capture_bundle_path": str(self.capture_bundle_path),
             "raw_source_path": str(self.raw_source_path),
@@ -465,6 +467,7 @@ def ingest_manual_capture_submission(
     project_root: Path | str | None = None,
     *,
     submission: ManualCaptureSubmission | Mapping[str, Any],
+    existing_lead_id: str | None = None,
 ) -> ManualLeadIngestionResult:
     paths = ProjectPaths.from_root(project_root)
     normalized_submission = (
@@ -479,30 +482,24 @@ def ingest_manual_capture_submission(
     connection.execute("PRAGMA foreign_keys = ON;")
 
     try:
-        existing_lead = _find_existing_lead(connection, lead_identity_key)
+        existing_lead = None
+        if existing_lead_id is not None:
+            existing_lead = _load_manual_lead_row(connection, lead_id=existing_lead_id)
+            _validate_refresh_workspace_identity(existing_lead, submission=normalized_submission)
+            existing_identity_match = _find_existing_lead(connection, lead_identity_key)
+            if existing_identity_match is not None and existing_identity_match["lead_id"] != existing_lead["lead_id"]:
+                raise LinkedInScrapingError(
+                    "Cannot refresh into a lead whose refreshed identity already belongs to a different lead."
+                )
+        else:
+            existing_lead = _find_existing_lead(connection, lead_identity_key)
         if existing_lead is not None:
-            workspace_dir = paths.lead_workspace_dir(
-                existing_lead["company_name"],
-                existing_lead["role_title"],
-                existing_lead["lead_id"],
-            )
-            return ManualLeadIngestionResult(
-                lead_id=existing_lead["lead_id"],
+            return _refresh_manual_lead_workspace(
+                connection,
+                paths,
+                existing_lead=existing_lead,
+                submission=normalized_submission,
                 lead_identity_key=lead_identity_key,
-                source_mode=existing_lead["source_mode"],
-                source_type=existing_lead["source_type"],
-                workspace_dir=workspace_dir,
-                capture_bundle_path=paths.lead_capture_bundle_path(
-                    existing_lead["company_name"],
-                    existing_lead["role_title"],
-                    existing_lead["lead_id"],
-                ),
-                raw_source_path=paths.lead_raw_source_path(
-                    existing_lead["company_name"],
-                    existing_lead["role_title"],
-                    existing_lead["lead_id"],
-                ),
-                created=False,
             )
 
         lead_id = new_canonical_id("linkedin_leads")
@@ -526,18 +523,11 @@ def ingest_manual_capture_submission(
             lead_id=lead_id,
             lead_identity_key=lead_identity_key,
         )
+        raw_source_bytes = _render_raw_source_bytes(normalized_submission)
         capture_bundle_path.parent.mkdir(parents=True, exist_ok=True)
         capture_bundle_path.write_text(json.dumps(capture_bundle, indent=2) + "\n", encoding="utf-8")
-
-        if normalized_submission.source_type == SOURCE_TYPE_MANUAL_PASTE:
-            raw_capture = normalized_submission.captures[0]
-            if raw_capture.full_text is None:
-                raise LinkedInScrapingError("manual_paste capture must include full_text.")
-            raw_source_path.parent.mkdir(parents=True, exist_ok=True)
-            raw_source_path.write_bytes(raw_capture.full_text.encode("utf-8"))
-        else:
-            raw_source_path.parent.mkdir(parents=True, exist_ok=True)
-            raw_source_path.write_text(render_manual_capture_source(normalized_submission), encoding="utf-8")
+        raw_source_path.parent.mkdir(parents=True, exist_ok=True)
+        raw_source_path.write_bytes(raw_source_bytes)
 
         timestamps = lifecycle_timestamps(normalized_submission.accepted_at)
         with connection:
@@ -593,6 +583,393 @@ def ingest_manual_capture_submission(
         capture_bundle_path=capture_bundle_path,
         raw_source_path=raw_source_path,
         created=True,
+        refreshed=False,
+    )
+
+
+def _refresh_manual_lead_workspace(
+    connection: sqlite3.Connection,
+    paths: ProjectPaths,
+    *,
+    existing_lead: Mapping[str, Any],
+    submission: ManualCaptureSubmission,
+    lead_identity_key: str,
+) -> ManualLeadIngestionResult:
+    lead_id = existing_lead["lead_id"]
+    artifact_paths = _manual_lead_artifact_paths(
+        paths,
+        company_name=existing_lead["company_name"],
+        role_title=existing_lead["role_title"],
+        lead_id=lead_id,
+    )
+    current_bundle = _load_capture_bundle(artifact_paths["capture_bundle_path"])
+    if not _manual_lead_refresh_needed(
+        submission=submission,
+        current_bundle=current_bundle,
+        raw_source_path=artifact_paths["raw_source_path"],
+    ):
+        return ManualLeadIngestionResult(
+            lead_id=lead_id,
+            lead_identity_key=lead_identity_key,
+            source_mode=existing_lead["source_mode"],
+            source_type=existing_lead["source_type"],
+            workspace_dir=artifact_paths["workspace_dir"],
+            capture_bundle_path=artifact_paths["capture_bundle_path"],
+            raw_source_path=artifact_paths["raw_source_path"],
+            created=False,
+            refreshed=False,
+        )
+
+    snapshot_timestamp = now_utc_iso()
+    history_snapshot_dir = _snapshot_manual_lead_workspace(
+        artifact_paths=artifact_paths,
+        lead_id=lead_id,
+        snapshot_reason="source_refresh",
+        snapshot_timestamp=snapshot_timestamp,
+    )
+    existing_posting = _find_existing_posting_for_lead(connection, lead_id=lead_id)
+    existing_job_posting_id = existing_posting["job_posting_id"] if existing_posting is not None else None
+    _preserve_existing_posting_history(
+        connection,
+        paths,
+        job_posting_id=existing_job_posting_id,
+        live_jd_path=artifact_paths["jd_path"],
+        history_snapshot_dir=history_snapshot_dir,
+    )
+    _clear_live_review_artifacts(artifact_paths)
+
+    refreshed_lead_row = dict(existing_lead)
+    refreshed_lead_row.update(
+        {
+            "lead_id": lead_id,
+            "lead_identity_key": lead_identity_key,
+            "source_type": submission.source_type,
+            "source_reference": submission.source_reference,
+            "source_mode": submission.source_mode,
+            "source_url": submission.primary_source_url(),
+            "company_name": submission.summary.company_name,
+            "role_title": submission.summary.role_title,
+            "location": submission.summary.location,
+            "work_mode": submission.summary.work_mode,
+            "compensation_summary": submission.summary.compensation_summary,
+            "poster_name": submission.summary.poster_name,
+            "poster_title": submission.summary.poster_title,
+        }
+    )
+
+    artifact_paths["capture_bundle_path"].parent.mkdir(parents=True, exist_ok=True)
+    artifact_paths["capture_bundle_path"].write_text(
+        json.dumps(
+            submission.capture_bundle_payload(
+                lead_id=lead_id,
+                lead_identity_key=lead_identity_key,
+            ),
+            indent=2,
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+    artifact_paths["raw_source_path"].parent.mkdir(parents=True, exist_ok=True)
+    artifact_paths["raw_source_path"].write_bytes(_render_raw_source_bytes(submission))
+
+    created_entities = _collect_created_entities(
+        connection,
+        lead_id=lead_id,
+        job_posting_id=existing_job_posting_id,
+    )
+    lead_shape = (
+        LEAD_SHAPE_POSTING_PLUS_CONTACTS
+        if created_entities["contact_ids"]
+        else refreshed_lead_row["lead_shape"]
+    )
+    updated_at = now_utc_iso()
+
+    with connection:
+        connection.execute(
+            """
+            UPDATE linkedin_leads
+            SET lead_identity_key = ?, lead_status = ?, lead_shape = ?, split_review_status = ?,
+                source_type = ?, source_reference = ?, source_mode = ?, source_url = ?,
+                company_name = ?, role_title = ?, location = ?, work_mode = ?,
+                compensation_summary = ?, poster_name = ?, poster_title = ?,
+                last_scraped_at = ?, updated_at = ?
+            WHERE lead_id = ?
+            """,
+            (
+                lead_identity_key,
+                LEAD_STATUS_CAPTURED,
+                lead_shape,
+                LEAD_SPLIT_REVIEW_NOT_STARTED,
+                submission.source_type,
+                submission.source_reference,
+                submission.source_mode,
+                submission.primary_source_url(),
+                submission.summary.company_name,
+                submission.summary.role_title,
+                submission.summary.location,
+                submission.summary.work_mode,
+                submission.summary.compensation_summary,
+                submission.summary.poster_name,
+                submission.summary.poster_title,
+                submission.last_scraped_at(),
+                updated_at,
+                lead_id,
+            ),
+        )
+        _replace_lead_artifact_record(
+            connection,
+            paths,
+            artifact_type=LEAD_RAW_SOURCE_ARTIFACT_TYPE,
+            artifact_path=artifact_paths["raw_source_path"],
+            lead_id=lead_id,
+            created_at=submission.accepted_at,
+        )
+        _delete_lead_artifact_record(
+            connection,
+            artifact_type=LEAD_SPLIT_METADATA_ARTIFACT_TYPE,
+            lead_id=lead_id,
+        )
+        _delete_lead_artifact_record(
+            connection,
+            artifact_type=LEAD_SPLIT_REVIEW_ARTIFACT_TYPE,
+            lead_id=lead_id,
+        )
+        _write_manual_lead_manifest(
+            connection,
+            paths,
+            lead_row=refreshed_lead_row,
+            lead_status=LEAD_STATUS_CAPTURED,
+            lead_shape=lead_shape,
+            split_review_status=LEAD_SPLIT_REVIEW_NOT_STARTED,
+            artifact_paths=artifact_paths,
+            created_entities=created_entities,
+            handoff_targets={
+                "posting_materialization": _build_posting_materialization_target(
+                    split_review_status=LEAD_SPLIT_REVIEW_NOT_STARTED,
+                    jd_path=artifact_paths["jd_path"],
+                    job_posting_id=created_entities["job_posting_id"],
+                    allow_existing_posting_to_satisfy_target=False,
+                ),
+                "resume_tailoring": _build_resume_tailoring_target(
+                    job_posting_id=created_entities["job_posting_id"],
+                    jd_path=artifact_paths["jd_path"],
+                ),
+            },
+        )
+
+    return ManualLeadIngestionResult(
+        lead_id=lead_id,
+        lead_identity_key=lead_identity_key,
+        source_mode=submission.source_mode,
+        source_type=submission.source_type,
+        workspace_dir=artifact_paths["workspace_dir"],
+        capture_bundle_path=artifact_paths["capture_bundle_path"],
+        raw_source_path=artifact_paths["raw_source_path"],
+        created=False,
+        refreshed=True,
+    )
+
+
+def _render_raw_source_bytes(submission: ManualCaptureSubmission) -> bytes:
+    if submission.source_type == SOURCE_TYPE_MANUAL_PASTE:
+        raw_capture = submission.captures[0]
+        if raw_capture.full_text is None:
+            raise LinkedInScrapingError("manual_paste capture must include full_text.")
+        return raw_capture.full_text.encode("utf-8")
+    return render_manual_capture_source(submission).encode("utf-8")
+
+
+def _manual_lead_refresh_needed(
+    *,
+    submission: ManualCaptureSubmission,
+    current_bundle: Mapping[str, Any] | None,
+    raw_source_path: Path,
+) -> bool:
+    if current_bundle is None or not raw_source_path.exists():
+        return True
+    return _manual_submission_refresh_signature(submission) != _capture_bundle_refresh_signature(current_bundle)
+
+
+def _manual_submission_refresh_signature(submission: ManualCaptureSubmission) -> dict[str, Any]:
+    return {
+        "source_mode": submission.source_mode,
+        "source_type": submission.source_type,
+        "submission_id": submission.submission_id,
+        "source_reference": submission.source_reference,
+        "submission_path": submission.submission_path,
+        "summary": submission.summary.as_dict(),
+        "captures": [
+            {
+                "capture_order": capture.capture_order,
+                "capture_mode": capture.capture_mode,
+                "page_type": capture.page_type,
+                "source_url": capture.source_url,
+                "page_title": capture.page_title,
+                "selected_text": capture.selected_text,
+                "full_text": capture.full_text,
+            }
+            for capture in submission.captures
+        ],
+    }
+
+
+def _capture_bundle_refresh_signature(capture_bundle: Mapping[str, Any]) -> dict[str, Any]:
+    return {
+        "source_mode": capture_bundle.get("source_mode"),
+        "source_type": capture_bundle.get("source_type"),
+        "submission_id": capture_bundle.get("submission_id"),
+        "source_reference": capture_bundle.get("source_reference"),
+        "submission_path": capture_bundle.get("submission_path"),
+        "summary": dict(capture_bundle.get("summary") or {}),
+        "captures": [
+            {
+                "capture_order": capture.get("capture_order"),
+                "capture_mode": capture.get("capture_mode"),
+                "page_type": capture.get("page_type"),
+                "source_url": capture.get("source_url"),
+                "page_title": capture.get("page_title"),
+                "selected_text": capture.get("selected_text"),
+                "full_text": capture.get("full_text"),
+            }
+            for capture in (capture_bundle.get("captures") or [])
+            if isinstance(capture, Mapping)
+        ],
+    }
+
+
+def _validate_refresh_workspace_identity(
+    existing_lead: Mapping[str, Any],
+    *,
+    submission: ManualCaptureSubmission,
+) -> None:
+    if workspace_slug(existing_lead["company_name"] or "") != workspace_slug(submission.summary.company_name):
+        raise LinkedInScrapingError(
+            "Cannot refresh a lead into a different company workspace slug; create a new lead instead."
+        )
+    if workspace_slug(existing_lead["role_title"] or "") != workspace_slug(submission.summary.role_title):
+        raise LinkedInScrapingError(
+            "Cannot refresh a lead into a different role workspace slug; create a new lead instead."
+        )
+
+
+def _snapshot_manual_lead_workspace(
+    *,
+    artifact_paths: Mapping[str, Path],
+    lead_id: str,
+    snapshot_reason: str,
+    snapshot_timestamp: str,
+) -> Path | None:
+    snapshot_sources = [
+        artifact_paths["capture_bundle_path"],
+        artifact_paths["raw_source_path"],
+        artifact_paths["post_path"],
+        artifact_paths["jd_path"],
+        artifact_paths["poster_profile_path"],
+        artifact_paths["split_metadata_path"],
+        artifact_paths["split_review_path"],
+        artifact_paths["lead_manifest_path"],
+    ]
+    existing_sources = [path for path in snapshot_sources if path.exists()]
+    if not existing_sources:
+        return None
+
+    workspace_dir = artifact_paths["workspace_dir"]
+    history_dir = workspace_dir / "history"
+    snapshot_dir = _allocate_history_snapshot_dir(
+        history_dir=history_dir,
+        snapshot_timestamp=snapshot_timestamp,
+        snapshot_reason=snapshot_reason,
+    )
+    copied_files: list[str] = []
+    for source_path in existing_sources:
+        relative_path = source_path.relative_to(workspace_dir)
+        target_path = snapshot_dir / relative_path
+        target_path.parent.mkdir(parents=True, exist_ok=True)
+        target_path.write_bytes(source_path.read_bytes())
+        copied_files.append(relative_path.as_posix())
+
+    (snapshot_dir / "snapshot.json").write_text(
+        json.dumps(
+            {
+                "lead_id": lead_id,
+                "snapshot_reason": snapshot_reason,
+                "snapshotted_at": snapshot_timestamp,
+                "copied_files": copied_files,
+            },
+            indent=2,
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+    return snapshot_dir
+
+
+def _allocate_history_snapshot_dir(
+    *,
+    history_dir: Path,
+    snapshot_timestamp: str,
+    snapshot_reason: str,
+) -> Path:
+    slug = snapshot_timestamp.replace("-", "").replace(":", "").replace(".", "").replace("+00:00", "Z")
+    base_dir = history_dir / f"{slug}-{workspace_slug(snapshot_reason)}"
+    candidate = base_dir
+    suffix = 1
+    while candidate.exists():
+        suffix += 1
+        candidate = history_dir / f"{base_dir.name}-{suffix}"
+    candidate.mkdir(parents=True, exist_ok=False)
+    return candidate
+
+
+def _preserve_existing_posting_history(
+    connection: sqlite3.Connection,
+    paths: ProjectPaths,
+    *,
+    job_posting_id: str | None,
+    live_jd_path: Path,
+    history_snapshot_dir: Path | None,
+) -> None:
+    if job_posting_id is None or history_snapshot_dir is None or not live_jd_path.exists():
+        return
+    snapshot_jd_path = history_snapshot_dir / live_jd_path.name
+    if not snapshot_jd_path.exists():
+        return
+    connection.execute(
+        """
+        UPDATE job_postings
+        SET jd_artifact_path = ?, updated_at = ?
+        WHERE job_posting_id = ?
+        """,
+        (
+            paths.relative_to_root(snapshot_jd_path).as_posix(),
+            now_utc_iso(),
+            job_posting_id,
+        ),
+    )
+
+
+def _clear_live_review_artifacts(artifact_paths: Mapping[str, Path]) -> None:
+    for key in (
+        "post_path",
+        "jd_path",
+        "poster_profile_path",
+        "split_metadata_path",
+        "split_review_path",
+    ):
+        path = artifact_paths[key]
+        if path.exists():
+            path.unlink()
+
+
+def _delete_lead_artifact_record(
+    connection: sqlite3.Connection,
+    *,
+    artifact_type: str,
+    lead_id: str,
+) -> None:
+    connection.execute(
+        "DELETE FROM artifact_records WHERE artifact_type = ? AND lead_id = ?",
+        (artifact_type, lead_id),
     )
 
 
@@ -606,6 +983,7 @@ def ingest_paste_inbox(
     compensation_summary: str | None = None,
     poster_name: str | None = None,
     poster_title: str | None = None,
+    existing_lead_id: str | None = None,
 ) -> ManualLeadIngestionResult:
     paths = ProjectPaths.from_root(project_root)
     submission = build_manual_paste_submission(
@@ -618,7 +996,11 @@ def ingest_paste_inbox(
         poster_name=poster_name,
         poster_title=poster_title,
     )
-    return ingest_manual_capture_submission(paths.project_root, submission=submission)
+    return ingest_manual_capture_submission(
+        paths.project_root,
+        submission=submission,
+        existing_lead_id=existing_lead_id,
+    )
 
 
 def materialize_manual_lead_entities(
@@ -1620,12 +2002,13 @@ def _build_posting_materialization_target(
     split_review_status: str,
     jd_path: Path,
     job_posting_id: str | None,
+    allow_existing_posting_to_satisfy_target: bool = True,
 ) -> dict[str, Any]:
     ready, reason_code = _posting_materialization_status(
         split_review_status=split_review_status,
         jd_path=jd_path,
     )
-    if job_posting_id is not None:
+    if job_posting_id is not None and allow_existing_posting_to_satisfy_target:
         ready = True
         reason_code = None
     target = {
@@ -2281,9 +2664,11 @@ def _build_parser() -> argparse.ArgumentParser:
     paste_parser.add_argument("--compensation-summary")
     paste_parser.add_argument("--poster-name")
     paste_parser.add_argument("--poster-title")
+    paste_parser.add_argument("--lead-id")
 
     bundle_parser = subparsers.add_parser("capture-bundle")
     bundle_parser.add_argument("--bundle", required=True)
+    bundle_parser.add_argument("--lead-id")
 
     derive_parser = subparsers.add_parser("derive")
     derive_parser.add_argument("--lead-id", required=True)
@@ -2309,6 +2694,7 @@ def main(argv: Sequence[str] | None = None) -> int:
                 compensation_summary=args.compensation_summary,
                 poster_name=args.poster_name,
                 poster_title=args.poster_title,
+                existing_lead_id=args.lead_id,
             )
         else:
             if args.command == "derive":
@@ -2325,6 +2711,7 @@ def main(argv: Sequence[str] | None = None) -> int:
                 result = ingest_manual_capture_submission(
                     args.project_root,
                     submission=load_manual_capture_submission(args.bundle),
+                    existing_lead_id=args.lead_id,
                 )
     except Exception as exc:  # pragma: no cover - CLI formatting
         print(

@@ -383,3 +383,33 @@ Use this file as an append-only implementation log for the build agent.
 ### Notes
 - Explicit implementation inference: automatic posting reuse remains conservative and lead-rooted for now; this slice reuses the same lead's existing `job_posting` and only reuses poster contacts when captured profile identity matches strongly enough to avoid a risky merge.
 - `OPS-LAUNCHD-001` and `BUILD-CLI-001` remain open and untouched because this slice stayed within ingestion ownership.
+
+### Session
+- Date: 2026-04-06 16:44:39 MST
+- Slice: BA-04-S4 lead refresh history and workspace snapshotting
+- Goal: Refresh existing manual leads in place while preserving prior source or review artifacts under lead-local history and keeping the live workspace plus manifest honest.
+
+### Work Done
+- Reworked `job_hunt_copilot.linkedin_scraping` so matching manual-capture reruns refresh the existing lead workspace instead of returning early, and paste fallback can refresh an existing lead explicitly through `--lead-id`.
+- Added lead-local history snapshotting for `capture-bundle.json`, `raw/source.md`, split-review artifacts, and `lead-manifest.yaml`, plus a small `snapshot.json` manifest under each timestamped `history/` snapshot directory.
+- Refreshes now clear stale live `post.md`, `jd.md`, `poster-profile.md`, `source-split.yaml`, and `source-split-review.yaml`, remove stale split artifact registry rows, reset the live lead back to an honest pre-split state, and rewrite `lead-manifest.yaml` with blocked handoff readiness until the refreshed source is re-derived.
+- When a refreshed lead already has a canonical posting, the refresh path now preserves the retired live `jd.md` under history and repoints `job_postings.jd_artifact_path` to that snapped artifact so existing canonical posting state remains traceable instead of pointing at a deleted live file.
+- Added focused pytest coverage for explicit paste refresh and automatic manual-capture refresh, including history preservation, manifest honesty, and posting-JD history safety.
+- Updated `README.md`, `docs/ARCHITECTURE.md`, the build board, the implementation plan, and the short handoff note so repo-facing and build-agent-facing surfaces now reflect that BA-04 is complete in code and BA-05 is next.
+
+### Validation
+- Ran `python3.11 -m py_compile job_hunt_copilot/linkedin_scraping.py` and confirmed the refreshed ingestion module compiles cleanly.
+- Ran `python3.11 -m pytest tests/test_linkedin_scraping.py` and confirmed all 13 manual-ingestion tests passed.
+- Ran full `python3.11 -m pytest` and confirmed all 44 tests passed across bootstrap, schema, artifacts, ingestion, local runtime, runtime pack, and supervisor coverage.
+- Ran `bin/jhc-linkedin-ingest --help` plus `bin/jhc-linkedin-ingest paste --help` and confirmed the repo-local wrapper still works while exposing the new optional refresh `--lead-id` surface for paste ingestion.
+
+### Result
+- `done`
+
+### Next
+- Implement `BA-05-S1`: Gmail collection unit and parser, starting with idempotent collected-email persistence, plain-text-first LinkedIn alert parsing, and zero-card retention for later review-threshold handling.
+
+### Notes
+- Explicit implementation inference: refresh currently resets the live lead workspace to `lead_status = captured` plus `split_review_status = not_started` after source replacement, even when older canonical posting or contact entities still exist, because the live workspace must not pretend its stale split artifacts are current.
+- Explicit implementation inference: automatic refresh remains identity-key driven for manual-capture bundles, while paste fallback refresh is explicit because the scratch-buffer content fingerprint is still intentionally part of new-lead creation.
+- `OPS-LAUNCHD-001` and `BUILD-CLI-001` remain open and untouched because this slice stayed within ingestion ownership.

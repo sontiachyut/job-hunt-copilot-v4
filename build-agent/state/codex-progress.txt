@@ -114,3 +114,11 @@ Suggested format per session:
 - key files changed: job_hunt_copilot/linkedin_scraping.py; tests/test_linkedin_scraping.py; README.md; docs/ARCHITECTURE.md; build-agent/state/build-board.yaml; build-agent/state/build-journal.md; build-agent/state/codex-progress.txt; build-agent/state/IMPLEMENTATION_PLAN.md
 - validation summary: `python3.11 -m py_compile job_hunt_copilot/linkedin_scraping.py tests/test_linkedin_scraping.py` passed; `python3.11 -m pytest tests/test_linkedin_scraping.py` passed (11 tests); `python3.11 -m pytest tests/test_bootstrap.py tests/test_artifacts.py tests/test_linkedin_scraping.py` passed (18 tests); full `python3.11 -m pytest` passed (42 tests); `bin/jhc-linkedin-ingest --help` and `bin/jhc-linkedin-ingest materialize --help` both passed
 - next recommended slice: BA-04-S4 lead refresh history and workspace snapshotting
+
+- 2026-04-06 16:44:39 MST
+- role owner: ingestion-engineer
+- slice attempted: BA-04-S4 lead refresh history and workspace snapshotting
+- result: done
+- key files changed: job_hunt_copilot/linkedin_scraping.py; tests/test_linkedin_scraping.py; README.md; docs/ARCHITECTURE.md; build-agent/state/build-board.yaml; build-agent/state/build-journal.md; build-agent/state/codex-progress.txt; build-agent/state/IMPLEMENTATION_PLAN.md
+- validation summary: `python3.11 -m py_compile job_hunt_copilot/linkedin_scraping.py` passed; `python3.11 -m pytest tests/test_linkedin_scraping.py` passed (13 tests); full `python3.11 -m pytest` passed (44 tests); `bin/jhc-linkedin-ingest --help` and `bin/jhc-linkedin-ingest paste --help` both passed; refreshed manual leads now snapshot replaced source or review artifacts under `history/`, clear stale live split outputs, and preserve existing posting `jd_artifact_path` history by repointing canonical postings to the snapped `jd.md`
+- next recommended slice: BA-05-S1 Gmail collection unit and parser
