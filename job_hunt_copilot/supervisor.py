@@ -1,11 +1,13 @@
 from __future__ import annotations
 
+import json
 import sqlite3
 from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
 from types import MappingProxyType
 from typing import Final
 
+from .paths import ProjectPaths
 from .records import lifecycle_timestamps, new_canonical_id, now_utc_iso
 
 
@@ -81,6 +83,69 @@ SUPERVISOR_CYCLE_FINAL_RESULTS = frozenset(
 )
 
 SUPERVISOR_LEASE_NAME: Final = "supervisor_cycle"
+
+INCIDENT_SEVERITY_LOW: Final = "low"
+INCIDENT_SEVERITY_MEDIUM: Final = "medium"
+INCIDENT_SEVERITY_HIGH: Final = "high"
+INCIDENT_SEVERITY_CRITICAL: Final = "critical"
+
+INCIDENT_SEVERITIES = frozenset(
+    {
+        INCIDENT_SEVERITY_LOW,
+        INCIDENT_SEVERITY_MEDIUM,
+        INCIDENT_SEVERITY_HIGH,
+        INCIDENT_SEVERITY_CRITICAL,
+    }
+)
+
+INCIDENT_STATUS_OPEN: Final = "open"
+INCIDENT_STATUS_IN_REPAIR: Final = "in_repair"
+INCIDENT_STATUS_RESOLVED: Final = "resolved"
+INCIDENT_STATUS_ESCALATED: Final = "escalated"
+INCIDENT_STATUS_SUPPRESSED: Final = "suppressed"
+
+INCIDENT_STATUSES = frozenset(
+    {
+        INCIDENT_STATUS_OPEN,
+        INCIDENT_STATUS_IN_REPAIR,
+        INCIDENT_STATUS_RESOLVED,
+        INCIDENT_STATUS_ESCALATED,
+        INCIDENT_STATUS_SUPPRESSED,
+    }
+)
+ACTIVE_INCIDENT_SELECTION_STATUSES = frozenset(
+    {
+        INCIDENT_STATUS_OPEN,
+        INCIDENT_STATUS_IN_REPAIR,
+    }
+)
+UNRESOLVED_INCIDENT_STATUSES = frozenset(
+    {
+        INCIDENT_STATUS_OPEN,
+        INCIDENT_STATUS_IN_REPAIR,
+        INCIDENT_STATUS_ESCALATED,
+    }
+)
+AUTO_PAUSE_CRITICAL_INCIDENT_TYPES = frozenset(
+    {
+        "send_safety",
+        "duplicate_send_risk",
+        "credential_handling",
+        "canonical_state_integrity",
+    }
+)
+
+WORK_TYPE_AGENT_INCIDENT: Final = "agent_incident"
+WORK_TYPE_INCIDENT_CLUSTER: Final = "incident_cluster"
+WORK_TYPE_JOB_POSTING: Final = "job_posting"
+WORK_TYPE_PIPELINE_RUN: Final = "pipeline_run"
+
+ACTION_BOOTSTRAP_ROLE_TARGETED_RUN: Final = "bootstrap_role_targeted_run"
+ACTION_CHECKPOINT_PIPELINE_RUN: Final = "checkpoint_pipeline_run"
+ACTION_ESCALATE_OPEN_INCIDENT: Final = "escalate_open_incident"
+
+ELIGIBLE_POSTING_STATUSES_FOR_NEW_RUN = frozenset({"resume_review_pending"})
+SUPPORTED_PIPELINE_CHECKPOINT_STAGES = frozenset({"lead_handoff"})
 
 CONTROL_DEFAULTS = MappingProxyType(
     {
@@ -261,6 +326,134 @@ class ControlStateSnapshot:
     @property
     def allows_safe_observational_work(self) -> bool:
         return self.agent_enabled and self.agent_mode in {AGENT_MODE_RUNNING, AGENT_MODE_PAUSED, AGENT_MODE_REPLANNING}
+
+
+@dataclass(frozen=True)
+class AgentIncidentRecord:
+    agent_incident_id: str
+    incident_type: str
+    severity: str
+    status: str
+    summary: str
+    pipeline_run_id: str | None
+    lead_id: str | None
+    job_posting_id: str | None
+    contact_id: str | None
+    outreach_message_id: str | None
+    resolved_at: str | None
+    escalation_reason: str | None
+    repair_attempt_summary: str | None
+    created_at: str
+    updated_at: str
+    current_stage: str | None = None
+
+    @property
+    def unresolved(self) -> bool:
+        return self.status in UNRESOLVED_INCIDENT_STATUSES
+
+
+@dataclass(frozen=True)
+class SupervisorWorkUnit:
+    work_type: str
+    work_id: str
+    action_id: str | None
+    summary: str
+    lead_id: str | None = None
+    job_posting_id: str | None = None
+    pipeline_run_id: str | None = None
+    incident_id: str | None = None
+    current_stage: str | None = None
+
+
+@dataclass(frozen=True)
+class SupervisorActionCatalogEntry:
+    action_id: str
+    work_type: str
+    description: str
+    prerequisites: tuple[str, ...]
+    expected_outputs: tuple[str, ...]
+    validation_references: tuple[str, ...]
+
+
+@dataclass(frozen=True)
+class SupervisorCycleExecution:
+    cycle: SupervisorCycleRecord
+    control_state: ControlStateSnapshot
+    lease_status: str
+    selected_work: SupervisorWorkUnit | None = None
+    action_id: str | None = None
+    pipeline_run: PipelineRunRecord | None = None
+    incident: AgentIncidentRecord | None = None
+    context_snapshot_path: str | None = None
+
+
+@dataclass(frozen=True)
+class AutoPauseDecision:
+    reason: str
+    selected_work_type: str
+    selected_work_id: str
+    incident: AgentIncidentRecord | None = None
+
+
+SUPERVISOR_ACTION_CATALOG = MappingProxyType(
+    {
+        ACTION_BOOTSTRAP_ROLE_TARGETED_RUN: SupervisorActionCatalogEntry(
+            action_id=ACTION_BOOTSTRAP_ROLE_TARGETED_RUN,
+            work_type=WORK_TYPE_JOB_POSTING,
+            description="Create a durable role-targeted pipeline run from eligible posting state.",
+            prerequisites=(
+                "job_posting exists in canonical state",
+                "job_posting.posting_status is eligible for a new role-targeted run",
+                "no non-terminal pipeline_run already exists for the same job_posting_id",
+            ),
+            expected_outputs=(
+                "one pipeline_run exists for the selected job_posting_id",
+                "the pipeline_run is in_progress at the lead_handoff stage",
+                "the cycle row links the selected job_posting_id to the created pipeline_run_id",
+            ),
+            validation_references=(
+                "prd/spec.md §12.5A items 4, 36, 41, and 42",
+                "prd/test-spec.feature Supervisor cycles bounded single-work-unit algorithm",
+            ),
+        ),
+        ACTION_CHECKPOINT_PIPELINE_RUN: SupervisorActionCatalogEntry(
+            action_id=ACTION_CHECKPOINT_PIPELINE_RUN,
+            work_type=WORK_TYPE_PIPELINE_RUN,
+            description="Resume one supported durable pipeline run and persist a bounded checkpoint.",
+            prerequisites=(
+                "pipeline_run exists and is non-terminal",
+                "pipeline_run.current_stage is covered by the bounded supervisor action catalog",
+                "linked posting state remains available for the selected run",
+            ),
+            expected_outputs=(
+                "the existing pipeline_run is reused instead of creating a duplicate run",
+                "the pipeline_run remains canonical in_progress state after the checkpoint",
+                "the cycle summary points at exactly one selected pipeline_run",
+            ),
+            validation_references=(
+                "prd/spec.md §12.5A items 3, 4, 41, and 42",
+                "prd/test-spec.feature durable pipeline-run resume scenario",
+            ),
+        ),
+        ACTION_ESCALATE_OPEN_INCIDENT: SupervisorActionCatalogEntry(
+            action_id=ACTION_ESCALATE_OPEN_INCIDENT,
+            work_type=WORK_TYPE_AGENT_INCIDENT,
+            description="Escalate one unresolved operational incident when no bounded repair action exists yet.",
+            prerequisites=(
+                "agent_incident exists in an active unresolved state",
+                "the incident is still canonically visible for supervisor review",
+            ),
+            expected_outputs=(
+                "the incident becomes escalated with an explicit escalation reason",
+                "ordinary pipeline progression stays deferred behind the selected incident work unit",
+            ),
+            validation_references=(
+                "prd/spec.md §12.5A items 12, 13, 14, and 41",
+                "prd/test-spec.feature supervisor work-priority and auto-pause scenarios",
+            ),
+        ),
+    }
+)
 
 
 def read_agent_control_state(
@@ -927,6 +1120,848 @@ def get_runtime_lease(
     return None if row is None else _lease_from_row(row)
 
 
+def registered_supervisor_action_catalog() -> MappingProxyType[str, SupervisorActionCatalogEntry]:
+    return SUPERVISOR_ACTION_CATALOG
+
+
+def get_agent_incident(
+    connection: sqlite3.Connection,
+    agent_incident_id: str,
+) -> AgentIncidentRecord | None:
+    row = connection.execute(
+        """
+        SELECT agent_incident_id, incident_type, severity, status, summary,
+               pipeline_run_id, lead_id, job_posting_id, contact_id,
+               outreach_message_id, resolved_at, escalation_reason,
+               repair_attempt_summary, created_at, updated_at
+        FROM agent_incidents
+        WHERE agent_incident_id = ?
+        """,
+        (agent_incident_id,),
+    ).fetchone()
+    return None if row is None else _agent_incident_from_row(row)
+
+
+def create_agent_incident(
+    connection: sqlite3.Connection,
+    *,
+    incident_type: str,
+    severity: str,
+    summary: str,
+    status: str = INCIDENT_STATUS_OPEN,
+    pipeline_run_id: str | None = None,
+    lead_id: str | None = None,
+    job_posting_id: str | None = None,
+    contact_id: str | None = None,
+    outreach_message_id: str | None = None,
+    escalation_reason: str | None = None,
+    repair_attempt_summary: str | None = None,
+    created_at: str | None = None,
+    agent_incident_id: str | None = None,
+) -> AgentIncidentRecord:
+    if not incident_type.strip():
+        raise SupervisorStateError("incident_type is required.")
+    if severity not in INCIDENT_SEVERITIES:
+        raise SupervisorStateError(f"Unsupported incident severity={severity!r}.")
+    if status not in INCIDENT_STATUSES:
+        raise SupervisorStateError(f"Unsupported incident status={status!r}.")
+    if not summary.strip():
+        raise SupervisorStateError("Incident summary is required.")
+
+    current_timestamp = created_at or now_utc_iso()
+    timestamps = lifecycle_timestamps(current_timestamp)
+    agent_incident_id = agent_incident_id or new_canonical_id("agent_incidents")
+    with connection:
+        connection.execute(
+            """
+            INSERT INTO agent_incidents (
+              agent_incident_id, incident_type, severity, status, summary,
+              pipeline_run_id, lead_id, job_posting_id, contact_id,
+              outreach_message_id, resolved_at, escalation_reason,
+              repair_attempt_summary, created_at, updated_at
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """,
+            (
+                agent_incident_id,
+                incident_type,
+                severity,
+                status,
+                summary,
+                pipeline_run_id,
+                lead_id,
+                job_posting_id,
+                contact_id,
+                outreach_message_id,
+                current_timestamp if status == INCIDENT_STATUS_RESOLVED else None,
+                escalation_reason,
+                repair_attempt_summary,
+                timestamps["created_at"],
+                timestamps["updated_at"],
+            ),
+        )
+    incident = get_agent_incident(connection, agent_incident_id)
+    if incident is None:  # pragma: no cover - defensive invariant
+        raise SupervisorStateError(
+            f"Failed to load agent_incident {agent_incident_id} after creation."
+        )
+    return incident
+
+
+def list_unresolved_agent_incidents(
+    connection: sqlite3.Connection,
+) -> list[AgentIncidentRecord]:
+    rows = connection.execute(
+        """
+        SELECT ai.agent_incident_id, ai.incident_type, ai.severity, ai.status, ai.summary,
+               ai.pipeline_run_id, ai.lead_id, ai.job_posting_id, ai.contact_id,
+               ai.outreach_message_id, ai.resolved_at, ai.escalation_reason,
+               ai.repair_attempt_summary, ai.created_at, ai.updated_at, pr.current_stage
+        FROM agent_incidents ai
+        LEFT JOIN pipeline_runs pr
+          ON pr.pipeline_run_id = ai.pipeline_run_id
+        WHERE ai.status IN (?, ?, ?)
+        ORDER BY
+          CASE ai.severity
+            WHEN 'critical' THEN 0
+            WHEN 'high' THEN 1
+            WHEN 'medium' THEN 2
+            ELSE 3
+          END,
+          ai.created_at ASC
+        """,
+        (
+            INCIDENT_STATUS_OPEN,
+            INCIDENT_STATUS_IN_REPAIR,
+            INCIDENT_STATUS_ESCALATED,
+        ),
+    ).fetchall()
+    return [_agent_incident_from_row(row) for row in rows]
+
+
+def escalate_agent_incident(
+    connection: sqlite3.Connection,
+    agent_incident_id: str,
+    *,
+    escalation_reason: str,
+    timestamp: str | None = None,
+    repair_attempt_summary: str | None = None,
+) -> AgentIncidentRecord:
+    if not escalation_reason.strip():
+        raise SupervisorStateError("Escalation reason is required.")
+    incident = _require_agent_incident(connection, agent_incident_id)
+    if incident.status in {INCIDENT_STATUS_RESOLVED, INCIDENT_STATUS_SUPPRESSED}:
+        raise InvalidLifecycleTransition(
+            f"Cannot escalate agent_incident {agent_incident_id} from {incident.status!r}."
+        )
+
+    current_timestamp = timestamp or now_utc_iso()
+    updated_repair_summary = repair_attempt_summary
+    if updated_repair_summary is None and incident.repair_attempt_summary:
+        updated_repair_summary = incident.repair_attempt_summary
+
+    with connection:
+        connection.execute(
+            """
+            UPDATE agent_incidents
+            SET status = ?,
+                escalation_reason = ?,
+                repair_attempt_summary = ?,
+                updated_at = ?
+            WHERE agent_incident_id = ?
+            """,
+            (
+                INCIDENT_STATUS_ESCALATED,
+                escalation_reason,
+                updated_repair_summary,
+                current_timestamp,
+                agent_incident_id,
+            ),
+        )
+    return _require_agent_incident(connection, agent_incident_id)
+
+
+def run_supervisor_cycle(
+    connection: sqlite3.Connection,
+    paths: ProjectPaths,
+    *,
+    trigger_type: str,
+    scheduler_name: str | None = None,
+    sleep_wake_detection_method: str | None = None,
+    sleep_wake_event_ref: str | None = None,
+    started_at: str | None = None,
+    lease_ttl_seconds: int = 300,
+) -> SupervisorCycleExecution:
+    cycle_started_at = started_at or now_utc_iso()
+    cycle = start_supervisor_cycle(
+        connection,
+        trigger_type=trigger_type,
+        scheduler_name=scheduler_name,
+        sleep_wake_detection_method=sleep_wake_detection_method,
+        sleep_wake_event_ref=sleep_wake_event_ref,
+        started_at=cycle_started_at,
+    )
+    lease_result = acquire_runtime_lease(
+        connection,
+        lease_name=SUPERVISOR_LEASE_NAME,
+        lease_owner_id=cycle.supervisor_cycle_id,
+        ttl_seconds=lease_ttl_seconds,
+        now=cycle_started_at,
+        lease_note=f"{trigger_type}:{scheduler_name or 'manual'}",
+    )
+    if lease_result.deferred:
+        cycle = finish_supervisor_cycle(
+            connection,
+            cycle.supervisor_cycle_id,
+            result=SUPERVISOR_CYCLE_RESULT_DEFERRED,
+            completed_at=cycle_started_at,
+            error_summary=(
+                "supervisor lease is still held by "
+                f"{lease_result.lease.lease_owner_id}"
+            ),
+        )
+        return SupervisorCycleExecution(
+            cycle=cycle,
+            control_state=read_agent_control_state(connection, timestamp=cycle_started_at),
+            lease_status=lease_result.status,
+        )
+
+    control_state = read_agent_control_state(connection, timestamp=cycle_started_at)
+    selected_work: SupervisorWorkUnit | None = None
+    action_id: str | None = None
+    pipeline_run: PipelineRunRecord | None = None
+    incident: AgentIncidentRecord | None = None
+    context_snapshot_path: str | None = None
+    cycle_result = SUPERVISOR_CYCLE_RESULT_NO_WORK
+    error_summary: str | None = None
+
+    try:
+        if not control_state.agent_enabled or control_state.agent_mode == AGENT_MODE_STOPPED:
+            error_summary = "autonomous operation is disabled"
+        elif control_state.agent_mode == AGENT_MODE_REPLANNING:
+            cycle_result = SUPERVISOR_CYCLE_RESULT_REPLANNED
+            error_summary = control_state.last_replan_reason or "supervisor is in replanning mode"
+        elif control_state.agent_mode == AGENT_MODE_PAUSED:
+            error_summary = control_state.pause_reason or "supervisor is paused"
+        else:
+            auto_pause = _detect_auto_pause_condition(connection, now=cycle_started_at)
+            if auto_pause is not None:
+                control_state = pause_agent(
+                    connection,
+                    reason=auto_pause.reason,
+                    timestamp=cycle_started_at,
+                )
+                selected_work = SupervisorWorkUnit(
+                    work_type=auto_pause.selected_work_type,
+                    work_id=auto_pause.selected_work_id,
+                    action_id=None,
+                    summary=auto_pause.reason,
+                    incident_id=(
+                        auto_pause.incident.agent_incident_id
+                        if auto_pause.incident is not None
+                        else None
+                    ),
+                )
+                incident = auto_pause.incident
+                error_summary = auto_pause.reason
+                cycle_result = SUPERVISOR_CYCLE_RESULT_AUTO_PAUSED
+            else:
+                selected_work = select_next_supervisor_work_unit(connection)
+                if selected_work is None:
+                    error_summary = "no bounded supervisor work unit is currently due"
+                else:
+                    action_id = selected_work.action_id
+                    if action_id is None:
+                        error_summary = _unsupported_work_summary(selected_work)
+                        incident, pipeline_run = _record_progression_failure(
+                            connection,
+                            selected_work,
+                            summary=error_summary,
+                            incident_type="unsupported_supervisor_action",
+                            severity=INCIDENT_SEVERITY_HIGH,
+                            timestamp=cycle_started_at,
+                        )
+                        cycle_result = SUPERVISOR_CYCLE_RESULT_FAILED
+                    else:
+                        catalog_entry = SUPERVISOR_ACTION_CATALOG[action_id]
+                        validation_error = _validate_selected_work(
+                            connection,
+                            selected_work,
+                            catalog_entry=catalog_entry,
+                        )
+                        if validation_error is not None:
+                            error_summary = validation_error
+                            incident, pipeline_run = _record_progression_failure(
+                                connection,
+                                selected_work,
+                                summary=validation_error,
+                                incident_type="supervisor_prerequisite_failed",
+                                severity=INCIDENT_SEVERITY_HIGH,
+                                timestamp=cycle_started_at,
+                            )
+                            cycle_result = SUPERVISOR_CYCLE_RESULT_FAILED
+                        else:
+                            pipeline_run, incident = _execute_selected_work_unit(
+                                connection,
+                                selected_work,
+                                catalog_entry=catalog_entry,
+                                timestamp=cycle_started_at,
+                            )
+                            execution_error = _validate_selected_work_result(
+                                connection,
+                                selected_work,
+                                catalog_entry=catalog_entry,
+                                pipeline_run=pipeline_run,
+                                incident=incident,
+                            )
+                            if execution_error is not None:
+                                error_summary = execution_error
+                                incident, pipeline_run = _record_progression_failure(
+                                    connection,
+                                    selected_work,
+                                    summary=execution_error,
+                                    incident_type="supervisor_action_execution_failed",
+                                    severity=INCIDENT_SEVERITY_HIGH,
+                                    timestamp=cycle_started_at,
+                                )
+                                cycle_result = SUPERVISOR_CYCLE_RESULT_FAILED
+                            else:
+                                cycle_result = SUPERVISOR_CYCLE_RESULT_SUCCESS
+
+        if selected_work is not None:
+            context_snapshot_path = _write_context_snapshot(
+                paths,
+                cycle.supervisor_cycle_id,
+                {
+                    "captured_at": cycle_started_at,
+                    "trigger_type": trigger_type,
+                    "scheduler_name": scheduler_name,
+                    "control_state": dict(control_state.values),
+                    "selected_work": {
+                        "work_type": selected_work.work_type,
+                        "work_id": selected_work.work_id,
+                        "action_id": selected_work.action_id,
+                        "summary": selected_work.summary,
+                        "lead_id": selected_work.lead_id,
+                        "job_posting_id": selected_work.job_posting_id,
+                        "pipeline_run_id": selected_work.pipeline_run_id,
+                        "current_stage": selected_work.current_stage,
+                    },
+                    "action_catalog_entry": (
+                        _catalog_entry_snapshot(SUPERVISOR_ACTION_CATALOG[action_id])
+                        if action_id is not None
+                        else None
+                    ),
+                    "cycle_result": cycle_result,
+                    "error_summary": error_summary,
+                    "pipeline_run": (
+                        {
+                            "pipeline_run_id": pipeline_run.pipeline_run_id,
+                            "run_status": pipeline_run.run_status,
+                            "current_stage": pipeline_run.current_stage,
+                            "job_posting_id": pipeline_run.job_posting_id,
+                            "lead_id": pipeline_run.lead_id,
+                            "review_packet_status": pipeline_run.review_packet_status,
+                            "run_summary": pipeline_run.run_summary,
+                        }
+                        if pipeline_run is not None
+                        else None
+                    ),
+                    "incident": (
+                        {
+                            "agent_incident_id": incident.agent_incident_id,
+                            "incident_type": incident.incident_type,
+                            "severity": incident.severity,
+                            "status": incident.status,
+                            "summary": incident.summary,
+                            "pipeline_run_id": incident.pipeline_run_id,
+                            "job_posting_id": incident.job_posting_id,
+                            "escalation_reason": incident.escalation_reason,
+                        }
+                        if incident is not None
+                        else None
+                    ),
+                },
+            )
+            cycle = assign_supervisor_cycle_work_unit(
+                connection,
+                cycle.supervisor_cycle_id,
+                selected_work_type=selected_work.work_type,
+                selected_work_id=selected_work.work_id,
+                pipeline_run_id=(
+                    pipeline_run.pipeline_run_id
+                    if pipeline_run is not None
+                    else selected_work.pipeline_run_id
+                ),
+                context_snapshot_path=context_snapshot_path,
+            )
+
+        cycle = finish_supervisor_cycle(
+            connection,
+            cycle.supervisor_cycle_id,
+            result=cycle_result,
+            completed_at=cycle_started_at,
+            error_summary=error_summary,
+        )
+        return SupervisorCycleExecution(
+            cycle=cycle,
+            control_state=control_state,
+            lease_status=lease_result.status,
+            selected_work=selected_work,
+            action_id=action_id,
+            pipeline_run=pipeline_run,
+            incident=incident,
+            context_snapshot_path=context_snapshot_path,
+        )
+    finally:
+        release_runtime_lease(
+            connection,
+            lease_name=SUPERVISOR_LEASE_NAME,
+            lease_owner_id=cycle.supervisor_cycle_id,
+        )
+
+
+def select_next_supervisor_work_unit(
+    connection: sqlite3.Connection,
+) -> SupervisorWorkUnit | None:
+    incident_work = _select_active_incident_work_unit(connection)
+    if incident_work is not None:
+        return incident_work
+
+    pipeline_run_work = _select_open_pipeline_run_work_unit(connection)
+    if pipeline_run_work is not None:
+        return pipeline_run_work
+
+    return _select_new_posting_work_unit(connection)
+
+
+def _detect_auto_pause_condition(
+    connection: sqlite3.Connection,
+    *,
+    now: str,
+) -> AutoPauseDecision | None:
+    unresolved_incidents = list_unresolved_agent_incidents(connection)
+    for incident in unresolved_incidents:
+        if (
+            incident.severity == INCIDENT_SEVERITY_CRITICAL
+            and incident.incident_type in AUTO_PAUSE_CRITICAL_INCIDENT_TYPES
+        ):
+            return AutoPauseDecision(
+                reason=(
+                    "auto_pause: critical "
+                    f"{incident.incident_type} incident requires expert review"
+                ),
+                selected_work_type=WORK_TYPE_AGENT_INCIDENT,
+                selected_work_id=incident.agent_incident_id,
+                incident=incident,
+            )
+
+    cutoff = _timestamp_plus_seconds(now, -(45 * 60))
+    cluster_counts: dict[str, int] = {}
+    for incident in unresolved_incidents:
+        if _parse_utc_iso(incident.created_at) < _parse_utc_iso(cutoff):
+            continue
+        cluster_key = _incident_cluster_key(incident)
+        cluster_counts[cluster_key] = cluster_counts.get(cluster_key, 0) + 1
+        if cluster_counts[cluster_key] >= 3:
+            return AutoPauseDecision(
+                reason=(
+                    "auto_pause: repeated unresolved incident cluster "
+                    f"{cluster_key} reached 3 occurrences within 45 minutes"
+                ),
+                selected_work_type=WORK_TYPE_INCIDENT_CLUSTER,
+                selected_work_id=cluster_key,
+            )
+    return None
+
+
+def _select_active_incident_work_unit(
+    connection: sqlite3.Connection,
+) -> SupervisorWorkUnit | None:
+    rows = connection.execute(
+        """
+        SELECT ai.agent_incident_id, ai.incident_type, ai.severity, ai.status, ai.summary,
+               ai.pipeline_run_id, ai.lead_id, ai.job_posting_id, ai.contact_id,
+               ai.outreach_message_id, ai.resolved_at, ai.escalation_reason,
+               ai.repair_attempt_summary, ai.created_at, ai.updated_at, pr.current_stage
+        FROM agent_incidents ai
+        LEFT JOIN pipeline_runs pr
+          ON pr.pipeline_run_id = ai.pipeline_run_id
+        WHERE ai.status IN (?, ?)
+        ORDER BY
+          CASE ai.severity
+            WHEN 'critical' THEN 0
+            WHEN 'high' THEN 1
+            WHEN 'medium' THEN 2
+            ELSE 3
+          END,
+          ai.created_at ASC
+        LIMIT 1
+        """,
+        (
+            INCIDENT_STATUS_OPEN,
+            INCIDENT_STATUS_IN_REPAIR,
+        ),
+    ).fetchall()
+    if not rows:
+        return None
+    incident = _agent_incident_from_row(rows[0])
+    return SupervisorWorkUnit(
+        work_type=WORK_TYPE_AGENT_INCIDENT,
+        work_id=incident.agent_incident_id,
+        action_id=ACTION_ESCALATE_OPEN_INCIDENT,
+        summary=f"Escalate unresolved {incident.severity} incident for expert visibility.",
+        lead_id=incident.lead_id,
+        job_posting_id=incident.job_posting_id,
+        pipeline_run_id=incident.pipeline_run_id,
+        incident_id=incident.agent_incident_id,
+        current_stage=incident.current_stage,
+    )
+
+
+def _select_open_pipeline_run_work_unit(
+    connection: sqlite3.Connection,
+) -> SupervisorWorkUnit | None:
+    rows = connection.execute(
+        """
+        SELECT pipeline_run_id, run_scope_type, run_status, current_stage, lead_id,
+               job_posting_id, completed_at, last_error_summary, review_packet_status,
+               run_summary, started_at, created_at, updated_at
+        FROM pipeline_runs
+        WHERE run_status IN (?, ?)
+        ORDER BY updated_at ASC, started_at ASC
+        LIMIT 1
+        """,
+        (
+            RUN_STATUS_IN_PROGRESS,
+            RUN_STATUS_PAUSED,
+        ),
+    ).fetchall()
+    if not rows:
+        return None
+    pipeline_run = _pipeline_run_from_row(rows[0])
+    action_id = (
+        ACTION_CHECKPOINT_PIPELINE_RUN
+        if pipeline_run.current_stage in SUPPORTED_PIPELINE_CHECKPOINT_STAGES
+        else None
+    )
+    return SupervisorWorkUnit(
+        work_type=WORK_TYPE_PIPELINE_RUN,
+        work_id=pipeline_run.pipeline_run_id,
+        action_id=action_id,
+        summary=(
+            "Resume the existing durable pipeline run without creating duplicate work."
+        ),
+        lead_id=pipeline_run.lead_id,
+        job_posting_id=pipeline_run.job_posting_id,
+        pipeline_run_id=pipeline_run.pipeline_run_id,
+        current_stage=pipeline_run.current_stage,
+    )
+
+
+def _select_new_posting_work_unit(
+    connection: sqlite3.Connection,
+) -> SupervisorWorkUnit | None:
+    placeholders = ", ".join("?" for _ in ELIGIBLE_POSTING_STATUSES_FOR_NEW_RUN)
+    rows = connection.execute(
+        f"""
+        SELECT jp.job_posting_id, jp.lead_id, jp.posting_status, jp.company_name, jp.role_title
+        FROM job_postings jp
+        WHERE jp.posting_status IN ({placeholders})
+          AND NOT EXISTS (
+            SELECT 1
+            FROM pipeline_runs pr
+            WHERE pr.job_posting_id = jp.job_posting_id
+              AND pr.run_status IN (?, ?)
+          )
+        ORDER BY jp.created_at ASC
+        LIMIT 1
+        """,
+        (
+            *sorted(ELIGIBLE_POSTING_STATUSES_FOR_NEW_RUN),
+            RUN_STATUS_IN_PROGRESS,
+            RUN_STATUS_PAUSED,
+        ),
+    ).fetchall()
+    if not rows:
+        return None
+    row = rows[0]
+    return SupervisorWorkUnit(
+        work_type=WORK_TYPE_JOB_POSTING,
+        work_id=row[0],
+        action_id=ACTION_BOOTSTRAP_ROLE_TARGETED_RUN,
+        summary=(
+            "Create the first durable role-targeted pipeline run for an eligible posting."
+        ),
+        lead_id=_optional_text(row[1]),
+        job_posting_id=row[0],
+    )
+
+
+def _validate_selected_work(
+    connection: sqlite3.Connection,
+    selected_work: SupervisorWorkUnit,
+    *,
+    catalog_entry: SupervisorActionCatalogEntry,
+) -> str | None:
+    if catalog_entry.work_type != selected_work.work_type:
+        return (
+            f"Selected work type {selected_work.work_type!r} does not match "
+            f"catalog action {catalog_entry.action_id!r}."
+        )
+
+    if catalog_entry.action_id == ACTION_BOOTSTRAP_ROLE_TARGETED_RUN:
+        posting_row = connection.execute(
+            """
+            SELECT lead_id, posting_status
+            FROM job_postings
+            WHERE job_posting_id = ?
+            """,
+            (selected_work.work_id,),
+        ).fetchone()
+        if posting_row is None:
+            return f"job_posting {selected_work.work_id!r} no longer exists."
+        if posting_row[1] not in ELIGIBLE_POSTING_STATUSES_FOR_NEW_RUN:
+            return (
+                f"job_posting {selected_work.work_id!r} is not eligible for run bootstrap "
+                f"from posting_status={posting_row[1]!r}."
+            )
+        existing_run = get_open_pipeline_run_for_posting(connection, selected_work.work_id)
+        if existing_run is not None:
+            return (
+                f"job_posting {selected_work.work_id!r} already has non-terminal "
+                f"pipeline_run {existing_run.pipeline_run_id!r}."
+            )
+        if not _optional_text(posting_row[0]):
+            return f"job_posting {selected_work.work_id!r} is missing lead linkage."
+        return None
+
+    if catalog_entry.action_id == ACTION_CHECKPOINT_PIPELINE_RUN:
+        pipeline_run = get_pipeline_run(connection, selected_work.work_id)
+        if pipeline_run is None:
+            return f"pipeline_run {selected_work.work_id!r} no longer exists."
+        if pipeline_run.run_status not in {RUN_STATUS_IN_PROGRESS, RUN_STATUS_PAUSED}:
+            return (
+                f"pipeline_run {selected_work.work_id!r} is not non-terminal; "
+                f"found {pipeline_run.run_status!r}."
+            )
+        if pipeline_run.current_stage not in SUPPORTED_PIPELINE_CHECKPOINT_STAGES:
+            return (
+                f"pipeline_run {selected_work.work_id!r} is at unsupported stage "
+                f"{pipeline_run.current_stage!r}."
+            )
+        if not pipeline_run.job_posting_id:
+            return f"pipeline_run {selected_work.work_id!r} is missing job_posting_id."
+        return None
+
+    if catalog_entry.action_id == ACTION_ESCALATE_OPEN_INCIDENT:
+        incident = get_agent_incident(connection, selected_work.work_id)
+        if incident is None:
+            return f"agent_incident {selected_work.work_id!r} no longer exists."
+        if incident.status not in ACTIVE_INCIDENT_SELECTION_STATUSES:
+            return (
+                f"agent_incident {selected_work.work_id!r} is not in an active "
+                f"selection status; found {incident.status!r}."
+            )
+        return None
+
+    return f"Catalog action {catalog_entry.action_id!r} is not executable yet."
+
+
+def _execute_selected_work_unit(
+    connection: sqlite3.Connection,
+    selected_work: SupervisorWorkUnit,
+    *,
+    catalog_entry: SupervisorActionCatalogEntry,
+    timestamp: str,
+) -> tuple[PipelineRunRecord | None, AgentIncidentRecord | None]:
+    if catalog_entry.action_id == ACTION_BOOTSTRAP_ROLE_TARGETED_RUN:
+        pipeline_run, _ = ensure_role_targeted_pipeline_run(
+            connection,
+            lead_id=_require_text(selected_work.lead_id, "lead_id"),
+            job_posting_id=selected_work.work_id,
+            current_stage="lead_handoff",
+            started_at=timestamp,
+            run_summary=(
+                "Supervisor bootstrapped a durable role-targeted run from posting state."
+            ),
+        )
+        return pipeline_run, None
+
+    if catalog_entry.action_id == ACTION_CHECKPOINT_PIPELINE_RUN:
+        pipeline_run = advance_pipeline_run(
+            connection,
+            selected_work.work_id,
+            current_stage=_require_text(selected_work.current_stage, "current_stage"),
+            run_summary=(
+                "Supervisor resumed the durable pipeline run at "
+                f"{selected_work.current_stage} without creating duplicate work."
+            ),
+            timestamp=timestamp,
+        )
+        return pipeline_run, None
+
+    if catalog_entry.action_id == ACTION_ESCALATE_OPEN_INCIDENT:
+        incident = escalate_agent_incident(
+            connection,
+            selected_work.work_id,
+            escalation_reason=(
+                "No bounded repair action is registered yet for this incident, so the "
+                "supervisor escalated it for expert review."
+            ),
+            timestamp=timestamp,
+            repair_attempt_summary=(
+                "Supervisor cycle selected the unresolved incident first and escalated it "
+                "because the current action catalog has no repair handler yet."
+            ),
+        )
+        return None, incident
+
+    raise SupervisorStateError(
+        f"Catalog action {catalog_entry.action_id!r} is not executable yet."
+    )
+
+
+def _validate_selected_work_result(
+    connection: sqlite3.Connection,
+    selected_work: SupervisorWorkUnit,
+    *,
+    catalog_entry: SupervisorActionCatalogEntry,
+    pipeline_run: PipelineRunRecord | None,
+    incident: AgentIncidentRecord | None,
+) -> str | None:
+    if catalog_entry.action_id == ACTION_BOOTSTRAP_ROLE_TARGETED_RUN:
+        if pipeline_run is None:
+            return "Supervisor failed to create a pipeline_run for the selected job_posting."
+        if pipeline_run.job_posting_id != selected_work.work_id:
+            return (
+                "Supervisor created a pipeline_run for the wrong job_posting_id: "
+                f"{pipeline_run.job_posting_id!r}."
+            )
+        if pipeline_run.current_stage != "lead_handoff":
+            return (
+                "Bootstrapped pipeline_run did not start at lead_handoff; found "
+                f"{pipeline_run.current_stage!r}."
+            )
+        return None
+
+    if catalog_entry.action_id == ACTION_CHECKPOINT_PIPELINE_RUN:
+        if pipeline_run is None:
+            return "Supervisor failed to load the selected pipeline_run after checkpointing."
+        if pipeline_run.pipeline_run_id != selected_work.work_id:
+            return "Supervisor checkpointing changed the selected pipeline_run identity."
+        if pipeline_run.run_status != RUN_STATUS_IN_PROGRESS:
+            return (
+                "Checkpointed pipeline_run is not in progress after resume; found "
+                f"{pipeline_run.run_status!r}."
+            )
+        return None
+
+    if catalog_entry.action_id == ACTION_ESCALATE_OPEN_INCIDENT:
+        if incident is None:
+            return "Supervisor failed to load the escalated incident result."
+        persisted = get_agent_incident(connection, incident.agent_incident_id)
+        if persisted is None or persisted.status != INCIDENT_STATUS_ESCALATED:
+            return "Selected incident was not persisted as escalated."
+        return None
+
+    return f"Catalog action {catalog_entry.action_id!r} has no postcondition validator."
+
+
+def _record_progression_failure(
+    connection: sqlite3.Connection,
+    selected_work: SupervisorWorkUnit,
+    *,
+    summary: str,
+    incident_type: str,
+    severity: str,
+    timestamp: str,
+) -> tuple[AgentIncidentRecord, PipelineRunRecord | None]:
+    incident = create_agent_incident(
+        connection,
+        incident_type=incident_type,
+        severity=severity,
+        summary=summary,
+        pipeline_run_id=selected_work.pipeline_run_id,
+        lead_id=selected_work.lead_id,
+        job_posting_id=selected_work.job_posting_id,
+        created_at=timestamp,
+    )
+    pipeline_run: PipelineRunRecord | None = None
+    if selected_work.pipeline_run_id is not None:
+        current_run = _require_pipeline_run(connection, selected_work.pipeline_run_id)
+        if not current_run.is_terminal:
+            pipeline_run = escalate_pipeline_run(
+                connection,
+                current_run.pipeline_run_id,
+                current_stage=current_run.current_stage,
+                error_summary=summary,
+                run_summary=(
+                    "Supervisor escalated the pipeline run after blocked bounded progression."
+                ),
+                timestamp=timestamp,
+            )
+        else:
+            pipeline_run = current_run
+    return incident, pipeline_run
+
+
+def _write_context_snapshot(
+    paths: ProjectPaths,
+    supervisor_cycle_id: str,
+    snapshot_payload: dict[str, object],
+) -> str:
+    snapshot_path = (
+        paths.project_root
+        / "ops"
+        / "agent"
+        / "context-snapshots"
+        / supervisor_cycle_id
+        / "context_snapshot.json"
+    )
+    snapshot_path.parent.mkdir(parents=True, exist_ok=True)
+    snapshot_path.write_text(
+        json.dumps(snapshot_payload, indent=2, sort_keys=False) + "\n",
+        encoding="utf-8",
+    )
+    return paths.relative_to_root(snapshot_path).as_posix()
+
+
+def _catalog_entry_snapshot(
+    catalog_entry: SupervisorActionCatalogEntry,
+) -> dict[str, object]:
+    return {
+        "action_id": catalog_entry.action_id,
+        "work_type": catalog_entry.work_type,
+        "description": catalog_entry.description,
+        "prerequisites": list(catalog_entry.prerequisites),
+        "expected_outputs": list(catalog_entry.expected_outputs),
+        "validation_references": list(catalog_entry.validation_references),
+    }
+
+
+def _unsupported_work_summary(selected_work: SupervisorWorkUnit) -> str:
+    if selected_work.work_type == WORK_TYPE_PIPELINE_RUN and selected_work.current_stage:
+        return (
+            "No registered bounded supervisor action covers pipeline stage "
+            f"{selected_work.current_stage!r} yet."
+        )
+    return (
+        "No registered bounded supervisor action covers selected work "
+        f"{selected_work.work_type!r}:{selected_work.work_id!r}."
+    )
+
+
+def _incident_cluster_key(incident: AgentIncidentRecord) -> str:
+    stage_scope = incident.current_stage or "operational"
+    return f"{incident.incident_type}:{stage_scope}"
+
+
+def _require_text(value: str | None, field_name: str) -> str:
+    if value is None or not value.strip():
+        raise SupervisorStateError(f"{field_name} is required.")
+    return value
+
+
 def _ensure_control_defaults(
     connection: sqlite3.Connection,
     *,
@@ -1067,6 +2102,16 @@ def _require_runtime_lease(
     return lease
 
 
+def _require_agent_incident(
+    connection: sqlite3.Connection,
+    agent_incident_id: str,
+) -> AgentIncidentRecord:
+    incident = get_agent_incident(connection, agent_incident_id)
+    if incident is None:
+        raise SupervisorStateError(f"agent_incident {agent_incident_id!r} does not exist.")
+    return incident
+
+
 def _pipeline_run_from_row(row: sqlite3.Row | tuple[object, ...]) -> PipelineRunRecord:
     return PipelineRunRecord(
         pipeline_run_id=row[0],
@@ -1112,6 +2157,27 @@ def _lease_from_row(row: sqlite3.Row | tuple[object, ...]) -> LeaseRecord:
         expires_at=row[3],
         last_renewed_at=_optional_text(row[4]),
         lease_note=_optional_text(row[5]),
+    )
+
+
+def _agent_incident_from_row(row: sqlite3.Row | tuple[object, ...]) -> AgentIncidentRecord:
+    return AgentIncidentRecord(
+        agent_incident_id=row[0],
+        incident_type=row[1],
+        severity=row[2],
+        status=row[3],
+        summary=row[4],
+        pipeline_run_id=_optional_text(row[5]),
+        lead_id=_optional_text(row[6]),
+        job_posting_id=_optional_text(row[7]),
+        contact_id=_optional_text(row[8]),
+        outreach_message_id=_optional_text(row[9]),
+        resolved_at=_optional_text(row[10]),
+        escalation_reason=_optional_text(row[11]),
+        repair_attempt_summary=_optional_text(row[12]),
+        created_at=row[13],
+        updated_at=row[14],
+        current_stage=_optional_text(row[15]) if len(row) > 15 else None,
     )
 
 

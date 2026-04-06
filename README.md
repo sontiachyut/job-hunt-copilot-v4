@@ -33,9 +33,10 @@ What already exists:
 - a canonical SQLite schema migration set with review views plus shared ID and timestamp helpers for downstream components
 - shared artifact publication helpers for YAML/JSON contracts, canonical workspace path building, and `artifact_records` registration
 - supervisor control-plane persistence helpers for canonical control state, pipeline runs, supervisor cycles, and runtime leases
+- a bounded supervisor cycle executor with incident-aware work selection, cycle snapshots, lease-guarded single-flight execution, and auto-pause or escalation handling for unsupported progression
 
 What is still in progress:
-- bounded supervisor cycle execution, review-packet plumbing, and the downstream runtime components
+- review-packet plumbing, override recording, and the downstream runtime components
 
 ## System Overview
 

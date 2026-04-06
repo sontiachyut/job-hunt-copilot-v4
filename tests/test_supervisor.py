@@ -1,15 +1,20 @@
 from __future__ import annotations
 
+import json
 import sqlite3
 
 import pytest
 
 from job_hunt_copilot.bootstrap import run_bootstrap
+from job_hunt_copilot.paths import ProjectPaths
 from job_hunt_copilot.supervisor import (
     AGENT_MODE_PAUSED,
     AGENT_MODE_REPLANNING,
     AGENT_MODE_RUNNING,
     AGENT_MODE_STOPPED,
+    INCIDENT_SEVERITY_CRITICAL,
+    INCIDENT_SEVERITY_MEDIUM,
+    INCIDENT_STATUS_ESCALATED,
     REVIEW_PACKET_STATUS_NOT_READY,
     REVIEW_PACKET_STATUS_PENDING,
     REVIEW_PACKET_STATUS_REVIEWED,
@@ -17,7 +22,9 @@ from job_hunt_copilot.supervisor import (
     RUN_STATUS_ESCALATED,
     RUN_STATUS_IN_PROGRESS,
     RUN_STATUS_PAUSED,
+    SUPERVISOR_CYCLE_RESULT_AUTO_PAUSED,
     SUPERVISOR_CYCLE_RESULT_DEFERRED,
+    SUPERVISOR_CYCLE_RESULT_FAILED,
     SUPERVISOR_CYCLE_RESULT_SUCCESS,
     SUPERVISOR_LEASE_NAME,
     DuplicateActivePipelineRun,
@@ -27,16 +34,20 @@ from job_hunt_copilot.supervisor import (
     assign_supervisor_cycle_work_unit,
     begin_replanning,
     complete_pipeline_run,
+    create_agent_incident,
     escalate_pipeline_run,
     ensure_role_targeted_pipeline_run,
     finish_supervisor_cycle,
+    get_agent_incident,
     get_open_pipeline_run_for_posting,
+    get_pipeline_run,
     get_runtime_lease,
     pause_agent,
     pause_pipeline_run,
     read_agent_control_state,
     release_runtime_lease,
     resume_agent,
+    run_supervisor_cycle,
     set_pipeline_run_review_packet_status,
     start_supervisor_cycle,
     stop_agent,
@@ -535,3 +546,256 @@ def test_completed_runs_cannot_transition_back_to_pending_review_packet_generati
     connection.close()
 
     assert completed.run_status == RUN_STATUS_COMPLETED
+
+
+def test_run_supervisor_cycle_bootstraps_new_posting_run_and_persists_snapshot(tmp_path):
+    project_root = bootstrap_project(tmp_path)
+    paths = ProjectPaths.from_root(project_root)
+    connection = connect_database(project_root / "job_hunt_copilot.db")
+    _, job_posting_id = seed_role_targeted_posting(connection)
+    resume_agent(
+        connection,
+        manual_command="jhc-agent-start",
+        timestamp="2026-04-06T00:00:00Z",
+    )
+
+    execution = run_supervisor_cycle(
+        connection,
+        paths,
+        trigger_type="launchd_heartbeat",
+        scheduler_name="launchd",
+        started_at="2026-04-06T00:01:00Z",
+    )
+    stored_runs = connection.execute(
+        """
+        SELECT pipeline_run_id, run_status, current_stage, run_summary
+        FROM pipeline_runs
+        WHERE job_posting_id = ?
+        ORDER BY started_at
+        """,
+        (job_posting_id,),
+    ).fetchall()
+    final_lease = get_runtime_lease(connection, SUPERVISOR_LEASE_NAME)
+    snapshot = json.loads((project_root / execution.context_snapshot_path).read_text(encoding="utf-8"))
+    connection.close()
+
+    assert execution.cycle.result == SUPERVISOR_CYCLE_RESULT_SUCCESS
+    assert execution.selected_work is not None
+    assert execution.selected_work.work_type == "job_posting"
+    assert execution.selected_work.work_id == job_posting_id
+    assert execution.pipeline_run is not None
+    assert execution.pipeline_run.job_posting_id == job_posting_id
+    assert execution.pipeline_run.current_stage == "lead_handoff"
+    assert execution.pipeline_run.run_status == RUN_STATUS_IN_PROGRESS
+    assert len(stored_runs) == 1
+    assert stored_runs[0]["run_summary"] == (
+        "Supervisor bootstrapped a durable role-targeted run from posting state."
+    )
+    assert snapshot["selected_work"]["work_type"] == "job_posting"
+    assert snapshot["pipeline_run"]["pipeline_run_id"] == execution.pipeline_run.pipeline_run_id
+    assert snapshot["control_state"]["agent_mode"] == "running"
+    assert final_lease is None
+
+
+def test_run_supervisor_cycle_reuses_existing_pipeline_run_without_duplicate_history(tmp_path):
+    project_root = bootstrap_project(tmp_path)
+    paths = ProjectPaths.from_root(project_root)
+    connection = connect_database(project_root / "job_hunt_copilot.db")
+    lead_id, job_posting_id = seed_role_targeted_posting(connection)
+    resume_agent(
+        connection,
+        manual_command="jhc-agent-start",
+        timestamp="2026-04-06T00:05:00Z",
+    )
+    pipeline_run, _ = ensure_role_targeted_pipeline_run(
+        connection,
+        lead_id=lead_id,
+        job_posting_id=job_posting_id,
+        current_stage="lead_handoff",
+        started_at="2026-04-06T00:06:00Z",
+    )
+
+    execution = run_supervisor_cycle(
+        connection,
+        paths,
+        trigger_type="launchd_heartbeat",
+        scheduler_name="launchd",
+        started_at="2026-04-06T00:07:00Z",
+    )
+    stored_runs = connection.execute(
+        """
+        SELECT pipeline_run_id, run_status, current_stage, run_summary
+        FROM pipeline_runs
+        WHERE job_posting_id = ?
+        ORDER BY started_at
+        """,
+        (job_posting_id,),
+    ).fetchall()
+    connection.close()
+
+    assert execution.cycle.result == SUPERVISOR_CYCLE_RESULT_SUCCESS
+    assert execution.selected_work is not None
+    assert execution.selected_work.work_type == "pipeline_run"
+    assert execution.pipeline_run is not None
+    assert execution.pipeline_run.pipeline_run_id == pipeline_run.pipeline_run_id
+    assert execution.pipeline_run.run_status == RUN_STATUS_IN_PROGRESS
+    assert len(stored_runs) == 1
+    assert stored_runs[0]["pipeline_run_id"] == pipeline_run.pipeline_run_id
+    assert stored_runs[0]["run_summary"] == (
+        "Supervisor resumed the durable pipeline run at lead_handoff without creating duplicate work."
+    )
+
+
+def test_run_supervisor_cycle_prioritizes_open_incidents_before_pipeline_advancement(tmp_path):
+    project_root = bootstrap_project(tmp_path)
+    paths = ProjectPaths.from_root(project_root)
+    connection = connect_database(project_root / "job_hunt_copilot.db")
+    lead_id, job_posting_id = seed_role_targeted_posting(connection)
+    resume_agent(
+        connection,
+        manual_command="jhc-agent-start",
+        timestamp="2026-04-06T00:10:00Z",
+    )
+    pipeline_run, _ = ensure_role_targeted_pipeline_run(
+        connection,
+        lead_id=lead_id,
+        job_posting_id=job_posting_id,
+        current_stage="lead_handoff",
+        started_at="2026-04-06T00:11:00Z",
+    )
+    incident = create_agent_incident(
+        connection,
+        incident_type="provider_outage",
+        severity=INCIDENT_SEVERITY_MEDIUM,
+        summary="Apollo enrichment responses are timing out repeatedly.",
+        pipeline_run_id=pipeline_run.pipeline_run_id,
+        lead_id=lead_id,
+        job_posting_id=job_posting_id,
+        created_at="2026-04-06T00:12:00Z",
+    )
+
+    execution = run_supervisor_cycle(
+        connection,
+        paths,
+        trigger_type="launchd_heartbeat",
+        scheduler_name="launchd",
+        started_at="2026-04-06T00:13:00Z",
+    )
+    escalated_incident = get_agent_incident(connection, incident.agent_incident_id)
+    unchanged_run = get_pipeline_run(connection, pipeline_run.pipeline_run_id)
+    connection.close()
+
+    assert execution.cycle.result == SUPERVISOR_CYCLE_RESULT_SUCCESS
+    assert execution.selected_work is not None
+    assert execution.selected_work.work_type == "agent_incident"
+    assert execution.incident is not None
+    assert execution.incident.agent_incident_id == incident.agent_incident_id
+    assert escalated_incident is not None
+    assert escalated_incident.status == INCIDENT_STATUS_ESCALATED
+    assert unchanged_run is not None
+    assert unchanged_run.pipeline_run_id == pipeline_run.pipeline_run_id
+    assert unchanged_run.run_summary is None
+
+
+def test_run_supervisor_cycle_auto_pauses_on_critical_unresolved_incident(tmp_path):
+    project_root = bootstrap_project(tmp_path)
+    paths = ProjectPaths.from_root(project_root)
+    connection = connect_database(project_root / "job_hunt_copilot.db")
+    lead_id, job_posting_id = seed_role_targeted_posting(connection)
+    resume_agent(
+        connection,
+        manual_command="jhc-agent-start",
+        timestamp="2026-04-06T00:20:00Z",
+    )
+    ensure_role_targeted_pipeline_run(
+        connection,
+        lead_id=lead_id,
+        job_posting_id=job_posting_id,
+        current_stage="lead_handoff",
+        started_at="2026-04-06T00:21:00Z",
+    )
+    critical_incident = create_agent_incident(
+        connection,
+        incident_type="canonical_state_integrity",
+        severity=INCIDENT_SEVERITY_CRITICAL,
+        summary="Canonical DB state mismatch detected for an in-flight outreach boundary.",
+        lead_id=lead_id,
+        job_posting_id=job_posting_id,
+        created_at="2026-04-06T00:22:00Z",
+    )
+
+    execution = run_supervisor_cycle(
+        connection,
+        paths,
+        trigger_type="launchd_heartbeat",
+        scheduler_name="launchd",
+        started_at="2026-04-06T00:23:00Z",
+    )
+    control_state = read_agent_control_state(connection, timestamp="2026-04-06T00:23:00Z")
+    persisted_incident = get_agent_incident(connection, critical_incident.agent_incident_id)
+    connection.close()
+
+    assert execution.cycle.result == SUPERVISOR_CYCLE_RESULT_AUTO_PAUSED
+    assert execution.selected_work is not None
+    assert execution.selected_work.work_type == "agent_incident"
+    assert persisted_incident is not None
+    assert persisted_incident.status == "open"
+    assert control_state.agent_mode == AGENT_MODE_PAUSED
+    assert control_state.pause_reason is not None
+    assert "canonical_state_integrity" in control_state.pause_reason
+
+
+def test_run_supervisor_cycle_emits_incident_when_selected_stage_has_no_registered_action(
+    tmp_path,
+):
+    project_root = bootstrap_project(tmp_path)
+    paths = ProjectPaths.from_root(project_root)
+    connection = connect_database(project_root / "job_hunt_copilot.db")
+    lead_id, job_posting_id = seed_role_targeted_posting(connection)
+    resume_agent(
+        connection,
+        manual_command="jhc-agent-start",
+        timestamp="2026-04-06T00:30:00Z",
+    )
+    pipeline_run, _ = ensure_role_targeted_pipeline_run(
+        connection,
+        lead_id=lead_id,
+        job_posting_id=job_posting_id,
+        current_stage="sending",
+        started_at="2026-04-06T00:31:00Z",
+    )
+
+    execution = run_supervisor_cycle(
+        connection,
+        paths,
+        trigger_type="launchd_heartbeat",
+        scheduler_name="launchd",
+        started_at="2026-04-06T00:32:00Z",
+    )
+    updated_run = get_pipeline_run(connection, pipeline_run.pipeline_run_id)
+    stored_incidents = connection.execute(
+        """
+        SELECT incident_type, severity, summary
+        FROM agent_incidents
+        WHERE pipeline_run_id = ?
+        ORDER BY created_at
+        """,
+        (pipeline_run.pipeline_run_id,),
+    ).fetchall()
+    connection.close()
+
+    assert execution.cycle.result == SUPERVISOR_CYCLE_RESULT_FAILED
+    assert execution.selected_work is not None
+    assert execution.selected_work.work_type == "pipeline_run"
+    assert execution.incident is not None
+    assert execution.incident.incident_type == "unsupported_supervisor_action"
+    assert updated_run is not None
+    assert updated_run.run_status == RUN_STATUS_ESCALATED
+    assert "No registered bounded supervisor action" in updated_run.last_error_summary
+    assert [dict(row) for row in stored_incidents] == [
+        {
+            "incident_type": "unsupported_supervisor_action",
+            "severity": "high",
+            "summary": "No registered bounded supervisor action covers pipeline stage 'sending' yet.",
+        }
+    ]

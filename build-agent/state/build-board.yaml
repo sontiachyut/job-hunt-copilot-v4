@@ -14,8 +14,8 @@ global_status:
     - Planning now reflects the PRD and acceptance spec instead of the initial seeded checklist.
     - BA-01 is now complete: the repo has runtime bootstrap checks, canonical SQLite schema migration, review views, and shared record-ID/timestamp helpers.
     - Shared artifact publication utilities now cover YAML/JSON contract envelopes, canonical workspace paths, and `artifact_records` registration for lead, posting, contact, and message roots.
-    - BA-02-S1 is now complete: the repo has canonical supervisor-state helpers for control-state reads and writes, durable pipeline-run lifecycles, heartbeat-cycle audit rows, and runtime lease acquisition or stale recovery.
-    - The next dependency is BA-02-S2 bounded cycle execution on top of the new supervisor persistence layer.
+    - BA-02-S1 and BA-02-S2 are now complete: the repo has canonical supervisor-state helpers plus a bounded heartbeat executor with lease-guarded single-flight execution, incident-aware work selection, auto-pause checks, and per-cycle context snapshots.
+    - The next dependency is BA-02-S3 review packet and override plumbing on top of the bounded cycle executor.
   execution_principles:
     - One primary slice per unattended build session.
     - Prefer DB-first state, artifact contracts, and runtime scaffolding before higher-level agent behavior.
@@ -191,13 +191,20 @@ epics:
       - id: BA-02-S2
         name: Bounded cycle executor
         owner_role: build-lead
-        status: pending
+        status: completed
         dependencies:
           - BA-02-S1
         deliverables:
           - one-work-unit supervisor selection loop with prerequisite and output validation
           - action-catalog-backed dispatch skeleton
           - cycle summaries and incident emission on blocked or failed progression
+        completed_notes:
+          - Added `run_supervisor_cycle` plus a narrow registered action catalog for posting-scoped run bootstrap, durable lead-handoff checkpoints, and unresolved-incident escalation behind the canonical supervisor lease.
+          - Added canonical incident helpers and auto-pause checks so critical unresolved send-safety or canonical-state-integrity incidents pause autonomous execution, while unsupported pipeline stages emit incidents and escalate the affected durable run instead of improvising behavior.
+          - Added persisted cycle context snapshots under `ops/agent/context-snapshots/<supervisor_cycle_id>/context_snapshot.json` and focused supervisor tests for new-run selection, existing-run reuse, incident priority, auto-pause, and unsupported-stage escalation.
+        validation:
+          - "`python3.11 -m pytest tests/test_supervisor.py`"
+          - "`python3.11 -m pytest tests/test_bootstrap.py tests/test_schema.py tests/test_artifacts.py tests/test_supervisor.py`"
       - id: BA-02-S3
         name: Review packet and override plumbing
         owner_role: build-lead
@@ -612,13 +619,13 @@ epics:
 
 current_focus:
   epic_id: BA-02
-  slice_id: BA-02-S2
+  slice_id: BA-02-S3
   owner_role: build-lead
-  reason: BA-02-S1 landed the supervisor persistence primitives, so the next highest-value dependency is one bounded heartbeat executor that reads control state, acquires the lease, selects one work unit, and persists cycle outcomes against that canonical state.
+  reason: BA-02-S2 landed the bounded heartbeat executor, so the next highest-value dependency is wiring review packets, review decisions, and override lineage into the same canonical supervisor control plane.
   exit_criteria:
-    - one heartbeat executor can read control state, acquire or defer the supervisor lease, and persist a completed `supervisor_cycles` row
-    - work selection stays bounded to one primary work unit and uses the registered action catalog boundary instead of open-ended behavior
-    - blocked or failed progression persists a clear cycle result and incident-ready summary for the later review-packet and incident slice
+    - terminal or otherwise review-worthy runs can persist `expert_review_packets` plus `expert_review_decisions`
+    - owner corrections can persist `override_events` with lineage back to the triggering review or prior decision context
+    - run-finalization hooks can move `pipeline_runs.review_packet_status` to `pending_expert_review` without inventing parallel state
 
 focus_order:
   - epic_id: BA-02

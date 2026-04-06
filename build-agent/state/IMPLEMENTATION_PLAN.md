@@ -13,8 +13,9 @@ It should stay aligned with:
 - `BA-01-S1` is complete: the repository now has a real `job_hunt_copilot` bootstrap package, runtime support-directory creation, secret-file materialization, and a SQLite migration entrypoint for `job_hunt_copilot.db`.
 - `BA-01-S2` is complete: the canonical next-build schema, minimum index set, review views, and shared record-ID/timestamp helpers now initialize cleanly through the migration framework.
 - `BA-01-S3` is complete: shared artifact-contract writers, canonical workspace path helpers, and `artifact_records` registration utilities are now available for downstream components.
-- `BA-01` is complete overall, and `BA-02-S1` is now complete: the repository has a real supervisor-state access layer for control-state reads and writes, non-terminal run reuse, bounded run transitions, heartbeat-cycle audit rows, and runtime lease acquisition or stale recovery.
+- `BA-01` is complete overall, and `BA-02-S1` plus `BA-02-S2` are now complete: the repository has a real supervisor-state access layer, lease-guarded bounded heartbeat execution, incident-aware work selection, auto-pause detection, and persisted per-cycle context snapshots.
 - Explicit implementation inference: the PRD currently conflicts on whether escalated runs are immutable history or resumable after clearance; this slice implemented the explicit `escalated -> in_progress` transition rule while still creating new posting runs only when no non-terminal run exists.
+- Explicit implementation inference: the initial action catalog intentionally stays narrow to posting-run bootstrap, durable lead-handoff checkpointing, and unresolved-incident escalation so unsupported later-stage work becomes a canonical incident instead of improvised behavior.
 - Known operational risk: unattended build-lead execution needs a follow-up validation pass for the `codex exec` CLI compatibility fix already present in the worktree.
 
 ## Phase Order
@@ -81,12 +82,12 @@ It should stay aligned with:
 
 ## Next Slice
 
-- Current focus: `BA-02-S2` Bounded cycle executor.
-- Why next: the persistence primitives now exist, so the supervisor control plane can add one heartbeat-sized execution path that reads control state, acquires or defers the lease, selects one work unit, and records the cycle outcome without overlapping work.
+- Current focus: `BA-02-S3` Review packet and override plumbing.
+- Why next: bounded cycle execution now exists, so the supervisor control plane can attach canonical expert-review and override history to terminal or otherwise review-worthy run outcomes instead of leaving those surfaces stubbed.
 - Done when:
-  - one bounded supervisor heartbeat can read canonical control state, acquire or defer the supervisor lease, and persist a completed `supervisor_cycles` row
-  - work selection stays within one primary work unit and the registered action-catalog boundary
-  - blocked or failed progression persists a cycle result plus incident-ready summary for later review-packet and incident handling
+  - terminal or otherwise review-worthy runs can persist `expert_review_packets` plus `expert_review_decisions`
+  - canonical override recording exists with lineage to the prior decision context and affected object state
+  - pipeline-run finalization can move `review_packet_status` to `pending_expert_review` and expose the persisted packet path for later chat or review surfaces
 
 ## Working Rules
 
