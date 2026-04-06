@@ -1,0 +1,42 @@
+#!/bin/zsh
+set -euo pipefail
+
+ROOT="$(cd "$(dirname "$0")/.." && pwd)"
+PLIST="$ROOT/ops/launchd/job-hunt-copilot-supervisor.plist"
+LABEL="gui/$UID/com.jobhuntcopilot.supervisor"
+PYTHON_BIN="${JHC_PYTHON_BIN:-}"
+if [[ -z "$PYTHON_BIN" && -x /opt/homebrew/opt/python@3.11/libexec/bin/python3 ]]; then
+  PYTHON_BIN="/opt/homebrew/opt/python@3.11/libexec/bin/python3"
+fi
+if [[ -z "$PYTHON_BIN" && -x /opt/homebrew/bin/python3 ]]; then
+  PYTHON_BIN="/opt/homebrew/bin/python3"
+fi
+if [[ -z "$PYTHON_BIN" ]]; then
+  PYTHON_BIN="$(command -v python3 || true)"
+fi
+if [[ -z "$PYTHON_BIN" ]]; then
+  echo "python3 not found for supervisor startup" >&2
+  exit 127
+fi
+
+"$PYTHON_BIN" "$ROOT/scripts/ops/build_runtime_pack.py" --project-root "$ROOT" >/dev/null
+"$PYTHON_BIN" "$ROOT/scripts/ops/materialize_supervisor_plist.py" --project-root "$ROOT" >/dev/null
+"$PYTHON_BIN" "$ROOT/scripts/ops/control_agent.py" start --project-root "$ROOT" --manual-command jhc-agent-start >/dev/null
+
+rollback_start_failure() {
+  if launchctl print "$LABEL" >/dev/null 2>&1; then
+    launchctl bootout "gui/$UID" "$PLIST" >/dev/null || true
+  fi
+  "$PYTHON_BIN" "$ROOT/scripts/ops/control_agent.py" stop --project-root "$ROOT" --manual-command jhc-agent-start >/dev/null || true
+}
+
+trap rollback_start_failure ERR
+
+if ! launchctl print "$LABEL" >/dev/null 2>&1; then
+  launchctl bootstrap "gui/$UID" "$PLIST"
+fi
+
+launchctl kickstart -k "$LABEL"
+launchctl print "$LABEL" >/dev/null
+trap - ERR
+echo "Job Hunt Copilot supervisor started via $LABEL"

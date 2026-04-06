@@ -18,7 +18,10 @@ It should stay aligned with:
 - Explicit implementation inference: the initial action catalog intentionally stays narrow to posting-run bootstrap, durable lead-handoff checkpointing, and unresolved-incident escalation so unsupported later-stage work becomes a canonical incident instead of improvised behavior.
 - `BA-02-S3` is complete: review-worthy terminal runs can now emit `review_packet.json` plus `review_packet.md`, persist `expert_review_packets` and `expert_review_decisions`, register those artifacts in `artifact_records`, and record expert override lineage through canonical `override_events`.
 - `BA-03-S1` is complete: bootstrap and `scripts/ops/build_runtime_pack.py` now render the product-side runtime identity, policies, action catalog, service goals, escalation policy, progress-log scaffold, ops-plan scaffold, and chat or supervisor bootstrap prompts under `ops/agent/`.
+- `BA-03-S2` is complete in code: the repo now has product-side plist rendering, canonical control-state CLI helpers, `scripts/ops/run_supervisor_cycle.py`, and repo-local `jhc-agent-start`, `jhc-agent-stop`, and `jhc-agent-cycle` wrappers for the local supervisor heartbeat.
+- Explicit implementation note: failed startup no longer leaves dishonest control state behind; `jhc-agent-start` now rolls canonical state back to `stopped` if `launchctl bootstrap` fails before the job is actually loaded.
 - Explicit implementation note: the generated `ops/agent/` files remain runtime-local artifacts under `.gitignore`, so the repo tracks the materialization code and tests rather than checking in those mutable rendered outputs.
+- Known operational blocker: live `launchctl bootstrap gui/$UID ...` still returns `Input/output error` in this sandboxed session, and the system log needed for richer launchd diagnostics is itself blocked by sandbox restrictions.
 - Known operational risk: unattended build-lead execution needs a follow-up validation pass for the `codex exec` CLI compatibility fix already present in the worktree.
 
 ## Phase Order
@@ -85,12 +88,12 @@ It should stay aligned with:
 
 ## Next Slice
 
-- Current focus: `BA-03-S2` launchd and helper entrypoints.
-- Why next: the runtime pack now exists, but the acceptance surface still needs repo-local `jhc-agent-start`, `jhc-agent-stop`, and `jhc-agent-cycle` behavior plus `ops/launchd/job-hunt-copilot-supervisor.plist` rendering that consumes those generated runtime artifacts.
+- Current focus: `BA-03-S3` `jhc-chat` operator bootstrap.
+- Why next: the runtime pack plus launchd/start/stop/cycle entrypoints now exist, so the next missing acceptance surface is the direct expert chat wrapper that reads persisted state, opens the project-specific Codex operator, and pauses background work through canonical control-state wiring.
 - Done when:
-  - repo-local `bin/jhc-agent-start`, `bin/jhc-agent-stop`, and `bin/jhc-agent-cycle` exist and resolve the absolute project root
-  - `ops/launchd/job-hunt-copilot-supervisor.plist` is rendered with the required label, heartbeat interval, working directory, program arguments, and log paths
-  - start or stop validation confirms idempotent `launchctl` wiring plus canonical control-state persistence without depending on the later `jhc-chat` slice
+  - repo-local `bin/jhc-chat` exists and launches the project-rooted Codex operator with `ops/agent/chat-bootstrap.md`
+  - chat session begin or end bookkeeping persists active-session state plus clean or unexpected exit history through canonical control state
+  - opening and closing `jhc-chat` wires pause-on-chat plus safe resume behavior without pretending later idle-timeout or deeper operator features already exist
 
 ## Working Rules
 

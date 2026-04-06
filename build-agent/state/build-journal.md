@@ -231,3 +231,35 @@ Use this file as an append-only implementation log for the build agent.
 - The generated `ops/agent/` files are intentionally ignored by git as runtime-local artifacts, so the tracked deliverable for this slice is the materialization code, tests, and bootstrap integration rather than checked-in rendered copies.
 - The current action catalog remains intentionally narrow to the already-implemented supervisor behaviors; unsupported later-stage work still escalates instead of being overstated in the generated runtime pack.
 - `BUILD-CLI-001` remains open and untouched.
+
+### Session
+- Date: 2026-04-06 14:44:45 MST
+- Slice: BA-03-S2 launchd and helper entrypoints
+- Goal: Render the supervisor plist plus repo-local `jhc-agent-start`, `jhc-agent-stop`, and `jhc-agent-cycle` wrappers that consume the generated runtime pack and persist canonical control-state transitions around `launchctl`.
+
+### Work Done
+- Added `job_hunt_copilot/local_runtime.py` with product-side helpers for supervisor plist rendering, canonical SQLite control-state mutation, and one-shot supervisor heartbeat execution.
+- Added `scripts/ops/materialize_supervisor_plist.py`, `scripts/ops/control_agent.py`, and `scripts/ops/run_supervisor_cycle.py` so the product runtime has real CLI entrypoints for plist materialization, control-state writes, and launchd-facing cycle execution.
+- Added repo-local `bin/jhc-agent-start`, `bin/jhc-agent-stop`, and `bin/jhc-agent-cycle` wrappers that resolve the absolute project root, render the runtime pack and plist, persist control-state transitions, and wire the local supervisor through `launchctl`.
+- Tightened `jhc-agent-start` honesty after live smoke testing exposed a false-running-state bug: failed bootstrap attempts now boot out any partial load and roll canonical control state back to `stopped` instead of leaving the DB claiming the supervisor is active.
+- Updated `job_hunt_copilot/runtime_pack.py`, `README.md`, and `docs/ARCHITECTURE.md` so the generated operator surfaces and recruiter-facing docs reflect that launchd plus start/stop/cycle wiring now exists while `jhc-chat` remains the next slice.
+- Updated the build board and implementation plan to mark `BA-03-S2` complete in code, advance focus to `BA-03-S3`, and record the remaining live-launchd blocker explicitly.
+
+### Validation
+- Ran `python3.11 -m pytest tests/test_local_runtime.py tests/test_runtime_pack.py tests/test_supervisor.py` and confirmed all 18 targeted tests passed.
+- Ran `python3.11 -m pytest tests/test_bootstrap.py tests/test_schema.py tests/test_artifacts.py tests/test_supervisor.py tests/test_runtime_pack.py tests/test_local_runtime.py` and confirmed all 28 targeted regression tests passed.
+- Ran `python3.11 scripts/ops/materialize_supervisor_plist.py --project-root /Users/achyutaramsonti/Projects/job-hunt-copilot-v4` and confirmed the real repo rendered `ops/launchd/job-hunt-copilot-supervisor.plist`.
+- Ran `plutil -p /Users/achyutaramsonti/Projects/job-hunt-copilot-v4/ops/launchd/job-hunt-copilot-supervisor.plist` and confirmed the rendered plist uses `Label = com.jobhuntcopilot.supervisor`, `RunAtLoad = true`, `StartInterval = 180`, `KeepAlive = false`, the absolute project-root working directory, the repo-local `bin/jhc-agent-cycle` program argument, and dedicated `ops/logs/` stdout or stderr paths.
+- Ran `bin/jhc-agent-cycle` on the real repo and confirmed the wrapper executes `scripts/ops/run_supervisor_cycle.py`, records a canonical `launchd_heartbeat` cycle, and refreshes the ignored `ops/agent/` runtime pack surfaces.
+- Ran live `bin/jhc-agent-start`; `launchctl bootstrap gui/$UID ...` still returned `Bootstrap failed: 5: Input/output error` in this sandboxed session, but follow-up `scripts/ops/control_agent.py status` plus `launchctl print gui/$UID/com.jobhuntcopilot.supervisor` confirmed the failed-start rollback now leaves `agent_mode = stopped` with no loaded launchd job.
+- Ran `bin/jhc-agent-stop` and confirmed the stop path succeeds idempotently while the job is unloaded.
+
+### Result
+- `done`
+
+### Next
+- Implement `BA-03-S3`: add the direct `jhc-chat` operator wrapper with session begin or end bookkeeping, startup read surfaces, and pause-on-chat wiring through canonical control state.
+
+### Notes
+- Explicit blocker recorded as `OPS-LAUNCHD-001`: successful host-side `launchctl bootstrap` still needs follow-up validation outside the current sandboxed session because deeper launchd logging is sandbox-blocked here.
+- `BUILD-CLI-001` remains open and untouched.

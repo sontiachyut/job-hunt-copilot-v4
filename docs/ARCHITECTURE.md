@@ -89,6 +89,7 @@ The product runtime now has an explicit bootstrap layer under `job_hunt_copilot/
 - a bounded supervisor cycle executor that acquires the canonical lease, selects one work unit, persists a context snapshot, and records auto-pause or escalation outcomes through canonical incidents
 - expert review packet generation under `ops/review-packets/`, canonical `expert_review_packets` and `expert_review_decisions`, and override audit history through `override_events`
 - generated runtime self-awareness artifacts under `ops/agent/` for identity, policies, action catalog, service goals, escalation policy, progress log, ops plan, and bootstrap prompts
+- local supervisor launchd materialization under `ops/launchd/` plus repo-local `jhc-agent-start`, `jhc-agent-stop`, and `jhc-agent-cycle` wrappers for start/stop and one-shot heartbeat execution
 - bootstrap checks for assets and local secret materialization
 - repo-local runtime directory creation for downstream components
 

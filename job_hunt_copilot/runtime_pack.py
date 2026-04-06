@@ -115,8 +115,8 @@ def load_runtime_snapshot(paths: ProjectPaths) -> dict[str, Any]:
         "open_incident_count": 0,
         "pending_review_count": 0,
         "active_pipeline_run_count": 0,
-        "top_focus": "Autonomous execution is stopped until the local helper wiring enables heartbeats.",
-        "next_likely_action": "Materialize launchd and helper entrypoints, then enable the first heartbeat.",
+        "top_focus": "Autonomous execution is stopped until the operator enables the local supervisor.",
+        "next_likely_action": "Use `jhc-agent-start` to enable the first heartbeat or inspect canonical control state directly.",
     }
 
     if not paths.db_path.exists():
@@ -208,7 +208,7 @@ def compute_top_focus(snapshot: dict[str, Any]) -> str:
 
 def compute_next_likely_action(snapshot: dict[str, Any]) -> str:
     if snapshot["agent_mode"] == AGENT_MODE_STOPPED:
-        return "Use `jhc-agent-start` or an explicit resume command once the local helper wiring is installed."
+        return "Use `jhc-agent-start` or an explicit resume command to enable the local supervisor."
     if snapshot["agent_mode"] == AGENT_MODE_PAUSED:
         return "Inspect the blocking incidents or pause reason, then persist a clear resume or stop decision."
     if snapshot["open_incident_count"]:
@@ -374,8 +374,9 @@ def build_service_goals_payload(generated_at: str) -> dict[str, Any]:
             "automatic_replanning_cooldown_hours": 6,
         },
         "current_build_note": (
-            "The local launchd plist and helper entrypoints are materialized in later BA-03 "
-            "slices, but these service-goal targets already match the current-build control model."
+            "The local launchd plist plus `jhc-agent-start`, `jhc-agent-stop`, and "
+            "`jhc-agent-cycle` now exist in the repo; `jhc-chat` remains the next "
+            "operator-entrypoint slice."
         ),
     }
 
@@ -531,7 +532,7 @@ def render_initial_progress_log(
     local_day = datetime.now().astimezone().date().isoformat()
     blockers = [
         "The current registered action catalog is intentionally narrow; unsupported downstream stages escalate instead of improvising behavior.",
-        "Local launchd and chat wrapper entrypoints are materialized in later BA-03 slices.",
+        "The direct `jhc-chat` operator wrapper is still pending; launchd plus start/stop/cycle entrypoints now exist locally.",
     ]
     return "\n".join(
         [
@@ -632,9 +633,9 @@ def build_initial_ops_plan(runtime_snapshot: dict[str, Any], generated_at: str) 
         ],
         "maintenance_backlog": [
             {
-                "title": "Materialize local launchd and helper entrypoint wiring",
-                "reason": "The runtime pack exists, but start/stop/chat wrappers and the supervisor plist land in later BA-03 slices.",
-                "blocked_by": "BA-03-S2 and BA-03-S3",
+                "title": "Add the direct `jhc-chat` operator wrapper",
+                "reason": "Launchd plus start/stop/cycle wiring now exists; the expert-facing Codex chat entrypoint is the next BA-03 slice.",
+                "blocked_by": "BA-03-S3",
             },
         ],
         "weak_areas": [
@@ -643,8 +644,8 @@ def build_initial_ops_plan(runtime_snapshot: dict[str, Any], generated_at: str) 
                 "note": "Later pipeline stages beyond lead_handoff are not yet registered; unsupported needs escalate.",
             },
             {
-                "area": "operator_entrypoints",
-                "note": "Chat and launchd wrapper wiring are still pending even though the shared runtime pack is now generated.",
+                "area": "chat_operator_entrypoint",
+                "note": "Launchd plus start/stop/cycle wiring exists, but the direct expert chat entrypoint is still pending.",
             },
         ],
         "replan": {

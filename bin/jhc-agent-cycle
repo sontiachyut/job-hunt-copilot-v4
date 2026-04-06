@@ -1,0 +1,20 @@
+#!/bin/zsh
+set -euo pipefail
+
+ROOT="$(cd "$(dirname "$0")/.." && pwd)"
+PYTHON_BIN="${JHC_PYTHON_BIN:-}"
+if [[ -z "$PYTHON_BIN" && -x /opt/homebrew/opt/python@3.11/libexec/bin/python3 ]]; then
+  PYTHON_BIN="/opt/homebrew/opt/python@3.11/libexec/bin/python3"
+fi
+if [[ -z "$PYTHON_BIN" && -x /opt/homebrew/bin/python3 ]]; then
+  PYTHON_BIN="/opt/homebrew/bin/python3"
+fi
+if [[ -z "$PYTHON_BIN" ]]; then
+  PYTHON_BIN="$(command -v python3 || true)"
+fi
+if [[ -z "$PYTHON_BIN" ]]; then
+  echo "python3 not found for supervisor cycle" >&2
+  exit 127
+fi
+
+exec "$PYTHON_BIN" "$ROOT/scripts/ops/run_supervisor_cycle.py" --project-root "$ROOT"

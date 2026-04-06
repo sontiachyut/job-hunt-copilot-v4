@@ -142,6 +142,14 @@ class ProjectPaths:
         return self.ops_scripts_dir / "build_runtime_pack.py"
 
     @property
+    def materialize_supervisor_plist_script_path(self) -> Path:
+        return self.ops_scripts_dir / "materialize_supervisor_plist.py"
+
+    @property
+    def control_agent_script_path(self) -> Path:
+        return self.ops_scripts_dir / "control_agent.py"
+
+    @property
     def run_supervisor_cycle_script_path(self) -> Path:
         return self.ops_scripts_dir / "run_supervisor_cycle.py"
 

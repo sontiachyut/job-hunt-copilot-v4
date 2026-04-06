@@ -16,7 +16,8 @@ global_status:
     - Shared artifact publication utilities now cover YAML/JSON contract envelopes, canonical workspace paths, and `artifact_records` registration for lead, posting, contact, and message roots.
     - BA-02 is now complete: the repo has canonical supervisor-state helpers, a bounded heartbeat executor, terminal-run review packet artifacts, expert review decisions, and override-event lineage persisted in canonical state.
     - BA-03-S1 is now complete: bootstrap and `scripts/ops/build_runtime_pack.py` materialize the product-side `ops/agent/` runtime pack, progress-log scaffold, and ops-plan scaffold from current repo state.
-    - The next dependency is BA-03-S2 launchd and helper entrypoints so the generated runtime pack can drive the local start or stop and heartbeat wiring.
+    - BA-03-S2 is now complete in code: repo-local `jhc-agent-start`, `jhc-agent-stop`, and `jhc-agent-cycle` wrappers plus product-side plist and control helpers now exist for the local supervisor heartbeat.
+    - The next dependency is BA-03-S3 `jhc-chat` operator bootstrap, while host-side `launchctl bootstrap` success still needs follow-up validation outside the current sandboxed session.
   execution_principles:
     - One primary slice per unattended build session.
     - Prefer DB-first state, artifact contracts, and runtime scaffolding before higher-level agent behavior.
@@ -247,6 +248,8 @@ epics:
     progress_notes:
       - Bootstrap now renders the runtime identity, policies, action catalog, service goals, escalation policy, bootstrap prompts, and initial progress surfaces under `ops/agent/`.
       - Those `ops/agent/` artifacts remain repo-local generated runtime surfaces under the existing `.gitignore`, so validation relies on materialization hooks rather than checked-in generated files.
+      - Local launchd materialization plus repo-local `jhc-agent-start`, `jhc-agent-stop`, and `jhc-agent-cycle` wrappers now exist through `job_hunt_copilot.local_runtime` and `scripts/ops/` helper scripts.
+      - Live `launchctl bootstrap gui/$UID ...` still returns `Input/output error` in the current sandboxed session, but failed startup now rolls canonical control state back to `stopped` instead of leaving a false `running` status behind.
     near_term_slices:
       - id: BA-03-S1
         name: Runtime pack materialization
@@ -268,13 +271,26 @@ epics:
       - id: BA-03-S2
         name: launchd and helper entrypoints
         owner_role: build-lead
-        status: pending
+        status: completed
         dependencies:
           - BA-03-S1
         deliverables:
           - repo-local `bin/jhc-agent-start`, `bin/jhc-agent-stop`, and `bin/jhc-agent-cycle`
           - launchd template rendering with the required label, interval, and log paths
           - idempotent bootstrap or bootout behavior for repeated start or stop commands
+        completed_notes:
+          - Added `job_hunt_copilot.local_runtime` plus `scripts/ops/materialize_supervisor_plist.py`, `scripts/ops/control_agent.py`, and `scripts/ops/run_supervisor_cycle.py` so the product runtime can render the supervisor plist, persist canonical control-state mutations, and execute one real supervisor heartbeat from the repo-local command path.
+          - Added repo-local `bin/jhc-agent-start`, `bin/jhc-agent-stop`, and `bin/jhc-agent-cycle` wrappers that resolve the absolute project root, materialize the runtime pack and plist, persist control-state transitions, and wire the local supervisor through `launchctl`.
+          - Tightened startup honesty so a failed `launchctl bootstrap` attempt now unloads any partial job state and restores canonical control state to `stopped` instead of leaving the DB claiming the supervisor is running.
+          - Updated the generated runtime-pack messaging plus repo-facing docs so launchd and start/stop/cycle wiring are treated as implemented, while the direct `jhc-chat` operator entrypoint remains the next slice.
+        validation:
+          - "`python3.11 -m pytest tests/test_local_runtime.py tests/test_runtime_pack.py tests/test_supervisor.py`"
+          - "`python3.11 -m pytest tests/test_bootstrap.py tests/test_schema.py tests/test_artifacts.py tests/test_supervisor.py tests/test_runtime_pack.py tests/test_local_runtime.py`"
+          - "`python3.11 scripts/ops/materialize_supervisor_plist.py --project-root /Users/achyutaramsonti/Projects/job-hunt-copilot-v4`"
+          - "`plutil -p /Users/achyutaramsonti/Projects/job-hunt-copilot-v4/ops/launchd/job-hunt-copilot-supervisor.plist`"
+          - "`bin/jhc-agent-cycle`"
+          - "Live `bin/jhc-agent-start` validation still returns `Bootstrap failed: 5: Input/output error` in the current sandboxed session, but follow-up `scripts/ops/control_agent.py status` plus `launchctl print gui/$UID/com.jobhuntcopilot.supervisor` confirmed rollback to `agent_mode = stopped` with no loaded job."
+          - "`bin/jhc-agent-stop` succeeded idempotently while the launchd job was unloaded."
       - id: BA-03-S3
         name: "`jhc-chat` operator bootstrap"
         owner_role: build-lead
@@ -642,13 +658,13 @@ epics:
 
 current_focus:
   epic_id: BA-03
-  slice_id: BA-03-S1
+  slice_id: BA-03-S3
   owner_role: build-lead
-  reason: BA-02 is complete, so the next highest-value dependency is materializing the product-side runtime pack under `ops/agent/` to satisfy the supervisor bootstrap acceptance surface before helper entrypoints are added.
+  reason: The runtime pack plus launchd/start/stop/cycle surfaces now exist, so the next highest-value dependency is the direct `jhc-chat` operator bootstrap that reads persisted state and pauses background work through canonical control state.
   exit_criteria:
-    - generated `ops/agent/identity.yaml`, `policies.yaml`, `action-catalog.yaml`, `service-goals.yaml`, and `escalation-policy.yaml` exist
-    - "`ops/agent/chat-bootstrap.md` and `ops/agent/supervisor-bootstrap.md` are materialized from repo state with absolute-path-ready content"
-    - runtime-pack validation can confirm the rendered artifact set without depending on the later launchd entrypoint slice
+    - repo-local `bin/jhc-chat` exists and launches the project-rooted Codex operator with `ops/agent/chat-bootstrap.md`
+    - chat session begin or end bookkeeping persists active-session state and exit-mode history in canonical control state
+    - opening and closing `jhc-chat` wires pause-on-chat or safe-resume behavior without depending on later downstream product slices
 
 focus_order:
   - epic_id: BA-03
@@ -674,6 +690,11 @@ known_blockers:
     severity: medium
     owner_role: build-lead
     summary: "`codex exec` no longer accepts `--ask-for-approval`, and unattended build-cycle logs show BA-00 sessions failing before work starts when that flag is present."
+  - blocker_id: OPS-LAUNCHD-001
+    status: open
+    severity: medium
+    owner_role: build-lead
+    summary: "Live `launchctl bootstrap gui/$UID /Users/achyutaramsonti/Projects/job-hunt-copilot-v4/ops/launchd/job-hunt-copilot-supervisor.plist` still returns `Input/output error` in the current sandboxed session, so successful host-side launchd load validation remains pending even though the plist, wrappers, cycle runner, and failed-start rollback all validate locally."
     evidence:
       - build-agent/logs/cycles/build-cycle-20260406T032821Z-8f48507c.log
       - build-agent/scripts/run_build_lead_cycle.py

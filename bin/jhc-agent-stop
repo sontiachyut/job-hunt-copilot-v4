@@ -1,0 +1,32 @@
+#!/bin/zsh
+set -euo pipefail
+
+ROOT="$(cd "$(dirname "$0")/.." && pwd)"
+PLIST="$ROOT/ops/launchd/job-hunt-copilot-supervisor.plist"
+LABEL="gui/$UID/com.jobhuntcopilot.supervisor"
+PYTHON_BIN="${JHC_PYTHON_BIN:-}"
+if [[ -z "$PYTHON_BIN" && -x /opt/homebrew/opt/python@3.11/libexec/bin/python3 ]]; then
+  PYTHON_BIN="/opt/homebrew/opt/python@3.11/libexec/bin/python3"
+fi
+if [[ -z "$PYTHON_BIN" && -x /opt/homebrew/bin/python3 ]]; then
+  PYTHON_BIN="/opt/homebrew/bin/python3"
+fi
+if [[ -z "$PYTHON_BIN" ]]; then
+  PYTHON_BIN="$(command -v python3 || true)"
+fi
+if [[ -z "$PYTHON_BIN" ]]; then
+  echo "python3 not found for supervisor shutdown" >&2
+  exit 127
+fi
+
+"$PYTHON_BIN" "$ROOT/scripts/ops/control_agent.py" stop --project-root "$ROOT" --manual-command jhc-agent-stop >/dev/null
+
+if launchctl print "$LABEL" >/dev/null 2>&1; then
+  launchctl bootout "gui/$UID" "$PLIST" >/dev/null
+  if launchctl print "$LABEL" >/dev/null 2>&1; then
+    echo "Supervisor stop failed: launchd job is still loaded" >&2
+    exit 1
+  fi
+fi
+
+echo "Job Hunt Copilot supervisor stopped"
