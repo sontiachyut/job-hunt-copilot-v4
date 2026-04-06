@@ -14,7 +14,8 @@ global_status:
     - Planning now reflects the PRD and acceptance spec instead of the initial seeded checklist.
     - BA-01 is now complete: the repo has runtime bootstrap checks, canonical SQLite schema migration, review views, and shared record-ID/timestamp helpers.
     - Shared artifact publication utilities now cover YAML/JSON contract envelopes, canonical workspace paths, and `artifact_records` registration for lead, posting, contact, and message roots.
-    - The next dependency is BA-02 supervisor control-plane persistence on top of the completed foundation layer.
+    - BA-02-S1 is now complete: the repo has canonical supervisor-state helpers for control-state reads and writes, durable pipeline-run lifecycles, heartbeat-cycle audit rows, and runtime lease acquisition or stale recovery.
+    - The next dependency is BA-02-S2 bounded cycle execution on top of the new supervisor persistence layer.
   execution_principles:
     - One primary slice per unattended build session.
     - Prefer DB-first state, artifact contracts, and runtime scaffolding before higher-level agent behavior.
@@ -157,7 +158,7 @@ epics:
 
   - id: BA-02
     name: Supervisor control plane
-    status: pending
+    status: in_progress
     owner_role: build-lead
     phase: P1
     dependencies:
@@ -175,11 +176,18 @@ epics:
       - id: BA-02-S1
         name: Control-state persistence and run lifecycle helpers
         owner_role: build-lead
-        status: pending
+        status: completed
         deliverables:
           - "`pipeline_runs`, `supervisor_cycles`, `agent_control_state`, and `agent_runtime_leases` access layer"
           - canonical status transitions for paused, stopped, in-progress, failed, escalated, and completed run states
           - safe lease acquisition and stale-recovery helpers for the product supervisor
+        completed_notes:
+          - Added `job_hunt_copilot.supervisor` with canonical helpers for agent-mode persistence, non-terminal run reuse, bounded run-status transitions, provisional heartbeat-cycle rows, and runtime lease acquisition, renewal, release, and stale recovery.
+          - Added focused supervisor-state tests covering control-mode semantics, pipeline-run lifecycle transitions, single-open-run enforcement, cycle audit recording, and lease deferral or reclamation behavior against the canonical SQLite schema.
+          - Recorded the current PRD ambiguity around escalated-run immutability versus explicit `escalated -> in_progress` recovery by implementing the explicit resume transition while still keeping new-run creation keyed to non-terminal runs only.
+        validation:
+          - "`python3.11 -m pytest tests/test_supervisor.py`"
+          - "`python3.11 -m pytest tests/test_bootstrap.py tests/test_schema.py tests/test_artifacts.py tests/test_supervisor.py`"
       - id: BA-02-S2
         name: Bounded cycle executor
         owner_role: build-lead
@@ -604,13 +612,13 @@ epics:
 
 current_focus:
   epic_id: BA-02
-  slice_id: BA-02-S1
+  slice_id: BA-02-S2
   owner_role: build-lead
-  reason: BA-01 is complete, so the next highest-value dependency is the supervisor control-state access layer needed to drive bounded runtime cycles against canonical state.
+  reason: BA-02-S1 landed the supervisor persistence primitives, so the next highest-value dependency is one bounded heartbeat executor that reads control state, acquires the lease, selects one work unit, and persists cycle outcomes against that canonical state.
   exit_criteria:
-    - access helpers exist for `pipeline_runs`, `supervisor_cycles`, `agent_control_state`, and `agent_runtime_leases`
-    - canonical run-state transitions are expressed without downstream slices inventing their own status semantics
-    - lease acquisition and stale-recovery helpers are ready for the bounded supervisor executor slice
+    - one heartbeat executor can read control state, acquire or defer the supervisor lease, and persist a completed `supervisor_cycles` row
+    - work selection stays bounded to one primary work unit and uses the registered action catalog boundary instead of open-ended behavior
+    - blocked or failed progression persists a clear cycle result and incident-ready summary for the later review-packet and incident slice
 
 focus_order:
   - epic_id: BA-02

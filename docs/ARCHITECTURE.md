@@ -85,6 +85,7 @@ The product runtime now has an explicit bootstrap layer under `job_hunt_copilot/
 - canonical DB migrations and review views for `job_hunt_copilot.db`
 - shared canonical ID and lifecycle timestamp helpers for downstream records
 - shared artifact contract writers and `artifact_records` registration helpers
+- supervisor control-state helpers for `agent_control_state`, `pipeline_runs`, `supervisor_cycles`, and `agent_runtime_leases`
 - bootstrap checks for assets and local secret materialization
 - repo-local runtime directory creation for downstream components
 

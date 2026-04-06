@@ -125,3 +125,28 @@ Use this file as an append-only implementation log for the build agent.
 
 ### Notes
 - `BUILD-CLI-001` remains open and untouched; this slice deliberately stayed within foundation ownership rather than mixing in build-lead runtime fixes.
+
+### Session
+- Date: 2026-04-06 13:10:58 MST
+- Slice: BA-02-S1 control-state persistence and run lifecycle helpers
+- Goal: Land the supervisor control-plane access layer for canonical control state, durable pipeline runs, heartbeat-cycle audit rows, and runtime lease recovery before bounded cycle execution begins.
+
+### Work Done
+- Added `job_hunt_copilot/supervisor.py` with canonical helpers for agent control-state defaults and mode transitions, posting-scoped run creation or reuse, bounded run-status transitions, review-packet state transitions, heartbeat-cycle audit rows, and runtime lease acquisition, renewal, release, and stale recovery.
+- Added focused supervisor persistence coverage in `tests/test_supervisor.py` for control-state semantics, single-open-run enforcement, non-terminal run reuse, escalated-run recovery, heartbeat-cycle summaries, and lease deferral or reclamation.
+- Updated `README.md` and `docs/ARCHITECTURE.md` so the repo-facing status reflects that the supervisor persistence layer now exists.
+- Updated the build board and implementation plan to mark `BA-02-S1` complete and hand off `BA-02-S2` as the next bounded slice.
+
+### Validation
+- Ran `python3.11 -m pytest tests/test_supervisor.py` and confirmed all 6 targeted supervisor-state tests passed.
+- Ran `python3.11 -m pytest tests/test_bootstrap.py tests/test_schema.py tests/test_artifacts.py tests/test_supervisor.py` and confirmed all 15 targeted regression tests passed.
+
+### Result
+- `done`
+
+### Next
+- Implement `BA-02-S2`: a bounded supervisor heartbeat executor that reads control state, acquires or defers the lease, selects one work unit, and persists the cycle result without overlapping execution.
+
+### Notes
+- Explicit inference recorded: the PRD currently conflicts on whether an escalated `pipeline_run` is immutable history or resumable after clearance. This slice implemented the explicit `escalated -> in_progress` transition rule from `FR-OPS-17D` while still keeping automatic new-run creation limited to cases where no non-terminal run exists for the posting.
+- `BUILD-CLI-001` remains open and untouched.
