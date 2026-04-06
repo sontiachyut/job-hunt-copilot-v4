@@ -1,7 +1,9 @@
 from __future__ import annotations
 
+import json
 import plistlib
 import sqlite3
+import uuid
 from pathlib import Path
 from typing import Any
 
@@ -11,12 +13,15 @@ from .paths import ProjectPaths
 from .records import now_utc_iso
 from .runtime_pack import materialize_runtime_pack, write_text_atomic
 from .supervisor import (
+    AGENT_MODE_PAUSED,
+    AGENT_MODE_RUNNING,
     begin_replanning,
     pause_agent,
     read_agent_control_state,
     resume_agent,
     run_supervisor_cycle,
     stop_agent,
+    upsert_control_values,
 )
 
 
@@ -25,6 +30,15 @@ SUPERVISOR_HEARTBEAT_INTERVAL_SECONDS = 180
 SUPERVISOR_TRIGGER_TYPE = "launchd_heartbeat"
 SUPERVISOR_SCHEDULER_NAME = "launchd"
 SUPERVISOR_SLEEP_WAKE_DETECTION_METHOD = "pmset_log"
+CHAT_SESSION_EXIT_MODE_EXPLICIT_CLOSE = "explicit_close"
+CHAT_SESSION_EXIT_MODE_UNEXPECTED_EXIT = "unexpected_exit"
+CHAT_SESSION_EXIT_MODES = frozenset(
+    {
+        CHAT_SESSION_EXIT_MODE_EXPLICIT_CLOSE,
+        CHAT_SESSION_EXIT_MODE_UNEXPECTED_EXIT,
+    }
+)
+CHAT_INTERACTION_PAUSE_REASON = "expert_interaction"
 
 
 def connect_canonical_database(paths: ProjectPaths) -> sqlite3.Connection:
@@ -32,6 +46,13 @@ def connect_canonical_database(paths: ProjectPaths) -> sqlite3.Connection:
     connection.row_factory = sqlite3.Row
     connection.execute("PRAGMA foreign_keys = ON;")
     return connection
+
+
+def append_jsonl_record(path: Path, payload: dict[str, Any]) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    with path.open("a", encoding="utf-8") as handle:
+        handle.write(json.dumps(payload, sort_keys=False))
+        handle.write("\n")
 
 
 def render_supervisor_launchd_plist_payload(paths: ProjectPaths) -> dict[str, Any]:
@@ -142,6 +163,175 @@ def mutate_agent_control_state(
         },
         "command": command,
         "control_state": dict(snapshot.values),
+    }
+
+
+def begin_chat_operator_session(
+    *,
+    project_root: Path | str | None = None,
+    session_id: str | None = None,
+    started_at: str | None = None,
+) -> dict[str, Any]:
+    paths = ProjectPaths.from_root(project_root)
+    migration = initialize_database(paths.db_path)
+    current_timestamp = started_at or now_utc_iso()
+    effective_session_id = session_id or f"jhc-chat-{uuid.uuid4().hex[:10]}"
+
+    with connect_canonical_database(paths) as connection:
+        control_state = read_agent_control_state(connection, timestamp=current_timestamp)
+        if control_state.active_chat_session_id:
+            raise ValueError(
+                "Another jhc-chat session is already active: "
+                f"{control_state.active_chat_session_id}"
+            )
+
+        updates: dict[str, str | bool | None] = {
+            "active_chat_session_id": effective_session_id,
+            "chat_resume_on_close": False,
+            "last_chat_started_at": current_timestamp,
+        }
+        resume_on_close = False
+        if control_state.agent_enabled and control_state.agent_mode == AGENT_MODE_RUNNING:
+            resume_on_close = True
+            updates.update(
+                {
+                    "agent_mode": AGENT_MODE_PAUSED,
+                    "pause_reason": CHAT_INTERACTION_PAUSE_REASON,
+                    "paused_at": current_timestamp,
+                    "chat_resume_on_close": True,
+                }
+            )
+        snapshot = upsert_control_values(connection, updates, timestamp=current_timestamp)
+
+    append_jsonl_record(
+        paths.chat_sessions_log_path,
+        {
+            "event": "begin",
+            "session_id": effective_session_id,
+            "recorded_at": current_timestamp,
+            "resume_on_close": resume_on_close,
+            "agent_mode_after_begin": snapshot.agent_mode,
+            "pause_reason_after_begin": snapshot.pause_reason,
+        },
+    )
+    runtime_pack = materialize_runtime_pack(paths.project_root)
+    return {
+        "contract_version": CONTRACT_VERSION,
+        "produced_at": now_utc_iso(),
+        "project_root": str(paths.project_root),
+        "database": {
+            "db_path": str(migration.db_path),
+            "applied_migrations": migration.applied_migrations,
+            "user_version": migration.user_version,
+        },
+        "status": "started",
+        "session_id": effective_session_id,
+        "resume_on_close": resume_on_close,
+        "started_at": current_timestamp,
+        "chat_sessions_log_path": str(paths.chat_sessions_log_path),
+        "control_state": dict(snapshot.values),
+        "runtime_pack": runtime_pack,
+    }
+
+
+def end_chat_operator_session(
+    *,
+    project_root: Path | str | None = None,
+    session_id: str,
+    exit_mode: str,
+    ended_at: str | None = None,
+) -> dict[str, Any]:
+    if exit_mode not in CHAT_SESSION_EXIT_MODES:
+        raise ValueError(f"Unsupported chat exit mode: {exit_mode}")
+
+    paths = ProjectPaths.from_root(project_root)
+    migration = initialize_database(paths.db_path)
+    current_timestamp = ended_at or now_utc_iso()
+
+    with connect_canonical_database(paths) as connection:
+        control_state = read_agent_control_state(connection, timestamp=current_timestamp)
+        active_session_id = control_state.active_chat_session_id
+        if active_session_id and active_session_id != session_id:
+            append_jsonl_record(
+                paths.chat_sessions_log_path,
+                {
+                    "event": "end_ignored",
+                    "session_id": session_id,
+                    "active_session_id": active_session_id,
+                    "exit_mode": exit_mode,
+                    "recorded_at": current_timestamp,
+                },
+            )
+            runtime_pack = materialize_runtime_pack(paths.project_root)
+            return {
+                "contract_version": CONTRACT_VERSION,
+                "produced_at": now_utc_iso(),
+                "project_root": str(paths.project_root),
+                "database": {
+                    "db_path": str(migration.db_path),
+                    "applied_migrations": migration.applied_migrations,
+                    "user_version": migration.user_version,
+                },
+                "status": "ignored_session_mismatch",
+                "session_id": session_id,
+                "active_session_id": active_session_id,
+                "exit_mode": exit_mode,
+                "chat_sessions_log_path": str(paths.chat_sessions_log_path),
+                "control_state": dict(control_state.values),
+                "runtime_pack": runtime_pack,
+            }
+
+        should_resume = (
+            exit_mode == CHAT_SESSION_EXIT_MODE_EXPLICIT_CLOSE
+            and control_state.chat_resume_on_close
+            and control_state.agent_enabled
+            and control_state.agent_mode == AGENT_MODE_PAUSED
+            and control_state.pause_reason == CHAT_INTERACTION_PAUSE_REASON
+        )
+        updates: dict[str, str | bool | None] = {
+            "active_chat_session_id": None,
+            "chat_resume_on_close": False,
+            "last_chat_ended_at": current_timestamp,
+            "last_chat_exit_mode": exit_mode,
+        }
+        snapshot = upsert_control_values(connection, updates, timestamp=current_timestamp)
+        if should_resume:
+            snapshot = resume_agent(
+                connection,
+                manual_command="jhc-chat explicit_close",
+                timestamp=current_timestamp,
+            )
+
+    append_jsonl_record(
+        paths.chat_sessions_log_path,
+        {
+            "event": "end",
+            "session_id": session_id,
+            "exit_mode": exit_mode,
+            "recorded_at": current_timestamp,
+            "resumed_agent": should_resume,
+            "agent_mode_after_end": snapshot.agent_mode,
+            "pause_reason_after_end": snapshot.pause_reason,
+        },
+    )
+    runtime_pack = materialize_runtime_pack(paths.project_root)
+    return {
+        "contract_version": CONTRACT_VERSION,
+        "produced_at": now_utc_iso(),
+        "project_root": str(paths.project_root),
+        "database": {
+            "db_path": str(migration.db_path),
+            "applied_migrations": migration.applied_migrations,
+            "user_version": migration.user_version,
+        },
+        "status": "ended",
+        "session_id": session_id,
+        "exit_mode": exit_mode,
+        "resumed_agent": should_resume,
+        "ended_at": current_timestamp,
+        "chat_sessions_log_path": str(paths.chat_sessions_log_path),
+        "control_state": dict(snapshot.values),
+        "runtime_pack": runtime_pack,
     }
 
 

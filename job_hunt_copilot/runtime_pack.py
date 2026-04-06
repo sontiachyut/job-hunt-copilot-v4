@@ -308,7 +308,7 @@ def build_policies_payload(generated_at: str) -> dict[str, Any]:
         "override_semantics": [
             "Expert review decisions and override events persist explicit lineage in canonical state.",
             "Future control or object-state changes should record why the override happened rather than silently mutating history.",
-            "Direct expert-facing chat wiring lands in a later BA-03 slice, but canonical persistence already exists.",
+            "The direct expert-facing `jhc-chat` entrypoint now exists; deeper review and control behaviors still build on the same canonical persistence.",
         ],
     }
 
@@ -375,8 +375,8 @@ def build_service_goals_payload(generated_at: str) -> dict[str, Any]:
         },
         "current_build_note": (
             "The local launchd plist plus `jhc-agent-start`, `jhc-agent-stop`, and "
-            "`jhc-agent-cycle` now exist in the repo; `jhc-chat` remains the next "
-            "operator-entrypoint slice."
+            "`jhc-agent-cycle` now exist in the repo, and `jhc-chat` now applies "
+            "canonical session begin/end wiring with pause-on-chat control-state handling."
         ),
     }
 
@@ -532,7 +532,7 @@ def render_initial_progress_log(
     local_day = datetime.now().astimezone().date().isoformat()
     blockers = [
         "The current registered action catalog is intentionally narrow; unsupported downstream stages escalate instead of improvising behavior.",
-        "The direct `jhc-chat` operator wrapper is still pending; launchd plus start/stop/cycle entrypoints now exist locally.",
+        "Unexpected `jhc-chat` exit currently preserves the expert-interaction pause until a later idle-timeout helper or an explicit resume clears it.",
     ]
     return "\n".join(
         [
@@ -633,9 +633,9 @@ def build_initial_ops_plan(runtime_snapshot: dict[str, Any], generated_at: str) 
         ],
         "maintenance_backlog": [
             {
-                "title": "Add the direct `jhc-chat` operator wrapper",
-                "reason": "Launchd plus start/stop/cycle wiring now exists; the expert-facing Codex chat entrypoint is the next BA-03 slice.",
-                "blocked_by": "BA-03-S3",
+                "title": "Add idle-timeout expert-interaction auto-resume",
+                "reason": "Unexpected `jhc-chat` exit is recorded canonically, but automatic timeout-based resume is still a later helper slice.",
+                "blocked_by": "future_chat_runtime_followup",
             },
         ],
         "weak_areas": [
@@ -644,8 +644,8 @@ def build_initial_ops_plan(runtime_snapshot: dict[str, Any], generated_at: str) 
                 "note": "Later pipeline stages beyond lead_handoff are not yet registered; unsupported needs escalate.",
             },
             {
-                "area": "chat_operator_entrypoint",
-                "note": "Launchd plus start/stop/cycle wiring exists, but the direct expert chat entrypoint is still pending.",
+                "area": "chat_idle_timeout_recovery",
+                "note": "Explicit-close resume is implemented, but unexpected chat exit still stays paused until explicit resume or a later idle-timeout helper clears it.",
             },
         ],
         "replan": {

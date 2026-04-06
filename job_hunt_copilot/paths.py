@@ -138,6 +138,10 @@ class ProjectPaths:
         return self.ops_logs_dir / "supervisor.stderr.log"
 
     @property
+    def chat_sessions_log_path(self) -> Path:
+        return self.ops_logs_dir / "chat-sessions.jsonl"
+
+    @property
     def build_runtime_pack_script_path(self) -> Path:
         return self.ops_scripts_dir / "build_runtime_pack.py"
 

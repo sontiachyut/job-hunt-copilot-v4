@@ -142,10 +142,201 @@ def test_run_supervisor_cycle_script_records_no_work_launchd_cycle(tmp_path):
     }
 
 
+def test_chat_session_script_pauses_running_agent_and_explicit_close_resumes_it(tmp_path):
+    project_root = tmp_path / "repo"
+    project_root.mkdir()
+    create_minimal_project(project_root)
+
+    run_script(
+        "scripts/ops/control_agent.py",
+        "start",
+        "--project-root",
+        str(project_root),
+        "--manual-command",
+        "jhc-agent-start",
+    )
+    begin_report = json.loads(
+        run_script(
+            "scripts/ops/chat_session.py",
+            "begin",
+            "--project-root",
+            str(project_root),
+        ).stdout
+    )
+    end_report = json.loads(
+        run_script(
+            "scripts/ops/chat_session.py",
+            "end",
+            "--project-root",
+            str(project_root),
+            "--session-id",
+            begin_report["session_id"],
+            "--exit-mode",
+            "explicit_close",
+        ).stdout
+    )
+
+    connection = connect_database(project_root / "job_hunt_copilot.db")
+    control_rows = connection.execute(
+        """
+        SELECT control_key, control_value
+        FROM agent_control_state
+        WHERE control_key IN (
+            'active_chat_session_id',
+            'agent_enabled',
+            'agent_mode',
+            'chat_resume_on_close',
+            'last_chat_ended_at',
+            'last_chat_exit_mode',
+            'last_chat_started_at',
+            'pause_reason',
+            'paused_at'
+        )
+        ORDER BY control_key
+        """
+    ).fetchall()
+    connection.close()
+    log_lines = (project_root / "ops" / "logs" / "chat-sessions.jsonl").read_text(encoding="utf-8").splitlines()
+
+    assert begin_report["status"] == "started"
+    assert begin_report["resume_on_close"] is True
+    assert begin_report["control_state"]["agent_mode"] == "paused"
+    assert begin_report["control_state"]["pause_reason"] == "expert_interaction"
+    assert end_report["status"] == "ended"
+    assert end_report["resumed_agent"] is True
+    assert end_report["control_state"]["agent_mode"] == "running"
+
+    assert dict(control_rows) == {
+        "active_chat_session_id": "",
+        "agent_enabled": "true",
+        "agent_mode": "running",
+        "chat_resume_on_close": "false",
+        "last_chat_ended_at": end_report["ended_at"],
+        "last_chat_exit_mode": "explicit_close",
+        "last_chat_started_at": begin_report["started_at"],
+        "pause_reason": "",
+        "paused_at": "",
+    }
+    assert len(log_lines) == 2
+    assert json.loads(log_lines[0])["event"] == "begin"
+    assert json.loads(log_lines[1])["event"] == "end"
+
+
+def test_chat_session_unexpected_exit_keeps_expert_interaction_pause_active(tmp_path):
+    project_root = tmp_path / "repo"
+    project_root.mkdir()
+    create_minimal_project(project_root)
+
+    run_script(
+        "scripts/ops/control_agent.py",
+        "start",
+        "--project-root",
+        str(project_root),
+        "--manual-command",
+        "jhc-agent-start",
+    )
+    begin_report = json.loads(
+        run_script(
+            "scripts/ops/chat_session.py",
+            "begin",
+            "--project-root",
+            str(project_root),
+        ).stdout
+    )
+    end_report = json.loads(
+        run_script(
+            "scripts/ops/chat_session.py",
+            "end",
+            "--project-root",
+            str(project_root),
+            "--session-id",
+            begin_report["session_id"],
+            "--exit-mode",
+            "unexpected_exit",
+        ).stdout
+    )
+
+    connection = connect_database(project_root / "job_hunt_copilot.db")
+    control_rows = connection.execute(
+        """
+        SELECT control_key, control_value
+        FROM agent_control_state
+        WHERE control_key IN (
+            'active_chat_session_id',
+            'agent_enabled',
+            'agent_mode',
+            'chat_resume_on_close',
+            'last_chat_exit_mode',
+            'pause_reason'
+        )
+        ORDER BY control_key
+        """
+    ).fetchall()
+    connection.close()
+
+    assert end_report["status"] == "ended"
+    assert end_report["resumed_agent"] is False
+    assert end_report["control_state"]["agent_mode"] == "paused"
+    assert end_report["control_state"]["pause_reason"] == "expert_interaction"
+    assert dict(control_rows) == {
+        "active_chat_session_id": "",
+        "agent_enabled": "true",
+        "agent_mode": "paused",
+        "chat_resume_on_close": "false",
+        "last_chat_exit_mode": "unexpected_exit",
+        "pause_reason": "expert_interaction",
+    }
+
+
+def test_chat_session_explicit_close_preserves_preexisting_non_chat_pause(tmp_path):
+    project_root = tmp_path / "repo"
+    project_root.mkdir()
+    create_minimal_project(project_root)
+
+    run_script(
+        "scripts/ops/control_agent.py",
+        "pause",
+        "--project-root",
+        str(project_root),
+        "--reason",
+        "manual_triage",
+        "--manual-command",
+        "pause",
+    )
+    begin_report = json.loads(
+        run_script(
+            "scripts/ops/chat_session.py",
+            "begin",
+            "--project-root",
+            str(project_root),
+        ).stdout
+    )
+    end_report = json.loads(
+        run_script(
+            "scripts/ops/chat_session.py",
+            "end",
+            "--project-root",
+            str(project_root),
+            "--session-id",
+            begin_report["session_id"],
+            "--exit-mode",
+            "explicit_close",
+        ).stdout
+    )
+
+    assert begin_report["resume_on_close"] is False
+    assert begin_report["control_state"]["agent_mode"] == "paused"
+    assert begin_report["control_state"]["pause_reason"] == "manual_triage"
+    assert end_report["resumed_agent"] is False
+    assert end_report["control_state"]["agent_mode"] == "paused"
+    assert end_report["control_state"]["pause_reason"] == "manual_triage"
+
+
 def test_repo_agent_wrappers_use_expected_repo_local_wiring():
     start_wrapper = (REPO_ROOT / "bin" / "jhc-agent-start").read_text(encoding="utf-8")
     stop_wrapper = (REPO_ROOT / "bin" / "jhc-agent-stop").read_text(encoding="utf-8")
     cycle_wrapper = (REPO_ROOT / "bin" / "jhc-agent-cycle").read_text(encoding="utf-8")
+    chat_wrapper = (REPO_ROOT / "bin" / "jhc-chat").read_text(encoding="utf-8")
 
     assert "scripts/ops/build_runtime_pack.py" in start_wrapper
     assert "scripts/ops/materialize_supervisor_plist.py" in start_wrapper
@@ -162,3 +353,10 @@ def test_repo_agent_wrappers_use_expected_repo_local_wiring():
 
     assert "scripts/ops/run_supervisor_cycle.py" in cycle_wrapper
     assert '--project-root "$ROOT"' in cycle_wrapper
+
+    assert "scripts/ops/chat_session.py\" begin" in chat_wrapper
+    assert "scripts/ops/chat_session.py\" end" in chat_wrapper
+    assert 'PROMPT_FILE="$ROOT/ops/agent/chat-bootstrap.md"' in chat_wrapper
+    assert "--ephemeral" in chat_wrapper
+    assert "--sandbox workspace-write" in chat_wrapper
+    assert "--ask-for-approval never" in chat_wrapper

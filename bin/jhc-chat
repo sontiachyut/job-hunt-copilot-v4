@@ -1,0 +1,39 @@
+#!/bin/zsh
+set -euo pipefail
+
+ROOT="$(cd "$(dirname "$0")/.." && pwd)"
+PROMPT_FILE="$ROOT/ops/agent/chat-bootstrap.md"
+PYTHON_BIN="${JHC_PYTHON_BIN:-}"
+if [[ -z "$PYTHON_BIN" && -x /opt/homebrew/opt/python@3.11/libexec/bin/python3 ]]; then
+  PYTHON_BIN="/opt/homebrew/opt/python@3.11/libexec/bin/python3"
+fi
+if [[ -z "$PYTHON_BIN" && -x /opt/homebrew/bin/python3 ]]; then
+  PYTHON_BIN="/opt/homebrew/bin/python3"
+fi
+if [[ -z "$PYTHON_BIN" ]]; then
+  PYTHON_BIN="$(command -v python3 || true)"
+fi
+CODEX_BIN="${JHC_CODEX_BIN:-$(command -v codex || true)}"
+if [[ -z "$CODEX_BIN" && -x /opt/homebrew/bin/codex ]]; then
+  CODEX_BIN="/opt/homebrew/bin/codex"
+fi
+if [[ -z "$PYTHON_BIN" || -z "$CODEX_BIN" ]]; then
+  echo "Required python3/codex binaries not found for jhc-chat" >&2
+  exit 127
+fi
+
+SESSION_JSON="$("$PYTHON_BIN" "$ROOT/scripts/ops/chat_session.py" begin --project-root "$ROOT")"
+SESSION_ID="$(printf '%s' "$SESSION_JSON" | "$PYTHON_BIN" -c 'import json,sys; print(json.load(sys.stdin)["session_id"])')"
+
+cleanup() {
+  local exit_code="$1"
+  local mode="unexpected_exit"
+  if [[ "$exit_code" -eq 0 ]]; then
+    mode="explicit_close"
+  fi
+  "$PYTHON_BIN" "$ROOT/scripts/ops/chat_session.py" end --project-root "$ROOT" --session-id "$SESSION_ID" --exit-mode "$mode" >/dev/null || true
+}
+
+trap 'cleanup $?' EXIT
+
+"$CODEX_BIN" --ephemeral --sandbox workspace-write --ask-for-approval never -C "$ROOT" "$(cat "$PROMPT_FILE")"

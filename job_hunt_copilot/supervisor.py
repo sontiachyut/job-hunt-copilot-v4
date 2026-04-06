@@ -162,6 +162,10 @@ CONTROL_DEFAULTS = MappingProxyType(
         "last_seen_wake_event_at": "",
         "last_sleep_wake_event_ref": "",
         "active_chat_session_id": "",
+        "chat_resume_on_close": "false",
+        "last_chat_started_at": "",
+        "last_chat_ended_at": "",
+        "last_chat_exit_mode": "",
     }
 )
 
@@ -356,6 +360,22 @@ class ControlStateSnapshot:
     @property
     def active_chat_session_id(self) -> str | None:
         return _optional_text(self.values["active_chat_session_id"])
+
+    @property
+    def chat_resume_on_close(self) -> bool:
+        return self.values["chat_resume_on_close"] == "true"
+
+    @property
+    def last_chat_started_at(self) -> str | None:
+        return _optional_text(self.values["last_chat_started_at"])
+
+    @property
+    def last_chat_ended_at(self) -> str | None:
+        return _optional_text(self.values["last_chat_ended_at"])
+
+    @property
+    def last_chat_exit_mode(self) -> str | None:
+        return _optional_text(self.values["last_chat_exit_mode"])
 
     @property
     def allows_new_pipeline_progression(self) -> bool:

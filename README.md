@@ -36,10 +36,10 @@ What already exists:
 - a bounded supervisor cycle executor with incident-aware work selection, cycle snapshots, lease-guarded single-flight execution, and auto-pause or escalation handling for unsupported progression
 - persisted expert review packets, expert review decisions, and override audit events with filesystem review-packet artifacts under `ops/review-packets/`
 - a generated product-side runtime pack under `ops/agent/` with identity, policy, action-catalog, service-goal, escalation, progress-log, ops-plan, and bootstrap prompt surfaces
-- repo-local supervisor launchd wiring under `ops/launchd/` plus `bin/jhc-agent-start`, `bin/jhc-agent-stop`, and `bin/jhc-agent-cycle` for local heartbeat control
+- repo-local supervisor launchd wiring under `ops/launchd/` plus `bin/jhc-agent-start`, `bin/jhc-agent-stop`, `bin/jhc-agent-cycle`, and `bin/jhc-chat` for local heartbeat and operator control
 
 What is still in progress:
-- the downstream runtime components plus the direct `jhc-chat` operator entrypoint that will sit on top of the generated runtime pack and local supervisor wiring
+- the downstream runtime components plus deeper chat-driven review, control-routing, and idle-timeout automation on top of the now-landed local operator entrypoint
 
 ## System Overview
 

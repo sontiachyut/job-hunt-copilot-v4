@@ -18,9 +18,10 @@ It should stay aligned with:
 - Explicit implementation inference: the initial action catalog intentionally stays narrow to posting-run bootstrap, durable lead-handoff checkpointing, and unresolved-incident escalation so unsupported later-stage work becomes a canonical incident instead of improvised behavior.
 - `BA-02-S3` is complete: review-worthy terminal runs can now emit `review_packet.json` plus `review_packet.md`, persist `expert_review_packets` and `expert_review_decisions`, register those artifacts in `artifact_records`, and record expert override lineage through canonical `override_events`.
 - `BA-03-S1` is complete: bootstrap and `scripts/ops/build_runtime_pack.py` now render the product-side runtime identity, policies, action catalog, service goals, escalation policy, progress-log scaffold, ops-plan scaffold, and chat or supervisor bootstrap prompts under `ops/agent/`.
-- `BA-03-S2` is complete in code: the repo now has product-side plist rendering, canonical control-state CLI helpers, `scripts/ops/run_supervisor_cycle.py`, and repo-local `jhc-agent-start`, `jhc-agent-stop`, and `jhc-agent-cycle` wrappers for the local supervisor heartbeat.
+- `BA-03` is now complete in code overall: the repo has product-side plist rendering, canonical control-state CLI helpers, `scripts/ops/run_supervisor_cycle.py`, repo-local `jhc-agent-start`, `jhc-agent-stop`, `jhc-agent-cycle`, and the direct `jhc-chat` operator wrapper for the local supervisor heartbeat and expert-entry surface.
 - Explicit implementation note: failed startup no longer leaves dishonest control state behind; `jhc-agent-start` now rolls canonical state back to `stopped` if `launchctl bootstrap` fails before the job is actually loaded.
 - Explicit implementation note: the generated `ops/agent/` files remain runtime-local artifacts under `.gitignore`, so the repo tracks the materialization code and tests rather than checking in those mutable rendered outputs.
+- Explicit implementation note: `jhc-chat` now records begin/end metadata plus `active_chat_session_id` in canonical control state, pauses autonomous work immediately on open, resumes on clean explicit close when chat itself caused the pause, and intentionally keeps unexpected-exit pauses active until later explicit resume or future idle-timeout automation exists.
 - Known operational blocker: live `launchctl bootstrap gui/$UID ...` still returns `Input/output error` in this sandboxed session, and the system log needed for richer launchd diagnostics is itself blocked by sandbox restrictions.
 - Known operational risk: unattended build-lead execution needs a follow-up validation pass for the `codex exec` CLI compatibility fix already present in the worktree.
 
@@ -88,12 +89,12 @@ It should stay aligned with:
 
 ## Next Slice
 
-- Current focus: `BA-03-S3` `jhc-chat` operator bootstrap.
-- Why next: the runtime pack plus launchd/start/stop/cycle entrypoints now exist, so the next missing acceptance surface is the direct expert chat wrapper that reads persisted state, opens the project-specific Codex operator, and pauses background work through canonical control-state wiring.
+- Current focus: `BA-04-S1` paste inbox and manual capture bundle persistence.
+- Why next: the canonical runtime platform is now in place, so the next missing product path is the first lead-acquisition slice that turns `paste/paste.txt` or equivalent manual capture bundles into canonical lead workspaces for downstream split and review.
 - Done when:
-  - repo-local `bin/jhc-chat` exists and launches the project-rooted Codex operator with `ops/agent/chat-bootstrap.md`
-  - chat session begin or end bookkeeping persists active-session state plus clean or unexpected exit history through canonical control state
-  - opening and closing `jhc-chat` wires pause-on-chat plus safe resume behavior without pretending later idle-timeout or deeper operator features already exist
+  - a bounded manual-ingestion entrypoint can read `paste/paste.txt` or equivalent capture-bundle input and persist a canonical lead workspace
+  - accepted manual leads materialize `capture-bundle.json` plus human-readable `raw/source.md` under that lead workspace
+  - the slice leaves the manual path ready for deterministic split/review follow-on work without needing the browser extension first
 
 ## Working Rules
 

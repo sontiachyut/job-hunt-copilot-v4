@@ -263,3 +263,32 @@ Use this file as an append-only implementation log for the build agent.
 ### Notes
 - Explicit blocker recorded as `OPS-LAUNCHD-001`: successful host-side `launchctl bootstrap` still needs follow-up validation outside the current sandboxed session because deeper launchd logging is sandbox-blocked here.
 - `BUILD-CLI-001` remains open and untouched.
+
+### Session
+- Date: 2026-04-06 15:06:08 MST
+- Slice: BA-03-S3 `jhc-chat` operator bootstrap
+- Goal: Add the direct repo-local `jhc-chat` entrypoint with canonical chat session begin/end bookkeeping, pause-on-chat control-state wiring, and clean-close safe resume behavior.
+
+### Work Done
+- Extended `job_hunt_copilot.supervisor` control defaults and `job_hunt_copilot.local_runtime` so product-side chat sessions now persist `active_chat_session_id`, last chat begin/end metadata, and a clean-close auto-resume gate in canonical control state.
+- Added `scripts/ops/chat_session.py` and repo-local `bin/jhc-chat`, wiring the wrapper to record session begin before launching Codex with `ops/agent/chat-bootstrap.md`, then record either `explicit_close` or `unexpected_exit` during cleanup.
+- Implemented pause-on-chat semantics so opening `jhc-chat` immediately pauses a running supervisor with `pause_reason = expert_interaction`, while explicit close resumes only when chat itself caused that pause and pre-existing non-chat pauses remain untouched.
+- Added `ops/logs/chat-sessions.jsonl` event logging, updated runtime-pack messaging from “chat pending” to “chat implemented with later idle-timeout follow-up”, and refreshed the repo-facing docs so BA-03 is represented honestly.
+- Updated the build board and implementation plan to mark BA-03 complete, move the active focus to BA-04-S1, and keep the product launchd validation blocker explicit.
+
+### Validation
+- Ran `python3.11 -m pytest tests/test_local_runtime.py` and confirmed all 7 local-runtime tests passed, including the new chat session lifecycle coverage.
+- Ran `python3.11 -m pytest tests/test_bootstrap.py tests/test_schema.py tests/test_artifacts.py tests/test_supervisor.py tests/test_runtime_pack.py tests/test_local_runtime.py` and confirmed all 31 targeted regression tests passed.
+- Ran `env JHC_CODEX_BIN=/usr/bin/true bin/jhc-chat` on the real repo to exercise the shell wrapper, session begin/end scripts, and cleanup path without opening an interactive Codex UI.
+- Ran `python3.11 scripts/ops/control_agent.py status --project-root /Users/achyutaramsonti/Projects/job-hunt-copilot-v4` after the wrapper smoke and confirmed `agent_mode = stopped`, `active_chat_session_id = ""`, and `last_chat_exit_mode = explicit_close`.
+
+### Result
+- `done`
+
+### Next
+- Implement `BA-04-S1`: add the bounded paste-inbox and manual capture bundle persistence path that writes canonical lead workspaces with `capture-bundle.json` and `raw/source.md`.
+
+### Notes
+- Explicit follow-up remains: unexpected `jhc-chat` exit is now persisted canonically but intentionally stays paused until a later idle-timeout helper or an explicit resume clears it.
+- `OPS-LAUNCHD-001` remains open for host-side launchd load validation outside this sandboxed session.
+- `BUILD-CLI-001` remains open and untouched.
