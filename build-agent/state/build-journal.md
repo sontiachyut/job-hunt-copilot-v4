@@ -292,3 +292,33 @@ Use this file as an append-only implementation log for the build agent.
 - Explicit follow-up remains: unexpected `jhc-chat` exit is now persisted canonically but intentionally stays paused until a later idle-timeout helper or an explicit resume clears it.
 - `OPS-LAUNCHD-001` remains open for host-side launchd load validation outside this sandboxed session.
 - `BUILD-CLI-001` remains open and untouched.
+
+### Session
+- Date: 2026-04-06 15:28:43 MST
+- Slice: BA-04-S1 paste inbox and manual capture bundle persistence
+- Goal: Land the bounded manual-ingestion entrypoint that turns `paste/paste.txt` or browser-style manual capture bundles into canonical lead workspaces with preserved raw evidence.
+
+### Work Done
+- Added `job_hunt_copilot.linkedin_scraping` with manual submission validation, exact-copy paste fallback ingestion, browser-style capture-bundle ingestion, deterministic manual-source assembly, canonical `linkedin_leads` shell-row creation, and `lead_raw_source` artifact registration.
+- Extended `job_hunt_copilot.paths` with explicit helpers for lead raw directories, `raw/source.md`, `capture-bundle.json`, and future lead history paths so later manual and Gmail slices can reuse the same workspace conventions.
+- Added `scripts/linkedin_scraping/ingest_manual_capture.py` plus repo-local `bin/jhc-linkedin-ingest` as the current local upstream receiver entrypoint for `paste` and `capture-bundle` ingestion modes.
+- Added `tests/test_linkedin_scraping.py` to cover paste raw-source copying, idempotent repeated paste ingestion, selected-text preservation inside capture artifacts, and the selected-text-versus-tray-review submission-path default.
+- Updated `README.md` and `docs/ARCHITECTURE.md` so the repo-facing surfaces now reflect that manual lead ingestion exists while split/review and downstream materialization still remain future slices.
+- Updated the build board and implementation plan to mark `BA-04-S1` complete, advance the active focus to `BA-04-S2`, and record the explicit pre-split `split_review_status = not_started` inference.
+
+### Validation
+- Ran `python3.11 -m pytest tests/test_linkedin_scraping.py` and confirmed all 4 ingestion tests passed.
+- Ran `python3.11 -m pytest tests/test_bootstrap.py tests/test_artifacts.py tests/test_linkedin_scraping.py` and confirmed all 11 targeted regression tests passed.
+- Ran full `python3.11 -m pytest` and confirmed all 35 tests passed across bootstrap, schema, artifacts, local runtime, runtime pack, supervisor, and the new ingestion slice.
+- Ran `bin/jhc-linkedin-ingest --help` and confirmed the repo-local wrapper resolves the new manual-ingestion CLI correctly after adding the same repo-root import bootstrap used by the existing `scripts/ops/` entrypoints.
+
+### Result
+- `done`
+
+### Next
+- Implement `BA-04-S2`: deterministic rule-based split and review over canonical manual `raw/source.md`, with `source-split.yaml`, `source-split-review.yaml`, blocked-when-ambiguous `lead-manifest.yaml`, and `artifact_records` registration for those artifacts.
+
+### Notes
+- Explicit implementation inference: the spec names post-split review states but does not define a canonical pre-split placeholder, so this slice uses `split_review_status = not_started` for newly captured manual leads until `BA-04-S2` publishes the first deterministic split result.
+- Paste fallback now converges into the same persisted `capture-bundle.json` contract as browser-style manual capture, but it still copies the inbox bytes unchanged into canonical `raw/source.md` per the acceptance requirement.
+- `OPS-LAUNCHD-001` and `BUILD-CLI-001` remain open and untouched because this slice stayed within ingestion ownership.

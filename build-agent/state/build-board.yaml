@@ -16,6 +16,7 @@ global_status:
     - Shared artifact publication utilities now cover YAML/JSON contract envelopes, canonical workspace paths, and `artifact_records` registration for lead, posting, contact, and message roots.
     - BA-02 is now complete: the repo has canonical supervisor-state helpers, a bounded heartbeat executor, terminal-run review packet artifacts, expert review decisions, and override-event lineage persisted in canonical state.
     - BA-03 is now complete in code: runtime-pack materialization, local launchd/start-stop-cycle helpers, and the direct `jhc-chat` operator entrypoint now exist for the macOS runtime surface.
+    - BA-04 is now in progress: the repo has a bounded `linkedin_scraping` ingestion path that reads `paste/paste.txt` or browser-style capture bundles, creates canonical lead workspaces, persists `capture-bundle.json`, copies or assembles `raw/source.md`, and registers `lead_raw_source` metadata.
     - "`jhc-chat` now records canonical begin/end state, pauses autonomous work on open, resumes on clean explicit close when chat caused the pause, and leaves unexpected-exit pauses intact for later explicit resume or future idle-timeout handling."
     - Host-side `launchctl bootstrap` success still needs follow-up validation outside the current sandboxed session even though the plist, wrapper wiring, and failed-start rollback all validate locally.
   execution_principles:
@@ -315,7 +316,7 @@ epics:
 
   - id: BA-04
     name: Manual capture path
-    status: pending
+    status: in_progress
     owner_role: ingestion-engineer
     phase: P2
     dependencies:
@@ -329,15 +330,27 @@ epics:
       - manual capture bundles and paste fallback persist canonical lead raw sources
       - split metadata, split review, and lead manifests are published for manual leads
       - valid manual leads materialize canonical postings and traceable contact link records
+    completed_notes:
+      - "`BA-04-S1` landed the shared manual lead-workspace conventions, including the repo-local `jhc-linkedin-ingest` entrypoint, `capture-bundle.json`, canonical `raw/source.md`, and `lead_raw_source` artifact registration."
+      - "Captured manual leads now persist a canonical `linkedin_leads` shell row immediately with `lead_status = captured` and the explicit pre-split placeholder `split_review_status = not_started` until `BA-04-S2` publishes deterministic split artifacts."
     near_term_slices:
       - id: BA-04-S1
         name: Paste inbox and manual capture bundle persistence
         owner_role: ingestion-engineer
-        status: pending
+        status: completed
         deliverables:
           - "`paste/paste.txt` bootstrap and paste-ingestion entrypoint"
           - capture-bundle schema handling for selected-text and full-page submissions
           - canonical manual lead workspace creation with `raw/source.md`
+        completed_notes:
+          - Added `job_hunt_copilot.linkedin_scraping` plus repo-local `bin/jhc-linkedin-ingest` and `scripts/linkedin_scraping/ingest_manual_capture.py` so the local upstream receiver can ingest `paste/paste.txt` or browser-style capture-bundle JSON into a canonical lead workspace.
+          - Manual-capture bundles now preserve selected-text versus tray-review submission-path metadata in `capture-bundle.json`, while paste fallback still copies the inbox bytes unchanged into `linkedin-scraping/runtime/leads/<company>/<role>/<lead_id>/raw/source.md`.
+          - Accepted manual leads now create an immediate canonical `linkedin_leads` row, persist `capture-bundle.json`, and register `lead_raw_source` in `artifact_records` without stepping into split/review or downstream posting creation yet.
+        validation:
+          - "`python3.11 -m pytest tests/test_linkedin_scraping.py`"
+          - "`python3.11 -m pytest tests/test_bootstrap.py tests/test_artifacts.py tests/test_linkedin_scraping.py`"
+          - "`python3.11 -m pytest`"
+          - "`bin/jhc-linkedin-ingest --help`"
       - id: BA-04-S2
         name: Rule-based split and review pipeline
         owner_role: ingestion-engineer
@@ -668,13 +681,13 @@ epics:
 
 current_focus:
   epic_id: BA-04
-  slice_id: BA-04-S1
+  slice_id: BA-04-S2
   owner_role: ingestion-engineer
-  reason: The canonical runtime platform is now in place, so the next highest-value dependency is the first lead-acquisition slice that turns the paste inbox and manual capture bundles into canonical lead workspaces.
+  reason: Manual lead workspaces now exist, so the next highest-value dependency is the deterministic split/review slice that turns canonical `raw/source.md` into reviewable derived artifacts and a blocked-or-ready handoff manifest.
   exit_criteria:
-    - a bounded manual-ingestion entrypoint can read `paste/paste.txt` or an equivalent capture bundle input and persist a canonical lead workspace
-    - accepted manual leads materialize `capture-bundle.json` plus human-readable `raw/source.md` under the lead workspace
-    - the slice leaves the manual path ready for later deterministic split and review work without requiring the browser extension first
+    - deterministic rule-based splitting can derive `post.md`, `jd.md`, and `poster-profile.md` from canonical `raw/source.md` when evidence exists
+    - the lead workspace publishes `source-split.yaml`, `source-split-review.yaml`, and `lead-manifest.yaml` with blocked-when-ambiguous behavior
+    - split and manifest artifacts are queryable from `artifact_records` without mutating the canonical raw source
 
 focus_order:
   - epic_id: BA-04

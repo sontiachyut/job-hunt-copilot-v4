@@ -93,9 +93,11 @@ The product runtime now has an explicit bootstrap layer under `job_hunt_copilot/
 - canonical chat-session bookkeeping that records active-session state, pauses autonomous work on chat open, and resumes on clean explicit close while preserving non-chat pause conditions
 - bootstrap checks for assets and local secret materialization
 - repo-local runtime directory creation for downstream components
+- manual LinkedIn intake helpers that ingest `paste/paste.txt` or browser-style capture bundles into canonical lead workspaces, persist `capture-bundle.json`, and register the lead raw-source artifact in canonical state
 
 Important artifact families:
 - `lead-manifest.yaml`
+- `capture-bundle.json`
 - `meta.yaml`
 - `people_search_result.json`
 - `recipient_profile.json`

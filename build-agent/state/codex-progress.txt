@@ -90,3 +90,11 @@ Suggested format per session:
 - key files changed: job_hunt_copilot/local_runtime.py; job_hunt_copilot/paths.py; job_hunt_copilot/runtime_pack.py; job_hunt_copilot/supervisor.py; scripts/ops/chat_session.py; bin/jhc-chat; tests/test_local_runtime.py; README.md; docs/ARCHITECTURE.md; build-agent/state/build-board.yaml; build-agent/state/build-journal.md; build-agent/state/codex-progress.txt; build-agent/state/IMPLEMENTATION_PLAN.md
 - validation summary: `python3.11 -m pytest tests/test_local_runtime.py` passed (7 tests); `python3.11 -m pytest tests/test_bootstrap.py tests/test_schema.py tests/test_artifacts.py tests/test_supervisor.py tests/test_runtime_pack.py tests/test_local_runtime.py` passed (31 tests); real `env JHC_CODEX_BIN=/usr/bin/true bin/jhc-chat` wrapper smoke passed; follow-up `python3.11 scripts/ops/control_agent.py status --project-root /Users/achyutaramsonti/Projects/job-hunt-copilot-v4` confirmed `agent_mode = stopped`, `active_chat_session_id = \"\"`, and `last_chat_exit_mode = explicit_close`
 - next recommended slice: BA-04-S1 paste inbox and manual capture bundle persistence, with `OPS-LAUNCHD-001` still open for host-side launchd load validation
+
+- 2026-04-06 15:28:43 MST
+- role owner: ingestion-engineer
+- slice attempted: BA-04-S1 paste inbox and manual capture bundle persistence
+- result: done
+- key files changed: job_hunt_copilot/linkedin_scraping.py; job_hunt_copilot/paths.py; scripts/linkedin_scraping/ingest_manual_capture.py; bin/jhc-linkedin-ingest; tests/test_linkedin_scraping.py; README.md; docs/ARCHITECTURE.md; build-agent/state/build-board.yaml; build-agent/state/build-journal.md; build-agent/state/codex-progress.txt; build-agent/state/IMPLEMENTATION_PLAN.md
+- validation summary: `python3.11 -m pytest tests/test_linkedin_scraping.py` passed (4 tests); `python3.11 -m pytest tests/test_bootstrap.py tests/test_artifacts.py tests/test_linkedin_scraping.py` passed (11 tests); full `python3.11 -m pytest` passed (35 tests); `bin/jhc-linkedin-ingest --help` passed after fixing the script-path import bootstrap; captured leads now persist `lead_status = captured`, `split_review_status = not_started`, `capture-bundle.json`, and registered `lead_raw_source` metadata without stepping into split/review yet
+- next recommended slice: BA-04-S2 rule-based split and review pipeline

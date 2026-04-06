@@ -203,6 +203,18 @@ class ProjectPaths:
             / lead_id
         )
 
+    def lead_raw_dir(self, company_name: str, role_title: str, lead_id: str) -> Path:
+        return self.lead_workspace_dir(company_name, role_title, lead_id) / "raw"
+
+    def lead_raw_source_path(self, company_name: str, role_title: str, lead_id: str) -> Path:
+        return self.lead_raw_dir(company_name, role_title, lead_id) / "source.md"
+
+    def lead_capture_bundle_path(self, company_name: str, role_title: str, lead_id: str) -> Path:
+        return self.lead_workspace_dir(company_name, role_title, lead_id) / "capture-bundle.json"
+
+    def lead_history_dir(self, company_name: str, role_title: str, lead_id: str) -> Path:
+        return self.lead_workspace_dir(company_name, role_title, lead_id) / "history"
+
     def application_workspace_dir(self, company_name: str, role_title: str) -> Path:
         return (
             self.project_root
