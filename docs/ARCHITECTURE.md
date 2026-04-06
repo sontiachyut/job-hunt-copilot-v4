@@ -87,6 +87,7 @@ The product runtime now has an explicit bootstrap layer under `job_hunt_copilot/
 - shared artifact contract writers and `artifact_records` registration helpers
 - supervisor control-state helpers for `agent_control_state`, `pipeline_runs`, `supervisor_cycles`, and `agent_runtime_leases`
 - a bounded supervisor cycle executor that acquires the canonical lease, selects one work unit, persists a context snapshot, and records auto-pause or escalation outcomes through canonical incidents
+- expert review packet generation under `ops/review-packets/`, canonical `expert_review_packets` and `expert_review_decisions`, and override audit history through `override_events`
 - bootstrap checks for assets and local secret materialization
 - repo-local runtime directory creation for downstream components
 

@@ -14,8 +14,8 @@ global_status:
     - Planning now reflects the PRD and acceptance spec instead of the initial seeded checklist.
     - BA-01 is now complete: the repo has runtime bootstrap checks, canonical SQLite schema migration, review views, and shared record-ID/timestamp helpers.
     - Shared artifact publication utilities now cover YAML/JSON contract envelopes, canonical workspace paths, and `artifact_records` registration for lead, posting, contact, and message roots.
-    - BA-02-S1 and BA-02-S2 are now complete: the repo has canonical supervisor-state helpers plus a bounded heartbeat executor with lease-guarded single-flight execution, incident-aware work selection, auto-pause checks, and per-cycle context snapshots.
-    - The next dependency is BA-02-S3 review packet and override plumbing on top of the bounded cycle executor.
+    - BA-02 is now complete: the repo has canonical supervisor-state helpers, a bounded heartbeat executor, terminal-run review packet artifacts, expert review decisions, and override-event lineage persisted in canonical state.
+    - The next dependency is BA-03-S1 runtime pack materialization so the product-side `ops/agent/` artifacts can catch up to the supervisor control plane now present in code.
   execution_principles:
     - One primary slice per unattended build session.
     - Prefer DB-first state, artifact contracts, and runtime scaffolding before higher-level agent behavior.
@@ -158,7 +158,7 @@ epics:
 
   - id: BA-02
     name: Supervisor control plane
-    status: in_progress
+    status: completed
     owner_role: build-lead
     phase: P1
     dependencies:
@@ -172,6 +172,9 @@ epics:
       - control-state tables and runtime persistence exist
       - one bounded supervisor cycle can select, validate, and record a single work unit
       - incidents, review packets, and override events are queryable from canonical state
+    completed_notes:
+      - "`job_hunt_copilot.supervisor` now covers canonical control state, bounded cycle execution, incident persistence, terminal-run review packet generation, expert review decisions, and override audit lineage."
+      - Unsupported bounded-cycle escalation now emits both canonical incidents and persisted expert review packets, while direct helper flows can finalize review-worthy runs and mark review completion with linked override history.
     near_term_slices:
       - id: BA-02-S1
         name: Control-state persistence and run lifecycle helpers
@@ -208,13 +211,20 @@ epics:
       - id: BA-02-S3
         name: Review packet and override plumbing
         owner_role: build-lead
-        status: pending
+        status: completed
         dependencies:
           - BA-02-S2
         deliverables:
           - "`expert_review_packets` and `expert_review_decisions` persistence"
           - "`override_events` persistence and lineage to prior agent decisions"
           - terminal run packet generation hooks for review-worthy outcomes
+        completed_notes:
+          - Added supervisor helpers for persisted `expert_review_packets`, `expert_review_decisions`, and `override_events`, including override lineage back to the triggering review context and affected object-state snapshot.
+          - Added review-packet artifact generation under `ops/review-packets/<pipeline_run_id>/` plus `artifact_records` registration for both `review_packet.json` and `review_packet.md`.
+          - Wired bounded-cycle progression failures to emit a pending review packet automatically when a selected `pipeline_run` reaches an escalated terminal outcome.
+        validation:
+          - "`python3.11 -m pytest tests/test_supervisor.py`"
+          - "`python3.11 -m pytest tests/test_bootstrap.py tests/test_schema.py tests/test_artifacts.py tests/test_supervisor.py`"
 
   - id: BA-03
     name: macOS local runtime helpers
@@ -618,22 +628,20 @@ epics:
           - final readiness notes for recruiter- or manager-facing repo surfaces
 
 current_focus:
-  epic_id: BA-02
-  slice_id: BA-02-S3
+  epic_id: BA-03
+  slice_id: BA-03-S1
   owner_role: build-lead
-  reason: BA-02-S2 landed the bounded heartbeat executor, so the next highest-value dependency is wiring review packets, review decisions, and override lineage into the same canonical supervisor control plane.
+  reason: BA-02 is complete, so the next highest-value dependency is materializing the product-side runtime pack under `ops/agent/` to satisfy the supervisor bootstrap acceptance surface before helper entrypoints are added.
   exit_criteria:
-    - terminal or otherwise review-worthy runs can persist `expert_review_packets` plus `expert_review_decisions`
-    - owner corrections can persist `override_events` with lineage back to the triggering review or prior decision context
-    - run-finalization hooks can move `pipeline_runs.review_packet_status` to `pending_expert_review` without inventing parallel state
+    - generated `ops/agent/identity.yaml`, `policies.yaml`, `action-catalog.yaml`, `service-goals.yaml`, and `escalation-policy.yaml` exist
+    - "`ops/agent/chat-bootstrap.md` and `ops/agent/supervisor-bootstrap.md` are materialized from repo state with absolute-path-ready content"
+    - runtime-pack validation can confirm the rendered artifact set without depending on the later launchd entrypoint slice
 
 focus_order:
-  - epic_id: BA-02
-    why_now: Supervisor state semantics depend on the canonical schema but should land before product-side autonomous orchestration grows.
   - epic_id: BA-03
     why_now: Product-side runtime helpers and chat entrypoints depend on both schema and supervisor state.
   - epic_id: BA-04
-    why_now: Manual capture is the smallest lead-ingestion path and establishes shared lead workspace conventions.
+    why_now: Manual capture is the next smallest product path once the runtime pack and operator surfaces exist.
   - epic_id: BA-05
     why_now: Gmail intake reuses lead materialization conventions and adds autonomous parsing and JD recovery on top.
   - epic_id: BA-06

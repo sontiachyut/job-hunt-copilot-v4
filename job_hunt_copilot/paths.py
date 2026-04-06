@@ -107,6 +107,15 @@ class ProjectPaths:
             / workspace_slug(role_title)
         )
 
+    def review_packet_dir(self, pipeline_run_id: str) -> Path:
+        return self.project_root / "ops" / "review-packets" / pipeline_run_id
+
+    def review_packet_json_path(self, pipeline_run_id: str) -> Path:
+        return self.review_packet_dir(pipeline_run_id) / "review_packet.json"
+
+    def review_packet_markdown_path(self, pipeline_run_id: str) -> Path:
+        return self.review_packet_dir(pipeline_run_id) / "review_packet.md"
+
     def base_resume_sources(self) -> list[Path]:
         return sorted((self.assets_dir / "resume-tailoring" / "base").rglob("base-resume.tex"))
 

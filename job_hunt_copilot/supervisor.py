@@ -7,6 +7,7 @@ from datetime import datetime, timedelta, timezone
 from types import MappingProxyType
 from typing import Final
 
+from .artifacts import ArtifactLinkage, register_artifact_record
 from .paths import ProjectPaths
 from .records import lifecycle_timestamps, new_canonical_id, now_utc_iso
 
@@ -189,6 +190,43 @@ REVIEW_PACKET_TRANSITIONS = MappingProxyType(
     }
 )
 
+EXPERT_REVIEW_PACKET_STATUSES = frozenset(
+    {
+        REVIEW_PACKET_STATUS_PENDING,
+        REVIEW_PACKET_STATUS_REVIEWED,
+        REVIEW_PACKET_STATUS_SUPERSEDED,
+    }
+)
+
+EXPERT_REVIEW_PACKET_TRANSITIONS = MappingProxyType(
+    {
+        REVIEW_PACKET_STATUS_PENDING: frozenset(
+            {
+                REVIEW_PACKET_STATUS_PENDING,
+                REVIEW_PACKET_STATUS_REVIEWED,
+                REVIEW_PACKET_STATUS_SUPERSEDED,
+            }
+        ),
+        REVIEW_PACKET_STATUS_REVIEWED: frozenset(
+            {
+                REVIEW_PACKET_STATUS_REVIEWED,
+                REVIEW_PACKET_STATUS_SUPERSEDED,
+            }
+        ),
+        REVIEW_PACKET_STATUS_SUPERSEDED: frozenset({REVIEW_PACKET_STATUS_SUPERSEDED}),
+    }
+)
+
+REVIEW_WORTHY_RUN_STATUSES = frozenset(
+    {
+        RUN_STATUS_ESCALATED,
+        RUN_STATUS_FAILED,
+        RUN_STATUS_COMPLETED,
+    }
+)
+
+SUPERVISOR_COMPONENT: Final = "supervisor_agent"
+
 _UNSET = object()
 
 
@@ -353,6 +391,52 @@ class AgentIncidentRecord:
 
 
 @dataclass(frozen=True)
+class ExpertReviewPacketRecord:
+    expert_review_packet_id: str
+    pipeline_run_id: str
+    packet_status: str
+    packet_path: str
+    job_posting_id: str | None
+    reviewed_at: str | None
+    summary_excerpt: str | None
+    created_at: str
+
+    @property
+    def markdown_path(self) -> str:
+        packet_prefix, _, _ = self.packet_path.rpartition("/")
+        if not packet_prefix:
+            return "review_packet.md"
+        return f"{packet_prefix}/review_packet.md"
+
+
+@dataclass(frozen=True)
+class ExpertReviewDecisionRecord:
+    expert_review_decision_id: str
+    expert_review_packet_id: str
+    decision_type: str
+    decision_notes: str | None
+    override_event_id: str | None
+    decided_at: str
+    applied_at: str | None
+
+
+@dataclass(frozen=True)
+class OverrideEventRecord:
+    override_event_id: str
+    object_type: str
+    object_id: str
+    component_stage: str
+    previous_value: str
+    new_value: str
+    override_reason: str
+    override_timestamp: str
+    override_by: str | None
+    lead_id: str | None
+    job_posting_id: str | None
+    contact_id: str | None
+
+
+@dataclass(frozen=True)
 class SupervisorWorkUnit:
     work_type: str
     work_id: str
@@ -384,6 +468,7 @@ class SupervisorCycleExecution:
     action_id: str | None = None
     pipeline_run: PipelineRunRecord | None = None
     incident: AgentIncidentRecord | None = None
+    review_packet: ExpertReviewPacketRecord | None = None
     context_snapshot_path: str | None = None
 
 
@@ -1280,6 +1365,447 @@ def escalate_agent_incident(
     return _require_agent_incident(connection, agent_incident_id)
 
 
+def get_expert_review_packet(
+    connection: sqlite3.Connection,
+    expert_review_packet_id: str,
+) -> ExpertReviewPacketRecord | None:
+    row = connection.execute(
+        """
+        SELECT expert_review_packet_id, pipeline_run_id, packet_status, packet_path,
+               job_posting_id, reviewed_at, summary_excerpt, created_at
+        FROM expert_review_packets
+        WHERE expert_review_packet_id = ?
+        """,
+        (expert_review_packet_id,),
+    ).fetchone()
+    return None if row is None else _expert_review_packet_from_row(row)
+
+
+def list_expert_review_packets_for_run(
+    connection: sqlite3.Connection,
+    pipeline_run_id: str,
+) -> list[ExpertReviewPacketRecord]:
+    rows = connection.execute(
+        """
+        SELECT expert_review_packet_id, pipeline_run_id, packet_status, packet_path,
+               job_posting_id, reviewed_at, summary_excerpt, created_at
+        FROM expert_review_packets
+        WHERE pipeline_run_id = ?
+        ORDER BY created_at DESC, expert_review_packet_id DESC
+        """,
+        (pipeline_run_id,),
+    ).fetchall()
+    return [_expert_review_packet_from_row(row) for row in rows]
+
+
+def get_expert_review_decision(
+    connection: sqlite3.Connection,
+    expert_review_decision_id: str,
+) -> ExpertReviewDecisionRecord | None:
+    row = connection.execute(
+        """
+        SELECT expert_review_decision_id, expert_review_packet_id, decision_type,
+               decision_notes, override_event_id, decided_at, applied_at
+        FROM expert_review_decisions
+        WHERE expert_review_decision_id = ?
+        """,
+        (expert_review_decision_id,),
+    ).fetchone()
+    return None if row is None else _expert_review_decision_from_row(row)
+
+
+def list_expert_review_decisions_for_packet(
+    connection: sqlite3.Connection,
+    expert_review_packet_id: str,
+) -> list[ExpertReviewDecisionRecord]:
+    rows = connection.execute(
+        """
+        SELECT expert_review_decision_id, expert_review_packet_id, decision_type,
+               decision_notes, override_event_id, decided_at, applied_at
+        FROM expert_review_decisions
+        WHERE expert_review_packet_id = ?
+        ORDER BY decided_at ASC, expert_review_decision_id ASC
+        """,
+        (expert_review_packet_id,),
+    ).fetchall()
+    return [_expert_review_decision_from_row(row) for row in rows]
+
+
+def get_override_event(
+    connection: sqlite3.Connection,
+    override_event_id: str,
+) -> OverrideEventRecord | None:
+    row = connection.execute(
+        """
+        SELECT override_event_id, object_type, object_id, component_stage,
+               previous_value, new_value, override_reason, override_timestamp,
+               override_by, lead_id, job_posting_id, contact_id
+        FROM override_events
+        WHERE override_event_id = ?
+        """,
+        (override_event_id,),
+    ).fetchone()
+    return None if row is None else _override_event_from_row(row)
+
+
+def list_override_events_for_object(
+    connection: sqlite3.Connection,
+    *,
+    object_type: str,
+    object_id: str,
+) -> list[OverrideEventRecord]:
+    rows = connection.execute(
+        """
+        SELECT override_event_id, object_type, object_id, component_stage,
+               previous_value, new_value, override_reason, override_timestamp,
+               override_by, lead_id, job_posting_id, contact_id
+        FROM override_events
+        WHERE object_type = ?
+          AND object_id = ?
+        ORDER BY override_timestamp DESC, override_event_id DESC
+        """,
+        (
+            object_type,
+            object_id,
+        ),
+    ).fetchall()
+    return [_override_event_from_row(row) for row in rows]
+
+
+def record_override_event(
+    connection: sqlite3.Connection,
+    *,
+    object_type: str,
+    object_id: str,
+    component_stage: str,
+    previous_value: object,
+    new_value: object,
+    override_reason: str,
+    override_by: str | None = None,
+    lead_id: str | None = None,
+    job_posting_id: str | None = None,
+    contact_id: str | None = None,
+    override_timestamp: str | None = None,
+    override_event_id: str | None = None,
+) -> OverrideEventRecord:
+    if not object_type.strip():
+        raise SupervisorStateError("object_type is required for override recording.")
+    if not object_id.strip():
+        raise SupervisorStateError("object_id is required for override recording.")
+    if not component_stage.strip():
+        raise SupervisorStateError("component_stage is required for override recording.")
+    if not override_reason.strip():
+        raise SupervisorStateError("override_reason is required for override recording.")
+
+    current_timestamp = override_timestamp or now_utc_iso()
+    override_event_id = override_event_id or new_canonical_id("override_events")
+    with connection:
+        connection.execute(
+            """
+            INSERT INTO override_events (
+              override_event_id, object_type, object_id, component_stage,
+              previous_value, new_value, override_reason, override_timestamp,
+              override_by, lead_id, job_posting_id, contact_id
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """,
+            (
+                override_event_id,
+                object_type,
+                object_id,
+                component_stage,
+                _serialize_audit_value(previous_value),
+                _serialize_audit_value(new_value),
+                override_reason,
+                current_timestamp,
+                override_by,
+                lead_id,
+                job_posting_id,
+                contact_id,
+            ),
+        )
+    event = get_override_event(connection, override_event_id)
+    if event is None:  # pragma: no cover - defensive invariant
+        raise SupervisorStateError(
+            f"Failed to load override_event {override_event_id} after creation."
+        )
+    return event
+
+
+def generate_expert_review_packet(
+    connection: sqlite3.Connection,
+    paths: ProjectPaths,
+    pipeline_run_id: str,
+    *,
+    created_at: str | None = None,
+    recommended_expert_actions: list[str] | tuple[str, ...] | None = None,
+    expert_review_packet_id: str | None = None,
+) -> ExpertReviewPacketRecord:
+    pipeline_run = _require_pipeline_run(connection, pipeline_run_id)
+    if pipeline_run.run_status not in REVIEW_WORTHY_RUN_STATUSES:
+        raise InvalidLifecycleTransition(
+            f"pipeline_run {pipeline_run_id!r} is not at a review-worthy terminal outcome."
+        )
+
+    existing_packets = list_expert_review_packets_for_run(connection, pipeline_run_id)
+    existing_pending = next(
+        (
+            packet
+            for packet in existing_packets
+            if packet.packet_status == REVIEW_PACKET_STATUS_PENDING
+        ),
+        None,
+    )
+    if existing_pending is not None:
+        return existing_pending
+    if existing_packets:
+        raise InvalidLifecycleTransition(
+            f"pipeline_run {pipeline_run_id!r} already has expert review packet history."
+        )
+
+    current_timestamp = created_at or now_utc_iso()
+    packet_payload = _build_review_packet_payload(
+        connection,
+        pipeline_run,
+        generated_at=current_timestamp,
+        recommended_expert_actions=recommended_expert_actions,
+    )
+    json_path = paths.review_packet_json_path(pipeline_run.pipeline_run_id)
+    markdown_path = paths.review_packet_markdown_path(pipeline_run.pipeline_run_id)
+    json_path.parent.mkdir(parents=True, exist_ok=True)
+    json_path.write_text(
+        json.dumps(packet_payload, indent=2, sort_keys=False) + "\n",
+        encoding="utf-8",
+    )
+    markdown_path.write_text(
+        _render_review_packet_markdown(packet_payload),
+        encoding="utf-8",
+    )
+
+    linkage = ArtifactLinkage(
+        lead_id=pipeline_run.lead_id,
+        job_posting_id=pipeline_run.job_posting_id,
+    )
+    register_artifact_record(
+        connection,
+        paths,
+        artifact_type="expert_review_packet_json",
+        artifact_path=json_path,
+        producer_component=SUPERVISOR_COMPONENT,
+        linkage=linkage,
+        created_at=current_timestamp,
+    )
+    register_artifact_record(
+        connection,
+        paths,
+        artifact_type="expert_review_packet_markdown",
+        artifact_path=markdown_path,
+        producer_component=SUPERVISOR_COMPONENT,
+        linkage=linkage,
+        created_at=current_timestamp,
+    )
+
+    expert_review_packet_id = expert_review_packet_id or new_canonical_id("expert_review_packets")
+    packet_path = paths.relative_to_root(json_path).as_posix()
+    summary_excerpt = _review_packet_summary_excerpt(packet_payload)
+    with connection:
+        connection.execute(
+            """
+            INSERT INTO expert_review_packets (
+              expert_review_packet_id, pipeline_run_id, packet_status, packet_path,
+              job_posting_id, reviewed_at, summary_excerpt, created_at
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+            """,
+            (
+                expert_review_packet_id,
+                pipeline_run.pipeline_run_id,
+                REVIEW_PACKET_STATUS_PENDING,
+                packet_path,
+                pipeline_run.job_posting_id,
+                None,
+                summary_excerpt,
+                current_timestamp,
+            ),
+        )
+    set_pipeline_run_review_packet_status(
+        connection,
+        pipeline_run.pipeline_run_id,
+        REVIEW_PACKET_STATUS_PENDING,
+        timestamp=current_timestamp,
+    )
+    packet = get_expert_review_packet(connection, expert_review_packet_id)
+    if packet is None:  # pragma: no cover - defensive invariant
+        raise SupervisorStateError(
+            f"Failed to load expert_review_packet {expert_review_packet_id} after creation."
+        )
+    return packet
+
+
+def finalize_review_worthy_pipeline_run(
+    connection: sqlite3.Connection,
+    paths: ProjectPaths,
+    pipeline_run_id: str,
+    *,
+    final_status: str,
+    current_stage: str | None = None,
+    error_summary: str | None = None,
+    run_summary: str | None = _UNSET,
+    timestamp: str | None = None,
+    recommended_expert_actions: list[str] | tuple[str, ...] | None = None,
+) -> tuple[PipelineRunRecord, ExpertReviewPacketRecord]:
+    current_timestamp = timestamp or now_utc_iso()
+    if final_status == RUN_STATUS_COMPLETED:
+        finalized_run = complete_pipeline_run(
+            connection,
+            pipeline_run_id,
+            current_stage=current_stage or "completed",
+            run_summary=run_summary,
+            timestamp=current_timestamp,
+        )
+    elif final_status == RUN_STATUS_FAILED:
+        finalized_run = fail_pipeline_run(
+            connection,
+            pipeline_run_id,
+            current_stage=current_stage,
+            error_summary=_require_text(error_summary, "error_summary"),
+            run_summary=run_summary,
+            timestamp=current_timestamp,
+        )
+    elif final_status == RUN_STATUS_ESCALATED:
+        finalized_run = escalate_pipeline_run(
+            connection,
+            pipeline_run_id,
+            current_stage=current_stage,
+            error_summary=error_summary,
+            run_summary=run_summary,
+            timestamp=current_timestamp,
+        )
+    else:
+        raise SupervisorStateError(
+            f"Unsupported final_status={final_status!r} for review-worthy finalization."
+        )
+
+    packet = generate_expert_review_packet(
+        connection,
+        paths,
+        finalized_run.pipeline_run_id,
+        created_at=current_timestamp,
+        recommended_expert_actions=recommended_expert_actions,
+    )
+    return _require_pipeline_run(connection, finalized_run.pipeline_run_id), packet
+
+
+def record_expert_review_decision(
+    connection: sqlite3.Connection,
+    expert_review_packet_id: str,
+    *,
+    decision_type: str,
+    decision_notes: str | None = None,
+    override_event_id: str | None = None,
+    decided_at: str | None = None,
+    applied_at: str | None = None,
+    expert_review_decision_id: str | None = None,
+) -> ExpertReviewDecisionRecord:
+    if not decision_type.strip():
+        raise SupervisorStateError("decision_type is required for expert review decisions.")
+
+    packet = _require_expert_review_packet(connection, expert_review_packet_id)
+    if packet.packet_status != REVIEW_PACKET_STATUS_PENDING:
+        raise InvalidLifecycleTransition(
+            f"expert_review_packet {expert_review_packet_id!r} is not pending expert review."
+        )
+    if override_event_id is not None and get_override_event(connection, override_event_id) is None:
+        raise SupervisorStateError(
+            f"override_event {override_event_id!r} does not exist for decision linkage."
+        )
+
+    current_timestamp = decided_at or now_utc_iso()
+    expert_review_decision_id = expert_review_decision_id or new_canonical_id(
+        "expert_review_decisions"
+    )
+    with connection:
+        connection.execute(
+            """
+            INSERT INTO expert_review_decisions (
+              expert_review_decision_id, expert_review_packet_id, decision_type,
+              decision_notes, override_event_id, decided_at, applied_at
+            ) VALUES (?, ?, ?, ?, ?, ?, ?)
+            """,
+            (
+                expert_review_decision_id,
+                expert_review_packet_id,
+                decision_type,
+                decision_notes,
+                override_event_id,
+                current_timestamp,
+                applied_at,
+            ),
+        )
+    _update_expert_review_packet_status(
+        connection,
+        expert_review_packet_id,
+        packet_status=REVIEW_PACKET_STATUS_REVIEWED,
+        reviewed_at=current_timestamp,
+    )
+    set_pipeline_run_review_packet_status(
+        connection,
+        packet.pipeline_run_id,
+        REVIEW_PACKET_STATUS_REVIEWED,
+        timestamp=current_timestamp,
+    )
+    decision = get_expert_review_decision(connection, expert_review_decision_id)
+    if decision is None:  # pragma: no cover - defensive invariant
+        raise SupervisorStateError(
+            f"Failed to load expert_review_decision {expert_review_decision_id} after creation."
+        )
+    return decision
+
+
+def record_expert_override_decision(
+    connection: sqlite3.Connection,
+    expert_review_packet_id: str,
+    *,
+    decision_type: str,
+    object_type: str,
+    object_id: str,
+    component_stage: str,
+    previous_value: object,
+    new_value: object,
+    override_reason: str,
+    override_by: str | None = None,
+    lead_id: str | None = None,
+    job_posting_id: str | None = None,
+    contact_id: str | None = None,
+    decision_notes: str | None = None,
+    decided_at: str | None = None,
+    applied_at: str | None = None,
+) -> tuple[ExpertReviewDecisionRecord, OverrideEventRecord]:
+    current_timestamp = decided_at or now_utc_iso()
+    override_event = record_override_event(
+        connection,
+        object_type=object_type,
+        object_id=object_id,
+        component_stage=component_stage,
+        previous_value=previous_value,
+        new_value=new_value,
+        override_reason=override_reason,
+        override_by=override_by,
+        lead_id=lead_id,
+        job_posting_id=job_posting_id,
+        contact_id=contact_id,
+        override_timestamp=current_timestamp,
+    )
+    decision = record_expert_review_decision(
+        connection,
+        expert_review_packet_id,
+        decision_type=decision_type,
+        decision_notes=decision_notes or override_reason,
+        override_event_id=override_event.override_event_id,
+        decided_at=current_timestamp,
+        applied_at=applied_at or current_timestamp,
+    )
+    return decision, override_event
+
+
 def run_supervisor_cycle(
     connection: sqlite3.Connection,
     paths: ProjectPaths,
@@ -1330,6 +1856,7 @@ def run_supervisor_cycle(
     action_id: str | None = None
     pipeline_run: PipelineRunRecord | None = None
     incident: AgentIncidentRecord | None = None
+    review_packet: ExpertReviewPacketRecord | None = None
     context_snapshot_path: str | None = None
     cycle_result = SUPERVISOR_CYCLE_RESULT_NO_WORK
     error_summary: str | None = None
@@ -1380,6 +1907,12 @@ def run_supervisor_cycle(
                             severity=INCIDENT_SEVERITY_HIGH,
                             timestamp=cycle_started_at,
                         )
+                        review_packet = _ensure_review_packet_for_terminal_run(
+                            connection,
+                            paths,
+                            pipeline_run,
+                            created_at=cycle_started_at,
+                        )
                         cycle_result = SUPERVISOR_CYCLE_RESULT_FAILED
                     else:
                         catalog_entry = SUPERVISOR_ACTION_CATALOG[action_id]
@@ -1397,6 +1930,12 @@ def run_supervisor_cycle(
                                 incident_type="supervisor_prerequisite_failed",
                                 severity=INCIDENT_SEVERITY_HIGH,
                                 timestamp=cycle_started_at,
+                            )
+                            review_packet = _ensure_review_packet_for_terminal_run(
+                                connection,
+                                paths,
+                                pipeline_run,
+                                created_at=cycle_started_at,
                             )
                             cycle_result = SUPERVISOR_CYCLE_RESULT_FAILED
                         else:
@@ -1423,8 +1962,20 @@ def run_supervisor_cycle(
                                     severity=INCIDENT_SEVERITY_HIGH,
                                     timestamp=cycle_started_at,
                                 )
+                                review_packet = _ensure_review_packet_for_terminal_run(
+                                    connection,
+                                    paths,
+                                    pipeline_run,
+                                    created_at=cycle_started_at,
+                                )
                                 cycle_result = SUPERVISOR_CYCLE_RESULT_FAILED
                             else:
+                                review_packet = _ensure_review_packet_for_terminal_run(
+                                    connection,
+                                    paths,
+                                    pipeline_run,
+                                    created_at=cycle_started_at,
+                                )
                                 cycle_result = SUPERVISOR_CYCLE_RESULT_SUCCESS
 
         if selected_work is not None:
@@ -1480,6 +2031,17 @@ def run_supervisor_cycle(
                         if incident is not None
                         else None
                     ),
+                    "review_packet": (
+                        {
+                            "expert_review_packet_id": review_packet.expert_review_packet_id,
+                            "packet_status": review_packet.packet_status,
+                            "packet_path": review_packet.packet_path,
+                            "markdown_path": review_packet.markdown_path,
+                            "created_at": review_packet.created_at,
+                        }
+                        if review_packet is not None
+                        else None
+                    ),
                 },
             )
             cycle = assign_supervisor_cycle_work_unit(
@@ -1510,6 +2072,7 @@ def run_supervisor_cycle(
             action_id=action_id,
             pipeline_run=pipeline_run,
             incident=incident,
+            review_packet=review_packet,
             context_snapshot_path=context_snapshot_path,
         )
     finally:
@@ -1905,6 +2468,278 @@ def _record_progression_failure(
     return incident, pipeline_run
 
 
+def _ensure_review_packet_for_terminal_run(
+    connection: sqlite3.Connection,
+    paths: ProjectPaths,
+    pipeline_run: PipelineRunRecord | None,
+    *,
+    created_at: str,
+) -> ExpertReviewPacketRecord | None:
+    if pipeline_run is None or pipeline_run.run_status not in REVIEW_WORTHY_RUN_STATUSES:
+        return None
+    return generate_expert_review_packet(
+        connection,
+        paths,
+        pipeline_run.pipeline_run_id,
+        created_at=created_at,
+    )
+
+
+def _build_review_packet_payload(
+    connection: sqlite3.Connection,
+    pipeline_run: PipelineRunRecord,
+    *,
+    generated_at: str,
+    recommended_expert_actions: list[str] | tuple[str, ...] | None = None,
+) -> dict[str, object]:
+    posting_row = None
+    target_contacts_selected = 0
+    emails_found = 0
+    sends_attempted = 0
+    sends_completed = 0
+    if pipeline_run.job_posting_id:
+        posting_row = connection.execute(
+            """
+            SELECT company_name, role_title
+            FROM job_postings
+            WHERE job_posting_id = ?
+            """,
+            (pipeline_run.job_posting_id,),
+        ).fetchone()
+        counts = connection.execute(
+            """
+            SELECT
+              (SELECT COUNT(*)
+               FROM job_posting_contacts
+               WHERE job_posting_id = ?) AS target_contacts_selected,
+              (SELECT COUNT(*)
+               FROM job_posting_contacts jpc
+               JOIN contacts c
+                 ON c.contact_id = jpc.contact_id
+               WHERE jpc.job_posting_id = ?
+                 AND c.current_working_email IS NOT NULL
+                 AND TRIM(c.current_working_email) <> '') AS emails_found,
+              (SELECT COUNT(*)
+               FROM outreach_messages
+               WHERE job_posting_id = ?) AS sends_attempted,
+              (SELECT COUNT(*)
+               FROM outreach_messages
+               WHERE job_posting_id = ?
+                 AND sent_at IS NOT NULL) AS sends_completed
+            """,
+            (
+                pipeline_run.job_posting_id,
+                pipeline_run.job_posting_id,
+                pipeline_run.job_posting_id,
+                pipeline_run.job_posting_id,
+            ),
+        ).fetchone()
+        target_contacts_selected = int(counts[0] or 0)
+        emails_found = int(counts[1] or 0)
+        sends_attempted = int(counts[2] or 0)
+        sends_completed = int(counts[3] or 0)
+
+    incidents = [
+        {
+            "agent_incident_id": incident.agent_incident_id,
+            "incident_type": incident.incident_type,
+            "severity": incident.severity,
+            "status": incident.status,
+            "summary": incident.summary,
+            "escalation_reason": incident.escalation_reason,
+            "repair_attempt_summary": incident.repair_attempt_summary,
+            "created_at": incident.created_at,
+            "updated_at": incident.updated_at,
+        }
+        for incident in _list_incidents_for_pipeline_run(connection, pipeline_run.pipeline_run_id)
+    ]
+    repairs_attempted = [
+        incident["repair_attempt_summary"]
+        for incident in incidents
+        if incident["repair_attempt_summary"]
+    ]
+
+    return {
+        "pipeline_run_id": pipeline_run.pipeline_run_id,
+        "job_posting_id": pipeline_run.job_posting_id,
+        "lead_id": pipeline_run.lead_id,
+        "generated_at": generated_at,
+        "run_outcome": pipeline_run.run_status,
+        "run_status": pipeline_run.run_status,
+        "current_stage": pipeline_run.current_stage,
+        "run_summary": pipeline_run.run_summary,
+        "last_error_summary": pipeline_run.last_error_summary,
+        "started_at": pipeline_run.started_at,
+        "completed_at": pipeline_run.completed_at,
+        "company_name": _optional_text(posting_row[0]) if posting_row is not None else None,
+        "role_title": _optional_text(posting_row[1]) if posting_row is not None else None,
+        "stages_completed": [pipeline_run.current_stage] if pipeline_run.current_stage else [],
+        "target_contacts_selected": target_contacts_selected,
+        "emails_found": emails_found,
+        "emails_not_found": max(0, target_contacts_selected - emails_found),
+        "sends_attempted": sends_attempted,
+        "sends_completed": sends_completed,
+        "incidents": incidents,
+        "retries_or_repairs_attempted": repairs_attempted,
+        "recommended_expert_actions": list(
+            recommended_expert_actions
+            if recommended_expert_actions is not None
+            else _default_recommended_expert_actions(pipeline_run, incidents)
+        ),
+    }
+
+
+def _list_incidents_for_pipeline_run(
+    connection: sqlite3.Connection,
+    pipeline_run_id: str,
+) -> list[AgentIncidentRecord]:
+    rows = connection.execute(
+        """
+        SELECT agent_incident_id, incident_type, severity, status, summary,
+               pipeline_run_id, lead_id, job_posting_id, contact_id,
+               outreach_message_id, resolved_at, escalation_reason,
+               repair_attempt_summary, created_at, updated_at, NULL
+        FROM agent_incidents
+        WHERE pipeline_run_id = ?
+        ORDER BY created_at ASC, agent_incident_id ASC
+        """,
+        (pipeline_run_id,),
+    ).fetchall()
+    return [_agent_incident_from_row(row) for row in rows]
+
+
+def _default_recommended_expert_actions(
+    pipeline_run: PipelineRunRecord,
+    incidents: list[dict[str, object]],
+) -> list[str]:
+    actions: list[str] = []
+    if pipeline_run.run_status == RUN_STATUS_COMPLETED:
+        actions.append(
+            "Review the completed run outcome and capture any corrections or future guidance."
+        )
+    if pipeline_run.run_status == RUN_STATUS_FAILED:
+        actions.append(
+            "Inspect the terminal failure and decide whether the posting needs repair or a fresh retry."
+        )
+    if pipeline_run.run_status == RUN_STATUS_ESCALATED:
+        actions.append(
+            "Review the escalation condition and decide whether to resume the same run or start a fresh attempt later."
+        )
+    if incidents:
+        actions.append(
+            "Inspect the linked incidents and resolve or suppress any blockers before autonomous progression resumes."
+        )
+    if pipeline_run.run_status in {RUN_STATUS_FAILED, RUN_STATUS_ESCALATED}:
+        actions.append(
+            "Decide whether an explicit override or policy correction is required for the affected object state."
+        )
+    return actions
+
+
+def _render_review_packet_markdown(packet_payload: dict[str, object]) -> str:
+    lines = [
+        "# Expert Review Packet",
+        "",
+        f"- Pipeline run: `{packet_payload['pipeline_run_id']}`",
+        f"- Outcome: `{packet_payload['run_outcome']}`",
+        f"- Current stage: `{packet_payload['current_stage']}`",
+        f"- Job posting: `{packet_payload.get('job_posting_id') or 'n/a'}`",
+        f"- Generated at: `{packet_payload['generated_at']}`",
+    ]
+    company_name = packet_payload.get("company_name")
+    role_title = packet_payload.get("role_title")
+    if company_name or role_title:
+        lines.append(
+            f"- Posting label: {company_name or 'Unknown company'} / {role_title or 'Unknown role'}"
+        )
+    if packet_payload.get("run_summary"):
+        lines.append(f"- Run summary: {packet_payload['run_summary']}")
+    if packet_payload.get("last_error_summary"):
+        lines.append(f"- Error summary: {packet_payload['last_error_summary']}")
+
+    lines.extend(
+        [
+            "",
+            "## Coverage",
+            "",
+            f"- Contacts selected: {packet_payload['target_contacts_selected']}",
+            f"- Emails found: {packet_payload['emails_found']}",
+            f"- Emails not found: {packet_payload['emails_not_found']}",
+            f"- Sends attempted: {packet_payload['sends_attempted']}",
+            f"- Sends completed: {packet_payload['sends_completed']}",
+        ]
+    )
+
+    incidents = packet_payload.get("incidents") or []
+    lines.extend(["", "## Incidents", ""])
+    if incidents:
+        for incident in incidents:
+            lines.append(
+                f"- [{incident['severity']}] {incident['incident_type']}: {incident['summary']}"
+            )
+    else:
+        lines.append("- No linked incidents were recorded for this run.")
+
+    repairs_attempted = packet_payload.get("retries_or_repairs_attempted") or []
+    lines.extend(["", "## Retries Or Repairs", ""])
+    if repairs_attempted:
+        for repair in repairs_attempted:
+            lines.append(f"- {repair}")
+    else:
+        lines.append("- No bounded retries or repairs were recorded.")
+
+    recommended_actions = packet_payload.get("recommended_expert_actions") or []
+    lines.extend(["", "## Recommended Expert Actions", ""])
+    for action in recommended_actions:
+        lines.append(f"- {action}")
+
+    return "\n".join(lines) + "\n"
+
+
+def _review_packet_summary_excerpt(packet_payload: dict[str, object]) -> str:
+    summary = (
+        _optional_text(packet_payload.get("run_summary"))
+        or _optional_text(packet_payload.get("last_error_summary"))
+        or (
+            f"Run {packet_payload['pipeline_run_id']} reached {packet_payload['run_outcome']} "
+            f"at {packet_payload['current_stage']}."
+        )
+    )
+    return summary[:280]
+
+
+def _update_expert_review_packet_status(
+    connection: sqlite3.Connection,
+    expert_review_packet_id: str,
+    *,
+    packet_status: str,
+    reviewed_at: str | None | object = _UNSET,
+) -> ExpertReviewPacketRecord:
+    if packet_status not in EXPERT_REVIEW_PACKET_STATUSES:
+        raise SupervisorStateError(f"Unsupported expert packet status={packet_status!r}.")
+    packet = _require_expert_review_packet(connection, expert_review_packet_id)
+    allowed = EXPERT_REVIEW_PACKET_TRANSITIONS[packet.packet_status]
+    if packet_status not in allowed:
+        raise InvalidLifecycleTransition(
+            f"Cannot transition expert_review_packet from {packet.packet_status!r} "
+            f"to {packet_status!r}."
+        )
+
+    fields: dict[str, str | None] = {"packet_status": packet_status}
+    if reviewed_at is not _UNSET:
+        fields["reviewed_at"] = reviewed_at
+
+    assignments = ", ".join(f"{field_name} = ?" for field_name in fields)
+    values = [fields[field_name] for field_name in fields]
+    values.append(expert_review_packet_id)
+    with connection:
+        connection.execute(
+            f"UPDATE expert_review_packets SET {assignments} WHERE expert_review_packet_id = ?",
+            values,
+        )
+    return _require_expert_review_packet(connection, expert_review_packet_id)
+
+
 def _write_context_snapshot(
     paths: ProjectPaths,
     supervisor_cycle_id: str,
@@ -2112,6 +2947,18 @@ def _require_agent_incident(
     return incident
 
 
+def _require_expert_review_packet(
+    connection: sqlite3.Connection,
+    expert_review_packet_id: str,
+) -> ExpertReviewPacketRecord:
+    packet = get_expert_review_packet(connection, expert_review_packet_id)
+    if packet is None:
+        raise SupervisorStateError(
+            f"expert_review_packet {expert_review_packet_id!r} does not exist."
+        )
+    return packet
+
+
 def _pipeline_run_from_row(row: sqlite3.Row | tuple[object, ...]) -> PipelineRunRecord:
     return PipelineRunRecord(
         pipeline_run_id=row[0],
@@ -2181,6 +3028,52 @@ def _agent_incident_from_row(row: sqlite3.Row | tuple[object, ...]) -> AgentInci
     )
 
 
+def _expert_review_packet_from_row(
+    row: sqlite3.Row | tuple[object, ...],
+) -> ExpertReviewPacketRecord:
+    return ExpertReviewPacketRecord(
+        expert_review_packet_id=row[0],
+        pipeline_run_id=row[1],
+        packet_status=row[2],
+        packet_path=row[3],
+        job_posting_id=_optional_text(row[4]),
+        reviewed_at=_optional_text(row[5]),
+        summary_excerpt=_optional_text(row[6]),
+        created_at=row[7],
+    )
+
+
+def _expert_review_decision_from_row(
+    row: sqlite3.Row | tuple[object, ...],
+) -> ExpertReviewDecisionRecord:
+    return ExpertReviewDecisionRecord(
+        expert_review_decision_id=row[0],
+        expert_review_packet_id=row[1],
+        decision_type=row[2],
+        decision_notes=_optional_text(row[3]),
+        override_event_id=_optional_text(row[4]),
+        decided_at=row[5],
+        applied_at=_optional_text(row[6]),
+    )
+
+
+def _override_event_from_row(row: sqlite3.Row | tuple[object, ...]) -> OverrideEventRecord:
+    return OverrideEventRecord(
+        override_event_id=row[0],
+        object_type=row[1],
+        object_id=row[2],
+        component_stage=row[3],
+        previous_value=row[4],
+        new_value=row[5],
+        override_reason=row[6],
+        override_timestamp=row[7],
+        override_by=_optional_text(row[8]),
+        lead_id=_optional_text(row[9]),
+        job_posting_id=_optional_text(row[10]),
+        contact_id=_optional_text(row[11]),
+    )
+
+
 def _normalize_control_value(value: str | bool | None) -> str:
     if isinstance(value, bool):
         return "true" if value else "false"
@@ -2194,6 +3087,12 @@ def _optional_text(value: object) -> str | None:
         return None
     text = str(value)
     return text if text else None
+
+
+def _serialize_audit_value(value: object) -> str:
+    if isinstance(value, str):
+        return value
+    return json.dumps(value, sort_keys=True)
 
 
 def _timestamp_plus_seconds(timestamp: str, ttl_seconds: int) -> str:

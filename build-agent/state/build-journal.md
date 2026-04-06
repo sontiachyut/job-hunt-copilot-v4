@@ -176,3 +176,29 @@ Use this file as an append-only implementation log for the build agent.
 ### Notes
 - Explicit inference recorded: the initial supervisor action catalog intentionally stays narrow to posting bootstrap, lead-handoff checkpointing, and unresolved-incident escalation. Later-stage pipeline work now becomes a canonical incident and escalated run instead of an improvised control-plane action.
 - `BUILD-CLI-001` remains open and untouched.
+
+### Session
+- Date: 2026-04-06 13:57:48 MST
+- Slice: BA-02-S3 review packet and override plumbing
+- Goal: Persist expert review packets, review decisions, and override lineage in the supervisor control plane, and hook review-worthy terminal run outcomes into canonical packet generation.
+
+### Work Done
+- Extended `job_hunt_copilot/supervisor.py` with canonical helpers for `expert_review_packets`, `expert_review_decisions`, and `override_events`, including persisted override lineage back to prior decision context and affected object-state snapshots.
+- Added review-packet artifact generation under `ops/review-packets/<pipeline_run_id>/` plus `artifact_records` registration for both `review_packet.json` and `review_packet.md`, and added runtime path helpers for those artifacts in `job_hunt_copilot/paths.py`.
+- Wired the bounded supervisor cycle so unsupported-stage escalation for a selected `pipeline_run` now emits a pending expert review packet automatically instead of leaving the terminal outcome without review artifacts.
+- Added focused supervisor tests for direct review-worthy finalization, review decision plus override lineage persistence, and the bounded-cycle escalation path that now leaves a canonical review packet behind.
+- Updated `README.md`, `docs/ARCHITECTURE.md`, the build board, the implementation plan, and the handoff note so repo-facing and build-agent-facing status now reflects that BA-02 is complete.
+
+### Validation
+- Ran `python3.11 -m pytest tests/test_supervisor.py` and confirmed all 13 supervisor tests passed.
+- Ran `python3.11 -m pytest tests/test_bootstrap.py tests/test_schema.py tests/test_artifacts.py tests/test_supervisor.py` and confirmed all 22 targeted regression tests passed.
+
+### Result
+- `done`
+
+### Next
+- Implement `BA-03-S1`: materialize the product-side runtime pack under `ops/agent/` so the supervisor bootstrap acceptance surface exists before launchd and chat entrypoints are added.
+
+### Notes
+- Explicit implementation scope stayed bounded to canonical supervisor persistence and review artifacts; object-specific canonical state mutation helpers for later chat control slices are still downstream work.
+- `BUILD-CLI-001` remains open and untouched.

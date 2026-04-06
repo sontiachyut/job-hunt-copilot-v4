@@ -34,9 +34,10 @@ What already exists:
 - shared artifact publication helpers for YAML/JSON contracts, canonical workspace path building, and `artifact_records` registration
 - supervisor control-plane persistence helpers for canonical control state, pipeline runs, supervisor cycles, and runtime leases
 - a bounded supervisor cycle executor with incident-aware work selection, cycle snapshots, lease-guarded single-flight execution, and auto-pause or escalation handling for unsupported progression
+- persisted expert review packets, expert review decisions, and override audit events with filesystem review-packet artifacts under `ops/review-packets/`
 
 What is still in progress:
-- review-packet plumbing, override recording, and the downstream runtime components
+- the downstream runtime components, runtime pack materialization, and local operator entrypoints
 
 ## System Overview
 

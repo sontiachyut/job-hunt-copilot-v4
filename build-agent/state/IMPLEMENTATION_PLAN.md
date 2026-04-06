@@ -13,9 +13,10 @@ It should stay aligned with:
 - `BA-01-S1` is complete: the repository now has a real `job_hunt_copilot` bootstrap package, runtime support-directory creation, secret-file materialization, and a SQLite migration entrypoint for `job_hunt_copilot.db`.
 - `BA-01-S2` is complete: the canonical next-build schema, minimum index set, review views, and shared record-ID/timestamp helpers now initialize cleanly through the migration framework.
 - `BA-01-S3` is complete: shared artifact-contract writers, canonical workspace path helpers, and `artifact_records` registration utilities are now available for downstream components.
-- `BA-01` is complete overall, and `BA-02-S1` plus `BA-02-S2` are now complete: the repository has a real supervisor-state access layer, lease-guarded bounded heartbeat execution, incident-aware work selection, auto-pause detection, and persisted per-cycle context snapshots.
+- `BA-01` and `BA-02` are now complete overall: the repository has a real supervisor-state access layer, lease-guarded bounded heartbeat execution, incident-aware work selection, auto-pause detection, terminal-run review packet generation, expert review decisions, override audit lineage, and persisted per-cycle context snapshots.
 - Explicit implementation inference: the PRD currently conflicts on whether escalated runs are immutable history or resumable after clearance; this slice implemented the explicit `escalated -> in_progress` transition rule while still creating new posting runs only when no non-terminal run exists.
 - Explicit implementation inference: the initial action catalog intentionally stays narrow to posting-run bootstrap, durable lead-handoff checkpointing, and unresolved-incident escalation so unsupported later-stage work becomes a canonical incident instead of improvised behavior.
+- `BA-02-S3` is complete: review-worthy terminal runs can now emit `review_packet.json` plus `review_packet.md`, persist `expert_review_packets` and `expert_review_decisions`, register those artifacts in `artifact_records`, and record expert override lineage through canonical `override_events`.
 - Known operational risk: unattended build-lead execution needs a follow-up validation pass for the `codex exec` CLI compatibility fix already present in the worktree.
 
 ## Phase Order
@@ -82,12 +83,12 @@ It should stay aligned with:
 
 ## Next Slice
 
-- Current focus: `BA-02-S3` Review packet and override plumbing.
-- Why next: bounded cycle execution now exists, so the supervisor control plane can attach canonical expert-review and override history to terminal or otherwise review-worthy run outcomes instead of leaving those surfaces stubbed.
+- Current focus: `BA-03-S1` Runtime pack materialization.
+- Why next: the supervisor control-plane state is now implemented in code, but the acceptance surface still requires the product-side `ops/agent/` runtime pack artifacts that later helper entrypoints and chat controls will consume.
 - Done when:
-  - terminal or otherwise review-worthy runs can persist `expert_review_packets` plus `expert_review_decisions`
-  - canonical override recording exists with lineage to the prior decision context and affected object state
-  - pipeline-run finalization can move `review_packet_status` to `pending_expert_review` and expose the persisted packet path for later chat or review surfaces
+  - generated `ops/agent/identity.yaml`, `policies.yaml`, `action-catalog.yaml`, `service-goals.yaml`, and `escalation-policy.yaml` exist
+  - `ops/agent/chat-bootstrap.md` and `ops/agent/supervisor-bootstrap.md` are materialized from repo state with absolute-path-ready content
+  - runtime-pack validation can confirm the rendered artifact set without depending on the later launchd entrypoint slice
 
 ## Working Rules
 

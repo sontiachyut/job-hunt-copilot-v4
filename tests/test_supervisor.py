@@ -37,14 +37,22 @@ from job_hunt_copilot.supervisor import (
     create_agent_incident,
     escalate_pipeline_run,
     ensure_role_targeted_pipeline_run,
+    finalize_review_worthy_pipeline_run,
     finish_supervisor_cycle,
     get_agent_incident,
+    get_expert_review_decision,
+    get_expert_review_packet,
+    get_override_event,
     get_open_pipeline_run_for_posting,
     get_pipeline_run,
     get_runtime_lease,
+    list_expert_review_decisions_for_packet,
+    list_expert_review_packets_for_run,
+    list_override_events_for_object,
     pause_agent,
     pause_pipeline_run,
     read_agent_control_state,
+    record_expert_override_decision,
     release_runtime_lease,
     resume_agent,
     run_supervisor_cycle,
@@ -548,6 +556,176 @@ def test_completed_runs_cannot_transition_back_to_pending_review_packet_generati
     assert completed.run_status == RUN_STATUS_COMPLETED
 
 
+def test_finalize_review_worthy_run_generates_packet_artifacts_and_registry_rows(tmp_path):
+    project_root = bootstrap_project(tmp_path)
+    paths = ProjectPaths.from_root(project_root)
+    connection = connect_database(project_root / "job_hunt_copilot.db")
+    lead_id, job_posting_id = seed_role_targeted_posting(connection)
+    pipeline_run, _ = ensure_role_targeted_pipeline_run(
+        connection,
+        lead_id=lead_id,
+        job_posting_id=job_posting_id,
+        current_stage="agent_review",
+        started_at="2026-04-05T23:55:00Z",
+    )
+    create_agent_incident(
+        connection,
+        incident_type="manual_review_required",
+        severity=INCIDENT_SEVERITY_MEDIUM,
+        summary="Need expert confirmation before allowing outreach to proceed.",
+        pipeline_run_id=pipeline_run.pipeline_run_id,
+        lead_id=lead_id,
+        job_posting_id=job_posting_id,
+        repair_attempt_summary="Supervisor captured the ambiguity and stopped at the review boundary.",
+        created_at="2026-04-05T23:56:00Z",
+    )
+
+    finalized_run, packet = finalize_review_worthy_pipeline_run(
+        connection,
+        paths,
+        pipeline_run.pipeline_run_id,
+        final_status=RUN_STATUS_COMPLETED,
+        current_stage="completed",
+        run_summary="Reached the current end-to-end role-targeted boundary.",
+        timestamp="2026-04-05T23:57:00Z",
+    )
+    stored_packet = get_expert_review_packet(connection, packet.expert_review_packet_id)
+    packet_history = list_expert_review_packets_for_run(connection, pipeline_run.pipeline_run_id)
+    packet_json = json.loads(
+        (project_root / packet.packet_path).read_text(encoding="utf-8")
+    )
+    packet_markdown = (project_root / packet.markdown_path).read_text(encoding="utf-8")
+    artifact_rows = connection.execute(
+        """
+        SELECT artifact_type, file_path
+        FROM artifact_records
+        WHERE job_posting_id = ?
+          AND file_path LIKE 'ops/review-packets/%'
+        ORDER BY artifact_type
+        """,
+        (job_posting_id,),
+    ).fetchall()
+    connection.close()
+
+    assert finalized_run.run_status == RUN_STATUS_COMPLETED
+    assert finalized_run.review_packet_status == REVIEW_PACKET_STATUS_PENDING
+    assert stored_packet is not None
+    assert stored_packet.packet_status == REVIEW_PACKET_STATUS_PENDING
+    assert packet_history == [stored_packet]
+    assert packet_json["pipeline_run_id"] == pipeline_run.pipeline_run_id
+    assert packet_json["job_posting_id"] == job_posting_id
+    assert packet_json["run_outcome"] == "completed"
+    assert packet_json["recommended_expert_actions"]
+    assert packet_json["incidents"][0]["incident_type"] == "manual_review_required"
+    assert packet_markdown.startswith("# Expert Review Packet")
+    assert "Recommended Expert Actions" in packet_markdown
+    assert [dict(row) for row in artifact_rows] == [
+        {
+            "artifact_type": "expert_review_packet_json",
+            "file_path": packet.packet_path,
+        },
+        {
+            "artifact_type": "expert_review_packet_markdown",
+            "file_path": packet.markdown_path,
+        },
+    ]
+
+
+def test_record_expert_override_decision_persists_lineage_and_marks_packet_reviewed(tmp_path):
+    project_root = bootstrap_project(tmp_path)
+    paths = ProjectPaths.from_root(project_root)
+    connection = connect_database(project_root / "job_hunt_copilot.db")
+    lead_id, job_posting_id = seed_role_targeted_posting(connection)
+    pipeline_run, _ = ensure_role_targeted_pipeline_run(
+        connection,
+        lead_id=lead_id,
+        job_posting_id=job_posting_id,
+        current_stage="agent_review",
+        started_at="2026-04-06T00:40:00Z",
+    )
+    _, packet = finalize_review_worthy_pipeline_run(
+        connection,
+        paths,
+        pipeline_run.pipeline_run_id,
+        final_status=RUN_STATUS_ESCALATED,
+        current_stage="agent_review",
+        error_summary="expert clarification required before outreach proceeds",
+        run_summary="Escalated after agent review requested an explicit owner decision.",
+        timestamp="2026-04-06T00:41:00Z",
+    )
+    connection.execute(
+        """
+        UPDATE job_postings
+        SET posting_status = ?, updated_at = ?
+        WHERE job_posting_id = ?
+        """,
+        (
+            "requires_contacts",
+            "2026-04-06T00:42:00Z",
+            job_posting_id,
+        ),
+    )
+    connection.commit()
+
+    decision, override_event = record_expert_override_decision(
+        connection,
+        packet.expert_review_packet_id,
+        decision_type="override_posting_status",
+        object_type="job_posting",
+        object_id=job_posting_id,
+        component_stage="resume_review",
+        previous_value={
+            "decision_context": {
+                "source_packet_id": packet.expert_review_packet_id,
+                "run_status": "escalated",
+            },
+            "posting_status": "resume_review_pending",
+        },
+        new_value={
+            "decision_context": {
+                "applied_from": "expert_override",
+            },
+            "posting_status": "requires_contacts",
+        },
+        override_reason="Owner approved moving this posting into contact discovery.",
+        override_by="owner",
+        lead_id=lead_id,
+        job_posting_id=job_posting_id,
+        decided_at="2026-04-06T00:42:30Z",
+    )
+    stored_packet = get_expert_review_packet(connection, packet.expert_review_packet_id)
+    stored_run = get_pipeline_run(connection, pipeline_run.pipeline_run_id)
+    stored_decision = get_expert_review_decision(connection, decision.expert_review_decision_id)
+    stored_override = get_override_event(connection, override_event.override_event_id)
+    packet_decisions = list_expert_review_decisions_for_packet(
+        connection,
+        packet.expert_review_packet_id,
+    )
+    override_history = list_override_events_for_object(
+        connection,
+        object_type="job_posting",
+        object_id=job_posting_id,
+    )
+    connection.close()
+
+    assert stored_packet is not None
+    assert stored_packet.packet_status == REVIEW_PACKET_STATUS_REVIEWED
+    assert stored_packet.reviewed_at == "2026-04-06T00:42:30Z"
+    assert stored_run is not None
+    assert stored_run.review_packet_status == REVIEW_PACKET_STATUS_REVIEWED
+    assert stored_decision is not None
+    assert stored_decision.override_event_id == override_event.override_event_id
+    assert packet_decisions == [stored_decision]
+    assert stored_override is not None
+    assert stored_override.override_reason == "Owner approved moving this posting into contact discovery."
+    assert stored_override.override_by == "owner"
+    assert json.loads(stored_override.previous_value)["decision_context"]["source_packet_id"] == (
+        packet.expert_review_packet_id
+    )
+    assert json.loads(stored_override.new_value)["posting_status"] == "requires_contacts"
+    assert override_history == [stored_override]
+
+
 def test_run_supervisor_cycle_bootstraps_new_posting_run_and_persists_snapshot(tmp_path):
     project_root = bootstrap_project(tmp_path)
     paths = ProjectPaths.from_root(project_root)
@@ -782,6 +960,8 @@ def test_run_supervisor_cycle_emits_incident_when_selected_stage_has_no_register
         """,
         (pipeline_run.pipeline_run_id,),
     ).fetchall()
+    stored_packets = list_expert_review_packets_for_run(connection, pipeline_run.pipeline_run_id)
+    snapshot = json.loads((project_root / execution.context_snapshot_path).read_text(encoding="utf-8"))
     connection.close()
 
     assert execution.cycle.result == SUPERVISOR_CYCLE_RESULT_FAILED
@@ -789,9 +969,14 @@ def test_run_supervisor_cycle_emits_incident_when_selected_stage_has_no_register
     assert execution.selected_work.work_type == "pipeline_run"
     assert execution.incident is not None
     assert execution.incident.incident_type == "unsupported_supervisor_action"
+    assert execution.review_packet is not None
+    assert execution.review_packet.packet_status == REVIEW_PACKET_STATUS_PENDING
     assert updated_run is not None
     assert updated_run.run_status == RUN_STATUS_ESCALATED
+    assert updated_run.review_packet_status == REVIEW_PACKET_STATUS_PENDING
     assert "No registered bounded supervisor action" in updated_run.last_error_summary
+    assert stored_packets == [execution.review_packet]
+    assert snapshot["review_packet"]["packet_path"] == execution.review_packet.packet_path
     assert [dict(row) for row in stored_incidents] == [
         {
             "incident_type": "unsupported_supervisor_action",
