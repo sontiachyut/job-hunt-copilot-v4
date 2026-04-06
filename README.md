@@ -29,9 +29,10 @@ What already exists:
 - an acceptance spec in [prd/test-spec.feature](./prd/test-spec.feature)
 - an autonomous operations-agent design
 - an unattended multi-agent build system scaffold under [build-agent/](./build-agent/)
+- a foundation runtime bootstrap package for support-directory setup, secret materialization, and DB migration scaffolding
 
 What is still in progress:
-- core runtime implementation of the actual product components
+- the canonical product schema, artifact contracts, and higher-level runtime components
 
 ## System Overview
 
@@ -70,9 +71,11 @@ From a software-engineering perspective, this project is about:
 ```text
 .
 ├── prd/          Product spec and acceptance spec
+├── job_hunt_copilot/  Product runtime bootstrap and persistence scaffolding
 ├── build-agent/  Long-run Codex build control plane
 ├── docs/         Human-readable architecture and repo explanation
 ├── assets/       Source assets for tailoring and outreach
+├── tests/        Bootstrap and runtime validation
 └── secrets/      Local runtime secrets (ignored from git)
 ```
 

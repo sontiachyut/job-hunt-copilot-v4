@@ -80,6 +80,12 @@ This repository prefers:
 - state transitions over vague narrative progress
 - machine-readable handoffs plus human-readable companion files
 
+The product runtime now has an explicit bootstrap layer under `job_hunt_copilot/`:
+- repo-path helpers for the current-build layout
+- DB migration scaffolding for `job_hunt_copilot.db`
+- bootstrap checks for assets and local secret materialization
+- repo-local runtime directory creation for downstream components
+
 Important artifact families:
 - `lead-manifest.yaml`
 - `meta.yaml`
@@ -96,13 +102,15 @@ Important artifact families:
 flowchart LR
     A[prd/] --> A1[spec.md]
     A --> A2[test-spec.feature]
-    B[build-agent/] --> B1[team roles]
-    B --> B2[state]
-    B --> B3[bin + scripts + launchd]
-    C[docs/] --> C1[architecture]
-    C --> C2[Q&A]
-    D[assets/] --> D1[resume tailoring]
-    D --> D2[outreach]
+    B[job_hunt_copilot/] --> B1[bootstrap]
+    B --> B2[db migrations]
+    C[build-agent/] --> C1[team roles]
+    C --> C2[state]
+    C --> C3[bin + scripts + launchd]
+    D[docs/] --> D1[architecture]
+    D --> D2[Q&A]
+    E[assets/] --> E1[resume tailoring]
+    E --> E2[outreach]
 ```
 
 ## What To Read Next

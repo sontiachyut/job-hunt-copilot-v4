@@ -8,11 +8,12 @@ global_status:
   canonical_inputs:
     - prd/spec.md
     - prd/test-spec.feature
-  current_phase: implementation_ready
+  current_phase: implementation_in_progress
   overall_risk: high
   summary:
     - Planning now reflects the PRD and acceptance spec instead of the initial seeded checklist.
-    - The repository still lacks the core product runtime, canonical DB implementation, and acceptance harness.
+    - BA-01-S1 landed a repo-local bootstrap package, runtime support-directory materialization, secret-file expansion, and DB migration scaffolding.
+    - The canonical next-build schema, review views, and artifact contract helpers are still open.
   execution_principles:
     - One primary slice per unattended build session.
     - Prefer DB-first state, artifact contracts, and runtime scaffolding before higher-level agent behavior.
@@ -83,7 +84,7 @@ epics:
 
   - id: BA-01
     name: Foundation and schema
-    status: pending
+    status: in_progress
     owner_role: foundation-engineer
     phase: P1
     dependencies:
@@ -101,11 +102,19 @@ epics:
       - id: BA-01-S1
         name: Runtime bootstrap and DB init skeleton
         owner_role: foundation-engineer
-        status: pending
+        status: completed
         deliverables:
           - Python package or module skeleton for the fresh-build runtime
           - repo-local runtime support directories such as `paste/` and component output roots
           - bootstrap checks for required assets, secrets materialization, and DB initialization entrypoint
+        completed_notes:
+          - Added the `job_hunt_copilot` package with repo-path helpers, secret materialization, and SQLite migration scaffolding.
+          - Added `bin/jhc-bootstrap` plus a first migration that initializes `job_hunt_copilot.db` and tracks applied migrations.
+          - Bootstrap now materializes `paste/paste.txt` and the major runtime support roots needed by later ingestion, tailoring, discovery, outreach, and ops slices.
+        validation:
+          - "`python3 -m pytest tests/test_bootstrap.py`"
+          - "`python3 -m job_hunt_copilot.bootstrap --project-root /Users/achyutaramsonti/Projects/job-hunt-copilot-v4`"
+          - "`python3 -m job_hunt_copilot.bootstrap prereqs`"
       - id: BA-01-S2
         name: Canonical schema and views
         owner_role: foundation-engineer
@@ -576,13 +585,13 @@ epics:
 
 current_focus:
   epic_id: BA-01
-  slice_id: BA-01-S1
+  slice_id: BA-01-S2
   owner_role: foundation-engineer
-  reason: Foundation bootstrap and schema work unblock every later product epic and directly cover the first acceptance rule cluster.
+  reason: The bootstrap skeleton is in place, so the next dependency is the canonical SQLite schema, indexes, and review views required by the acceptance spec.
   exit_criteria:
-    - DB initialization or migration entrypoint exists
-    - runtime support directories and bootstrap checks exist
-    - the bootstrap path validates locally
+    - the canonical tables from PRD section 7.1.1A exist on a fresh `job_hunt_copilot.db`
+    - review views such as unresolved contacts and bounced-email review exist and can be queried
+    - the bootstrap path still validates locally after the canonical schema migration lands
 
 focus_order:
   - epic_id: BA-01

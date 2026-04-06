@@ -10,7 +10,8 @@ It should stay aligned with:
 ## Current Planning Result
 
 - `BA-00` is complete: the build is now sequenced by phases, dependencies, and bounded slices instead of the original seeded checklist.
-- The repository still lacks the actual product runtime, canonical DB implementation, and acceptance harness.
+- `BA-01-S1` is complete: the repository now has a real `job_hunt_copilot` bootstrap package, runtime support-directory creation, secret-file materialization, and a SQLite migration entrypoint for `job_hunt_copilot.db`.
+- The canonical DB schema, artifact contract helpers, and broader product runtime components are still pending.
 - Known operational risk: unattended build-lead execution needs a follow-up validation pass for the `codex exec` CLI compatibility fix already present in the worktree.
 
 ## Phase Order
@@ -77,12 +78,12 @@ It should stay aligned with:
 
 ## Next Slice
 
-- Current focus: `BA-01-S1` Runtime bootstrap and DB init skeleton.
-- Why next: it covers the first bootstrap scenarios and unlocks every downstream component.
+- Current focus: `BA-01-S2` Canonical schema and views.
+- Why next: the bootstrap skeleton is now validated, and the next acceptance cluster depends on the full next-build schema, indexes, and review views.
 - Done when:
-  - a DB initialization or migration entrypoint exists
-  - runtime support directories and bootstrap checks exist
-  - the bootstrap path validates locally
+  - the canonical tables from PRD section `7.1.1A` initialize cleanly on a fresh `job_hunt_copilot.db`
+  - indexes and review views required by the acceptance schema scenario exist
+  - the bootstrap entrypoint still passes once the canonical schema migration is added
 
 ## Working Rules
 

@@ -6,6 +6,21 @@ CODEX_HANDOFF_AUTONOMOUS.md
 # Local secrets
 secrets/
 
+# Product runtime artifacts
+job_hunt_copilot.db
+paste/paste.txt
+applications/
+linkedin-scraping/runtime/
+resume-tailoring/input/job-postings/
+resume-tailoring/output/
+discovery/output/
+outreach/output/
+ops/agent/
+ops/review-packets/
+ops/maintenance/
+ops/incidents/
+ops/launchd/
+
 # Generated build-agent runtime artifacts
 build-agent/runtime/
 build-agent/logs/
