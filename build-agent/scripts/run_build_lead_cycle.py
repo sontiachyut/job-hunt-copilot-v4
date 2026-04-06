@@ -29,6 +29,7 @@ from common import (
     require_project_git_root,
     resolve_codex_bin,
     resolve_python_bin,
+    runtime_subprocess_env,
     save_control_state,
     save_json,
     save_leases,
@@ -383,7 +384,14 @@ def main() -> int:
             log_handle.write(f"# {cycle_id}\n")
             log_handle.write(f"started_at: {started_at}\n")
             log_handle.write(f"selected_epic: {epic.get('id')} {epic.get('name')}\n\n")
-            completed = subprocess.run(command, input=prompt, text=True, stdout=log_handle, stderr=subprocess.STDOUT)
+            completed = subprocess.run(
+                command,
+                input=prompt,
+                text=True,
+                stdout=log_handle,
+                stderr=subprocess.STDOUT,
+                env=runtime_subprocess_env(),
+            )
 
         completed_at = now_utc_iso()
         control_state = load_control_state(project_root)

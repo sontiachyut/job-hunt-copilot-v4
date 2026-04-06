@@ -21,7 +21,9 @@ from common import (
     now_utc_iso,
     require_project_git_root,
     resolve_codex_bin,
+    resolve_node_bin,
     resolve_python_bin,
+    resolve_runtime_path,
     save_json,
     write_text_atomic,
 )
@@ -35,6 +37,7 @@ def render_plist(project_root: Path) -> str:
         "__RUN_BUILD_LEAD_CYCLE__": str(build_agent_root(project_root) / "scripts" / "run_build_lead_cycle.py"),
         "__STDOUT_LOG__": str(build_agent_root(project_root) / "logs" / "build-lead.stdout.log"),
         "__STDERR_LOG__": str(build_agent_root(project_root) / "logs" / "build-lead.stderr.log"),
+        "__PATH__": resolve_runtime_path(),
     }
     rendered = template
     for needle, value in replacements.items():
@@ -59,6 +62,8 @@ def main() -> int:
         "build_agent_root": str(build_root),
         "python_bin": resolve_python_bin(),
         "codex_bin": resolve_codex_bin(),
+        "node_bin": resolve_node_bin(),
+        "runtime_path": resolve_runtime_path(),
         "identity": load_yaml(build_root / "identity.yaml"),
         "policies": load_yaml(build_root / "policies.yaml"),
         "coordination": load_yaml(build_root / "coordination.yaml"),

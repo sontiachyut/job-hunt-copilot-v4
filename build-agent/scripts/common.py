@@ -263,6 +263,52 @@ def resolve_codex_bin() -> str:
     )
 
 
+def resolve_node_bin() -> str:
+    return resolve_binary(
+        "JHC_NODE_BIN",
+        [
+            "node",
+            "/opt/homebrew/bin/node",
+            "/usr/local/bin/node",
+        ],
+    )
+
+
+def resolve_runtime_path() -> str:
+    ordered_dirs = [
+        str(Path(resolve_python_bin()).resolve().parent),
+        str(Path(resolve_codex_bin()).resolve().parent),
+        str(Path(resolve_node_bin()).resolve().parent),
+        "/opt/homebrew/bin",
+        "/usr/local/bin",
+        "/usr/bin",
+        "/bin",
+        "/usr/sbin",
+        "/sbin",
+    ]
+    existing_path = os.environ.get("PATH", "")
+    if existing_path:
+        ordered_dirs.extend(part for part in existing_path.split(os.pathsep) if part)
+
+    deduped: list[str] = []
+    seen: set[str] = set()
+    for raw_dir in ordered_dirs:
+        resolved_dir = str(Path(raw_dir).expanduser())
+        if resolved_dir in seen:
+            continue
+        seen.add(resolved_dir)
+        deduped.append(resolved_dir)
+    return os.pathsep.join(deduped)
+
+
+def runtime_subprocess_env(extra: dict[str, str] | None = None) -> dict[str, str]:
+    env = os.environ.copy()
+    env["PATH"] = resolve_runtime_path()
+    if extra:
+        env.update(extra)
+    return env
+
+
 def process_is_alive(pid: int | None) -> bool:
     if pid is None:
         return False

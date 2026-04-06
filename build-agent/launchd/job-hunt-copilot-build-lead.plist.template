@@ -19,6 +19,11 @@
     <string>--project-root</string>
     <string>__PROJECT_ROOT__</string>
   </array>
+  <key>EnvironmentVariables</key>
+  <dict>
+    <key>PATH</key>
+    <string>__PATH__</string>
+  </dict>
   <key>StandardOutPath</key>
   <string>__STDOUT_LOG__</string>
   <key>StandardErrorPath</key>
