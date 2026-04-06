@@ -12,8 +12,8 @@ global_status:
   overall_risk: high
   summary:
     - Planning now reflects the PRD and acceptance spec instead of the initial seeded checklist.
-    - BA-01-S1 landed a repo-local bootstrap package, runtime support-directory materialization, secret-file expansion, and DB migration scaffolding.
-    - The canonical next-build schema, review views, and artifact contract helpers are still open.
+    - BA-01-S1 and BA-01-S2 landed the repo-local bootstrap package, canonical SQLite schema migration, review views, and shared record-ID/timestamp helpers.
+    - The shared artifact-contract writers and `artifact_records` registration helpers are still open.
   execution_principles:
     - One primary slice per unattended build session.
     - Prefer DB-first state, artifact contracts, and runtime scaffolding before higher-level agent behavior.
@@ -118,13 +118,21 @@ epics:
       - id: BA-01-S2
         name: Canonical schema and views
         owner_role: foundation-engineer
-        status: pending
+        status: completed
         dependencies:
           - BA-01-S1
         deliverables:
           - tables, indexes, and core views from PRD section 7.1.1 and the acceptance schema scenario
           - stable ID generation and lifecycle timestamp conventions
           - migration or re-init flow that can run cleanly on a fresh repo
+        completed_notes:
+          - Added `0002_canonical_schema.sql` with the canonical next-build tables, minimum index set, and review views plus the acceptance-required `maintenance_change_batches` table.
+          - Added shared canonical record helpers for stable ID prefixes and lifecycle timestamps so downstream slices can write rows without inventing new conventions.
+          - Reconciled the PRD prose and DDL skeleton by including `supervisor_cycles` snapshot columns plus review views for unresolved contacts, bounced email, pending expert review, and open incidents.
+        validation:
+          - "`python3.11 -m pytest tests/test_bootstrap.py tests/test_schema.py`"
+          - "`python3.11 -m job_hunt_copilot.bootstrap --project-root /Users/achyutaramsonti/Projects/job-hunt-copilot-v4`"
+          - "Live DB check confirmed `user_version = 2` plus `unresolved_contacts_review`, `bounced_email_review`, `expert_review_queue`, and `open_agent_incidents_review`."
       - id: BA-01-S3
         name: Artifact contract and registry utilities
         owner_role: foundation-engineer
@@ -585,13 +593,13 @@ epics:
 
 current_focus:
   epic_id: BA-01
-  slice_id: BA-01-S2
+  slice_id: BA-01-S3
   owner_role: foundation-engineer
-  reason: The bootstrap skeleton is in place, so the next dependency is the canonical SQLite schema, indexes, and review views required by the acceptance spec.
+  reason: The canonical schema is now landed and validated, so the next dependency is the shared artifact contract envelope plus `artifact_records` helpers every downstream component will need.
   exit_criteria:
-    - the canonical tables from PRD section 7.1.1A exist on a fresh `job_hunt_copilot.db`
-    - review views such as unresolved contacts and bounced-email review exist and can be queried
-    - the bootstrap path still validates locally after the canonical schema migration lands
+    - shared YAML and JSON contract writers can emit the required envelope fields for machine handoff artifacts
+    - "`artifact_records` helpers can register artifacts against lead, posting, contact, or message roots"
+    - downstream components can reuse canonical path and reference helpers instead of inventing per-component metadata writes
 
 focus_order:
   - epic_id: BA-01

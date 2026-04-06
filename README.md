@@ -22,7 +22,7 @@ The goal is to build a reliable autonomous workflow with:
 
 ## Current Status
 
-This repo is currently in a **spec-complete, implementation-starting** phase.
+This repo is currently in a **spec-complete, implementation-underway** phase.
 
 What already exists:
 - a detailed product specification in [prd/spec.md](./prd/spec.md)
@@ -30,9 +30,10 @@ What already exists:
 - an autonomous operations-agent design
 - an unattended multi-agent build system scaffold under [build-agent/](./build-agent/)
 - a foundation runtime bootstrap package for support-directory setup, secret materialization, and DB migration scaffolding
+- a canonical SQLite schema migration set with review views plus shared ID and timestamp helpers for downstream components
 
 What is still in progress:
-- the canonical product schema, artifact contracts, and higher-level runtime components
+- artifact contracts and higher-level runtime components
 
 ## System Overview
 
@@ -71,7 +72,7 @@ From a software-engineering perspective, this project is about:
 ```text
 .
 ├── prd/          Product spec and acceptance spec
-├── job_hunt_copilot/  Product runtime bootstrap and persistence scaffolding
+├── job_hunt_copilot/  Product runtime bootstrap, schema, and persistence scaffolding
 ├── build-agent/  Long-run Codex build control plane
 ├── docs/         Human-readable architecture and repo explanation
 ├── assets/       Source assets for tailoring and outreach

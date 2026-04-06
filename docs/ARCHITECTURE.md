@@ -82,7 +82,8 @@ This repository prefers:
 
 The product runtime now has an explicit bootstrap layer under `job_hunt_copilot/`:
 - repo-path helpers for the current-build layout
-- DB migration scaffolding for `job_hunt_copilot.db`
+- canonical DB migrations and review views for `job_hunt_copilot.db`
+- shared canonical ID and lifecycle timestamp helpers for downstream records
 - bootstrap checks for assets and local secret materialization
 - repo-local runtime directory creation for downstream components
 
@@ -103,7 +104,7 @@ flowchart LR
     A[prd/] --> A1[spec.md]
     A --> A2[test-spec.feature]
     B[job_hunt_copilot/] --> B1[bootstrap]
-    B --> B2[db migrations]
+    B --> B2[db migrations + record helpers]
     C[build-agent/] --> C1[team roles]
     C --> C2[state]
     C --> C3[bin + scripts + launchd]

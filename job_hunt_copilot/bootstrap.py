@@ -5,12 +5,12 @@ import importlib.util
 import json
 import shutil
 import sys
-from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
 from .db import initialize_database
 from .paths import ProjectPaths
+from .records import now_utc_iso
 from .secrets import materialize_runtime_secrets
 
 
@@ -24,12 +24,6 @@ REQUIRED_MODULES = {
     "PyYAML": "yaml",
     "pytest": "pytest",
 }
-
-
-def now_utc_iso() -> str:
-    return datetime.now(timezone.utc).replace(microsecond=0).isoformat().replace("+00:00", "Z")
-
-
 def ensure_required_inputs(paths: ProjectPaths) -> dict[str, Any]:
     missing: list[str] = []
     required_paths = [paths.spec_path, *paths.required_asset_paths()]

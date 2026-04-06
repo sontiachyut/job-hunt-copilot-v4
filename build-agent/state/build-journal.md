@@ -74,3 +74,29 @@ Use this file as an append-only implementation log for the build agent.
 
 ### Notes
 - The bootstrap slice intentionally stops short of creating the full canonical tables; that schema work remains bounded to `BA-01-S2`.
+
+### Session
+- Date: 2026-04-05 21:27:28 MST
+- Slice: BA-01-S2 canonical schema and views
+- Goal: Materialize the PRD-aligned canonical SQLite schema, review views, and shared record conventions through the migration framework.
+
+### Work Done
+- Added `job_hunt_copilot/migrations/0002_canonical_schema.sql` to create the canonical next-build tables, minimum index set, and review views required by `prd/spec.md` section `7.1.1A` plus the acceptance schema scenario.
+- Added `job_hunt_copilot/records.py` so downstream slices can reuse stable record-ID prefixes and lifecycle timestamp helpers instead of inventing their own conventions.
+- Added focused schema validation coverage in `tests/test_schema.py`, moved the minimal bootstrap test fixture into `tests/support.py`, and updated bootstrap expectations for the second migration.
+- Updated `README.md` and `docs/ARCHITECTURE.md` so the repo-facing status reflects that the schema and review-view layer now exists.
+
+### Validation
+- Ran `python3.11 -m pytest tests/test_bootstrap.py tests/test_schema.py` and confirmed all 6 targeted tests passed.
+- Ran `python3.11 -m job_hunt_copilot.bootstrap --project-root /Users/achyutaramsonti/Projects/job-hunt-copilot-v4` and confirmed the real repo DB applied `0002_canonical_schema.sql` and reported `user_version = 2`.
+- Queried the live `job_hunt_copilot.db` and confirmed the canonical tables plus `unresolved_contacts_review`, `bounced_email_review`, `expert_review_queue`, and `open_agent_incidents_review` exist.
+
+### Result
+- `done`
+
+### Next
+- Implement `BA-01-S3`: shared artifact contract writers, `artifact_records` registration helpers, and canonical artifact path/reference helpers for downstream slices.
+
+### Notes
+- Inference recorded explicitly: the PRD prose requires `maintenance_change_batches` and additional `supervisor_cycles` snapshot columns even though the embedded DDL skeleton omits them, so this slice implemented those fields from the prose plus acceptance requirements rather than weakening the schema.
+- The pre-existing unattended build-loop carryover diff under `build-agent/scripts/` remains untouched and is still tracked separately as `BUILD-CLI-001`.

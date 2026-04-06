@@ -2,15 +2,12 @@ from __future__ import annotations
 
 import sqlite3
 from dataclasses import dataclass
-from datetime import datetime, timezone
 from pathlib import Path
+
+from .records import now_utc_iso
 
 
 MIGRATIONS_DIR = Path(__file__).resolve().parent / "migrations"
-
-
-def now_utc_iso() -> str:
-    return datetime.now(timezone.utc).replace(microsecond=0).isoformat().replace("+00:00", "Z")
 
 
 @dataclass(frozen=True)
