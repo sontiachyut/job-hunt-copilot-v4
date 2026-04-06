@@ -6,6 +6,7 @@ import os
 import re
 import shutil
 import subprocess
+import sys
 import tempfile
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
@@ -237,13 +238,16 @@ def resolve_binary(env_name: str, candidates: list[str]) -> str:
 
 
 def resolve_python_bin() -> str:
+    current_python = Path(sys.executable).resolve()
+    if current_python.exists():
+        return str(current_python)
     return resolve_binary(
         "JHC_PYTHON_BIN",
         [
-            "python3",
             "/opt/homebrew/opt/python@3.11/libexec/bin/python3",
             "/opt/homebrew/bin/python3",
             "/usr/local/bin/python3",
+            "python3",
         ],
     )
 
