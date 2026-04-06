@@ -14,7 +14,10 @@
   <string>__PROJECT_ROOT__</string>
   <key>ProgramArguments</key>
   <array>
-    <string>__BUILD_CYCLE__</string>
+    <string>__PYTHON_BIN__</string>
+    <string>__RUN_BUILD_LEAD_CYCLE__</string>
+    <string>--project-root</string>
+    <string>__PROJECT_ROOT__</string>
   </array>
   <key>StandardOutPath</key>
   <string>__STDOUT_LOG__</string>

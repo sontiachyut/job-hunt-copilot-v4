@@ -4,6 +4,7 @@ from __future__ import annotations
 import json
 import os
 import re
+import shutil
 import subprocess
 import tempfile
 from datetime import datetime, timedelta, timezone
@@ -220,6 +221,42 @@ def require_project_git_root(project_root: Path) -> None:
             f"Build agent requires the project directory to be the git root. "
             f"Current git root is {git_root}, expected {expected}."
         )
+
+
+def resolve_binary(env_name: str, candidates: list[str]) -> str:
+    configured = os.environ.get(env_name)
+    if configured and Path(configured).exists():
+        return configured
+    for candidate in candidates:
+        found = shutil.which(candidate)
+        if found:
+            return found
+        if Path(candidate).exists():
+            return str(Path(candidate))
+    raise RuntimeError(f"Unable to resolve required binary for {env_name}.")
+
+
+def resolve_python_bin() -> str:
+    return resolve_binary(
+        "JHC_PYTHON_BIN",
+        [
+            "python3",
+            "/opt/homebrew/opt/python@3.11/libexec/bin/python3",
+            "/opt/homebrew/bin/python3",
+            "/usr/local/bin/python3",
+        ],
+    )
+
+
+def resolve_codex_bin() -> str:
+    return resolve_binary(
+        "JHC_CODEX_BIN",
+        [
+            "codex",
+            "/opt/homebrew/bin/codex",
+            "/usr/local/bin/codex",
+        ],
+    )
 
 
 def process_is_alive(pid: int | None) -> bool:

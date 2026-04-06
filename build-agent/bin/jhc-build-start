@@ -5,8 +5,16 @@ ROOT="$(cd "$(dirname "$0")/../.." && pwd)"
 BUILD_ROOT="$ROOT/build-agent"
 PLIST="$BUILD_ROOT/launchd/job-hunt-copilot-build-lead.plist"
 LABEL="gui/$UID/com.jobhuntcopilot.buildlead"
+PYTHON_BIN="${JHC_PYTHON_BIN:-$(command -v python3 || true)}"
+if [[ -z "$PYTHON_BIN" && -x /opt/homebrew/opt/python@3.11/libexec/bin/python3 ]]; then
+  PYTHON_BIN="/opt/homebrew/opt/python@3.11/libexec/bin/python3"
+fi
+if [[ -z "$PYTHON_BIN" ]]; then
+  echo "python3 not found for build-agent startup" >&2
+  exit 127
+fi
 
-python3 "$BUILD_ROOT/scripts/materialize_runtime_pack.py" --project-root "$ROOT" >/dev/null
+"$PYTHON_BIN" "$BUILD_ROOT/scripts/materialize_runtime_pack.py" --project-root "$ROOT" >/dev/null
 
 if ! launchctl print "$LABEL" >/dev/null 2>&1; then
   launchctl bootstrap "gui/$UID" "$PLIST"
@@ -14,5 +22,5 @@ fi
 
 launchctl kickstart -k "$LABEL"
 launchctl print "$LABEL" >/dev/null
-python3 "$BUILD_ROOT/scripts/control_state.py" start --project-root "$ROOT" >/dev/null
+"$PYTHON_BIN" "$BUILD_ROOT/scripts/control_state.py" start --project-root "$ROOT" >/dev/null
 echo "Build agent started via $LABEL"

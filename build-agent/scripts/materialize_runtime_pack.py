@@ -20,6 +20,8 @@ from common import (
     load_yaml,
     now_utc_iso,
     require_project_git_root,
+    resolve_codex_bin,
+    resolve_python_bin,
     save_json,
     write_text_atomic,
 )
@@ -29,7 +31,8 @@ def render_plist(project_root: Path) -> str:
     template = build_plist_template_path(project_root).read_text(encoding="utf-8")
     replacements = {
         "__PROJECT_ROOT__": str(project_root),
-        "__BUILD_CYCLE__": str(build_agent_root(project_root) / "bin" / "jhc-build-cycle"),
+        "__PYTHON_BIN__": resolve_python_bin(),
+        "__RUN_BUILD_LEAD_CYCLE__": str(build_agent_root(project_root) / "scripts" / "run_build_lead_cycle.py"),
         "__STDOUT_LOG__": str(build_agent_root(project_root) / "logs" / "build-lead.stdout.log"),
         "__STDERR_LOG__": str(build_agent_root(project_root) / "logs" / "build-lead.stderr.log"),
     }
@@ -54,6 +57,8 @@ def main() -> int:
         "generated_at": now_utc_iso(),
         "project_root": str(project_root),
         "build_agent_root": str(build_root),
+        "python_bin": resolve_python_bin(),
+        "codex_bin": resolve_codex_bin(),
         "identity": load_yaml(build_root / "identity.yaml"),
         "policies": load_yaml(build_root / "policies.yaml"),
         "coordination": load_yaml(build_root / "coordination.yaml"),

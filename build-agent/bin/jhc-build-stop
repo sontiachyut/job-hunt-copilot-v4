@@ -5,6 +5,14 @@ ROOT="$(cd "$(dirname "$0")/../.." && pwd)"
 BUILD_ROOT="$ROOT/build-agent"
 PLIST="$BUILD_ROOT/launchd/job-hunt-copilot-build-lead.plist"
 LABEL="gui/$UID/com.jobhuntcopilot.buildlead"
+PYTHON_BIN="${JHC_PYTHON_BIN:-$(command -v python3 || true)}"
+if [[ -z "$PYTHON_BIN" && -x /opt/homebrew/opt/python@3.11/libexec/bin/python3 ]]; then
+  PYTHON_BIN="/opt/homebrew/opt/python@3.11/libexec/bin/python3"
+fi
+if [[ -z "$PYTHON_BIN" ]]; then
+  echo "python3 not found for build-agent shutdown" >&2
+  exit 127
+fi
 
 if launchctl print "$LABEL" >/dev/null 2>&1; then
   launchctl bootout "gui/$UID" "$PLIST" >/dev/null
@@ -14,6 +22,6 @@ if launchctl print "$LABEL" >/dev/null 2>&1; then
   fi
 fi
 
-python3 "$BUILD_ROOT/scripts/control_state.py" stop --project-root "$ROOT" --pause-reason manual_stop >/dev/null
+"$PYTHON_BIN" "$BUILD_ROOT/scripts/control_state.py" stop --project-root "$ROOT" --pause-reason manual_stop >/dev/null
 
 echo "Build agent stopped"

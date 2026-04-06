@@ -18,6 +18,12 @@ The default unattended build model is intentionally serialized:
 - one primary role-owned slice per cycle
 - no default parallel multi-role execution until the repository is more mature
 
+Repo scope is intentionally bounded:
+- unattended `codex exec` sessions run with `workspace-write` sandboxing
+- the project root is the only writable workspace
+- no extra writable directories are granted to the model
+- Codex sessions are ephemeral so they do not persist runtime session state outside the repo
+
 That still preserves the multi-engineer model because each cycle explicitly assigns one specialist role and follows that role's brief.
 
 ## Operating Model

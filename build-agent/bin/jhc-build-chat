@@ -4,9 +4,21 @@ set -euo pipefail
 ROOT="$(cd "$(dirname "$0")/../.." && pwd)"
 BUILD_ROOT="$ROOT/build-agent"
 PROMPT_FILE="$BUILD_ROOT/chat-bootstrap.md"
+PYTHON_BIN="${JHC_PYTHON_BIN:-$(command -v python3 || true)}"
+if [[ -z "$PYTHON_BIN" && -x /opt/homebrew/opt/python@3.11/libexec/bin/python3 ]]; then
+  PYTHON_BIN="/opt/homebrew/opt/python@3.11/libexec/bin/python3"
+fi
+CODEX_BIN="${JHC_CODEX_BIN:-$(command -v codex || true)}"
+if [[ -z "$CODEX_BIN" && -x /opt/homebrew/bin/codex ]]; then
+  CODEX_BIN="/opt/homebrew/bin/codex"
+fi
+if [[ -z "$PYTHON_BIN" || -z "$CODEX_BIN" ]]; then
+  echo "Required python3/codex binaries not found for build-agent chat" >&2
+  exit 127
+fi
 
-python3 "$BUILD_ROOT/scripts/materialize_runtime_pack.py" --project-root "$ROOT" >/dev/null
-SESSION_JSON="$(python3 "$BUILD_ROOT/scripts/chat_session.py" begin --project-root "$ROOT")"
+"$PYTHON_BIN" "$BUILD_ROOT/scripts/materialize_runtime_pack.py" --project-root "$ROOT" >/dev/null
+SESSION_JSON="$("$PYTHON_BIN" "$BUILD_ROOT/scripts/chat_session.py" begin --project-root "$ROOT")"
 SESSION_ID="$(printf '%s' "$SESSION_JSON" | python3 -c 'import json,sys; print(json.load(sys.stdin)["session_id"])')"
 
 cleanup() {
@@ -15,9 +27,9 @@ cleanup() {
   if [[ "$exit_code" -eq 0 ]]; then
     mode="explicit_close"
   fi
-  python3 "$BUILD_ROOT/scripts/chat_session.py" end --project-root "$ROOT" --session-id "$SESSION_ID" --exit-mode "$mode" >/dev/null || true
+  "$PYTHON_BIN" "$BUILD_ROOT/scripts/chat_session.py" end --project-root "$ROOT" --session-id "$SESSION_ID" --exit-mode "$mode" >/dev/null || true
 }
 
 trap 'cleanup $?' EXIT
 
-codex -C "$ROOT" "$(cat "$PROMPT_FILE")"
+"$CODEX_BIN" --ephemeral --sandbox workspace-write --ask-for-approval on-request -C "$ROOT" "$(cat "$PROMPT_FILE")"

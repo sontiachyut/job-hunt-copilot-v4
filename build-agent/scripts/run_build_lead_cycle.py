@@ -27,6 +27,8 @@ from common import (
     now_utc_iso,
     process_is_alive,
     require_project_git_root,
+    resolve_codex_bin,
+    resolve_python_bin,
     save_control_state,
     save_json,
     save_leases,
@@ -278,10 +280,12 @@ def main() -> int:
     project_root = Path(args.project_root).resolve()
     ensure_dirs(project_root)
     require_project_git_root(project_root)
+    python_bin = resolve_python_bin()
+    codex_bin = resolve_codex_bin()
 
     subprocess.run(
         [
-            "python3",
+            python_bin,
             str(build_agent_root(project_root) / "scripts" / "materialize_runtime_pack.py"),
             "--project-root",
             str(project_root),
@@ -360,29 +364,16 @@ def main() -> int:
         snapshot_path, snapshot = build_snapshot(project_root, cycle_id, board, epic, load_control_state(project_root))
         prompt = build_prompt(project_root, cycle_id, epic, snapshot_path, snapshot)
 
-        if shutil.which("codex") is None:
-            completed_at = now_utc_iso()
-            control_state = load_control_state(project_root)
-            control_state["last_cycle_completed_at"] = completed_at
-            save_control_state(project_root, control_state)
-            record_cycle(
-                project_root,
-                {
-                    "build_cycle_id": cycle_id,
-                    "started_at": started_at,
-                    "completed_at": completed_at,
-                    "result": "failed",
-                    "reason": "codex_cli_not_found",
-                },
-            )
-            return 1
-
         cycle_log_path = cycles_log_dir(project_root) / f"{cycle_id}.log"
         last_message_path = cycles_log_dir(project_root) / f"{cycle_id}.last-message.md"
         command = [
-            "codex",
+            codex_bin,
             "exec",
-            "--dangerously-bypass-approvals-and-sandbox",
+            "--ephemeral",
+            "--sandbox",
+            "workspace-write",
+            "--ask-for-approval",
+            "never",
             "-C",
             str(project_root),
             "-o",
@@ -410,7 +401,7 @@ def main() -> int:
         if result == "success":
             checkpoint_process = subprocess.run(
                 [
-                    "python3",
+                    python_bin,
                     str(build_agent_root(project_root) / "scripts" / "git_checkpoint.py"),
                     "--project-root",
                     str(project_root),

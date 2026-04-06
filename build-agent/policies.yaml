@@ -118,6 +118,13 @@ loop_policy:
 runtime_policy:
   heartbeat_interval_minutes: 10
   cycle_lease_ttl_minutes: 240
+  codex_exec_sandbox_mode: workspace-write
+  codex_exec_approval_policy: never
+  codex_exec_ephemeral_sessions: true
+  repo_scope_rule: >
+    Build-agent Codex sessions must run with the project root as the working
+    root, with workspace-write sandboxing, no extra writable directories, and
+    no bypass mode.
   sleep_wake_primary_detection: pmset_log
   sleep_wake_fallback_gap_hours: 1
   sleep_wake_recovery_rule: >
