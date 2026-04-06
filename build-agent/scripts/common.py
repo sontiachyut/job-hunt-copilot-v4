@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import json
 import os
+import re
 import subprocess
 import tempfile
 from datetime import datetime, timedelta, timezone
@@ -132,6 +133,10 @@ def default_control_state() -> dict[str, Any]:
         "last_manual_command": None,
         "last_cycle_started_at": None,
         "last_cycle_completed_at": None,
+        "last_sleep_wake_check_at": None,
+        "last_sleep_wake_event_at": None,
+        "last_sleep_wake_detection_method": None,
+        "last_sleep_wake_recovery_at": None,
         "last_runtime_pack_path": None,
         "last_plist_path": None,
         "last_chat_started_at": None,
@@ -154,6 +159,11 @@ def load_control_state(project_root: Path) -> dict[str, Any]:
     if data is None:
         data = default_control_state()
         save_json(path, data)
+    else:
+        merged = default_control_state()
+        merged.update(data)
+        data = merged
+        save_json(path, data)
     return data
 
 
@@ -166,6 +176,11 @@ def load_leases(project_root: Path) -> dict[str, Any]:
     data = load_json(path, default=None)
     if data is None:
         data = default_leases()
+        save_json(path, data)
+    else:
+        merged = default_leases()
+        merged.update(data)
+        data = merged
         save_json(path, data)
     return data
 
@@ -205,3 +220,91 @@ def require_project_git_root(project_root: Path) -> None:
             f"Build agent requires the project directory to be the git root. "
             f"Current git root is {git_root}, expected {expected}."
         )
+
+
+def process_is_alive(pid: int | None) -> bool:
+    if pid is None:
+        return False
+    try:
+        os.kill(pid, 0)
+    except ProcessLookupError:
+        return False
+    except PermissionError:
+        return True
+    return True
+
+
+def latest_build_activity_at(control_state: dict[str, Any]) -> datetime | None:
+    candidates = [
+        control_state.get("last_cycle_started_at"),
+        control_state.get("last_cycle_completed_at"),
+        control_state.get("last_sleep_wake_recovery_at"),
+    ]
+    datetimes = [iso_to_datetime(value) for value in candidates if value]
+    datetimes = [dt for dt in datetimes if dt is not None]
+    if not datetimes:
+        return None
+    return max(datetimes)
+
+
+_PMSET_WAKE_RE = re.compile(r"^(\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2} [+-]\d{4})\s+Wake\b")
+
+
+def latest_pmset_wake_after(since: datetime | None) -> dict[str, Any] | None:
+    result = subprocess.run(
+        ["pmset", "-g", "log"],
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    if result.returncode != 0 or not result.stdout.strip():
+        return None
+
+    for raw_line in reversed(result.stdout.splitlines()):
+        line = raw_line.strip()
+        match = _PMSET_WAKE_RE.match(line)
+        if not match:
+            continue
+        try:
+            wake_at = datetime.strptime(match.group(1), "%Y-%m-%d %H:%M:%S %z")
+        except ValueError:
+            continue
+        if since and wake_at <= since:
+            return None
+        return {
+            "event_at": wake_at.astimezone(timezone.utc).replace(microsecond=0).isoformat().replace("+00:00", "Z"),
+            "source": "pmset_log",
+            "raw_line": line,
+        }
+    return None
+
+
+def detect_sleep_wake_interruption(
+    control_state: dict[str, Any],
+    fallback_gap_hours: int = 1,
+) -> dict[str, Any]:
+    now = datetime.now(timezone.utc)
+    anchor = latest_build_activity_at(control_state)
+    detection: dict[str, Any] = {
+        "interrupted": False,
+        "method": None,
+        "event_at": None,
+        "fallback_gap_hours": fallback_gap_hours,
+        "anchor_at": anchor.replace(microsecond=0).isoformat().replace("+00:00", "Z") if anchor else None,
+    }
+
+    pmset_detection = latest_pmset_wake_after(anchor)
+    if pmset_detection:
+        detection["interrupted"] = True
+        detection["method"] = pmset_detection["source"]
+        detection["event_at"] = pmset_detection["event_at"]
+        detection["raw_line"] = pmset_detection["raw_line"]
+        return detection
+
+    if anchor and now - anchor > timedelta(hours=fallback_gap_hours):
+        detection["interrupted"] = True
+        detection["method"] = "gap_fallback"
+        detection["event_at"] = now.replace(microsecond=0).isoformat().replace("+00:00", "Z")
+        detection["gap_seconds"] = int((now - anchor).total_seconds())
+
+    return detection

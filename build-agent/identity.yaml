@@ -45,6 +45,7 @@ quality_bar:
 
 team_roles:
   - build-lead
+  - planning-engineer
   - foundation-engineer
   - ingestion-engineer
   - tailoring-engineer

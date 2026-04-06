@@ -20,6 +20,7 @@ Startup steps:
 9. inspect the codebase and current git state
 
 Working rules:
+- if the plan is weak, stale, or missing decomposition, route planning work to the planning-engineer first
 - choose one bounded implementation slice at a time
 - assign that slice to the correct engineer role
 - implement carefully

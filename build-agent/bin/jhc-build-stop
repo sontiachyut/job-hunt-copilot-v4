@@ -7,7 +7,11 @@ PLIST="$BUILD_ROOT/launchd/job-hunt-copilot-build-lead.plist"
 LABEL="gui/$UID/com.jobhuntcopilot.buildlead"
 
 if launchctl print "$LABEL" >/dev/null 2>&1; then
-  launchctl bootout "gui/$UID" "$PLIST" >/dev/null 2>&1 || true
+  launchctl bootout "gui/$UID" "$PLIST" >/dev/null
+  if launchctl print "$LABEL" >/dev/null 2>&1; then
+    echo "Build agent stop failed: launchd job is still loaded" >&2
+    exit 1
+  fi
 fi
 
 python3 "$BUILD_ROOT/scripts/control_state.py" stop --project-root "$ROOT" --pause-reason manual_stop >/dev/null

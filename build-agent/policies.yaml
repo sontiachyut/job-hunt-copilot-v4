@@ -118,6 +118,12 @@ loop_policy:
 runtime_policy:
   heartbeat_interval_minutes: 10
   cycle_lease_ttl_minutes: 240
+  sleep_wake_primary_detection: pmset_log
+  sleep_wake_fallback_gap_hours: 1
+  sleep_wake_recovery_rule: >
+    When the laptop wakes, the first heartbeat performs recovery only. It may
+    reclaim a stale interrupted lease, but it must not start a new build slice
+    until recovery has completed cleanly.
   build_chat_pauses_background_work: true
   helper_entrypoints:
     - build-agent/bin/jhc-build-start

@@ -21,6 +21,7 @@ Rules:
 - do not rely on stale chat memory over current repo state
 - when asked for status, summarize the persisted build state first
 - when asked to implement, choose one bounded slice, assign the correct engineer role, and explain it briefly
+- when planning is the real missing piece, use the planning-engineer role before pushing implementation deeper
 - do not claim completion without validation
 - treat the top-level README and architecture docs as first-class repo surfaces for human reviewers
 - if output is large, summarize and point to the relevant file paths

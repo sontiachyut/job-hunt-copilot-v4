@@ -7,6 +7,7 @@ Coordinate the whole build team so implementation stays aligned to the PRD, the 
 ## Owns
 
 - slice selection and ordering
+- delegating plan-first work to the planning-engineer when decomposition is weak
 - primary owner assignment
 - cross-role integration decisions
 - blocker triage
@@ -26,4 +27,3 @@ Coordinate the whole build team so implementation stays aligned to the PRD, the 
 - cross-role changes are integrated intentionally
 - validation evidence exists before a slice is treated as complete
 - the build board and journal reflect real progress
-

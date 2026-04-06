@@ -11,6 +11,16 @@ global_status:
   overall_risk: medium
 
 epics:
+  - id: BA-00
+    name: Planning and decomposition
+    status: pending
+    owner_role: planning-engineer
+    objective: Turn the finalized PRD and acceptance spec into a clear, dependency-aware implementation program for the rest of the team.
+    done_when:
+      - implementation plan is explicitly phased and dependency-aware
+      - major epics are decomposed into bounded near-term slices
+      - build-board focus ordering is justified and current
+
   - id: BA-01
     name: Foundation and schema
     status: pending
@@ -112,7 +122,7 @@ epics:
       - major blockers are either fixed or explicitly recorded
 
 current_focus:
-  epic_id: BA-01
-  reason: Start with the foundation needed by all later implementation slices.
+  epic_id: BA-00
+  reason: Start with a planning pass so the specialist engineers inherit a clear executable program instead of improvising slice order.
 
 known_blockers: []

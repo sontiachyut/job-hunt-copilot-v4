@@ -9,16 +9,17 @@ It should stay aligned with:
 
 ## Initial Order
 
-1. Foundation and schema
-2. Supervisor control plane
-3. macOS local runtime helpers
-4. Manual capture path
-5. Gmail alert intake
-6. Resume tailoring runtime
-7. People search and discovery
-8. Drafting and sending
-9. Delivery feedback and review surfaces
-10. Validation and hardening
+1. Planning and decomposition
+2. Foundation and schema
+3. Supervisor control plane
+4. macOS local runtime helpers
+5. Manual capture path
+6. Gmail alert intake
+7. Resume tailoring runtime
+8. People search and discovery
+9. Drafting and sending
+10. Delivery feedback and review surfaces
+11. Validation and hardening
 
 ## Rules
 
@@ -26,4 +27,3 @@ It should stay aligned with:
 - Prefer one primary slice per unattended build session
 - Mark completed slices clearly
 - Record blocked slices explicitly rather than silently skipping them
-

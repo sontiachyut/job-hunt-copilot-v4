@@ -6,7 +6,8 @@ BUILD_ROOT="$ROOT/build-agent"
 PROMPT_FILE="$BUILD_ROOT/chat-bootstrap.md"
 
 python3 "$BUILD_ROOT/scripts/materialize_runtime_pack.py" --project-root "$ROOT" >/dev/null
-python3 "$BUILD_ROOT/scripts/chat_session.py" begin --project-root "$ROOT" >/dev/null
+SESSION_JSON="$(python3 "$BUILD_ROOT/scripts/chat_session.py" begin --project-root "$ROOT")"
+SESSION_ID="$(printf '%s' "$SESSION_JSON" | python3 -c 'import json,sys; print(json.load(sys.stdin)["session_id"])')"
 
 cleanup() {
   local exit_code="$1"
@@ -14,7 +15,7 @@ cleanup() {
   if [[ "$exit_code" -eq 0 ]]; then
     mode="explicit_close"
   fi
-  python3 "$BUILD_ROOT/scripts/chat_session.py" end --project-root "$ROOT" --exit-mode "$mode" >/dev/null || true
+  python3 "$BUILD_ROOT/scripts/chat_session.py" end --project-root "$ROOT" --session-id "$SESSION_ID" --exit-mode "$mode" >/dev/null || true
 }
 
 trap 'cleanup $?' EXIT

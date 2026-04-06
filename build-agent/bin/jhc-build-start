@@ -12,6 +12,7 @@ if ! launchctl print "$LABEL" >/dev/null 2>&1; then
   launchctl bootstrap "gui/$UID" "$PLIST"
 fi
 
-python3 "$BUILD_ROOT/scripts/control_state.py" start --project-root "$ROOT" >/dev/null
 launchctl kickstart -k "$LABEL"
+launchctl print "$LABEL" >/dev/null
+python3 "$BUILD_ROOT/scripts/control_state.py" start --project-root "$ROOT" >/dev/null
 echo "Build agent started via $LABEL"

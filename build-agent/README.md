@@ -41,6 +41,12 @@ For long unattended build runs, the recommended execution style is a fresh-sessi
 
 That gives long runtime without depending on one immortal chat process.
 
+Sleep/wake behavior is recovery-first:
+- if the Mac sleeps, unattended build work stops while the machine sleeps
+- on wake, the first heartbeat performs sleep/wake recovery only
+- recovery uses macOS power logs first and a long-gap fallback second
+- recovery may reclaim a stale interrupted lease, but it does not start a new slice until recovery completes
+
 ## Purpose
 
 The build team should:
@@ -154,6 +160,7 @@ In the current unattended runtime:
 ## Team Roles
 
 - `build-lead`: coordinating architect and integrator
+- `planning-engineer`: implementation planner and decomposition owner
 - `foundation-engineer`: schema, persistence, runtime scaffolding
 - `ingestion-engineer`: manual capture, Gmail intake, upstream normalization
 - `tailoring-engineer`: resume-tailoring runtime and agent review gate
@@ -168,3 +175,7 @@ The build team is successful when:
 - the repository implements the current-build PRD
 - the implementation can satisfy the acceptance scenarios in `prd/test-spec.feature`
 - unresolved gaps are explicitly recorded rather than hidden
+
+Planning quality is part of that success condition:
+- the planning-engineer should turn the PRD into a clear executable build program
+- other role agents should inherit bounded, dependency-aware work from that plan

@@ -1,4 +1,6 @@
 task_categories:
+  - name: plan_build_program
+    purpose: Turn the PRD and acceptance spec into a concrete multi-epic implementation plan.
   - name: assign_slice_owner
     purpose: Choose the correct engineer role to own a bounded implementation slice.
   - name: inspect_current_state
@@ -29,6 +31,12 @@ role_ownership_defaults:
       - cross-role integration
       - acceptance mapping
       - blocker triage
+  planning-engineer:
+    owns:
+      - implementation planning
+      - epic decomposition
+      - dependency mapping
+      - build-board and implementation-plan structure
   foundation-engineer:
     owns:
       - schema
@@ -63,6 +71,7 @@ role_ownership_defaults:
       - defect reproduction and verification
 
 default_slice_order:
+  - planning_and_decomposition
   - foundation_and_schema
   - supervisor_control_plane
   - ingestion_paths

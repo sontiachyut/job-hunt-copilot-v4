@@ -13,12 +13,21 @@ coordinator:
   brief_file: build-agent/team/build-lead.md
   responsibilities:
     - choose the next bounded slice
+    - route planning work to the planning-engineer before broader implementation begins
     - assign a primary owner role
     - prevent overlapping or conflicting ownership
     - integrate cross-role changes
     - decide when a slice is actually done
 
 roles:
+  - role: planning-engineer
+    brief_file: build-agent/team/planning-engineer.md
+    owns:
+      - implementation plan decomposition
+      - epic slicing from the PRD and acceptance spec
+      - dependency ordering
+      - work-package clarity for other engineers
+
   - role: foundation-engineer
     brief_file: build-agent/team/foundation-engineer.md
     owns:
@@ -65,6 +74,7 @@ roles:
 coordination_rules:
   - exactly one primary owner role per bounded slice
   - cross-role slices must be split or explicitly integrated by the build-lead
+  - planning-engineer owns plan quality, not final implementation signoff
   - quality-engineer signs off on validation readiness, not product design
   - specialist roles do not casually edit outside their owned subsystem
   - build-board and build-journal must record the owning role for meaningful work

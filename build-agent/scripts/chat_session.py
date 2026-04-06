@@ -20,6 +20,8 @@ from common import (
 def begin(project_root: Path) -> dict:
     ensure_dirs(project_root)
     state = load_control_state(project_root)
+    if state.get("active_chat_session_id"):
+        raise RuntimeError(f"Another build chat session is already active: {state['active_chat_session_id']}")
     session_id = f"build-chat-{uuid.uuid4().hex[:10]}"
     state["active_chat_session_id"] = session_id
     state["last_chat_started_at"] = now_utc_iso()
@@ -40,10 +42,22 @@ def begin(project_root: Path) -> dict:
     return {"session_id": session_id}
 
 
-def end(project_root: Path, exit_mode: str) -> dict:
+def end(project_root: Path, session_id: str, exit_mode: str) -> dict:
     ensure_dirs(project_root)
     state = load_control_state(project_root)
-    session_id = state.get("active_chat_session_id")
+    active_session_id = state.get("active_chat_session_id")
+    if active_session_id and active_session_id != session_id:
+        append_jsonl(
+            build_chat_sessions_path(project_root),
+            {
+                "event": "end_ignored",
+                "session_id": session_id,
+                "active_session_id": active_session_id,
+                "exit_mode": exit_mode,
+                "recorded_at": now_utc_iso(),
+            },
+        )
+        return {"session_id": session_id, "exit_mode": exit_mode, "status": "ignored_session_mismatch"}
     state["active_chat_session_id"] = None
     state["last_chat_ended_at"] = now_utc_iso()
     state["last_chat_exit_mode"] = exit_mode
@@ -70,6 +84,7 @@ def main() -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument("command", choices=["begin", "end"])
     parser.add_argument("--project-root", default=str(default_project_root()))
+    parser.add_argument("--session-id")
     parser.add_argument("--exit-mode", choices=["explicit_close", "unexpected_exit"])
     args = parser.parse_args()
 
@@ -79,7 +94,9 @@ def main() -> int:
     else:
         if not args.exit_mode:
             raise SystemExit("--exit-mode is required for end")
-        result = end(project_root, args.exit_mode)
+        if not args.session_id:
+            raise SystemExit("--session-id is required for end")
+        result = end(project_root, args.session_id, args.exit_mode)
     print(json.dumps(result, indent=2))
     return 0
 
