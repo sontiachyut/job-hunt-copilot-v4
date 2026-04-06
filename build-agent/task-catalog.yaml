@@ -1,0 +1,73 @@
+task_categories:
+  - name: assign_slice_owner
+    purpose: Choose the correct engineer role to own a bounded implementation slice.
+  - name: inspect_current_state
+    purpose: Read code, schema, runtime layout, and current progress before changing anything.
+  - name: map_spec_to_code
+    purpose: Translate a bounded PRD or acceptance cluster into concrete repo work.
+  - name: implement_schema_slice
+    purpose: Add or adjust DB schema, persistence models, and migrations.
+  - name: implement_component_slice
+    purpose: Build one bounded component behavior or runtime helper.
+  - name: implement_boundary_slice
+    purpose: Build one handoff or orchestration boundary between components.
+  - name: implement_supervisor_slice
+    purpose: Build one bounded piece of the autonomous control plane.
+  - name: add_validation_or_tests
+    purpose: Add tests, smoke checks, or validation hooks for the implemented slice.
+  - name: repair_failed_slice
+    purpose: Fix a known failed implementation slice using bounded changes.
+  - name: update_build_state
+    purpose: Persist progress, blockers, and next steps into the build-agent state files.
+  - name: prepare_review_note
+    purpose: Summarize a completed slice or unresolved blocker for later expert review.
+
+role_ownership_defaults:
+  build-lead:
+    owns:
+      - slice selection
+      - cross-role integration
+      - acceptance mapping
+      - blocker triage
+  foundation-engineer:
+    owns:
+      - schema
+      - sqlite persistence
+      - shared runtime scaffolding
+      - artifact metadata
+  ingestion-engineer:
+    owns:
+      - manual capture path
+      - Gmail alert intake
+      - lead normalization
+      - upstream artifacts
+  tailoring-engineer:
+    owns:
+      - eligibility
+      - resume-tailoring runtime
+      - compile and verify flow
+      - agent review gate at tailoring boundary
+  outreach-engineer:
+    owns:
+      - people search
+      - enrichment
+      - discovery
+      - drafting
+      - sending
+      - delivery feedback
+  quality-engineer:
+    owns:
+      - acceptance tracing
+      - smoke checks
+      - regression validation
+      - defect reproduction and verification
+
+default_slice_order:
+  - foundation_and_schema
+  - supervisor_control_plane
+  - ingestion_paths
+  - tailoring_runtime
+  - people_search_and_discovery
+  - drafting_and_sending
+  - feedback_and_review_surfaces
+  - validation_and_hardening

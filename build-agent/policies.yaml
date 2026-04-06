@@ -1,0 +1,132 @@
+implementation_policy:
+  source_of_truth:
+    - prd/spec.md
+    - prd/test-spec.feature
+  default_behavior: >
+    Implement the current build as specified. Treat unclear repo state as an
+    engineering problem to inspect, not a reason to improvise product changes.
+  prd_edit_rule: >
+    Do not modify the PRD or acceptance spec during normal build work unless
+    the user explicitly asks for document changes.
+
+work_policy:
+  work_unit_size: >
+    One bounded implementation slice at a time. A slice may cover one schema
+    area, one component boundary, one runtime helper, or one acceptance cluster.
+  one_slice_per_session_rule: >
+    In unattended loop mode, a fresh Codex session should usually complete one
+    primary implementation slice, validate it, checkpoint it, and exit.
+  ownership_rule: >
+    Each slice should have one primary owning engineer role. Cross-role work
+    should be coordinated by the build lead rather than merged into one vague
+    multi-owner task.
+  anti_rush_rule: >
+    Do not rush to maximize file count or superficial progress. Prefer fewer,
+    higher-quality slices with validation and checkpointing.
+  checkpoint_rule: >
+    After each meaningful slice, update the build board and journal with what
+    changed, what passed, and what remains blocked.
+
+validation_policy:
+  required_before_done:
+    - relevant local tests where available
+    - targeted smoke validation for the changed slice
+    - impact check against the related acceptance scenarios
+  failure_rule: >
+    If validation fails, the slice is not done. Record the failure, repair if
+    bounded, or leave an explicit blocker entry.
+  no-fake-completion: true
+
+git_policy:
+  branch_preference: >
+    Work on the current user branch unless the user later requests a dedicated
+    build branch workflow.
+  commit_behavior: >
+    The user has explicitly enabled unattended checkpoint commits and pushes for
+    the build agent. During unattended runtime, the build lead may create normal
+    checkpoint commits on the current branch and push them to the configured
+    remote after a completed build cycle when tracked repository changes exist.
+  preserve_user_changes: true
+  backup_remote: origin
+  checkpoint_push_rule: >
+    After a completed unattended build cycle, if tracked repository changes
+    exist inside the dedicated project repo, create one checkpoint commit and
+    push it to the current branch on `origin`.
+
+coordination_policy:
+  lead_required_for:
+    - scope assignment
+    - cross-role integration
+    - acceptance signoff
+    - blocker triage
+  role_boundary_rule: >
+    Role agents should avoid editing unrelated subsystems unless the build lead
+    explicitly reassigns ownership.
+  integration_rule: >
+    The build lead is responsible for stitching together slices that touch more
+    than one role boundary.
+
+safety_policy:
+  forbid:
+    - destructive resets
+    - silent secret persistence into reports or prompts
+    - claiming acceptance coverage without checking the feature file
+  escalate_when:
+    - repo state is contradictory
+    - implementation requires product reinterpretation
+    - test failures indicate broad architectural mismatch
+
+reporting_policy:
+  default_progress_format: concise
+  review_surface:
+    - build-agent/state/build-board.yaml
+    - build-agent/state/build-journal.md
+    - build-agent/state/codex-progress.txt
+    - build-agent/state/IMPLEMENTATION_PLAN.md
+    - build-agent/reports/
+
+presentation_policy:
+  goal: >
+    Keep the repository easy to understand for software engineering managers,
+    recruiters, and technical reviewers who may open the repo with no prior
+    context.
+  required_repo_surfaces:
+    - README.md
+    - docs/ARCHITECTURE.md
+    - prd/spec.md
+    - prd/test-spec.feature
+  expectations:
+    - maintain a clean top-level README
+    - prefer visual explanation when it genuinely improves comprehension
+    - keep docs honest about current implementation status
+    - update repo-facing docs when structure or operating model changes materially
+    - keep recruiter-facing first impressions clear before adding lower-level detail
+
+loop_policy:
+  preferred_long_run_model: fresh_session_loop
+  rationale: >
+    Fresh-session looping is preferred over one immortal Codex process because
+    it avoids long-context drift and makes recovery cleaner after crashes.
+  default_phases:
+    - init
+    - plan
+    - build
+  build_phase_rule: >
+    Each unattended build session should rehydrate from persisted files, finish
+    one bounded slice, validate it, checkpoint progress, and exit cleanly.
+
+runtime_policy:
+  heartbeat_interval_minutes: 10
+  cycle_lease_ttl_minutes: 240
+  build_chat_pauses_background_work: true
+  helper_entrypoints:
+    - build-agent/bin/jhc-build-start
+    - build-agent/bin/jhc-build-stop
+    - build-agent/bin/jhc-build-chat
+    - build-agent/bin/jhc-build-cycle
+  runtime_state_files:
+    - build-agent/state/build-control.json
+    - build-agent/state/build-leases.json
+    - build-agent/state/build-cycles.jsonl
+    - build-agent/state/build-chat-sessions.jsonl
+    - build-agent/state/context-snapshots/

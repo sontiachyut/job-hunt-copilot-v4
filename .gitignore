@@ -1,0 +1,17 @@
+.DS_Store
+__pycache__/
+*.pyc
+CODEX_HANDOFF_AUTONOMOUS.md
+
+# Local secrets
+secrets/
+
+# Generated build-agent runtime artifacts
+build-agent/runtime/
+build-agent/logs/
+build-agent/state/build-control.json
+build-agent/state/build-leases.json
+build-agent/state/build-cycles.jsonl
+build-agent/state/build-chat-sessions.jsonl
+build-agent/state/context-snapshots/
+build-agent/launchd/job-hunt-copilot-build-lead.plist

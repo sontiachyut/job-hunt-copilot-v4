@@ -1,0 +1,118 @@
+project: job-hunt-copilot-v4
+board_version: 1
+last_reset_note: Initial seeded build board created from the finalized PRD and acceptance spec.
+
+global_status:
+  current_build_goal: Implement the current-build PRD and acceptance spec in this repository.
+  canonical_inputs:
+    - prd/spec.md
+    - prd/test-spec.feature
+  current_phase: not_started
+  overall_risk: medium
+
+epics:
+  - id: BA-01
+    name: Foundation and schema
+    status: pending
+    owner_role: foundation-engineer
+    objective: Materialize the core SQLite schema, shared artifact metadata, and basic runtime scaffolding.
+    done_when:
+      - canonical DB tables exist for the current build
+      - migrations or init flow are stable
+      - shared artifact metadata flow exists
+
+  - id: BA-02
+    name: Supervisor control plane
+    status: pending
+    owner_role: build-lead
+    objective: Implement the autonomous supervisor state model, control state, incidents, review packets, and cycle tracking.
+    done_when:
+      - supervisor tables and runtime state exist
+      - bounded action execution path exists
+      - expert review packets can be produced
+
+  - id: BA-03
+    name: macOS local runtime helpers
+    status: pending
+    owner_role: build-lead
+    objective: Implement the local helper entrypoints and launchd heartbeat wiring.
+    done_when:
+      - `jhc-agent-start` behavior exists
+      - `jhc-agent-stop` behavior exists
+      - `jhc-chat` entrypoint behavior exists
+
+  - id: BA-04
+    name: Manual capture path
+    status: pending
+    owner_role: ingestion-engineer
+    objective: Build the manual browser-capture ingestion path, capture bundle handling, and paste fallback.
+    done_when:
+      - capture bundle intake works
+      - selected-text and full-page defaults are respected
+      - canonical lead raw source is materialized
+
+  - id: BA-05
+    name: Gmail alert intake
+    status: pending
+    owner_role: ingestion-engineer
+    objective: Build agent-invoked Gmail LinkedIn job-alert intake and lead fan-out.
+    done_when:
+      - Gmail collection artifacts are persisted
+      - parsed job cards fan out into leads
+      - JD recovery and manifest handoff work
+
+  - id: BA-06
+    name: Resume tailoring runtime
+    status: pending
+    owner_role: tailoring-engineer
+    objective: Build eligibility, workspace bootstrap, structured tailoring steps, finalize, and agent review.
+    done_when:
+      - tailoring runs persist correctly
+      - compile and one-page verification work
+      - agent review gates are enforced
+
+  - id: BA-07
+    name: People search and discovery
+    status: pending
+    owner_role: outreach-engineer
+    objective: Build Apollo-first people search, shortlist materialization, enrichment, recipient profile handling, and email discovery.
+    done_when:
+      - people search artifacts persist
+      - shortlisted contacts are materialized correctly
+      - discovery cascade and results persist
+
+  - id: BA-08
+    name: Drafting and sending
+    status: pending
+    owner_role: outreach-engineer
+    objective: Build send-set assembly, role-targeted drafting, pacing-aware sending, and outreach message persistence.
+    done_when:
+      - ready send sets are assembled correctly
+      - drafts persist
+      - send results and pacing rules work
+
+  - id: BA-09
+    name: Delivery feedback and review surfaces
+    status: pending
+    owner_role: outreach-engineer
+    objective: Build mailbox feedback observation, feedback event persistence, and review surfaces.
+    done_when:
+      - delayed feedback sync works
+      - bounce, not-bounced, and reply events persist
+      - review surfaces are queryable
+
+  - id: BA-10
+    name: Validation and hardening
+    status: pending
+    owner_role: quality-engineer
+    objective: Add implementation validation, acceptance-driven checks, and hardening passes across components.
+    done_when:
+      - acceptance coverage is traceable
+      - smoke checks exist for key flows
+      - major blockers are either fixed or explicitly recorded
+
+current_focus:
+  epic_id: BA-01
+  reason: Start with the foundation needed by all later implementation slices.
+
+known_blockers: []

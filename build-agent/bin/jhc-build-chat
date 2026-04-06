@@ -1,0 +1,22 @@
+#!/bin/zsh
+set -euo pipefail
+
+ROOT="$(cd "$(dirname "$0")/../.." && pwd)"
+BUILD_ROOT="$ROOT/build-agent"
+PROMPT_FILE="$BUILD_ROOT/chat-bootstrap.md"
+
+python3 "$BUILD_ROOT/scripts/materialize_runtime_pack.py" --project-root "$ROOT" >/dev/null
+python3 "$BUILD_ROOT/scripts/chat_session.py" begin --project-root "$ROOT" >/dev/null
+
+cleanup() {
+  local exit_code="$1"
+  local mode="unexpected_exit"
+  if [[ "$exit_code" -eq 0 ]]; then
+    mode="explicit_close"
+  fi
+  python3 "$BUILD_ROOT/scripts/chat_session.py" end --project-root "$ROOT" --exit-mode "$mode" >/dev/null || true
+}
+
+trap 'cleanup $?' EXIT
+
+codex -C "$ROOT" "$(cat "$PROMPT_FILE")"

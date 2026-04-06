@@ -1,0 +1,70 @@
+operating_model: multi_agent_build_team
+runtime_execution:
+  default_parallelism: 1
+  scheduler: launchd_heartbeat
+  execution_style: serialized_role_owned_slices
+  note: >
+    The build lead may reason in terms of multiple specialist engineers, but
+    unattended runtime execution is serialized by default to reduce conflicting
+    edits and make long-run recovery simpler.
+
+coordinator:
+  role: build-lead
+  brief_file: build-agent/team/build-lead.md
+  responsibilities:
+    - choose the next bounded slice
+    - assign a primary owner role
+    - prevent overlapping or conflicting ownership
+    - integrate cross-role changes
+    - decide when a slice is actually done
+
+roles:
+  - role: foundation-engineer
+    brief_file: build-agent/team/foundation-engineer.md
+    owns:
+      - sqlite schema
+      - shared persistence
+      - artifact metadata
+      - common runtime scaffolding
+
+  - role: ingestion-engineer
+    brief_file: build-agent/team/ingestion-engineer.md
+    owns:
+      - manual capture path
+      - paste fallback
+      - Gmail alert intake
+      - lead workspace materialization
+
+  - role: tailoring-engineer
+    brief_file: build-agent/team/tailoring-engineer.md
+    owns:
+      - eligibility logic
+      - tailoring workspace bootstrap
+      - step artifacts
+      - compile and verification
+      - tailoring-side agent review gate
+
+  - role: outreach-engineer
+    brief_file: build-agent/team/outreach-engineer.md
+    owns:
+      - people search
+      - enrichment
+      - discovery
+      - drafting
+      - sending
+      - delivery feedback
+
+  - role: quality-engineer
+    brief_file: build-agent/team/quality-engineer.md
+    owns:
+      - acceptance traceability
+      - smoke validation
+      - regression checks
+      - defect confirmation
+
+coordination_rules:
+  - exactly one primary owner role per bounded slice
+  - cross-role slices must be split or explicitly integrated by the build-lead
+  - quality-engineer signs off on validation readiness, not product design
+  - specialist roles do not casually edit outside their owned subsystem
+  - build-board and build-journal must record the owning role for meaningful work

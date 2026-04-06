@@ -1,0 +1,207 @@
+#!/usr/bin/env python3
+from __future__ import annotations
+
+import json
+import os
+import subprocess
+import tempfile
+from datetime import datetime, timedelta, timezone
+from pathlib import Path
+from typing import Any
+
+import yaml
+
+
+CONTRACT_VERSION = "1.0"
+
+
+def now_utc_iso() -> str:
+    return datetime.now(timezone.utc).replace(microsecond=0).isoformat().replace("+00:00", "Z")
+
+
+def default_project_root() -> Path:
+    return Path(__file__).resolve().parents[2]
+
+
+def build_agent_root(project_root: Path) -> Path:
+    return project_root / "build-agent"
+
+
+def state_dir(project_root: Path) -> Path:
+    return build_agent_root(project_root) / "state"
+
+
+def runtime_dir(project_root: Path) -> Path:
+    return build_agent_root(project_root) / "runtime"
+
+
+def logs_dir(project_root: Path) -> Path:
+    return build_agent_root(project_root) / "logs"
+
+
+def cycles_log_dir(project_root: Path) -> Path:
+    return logs_dir(project_root) / "cycles"
+
+
+def context_snapshot_dir(project_root: Path) -> Path:
+    return state_dir(project_root) / "context-snapshots"
+
+
+def ensure_dirs(project_root: Path) -> None:
+    for path in [
+        runtime_dir(project_root),
+        logs_dir(project_root),
+        cycles_log_dir(project_root),
+        context_snapshot_dir(project_root),
+        build_agent_root(project_root) / "launchd",
+    ]:
+        path.mkdir(parents=True, exist_ok=True)
+
+
+def read_text(path: Path) -> str:
+    return path.read_text(encoding="utf-8")
+
+
+def write_text_atomic(path: Path, content: str) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    with tempfile.NamedTemporaryFile("w", delete=False, dir=path.parent, encoding="utf-8") as handle:
+        handle.write(content)
+        tmp_path = Path(handle.name)
+    os.replace(tmp_path, path)
+
+
+def load_json(path: Path, default: Any | None = None) -> Any:
+    if not path.exists():
+        return default
+    return json.loads(path.read_text(encoding="utf-8"))
+
+
+def save_json(path: Path, data: Any) -> None:
+    write_text_atomic(path, json.dumps(data, indent=2, sort_keys=False) + "\n")
+
+
+def append_jsonl(path: Path, row: dict[str, Any]) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    with path.open("a", encoding="utf-8") as handle:
+        handle.write(json.dumps(row, sort_keys=False) + "\n")
+
+
+def load_yaml(path: Path) -> Any:
+    return yaml.safe_load(path.read_text(encoding="utf-8"))
+
+
+def save_yaml(path: Path, data: Any) -> None:
+    write_text_atomic(path, yaml.safe_dump(data, sort_keys=False))
+
+
+def build_control_path(project_root: Path) -> Path:
+    return state_dir(project_root) / "build-control.json"
+
+
+def build_leases_path(project_root: Path) -> Path:
+    return state_dir(project_root) / "build-leases.json"
+
+
+def build_cycles_path(project_root: Path) -> Path:
+    return state_dir(project_root) / "build-cycles.jsonl"
+
+
+def build_chat_sessions_path(project_root: Path) -> Path:
+    return state_dir(project_root) / "build-chat-sessions.jsonl"
+
+
+def build_runtime_pack_path(project_root: Path) -> Path:
+    return runtime_dir(project_root) / "runtime-pack.json"
+
+
+def build_plist_template_path(project_root: Path) -> Path:
+    return build_agent_root(project_root) / "launchd" / "job-hunt-copilot-build-lead.plist.template"
+
+
+def build_plist_output_path(project_root: Path) -> Path:
+    return build_agent_root(project_root) / "launchd" / "job-hunt-copilot-build-lead.plist"
+
+
+def default_control_state() -> dict[str, Any]:
+    return {
+        "contract_version": CONTRACT_VERSION,
+        "agent_enabled": False,
+        "agent_mode": "stopped",
+        "pause_reason": None,
+        "active_chat_session_id": None,
+        "last_manual_command": None,
+        "last_cycle_started_at": None,
+        "last_cycle_completed_at": None,
+        "last_runtime_pack_path": None,
+        "last_plist_path": None,
+        "last_chat_started_at": None,
+        "last_chat_ended_at": None,
+        "last_chat_exit_mode": None,
+        "mode_before_chat": None,
+    }
+
+
+def default_leases() -> dict[str, Any]:
+    return {
+        "contract_version": CONTRACT_VERSION,
+        "leases": {},
+    }
+
+
+def load_control_state(project_root: Path) -> dict[str, Any]:
+    path = build_control_path(project_root)
+    data = load_json(path, default=None)
+    if data is None:
+        data = default_control_state()
+        save_json(path, data)
+    return data
+
+
+def save_control_state(project_root: Path, data: dict[str, Any]) -> None:
+    save_json(build_control_path(project_root), data)
+
+
+def load_leases(project_root: Path) -> dict[str, Any]:
+    path = build_leases_path(project_root)
+    data = load_json(path, default=None)
+    if data is None:
+        data = default_leases()
+        save_json(path, data)
+    return data
+
+
+def save_leases(project_root: Path, data: dict[str, Any]) -> None:
+    save_json(build_leases_path(project_root), data)
+
+
+def iso_to_datetime(value: str | None) -> datetime | None:
+    if not value:
+        return None
+    normalized = value.replace("Z", "+00:00")
+    return datetime.fromisoformat(normalized)
+
+
+def new_cycle_id() -> str:
+    return f"build-cycle-{datetime.now(timezone.utc).strftime('%Y%m%dT%H%M%SZ')}"
+
+
+def lease_expiry_iso(hours: int = 4) -> str:
+    return (datetime.now(timezone.utc) + timedelta(hours=hours)).replace(microsecond=0).isoformat().replace("+00:00", "Z")
+
+
+def require_project_git_root(project_root: Path) -> None:
+    result = subprocess.run(
+        ["git", "rev-parse", "--show-toplevel"],
+        cwd=project_root,
+        capture_output=True,
+        text=True,
+    )
+    if result.returncode != 0:
+        raise RuntimeError("Build agent requires a dedicated git repository rooted at the project directory.")
+    git_root = Path(result.stdout.strip()).resolve()
+    expected = project_root.resolve()
+    if git_root != expected:
+        raise RuntimeError(
+            f"Build agent requires the project directory to be the git root. "
+            f"Current git root is {git_root}, expected {expected}."
+        )

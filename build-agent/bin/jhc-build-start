@@ -1,0 +1,17 @@
+#!/bin/zsh
+set -euo pipefail
+
+ROOT="$(cd "$(dirname "$0")/../.." && pwd)"
+BUILD_ROOT="$ROOT/build-agent"
+PLIST="$BUILD_ROOT/launchd/job-hunt-copilot-build-lead.plist"
+LABEL="gui/$UID/com.jobhuntcopilot.buildlead"
+
+python3 "$BUILD_ROOT/scripts/materialize_runtime_pack.py" --project-root "$ROOT" >/dev/null
+
+if ! launchctl print "$LABEL" >/dev/null 2>&1; then
+  launchctl bootstrap "gui/$UID" "$PLIST"
+fi
+
+python3 "$BUILD_ROOT/scripts/control_state.py" start --project-root "$ROOT" >/dev/null
+launchctl kickstart -k "$LABEL"
+echo "Build agent started via $LABEL"

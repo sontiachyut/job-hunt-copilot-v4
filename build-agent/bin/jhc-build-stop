@@ -1,0 +1,15 @@
+#!/bin/zsh
+set -euo pipefail
+
+ROOT="$(cd "$(dirname "$0")/../.." && pwd)"
+BUILD_ROOT="$ROOT/build-agent"
+PLIST="$BUILD_ROOT/launchd/job-hunt-copilot-build-lead.plist"
+LABEL="gui/$UID/com.jobhuntcopilot.buildlead"
+
+if launchctl print "$LABEL" >/dev/null 2>&1; then
+  launchctl bootout "gui/$UID" "$PLIST" >/dev/null 2>&1 || true
+fi
+
+python3 "$BUILD_ROOT/scripts/control_state.py" stop --project-root "$ROOT" --pause-reason manual_stop >/dev/null
+
+echo "Build agent stopped"

@@ -1,0 +1,13 @@
+Build-agent progress log.
+
+Use this file as a short session-handoff note.
+
+Suggested format per session:
+- date/time
+- role owner
+- slice attempted
+- result
+- key files changed
+- validation summary
+- next recommended slice
+

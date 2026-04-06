@@ -1,0 +1,49 @@
+% -------------------- TAILORED: Summary --------------------
+% WHY: JD says "human layer of real-time intelligent systems" and "turning complex AI into elegant UX"
+%      Summary must echo this — candidate speaks the hiring manager's language immediately
+MS CS candidate with 3+ years of experience building full-stack applications and real-time AI-driven systems, focused on translating complex intelligent systems into intuitive, high-performance user experiences across web and mobile platforms
+
+% -------------------- TAILORED: Technical Skills --------------------
+% WHY Languages: TypeScript/JavaScript moved to front — primary stack for this role. Kotlin added (mobile). Scala/C++/Bash removed — signal wrong track.
+\textbf{Languages:} Python, TypeScript, JavaScript, Kotlin, Java, Golang, SQL
+
+% WHY Frontend & Mobile: New category. React, Next.js, Node.js directly from JD. Swift + Android (Kotlin) match preferred qualifications for mobile.
+\textbf{Frontend \& Mobile:} React, Next.js, Node.js, Swift, Android (Kotlin)
+
+% WHY AI & Systems: New category replacing "Infrastructure & Systems". LLMs/Agentic AI signal AI fluency. Real-time Data Streams + WebSockets directly relevant to surgical robot telemetry UI.
+\textbf{AI \& Systems:} LLMs, Agentic AI, Real-time Data Streams, WebSockets, Distributed Systems, System Design
+
+% WHY Cloud: Removed EMR (data engineering). Removed GCP, Terraform (infra-heavy). Added API Gateway (serverless, relevant). Kept Lambda, S3, DynamoDB, EC2.
+\textbf{Cloud \& DevOps:} AWS (Lambda, S3, DynamoDB, API Gateway, EC2), Docker, Kubernetes, GitLab CI/CD
+
+% WHY Data: Removed Apache Spark, MySQL (data engineering tools). Added Neo4j (graph DB, relevant for AI/recommendation). Kept PostgreSQL, DynamoDB, MongoDB, Redis.
+\textbf{Data \& Storage:} PostgreSQL, DynamoDB, MongoDB, Neo4j, Redis
+
+% WHY Testing: Removed "Debugging" (implied, not a skill). Rest unchanged.
+\textbf{Testing \& Reliability:} Pytest, JUnit, Unit/Integration Testing, Monitoring, Performance Profiling
+
+% -------------------- TAILORED: Experience (SWE role) --------------------
+% WHY Stack line: Replaced AWS (EMR, S3) + Terraform with actual project stack: Azure (ADF, ADLS Gen2), Databricks.
+%   Added Tableau (user-facing output) and Datadog (observability). Removed wrong-track signals.
+%   Don't substitute popular alternatives — put what you actually used. AWS signal comes from Technical Skills + Projects.
+\textit{Python, Spark, Databricks, Azure (ADF, ADLS Gen2), PostgreSQL, Tableau, Datadog, Docker, GitLab CI/CD}
+
+% WHY Bullet 1: Lead with clinical user output (KPI dashboards for ICU clinicians), not "distributed data services."
+%   Keep scale metrics (50M+, 580 TPS, 1500+ hospitals, 24/7). Add specific dashboard names (Ventilation, Hemorrhage, Hypertension).
+%   Reader impression: "This person builds things that clinicians use in ICUs"
+% WHY Bullet 2: Replace "ETL pipelines" (data-eng signal) with full data-to-visualization lifecycle.
+%   Show lakehouse layers (bronze/silver/gold) → STAR schema → Tableau dashboard consumption.
+%   Connect 40% improvement to "near real-time clinical decision-making" not just "same-day analytics."
+%   Reader impression: "This person thinks end-to-end, from raw data to user-facing dashboards"
+% WHY Bullet 3: Replace "$15K cost savings" (infra metric) with user experience impact.
+%   "data-to-dashboard latency" + "clinician-facing analytics" instead of "AWS costs."
+%   Reader impression: "This person optimizes for user experience, not just infra"
+% WHY Bullet 4: Add safety-critical healthcare context not in original (PHI, >=99%, regulated, multi-tenant).
+%   "pipeline failures directly impact clinical workflows" connects reliability to user safety.
+%   Reader impression: "This person has operated in safety-critical healthcare systems"
+\begin{highlights}
+    \item Built real-time clinical data processing services ingesting 50M+ daily HL7 records (~580 TPS) from ICU bedside devices and patient monitors to power clinician-facing KPI dashboards (Ventilation, Hemorrhage, Hypertension) across 1,500+ hospitals with 24/7 uptime
+    \item Developed Spark pipelines transforming raw multi-EMR clinical data through bronze/silver/gold lakehouse layers into STAR schema tables consumed by Tableau dashboards, reducing data-to-dashboard turnaround by 40\% to enable near real-time clinical decision-making
+    \item Optimized 25+ Spark jobs on Databricks with parallel execution and Delta Lake caching, improving throughput by 50\% (20K to 30K records/sec) and reducing data-to-dashboard latency for clinician-facing ICU analytics tracking Ventilation and Hemorrhage KPIs
+    \item Owned end-to-end observability across multi-tenant clinical pipelines handling PHI — monitoring, alerting, audit logging, and incident triage — maintaining $\geq$99\% availability SLA in regulated environment where pipeline failures directly impact clinical workflows
+\end{highlights}
