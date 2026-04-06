@@ -8,13 +8,12 @@ import sys
 from pathlib import Path
 from typing import Any
 
+from .contracts import CONTRACT_VERSION
 from .db import initialize_database
 from .paths import ProjectPaths
 from .records import now_utc_iso
 from .secrets import materialize_runtime_secrets
 
-
-CONTRACT_VERSION = "1.0"
 REQUIRED_PYTHON = (3, 11)
 REQUIRED_MODULES = {
     "google-auth-oauthlib": "google_auth_oauthlib",
@@ -24,6 +23,8 @@ REQUIRED_MODULES = {
     "PyYAML": "yaml",
     "pytest": "pytest",
 }
+
+
 def ensure_required_inputs(paths: ProjectPaths) -> dict[str, Any]:
     missing: list[str] = []
     required_paths = [paths.spec_path, *paths.required_asset_paths()]

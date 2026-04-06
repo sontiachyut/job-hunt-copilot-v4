@@ -2,6 +2,14 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from pathlib import Path
+import re
+import unicodedata
+
+
+def workspace_slug(value: str) -> str:
+    normalized = unicodedata.normalize("NFKD", value).encode("ascii", "ignore").decode("ascii")
+    slug = re.sub(r"[^a-z0-9]+", "-", normalized.lower()).strip("-")
+    return slug or "unknown"
 
 
 @dataclass(frozen=True)
@@ -36,6 +44,68 @@ class ProjectPaths:
     @property
     def paste_inbox_path(self) -> Path:
         return self.paste_dir / "paste.txt"
+
+    def relative_to_root(self, path: Path | str) -> Path:
+        candidate = Path(path)
+        absolute = candidate if candidate.is_absolute() else self.project_root / candidate
+        resolved = absolute.resolve()
+        try:
+            return resolved.relative_to(self.project_root)
+        except ValueError as exc:
+            raise ValueError(
+                f"Path must stay within the project root: {absolute}"
+            ) from exc
+
+    def resolve_from_root(self, path: Path | str) -> Path:
+        candidate = Path(path)
+        return candidate.resolve() if candidate.is_absolute() else (self.project_root / candidate).resolve()
+
+    def lead_workspace_dir(self, company_name: str, role_title: str, lead_id: str) -> Path:
+        return (
+            self.project_root
+            / "linkedin-scraping"
+            / "runtime"
+            / "leads"
+            / workspace_slug(company_name)
+            / workspace_slug(role_title)
+            / lead_id
+        )
+
+    def application_workspace_dir(self, company_name: str, role_title: str) -> Path:
+        return (
+            self.project_root
+            / "applications"
+            / workspace_slug(company_name)
+            / workspace_slug(role_title)
+        )
+
+    def tailoring_workspace_dir(self, company_name: str, role_title: str) -> Path:
+        return (
+            self.project_root
+            / "resume-tailoring"
+            / "output"
+            / "tailored"
+            / workspace_slug(company_name)
+            / workspace_slug(role_title)
+        )
+
+    def discovery_workspace_dir(self, company_name: str, role_title: str) -> Path:
+        return (
+            self.project_root
+            / "discovery"
+            / "output"
+            / workspace_slug(company_name)
+            / workspace_slug(role_title)
+        )
+
+    def outreach_workspace_dir(self, company_name: str, role_title: str) -> Path:
+        return (
+            self.project_root
+            / "outreach"
+            / "output"
+            / workspace_slug(company_name)
+            / workspace_slug(role_title)
+        )
 
     def base_resume_sources(self) -> list[Path]:
         return sorted((self.assets_dir / "resume-tailoring" / "base").rglob("base-resume.tex"))

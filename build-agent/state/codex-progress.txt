@@ -34,3 +34,11 @@ Suggested format per session:
 - key files changed: job_hunt_copilot/migrations/0002_canonical_schema.sql; job_hunt_copilot/records.py; job_hunt_copilot/db.py; job_hunt_copilot/bootstrap.py; tests/support.py; tests/test_schema.py; tests/test_bootstrap.py; README.md; docs/ARCHITECTURE.md; build-agent/state/build-board.yaml; build-agent/state/build-journal.md; build-agent/state/codex-progress.txt; build-agent/state/IMPLEMENTATION_PLAN.md
 - validation summary: `python3.11 -m pytest tests/test_bootstrap.py tests/test_schema.py` passed (6 tests); real bootstrap run applied `0002_canonical_schema.sql` on the repo DB and reported `user_version = 2`; live SQLite inspection confirmed the canonical review views exist
 - next recommended slice: BA-01-S3 artifact contract and registry utilities
+
+- 2026-04-05 21:46:03 MST
+- role owner: foundation-engineer
+- slice attempted: BA-01-S3 artifact contract and registry utilities
+- result: done
+- key files changed: job_hunt_copilot/artifacts.py; job_hunt_copilot/contracts.py; job_hunt_copilot/paths.py; job_hunt_copilot/bootstrap.py; tests/test_artifacts.py; README.md; docs/ARCHITECTURE.md; build-agent/state/build-board.yaml; build-agent/state/build-journal.md; build-agent/state/codex-progress.txt; build-agent/state/IMPLEMENTATION_PLAN.md
+- validation summary: `python3.11 -m pytest tests/test_bootstrap.py tests/test_schema.py tests/test_artifacts.py` passed (9 tests); real bootstrap run still succeeded on the repo with `user_version = 2`
+- next recommended slice: BA-02-S1 control-state persistence and run lifecycle helpers

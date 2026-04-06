@@ -100,3 +100,28 @@ Use this file as an append-only implementation log for the build agent.
 ### Notes
 - Inference recorded explicitly: the PRD prose requires `maintenance_change_batches` and additional `supervisor_cycles` snapshot columns even though the embedded DDL skeleton omits them, so this slice implemented those fields from the prose plus acceptance requirements rather than weakening the schema.
 - The pre-existing unattended build-loop carryover diff under `build-agent/scripts/` remains untouched and is still tracked separately as `BUILD-CLI-001`.
+
+### Session
+- Date: 2026-04-05 21:46:03 MST
+- Slice: BA-01-S3 artifact contract and registry utilities
+- Goal: Land the shared handoff-contract writers, canonical artifact-path helpers, and `artifact_records` registration layer required by downstream components.
+
+### Work Done
+- Added `job_hunt_copilot/artifacts.py` with shared JSON and YAML contract writers, contract-envelope validation, relative artifact-reference normalization, and helpers that publish files plus register `artifact_records`.
+- Added `job_hunt_copilot/contracts.py` so shared contract-version metadata is reusable without coupling bootstrap prerequisite checks to YAML imports.
+- Extended `job_hunt_copilot/paths.py` with canonical workspace builders for lead, application, tailoring, discovery, and outreach artifacts under the repo-local runtime layout.
+- Added `tests/test_artifacts.py` to cover workspace path generation, contract-envelope contents, failure-reason enforcement, and `artifact_records` persistence.
+- Updated `README.md` and `docs/ARCHITECTURE.md` so the repo-facing surfaces now reflect that the artifact contract foundation exists.
+
+### Validation
+- Ran `python3.11 -m pytest tests/test_bootstrap.py tests/test_schema.py tests/test_artifacts.py` and confirmed all 9 targeted tests passed.
+- Ran `python3.11 -m job_hunt_copilot.bootstrap --project-root /Users/achyutaramsonti/Projects/job-hunt-copilot-v4` and confirmed the real repo bootstrap still succeeds with `user_version = 2`.
+
+### Result
+- `done`
+
+### Next
+- Start `BA-02-S1`: add supervisor control-state persistence helpers for `pipeline_runs`, `supervisor_cycles`, `agent_control_state`, and `agent_runtime_leases`.
+
+### Notes
+- `BUILD-CLI-001` remains open and untouched; this slice deliberately stayed within foundation ownership rather than mixing in build-lead runtime fixes.

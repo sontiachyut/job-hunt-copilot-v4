@@ -12,7 +12,8 @@ It should stay aligned with:
 - `BA-00` is complete: the build is now sequenced by phases, dependencies, and bounded slices instead of the original seeded checklist.
 - `BA-01-S1` is complete: the repository now has a real `job_hunt_copilot` bootstrap package, runtime support-directory creation, secret-file materialization, and a SQLite migration entrypoint for `job_hunt_copilot.db`.
 - `BA-01-S2` is complete: the canonical next-build schema, minimum index set, review views, and shared record-ID/timestamp helpers now initialize cleanly through the migration framework.
-- The shared artifact-contract helpers and broader product runtime components are still pending.
+- `BA-01-S3` is complete: shared artifact-contract writers, canonical workspace path helpers, and `artifact_records` registration utilities are now available for downstream components.
+- `BA-01` is complete overall; the next open dependency is `BA-02` supervisor control-plane persistence.
 - Known operational risk: unattended build-lead execution needs a follow-up validation pass for the `codex exec` CLI compatibility fix already present in the worktree.
 
 ## Phase Order
@@ -79,12 +80,12 @@ It should stay aligned with:
 
 ## Next Slice
 
-- Current focus: `BA-01-S3` Artifact contract and registry utilities.
-- Why next: the canonical schema is now in place, and downstream components need shared contract-envelope writers plus `artifact_records` registration helpers before they can publish machine handoff artifacts consistently.
+- Current focus: `BA-02-S1` Control-state persistence and run lifecycle helpers.
+- Why next: the foundation epic is complete, and the supervisor control plane now needs a bounded access layer for `pipeline_runs`, `supervisor_cycles`, `agent_control_state`, and `agent_runtime_leases` before cycle execution or runtime-pack wiring can land safely.
 - Done when:
-  - shared YAML and JSON contract writers emit the common `contract_version`, `produced_at`, `producer_component`, `result`, `reason_code`, and `message` envelope fields
-  - artifact registration helpers can persist `artifact_records` linked to `lead_id`, `job_posting_id`, `contact_id`, or `outreach_message_id`
-  - downstream slices can reuse canonical artifact path and reference helpers instead of open-coding metadata writes
+  - shared persistence helpers can read and write `pipeline_runs`, `supervisor_cycles`, `agent_control_state`, and `agent_runtime_leases`
+  - canonical run-status and cycle-result transitions are encoded in one foundation layer instead of being open-coded by later slices
+  - safe lease acquisition and stale-lease recovery helpers exist for the current-build single-agent runtime
 
 ## Working Rules
 

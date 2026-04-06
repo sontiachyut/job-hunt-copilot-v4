@@ -12,8 +12,9 @@ global_status:
   overall_risk: high
   summary:
     - Planning now reflects the PRD and acceptance spec instead of the initial seeded checklist.
-    - BA-01-S1 and BA-01-S2 landed the repo-local bootstrap package, canonical SQLite schema migration, review views, and shared record-ID/timestamp helpers.
-    - The shared artifact-contract writers and `artifact_records` registration helpers are still open.
+    - BA-01 is now complete: the repo has runtime bootstrap checks, canonical SQLite schema migration, review views, and shared record-ID/timestamp helpers.
+    - Shared artifact publication utilities now cover YAML/JSON contract envelopes, canonical workspace paths, and `artifact_records` registration for lead, posting, contact, and message roots.
+    - The next dependency is BA-02 supervisor control-plane persistence on top of the completed foundation layer.
   execution_principles:
     - One primary slice per unattended build session.
     - Prefer DB-first state, artifact contracts, and runtime scaffolding before higher-level agent behavior.
@@ -84,7 +85,7 @@ epics:
 
   - id: BA-01
     name: Foundation and schema
-    status: in_progress
+    status: completed
     owner_role: foundation-engineer
     phase: P1
     dependencies:
@@ -98,6 +99,9 @@ epics:
       - bootstrap checks can initialize or migrate `job_hunt_copilot.db`
       - canonical tables, indexes, and review views exist for the next-build schema
       - shared artifact contract helpers can publish machine handoff artifacts plus `artifact_records`
+    completed_notes:
+      - The repo-local bootstrap package, canonical schema migrations, review views, and shared record helpers now initialize cleanly on fresh or existing runtime state.
+      - Shared artifact helpers now publish contract-envelope YAML or JSON artifacts, register them in `artifact_records`, and expose canonical workspace path builders for lead, tailoring, discovery, and outreach components.
     near_term_slices:
       - id: BA-01-S1
         name: Runtime bootstrap and DB init skeleton
@@ -136,13 +140,20 @@ epics:
       - id: BA-01-S3
         name: Artifact contract and registry utilities
         owner_role: foundation-engineer
-        status: pending
+        status: completed
         dependencies:
           - BA-01-S2
         deliverables:
           - shared contract envelope writer for YAML and JSON handoff artifacts
           - "`artifact_records` registration helpers keyed by lead, posting, contact, and message IDs"
           - canonical file-path and reference helpers for downstream components
+        completed_notes:
+          - Added `job_hunt_copilot.artifacts` with shared JSON/YAML contract writers enforcing the current-build envelope fields and failure-reason requirements.
+          - Added canonical project path helpers for lead, application, tailoring, discovery, and outreach workspaces plus relative artifact reference normalization under the repo root.
+          - Added artifact publication helpers that register `artifact_records` against lead, posting, contact, and message roots after file creation.
+        validation:
+          - "`python3.11 -m pytest tests/test_bootstrap.py tests/test_schema.py tests/test_artifacts.py`"
+          - "`python3.11 -m job_hunt_copilot.bootstrap --project-root /Users/achyutaramsonti/Projects/job-hunt-copilot-v4`"
 
   - id: BA-02
     name: Supervisor control plane
@@ -592,18 +603,16 @@ epics:
           - final readiness notes for recruiter- or manager-facing repo surfaces
 
 current_focus:
-  epic_id: BA-01
-  slice_id: BA-01-S3
-  owner_role: foundation-engineer
-  reason: The canonical schema is now landed and validated, so the next dependency is the shared artifact contract envelope plus `artifact_records` helpers every downstream component will need.
+  epic_id: BA-02
+  slice_id: BA-02-S1
+  owner_role: build-lead
+  reason: BA-01 is complete, so the next highest-value dependency is the supervisor control-state access layer needed to drive bounded runtime cycles against canonical state.
   exit_criteria:
-    - shared YAML and JSON contract writers can emit the required envelope fields for machine handoff artifacts
-    - "`artifact_records` helpers can register artifacts against lead, posting, contact, or message roots"
-    - downstream components can reuse canonical path and reference helpers instead of inventing per-component metadata writes
+    - access helpers exist for `pipeline_runs`, `supervisor_cycles`, `agent_control_state`, and `agent_runtime_leases`
+    - canonical run-state transitions are expressed without downstream slices inventing their own status semantics
+    - lease acquisition and stale-recovery helpers are ready for the bounded supervisor executor slice
 
 focus_order:
-  - epic_id: BA-01
-    why_now: The schema, contract, and bootstrap layer is required before any component can publish canonical state or artifacts.
   - epic_id: BA-02
     why_now: Supervisor state semantics depend on the canonical schema but should land before product-side autonomous orchestration grows.
   - epic_id: BA-03

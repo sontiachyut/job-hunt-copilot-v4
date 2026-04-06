@@ -84,6 +84,7 @@ The product runtime now has an explicit bootstrap layer under `job_hunt_copilot/
 - repo-path helpers for the current-build layout
 - canonical DB migrations and review views for `job_hunt_copilot.db`
 - shared canonical ID and lifecycle timestamp helpers for downstream records
+- shared artifact contract writers and `artifact_records` registration helpers
 - bootstrap checks for assets and local secret materialization
 - repo-local runtime directory creation for downstream components
 

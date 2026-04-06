@@ -31,9 +31,10 @@ What already exists:
 - an unattended multi-agent build system scaffold under [build-agent/](./build-agent/)
 - a foundation runtime bootstrap package for support-directory setup, secret materialization, and DB migration scaffolding
 - a canonical SQLite schema migration set with review views plus shared ID and timestamp helpers for downstream components
+- shared artifact publication helpers for YAML/JSON contracts, canonical workspace path building, and `artifact_records` registration
 
 What is still in progress:
-- artifact contracts and higher-level runtime components
+- higher-level runtime components
 
 ## System Overview
 
