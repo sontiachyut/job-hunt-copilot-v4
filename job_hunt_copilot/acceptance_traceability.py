@@ -67,7 +67,7 @@ GAP_REGISTRY: dict[str, dict[str, str]] = {
     "BA10_DELAYED_FEEDBACK_SCHEDULING": {
         "title": "Delayed feedback scheduling is not wired to a scheduler",
         "reason": "Delivery feedback syncing can run and persists scheduler metadata, but there is no committed launchd-driven delayed feedback poller yet.",
-        "next_slice": "BA-10-S2",
+        "next_slice": "BA-10-S3",
     },
     "BA10_SLEEP_WAKE_RECOVERY": {
         "title": "Sleep and wake recovery is not implemented beyond metadata",
@@ -107,8 +107,9 @@ RULE_BLUEPRINTS: dict[str, RuleBlueprint] = {
             "tests/test_schema.py",
             "tests/test_runtime_pack.py",
             "tests/test_local_runtime.py",
+            "tests/test_smoke_harness.py",
         ),
-        note="Bootstrap, schema, runtime-pack, and local wrapper surfaces have direct pytest coverage; the integrated smoke checklist remains the next BA-10 slice.",
+        note="Bootstrap, schema, runtime-pack, and local wrapper surfaces have direct pytest coverage, and the BA-10 smoke harness now exercises bootstrap through a committed downstream flow.",
     ),
     "Machine handoff contracts and canonical state": RuleBlueprint(
         owner_role="build-lead",
@@ -232,6 +233,7 @@ RULE_BLUEPRINTS: dict[str, RuleBlueprint] = {
             "tests/test_delivery_feedback.py",
             "tests/test_outreach.py",
             "tests/test_local_runtime.py",
+            "tests/test_smoke_harness.py",
         ),
     ),
     "Supervisor Agent behavior": RuleBlueprint(
@@ -320,10 +322,11 @@ RULE_BLUEPRINTS: dict[str, RuleBlueprint] = {
             "tests/test_outreach.py",
             "tests/test_delivery_feedback.py",
             "tests/test_supervisor.py",
+            "tests/test_smoke_harness.py",
         ),
         default_status=STATUS_PARTIAL,
-        default_gap_ids=("BA10_SMOKE_HARNESS", "BA10_SUPERVISOR_DOWNSTREAM_ACTION_CATALOG"),
-        note="The components exist and are individually validated, but there is no committed end-to-end harness and no supervisor-driven downstream orchestration past lead handoff yet.",
+        default_gap_ids=("BA10_SUPERVISOR_DOWNSTREAM_ACTION_CATALOG",),
+        note="The components exist and now have committed smoke coverage across tailoring, discovery, send, delayed feedback, and review-query boundaries, but the autonomous supervisor still does not orchestrate the full downstream pipeline past lead handoff.",
     ),
     "Current-build safety, privacy, and evidence-grounding boundaries": RuleBlueprint(
         owner_role="quality-engineer",
@@ -452,6 +455,7 @@ EPIC_VALIDATION_NOTES: list[dict[str, Any]] = [
         "primary_tests": [
             "tests/test_delivery_feedback.py",
             "tests/test_review_queries.py",
+            "tests/test_smoke_harness.py",
         ],
         "ba10_smoke_targets": [
             "one delayed feedback sync run",
@@ -463,7 +467,10 @@ EPIC_VALIDATION_NOTES: list[dict[str, Any]] = [
         "epic_id": "BA-10",
         "owner_role": "quality-engineer",
         "focus": "acceptance traceability, smoke harness, blocker burn-down",
-        "primary_tests": ["tests/test_acceptance_traceability.py"],
+        "primary_tests": [
+            "tests/test_acceptance_traceability.py",
+            "tests/test_smoke_harness.py",
+        ],
         "ba10_smoke_targets": [
             "feature-to-code coverage honesty",
             "committed smoke fixture coverage",
@@ -494,9 +501,8 @@ def _register_override(
 
 _register_override(
     scenarios=("Build smoke test passes",),
-    status=STATUS_GAP,
-    gap_ids=("BA10_SMOKE_HARNESS",),
-    note="Targeted component tests exist across the repo, but the acceptance smoke checklist itself has not been implemented yet.",
+    status=STATUS_IMPLEMENTED,
+    note="`tests/test_smoke_harness.py` now exercises bootstrap, tailoring, discovery, sending, delayed feedback sync, and review-query reads in one committed cross-component flow.",
 )
 _register_override(
     scenarios=("Maintenance change artifacts exist for every autonomous maintenance batch",),
@@ -611,8 +617,8 @@ _register_override(
 _register_override(
     scenarios=("Delayed bounce after the send session still gets captured",),
     status=STATUS_PARTIAL,
-    gap_ids=("BA10_DELAYED_FEEDBACK_SCHEDULING", "BA10_SMOKE_HARNESS"),
-    note="Later feedback can be ingested by the current sync logic, but no delayed scheduler or end-to-end smoke check verifies the full acceptance path yet.",
+    gap_ids=("BA10_DELAYED_FEEDBACK_SCHEDULING",),
+    note="`tests/test_smoke_harness.py` now proves delayed bounce capture through the shared sync logic after send completion, but the recurring launchd scheduler wiring itself is still not implemented.",
 )
 _register_override(
     scenarios=(

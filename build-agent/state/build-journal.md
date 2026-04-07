@@ -885,3 +885,32 @@ Use this file as an append-only implementation log for the build agent.
 ### Notes
 - The generated trace matrix currently covers 214 feature scenarios: 182 implemented, 15 partial, 15 gap, 1 deferred-optional, and 1 excluded-from-required-acceptance.
 - The current acceptance gaps are now explicit repo artifacts rather than implied TODOs, which should keep BA-10-S2 and BA-10-S3 grounded in evidence instead of memory.
+
+### Session
+- Date: 2026-04-07 12:32:27 MST
+- Slice: BA-10-S2 smoke harness and fixtures
+- Goal: Land a committed cross-component smoke harness for bootstrap, tailoring, discovery, send, delayed feedback, and review-query flows, then refresh the BA-10 trace matrix so the validation story stays honest.
+
+### Work Done
+- Added `tests/test_smoke_harness.py` with a real bootstrap-driven smoke harness that copies the bundled tailoring assets into a temp repo, compiles a tailored resume from a seeded posting, approves the tailoring run, executes Apollo shortlist plus person-scoped discovery with deterministic fakes, drafts and sends the first outreach wave, runs delayed feedback sync, and queries review surfaces plus object traceability from canonical state.
+- Kept the smoke fixtures deterministic by using fake Apollo, email-finder, sender, and mailbox-observer implementations while still exercising the real DB, artifact, tailoring, discovery, outreach, feedback, and review-query code paths.
+- Updated `job_hunt_copilot.acceptance_traceability` and regenerated `build-agent/reports/ba-10-acceptance-trace-matrix.json` and `.md` so the matrix now marks `Build smoke test passes` as implemented, removes the explicit `BA10_SMOKE_HARNESS` gap, and keeps `Delayed bounce after the send session still gets captured` partial only because recurring launchd scheduler wiring is still missing.
+- Updated `build-agent/state/build-board.yaml`, `build-agent/state/IMPLEMENTATION_PLAN.md`, `build-agent/state/build-journal.md`, and `build-agent/state/codex-progress.txt` so BA-10-S2 is checkpointed cleanly and BA-10-S3 becomes the next focus.
+
+### Validation
+- Ran `python3.11 -m py_compile job_hunt_copilot/acceptance_traceability.py tests/test_smoke_harness.py` and confirmed the changed quality-engineering code compiles cleanly.
+- Ran `python3.11 -m pytest tests/test_smoke_harness.py` and confirmed both new smoke tests passed.
+- Ran `python3.11 scripts/quality/generate_acceptance_trace_matrix.py --project-root /Users/achyutaramsonti/Projects/job-hunt-copilot-v4` and regenerated the committed BA-10 reports successfully.
+- Ran `python3.11 -m py_compile job_hunt_copilot/acceptance_traceability.py scripts/quality/generate_acceptance_trace_matrix.py tests/test_acceptance_traceability.py` and confirmed the traceability helpers still compile cleanly.
+- Ran `python3.11 -m pytest tests/test_acceptance_traceability.py tests/test_smoke_harness.py` and confirmed all 3 quality-engineering tests passed.
+- Ran `python3.11 -m pytest tests/test_resume_tailoring.py tests/test_email_discovery.py tests/test_outreach.py tests/test_delivery_feedback.py tests/test_review_queries.py` and confirmed all 48 targeted downstream regression tests passed.
+
+### Result
+- `done`
+
+### Next
+- Start `BA-10-S3`: burn down or explicitly retain the remaining hardening gaps around delayed-feedback scheduler wiring, downstream supervisor orchestration, chat review/control, maintenance automation, sleep/wake recovery, posting-abandon control, and safety/privacy regression coverage.
+
+### Notes
+- The regenerated trace matrix now covers 214 feature scenarios as 183 implemented, 15 partial, 14 gap, 1 deferred-optional, and 1 excluded-from-required-acceptance.
+- The remaining `Delayed bounce after the send session still gets captured` gap is now strictly about recurring scheduler wiring; the shared delayed-feedback sync logic itself is exercised by the new smoke harness.

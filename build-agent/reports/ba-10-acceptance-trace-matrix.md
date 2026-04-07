@@ -3,9 +3,9 @@
 - Feature file: `prd/test-spec.feature`
 - Scenario count: `214`
 - Status counts:
-  - `implemented`: `182`
+  - `implemented`: `183`
   - `partial`: `15`
-  - `gap`: `15`
+  - `gap`: `14`
   - `deferred_optional`: `1`
   - `excluded_from_required_acceptance`: `1`
 
@@ -13,7 +13,7 @@
 
 | Rule | Owner | Implemented | Partial | Gap | Deferred | Excluded |
 | --- | --- | ---: | ---: | ---: | ---: | ---: |
-| Build bootstrap and prerequisites | foundation-engineer | 6 | 0 | 1 | 0 | 0 |
+| Build bootstrap and prerequisites | foundation-engineer | 7 | 0 | 0 | 0 | 0 |
 | Machine handoff contracts and canonical state | build-lead | 13 | 1 | 1 | 0 | 0 |
 | State transitions and relationship records | build-lead | 12 | 0 | 0 | 0 | 0 |
 | External integrations and bootstrap configuration | ingestion-engineer | 25 | 0 | 0 | 1 | 0 |
@@ -30,13 +30,6 @@
 | Current-build safety, privacy, and evidence-grounding boundaries | quality-engineer | 0 | 3 | 0 | 0 | 0 |
 
 ## Explicit Gaps
-
-### BA10_SMOKE_HARNESS: Integrated smoke harness is still missing
-- Next slice: `BA-10-S2`
-- Reason: The repo has strong component tests, but no committed cross-component smoke run that exercises bootstrap through review-query surfaces in one pass.
-- Scenarios: `2`
-  - Build smoke test passes
-  - Delayed bounce after the send session still gets captured
 
 ### BA10_SUPERVISOR_DOWNSTREAM_ACTION_CATALOG: Supervisor orchestration still stops at lead handoff
 - Next slice: `BA-10-S3`
@@ -80,7 +73,7 @@
   - Expert-interaction resume follows explicit close, explicit resume, or safe idle timeout
 
 ### BA10_DELAYED_FEEDBACK_SCHEDULING: Delayed feedback scheduling is not wired to a scheduler
-- Next slice: `BA-10-S2`
+- Next slice: `BA-10-S3`
 - Reason: Delivery feedback syncing can run and persists scheduler metadata, but there is no committed launchd-driven delayed feedback poller yet.
 - Scenarios: `2`
   - Delayed feedback scheduling uses launchd in the current deployment
@@ -189,6 +182,7 @@
 - Primary tests:
   - `tests/test_delivery_feedback.py`
   - `tests/test_review_queries.py`
+  - `tests/test_smoke_harness.py`
 - BA-10 smoke targets:
   - one delayed feedback sync run
   - delivery_outcome artifact generation
@@ -198,6 +192,7 @@
 - Focus: acceptance traceability, smoke harness, blocker burn-down
 - Primary tests:
   - `tests/test_acceptance_traceability.py`
+  - `tests/test_smoke_harness.py`
 - BA-10 smoke targets:
   - feature-to-code coverage honesty
   - committed smoke fixture coverage

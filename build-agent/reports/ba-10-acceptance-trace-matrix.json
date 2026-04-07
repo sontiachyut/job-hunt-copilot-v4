@@ -3,9 +3,9 @@
   "feature_path": "prd/test-spec.feature",
   "scenario_count": 214,
   "status_counts": {
-    "implemented": 182,
+    "implemented": 183,
     "partial": 15,
-    "gap": 15,
+    "gap": 14,
     "deferred_optional": 1,
     "excluded_from_required_acceptance": 1
   },
@@ -34,13 +34,14 @@
         "tests/test_bootstrap.py",
         "tests/test_schema.py",
         "tests/test_runtime_pack.py",
-        "tests/test_local_runtime.py"
+        "tests/test_local_runtime.py",
+        "tests/test_smoke_harness.py"
       ],
-      "note": "Bootstrap, schema, runtime-pack, and local wrapper surfaces have direct pytest coverage; the integrated smoke checklist remains the next BA-10 slice.",
+      "note": "Bootstrap, schema, runtime-pack, and local wrapper surfaces have direct pytest coverage, and the BA-10 smoke harness now exercises bootstrap through a committed downstream flow.",
       "status_counts": {
-        "implemented": 6,
+        "implemented": 7,
         "partial": 0,
-        "gap": 1,
+        "gap": 0,
         "deferred_optional": 0,
         "excluded_from_required_acceptance": 0
       },
@@ -70,15 +71,16 @@
             "tests/test_bootstrap.py",
             "tests/test_schema.py",
             "tests/test_runtime_pack.py",
-            "tests/test_local_runtime.py"
+            "tests/test_local_runtime.py",
+            "tests/test_smoke_harness.py"
           ],
           "gap_ids": [],
-          "note": "Bootstrap, schema, runtime-pack, and local wrapper surfaces have direct pytest coverage; the integrated smoke checklist remains the next BA-10 slice."
+          "note": "Bootstrap, schema, runtime-pack, and local wrapper surfaces have direct pytest coverage, and the BA-10 smoke harness now exercises bootstrap through a committed downstream flow."
         },
         {
           "name": "Build smoke test passes",
           "scenario_line": 28,
-          "status": "gap",
+          "status": "implemented",
           "owner_role": "foundation-engineer",
           "epic_ids": [
             "BA-01",
@@ -100,12 +102,11 @@
             "tests/test_bootstrap.py",
             "tests/test_schema.py",
             "tests/test_runtime_pack.py",
-            "tests/test_local_runtime.py"
+            "tests/test_local_runtime.py",
+            "tests/test_smoke_harness.py"
           ],
-          "gap_ids": [
-            "BA10_SMOKE_HARNESS"
-          ],
-          "note": "Targeted component tests exist across the repo, but the acceptance smoke checklist itself has not been implemented yet."
+          "gap_ids": [],
+          "note": "`tests/test_smoke_harness.py` now exercises bootstrap, tailoring, discovery, sending, delayed feedback sync, and review-query reads in one committed cross-component flow."
         },
         {
           "name": "Build environment satisfies the declared runtime assumptions",
@@ -132,10 +133,11 @@
             "tests/test_bootstrap.py",
             "tests/test_schema.py",
             "tests/test_runtime_pack.py",
-            "tests/test_local_runtime.py"
+            "tests/test_local_runtime.py",
+            "tests/test_smoke_harness.py"
           ],
           "gap_ids": [],
-          "note": "Bootstrap, schema, runtime-pack, and local wrapper surfaces have direct pytest coverage; the integrated smoke checklist remains the next BA-10 slice."
+          "note": "Bootstrap, schema, runtime-pack, and local wrapper surfaces have direct pytest coverage, and the BA-10 smoke harness now exercises bootstrap through a committed downstream flow."
         },
         {
           "name": "Canonical database schema includes the next-build required tables",
@@ -162,10 +164,11 @@
             "tests/test_bootstrap.py",
             "tests/test_schema.py",
             "tests/test_runtime_pack.py",
-            "tests/test_local_runtime.py"
+            "tests/test_local_runtime.py",
+            "tests/test_smoke_harness.py"
           ],
           "gap_ids": [],
-          "note": "Bootstrap, schema, runtime-pack, and local wrapper surfaces have direct pytest coverage; the integrated smoke checklist remains the next BA-10 slice."
+          "note": "Bootstrap, schema, runtime-pack, and local wrapper surfaces have direct pytest coverage, and the BA-10 smoke harness now exercises bootstrap through a committed downstream flow."
         },
         {
           "name": "Build input pack is sufficient for a fresh build",
@@ -192,10 +195,11 @@
             "tests/test_bootstrap.py",
             "tests/test_schema.py",
             "tests/test_runtime_pack.py",
-            "tests/test_local_runtime.py"
+            "tests/test_local_runtime.py",
+            "tests/test_smoke_harness.py"
           ],
           "gap_ids": [],
-          "note": "Bootstrap, schema, runtime-pack, and local wrapper surfaces have direct pytest coverage; the integrated smoke checklist remains the next BA-10 slice."
+          "note": "Bootstrap, schema, runtime-pack, and local wrapper surfaces have direct pytest coverage, and the BA-10 smoke harness now exercises bootstrap through a committed downstream flow."
         },
         {
           "name": "Fresh build materializes the paste inbox workflow",
@@ -222,10 +226,11 @@
             "tests/test_bootstrap.py",
             "tests/test_schema.py",
             "tests/test_runtime_pack.py",
-            "tests/test_local_runtime.py"
+            "tests/test_local_runtime.py",
+            "tests/test_smoke_harness.py"
           ],
           "gap_ids": [],
-          "note": "Bootstrap, schema, runtime-pack, and local wrapper surfaces have direct pytest coverage; the integrated smoke checklist remains the next BA-10 slice."
+          "note": "Bootstrap, schema, runtime-pack, and local wrapper surfaces have direct pytest coverage, and the BA-10 smoke harness now exercises bootstrap through a committed downstream flow."
         },
         {
           "name": "Fresh build materializes the supervisor runtime pack and local entrypoints",
@@ -252,10 +257,11 @@
             "tests/test_bootstrap.py",
             "tests/test_schema.py",
             "tests/test_runtime_pack.py",
-            "tests/test_local_runtime.py"
+            "tests/test_local_runtime.py",
+            "tests/test_smoke_harness.py"
           ],
           "gap_ids": [],
-          "note": "Bootstrap, schema, runtime-pack, and local wrapper surfaces have direct pytest coverage; the integrated smoke checklist remains the next BA-10 slice."
+          "note": "Bootstrap, schema, runtime-pack, and local wrapper surfaces have direct pytest coverage, and the BA-10 smoke harness now exercises bootstrap through a committed downstream flow."
         }
       ]
     },
@@ -3416,7 +3422,8 @@
       "test_refs": [
         "tests/test_delivery_feedback.py",
         "tests/test_outreach.py",
-        "tests/test_local_runtime.py"
+        "tests/test_local_runtime.py",
+        "tests/test_smoke_harness.py"
       ],
       "note": null,
       "status_counts": {
@@ -3444,7 +3451,8 @@
           "test_refs": [
             "tests/test_delivery_feedback.py",
             "tests/test_outreach.py",
-            "tests/test_local_runtime.py"
+            "tests/test_local_runtime.py",
+            "tests/test_smoke_harness.py"
           ],
           "gap_ids": [],
           "note": null
@@ -3466,7 +3474,8 @@
           "test_refs": [
             "tests/test_delivery_feedback.py",
             "tests/test_outreach.py",
-            "tests/test_local_runtime.py"
+            "tests/test_local_runtime.py",
+            "tests/test_smoke_harness.py"
           ],
           "gap_ids": [],
           "note": null
@@ -3488,7 +3497,8 @@
           "test_refs": [
             "tests/test_delivery_feedback.py",
             "tests/test_outreach.py",
-            "tests/test_local_runtime.py"
+            "tests/test_local_runtime.py",
+            "tests/test_smoke_harness.py"
           ],
           "gap_ids": [],
           "note": null
@@ -3510,7 +3520,8 @@
           "test_refs": [
             "tests/test_delivery_feedback.py",
             "tests/test_outreach.py",
-            "tests/test_local_runtime.py"
+            "tests/test_local_runtime.py",
+            "tests/test_smoke_harness.py"
           ],
           "gap_ids": [],
           "note": null
@@ -3532,7 +3543,8 @@
           "test_refs": [
             "tests/test_delivery_feedback.py",
             "tests/test_outreach.py",
-            "tests/test_local_runtime.py"
+            "tests/test_local_runtime.py",
+            "tests/test_smoke_harness.py"
           ],
           "gap_ids": [
             "BA10_DELAYED_FEEDBACK_SCHEDULING"
@@ -3556,7 +3568,8 @@
           "test_refs": [
             "tests/test_delivery_feedback.py",
             "tests/test_outreach.py",
-            "tests/test_local_runtime.py"
+            "tests/test_local_runtime.py",
+            "tests/test_smoke_harness.py"
           ],
           "gap_ids": [],
           "note": null
@@ -3578,7 +3591,8 @@
           "test_refs": [
             "tests/test_delivery_feedback.py",
             "tests/test_outreach.py",
-            "tests/test_local_runtime.py"
+            "tests/test_local_runtime.py",
+            "tests/test_smoke_harness.py"
           ],
           "gap_ids": [],
           "note": null
@@ -3600,7 +3614,8 @@
           "test_refs": [
             "tests/test_delivery_feedback.py",
             "tests/test_outreach.py",
-            "tests/test_local_runtime.py"
+            "tests/test_local_runtime.py",
+            "tests/test_smoke_harness.py"
           ],
           "gap_ids": [],
           "note": null
@@ -3622,7 +3637,8 @@
           "test_refs": [
             "tests/test_delivery_feedback.py",
             "tests/test_outreach.py",
-            "tests/test_local_runtime.py"
+            "tests/test_local_runtime.py",
+            "tests/test_smoke_harness.py"
           ],
           "gap_ids": [],
           "note": null
@@ -3644,7 +3660,8 @@
           "test_refs": [
             "tests/test_delivery_feedback.py",
             "tests/test_outreach.py",
-            "tests/test_local_runtime.py"
+            "tests/test_local_runtime.py",
+            "tests/test_smoke_harness.py"
           ],
           "gap_ids": [],
           "note": null
@@ -3666,7 +3683,8 @@
           "test_refs": [
             "tests/test_delivery_feedback.py",
             "tests/test_outreach.py",
-            "tests/test_local_runtime.py"
+            "tests/test_local_runtime.py",
+            "tests/test_smoke_harness.py"
           ],
           "gap_ids": [],
           "note": null
@@ -5848,9 +5866,10 @@
         "tests/test_email_discovery.py",
         "tests/test_outreach.py",
         "tests/test_delivery_feedback.py",
-        "tests/test_supervisor.py"
+        "tests/test_supervisor.py",
+        "tests/test_smoke_harness.py"
       ],
-      "note": "The components exist and are individually validated, but there is no committed end-to-end harness and no supervisor-driven downstream orchestration past lead handoff yet.",
+      "note": "The components exist and now have committed smoke coverage across tailoring, discovery, send, delayed feedback, and review-query boundaries, but the autonomous supervisor still does not orchestrate the full downstream pipeline past lead handoff.",
       "status_counts": {
         "implemented": 0,
         "partial": 3,
@@ -5883,7 +5902,8 @@
             "tests/test_email_discovery.py",
             "tests/test_outreach.py",
             "tests/test_delivery_feedback.py",
-            "tests/test_supervisor.py"
+            "tests/test_supervisor.py",
+            "tests/test_smoke_harness.py"
           ],
           "gap_ids": [
             "BA10_SUPERVISOR_DOWNSTREAM_ACTION_CATALOG"
@@ -5914,13 +5934,13 @@
             "tests/test_email_discovery.py",
             "tests/test_outreach.py",
             "tests/test_delivery_feedback.py",
-            "tests/test_supervisor.py"
+            "tests/test_supervisor.py",
+            "tests/test_smoke_harness.py"
           ],
           "gap_ids": [
-            "BA10_DELAYED_FEEDBACK_SCHEDULING",
-            "BA10_SMOKE_HARNESS"
+            "BA10_DELAYED_FEEDBACK_SCHEDULING"
           ],
-          "note": "Later feedback can be ingested by the current sync logic, but no delayed scheduler or end-to-end smoke check verifies the full acceptance path yet."
+          "note": "`tests/test_smoke_harness.py` now proves delayed bounce capture through the shared sync logic after send completion, but the recurring launchd scheduler wiring itself is still not implemented."
         },
         {
           "name": "End-to-end retry resumes from the last successful stage boundary",
@@ -5946,7 +5966,8 @@
             "tests/test_email_discovery.py",
             "tests/test_outreach.py",
             "tests/test_delivery_feedback.py",
-            "tests/test_supervisor.py"
+            "tests/test_supervisor.py",
+            "tests/test_smoke_harness.py"
           ],
           "gap_ids": [
             "BA10_SUPERVISOR_DOWNSTREAM_ACTION_CATALOG"
@@ -5977,7 +5998,8 @@
             "tests/test_email_discovery.py",
             "tests/test_outreach.py",
             "tests/test_delivery_feedback.py",
-            "tests/test_supervisor.py"
+            "tests/test_supervisor.py",
+            "tests/test_smoke_harness.py"
           ],
           "gap_ids": [],
           "note": "The feature file explicitly marks two-step outreach as outside the required acceptance surface for the current build."
@@ -6120,10 +6142,7 @@
       "title": "Integrated smoke harness is still missing",
       "reason": "The repo has strong component tests, but no committed cross-component smoke run that exercises bootstrap through review-query surfaces in one pass.",
       "next_slice": "BA-10-S2",
-      "scenario_names": [
-        "Build smoke test passes",
-        "Delayed bounce after the send session still gets captured"
-      ]
+      "scenario_names": []
     },
     {
       "gap_id": "BA10_SUPERVISOR_DOWNSTREAM_ACTION_CATALOG",
@@ -6182,7 +6201,7 @@
       "gap_id": "BA10_DELAYED_FEEDBACK_SCHEDULING",
       "title": "Delayed feedback scheduling is not wired to a scheduler",
       "reason": "Delivery feedback syncing can run and persists scheduler metadata, but there is no committed launchd-driven delayed feedback poller yet.",
-      "next_slice": "BA-10-S2",
+      "next_slice": "BA-10-S3",
       "scenario_names": [
         "Delayed feedback scheduling uses launchd in the current deployment",
         "Delayed bounce after the send session still gets captured"
@@ -6333,7 +6352,8 @@
       "focus": "feedback event persistence, review queries, feedback reuse policy",
       "primary_tests": [
         "tests/test_delivery_feedback.py",
-        "tests/test_review_queries.py"
+        "tests/test_review_queries.py",
+        "tests/test_smoke_harness.py"
       ],
       "ba10_smoke_targets": [
         "one delayed feedback sync run",
@@ -6346,7 +6366,8 @@
       "owner_role": "quality-engineer",
       "focus": "acceptance traceability, smoke harness, blocker burn-down",
       "primary_tests": [
-        "tests/test_acceptance_traceability.py"
+        "tests/test_acceptance_traceability.py",
+        "tests/test_smoke_harness.py"
       ],
       "ba10_smoke_targets": [
         "feature-to-code coverage honesty",

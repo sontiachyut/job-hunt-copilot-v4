@@ -60,6 +60,7 @@ It should stay aligned with:
 - Explicit implementation note: the current tailoring runtime now backfills workspace files for preexisting active runs that predate BA-06-S2, but repeated bootstrap on an already-materialized active run intentionally preserves existing `resume.tex` and intelligence artifacts instead of clobbering in-progress tailoring work.
 - Explicit implementation note: Step 3 through Step 7 persistence and the later mandatory review boundary currently stay artifact-first rather than adding new dedicated tailoring tables, which keeps BA-06 bounded while still making generated intelligence, review decisions, verification blockers, and compile outputs durable and reviewable from the workspace.
 - Explicit implementation inference: the current company daily send cap is evaluated against the machine's local calendar day, while timestamps remain stored canonically as UTC ISO-8601 text and are converted only for the pacing check.
+- `BA-10-S2` is complete: `tests/test_smoke_harness.py` now drives a committed bootstrap -> tailoring -> discovery -> send -> delayed-feedback -> review-query smoke path with deterministic fakes, and the regenerated BA-10 acceptance matrix now closes the explicit smoke-harness gap while leaving scheduler-wiring and other hardening blockers honest.
 - Known operational blocker: live `launchctl bootstrap gui/$UID ...` still returns `Input/output error` in this sandboxed session, and the system log needed for richer launchd diagnostics is itself blocked by sandbox restrictions.
 - Known operational risk: unattended build-lead execution needs a follow-up validation pass for the `codex exec` CLI compatibility fix already present in the worktree.
 
@@ -128,12 +129,12 @@ It should stay aligned with:
 
 ## Next Slice
 
-- Current focus: `BA-10-S2` Smoke harness and fixtures.
-- Why next: BA-10-S1 now makes the implemented versus missing acceptance surface explicit, so the highest-value follow-up is landing the committed smoke coverage that closes the bootstrap and end-to-end validation holes before broader blocker burn-down.
+- Current focus: `BA-10-S3` Cross-component regression and blocker burn-down.
+- Why next: BA-10-S2 closed the explicit smoke-harness gap and raised the acceptance matrix to 183 implemented / 15 partial / 14 gap scenarios, so the next highest-value work is burning down or explicitly retaining the remaining blocker clusters with targeted evidence.
 - Done when:
-  - bootstrap smoke coverage exercises DB init, required assets, secrets loading, and paste/runtime-pack support paths
-  - sample posting and contact fixtures drive tailoring, discovery, send, feedback, and review-query smoke checks
-  - machine-valid `discovery_result.json`, `send_result.json`, and review-surface checks exist as committed validation evidence
+  - remaining BA-10 gaps around delayed-feedback scheduler wiring, downstream supervisor orchestration, chat review/control, maintenance automation, sleep/wake recovery, posting-abandon control, and safety/privacy hardening are either fixed or reaffirmed as explicit blockers
+  - targeted regression coverage exists for the failure/retry, idempotency, and safety boundaries touched during hardening
+  - the trace matrix, build board, and progress notes all agree on what still blocks full acceptance signoff after smoke coverage
 
 ## Working Rules
 
