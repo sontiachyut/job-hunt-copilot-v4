@@ -803,3 +803,30 @@ Use this file as an append-only implementation log for the build agent.
 ### Notes
 - Explicit implementation note: the new feedback runtime records per-event artifact history under each message workspace and mirrors only the latest `delivery_outcome.json` at the workspace root, preserving event history without giving up the PRD-listed top-level handoff path.
 - Explicit implementation note: delayed feedback sync currently remains reusable module logic plus persisted scheduler metadata; dedicated launchd invocation wiring for that sync still remains a later runtime-integration concern outside this bounded slice.
+
+### Session
+- Date: 2026-04-07 11:27:22 MST
+- Slice: BA-09-S2 review queries and traceability surfaces
+- Goal: Add query-first operational review surfaces and per-object traceability over the persisted outreach and supervisor state without introducing a GUI dependency.
+
+### Work Done
+- Added `job_hunt_copilot.review_queries` with read-only retrieval helpers for posting states, contact states, sent-message history, unresolved discovery, bounced-email cases, pending expert review packets, open incidents, outstanding blocked/failed/repeat-outreach review items, override history, and per-object traceability.
+- Kept the review layer query-first by reusing canonical tables, existing review views, `artifact_records`, and artifact-file lookups for blocked/failed send reasons instead of adding another mutable review-state table.
+- Added `tests/test_review_queries.py` with seeded canonical postings, contacts, messages, feedback events, incidents, review packets, overrides, state transitions, and registered artifacts so the retrieval layer validates real linkage across state and files.
+- Updated `README.md`, `docs/ARCHITECTURE.md`, the build board, the implementation plan, and the progress handoff so the repo and build-agent surfaces reflect that BA-09-S2 is now complete and BA-09-S3 is the next bounded slice.
+
+### Validation
+- Ran `python3.11 -m py_compile job_hunt_copilot/review_queries.py tests/test_review_queries.py` and confirmed the new module and focused tests compile cleanly.
+- Ran `python3.11 -m pytest tests/test_review_queries.py` and confirmed all 3 focused review-query tests passed.
+- Ran `python3.11 -m pytest tests/test_schema.py tests/test_outreach.py tests/test_delivery_feedback.py tests/test_review_queries.py` and confirmed all 21 targeted schema, outreach, feedback, and review-query tests passed.
+- Ran full `python3.11 -m pytest` and confirmed all 101 repository tests passed.
+
+### Result
+- `done`
+
+### Next
+- Start `BA-09-S3`: keep feedback reuse bounded to bounced/not-bounced outcomes, make repeated mailbox-signal ingestion idempotent, and preserve replied outcomes as review-only state.
+
+### Notes
+- Explicit implementation note: the new review layer intentionally exposes grouped read-only retrieval and artifact references rather than introducing a separate denormalized review cache, which keeps later `jhc-chat` integration grounded in canonical state.
+- Explicit implementation inference: blocked/failed outreach reasons remain artifact-backed retrieval rather than new DB columns in this slice because the current acceptance need is queryable inspection, not another mutable send-status projection table.

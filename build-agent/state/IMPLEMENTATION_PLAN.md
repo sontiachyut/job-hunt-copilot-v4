@@ -40,7 +40,9 @@ It should stay aligned with:
 - `BA-08-S3` is complete: `job_hunt_copilot.outreach` now executes the active drafted outreach wave through a provider-injected send runner, persists canonical `sent_at` plus thread or delivery identifiers, blocks repeat-contact or ambiguous resend cases with review-safe `blocked` outcomes instead of double-sending, advances successful sends into `sent` / `outreach_done`, and closes postings into `completed` once the active wave reaches terminal sent or review-blocked states.
 - `BA-08` is now complete in code overall: send-set selection, draft persistence, paced send execution, duplicate-send guardrails, canonical message history, and posting-wave completion handling now exist behind the current outreach runtime boundary.
 - `BA-09-S1` is complete: `job_hunt_copilot.delivery_feedback` now supports immediate post-send and delayed mailbox observation over canonical sent-message rows, persists auditable `feedback_sync_runs`, records exact-message `delivery_feedback_events` for `bounced`, `not_bounced`, and `replied` outcomes, emits per-event `delivery_outcome.json` artifacts with workspace-root latest mirrors, and lets send execution trigger the immediate poll automatically when a mailbox observer is supplied.
+- `BA-09-S2` is complete: `job_hunt_copilot.review_queries` now exposes read-only review surfaces for posting states, contact states, sent-message history, unresolved discovery, bounced feedback, pending expert review packets, open incidents, blocked/failed/repeat-outreach cases, override history, and per-object traceability over artifacts, transitions, and downstream records.
 - Explicit implementation note: repeat-outreach evaluation now keys off previously sent message history instead of counting freshly generated drafts, so the active drafted wave can continue into send execution without treating its own unsent drafts as prior outreach.
+- Explicit implementation note: the BA-09-S2 review layer stayed query-first and read-only by reusing canonical tables, existing review views, `artifact_records`, and artifact-file lookups for reason recovery instead of adding another mutable review-state table.
 - Explicit implementation note: failed startup no longer leaves dishonest control state behind; `jhc-agent-start` now rolls canonical state back to `stopped` if `launchctl bootstrap` fails before the job is actually loaded.
 - Explicit implementation note: the generated `ops/agent/` files remain runtime-local artifacts under `.gitignore`, so the repo tracks the materialization code and tests rather than checking in those mutable rendered outputs.
 - Explicit implementation note: `jhc-chat` now records begin/end metadata plus `active_chat_session_id` in canonical control state, pauses autonomous work immediately on open, resumes on clean explicit close when chat itself caused the pause, and intentionally keeps unexpected-exit pauses active until later explicit resume or future idle-timeout automation exists.
@@ -119,12 +121,12 @@ It should stay aligned with:
 
 ## Next Slice
 
-- Current focus: `BA-09-S2` Review queries and traceability surfaces.
-- Why next: BA-09-S1 now persists canonical feedback events plus `delivery_outcome.json` artifacts, so the highest-value follow-up is turning postings, contacts, messages, incidents, unresolved discovery, and review packets into readable query surfaces instead of forcing later chat or reviewer flows to stitch raw records together manually.
+- Current focus: `BA-09-S3` Feedback reuse and reply-safe handling.
+- Why next: BA-09-S2 now makes feedback and review state queryable enough for inspection, so the highest-value follow-up is bounding how bounced, not-bounced, and replied outcomes may influence later discovery reuse without leaking reply-only cases into the current learning loop.
 - Done when:
-  - canonical review queries can surface postings, contacts, messages, unresolved discovery cases, incidents, and review packets directly from shared state
-  - sent-message history can trace from canonical message rows into feedback events, `delivery_outcome.json`, and later review artifacts without losing the primary internal identifiers
-  - the query grouping stays clean enough for `jhc-chat` and manager-facing inspection surfaces
+  - repeated mailbox signals ingest idempotently without duplicating canonical feedback history
+  - bounced and not-bounced outcomes can be queried for later discovery-safe reuse without automatically rewriting current working-email state
+  - replied outcomes remain retained for review and outreach analysis while staying outside the current discovery-learning loop
 
 ## Working Rules
 
