@@ -1022,3 +1022,26 @@ Use this file as an append-only implementation log for the build agent.
 ### Notes
 - The acceptance matrix remains at 190 implemented, 8 partial, 14 gap, 1 deferred-optional, and 1 excluded-from-required-acceptance scenarios; this slice intentionally strengthened evidence without claiming additional feature closure.
 - The downstream-supervisor blocker is now more precise: selector ordering and retry-safe run persistence are evidenced, while later-stage autonomous execution beyond `lead_handoff` remains the actual missing capability.
+
+### Session
+- Date: 2026-04-07 14:39:58 MST
+- Slice: BA-10-S3 chat control regression confirmation
+- Goal: Add explicit validation for the current `jhc-chat` control boundary so the remaining chat blocker stays about missing product behavior, not missing regression evidence.
+
+### Work Done
+- Added a focused regression in `tests/test_local_runtime.py` proving that after `jhc-chat` ends with `unexpected_exit`, a later explicit `resume` through `scripts/ops/control_agent.py` clears the `expert_interaction` pause and returns canonical control state to `running`.
+- Added a focused regression in `tests/test_runtime_pack.py` locking the generated `ops/agent/chat-bootstrap.md` scaffold to the persisted control-state, review-surface, progress-log, ops-plan, and current-snapshot guidance that the expert-facing operator already depends on.
+- Updated `build-agent/state/build-board.yaml`, `build-agent/state/IMPLEMENTATION_PLAN.md`, `build-agent/state/build-journal.md`, and `build-agent/state/codex-progress.txt` so BA-10 records this as blocker confirmation rather than silent feature closure; richer in-chat review retrieval, control routing, and idle-timeout auto-resume remain explicit gaps.
+
+### Validation
+- Ran `python3.11 -m pytest tests/test_local_runtime.py tests/test_runtime_pack.py tests/test_acceptance_traceability.py` and confirmed all 16 focused runtime-pack/local-runtime/traceability tests passed.
+
+### Result
+- `done`
+
+### Next
+- Hand the functional downstream action-catalog slice back to the build-lead, or continue `BA-10-S3` with maintenance automation and posting-abandon blocker confirmation if orchestration work remains deferred.
+
+### Notes
+- The acceptance matrix remains at 190 implemented, 8 partial, 14 gap, 1 deferred-optional, and 1 excluded-from-required-acceptance scenarios; this slice intentionally tightened evidence without changing gap status.
+- The remaining chat blocker is now narrower and more honest: wrapper lifecycle, explicit-close resume, explicit manual resume after unexpected exit, and chat-bootstrap scaffolding are covered, while actual in-chat review retrieval, control routing, and idle-timeout recovery are still missing behaviors.

@@ -43,3 +43,29 @@ def test_runtime_pack_preserves_existing_progress_surfaces(tmp_path):
     assert yaml.safe_load(ops_plan_path.read_text(encoding="utf-8")) == custom_ops_plan
     assert str(progress_log_path) in second_report["preserved_paths"]
     assert str(ops_plan_path) in second_report["preserved_paths"]
+
+
+def test_runtime_pack_chat_bootstrap_scaffolds_review_and_control_surfaces(tmp_path):
+    project_root = tmp_path / "repo"
+    project_root.mkdir()
+    create_minimal_project(project_root)
+
+    report = materialize_runtime_pack(project_root=project_root)
+    chat_bootstrap = (project_root / "ops" / "agent" / "chat-bootstrap.md").read_text(
+        encoding="utf-8"
+    )
+
+    assert report["agent_mode"] == "stopped"
+    assert "# Job Hunt Copilot Chat Bootstrap" in chat_bootstrap
+    assert "You are the expert-facing operator for Job Hunt Copilot v4." in chat_bootstrap
+    assert f"- Canonical DB: {project_root / 'job_hunt_copilot.db'}" in chat_bootstrap
+    assert f"- Progress log: {project_root / 'ops' / 'agent' / 'progress-log.md'}" in chat_bootstrap
+    assert f"- Ops plan: {project_root / 'ops' / 'agent' / 'ops-plan.yaml'}" in chat_bootstrap
+    assert (
+        "3. inspect canonical control state, open incidents, pending expert review packets, "
+        "and the relevant DB-backed status snapshot"
+    ) in chat_bootstrap
+    assert "- persist pause, resume, stop, replanning, and override intents into canonical state instead of relying on chat memory" in chat_bootstrap
+    assert "- agent_mode: stopped" in chat_bootstrap
+    assert "- open_incident_count: 0" in chat_bootstrap
+    assert "- pending_review_count: 0" in chat_bootstrap

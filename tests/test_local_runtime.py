@@ -748,6 +748,83 @@ def test_chat_session_unexpected_exit_keeps_expert_interaction_pause_active(tmp_
     }
 
 
+def test_chat_session_explicit_resume_clears_unexpected_exit_pause(tmp_path):
+    project_root = tmp_path / "repo"
+    project_root.mkdir()
+    create_minimal_project(project_root)
+
+    run_script(
+        "scripts/ops/control_agent.py",
+        "start",
+        "--project-root",
+        str(project_root),
+        "--manual-command",
+        "jhc-agent-start",
+    )
+    begin_report = json.loads(
+        run_script(
+            "scripts/ops/chat_session.py",
+            "begin",
+            "--project-root",
+            str(project_root),
+        ).stdout
+    )
+    run_script(
+        "scripts/ops/chat_session.py",
+        "end",
+        "--project-root",
+        str(project_root),
+        "--session-id",
+        begin_report["session_id"],
+        "--exit-mode",
+        "unexpected_exit",
+    )
+    resume_report = json.loads(
+        run_script(
+            "scripts/ops/control_agent.py",
+            "resume",
+            "--project-root",
+            str(project_root),
+            "--manual-command",
+            "resume",
+        ).stdout
+    )
+
+    connection = connect_database(project_root / "job_hunt_copilot.db")
+    control_rows = connection.execute(
+        """
+        SELECT control_key, control_value
+        FROM agent_control_state
+        WHERE control_key IN (
+            'active_chat_session_id',
+            'agent_enabled',
+            'agent_mode',
+            'chat_resume_on_close',
+            'last_chat_exit_mode',
+            'last_manual_command',
+            'pause_reason',
+            'paused_at'
+        )
+        ORDER BY control_key
+        """
+    ).fetchall()
+    connection.close()
+
+    assert resume_report["command"] == "resume"
+    assert resume_report["control_state"]["agent_mode"] == "running"
+    assert resume_report["control_state"]["pause_reason"] == ""
+    assert dict(control_rows) == {
+        "active_chat_session_id": "",
+        "agent_enabled": "true",
+        "agent_mode": "running",
+        "chat_resume_on_close": "false",
+        "last_chat_exit_mode": "unexpected_exit",
+        "last_manual_command": "resume",
+        "pause_reason": "",
+        "paused_at": "",
+    }
+
+
 def test_chat_session_explicit_close_preserves_preexisting_non_chat_pause(tmp_path):
     project_root = tmp_path / "repo"
     project_root.mkdir()
