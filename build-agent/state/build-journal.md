@@ -442,3 +442,33 @@ Use this file as an append-only implementation log for the build agent.
 - Explicit implementation inference: zero-card Gmail review thresholds are currently derived from retained `email.json` metadata under `linkedin-scraping/runtime/gmail/` instead of a dedicated DB table, which keeps this slice bounded while still making unresolved history queryable for later review surfaces.
 - Explicit implementation inference: Gmail collection remains intentionally pre-lead for this slice, so no autonomous lead workspace is fabricated until the downstream fan-out and JD recovery slice lands.
 - `OPS-LAUNCHD-001` and `BUILD-CLI-001` remain open and untouched because this slice stayed within ingestion ownership.
+
+### Session
+- Date: 2026-04-06 17:55:00 MST
+- Slice: BA-05-S2 autonomous lead fan-out and JD recovery
+- Goal: Create bounded autonomous Gmail lead workspaces from retained parsed cards, recover `jd.md` when a usable source is available, and leave honest queryable lead state when JD recovery fails.
+
+### Work Done
+- Extended `job_hunt_copilot.linkedin_scraping` with a Gmail batch wrapper that preserves the collection-first rule from `job_hunt_copilot.gmail_alerts`, then fans created parsed cards into canonical lead workspaces only after the collected-email unit exists.
+- Added lead-local autonomous Gmail artifacts under each workspace: copied `alert-email.md`, machine-readable `alert-card.json`, `jd-fetch.json`, and `lead-manifest.yaml`, along with new path helpers for those artifacts.
+- Implemented conservative autonomous dedupe by LinkedIn `job_id` first and otherwise by the normalized URL-backed or summary-backed synthetic card identity, so repeated alerts do not create a second lead.
+- Implemented bounded accepted-source JD recovery for the current offline/testable intake path, persisting canonical `jd.md` plus company-resolution provenance when a usable source is present and otherwise transitioning the lead to `blocked_no_jd` with a blocked `jd-fetch.json`.
+- Updated the repo-facing docs plus build-agent state so the current repo surfaces now describe Gmail collection plus lead fan-out honestly and move the active build focus to BA-05-S3.
+
+### Validation
+- Ran `python3.11 -m py_compile job_hunt_copilot/linkedin_scraping.py job_hunt_copilot/paths.py tests/test_gmail_alerts.py` and confirmed the Gmail fan-out changes compile cleanly.
+- Ran `python3.11 -m pytest tests/test_gmail_alerts.py` and confirmed all 8 Gmail collection and fan-out tests passed.
+- Ran `python3.11 -m pytest tests/test_linkedin_scraping.py` and confirmed all 13 adjacent manual-ingestion tests still passed after the shared-module changes.
+- Ran full `python3.11 -m pytest` and confirmed all 52 repository tests passed across bootstrap, schema, artifacts, Gmail intake, manual ingestion, local runtime, runtime pack, and supervisor coverage.
+- Ran `bin/jhc-linkedin-ingest gmail-batch --help` and confirmed the repo-local wrapper still exposes the Gmail batch entrypoint cleanly while now routing through the full bounded autonomous intake path.
+
+### Result
+- `done`
+
+### Next
+- Implement `BA-05-S3`: merge multi-source JD candidates into one canonical `jd.md`, record final conflict-resolution provenance with LinkedIn precedence, and block downstream materialization on material Gmail-card versus fetched-JD identity mismatches while tolerating minor normalization differences.
+
+### Notes
+- Explicit implementation inference: successful Gmail-derived leads currently remain `incomplete` even after `jd.md` recovery because BA-05-S3 still owns multi-source JD merge, material mismatch review, and the downstream canonical posting-materialization handoff update.
+- Explicit implementation inference: the new accepted-source JD recovery input is intentionally bounded to batch-fixture metadata for now, which keeps this slice offline-testable while preserving the future external-fetch seam for a later integration pass.
+- `OPS-LAUNCHD-001` and `BUILD-CLI-001` remain open and untouched because this slice stayed within ingestion ownership.

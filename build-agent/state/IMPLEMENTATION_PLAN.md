@@ -24,12 +24,14 @@ It should stay aligned with:
 - `BA-04-S3` is complete: reviewed manual leads can now materialize canonical `job_postings`, auto-create poster `contacts`, persist `linkedin_lead_contacts` plus `job_posting_contacts`, expose founder recipient typing when titles warrant it, and upgrade `lead-manifest.yaml` with created entity ids plus `handoff_targets.resume_tailoring.ready = true`.
 - `BA-04-S4` is complete: existing manual leads can now refresh in place, snapshot replaced source or review artifacts under `history/`, clear stale live split outputs, rewrite an honest refresh-state `lead-manifest.yaml`, and preserve prior posting `jd_artifact_path` history by repointing canonical postings to the snapped `jd.md` when a refreshed source retires the live one.
 - `BA-05-S1` is complete: the repo now has `job_hunt_copilot.gmail_alerts`, timestamp-keyed Gmail collection-unit persistence under `linkedin-scraping/runtime/gmail/`, plain-text-first LinkedIn alert parsing with HTML-derived fallback only when the plain-text body is unusable, retained `job-cards.json` artifacts, and zero-card review-threshold metadata without lead fan-out yet.
+- `BA-05-S2` is complete: `bin/jhc-linkedin-ingest gmail-batch` now runs the bounded autonomous Gmail intake path end-to-end through lead workspace creation, copying lead-local `alert-email.md`, publishing `alert-card.json`, `jd-fetch.json`, and `lead-manifest.yaml`, deduping by `job_id` or synthetic fallback identity, and persisting honest `incomplete` / `blocked_no_jd` lead state without manual split artifacts.
 - Explicit implementation note: failed startup no longer leaves dishonest control state behind; `jhc-agent-start` now rolls canonical state back to `stopped` if `launchctl bootstrap` fails before the job is actually loaded.
 - Explicit implementation note: the generated `ops/agent/` files remain runtime-local artifacts under `.gitignore`, so the repo tracks the materialization code and tests rather than checking in those mutable rendered outputs.
 - Explicit implementation note: `jhc-chat` now records begin/end metadata plus `active_chat_session_id` in canonical control state, pauses autonomous work immediately on open, resumes on clean explicit close when chat itself caused the pause, and intentionally keeps unexpected-exit pauses active until later explicit resume or future idle-timeout automation exists.
 - Explicit implementation inference: freshly captured manual leads now persist immediately as `linkedin_leads` rows with `lead_status = captured` and `split_review_status = not_started` so pre-split work is queryable before `BA-04-S2` generates deterministic split/review artifacts.
 - Explicit implementation inference: paste fallback refresh now requires an explicit `lead_id` because paste submissions intentionally fingerprint the scratch-buffer contents for new-lead creation, while matching manual-capture reruns refresh automatically when the lead identity key is reused.
 - Explicit implementation inference: Gmail zero-card review thresholds are currently derived from retained `email.json` metadata under `linkedin-scraping/runtime/gmail/` rather than a dedicated DB table, which keeps this slice bounded while still making unresolved zero-card history queryable for later review surfaces.
+- Explicit implementation inference: successful Gmail-derived leads currently remain `incomplete` even after `jd.md` is recovered because BA-05-S3 still owns multi-source JD merge, material mismatch review, and the downstream canonical posting-materialization handoff update.
 - Known operational blocker: live `launchctl bootstrap gui/$UID ...` still returns `Input/output error` in this sandboxed session, and the system log needed for richer launchd diagnostics is itself blocked by sandbox restrictions.
 - Known operational risk: unattended build-lead execution needs a follow-up validation pass for the `codex exec` CLI compatibility fix already present in the worktree.
 
@@ -98,12 +100,12 @@ It should stay aligned with:
 
 ## Next Slice
 
-- Current focus: `BA-05-S2` Autonomous lead fan-out and JD recovery.
-- Why next: collected Gmail alert units and retained parsed-card artifacts now exist, so the next bounded ingestion gap is creating autonomous lead workspaces from those cards, deduping conservatively, and recovering `jd.md` before downstream tailoring handoff is evaluated.
+- Current focus: `BA-05-S3` JD provenance merge and mismatch review.
+- Why next: autonomous Gmail workspaces, single-source JD recovery, and lead-local provenance artifacts now exist, so the next bounded ingestion gap is merging multiple JD candidates into one canonical `jd.md` while keeping material Gmail-card versus fetched-JD identity mismatches queryable and blocked honestly.
 - Done when:
-  - parsed Gmail alert cards create autonomous lead workspaces immediately after validation and dedupe
-  - dedupe prefers LinkedIn `job_id` and falls back to normalized LinkedIn job URL or persisted synthetic card identity when `job_id` is unavailable
-  - autonomous Gmail leads persist honest `incomplete` or `blocked_no_jd` state plus JD recovery provenance without requiring manual-capture split artifacts
+  - non-conflicting multi-source JD additions merge into canonical `jd.md` with one final provenance record
+  - materially conflicting JD portions prefer LinkedIn-derived content while provenance records every contributing source
+  - material company or role mismatches between the parsed Gmail card and fetched JD are surfaced for review while minor normalization differences remain unblocked
 
 ## Working Rules
 

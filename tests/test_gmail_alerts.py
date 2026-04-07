@@ -1,6 +1,9 @@
 from __future__ import annotations
 
 import json
+import sqlite3
+
+import yaml
 
 from job_hunt_copilot.bootstrap import run_bootstrap
 from job_hunt_copilot.gmail_alerts import (
@@ -8,6 +11,7 @@ from job_hunt_copilot.gmail_alerts import (
     BODY_REPRESENTATION_TEXT_PLAIN,
     ingest_gmail_alert_batch,
 )
+from job_hunt_copilot.linkedin_scraping import ingest_gmail_alert_batch_to_leads
 from job_hunt_copilot.paths import ProjectPaths
 from tests.support import create_minimal_project
 
@@ -18,6 +22,13 @@ def bootstrap_project(tmp_path):
     create_minimal_project(project_root)
     run_bootstrap(project_root=project_root)
     return project_root
+
+
+def connect_database(db_path):
+    connection = sqlite3.connect(db_path)
+    connection.row_factory = sqlite3.Row
+    connection.execute("PRAGMA foreign_keys = ON;")
+    return connection
 
 
 def build_batch(*messages, ingestion_run_id="gmail-run-001"):
@@ -35,6 +46,7 @@ def build_message(
     received_at="2026-04-06T23:57:13Z",
     text_plain_body=None,
     text_html_body=None,
+    **extra_fields,
 ):
     payload = {
         "gmail_message_id": gmail_message_id,
@@ -47,6 +59,7 @@ def build_message(
         payload["text_plain_body"] = text_plain_body
     if text_html_body is not None:
         payload["text_html_body"] = text_html_body
+    payload.update(extra_fields)
     return payload
 
 
@@ -329,4 +342,244 @@ def test_zero_card_gmail_collection_uses_history_threshold_across_runs(tmp_path)
         "zero_card_count_in_run": 1,
         "cumulative_unresolved_zero_card_count": 4,
         "review_resolved": False,
+    }
+
+
+def test_gmail_batch_fanout_creates_incomplete_lead_workspace_with_jd_provenance(tmp_path):
+    project_root = bootstrap_project(tmp_path)
+    paths = ProjectPaths.from_root(project_root)
+
+    batch = build_batch(
+        build_message(
+            gmail_message_id="gmail-lead-001",
+            received_at="2026-04-06T23:10:00Z",
+            text_plain_body=(
+                "-----\n"
+                "Senior Software Engineer\n"
+                "Guidewire Software\n"
+                "Boston, MA (Hybrid)\n"
+                "Actively recruiting\n"
+                "View job\n"
+                "https://www.linkedin.com/jobs/view/1234567890/?trackingId=abc\n"
+            ),
+            jd_recovery=[
+                {
+                    "job_id": "1234567890",
+                    "source_type": "linkedin_guest_job_payload",
+                    "source_url": "https://www.linkedin.com/jobs/view/1234567890/",
+                    "company_name": "Guidewire Software",
+                    "role_title": "Senior Software Engineer",
+                    "jd_text": (
+                        "About the job\n"
+                        "Build distributed insurance product surfaces with Python and TypeScript.\n"
+                        "Qualifications\n"
+                        "5+ years of backend platform experience.\n"
+                    ),
+                    "company_resolution": {
+                        "status": "best_effort_no_exact_role",
+                        "reason_code": "no_exact_company_role_match",
+                        "company_website_url": "https://www.guidewire.com",
+                        "careers_url": "https://www.guidewire.com/careers",
+                    },
+                }
+            ],
+        ),
+        ingestion_run_id="gmail-lead-run-001",
+    )
+
+    result = ingest_gmail_alert_batch_to_leads(project_root, batch=batch)
+
+    assert result.collections_created == 1
+    assert result.leads_created == 1
+    assert result.lead_duplicates_ignored == 0
+    assert result.blocked_no_jd_leads == 0
+
+    lead = result.lead_results[0]
+    manifest = yaml.safe_load(lead.lead_manifest_path.read_text(encoding="utf-8"))
+    jd_fetch = json.loads(lead.jd_fetch_path.read_text(encoding="utf-8"))
+    alert_card = json.loads(lead.alert_card_path.read_text(encoding="utf-8"))
+
+    assert lead.lead_status == "incomplete"
+    assert lead.alert_email_path.name == "alert-email.md"
+    assert lead.jd_path.read_text(encoding="utf-8").startswith("About the job")
+    assert paths.lead_raw_source_path("Guidewire Software", "Senior Software Engineer", lead.lead_id).exists() is False
+    assert manifest["lead_status"] == "incomplete"
+    assert manifest["split_review_status"] == "not_applicable"
+    assert manifest["artifacts"]["raw_source_path"] is None
+    assert manifest["artifacts"]["alert_email_path"] == str(lead.alert_email_path.resolve())
+    assert manifest["artifact_availability"]["post"]["reason_code"] == "not_available_in_gmail_mode"
+    assert manifest["artifact_availability"]["poster_profile"]["reason_code"] == "not_available_in_gmail_mode"
+    assert manifest["handoff_targets"]["posting_materialization"]["ready"] is True
+    assert manifest["handoff_targets"]["resume_tailoring"]["ready"] is False
+    assert manifest["handoff_targets"]["resume_tailoring"]["reason_code"] == "posting_not_materialized"
+    assert jd_fetch["jd_recovery_status"] == "recovered"
+    assert jd_fetch["selected_source"]["source_type"] == "linkedin_guest_job_payload"
+    assert jd_fetch["company_resolution"] == {
+        "status": "best_effort_no_exact_role",
+        "reason_code": "no_exact_company_role_match",
+        "company_website_url": "https://www.guidewire.com",
+        "careers_url": "https://www.guidewire.com/careers",
+    }
+    assert alert_card["job_id"] == "1234567890"
+    assert alert_card["collection_job_cards_path"].endswith("/job-cards.json")
+
+    connection = connect_database(project_root / "job_hunt_copilot.db")
+    lead_row = connection.execute(
+        """
+        SELECT lead_status, split_review_status, source_type, source_mode, source_url
+        FROM linkedin_leads
+        WHERE lead_id = ?
+        """,
+        (lead.lead_id,),
+    ).fetchone()
+    artifact_types = {
+        row["artifact_type"]
+        for row in connection.execute(
+            """
+            SELECT artifact_type
+            FROM artifact_records
+            WHERE lead_id = ?
+            """,
+            (lead.lead_id,),
+        ).fetchall()
+    }
+    connection.close()
+
+    assert dict(lead_row) == {
+        "lead_status": "incomplete",
+        "split_review_status": "not_applicable",
+        "source_type": "gmail_linkedin_job_alert_email",
+        "source_mode": "gmail_job_alert",
+        "source_url": "https://www.linkedin.com/jobs/view/1234567890/",
+    }
+    assert {
+        "lead_alert_email",
+        "lead_alert_card",
+        "lead_jd_fetch",
+        "lead_manifest",
+    }.issubset(artifact_types)
+
+
+def test_gmail_batch_fanout_dedupes_existing_leads_by_job_id(tmp_path):
+    project_root = bootstrap_project(tmp_path)
+
+    batch = build_batch(
+        build_message(
+            gmail_message_id="gmail-dedupe-001",
+            received_at="2026-04-06T23:20:00Z",
+            text_plain_body=(
+                "-----\n"
+                "Senior Backend Engineer\n"
+                "Northwind\n"
+                "Remote\n"
+                "View job\n"
+                "https://www.linkedin.com/jobs/view/1111111111/?trk=email_digest\n"
+            ),
+            jd_recovery=[
+                {
+                    "job_id": "1111111111",
+                    "source_type": "linkedin_guest_job_payload",
+                    "source_url": "https://www.linkedin.com/jobs/view/1111111111/",
+                    "jd_text": "About the job\nBuild APIs.\n",
+                }
+            ],
+        ),
+        build_message(
+            gmail_message_id="gmail-dedupe-002",
+            received_at="2026-04-06T23:21:00Z",
+            text_plain_body=(
+                "-----\n"
+                "Senior Backend Engineer\n"
+                "Northwind\n"
+                "Remote\n"
+                "View job\n"
+                "https://www.linkedin.com/jobs/view/1111111111/?trackingId=second\n"
+            ),
+            jd_recovery=[
+                {
+                    "job_id": "1111111111",
+                    "source_type": "linkedin_guest_job_payload",
+                    "source_url": "https://www.linkedin.com/jobs/view/1111111111/",
+                    "jd_text": "About the job\nBuild APIs.\n",
+                }
+            ],
+        ),
+        ingestion_run_id="gmail-dedupe-run-001",
+    )
+
+    result = ingest_gmail_alert_batch_to_leads(project_root, batch=batch)
+
+    assert result.collections_created == 2
+    assert result.leads_created == 1
+    assert result.lead_duplicates_ignored == 1
+    assert result.lead_results[0].created is True
+    assert result.lead_results[1].duplicate is True
+    assert result.lead_results[1].duplicate_lead_id == result.lead_results[0].lead_id
+
+    connection = connect_database(project_root / "job_hunt_copilot.db")
+    lead_count = connection.execute("SELECT COUNT(*) FROM linkedin_leads").fetchone()[0]
+    connection.close()
+
+    assert lead_count == 1
+
+
+def test_gmail_batch_fanout_blocks_no_jd_when_no_identifier_or_jd_recovery_exists(tmp_path):
+    project_root = bootstrap_project(tmp_path)
+    paths = ProjectPaths.from_root(project_root)
+
+    batch = build_batch(
+        build_message(
+            gmail_message_id="gmail-blocked-001",
+            received_at="2026-04-06T23:30:00Z",
+            text_plain_body=(
+                "-----\n"
+                "Platform Engineer\n"
+                "Widget Labs\n"
+                "Remote\n"
+                "Actively recruiting\n"
+                "View job\n"
+            ),
+        ),
+        ingestion_run_id="gmail-blocked-run-001",
+    )
+
+    result = ingest_gmail_alert_batch_to_leads(project_root, batch=batch)
+
+    assert result.leads_created == 1
+    assert result.blocked_no_jd_leads == 1
+
+    lead = result.lead_results[0]
+    manifest = yaml.safe_load(lead.lead_manifest_path.read_text(encoding="utf-8"))
+    jd_fetch = json.loads(lead.jd_fetch_path.read_text(encoding="utf-8"))
+    alert_card = json.loads(lead.alert_card_path.read_text(encoding="utf-8"))
+
+    assert lead.lead_status == "blocked_no_jd"
+    assert lead.reason_code == "missing_jd"
+    assert lead.jd_path is None
+    assert paths.lead_jd_path("Widget Labs", "Platform Engineer", lead.lead_id).exists() is False
+    assert alert_card["job_id"] is None
+    assert alert_card["job_url"] is None
+    assert alert_card["synthetic_identity_key"].startswith("gmail_alert_card_summary|")
+    assert manifest["lead_status"] == "blocked_no_jd"
+    assert manifest["source"]["gmail"]["synthetic_identity_key"].startswith("gmail_alert_card_summary|")
+    assert manifest["handoff_targets"]["posting_materialization"]["ready"] is False
+    assert manifest["handoff_targets"]["posting_materialization"]["reason_code"] == "missing_jd"
+    assert jd_fetch["result"] == "blocked"
+    assert jd_fetch["reason_code"] == "missing_jd"
+
+    connection = connect_database(project_root / "job_hunt_copilot.db")
+    lead_row = connection.execute(
+        """
+        SELECT lead_status, split_review_status, source_reference
+        FROM linkedin_leads
+        WHERE lead_id = ?
+        """,
+        (lead.lead_id,),
+    ).fetchone()
+    connection.close()
+
+    assert dict(lead_row) == {
+        "lead_status": "blocked_no_jd",
+        "split_review_status": "not_applicable",
+        "source_reference": "linkedin-scraping/runtime/gmail/20260406T233000Z-gmail-blocked-001/job-cards.json#card_index=1",
     }

@@ -9,9 +9,15 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Mapping, Sequence
 
-from .artifacts import ArtifactLinkage, register_artifact_record, write_yaml_contract
+from .artifacts import ArtifactLinkage, register_artifact_record, write_json_contract, write_yaml_contract
 from .contracts import CONTRACT_VERSION
-from .gmail_alerts import ingest_gmail_alert_batch, load_gmail_alert_batch
+from .gmail_alerts import (
+    SOURCE_MODE_GMAIL_JOB_ALERT,
+    SOURCE_TYPE_GMAIL_LINKEDIN_ALERT,
+    GmailAlertBatch,
+    GmailCollectionResult,
+    ingest_gmail_alert_batch,
+)
 from .paths import ProjectPaths, workspace_slug
 from .records import lifecycle_timestamps, new_canonical_id, now_utc_iso
 
@@ -22,10 +28,13 @@ LEAD_STATUS_CAPTURED = "captured"
 LEAD_STATUS_SPLIT_READY = "split_ready"
 LEAD_STATUS_REVIEWED = "reviewed"
 LEAD_STATUS_HANDED_OFF = "handed_off"
+LEAD_STATUS_INCOMPLETE = "incomplete"
+LEAD_STATUS_BLOCKED_NO_JD = "blocked_no_jd"
 LEAD_SPLIT_REVIEW_NOT_STARTED = "not_started"
 LEAD_SPLIT_REVIEW_CONFIDENT = "confident"
 LEAD_SPLIT_REVIEW_NEEDS_REVIEW = "needs_review"
 LEAD_SPLIT_REVIEW_AMBIGUOUS = "ambiguous"
+LEAD_SPLIT_REVIEW_NOT_APPLICABLE = "not_applicable"
 LEAD_SHAPE_POSTING_ONLY = "posting_only"
 LEAD_SHAPE_POSTING_PLUS_CONTACTS = "posting_plus_contacts"
 
@@ -57,6 +66,9 @@ SUBMISSION_PATH_TRAY_REVIEW = "tray_review"
 SUBMISSION_PATH_PASTE_INBOX = "paste_inbox"
 
 LEAD_RAW_SOURCE_ARTIFACT_TYPE = "lead_raw_source"
+LEAD_ALERT_EMAIL_ARTIFACT_TYPE = "lead_alert_email"
+LEAD_ALERT_CARD_ARTIFACT_TYPE = "lead_alert_card"
+LEAD_JD_FETCH_ARTIFACT_TYPE = "lead_jd_fetch"
 LEAD_SPLIT_METADATA_ARTIFACT_TYPE = "lead_split_metadata"
 LEAD_SPLIT_REVIEW_ARTIFACT_TYPE = "lead_split_review"
 LEAD_MANIFEST_ARTIFACT_TYPE = "lead_manifest"
@@ -383,6 +395,75 @@ class ManualLeadMaterializationResult:
             "linkedin_lead_contact_id": self.linkedin_lead_contact_id,
             "job_posting_contact_id": self.job_posting_contact_id,
             "lead_manifest_path": str(self.lead_manifest_path),
+        }
+
+
+@dataclass(frozen=True)
+class GmailLeadIngestionResult:
+    lead_id: str
+    lead_identity_key: str
+    gmail_message_id: str
+    card_index: int
+    lead_status: str
+    created: bool
+    duplicate: bool
+    reason_code: str | None
+    workspace_dir: Path
+    alert_email_path: Path | None
+    alert_card_path: Path | None
+    jd_path: Path | None
+    jd_fetch_path: Path | None
+    lead_manifest_path: Path | None
+    duplicate_lead_id: str | None = None
+
+    def as_dict(self) -> dict[str, Any]:
+        return {
+            "lead_id": self.lead_id,
+            "lead_identity_key": self.lead_identity_key,
+            "gmail_message_id": self.gmail_message_id,
+            "card_index": self.card_index,
+            "lead_status": self.lead_status,
+            "created": self.created,
+            "duplicate": self.duplicate,
+            "reason_code": self.reason_code,
+            "workspace_path": str(self.workspace_dir),
+            "alert_email_path": str(self.alert_email_path) if self.alert_email_path else None,
+            "alert_card_path": str(self.alert_card_path) if self.alert_card_path else None,
+            "jd_path": str(self.jd_path) if self.jd_path else None,
+            "jd_fetch_path": str(self.jd_fetch_path) if self.jd_fetch_path else None,
+            "lead_manifest_path": str(self.lead_manifest_path) if self.lead_manifest_path else None,
+            "duplicate_lead_id": self.duplicate_lead_id,
+        }
+
+
+@dataclass(frozen=True)
+class GmailLeadBatchIngestionResult:
+    ingestion_run_id: str
+    messages_seen: int
+    collections_created: int
+    duplicates_ignored: int
+    zero_card_messages: int
+    review_required_zero_card_messages: int
+    leads_created: int
+    lead_duplicates_ignored: int
+    blocked_no_jd_leads: int
+    collection_results: tuple[GmailCollectionResult, ...]
+    lead_results: tuple[GmailLeadIngestionResult, ...]
+
+    def as_dict(self) -> dict[str, Any]:
+        return {
+            "status": "ok",
+            "ingestion_run_id": self.ingestion_run_id,
+            "messages_seen": self.messages_seen,
+            "collections_created": self.collections_created,
+            "duplicates_ignored": self.duplicates_ignored,
+            "zero_card_messages": self.zero_card_messages,
+            "review_required_zero_card_messages": self.review_required_zero_card_messages,
+            "leads_created": self.leads_created,
+            "lead_duplicates_ignored": self.lead_duplicates_ignored,
+            "blocked_no_jd_leads": self.blocked_no_jd_leads,
+            "collections": [result.as_dict() for result in self.collection_results],
+            "leads": [result.as_dict() for result in self.lead_results],
         }
 
 
@@ -2620,7 +2701,7 @@ def _find_existing_lead(
 ) -> sqlite3.Row | None:
     rows = connection.execute(
         """
-        SELECT lead_id, company_name, role_title, source_type, source_mode
+        SELECT lead_id, lead_status, company_name, role_title, source_type, source_mode
         FROM linkedin_leads
         WHERE lead_identity_key = ?
         ORDER BY created_at ASC
@@ -2634,6 +2715,692 @@ def _find_existing_lead(
             f"Multiple leads already exist for lead_identity_key `{lead_identity_key}`."
         )
     return rows[0]
+
+
+def ingest_gmail_alert_batch_to_leads(
+    project_root: Path | str | None = None,
+    *,
+    batch: GmailAlertBatch | Mapping[str, Any],
+) -> GmailLeadBatchIngestionResult:
+    paths = ProjectPaths.from_root(project_root)
+    raw_batch_payload = batch if isinstance(batch, Mapping) else None
+    normalized_batch = batch if isinstance(batch, GmailAlertBatch) else GmailAlertBatch.from_mapping(batch)
+    raw_messages_by_id = _gmail_raw_message_index(raw_batch_payload)
+    normalized_messages = {message.gmail_message_id: message for message in normalized_batch.messages}
+
+    collection_result = ingest_gmail_alert_batch(paths.project_root, batch=normalized_batch)
+    lead_results: list[GmailLeadIngestionResult] = []
+
+    connection = sqlite3.connect(paths.db_path)
+    connection.row_factory = sqlite3.Row
+    connection.execute("PRAGMA foreign_keys = ON;")
+
+    try:
+        for collection in collection_result.collection_results:
+            if not collection.created or collection.parseable_job_card_count == 0:
+                continue
+            message = normalized_messages.get(collection.gmail_message_id)
+            if message is None:
+                raise LinkedInScrapingError(
+                    f"Collected Gmail message `{collection.gmail_message_id}` was not present in the normalized batch."
+                )
+            raw_message = raw_messages_by_id.get(collection.gmail_message_id, {})
+            for card in _load_gmail_collection_cards(collection.job_cards_path):
+                lead_results.append(
+                    _materialize_gmail_card_lead(
+                        connection,
+                        paths,
+                        collection=collection,
+                        message=message,
+                        raw_message=raw_message,
+                        card=card,
+                    )
+                )
+    finally:
+        connection.close()
+
+    return GmailLeadBatchIngestionResult(
+        ingestion_run_id=normalized_batch.ingestion_run_id,
+        messages_seen=collection_result.messages_seen,
+        collections_created=collection_result.collections_created,
+        duplicates_ignored=collection_result.duplicates_ignored,
+        zero_card_messages=collection_result.zero_card_messages,
+        review_required_zero_card_messages=collection_result.review_required_zero_card_messages,
+        leads_created=sum(1 for result in lead_results if result.created),
+        lead_duplicates_ignored=sum(1 for result in lead_results if result.duplicate),
+        blocked_no_jd_leads=sum(1 for result in lead_results if result.lead_status == LEAD_STATUS_BLOCKED_NO_JD),
+        collection_results=collection_result.collection_results,
+        lead_results=tuple(lead_results),
+    )
+
+
+def _gmail_raw_message_index(batch_payload: Mapping[str, Any] | None) -> dict[str, Mapping[str, Any]]:
+    if batch_payload is None:
+        return {}
+    raw_messages = batch_payload.get("messages")
+    if not isinstance(raw_messages, Sequence) or isinstance(raw_messages, (str, bytes)):
+        return {}
+
+    indexed: dict[str, Mapping[str, Any]] = {}
+    for raw_message in raw_messages:
+        if not isinstance(raw_message, Mapping):
+            continue
+        gmail_message_id = raw_message.get("gmail_message_id")
+        if isinstance(gmail_message_id, str) and gmail_message_id.strip():
+            indexed[gmail_message_id.strip()] = raw_message
+    return indexed
+
+
+def _load_gmail_collection_cards(job_cards_path: Path) -> list[dict[str, Any]]:
+    payload = json.loads(job_cards_path.read_text(encoding="utf-8"))
+    raw_cards = payload.get("cards") if isinstance(payload, Mapping) else None
+    if not isinstance(raw_cards, Sequence) or isinstance(raw_cards, (str, bytes)):
+        return []
+    return [dict(card) for card in raw_cards if isinstance(card, Mapping)]
+
+
+def _materialize_gmail_card_lead(
+    connection: sqlite3.Connection,
+    paths: ProjectPaths,
+    *,
+    collection: GmailCollectionResult,
+    message,
+    raw_message: Mapping[str, Any],
+    card: Mapping[str, Any],
+) -> GmailLeadIngestionResult:
+    lead_identity_key = _build_gmail_lead_identity_key(card)
+    existing_lead = _find_existing_lead(connection, lead_identity_key)
+    card_index = _gmail_card_index(card)
+    if existing_lead is not None:
+        workspace_dir = paths.lead_workspace_dir(
+            existing_lead["company_name"] or _gmail_card_company_name(card),
+            existing_lead["role_title"] or _gmail_card_role_title(card),
+            existing_lead["lead_id"],
+        )
+        return GmailLeadIngestionResult(
+            lead_id=existing_lead["lead_id"],
+            lead_identity_key=lead_identity_key,
+            gmail_message_id=message.gmail_message_id,
+            card_index=card_index,
+            lead_status=existing_lead["lead_status"],
+            created=False,
+            duplicate=True,
+            reason_code="duplicate_existing_lead",
+            workspace_dir=workspace_dir,
+            alert_email_path=None,
+            alert_card_path=None,
+            jd_path=None,
+            jd_fetch_path=None,
+            lead_manifest_path=None,
+            duplicate_lead_id=existing_lead["lead_id"],
+        )
+
+    lead_id = new_canonical_id("linkedin_leads")
+    artifact_paths = _gmail_lead_artifact_paths(
+        paths,
+        company_name=_gmail_card_company_name(card),
+        role_title=_gmail_card_role_title(card),
+        lead_id=lead_id,
+    )
+    artifact_paths["workspace_dir"].mkdir(parents=True, exist_ok=True)
+
+    alert_email_path = artifact_paths["alert_email_path"]
+    alert_email_path.write_text(collection.email_markdown_path.read_text(encoding="utf-8"), encoding="utf-8")
+
+    lead_linkage = ArtifactLinkage(lead_id=lead_id)
+    alert_card_contract = write_json_contract(
+        artifact_paths["alert_card_path"],
+        producer_component=LINKEDIN_SCRAPING_COMPONENT,
+        result="success",
+        linkage=lead_linkage,
+        payload={
+            "source_mode": SOURCE_MODE_GMAIL_JOB_ALERT,
+            "source_type": SOURCE_TYPE_GMAIL_LINKEDIN_ALERT,
+            "gmail_message_id": message.gmail_message_id,
+            "gmail_thread_id": message.gmail_thread_id,
+            "received_at": message.received_at,
+            "collected_at": message.collected_at,
+            "collection_email_path": paths.relative_to_root(collection.email_markdown_path).as_posix(),
+            "collection_email_json_path": paths.relative_to_root(collection.email_json_path).as_posix(),
+            "collection_job_cards_path": paths.relative_to_root(collection.job_cards_path).as_posix(),
+            "card_index": card_index,
+            "job_url": _normalize_optional_text(card.get("job_url")),
+            "job_id": _normalize_optional_text(card.get("job_id")),
+            "synthetic_identity_key": _gmail_card_synthetic_identity_key(card),
+            "parsed_card": {
+                "role_title": _gmail_card_role_title(card),
+                "company_name": _gmail_card_company_name(card),
+                "location": _normalize_optional_text(card.get("location")),
+                "badge_lines": _gmail_badge_lines(card),
+            },
+        },
+    )
+
+    selected_candidate, matched_candidates = _select_gmail_jd_recovery_candidate(
+        raw_message=raw_message,
+        card=card,
+    )
+    jd_text = _candidate_jd_text(selected_candidate)
+    jd_recovered = jd_text is not None
+    if jd_recovered:
+        artifact_paths["jd_path"].write_text(_normalize_markdown_body(jd_text), encoding="utf-8")
+
+    lead_status = LEAD_STATUS_INCOMPLETE if jd_recovered else LEAD_STATUS_BLOCKED_NO_JD
+    reason_code = None if jd_recovered else MANIFEST_REASON_MISSING_JD
+    jd_fetch_contract = _write_gmail_jd_fetch_artifact(
+        artifact_path=artifact_paths["jd_fetch_path"],
+        lead_id=lead_id,
+        card=card,
+        message=message,
+        matched_candidates=matched_candidates,
+        selected_candidate=selected_candidate,
+        jd_path=artifact_paths["jd_path"],
+        jd_recovered=jd_recovered,
+    )
+
+    lead_row = {
+        "lead_id": lead_id,
+        "source_type": SOURCE_TYPE_GMAIL_LINKEDIN_ALERT,
+        "source_reference": _build_gmail_source_reference(paths, collection=collection, card_index=card_index),
+        "source_mode": SOURCE_MODE_GMAIL_JOB_ALERT,
+        "source_url": _normalize_optional_text(card.get("job_url")),
+        "company_name": _gmail_card_company_name(card),
+        "role_title": _gmail_card_role_title(card),
+        "location": _normalize_optional_text(card.get("location")),
+        "work_mode": _infer_work_mode_from_location(_normalize_optional_text(card.get("location"))),
+        "compensation_summary": None,
+        "poster_name": None,
+        "poster_title": None,
+    }
+    handoff_targets = {
+        "posting_materialization": _build_gmail_posting_materialization_target(
+            lead_status=lead_status,
+            jd_path=artifact_paths["jd_path"],
+        ),
+        "resume_tailoring": _build_resume_tailoring_target(
+            job_posting_id=None,
+            jd_path=artifact_paths["jd_path"],
+        ),
+    }
+    lead_manifest_contract = _write_gmail_lead_manifest(
+        artifact_paths["lead_manifest_path"],
+        lead_row=lead_row,
+        lead_status=lead_status,
+        artifact_paths=artifact_paths,
+        handoff_targets=handoff_targets,
+        collection=collection,
+        card=card,
+        message=message,
+        jd_fetch_contract=jd_fetch_contract,
+    )
+
+    timestamps = lifecycle_timestamps(message.collected_at)
+    with connection:
+        connection.execute(
+            """
+            INSERT INTO linkedin_leads (
+              lead_id, lead_identity_key, lead_status, lead_shape, split_review_status,
+              source_type, source_reference, source_mode, source_url, company_name, role_title,
+              location, work_mode, compensation_summary, poster_name, poster_title,
+              last_scraped_at, created_at, updated_at
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """,
+            (
+                lead_id,
+                lead_identity_key,
+                lead_status,
+                LEAD_SHAPE_POSTING_ONLY,
+                LEAD_SPLIT_REVIEW_NOT_APPLICABLE,
+                lead_row["source_type"],
+                lead_row["source_reference"],
+                lead_row["source_mode"],
+                lead_row["source_url"],
+                lead_row["company_name"],
+                lead_row["role_title"],
+                lead_row["location"],
+                lead_row["work_mode"],
+                None,
+                None,
+                None,
+                message.received_at,
+                timestamps["created_at"],
+                timestamps["updated_at"],
+            ),
+        )
+        register_artifact_record(
+            connection,
+            paths,
+            artifact_type=LEAD_ALERT_EMAIL_ARTIFACT_TYPE,
+            artifact_path=artifact_paths["alert_email_path"],
+            producer_component=LINKEDIN_SCRAPING_COMPONENT,
+            linkage=lead_linkage,
+            created_at=message.collected_at,
+        )
+        register_artifact_record(
+            connection,
+            paths,
+            artifact_type=LEAD_ALERT_CARD_ARTIFACT_TYPE,
+            artifact_path=artifact_paths["alert_card_path"],
+            producer_component=LINKEDIN_SCRAPING_COMPONENT,
+            linkage=lead_linkage,
+            created_at=alert_card_contract["produced_at"],
+        )
+        register_artifact_record(
+            connection,
+            paths,
+            artifact_type=LEAD_JD_FETCH_ARTIFACT_TYPE,
+            artifact_path=artifact_paths["jd_fetch_path"],
+            producer_component=LINKEDIN_SCRAPING_COMPONENT,
+            linkage=lead_linkage,
+            created_at=jd_fetch_contract["produced_at"],
+        )
+        _replace_lead_artifact_record(
+            connection,
+            paths,
+            artifact_type=LEAD_MANIFEST_ARTIFACT_TYPE,
+            artifact_path=artifact_paths["lead_manifest_path"],
+            lead_id=lead_id,
+            created_at=lead_manifest_contract["produced_at"],
+        )
+
+    return GmailLeadIngestionResult(
+        lead_id=lead_id,
+        lead_identity_key=lead_identity_key,
+        gmail_message_id=message.gmail_message_id,
+        card_index=card_index,
+        lead_status=lead_status,
+        created=True,
+        duplicate=False,
+        reason_code=reason_code,
+        workspace_dir=artifact_paths["workspace_dir"],
+        alert_email_path=artifact_paths["alert_email_path"],
+        alert_card_path=artifact_paths["alert_card_path"],
+        jd_path=artifact_paths["jd_path"] if jd_recovered else None,
+        jd_fetch_path=artifact_paths["jd_fetch_path"],
+        lead_manifest_path=artifact_paths["lead_manifest_path"],
+    )
+
+
+def _gmail_lead_artifact_paths(
+    paths: ProjectPaths,
+    *,
+    company_name: str,
+    role_title: str,
+    lead_id: str,
+) -> dict[str, Path]:
+    return {
+        "workspace_dir": paths.lead_workspace_dir(company_name, role_title, lead_id),
+        "alert_email_path": paths.lead_alert_email_path(company_name, role_title, lead_id),
+        "alert_card_path": paths.lead_alert_card_path(company_name, role_title, lead_id),
+        "jd_path": paths.lead_jd_path(company_name, role_title, lead_id),
+        "jd_fetch_path": paths.lead_jd_fetch_path(company_name, role_title, lead_id),
+        "lead_manifest_path": paths.lead_manifest_path(company_name, role_title, lead_id),
+    }
+
+
+def _build_gmail_lead_identity_key(card: Mapping[str, Any]) -> str:
+    job_id = _normalize_optional_text(card.get("job_id"))
+    if job_id is not None:
+        return "|".join(["gmail_job_alert", "job_id", job_id])
+    return "|".join(["gmail_job_alert", "synthetic", _gmail_card_synthetic_identity_key(card)])
+
+
+def _gmail_card_synthetic_identity_key(card: Mapping[str, Any]) -> str:
+    existing_key = _normalize_optional_text(card.get("synthetic_identity_key"))
+    if existing_key is not None:
+        return existing_key
+    return "|".join(
+        [
+            "gmail_alert_card_summary",
+            workspace_slug(_gmail_card_company_name(card)),
+            workspace_slug(_gmail_card_role_title(card)),
+            workspace_slug(_normalize_optional_text(card.get("location")) or "unknown"),
+        ]
+    )
+
+
+def _gmail_card_index(card: Mapping[str, Any]) -> int:
+    try:
+        return int(card.get("card_index"))
+    except (TypeError, ValueError) as exc:
+        raise LinkedInScrapingError("Parsed Gmail alert cards must include an integer `card_index`.") from exc
+
+
+def _gmail_card_company_name(card: Mapping[str, Any]) -> str:
+    return _normalize_required_text(card.get("company_name"), field_name="company_name")
+
+
+def _gmail_card_role_title(card: Mapping[str, Any]) -> str:
+    return _normalize_required_text(card.get("role_title"), field_name="role_title")
+
+
+def _gmail_badge_lines(card: Mapping[str, Any]) -> list[str]:
+    raw_badges = card.get("badge_lines")
+    if not isinstance(raw_badges, Sequence) or isinstance(raw_badges, (str, bytes)):
+        return []
+    badges: list[str] = []
+    for badge in raw_badges:
+        normalized = _normalize_optional_text(badge)
+        if normalized is not None:
+            badges.append(normalized)
+    return badges
+
+
+def _build_gmail_source_reference(
+    paths: ProjectPaths,
+    *,
+    collection: GmailCollectionResult,
+    card_index: int,
+) -> str:
+    return f"{paths.relative_to_root(collection.job_cards_path).as_posix()}#card_index={card_index}"
+
+
+def _select_gmail_jd_recovery_candidate(
+    *,
+    raw_message: Mapping[str, Any],
+    card: Mapping[str, Any],
+) -> tuple[Mapping[str, Any] | None, list[Mapping[str, Any]]]:
+    raw_candidates = raw_message.get("jd_recovery")
+    if not isinstance(raw_candidates, Sequence) or isinstance(raw_candidates, (str, bytes)):
+        return None, []
+
+    valid_candidates = [candidate for candidate in raw_candidates if isinstance(candidate, Mapping)]
+    matched_candidates = [
+        candidate
+        for candidate in valid_candidates
+        if _gmail_recovery_candidate_matches_card(candidate, card)
+    ]
+    if not matched_candidates and len(valid_candidates) == 1:
+        matched_candidates = valid_candidates
+
+    usable_candidates = [candidate for candidate in matched_candidates if _candidate_jd_text(candidate) is not None]
+    if not usable_candidates:
+        return None, matched_candidates
+    selected = sorted(usable_candidates, key=_gmail_recovery_candidate_sort_key)[0]
+    return selected, matched_candidates
+
+
+def _gmail_recovery_candidate_matches_card(candidate: Mapping[str, Any], card: Mapping[str, Any]) -> bool:
+    selectors_checked = False
+
+    raw_card_index = candidate.get("card_index")
+    if raw_card_index is not None:
+        selectors_checked = True
+        try:
+            if int(raw_card_index) != _gmail_card_index(card):
+                return False
+        except (TypeError, ValueError):
+            return False
+
+    candidate_job_id = _normalize_optional_text(candidate.get("job_id"))
+    if candidate_job_id is not None:
+        selectors_checked = True
+        if candidate_job_id != _normalize_optional_text(card.get("job_id")):
+            return False
+
+    candidate_job_url = _normalize_job_url_reference(candidate.get("job_url"))
+    if candidate_job_url is not None:
+        selectors_checked = True
+        if candidate_job_url != _normalize_job_url_reference(card.get("job_url")):
+            return False
+
+    candidate_synthetic = _normalize_optional_text(candidate.get("synthetic_identity_key"))
+    if candidate_synthetic is not None:
+        selectors_checked = True
+        if candidate_synthetic != _gmail_card_synthetic_identity_key(card):
+            return False
+
+    return selectors_checked
+
+
+def _gmail_recovery_candidate_sort_key(candidate: Mapping[str, Any]) -> tuple[int, str]:
+    source_type = (_normalize_optional_text(candidate.get("source_type")) or "").lower()
+    if "linkedin_guest" in source_type or "linkedin" in source_type:
+        priority = 0
+    else:
+        priority = 1
+    return (priority, source_type)
+
+
+def _candidate_jd_text(candidate: Mapping[str, Any] | None) -> str | None:
+    if candidate is None:
+        return None
+    return _normalize_optional_text(candidate.get("jd_text"), preserve_whitespace=True)
+
+
+def _normalize_job_url_reference(value: Any) -> str | None:
+    job_url = _normalize_optional_text(value)
+    if job_url is None:
+        return None
+    base = job_url.split("?", 1)[0].rstrip("/")
+    return f"{base}/"
+
+
+def _normalize_markdown_body(body: str) -> str:
+    return body.rstrip() + "\n"
+
+
+def _infer_work_mode_from_location(location: str | None) -> str | None:
+    normalized = (location or "").lower()
+    if "remote" in normalized:
+        return "Remote"
+    if "hybrid" in normalized:
+        return "Hybrid"
+    if "on-site" in normalized or "onsite" in normalized:
+        return "On-site"
+    return None
+
+
+def _write_gmail_jd_fetch_artifact(
+    *,
+    artifact_path: Path,
+    lead_id: str,
+    card: Mapping[str, Any],
+    message,
+    matched_candidates: Sequence[Mapping[str, Any]],
+    selected_candidate: Mapping[str, Any] | None,
+    jd_path: Path,
+    jd_recovered: bool,
+) -> dict[str, Any]:
+    payload = {
+        "source_mode": SOURCE_MODE_GMAIL_JOB_ALERT,
+        "gmail_message_id": message.gmail_message_id,
+        "gmail_thread_id": message.gmail_thread_id,
+        "received_at": message.received_at,
+        "card_index": _gmail_card_index(card),
+        "job_url": _normalize_optional_text(card.get("job_url")),
+        "job_id": _normalize_optional_text(card.get("job_id")),
+        "synthetic_identity_key": _gmail_card_synthetic_identity_key(card),
+        "jd_recovery_status": "recovered" if jd_recovered else LEAD_STATUS_BLOCKED_NO_JD,
+        "jd_artifact_path": str(jd_path.resolve()) if jd_recovered and jd_path.exists() else None,
+        "matched_candidate_sources": [
+            {
+                "source_type": _normalize_optional_text(candidate.get("source_type")) or "accepted_source",
+                "source_url": _normalize_optional_text(candidate.get("source_url")),
+                "company_name": _normalize_optional_text(candidate.get("company_name")),
+                "role_title": _normalize_optional_text(candidate.get("role_title")),
+            }
+            for candidate in matched_candidates
+        ],
+        "selected_source": None
+        if selected_candidate is None
+        else {
+            "source_type": _normalize_optional_text(selected_candidate.get("source_type")) or "accepted_source",
+            "source_url": _normalize_optional_text(selected_candidate.get("source_url"))
+            or _normalize_optional_text(card.get("job_url")),
+            "company_name": _normalize_optional_text(selected_candidate.get("company_name")),
+            "role_title": _normalize_optional_text(selected_candidate.get("role_title")),
+        },
+        "company_resolution": _gmail_company_resolution_payload(selected_candidate),
+        "identity_reconciliation": {
+            "status": "not_evaluated",
+            "parsed_card_company_name": _gmail_card_company_name(card),
+            "parsed_card_role_title": _gmail_card_role_title(card),
+            "jd_candidate_company_name": None
+            if selected_candidate is None
+            else _normalize_optional_text(selected_candidate.get("company_name")),
+            "jd_candidate_role_title": None
+            if selected_candidate is None
+            else _normalize_optional_text(selected_candidate.get("role_title")),
+        },
+        "merge_pending": len([candidate for candidate in matched_candidates if _candidate_jd_text(candidate)]) > 1,
+    }
+
+    if jd_recovered:
+        return write_json_contract(
+            artifact_path,
+            producer_component=LINKEDIN_SCRAPING_COMPONENT,
+            result="success",
+            linkage=ArtifactLinkage(lead_id=lead_id),
+            payload=payload,
+        )
+
+    return write_json_contract(
+        artifact_path,
+        producer_component=LINKEDIN_SCRAPING_COMPONENT,
+        result="blocked",
+        linkage=ArtifactLinkage(lead_id=lead_id),
+        payload=payload,
+        reason_code=MANIFEST_REASON_MISSING_JD,
+        message="No usable JD candidate was available for this autonomous Gmail alert lead.",
+    )
+
+
+def _gmail_company_resolution_payload(candidate: Mapping[str, Any] | None) -> dict[str, Any]:
+    if candidate is None:
+        return {
+            "status": "not_attempted",
+            "reason_code": "not_provided",
+            "company_website_url": None,
+            "careers_url": None,
+        }
+    raw_resolution = candidate.get("company_resolution")
+    if not isinstance(raw_resolution, Mapping):
+        return {
+            "status": "not_attempted",
+            "reason_code": "not_provided",
+            "company_website_url": None,
+            "careers_url": None,
+        }
+    return {
+        "status": _normalize_optional_text(raw_resolution.get("status")) or "not_attempted",
+        "reason_code": _normalize_optional_text(raw_resolution.get("reason_code")) or "not_provided",
+        "company_website_url": _normalize_optional_text(raw_resolution.get("company_website_url")),
+        "careers_url": _normalize_optional_text(raw_resolution.get("careers_url")),
+    }
+
+
+def _build_gmail_posting_materialization_target(
+    *,
+    lead_status: str,
+    jd_path: Path,
+) -> dict[str, Any]:
+    ready = lead_status == LEAD_STATUS_INCOMPLETE and jd_path.exists()
+    reason_code = None if ready else MANIFEST_REASON_MISSING_JD
+    return {
+        "ready": ready,
+        "reason_code": reason_code,
+        "required_artifacts": [str(jd_path.resolve())] if jd_path.exists() else [],
+    }
+
+
+def _write_gmail_lead_manifest(
+    lead_manifest_path: Path,
+    *,
+    lead_row: Mapping[str, Any],
+    lead_status: str,
+    artifact_paths: Mapping[str, Path],
+    handoff_targets: Mapping[str, Any],
+    collection: GmailCollectionResult,
+    card: Mapping[str, Any],
+    message,
+    jd_fetch_contract: Mapping[str, Any],
+) -> dict[str, Any]:
+    post_availability = {
+        "available": False,
+        "artifact_path": None,
+        "reason_code": "not_available_in_gmail_mode",
+    }
+    poster_profile_availability = {
+        "available": False,
+        "artifact_path": None,
+        "reason_code": "not_available_in_gmail_mode",
+    }
+    jd_available = artifact_paths["jd_path"].exists()
+    return write_yaml_contract(
+        lead_manifest_path,
+        producer_component=LINKEDIN_SCRAPING_COMPONENT,
+        result="success",
+        linkage=ArtifactLinkage(lead_id=lead_row["lead_id"]),
+        payload={
+            "lead_status": lead_status,
+            "lead_shape": LEAD_SHAPE_POSTING_ONLY,
+            "split_review_status": LEAD_SPLIT_REVIEW_NOT_APPLICABLE,
+            "source": {
+                "source_type": lead_row["source_type"],
+                "source_reference": lead_row["source_reference"],
+                "source_mode": lead_row["source_mode"],
+                "source_url": lead_row["source_url"],
+                "gmail": {
+                    "gmail_message_id": message.gmail_message_id,
+                    "gmail_thread_id": message.gmail_thread_id,
+                    "received_at": message.received_at,
+                    "collection_email_path": str(collection.email_markdown_path.resolve()),
+                    "collection_job_cards_path": str(collection.job_cards_path.resolve()),
+                    "card_index": _gmail_card_index(card),
+                    "job_id": _normalize_optional_text(card.get("job_id")),
+                    "job_url": _normalize_optional_text(card.get("job_url")),
+                    "synthetic_identity_key": _gmail_card_synthetic_identity_key(card),
+                },
+            },
+            "summary": {
+                "company_name": lead_row["company_name"],
+                "role_title": lead_row["role_title"],
+                "location": lead_row["location"],
+                "work_mode": lead_row["work_mode"],
+                "compensation_summary": None,
+                "poster_name": None,
+                "poster_title": None,
+            },
+            "artifacts": {
+                "capture_bundle_path": None,
+                "raw_source_path": None,
+                "post_path": None,
+                "jd_path": str(artifact_paths["jd_path"].resolve()) if jd_available else None,
+                "poster_profile_path": None,
+                "split_metadata_path": None,
+                "split_review_path": None,
+                "alert_email_path": str(artifact_paths["alert_email_path"].resolve()),
+                "alert_card_path": str(artifact_paths["alert_card_path"].resolve()),
+                "jd_fetch_path": str(artifact_paths["jd_fetch_path"].resolve()),
+                "gmail_collection_email_path": str(collection.email_markdown_path.resolve()),
+                "gmail_collection_job_cards_path": str(collection.job_cards_path.resolve()),
+            },
+            "artifact_availability": {
+                "post": post_availability,
+                "jd": {
+                    "available": jd_available,
+                    "artifact_path": str(artifact_paths["jd_path"].resolve()) if jd_available else None,
+                    "reason_code": None if jd_available else MANIFEST_REASON_MISSING_JD,
+                    "provenance": {
+                        "source_mode": SOURCE_MODE_GMAIL_JOB_ALERT,
+                        "jd_fetch_path": str(artifact_paths["jd_fetch_path"].resolve()),
+                        "selected_source_type": (
+                            jd_fetch_contract.get("selected_source", {}) or {}
+                        ).get("source_type"),
+                    },
+                },
+                "poster_profile": poster_profile_availability,
+            },
+            "created_entities": {
+                "job_posting_id": None,
+                "contact_ids": [],
+                "job_posting_contact_ids": [],
+                "linkedin_lead_contact_ids": [],
+            },
+            "handoff_targets": dict(handoff_targets),
+        },
+    )
 
 
 def _normalize_required_text(value: Any, *, field_name: str) -> str:
@@ -2712,9 +3479,12 @@ def main(argv: Sequence[str] | None = None) -> int:
                     lead_id=args.lead_id,
                 )
             elif args.command == "gmail-batch":
-                result = ingest_gmail_alert_batch(
+                batch_payload = json.loads(Path(args.batch).read_text(encoding="utf-8"))
+                if not isinstance(batch_payload, Mapping):
+                    raise LinkedInScrapingError("Gmail alert batch JSON must be an object.")
+                result = ingest_gmail_alert_batch_to_leads(
                     args.project_root,
-                    batch=load_gmail_alert_batch(args.batch),
+                    batch=batch_payload,
                 )
             else:
                 result = ingest_manual_capture_submission(
