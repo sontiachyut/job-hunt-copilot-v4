@@ -178,3 +178,11 @@ Suggested format per session:
 - key files changed: job_hunt_copilot/resume_tailoring.py; job_hunt_copilot/paths.py; tests/test_resume_tailoring.py; README.md; docs/ARCHITECTURE.md; build-agent/state/build-board.yaml; build-agent/state/build-journal.md; build-agent/state/codex-progress.txt; build-agent/state/IMPLEMENTATION_PLAN.md
 - validation summary: `python3.11 -m py_compile job_hunt_copilot/resume_tailoring.py job_hunt_copilot/paths.py tests/test_resume_tailoring.py` passed; `python3.11 -m pytest tests/test_resume_tailoring.py` passed (14 tests); full `python3.11 -m pytest` passed (70 tests); the tailoring runtime now persists mandatory review decisions, advances approved postings into `requires_contacts` or `ready_for_outreach`, records owner override lineage with prior-decision context, and snapshots completed run workspaces before retailoring so prior run rows keep immutable history references
 - next recommended slice: BA-07-S1 Apollo search and shortlist materialization
+
+- 2026-04-06 20:52:58 MST
+- role owner: outreach-engineer
+- slice attempted: BA-07-S1 Apollo search and shortlist materialization
+- result: done
+- key files changed: job_hunt_copilot/email_discovery.py; tests/test_email_discovery.py; README.md; docs/ARCHITECTURE.md; build-agent/state/build-board.yaml; build-agent/state/build-journal.md; build-agent/state/codex-progress.txt; build-agent/state/IMPLEMENTATION_PLAN.md
+- validation summary: `python3.11 -m py_compile job_hunt_copilot/email_discovery.py tests/test_email_discovery.py` passed; `python3.11 -m pytest tests/test_email_discovery.py` passed (5 tests); full `python3.11 -m pytest` passed (75 tests); the new discovery slice now boots strictly from approved `requires_contacts` postings, resolves Apollo company identity when available, persists broad `people_search_result.json`, caps the initial shortlist at 6 contacts across recruiter, manager-adjacent, and engineer buckets, and materializes only that shortlist into canonical `contacts` plus `job_posting_contacts`
+- next recommended slice: BA-07-S2 Contact enrichment and recipient profiles

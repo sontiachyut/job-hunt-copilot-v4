@@ -31,6 +31,7 @@ It should stay aligned with:
 - `BA-06-S3` is complete: `job_hunt_copilot.resume_tailoring` now replaces the scaffold files with deterministic Step 3 through Step 7 artifacts, generates honest JD signals plus evidence mapping from the persisted `jd.md` and master profile, applies the selected Step 6 payload to `resume.tex`, enforces scope against `scope-baseline.resume.tex`, compiles `Achyutaram Sonti.pdf`, verifies one-page output, and moves successful runs into `tailoring_status = tailored` plus `resume_review_status = resume_review_pending`.
 - `BA-06-S4` is complete: `job_hunt_copilot.resume_tailoring` now records mandatory review decisions as durable per-run artifacts, transitions pending review runs into `approved` or `rejected`, advances approved postings into `requires_contacts` or `ready_for_outreach`, records owner overrides with prior-decision context in canonical `override_events`, and snapshots completed run workspaces before retailoring so previous run rows keep immutable history references.
 - `BA-06` is now complete in code overall: Resume Tailoring now runs from `job_posting_id` bootstrap through eligibility, workspace materialization, deterministic intelligence, finalize plus one-page verification, mandatory review approval or rejection, DB-first outreach handoff, override lineage, and repeated-run history preservation.
+- `BA-07-S1` is complete: `job_hunt_copilot.email_discovery` now boots strictly from approved `requires_contacts` postings, resolves Apollo company identity when available, persists broad `discovery/output/{company}/{role}/people_search_result.json`, and materializes only the initial 6-contact shortlist into canonical `contacts` plus `job_posting_contacts` while promoting reused `identified` links into `shortlisted`.
 - Explicit implementation note: failed startup no longer leaves dishonest control state behind; `jhc-agent-start` now rolls canonical state back to `stopped` if `launchctl bootstrap` fails before the job is actually loaded.
 - Explicit implementation note: the generated `ops/agent/` files remain runtime-local artifacts under `.gitignore`, so the repo tracks the materialization code and tests rather than checking in those mutable rendered outputs.
 - Explicit implementation note: `jhc-chat` now records begin/end metadata plus `active_chat_session_id` in canonical control state, pauses autonomous work immediately on open, resumes on clean explicit close when chat itself caused the pause, and intentionally keeps unexpected-exit pauses active until later explicit resume or future idle-timeout automation exists.
@@ -108,12 +109,12 @@ It should stay aligned with:
 
 ## Next Slice
 
-- Current focus: `BA-07-S1` Apollo search and shortlist materialization.
-- Why next: BA-06 now lands the agent-approved tailoring boundary and DB-first `requires_contacts` / `ready_for_outreach` handoff, so the next dependency is company-scoped people search for approved postings that still need linked contacts.
+- Current focus: `BA-07-S2` Contact enrichment and recipient profiles.
+- Why next: BA-07-S1 now lands Apollo-first broad search and shortlist-time canonical materialization, so the next dependency is selective enrichment for shortlisted contacts plus optional recipient-profile capture before the email-finder cascade starts.
 - Done when:
-  - company-scoped search can start from agent-approved `requires_contacts` postings by `job_posting_id`
-  - broad search results and shortlisted canonical contacts persist without fabricating enrichment or send state
-  - posting-contact linkage stays compatible with the current outreach-ready prerequisites
+  - enrichment runs only for shortlisted contacts and preserves provider identity through the enrichment boundary
+  - `recipient_profile.json` can be captured for shortlisted contacts when LinkedIn URL recovery succeeds without blocking later discovery when it does not
+  - terminal enrichment dead ends are removed from canonical shortlist state without erasing the historical broad-search artifact
 
 ## Working Rules
 

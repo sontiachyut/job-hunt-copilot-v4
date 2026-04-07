@@ -614,3 +614,30 @@ Use this file as an append-only implementation log for the build agent.
 - Explicit implementation note: mandatory tailoring review currently persists as artifact-first runtime history plus canonical state transitions and `override_events`; this slice intentionally did not add new dedicated tailoring-review tables.
 - Explicit implementation note: the direct `ready_for_outreach` handoff remains conservative and only fires when the best available linked-contact tier already has at least one usable working email.
 - `OPS-LAUNCHD-001` and `BUILD-CLI-001` remain open and untouched because this slice stayed inside tailoring ownership and did not alter the supervisor or build-loop runtime surfaces.
+
+### Session
+- Date: 2026-04-06 20:52:58 MST
+- Slice: BA-07-S1 Apollo search and shortlist materialization
+- Goal: Land the first outreach discovery slice so approved `requires_contacts` postings can run Apollo-first broad company search, persist the broad result, and materialize only the capped initial shortlist canonically.
+
+### Work Done
+- Added `job_hunt_copilot.email_discovery` with DB-first bootstrap from `job_posting_id`, explicit validation that Outreach starts only from approved `requires_contacts` postings, Apollo company-resolution hooks, tolerant sparse-candidate normalization, and broad `people_search_result.json` publication under `discovery/output/{company}/{role}/`.
+- Implemented deterministic shortlist selection capped at 6 contacts across recruiter, manager-adjacent, and engineer buckets, leaving non-shortlisted broad-search candidates artifact-only to match the current materialization rule.
+- Added shortlist-time canonical `contacts` and `job_posting_contacts` materialization, including best-known sparse-name preservation, provider-person-id identity keys, matching-contact reuse, and `identified -> shortlisted` state-transition recording for reused posting-contact links.
+- Added focused `tests/test_email_discovery.py` coverage for approved `requires_contacts` bootstrap, broad-result persistence, shortlist cap and composition, sparse Apollo row handling, company-resolution fallback, and reuse or promotion of an existing identified link.
+- Updated `README.md` and `docs/ARCHITECTURE.md` so recruiter-facing and engineer-facing repo surfaces now reflect that Apollo-first broad people search exists while enrichment, recipient profiles, and email discovery remain downstream slices.
+
+### Validation
+- Ran `python3.11 -m py_compile job_hunt_copilot/email_discovery.py tests/test_email_discovery.py` and confirmed the new discovery module and targeted tests compile cleanly.
+- Ran `python3.11 -m pytest tests/test_email_discovery.py` and confirmed all 5 new discovery tests passed.
+- Ran full `python3.11 -m pytest` and confirmed all 75 repository tests passed across bootstrap, schema, artifacts, ingestion, tailoring, discovery, local runtime, runtime pack, and supervisor coverage.
+
+### Result
+- `done`
+
+### Next
+- Start `BA-07-S2`: selective Apollo enrichment for shortlisted contacts plus optional `recipient_profile.json` capture and canonical dead-end cleanup for terminal enrichment failures.
+
+### Notes
+- Explicit implementation note: live Apollo HTTP validation did not run in this sandboxed session; this slice validated the provider-normalization, artifact, and canonical-state behavior through fake-provider tests and full local regression coverage.
+- `OPS-LAUNCHD-001` and `BUILD-CLI-001` remain open and untouched because this slice stayed inside outreach discovery ownership and did not alter the supervisor or build-loop runtime surfaces.
