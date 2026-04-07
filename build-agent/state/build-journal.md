@@ -530,3 +530,31 @@ Use this file as an append-only implementation log for the build agent.
 - Explicit implementation note: the current tailoring slice intentionally stops at eligibility plus run bootstrap; it does not yet create workspace files, intelligence artifacts, finalize outputs, or mandatory agent-review transitions.
 - Explicit implementation inference: `eligibility.yaml` now doubles as the persisted blocker surface for missing `jd.md` or missing base-resume assets, which keeps the slice bounded while still making bootstrap failures queryable from canonical artifact metadata.
 - `OPS-LAUNCHD-001` and `BUILD-CLI-001` remain open and untouched because this slice stayed within tailoring ownership and did not alter the supervisor or build-loop runtime surfaces.
+
+### Session
+- Date: 2026-04-06 19:11:25 MST
+- Slice: BA-06-S2 Workspace bootstrap and step artifact scaffolding
+- Goal: Materialize the Resume Tailoring workspace contract from canonical posting state, including `meta.yaml`, mirrored context, base resume working files, and truthful Step 3 through Step 7 scaffold artifacts.
+
+### Work Done
+- Extended `job_hunt_copilot.resume_tailoring` so bootstrap-ready postings now create or backfill `resume-tailoring/output/tailored/{company}/{role}/` with `resume.tex`, `scope-baseline.resume.tex`, mirrored `jd.md`, optional mirrored `post.md` / `poster-profile.md`, and the `intelligence/` directory for Step 3 through Step 7 artifacts.
+- Added component-local working mirrors at `resume-tailoring/input/profile.md` and `resume-tailoring/input/job-postings/{company}-{role}.md`, keeping the Tailoring input boundary rooted in persisted `jd.md` plus canonical posting state rather than `raw/source.md`.
+- Published shared-contract `meta.yaml` with selected base track, absolute context references, persisted scope constraints, send-linkage metadata, and `tailoring_meta` artifact registration tied to the posting and lead lineage.
+- Added legacy-run backfill behavior for active runs created before this slice and kept repeated bootstrap non-destructive when the same active run already has workspace edits or generated intelligence files in place.
+- Expanded `tests/test_resume_tailoring.py` to cover fresh workspace bootstrap, meta-contract contents, scaffold artifact creation, legacy-run workspace backfill, and non-destructive run reuse, then updated `README.md`, `docs/ARCHITECTURE.md`, the build board, implementation plan, and the short progress log so repo-facing and build-agent-facing surfaces reflect the new Tailoring workspace layer honestly.
+
+### Validation
+- Ran `python3.11 -m py_compile job_hunt_copilot/resume_tailoring.py job_hunt_copilot/paths.py tests/test_resume_tailoring.py` and confirmed the tailoring runtime, path helpers, and updated tests compile cleanly.
+- Ran `python3.11 -m pytest tests/test_resume_tailoring.py` and confirmed all 7 tailoring tests passed.
+- Ran full `python3.11 -m pytest` and confirmed all 63 repository tests passed across bootstrap, schema, artifacts, ingestion, tailoring, local runtime, runtime pack, and supervisor coverage.
+
+### Result
+- `done`
+
+### Next
+- Implement `BA-06-S3`: generate real Step 3 through Step 7 intelligence, apply the selected Step 6 payload through finalize, compile `Achyutaram Sonti.pdf`, and verify one-page output before the review gate.
+
+### Notes
+- Explicit implementation note: the new Step 3 through Step 7 files are bootstrap scaffolds only; they intentionally remain `not_started` / `pending` until BA-06-S3 generates real intelligence and verification output.
+- Explicit implementation note: `meta.yaml` now carries the shared contract envelope and downstream-supporting artifact references, but Tailoring and later Outreach bootstrap remain DB-first by `job_posting_id` rather than meta-first.
+- `OPS-LAUNCHD-001` and `BUILD-CLI-001` remain open and untouched because this slice stayed within tailoring ownership and did not alter the supervisor or build-loop runtime surfaces.

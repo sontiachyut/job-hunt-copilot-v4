@@ -257,6 +257,21 @@ class ProjectPaths:
     def tailoring_eligibility_path(self, company_name: str, role_title: str) -> Path:
         return self.application_workspace_dir(company_name, role_title) / "eligibility.yaml"
 
+    @property
+    def tailoring_input_dir(self) -> Path:
+        return self.project_root / "resume-tailoring" / "input"
+
+    @property
+    def tailoring_input_profile_path(self) -> Path:
+        return self.tailoring_input_dir / "profile.md"
+
+    def tailoring_input_job_posting_path(self, company_name: str, role_title: str) -> Path:
+        return (
+            self.tailoring_input_dir
+            / "job-postings"
+            / f"{workspace_slug(company_name)}-{workspace_slug(role_title)}.md"
+        )
+
     def tailoring_workspace_dir(self, company_name: str, role_title: str) -> Path:
         return (
             self.project_root
@@ -266,6 +281,57 @@ class ProjectPaths:
             / workspace_slug(company_name)
             / workspace_slug(role_title)
         )
+
+    def tailoring_meta_path(self, company_name: str, role_title: str) -> Path:
+        return self.tailoring_workspace_dir(company_name, role_title) / "meta.yaml"
+
+    def tailoring_workspace_jd_path(self, company_name: str, role_title: str) -> Path:
+        return self.tailoring_workspace_dir(company_name, role_title) / "jd.md"
+
+    def tailoring_workspace_post_path(self, company_name: str, role_title: str) -> Path:
+        return self.tailoring_workspace_dir(company_name, role_title) / "post.md"
+
+    def tailoring_workspace_poster_profile_path(self, company_name: str, role_title: str) -> Path:
+        return self.tailoring_workspace_dir(company_name, role_title) / "poster-profile.md"
+
+    def tailoring_resume_tex_path(self, company_name: str, role_title: str) -> Path:
+        return self.tailoring_workspace_dir(company_name, role_title) / "resume.tex"
+
+    def tailoring_scope_baseline_path(self, company_name: str, role_title: str) -> Path:
+        return self.tailoring_workspace_dir(company_name, role_title) / "scope-baseline.resume.tex"
+
+    def tailoring_pdf_path(self, company_name: str, role_title: str) -> Path:
+        return self.tailoring_workspace_dir(company_name, role_title) / "Achyutaram Sonti.pdf"
+
+    def tailoring_intelligence_dir(self, company_name: str, role_title: str) -> Path:
+        return self.tailoring_workspace_dir(company_name, role_title) / "intelligence"
+
+    def tailoring_intelligence_manifest_path(self, company_name: str, role_title: str) -> Path:
+        return self.tailoring_intelligence_dir(company_name, role_title) / "manifest.yaml"
+
+    def tailoring_step_3_jd_signals_path(self, company_name: str, role_title: str) -> Path:
+        return self.tailoring_intelligence_dir(company_name, role_title) / "step-3-jd-signals.yaml"
+
+    def tailoring_step_4_evidence_map_path(self, company_name: str, role_title: str) -> Path:
+        return self.tailoring_intelligence_dir(company_name, role_title) / "step-4-evidence-map.yaml"
+
+    def tailoring_step_5_context_path(self, company_name: str, role_title: str) -> Path:
+        return (
+            self.tailoring_intelligence_dir(company_name, role_title)
+            / "step-5-elaborated-swe-context.md"
+        )
+
+    def tailoring_step_6_candidate_bullets_path(self, company_name: str, role_title: str) -> Path:
+        return (
+            self.tailoring_intelligence_dir(company_name, role_title)
+            / "step-6-candidate-swe-bullets.yaml"
+        )
+
+    def tailoring_step_7_verification_path(self, company_name: str, role_title: str) -> Path:
+        return self.tailoring_intelligence_dir(company_name, role_title) / "step-7-verification.yaml"
+
+    def tailoring_prompts_dir(self, company_name: str, role_title: str) -> Path:
+        return self.tailoring_intelligence_dir(company_name, role_title) / "prompts"
 
     def discovery_workspace_dir(self, company_name: str, role_title: str) -> Path:
         return (
@@ -312,7 +378,7 @@ class ProjectPaths:
             self.project_root / "applications",
             self.gmail_runtime_dir,
             self.project_root / "linkedin-scraping" / "runtime" / "leads",
-            self.project_root / "resume-tailoring" / "input" / "job-postings",
+            self.tailoring_input_dir / "job-postings",
             self.project_root / "resume-tailoring" / "output" / "tailored",
             self.project_root / "discovery" / "output",
             self.project_root / "outreach" / "output",

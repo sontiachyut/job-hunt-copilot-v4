@@ -6,10 +6,13 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Mapping
 
+import yaml
+
 from .artifacts import (
     ArtifactLinkage,
     PublishedArtifact,
     artifact_location,
+    publish_yaml_artifact,
     register_artifact_record,
     write_yaml_contract,
 )
@@ -19,6 +22,7 @@ from .records import lifecycle_timestamps, new_canonical_id, now_utc_iso
 
 RESUME_TAILORING_COMPONENT = "resume_tailoring"
 TAILORING_ELIGIBILITY_ARTIFACT_TYPE = "tailoring_eligibility"
+TAILORING_META_ARTIFACT_TYPE = "tailoring_meta"
 
 ELIGIBILITY_STATUS_ELIGIBLE = "eligible"
 ELIGIBILITY_STATUS_SOFT_FLAG = "soft-flag"
@@ -55,6 +59,22 @@ JOB_POSTING_STATUS_HARD_INELIGIBLE = "hard_ineligible"
 
 BOOTSTRAP_REASON_MISSING_JD = "missing_jd"
 BOOTSTRAP_REASON_MISSING_BASE_RESUME = "missing_base_resume"
+
+DEFAULT_SECTION_LOCKS = (
+    "education",
+    "projects",
+    "awards-and-leadership",
+)
+DEFAULT_EXPERIENCE_ROLE_ALLOWLIST = ("software-engineer",)
+INTELLIGENCE_STATUS_NOT_STARTED = "not_started"
+INTELLIGENCE_STATUS_PENDING = "pending"
+STEP_7_CHECK_IDS = (
+    "proof-grounding",
+    "jd-coverage",
+    "metric-sanity",
+    "line-budget",
+    "compile-page-readiness",
+)
 
 HARD_DISQUALIFIER_EXPERIENCE = "experience_gt_5_years"
 HARD_DISQUALIFIER_CITIZENSHIP = "citizenship_required"
@@ -227,6 +247,7 @@ def bootstrap_tailoring_run(
             workspace_ref=workspace_ref,
             base_used=None,
             active_run_id=None,
+            bootstrap_ready=False,
             reason_code=BOOTSTRAP_REASON_MISSING_JD,
             message="Resume Tailoring requires a persisted `jd.md` artifact before bootstrap can begin.",
         )
@@ -249,6 +270,7 @@ def bootstrap_tailoring_run(
     blocked_reason_code: str | None = None
     reused_existing_run = False
     base_used: str | None = None
+    bootstrap_ready = False
     posting_status = str(posting_row["posting_status"])
 
     if decision.eligibility_status == ELIGIBILITY_STATUS_HARD_INELIGIBLE:
@@ -279,7 +301,7 @@ def bootstrap_tailoring_run(
             if selected_base is None:
                 blocked_reason_code = BOOTSTRAP_REASON_MISSING_BASE_RESUME
             else:
-                base_used, _ = selected_base
+                base_used, base_resume_source = selected_base
                 run = _create_resume_tailoring_run(
                     connection,
                     posting_row=posting_row,
@@ -287,6 +309,47 @@ def bootstrap_tailoring_run(
                     workspace_ref=workspace_ref,
                     current_time=current_time,
                 )
+                run = _bootstrap_tailoring_workspace(
+                    connection,
+                    paths,
+                    posting_row=posting_row,
+                    run=run,
+                    jd_path=jd_path,
+                    base_resume_source=base_resume_source,
+                    current_time=current_time,
+                    overwrite=True,
+                )
+
+        if run is not None and blocked_reason_code is None:
+            _sync_tailoring_input_mirrors(
+                paths,
+                posting_row=posting_row,
+                jd_path=jd_path,
+            )
+            if not _workspace_bootstrap_is_complete(paths, posting_row=posting_row, run=run):
+                base_resume_source = _resolve_base_resume_source(paths, base_used=run.base_used)
+                resume_tex_path = paths.tailoring_resume_tex_path(
+                    posting_row["company_name"],
+                    posting_row["role_title"],
+                )
+                if base_resume_source is None and not resume_tex_path.exists():
+                    blocked_reason_code = BOOTSTRAP_REASON_MISSING_BASE_RESUME
+                else:
+                    run = _bootstrap_tailoring_workspace(
+                        connection,
+                        paths,
+                        posting_row=posting_row,
+                        run=run,
+                        jd_path=jd_path,
+                        base_resume_source=base_resume_source,
+                        current_time=current_time,
+                        overwrite=False,
+                    )
+            bootstrap_ready = _workspace_bootstrap_is_complete(
+                paths,
+                posting_row=posting_row,
+                run=run,
+            )
 
     eligibility_artifact = _write_eligibility_artifact(
         connection,
@@ -298,6 +361,7 @@ def bootstrap_tailoring_run(
         workspace_ref=workspace_ref,
         base_used=base_used,
         active_run_id=run.resume_tailoring_run_id if run is not None else None,
+        bootstrap_ready=bootstrap_ready,
         reason_code=blocked_reason_code,
         message=(
             "Resume Tailoring bootstrap requires at least one base resume track under "
@@ -525,6 +589,13 @@ def _base_track_score(base_resume_path: Path, ranking_text: str) -> int:
     return sum(1 for token in track_tokens if token in ranking_text)
 
 
+def _resolve_base_resume_source(paths: ProjectPaths, *, base_used: str) -> Path | None:
+    for candidate in paths.base_resume_sources():
+        if candidate.parent.name == base_used:
+            return candidate
+    return None
+
+
 def _write_eligibility_artifact(
     connection: sqlite3.Connection,
     paths: ProjectPaths,
@@ -536,6 +607,7 @@ def _write_eligibility_artifact(
     workspace_ref: str,
     base_used: str | None,
     active_run_id: str | None,
+    bootstrap_ready: bool,
     reason_code: str | None = None,
     message: str | None = None,
 ) -> PublishedArtifact:
@@ -563,7 +635,7 @@ def _write_eligibility_artifact(
             "workspace_path": workspace_ref,
             "base_used": base_used,
             "active_resume_tailoring_run_id": active_run_id,
-            "bootstrap_ready": active_run_id is not None,
+            "bootstrap_ready": bootstrap_ready,
             "bootstrap_blockers": [reason_code] if reason_code else [],
         },
         produced_at=current_time,
@@ -665,6 +737,405 @@ def _create_resume_tailoring_run(
             f"Failed to load resume_tailoring_run `{run_id}` after creation."
         )
     return created
+
+
+def _workspace_bootstrap_is_complete(
+    paths: ProjectPaths,
+    *,
+    posting_row: Mapping[str, Any],
+    run: ResumeTailoringRunRecord,
+) -> bool:
+    meta_path = _resolve_optional_project_path(paths, run.meta_yaml_path)
+    required_paths = (
+        meta_path,
+        paths.tailoring_workspace_jd_path(posting_row["company_name"], posting_row["role_title"]),
+        paths.tailoring_resume_tex_path(posting_row["company_name"], posting_row["role_title"]),
+        paths.tailoring_scope_baseline_path(posting_row["company_name"], posting_row["role_title"]),
+        paths.tailoring_intelligence_manifest_path(posting_row["company_name"], posting_row["role_title"]),
+        paths.tailoring_step_3_jd_signals_path(posting_row["company_name"], posting_row["role_title"]),
+        paths.tailoring_step_4_evidence_map_path(posting_row["company_name"], posting_row["role_title"]),
+        paths.tailoring_step_5_context_path(posting_row["company_name"], posting_row["role_title"]),
+        paths.tailoring_step_6_candidate_bullets_path(posting_row["company_name"], posting_row["role_title"]),
+        paths.tailoring_step_7_verification_path(posting_row["company_name"], posting_row["role_title"]),
+    )
+    return all(path is not None and path.exists() for path in required_paths)
+
+
+def _sync_tailoring_input_mirrors(
+    paths: ProjectPaths,
+    *,
+    posting_row: Mapping[str, Any],
+    jd_path: Path,
+) -> None:
+    _copy_text_file(
+        paths.assets_dir / "resume-tailoring" / "profile.md",
+        paths.tailoring_input_profile_path,
+        overwrite=True,
+    )
+    _copy_text_file(
+        jd_path,
+        paths.tailoring_input_job_posting_path(
+            posting_row["company_name"],
+            posting_row["role_title"],
+        ),
+        overwrite=True,
+    )
+
+
+def _bootstrap_tailoring_workspace(
+    connection: sqlite3.Connection,
+    paths: ProjectPaths,
+    *,
+    posting_row: Mapping[str, Any],
+    run: ResumeTailoringRunRecord,
+    jd_path: Path,
+    base_resume_source: Path | None,
+    current_time: str,
+    overwrite: bool,
+) -> ResumeTailoringRunRecord:
+    workspace_dir = paths.tailoring_workspace_dir(
+        posting_row["company_name"],
+        posting_row["role_title"],
+    )
+    resume_tex_path = paths.tailoring_resume_tex_path(
+        posting_row["company_name"],
+        posting_row["role_title"],
+    )
+    scope_baseline_path = paths.tailoring_scope_baseline_path(
+        posting_row["company_name"],
+        posting_row["role_title"],
+    )
+    workspace_dir.mkdir(parents=True, exist_ok=True)
+
+    if overwrite or not resume_tex_path.exists():
+        if base_resume_source is None:
+            raise ResumeTailoringError(
+                f"Base resume track `{run.base_used}` is unavailable for workspace bootstrap."
+            )
+        _copy_text_file(base_resume_source, resume_tex_path, overwrite=True)
+    if overwrite or not scope_baseline_path.exists():
+        scope_baseline_path.write_text(resume_tex_path.read_text(encoding="utf-8"), encoding="utf-8")
+
+    _copy_text_file(
+        jd_path,
+        paths.tailoring_workspace_jd_path(posting_row["company_name"], posting_row["role_title"]),
+        overwrite=overwrite,
+    )
+    _sync_optional_workspace_context(
+        paths,
+        posting_row=posting_row,
+        overwrite=overwrite,
+    )
+    _write_intelligence_scaffolds(
+        paths,
+        posting_row=posting_row,
+        run=run,
+        current_time=current_time,
+        overwrite=overwrite,
+    )
+    _publish_tailoring_meta_artifact(
+        connection,
+        paths,
+        posting_row=posting_row,
+        run=run,
+        current_time=current_time,
+    )
+    refreshed_run = get_resume_tailoring_run(connection, run.resume_tailoring_run_id)
+    if refreshed_run is None:
+        raise ResumeTailoringError(
+            f"Failed to reload resume_tailoring_run `{run.resume_tailoring_run_id}` after workspace bootstrap."
+        )
+    return refreshed_run
+
+
+def _sync_optional_workspace_context(
+    paths: ProjectPaths,
+    *,
+    posting_row: Mapping[str, Any],
+    overwrite: bool,
+) -> None:
+    optional_sources = (
+        (
+            paths.lead_post_path(
+                posting_row["company_name"],
+                posting_row["role_title"],
+                posting_row["lead_id"],
+            ),
+            paths.tailoring_workspace_post_path(
+                posting_row["company_name"],
+                posting_row["role_title"],
+            ),
+        ),
+        (
+            paths.lead_poster_profile_path(
+                posting_row["company_name"],
+                posting_row["role_title"],
+                posting_row["lead_id"],
+            ),
+            paths.tailoring_workspace_poster_profile_path(
+                posting_row["company_name"],
+                posting_row["role_title"],
+            ),
+        ),
+    )
+    for source_path, target_path in optional_sources:
+        if source_path.exists():
+            _copy_text_file(source_path, target_path, overwrite=overwrite)
+        elif overwrite and target_path.exists():
+            target_path.unlink()
+
+
+def _write_intelligence_scaffolds(
+    paths: ProjectPaths,
+    *,
+    posting_row: Mapping[str, Any],
+    run: ResumeTailoringRunRecord,
+    current_time: str,
+    overwrite: bool,
+) -> None:
+    company_name = posting_row["company_name"]
+    role_title = posting_row["role_title"]
+    intelligence_dir = paths.tailoring_intelligence_dir(company_name, role_title)
+    prompts_dir = paths.tailoring_prompts_dir(company_name, role_title)
+    intelligence_dir.mkdir(parents=True, exist_ok=True)
+    prompts_dir.mkdir(parents=True, exist_ok=True)
+
+    workspace_path = paths.tailoring_workspace_dir(company_name, role_title).resolve()
+    workspace_jd_path = paths.tailoring_workspace_jd_path(company_name, role_title).resolve()
+    profile_path = paths.tailoring_input_profile_path.resolve()
+    job_context_path = paths.tailoring_input_job_posting_path(company_name, role_title).resolve()
+    resume_tex_path = paths.tailoring_resume_tex_path(company_name, role_title).resolve()
+
+    _write_yaml_file(
+        paths.tailoring_intelligence_manifest_path(company_name, role_title),
+        {
+            "job_posting_id": posting_row["job_posting_id"],
+            "resume_tailoring_run_id": run.resume_tailoring_run_id,
+            "bootstrap_timestamp": current_time,
+            "workspace_path": str(workspace_path),
+            "prompts_dir": str(prompts_dir.resolve()),
+            "steps": {
+                "step_3_jd_signals": {
+                    "status": INTELLIGENCE_STATUS_NOT_STARTED,
+                    "artifact_path": str(paths.tailoring_step_3_jd_signals_path(company_name, role_title).resolve()),
+                },
+                "step_4_evidence_map": {
+                    "status": INTELLIGENCE_STATUS_NOT_STARTED,
+                    "artifact_path": str(paths.tailoring_step_4_evidence_map_path(company_name, role_title).resolve()),
+                },
+                "step_5_elaborated_swe_context": {
+                    "status": INTELLIGENCE_STATUS_NOT_STARTED,
+                    "artifact_path": str(paths.tailoring_step_5_context_path(company_name, role_title).resolve()),
+                },
+                "step_6_candidate_resume_edits": {
+                    "status": INTELLIGENCE_STATUS_NOT_STARTED,
+                    "artifact_path": str(
+                        paths.tailoring_step_6_candidate_bullets_path(company_name, role_title).resolve()
+                    ),
+                },
+                "step_7_verification": {
+                    "status": INTELLIGENCE_STATUS_PENDING,
+                    "artifact_path": str(paths.tailoring_step_7_verification_path(company_name, role_title).resolve()),
+                },
+            },
+        },
+        overwrite=overwrite,
+    )
+    _write_yaml_file(
+        paths.tailoring_step_3_jd_signals_path(company_name, role_title),
+        {
+            "job_posting_id": posting_row["job_posting_id"],
+            "resume_tailoring_run_id": run.resume_tailoring_run_id,
+            "status": INTELLIGENCE_STATUS_NOT_STARTED,
+            "context_file": str(workspace_jd_path),
+            "signal_priority_weights": {
+                "must_have": 1.00,
+                "core_responsibility": 0.75,
+                "nice_to_have": 0.40,
+                "informational": 0.15,
+            },
+            "signals": [],
+        },
+        overwrite=overwrite,
+    )
+    _write_yaml_file(
+        paths.tailoring_step_4_evidence_map_path(company_name, role_title),
+        {
+            "job_posting_id": posting_row["job_posting_id"],
+            "resume_tailoring_run_id": run.resume_tailoring_run_id,
+            "status": INTELLIGENCE_STATUS_NOT_STARTED,
+            "profile_file": str(profile_path),
+            "job_context_file": str(job_context_path),
+            "resume_file": str(resume_tex_path),
+            "matches": [],
+            "gaps": [],
+        },
+        overwrite=overwrite,
+    )
+    _write_text_file(
+        paths.tailoring_step_5_context_path(company_name, role_title),
+        (
+            "# Step 5 Elaborated SWE Context\n\n"
+            f"- job_posting_id: {posting_row['job_posting_id']}\n"
+            f"- resume_tailoring_run_id: {run.resume_tailoring_run_id}\n"
+            f"- status: {INTELLIGENCE_STATUS_NOT_STARTED}\n\n"
+            "## Selected Pipeline Scope\n\n"
+            "Not generated yet.\n\n"
+            "## Controlled Elaboration\n\n"
+            "Not generated yet.\n\n"
+            "## Claim Ledger\n\n"
+            "Not generated yet.\n\n"
+            "## Interview-Safe Narrative\n\n"
+            "Not generated yet.\n"
+        ),
+        overwrite=overwrite,
+    )
+    _write_yaml_file(
+        paths.tailoring_step_6_candidate_bullets_path(company_name, role_title),
+        {
+            "job_posting_id": posting_row["job_posting_id"],
+            "resume_tailoring_run_id": run.resume_tailoring_run_id,
+            "status": INTELLIGENCE_STATUS_NOT_STARTED,
+            "summary": None,
+            "technical_skills": [],
+            "software_engineer": {
+                "tech_stack_line": None,
+                "bullets": [],
+            },
+            "support_pointers": [],
+            "blockers": [],
+        },
+        overwrite=overwrite,
+    )
+    _write_yaml_file(
+        paths.tailoring_step_7_verification_path(company_name, role_title),
+        {
+            "job_posting_id": posting_row["job_posting_id"],
+            "resume_tailoring_run_id": run.resume_tailoring_run_id,
+            "status": INTELLIGENCE_STATUS_PENDING,
+            "verification_outcome": "pending",
+            "checks": [
+                {
+                    "check_id": check_id,
+                    "status": INTELLIGENCE_STATUS_PENDING,
+                    "notes": [],
+                }
+                for check_id in STEP_7_CHECK_IDS
+            ],
+            "blockers": [],
+            "revision_guidance": [],
+        },
+        overwrite=overwrite,
+    )
+
+
+def _publish_tailoring_meta_artifact(
+    connection: sqlite3.Connection,
+    paths: ProjectPaths,
+    *,
+    posting_row: Mapping[str, Any],
+    run: ResumeTailoringRunRecord,
+    current_time: str,
+) -> PublishedArtifact:
+    company_name = posting_row["company_name"]
+    role_title = posting_row["role_title"]
+    meta_path = paths.tailoring_meta_path(company_name, role_title)
+    workspace_jd_path = paths.tailoring_workspace_jd_path(company_name, role_title).resolve()
+    workspace_post_path = paths.tailoring_workspace_post_path(company_name, role_title).resolve()
+    workspace_poster_profile_path = paths.tailoring_workspace_poster_profile_path(
+        company_name,
+        role_title,
+    ).resolve()
+    payload = {
+        "resume_tailoring_run_id": run.resume_tailoring_run_id,
+        "base_used": run.base_used,
+        "context_file": str(workspace_jd_path),
+        "context_files": {
+            "jd": str(workspace_jd_path),
+            "post": str(workspace_post_path) if workspace_post_path.exists() else None,
+            "poster_profile": (
+                str(workspace_poster_profile_path) if workspace_poster_profile_path.exists() else None
+            ),
+            "working_job_context": str(
+                paths.tailoring_input_job_posting_path(company_name, role_title).resolve()
+            ),
+            "profile": str(paths.tailoring_input_profile_path.resolve()),
+        },
+        "scope_baseline_file": str(paths.tailoring_scope_baseline_path(company_name, role_title).resolve()),
+        "section_locks": list(DEFAULT_SECTION_LOCKS),
+        "experience_role_allowlist": list(DEFAULT_EXPERIENCE_ROLE_ALLOWLIST),
+        "tailoring_status": run.tailoring_status,
+        "resume_review_status": run.resume_review_status,
+        "workspace_path": str(paths.tailoring_workspace_dir(company_name, role_title).resolve()),
+        "resume_artifacts": {
+            "tex_path": str(paths.tailoring_resume_tex_path(company_name, role_title).resolve()),
+        },
+        "send_linkage": {
+            "outreach_mode": "role_targeted",
+            "resume_required": True,
+        },
+    }
+    with connection:
+        connection.execute(
+            """
+            DELETE FROM artifact_records
+            WHERE artifact_type = ? AND job_posting_id = ?
+            """,
+            (
+                TAILORING_META_ARTIFACT_TYPE,
+                posting_row["job_posting_id"],
+            ),
+        )
+    artifact = publish_yaml_artifact(
+        connection,
+        paths,
+        artifact_type=TAILORING_META_ARTIFACT_TYPE,
+        artifact_path=meta_path,
+        producer_component=RESUME_TAILORING_COMPONENT,
+        result="success",
+        linkage=ArtifactLinkage(
+            lead_id=posting_row["lead_id"],
+            job_posting_id=posting_row["job_posting_id"],
+        ),
+        payload=payload,
+        produced_at=current_time,
+    )
+    meta_ref = paths.relative_to_root(meta_path).as_posix()
+    with connection:
+        connection.execute(
+            """
+            UPDATE resume_tailoring_runs
+            SET meta_yaml_path = ?, updated_at = ?
+            WHERE resume_tailoring_run_id = ?
+            """,
+            (
+                meta_ref,
+                current_time,
+                run.resume_tailoring_run_id,
+            ),
+        )
+    return artifact
+
+
+def _copy_text_file(source_path: Path, target_path: Path, *, overwrite: bool) -> None:
+    if not overwrite and target_path.exists():
+        return
+    target_path.parent.mkdir(parents=True, exist_ok=True)
+    target_path.write_text(source_path.read_text(encoding="utf-8"), encoding="utf-8")
+
+
+def _write_yaml_file(path: Path, payload: Mapping[str, Any], *, overwrite: bool) -> None:
+    if not overwrite and path.exists():
+        return
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(yaml.safe_dump(dict(payload), sort_keys=False), encoding="utf-8")
+
+
+def _write_text_file(path: Path, content: str, *, overwrite: bool) -> None:
+    if not overwrite and path.exists():
+        return
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(content, encoding="utf-8")
 
 
 def _set_job_posting_status(
