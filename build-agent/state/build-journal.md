@@ -723,3 +723,29 @@ Use this file as an append-only implementation log for the build agent.
 ### Notes
 - Explicit implementation inference: same-company daily send caps now evaluate against the machine's local calendar day while timestamps remain stored canonically as UTC ISO-8601 text, because the PRD specifies UTC storage but local-day operational summaries and daily limits.
 - The current pacing helper is intentionally queryable rather than persisting standalone send-window rows because the schema does not yet provide direct send-window linkage from `outreach_messages`; later send execution can reuse the computed earliest allowed send time without fabricating unused window records.
+
+### Session
+- Date: 2026-04-07 10:21:15 MST
+- Slice: BA-08-S2 Draft generation and artifact persistence
+- Goal: Persist grounded role-targeted and general-learning drafts with canonical message records, stable artifacts, and drafting-begin state transitions without broadening into send execution.
+
+### Work Done
+- Extended `job_hunt_copilot.outreach` with deterministic draft-generation entrypoints for the active role-targeted send set and for contact-rooted general-learning outreach, grounded in persisted posting JD context, tailoring outputs, sender-profile fields, and optional `recipient_profile.json` snapshots.
+- Added canonical `outreach_messages` persistence for generated and failed draft attempts, per-message `email_draft.md` plus optional `email_draft.html` and `send_result.json` publication under `outreach/output/.../messages/<outreach_message_id>/`, and role-targeted workspace-root mirrors for the latest `email_draft.md` plus `send_result.json`.
+- Added draft-start state transitions that move selected `job_postings`, `contacts`, and `job_posting_contacts` into `outreach_in_progress`, while keeping partial-batch success when one contact's draft generation fails and surfacing that failure through a canonical failed `send_result.json`.
+- Extended `job_hunt_copilot.paths` with outreach message artifact helpers, expanded `tests/test_outreach.py` with success, persisted-ready-state gating, partial-failure, and general-learning coverage, and updated `README.md`, `docs/ARCHITECTURE.md`, the build board, the implementation plan, and the progress handoff to reflect the new drafting runtime honestly.
+
+### Validation
+- Ran `python3.11 -m py_compile job_hunt_copilot/outreach.py job_hunt_copilot/paths.py tests/test_outreach.py` and confirmed the drafting runtime, path helpers, and focused tests compile cleanly.
+- Ran `python3.11 -m pytest tests/test_outreach.py` and confirmed all 9 outreach tests passed.
+- Ran full `python3.11 -m pytest` and confirmed all 92 repository tests passed across bootstrap, schema, artifacts, ingestion, tailoring, discovery, outreach drafting, Gmail intake, local runtime, runtime pack, and supervisor coverage.
+
+### Result
+- `done`
+
+### Next
+- Start `BA-08-S3`: execute drafted messages under the existing pacing plan, persist send timestamps plus provider thread or delivery identifiers, and preserve repeat-outreach review guardrails without duplicate-send regressions.
+
+### Notes
+- Explicit implementation note: role-targeted draft publication now keeps stable per-message artifacts under `outreach/output/.../messages/<outreach_message_id>/` while still mirroring the latest `email_draft.md` and `send_result.json` at the posting workspace root so the PRD-listed top-level artifact paths remain honest.
+- Explicit implementation inference: the shared artifact-envelope helper still omits null linkage fields, so general-learning `send_result.json` currently represents absent `job_posting_id` by omission rather than an explicit JSON `null`; the canonical `outreach_messages.job_posting_id` remains `NULL`.

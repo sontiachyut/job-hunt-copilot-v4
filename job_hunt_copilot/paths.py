@@ -420,6 +420,110 @@ class ProjectPaths:
             / workspace_slug(role_title)
         )
 
+    def outreach_messages_dir(self, company_name: str, role_title: str) -> Path:
+        return self.outreach_workspace_dir(company_name, role_title) / "messages"
+
+    def outreach_message_dir(
+        self,
+        company_name: str,
+        role_title: str,
+        outreach_message_id: str,
+    ) -> Path:
+        return self.outreach_messages_dir(company_name, role_title) / outreach_message_id
+
+    def outreach_message_draft_path(
+        self,
+        company_name: str,
+        role_title: str,
+        outreach_message_id: str,
+    ) -> Path:
+        return self.outreach_message_dir(company_name, role_title, outreach_message_id) / "email_draft.md"
+
+    def outreach_message_html_path(
+        self,
+        company_name: str,
+        role_title: str,
+        outreach_message_id: str,
+    ) -> Path:
+        return self.outreach_message_dir(company_name, role_title, outreach_message_id) / "email_draft.html"
+
+    def outreach_message_send_result_path(
+        self,
+        company_name: str,
+        role_title: str,
+        outreach_message_id: str,
+    ) -> Path:
+        return self.outreach_message_dir(company_name, role_title, outreach_message_id) / "send_result.json"
+
+    def outreach_latest_draft_path(self, company_name: str, role_title: str) -> Path:
+        return self.outreach_workspace_dir(company_name, role_title) / "email_draft.md"
+
+    def outreach_latest_send_result_path(self, company_name: str, role_title: str) -> Path:
+        return self.outreach_workspace_dir(company_name, role_title) / "send_result.json"
+
+    def general_learning_outreach_workspace_dir(self, company_name: str, contact_id: str) -> Path:
+        return (
+            self.project_root
+            / "outreach"
+            / "output"
+            / "general-learning"
+            / workspace_slug(company_name)
+            / contact_id
+        )
+
+    def general_learning_outreach_message_dir(
+        self,
+        company_name: str,
+        contact_id: str,
+        outreach_message_id: str,
+    ) -> Path:
+        return self.general_learning_outreach_workspace_dir(company_name, contact_id) / outreach_message_id
+
+    def general_learning_outreach_draft_path(
+        self,
+        company_name: str,
+        contact_id: str,
+        outreach_message_id: str,
+    ) -> Path:
+        return (
+            self.general_learning_outreach_message_dir(
+                company_name,
+                contact_id,
+                outreach_message_id,
+            )
+            / "email_draft.md"
+        )
+
+    def general_learning_outreach_html_path(
+        self,
+        company_name: str,
+        contact_id: str,
+        outreach_message_id: str,
+    ) -> Path:
+        return (
+            self.general_learning_outreach_message_dir(
+                company_name,
+                contact_id,
+                outreach_message_id,
+            )
+            / "email_draft.html"
+        )
+
+    def general_learning_outreach_send_result_path(
+        self,
+        company_name: str,
+        contact_id: str,
+        outreach_message_id: str,
+    ) -> Path:
+        return (
+            self.general_learning_outreach_message_dir(
+                company_name,
+                contact_id,
+                outreach_message_id,
+            )
+            / "send_result.json"
+        )
+
     def review_packet_dir(self, pipeline_run_id: str) -> Path:
         return self.ops_review_packets_dir / pipeline_run_id
 

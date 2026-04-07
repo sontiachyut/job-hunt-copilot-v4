@@ -36,6 +36,7 @@ It should stay aligned with:
 - `BA-07-S3` is complete: `job_hunt_copilot.email_discovery` now runs the ordered `prospeo -> getprospect -> hunter` cascade for linked contacts that still lack usable emails, normalizes provider-specific no-match and failure outcomes, reuses clearly identified working emails, skips bounced-provider retries, persists `discovery_result.json` plus one-row-per-cascade `discovery_attempts`, and updates canonical `provider_budget_state` plus `provider_budget_events`.
 - `BA-07` is now complete in code overall: People search, shortlist materialization, selective enrichment, recipient-profile capture, person-scoped email discovery fallback, provider-budget tracking, and unresolved or exhausted review visibility now exist behind the current outreach discovery boundary.
 - `BA-08-S1` is complete: `job_hunt_copilot.outreach` now computes the current autonomous role-targeted send set from canonical posting, contact, and prior-message state, prefers recruiter plus manager-adjacent plus engineer coverage with deterministic fallback fill, excludes repeat-outreach contacts from the automatic set, and exposes queryable company-cap plus randomized inter-send-gap pacing decisions for the later send runtime.
+- `BA-08-S2` is complete: `job_hunt_copilot.outreach` now generates deterministic role-targeted and general-learning drafts from persisted posting, tailoring, sender-profile, and optional recipient-profile context, persists canonical `outreach_messages` rows plus stable per-message `email_draft.md` / `send_result.json` artifacts, mirrors the latest role-targeted draft artifacts at the posting workspace root, and advances postings plus linked contacts into `outreach_in_progress` when drafting begins.
 - Explicit implementation note: failed startup no longer leaves dishonest control state behind; `jhc-agent-start` now rolls canonical state back to `stopped` if `launchctl bootstrap` fails before the job is actually loaded.
 - Explicit implementation note: the generated `ops/agent/` files remain runtime-local artifacts under `.gitignore`, so the repo tracks the materialization code and tests rather than checking in those mutable rendered outputs.
 - Explicit implementation note: `jhc-chat` now records begin/end metadata plus `active_chat_session_id` in canonical control state, pauses autonomous work immediately on open, resumes on clean explicit close when chat itself caused the pause, and intentionally keeps unexpected-exit pauses active until later explicit resume or future idle-timeout automation exists.
@@ -114,12 +115,12 @@ It should stay aligned with:
 
 ## Next Slice
 
-- Current focus: `BA-08-S2` Draft generation and artifact persistence.
-- Why next: the active send set, repeat-outreach exclusions, and pacing rules are now explicit in canonical code, so the next highest-value outreach dependency is persisting grounded drafts plus message records for those selected contacts.
+- Current focus: `BA-08-S3` Send execution and repeat-outreach guardrails.
+- Why next: grounded drafts, stable send artifacts, and canonical message rows now exist for the active ready set, so the next highest-value outreach dependency is executing sends under the existing pacing rules without duplicate-send or repeat-contact regressions.
 - Done when:
-  - role-targeted and general-learning draft generation paths exist
-  - `email_draft.md` and `send_result.json` persist with stable IDs and shared contract envelopes
-  - final subject, text body, and optional HTML body persist canonically on `outreach_messages`
+  - send execution persists canonical send timestamps plus provider thread or delivery identifiers on `outreach_messages`
+  - repeat-outreach and ambiguous prior-history contacts remain blocked from automatic resends and surfaced for review
+  - the existing company daily cap and inter-send-gap pacing decisions are enforced during actual send execution
 
 ## Working Rules
 

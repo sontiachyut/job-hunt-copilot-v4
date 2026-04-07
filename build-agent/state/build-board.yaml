@@ -22,7 +22,7 @@ global_status:
     - "BA-07-S1 is now complete in code: `job_hunt_copilot.email_discovery` can bootstrap from approved `requires_contacts` postings, resolve Apollo company identity when available, persist broad `people_search_result.json`, and materialize only the capped shortlist into canonical `contacts` plus `job_posting_contacts`."
     - "BA-07-S2 is now complete in code: shortlisted contacts can now run selective Apollo enrichment, persist optional `recipient_profile.json` snapshots when LinkedIn public-profile extraction succeeds, drop terminal sparse dead ends from canonical shortlist state, and publish the contact-level readiness signals that now feed BA-08 send-set planning."
     - "BA-07 is now complete in code: `job_hunt_copilot.email_discovery` now also runs the person-scoped `prospeo -> getprospect -> hunter` cascade with normalized outcomes, reusable working-email shortcuts, bounce-aware retry handling, persisted `discovery_result.json` handoffs plus `discovery_attempts` / `provider_budget_state` / `provider_budget_events`, and canonical unresolved or exhausted review visibility."
-    - "BA-08-S1 is now complete in code: `job_hunt_copilot.outreach` now assembles the current autonomous role-targeted send set, keeps `ready_for_outreach` honest until the selected set is fully send-ready, excludes repeat-outreach contacts from the automatic set, and computes queryable company pacing plus randomized inter-send-gap timing for later send execution."
+    - "BA-08 is now partially complete in code: `job_hunt_copilot.outreach` now assembles the current autonomous role-targeted send set, keeps `ready_for_outreach` honest until the selected set is fully send-ready, excludes repeat-outreach contacts from the automatic set, computes queryable company pacing plus randomized inter-send-gap timing, and persists grounded role-targeted plus general-learning drafts with canonical `outreach_messages`, stable draft/send artifacts, and outreach-in-progress state transitions when drafting begins."
     - "`jhc-chat` now records canonical begin/end state, pauses autonomous work on open, resumes on clean explicit close when chat caused the pause, and leaves unexpected-exit pauses intact for later explicit resume or future idle-timeout handling."
     - Host-side `launchctl bootstrap` success still needs follow-up validation outside the current sandboxed session even though the plist, wrapper wiring, and failed-start rollback all validate locally.
   execution_principles:
@@ -695,6 +695,7 @@ epics:
       - autonomous sending enforces repeat-contact guardrails and company pacing rules
     completed_notes:
       - "BA-08-S1 is complete: `job_hunt_copilot.outreach` now computes the current autonomous role-targeted send set, excludes repeat-outreach contacts from the automatic path, and exposes queryable pacing decisions for later draft and send execution."
+      - "BA-08-S2 is complete: `job_hunt_copilot.outreach` now generates deterministic role-targeted and general-learning drafts from persisted posting, tailoring, and recipient context, persists canonical `outreach_messages` rows plus stable per-message `email_draft.md` and `send_result.json` artifacts, mirrors the latest role-targeted draft/send artifacts at the posting workspace root, and advances postings plus linked contacts into `outreach_in_progress` when drafting begins."
     near_term_slices:
       - id: BA-08-S1
         name: Send-set readiness and pacing selection
@@ -715,13 +716,21 @@ epics:
       - id: BA-08-S2
         name: Draft generation and artifact persistence
         owner_role: outreach-engineer
-        status: pending
+        status: completed
         dependencies:
           - BA-08-S1
         deliverables:
           - role-targeted and general-learning draft generation paths
           - "`email_draft.md` and `send_result.json` publication with stable IDs"
           - persisted final subject, body, and optional HTML body on `outreach_messages`
+        completed_notes:
+          - Extended `job_hunt_copilot.outreach` with deterministic draft-generation entrypoints for send-set-selected role-targeted contacts and contact-rooted general-learning outreach, grounded in persisted posting JD context, tailoring artifacts, sender profile data, and optional `recipient_profile.json` snapshots when present.
+          - Added canonical `outreach_messages` persistence for generated and failed draft attempts, stable per-message artifact publication under `outreach/output/.../messages/<outreach_message_id>/`, and role-targeted workspace-root mirrors for the latest `email_draft.md` plus `send_result.json`.
+          - Added drafting-begin state transitions that move `job_postings`, `contacts`, and `job_posting_contacts` into `outreach_in_progress`, while preserving partial-batch success when one contact's draft generation fails and surfacing that failure through a canonical failed `send_result.json`.
+        validation:
+          - "`python3.11 -m py_compile job_hunt_copilot/outreach.py job_hunt_copilot/paths.py tests/test_outreach.py`"
+          - "`python3.11 -m pytest tests/test_outreach.py`"
+          - "`python3.11 -m pytest`"
       - id: BA-08-S3
         name: Send execution and repeat-outreach guardrails
         owner_role: outreach-engineer
@@ -842,17 +851,17 @@ epics:
 
 current_focus:
   epic_id: BA-08
-  slice_id: BA-08-S2
+  slice_id: BA-08-S3
   owner_role: outreach-engineer
-  reason: BA-08-S1 now makes the active send set and pacing rules explicit, so the next highest-value outreach dependency is persisting grounded drafts and send artifacts for those selected contacts.
+  reason: BA-08-S2 now persists grounded drafts plus canonical message rows, so the next highest-value outreach dependency is executing sends under the existing pacing rules while preserving repeat-contact guardrails and completion-state honesty.
   exit_criteria:
-    - role-targeted draft generation exists for send-set-selected contacts using posting, resume, and recipient context
-    - "`email_draft.md` and `send_result.json` persist with stable IDs and shared contract envelopes"
-    - "final subject, text body, and optional HTML body persist canonically on `outreach_messages`"
+    - send execution persists canonical send timestamps plus provider thread or delivery identifiers on `outreach_messages`
+    - repeat-outreach and ambiguous prior-history contacts remain blocked from automatic resends and surfaced for review
+    - sending honors the existing company daily cap and inter-send-gap pacing decisions without duplicate-send regressions
 
 focus_order:
   - epic_id: BA-08
-    why_now: Draft generation should start now that discovery, send-set readiness, repeat-outreach exclusion, and pacing rules all exist in canonical state.
+    why_now: Send execution should start now that discovery, send-set readiness, pacing decisions, and canonical draft persistence all exist in state and artifacts.
   - epic_id: BA-09
     why_now: Feedback and review queries depend on canonical messages, supervisor review packets, and downstream state history.
   - epic_id: BA-10
