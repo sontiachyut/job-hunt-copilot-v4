@@ -564,6 +564,7 @@ EPIC_VALIDATION_NOTES: list[dict[str, Any]] = [
         "focus": "acceptance traceability, smoke harness, blocker burn-down",
         "primary_tests": [
             "tests/test_acceptance_traceability.py",
+            "tests/test_blocker_audit.py",
             "tests/test_smoke_harness.py",
         ],
         "ba10_smoke_targets": [

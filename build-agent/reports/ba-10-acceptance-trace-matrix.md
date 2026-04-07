@@ -185,6 +185,7 @@
 - Focus: acceptance traceability, smoke harness, blocker burn-down
 - Primary tests:
   - `tests/test_acceptance_traceability.py`
+  - `tests/test_blocker_audit.py`
   - `tests/test_smoke_harness.py`
 - BA-10 smoke targets:
   - feature-to-code coverage honesty

@@ -1,0 +1,667 @@
+{
+  "blocker_audit_version": 1,
+  "sources": {
+    "acceptance_trace_report_json": "build-agent/reports/ba-10-acceptance-trace-matrix.json",
+    "acceptance_trace_report_markdown": "build-agent/reports/ba-10-acceptance-trace-matrix.md",
+    "build_board": "build-agent/state/build-board.yaml"
+  },
+  "current_focus": {
+    "epic_id": "BA-10",
+    "slice_id": "BA-10-S4",
+    "owner_role": "build-lead",
+    "reason": "BA-10-S3 now has a committed blocker audit and fresh validation evidence, while the matrix still sits at 190 implemented / 8 partial / 14 gap scenarios; the next highest-value slice is a build-lead implementation pass on downstream supervisor action-catalog steps beyond `lead_handoff`, because that single cluster accounts for the largest remaining acceptance partial set and blocks the strongest end-to-end closure."
+  },
+  "summary": {
+    "acceptance_scenario_count": 214,
+    "acceptance_status_counts": {
+      "implemented": 190,
+      "partial": 8,
+      "gap": 14,
+      "deferred_optional": 1,
+      "excluded_from_required_acceptance": 1
+    },
+    "open_acceptance_scenario_count": 22,
+    "open_acceptance_gap_cluster_count": 5,
+    "open_build_board_blocker_count": 3,
+    "build_board_blockers_with_missing_evidence": 0
+  },
+  "acceptance_gap_clusters": [
+    {
+      "gap_id": "BA10_SUPERVISOR_DOWNSTREAM_ACTION_CATALOG",
+      "title": "Supervisor orchestration still stops at lead handoff",
+      "reason": "The durable heartbeat, selector ordering, and retry-safe run persistence exist, but the registered action catalog still only advances autonomous work through `lead_handoff`; later stages reselect the same durable run and escalate instead of executing.",
+      "next_slice": "BA-10-S3",
+      "rules": [
+        "Current-build orchestration remains sequential",
+        "End-to-end acceptance",
+        "Supervisor Agent behavior"
+      ],
+      "owner_roles": [
+        "build-lead",
+        "quality-engineer"
+      ],
+      "epic_ids": [
+        "BA-02",
+        "BA-03",
+        "BA-06",
+        "BA-07",
+        "BA-08",
+        "BA-09",
+        "BA-10"
+      ],
+      "open_scenario_count": 5,
+      "status_counts": {
+        "partial": 5,
+        "gap": 0
+      },
+      "evidence_summary": "Selector ordering, durable run reuse, and unsupported-stage escalation are covered, but later-stage autonomous actions remain unregistered.",
+      "evidence_code_refs": [
+        "job_hunt_copilot/supervisor.py",
+        "job_hunt_copilot/local_runtime.py",
+        "job_hunt_copilot/runtime_pack.py"
+      ],
+      "evidence_test_refs": [
+        "tests/test_supervisor.py",
+        "tests/test_acceptance_traceability.py"
+      ],
+      "validation_commands": [
+        {
+          "command_id": "qa_supervisor_regressions",
+          "title": "Supervisor hardening regressions",
+          "kind": "automated",
+          "command": "python3.11 -m pytest tests/test_supervisor.py",
+          "description": "Confirms durable run reuse, unsupported-stage escalation, and retry-safe review-packet behavior."
+        },
+        {
+          "command_id": "qa_acceptance_reports",
+          "title": "Acceptance report guards",
+          "kind": "automated",
+          "command": "python3.11 -m pytest tests/test_acceptance_traceability.py tests/test_blocker_audit.py",
+          "description": "Keeps the committed BA-10 acceptance and blocker reports synchronized with repo code, tests, and state references."
+        }
+      ],
+      "scenarios": [
+        {
+          "name": "Supervisor work selection follows the current default priority order",
+          "status": "partial",
+          "owner_role": "build-lead",
+          "epic_ids": [
+            "BA-02",
+            "BA-03"
+          ]
+        },
+        {
+          "name": "Role-targeted orchestration follows the current dependency order",
+          "status": "partial",
+          "owner_role": "build-lead",
+          "epic_ids": [
+            "BA-06",
+            "BA-07",
+            "BA-08",
+            "BA-09"
+          ]
+        },
+        {
+          "name": "General learning outreach bypasses the role-targeted agent-review requirement",
+          "status": "partial",
+          "owner_role": "build-lead",
+          "epic_ids": [
+            "BA-06",
+            "BA-07",
+            "BA-08",
+            "BA-09"
+          ]
+        },
+        {
+          "name": "Role-targeted flow completes from LinkedIn Scraping through delivery feedback",
+          "status": "partial",
+          "owner_role": "quality-engineer",
+          "epic_ids": [
+            "BA-06",
+            "BA-07",
+            "BA-08",
+            "BA-09",
+            "BA-10"
+          ]
+        },
+        {
+          "name": "End-to-end retry resumes from the last successful stage boundary",
+          "status": "partial",
+          "owner_role": "quality-engineer",
+          "epic_ids": [
+            "BA-06",
+            "BA-07",
+            "BA-08",
+            "BA-09",
+            "BA-10"
+          ]
+        }
+      ]
+    },
+    {
+      "gap_id": "BA10_MAINTENANCE_AUTOMATION",
+      "title": "Maintenance workflow and artifacts are not implemented",
+      "reason": "The schema and runtime pack reserve maintenance surfaces, but there is no autonomous maintenance batch workflow, no maintenance artifacts, and no maintenance review flow yet.",
+      "next_slice": "BA-10-S3",
+      "rules": [
+        "Machine handoff contracts and canonical state",
+        "Supervisor Agent behavior"
+      ],
+      "owner_roles": [
+        "build-lead"
+      ],
+      "epic_ids": [
+        "BA-01",
+        "BA-02",
+        "BA-03",
+        "BA-04",
+        "BA-06",
+        "BA-07",
+        "BA-08",
+        "BA-09"
+      ],
+      "open_scenario_count": 5,
+      "status_counts": {
+        "partial": 0,
+        "gap": 5
+      },
+      "evidence_summary": "Schema and runtime scaffolding reserve maintenance surfaces, but there is still no maintenance module, runner, or review-artifact workflow.",
+      "evidence_code_refs": [
+        "job_hunt_copilot/migrations/0002_canonical_schema.sql",
+        "job_hunt_copilot/paths.py",
+        "job_hunt_copilot/runtime_pack.py"
+      ],
+      "evidence_test_refs": [
+        "tests/test_schema.py",
+        "tests/test_runtime_pack.py",
+        "tests/test_acceptance_traceability.py"
+      ],
+      "validation_commands": [
+        {
+          "command_id": "qa_runtime_pack_regressions",
+          "title": "Runtime pack regressions",
+          "kind": "automated",
+          "command": "python3.11 -m pytest tests/test_runtime_pack.py",
+          "description": "Confirms generated runtime scaffolding stays honest about current action-catalog and maintenance placeholder status."
+        },
+        {
+          "command_id": "qa_acceptance_reports",
+          "title": "Acceptance report guards",
+          "kind": "automated",
+          "command": "python3.11 -m pytest tests/test_acceptance_traceability.py tests/test_blocker_audit.py",
+          "description": "Keeps the committed BA-10 acceptance and blocker reports synchronized with repo code, tests, and state references."
+        }
+      ],
+      "scenarios": [
+        {
+          "name": "Maintenance change artifacts exist for every autonomous maintenance batch",
+          "status": "gap",
+          "owner_role": "build-lead",
+          "epic_ids": [
+            "BA-01",
+            "BA-02",
+            "BA-04",
+            "BA-06",
+            "BA-07",
+            "BA-08",
+            "BA-09"
+          ]
+        },
+        {
+          "name": "Daily maintenance is mandatory, bounded, and run-boundary aware",
+          "status": "gap",
+          "owner_role": "build-lead",
+          "epic_ids": [
+            "BA-02",
+            "BA-03"
+          ]
+        },
+        {
+          "name": "Maintenance changes follow the current git and approval workflow",
+          "status": "gap",
+          "owner_role": "build-lead",
+          "epic_ids": [
+            "BA-02",
+            "BA-03"
+          ]
+        },
+        {
+          "name": "Proper maintenance validation requires both change-scoped and full-project testing",
+          "status": "gap",
+          "owner_role": "build-lead",
+          "epic_ids": [
+            "BA-02",
+            "BA-03"
+          ]
+        },
+        {
+          "name": "Failed or unapproved maintenance batches remain reviewable",
+          "status": "gap",
+          "owner_role": "build-lead",
+          "epic_ids": [
+            "BA-02",
+            "BA-03"
+          ]
+        }
+      ]
+    },
+    {
+      "gap_id": "BA10_CHAT_REVIEW_AND_CONTROL",
+      "title": "Chat review and control remain wrapper-only",
+      "reason": "The direct `jhc-chat` entrypoint manages chat session lifecycle, but richer review retrieval, control routing, and expert-guidance behaviors are not yet implemented in the chat surface.",
+      "next_slice": "BA-10-S3",
+      "rules": [
+        "Review surfaces and chat-based control",
+        "Supervisor Agent behavior"
+      ],
+      "owner_roles": [
+        "build-lead",
+        "quality-engineer"
+      ],
+      "epic_ids": [
+        "BA-02",
+        "BA-03",
+        "BA-09"
+      ],
+      "open_scenario_count": 10,
+      "status_counts": {
+        "partial": 2,
+        "gap": 8
+      },
+      "evidence_summary": "Chat lifecycle, review-query reads, and bootstrap scaffolding exist, but chat itself still does not retrieve grouped reviews or route control decisions.",
+      "evidence_code_refs": [
+        "scripts/ops/chat_session.py",
+        "job_hunt_copilot/local_runtime.py",
+        "job_hunt_copilot/review_queries.py",
+        "job_hunt_copilot/runtime_pack.py"
+      ],
+      "evidence_test_refs": [
+        "tests/test_local_runtime.py",
+        "tests/test_review_queries.py",
+        "tests/test_runtime_pack.py",
+        "tests/test_acceptance_traceability.py"
+      ],
+      "validation_commands": [
+        {
+          "command_id": "qa_runtime_control_regressions",
+          "title": "Runtime control regressions",
+          "kind": "automated",
+          "command": "python3.11 -m pytest tests/test_local_runtime.py",
+          "description": "Covers launchd plist wiring, control commands, chat lifecycle state, delayed feedback runners, and explicit negative control cases."
+        },
+        {
+          "command_id": "qa_review_surface_regressions",
+          "title": "Review surface regressions",
+          "kind": "automated",
+          "command": "python3.11 -m pytest tests/test_review_queries.py",
+          "description": "Verifies persisted grouped review surfaces and traceability reads that back the chat/review boundary."
+        },
+        {
+          "command_id": "qa_runtime_pack_regressions",
+          "title": "Runtime pack regressions",
+          "kind": "automated",
+          "command": "python3.11 -m pytest tests/test_runtime_pack.py",
+          "description": "Confirms generated runtime scaffolding stays honest about current action-catalog and maintenance placeholder status."
+        },
+        {
+          "command_id": "qa_acceptance_reports",
+          "title": "Acceptance report guards",
+          "kind": "automated",
+          "command": "python3.11 -m pytest tests/test_acceptance_traceability.py tests/test_blocker_audit.py",
+          "description": "Keeps the committed BA-10 acceptance and blocker reports synchronized with repo code, tests, and state references."
+        }
+      ],
+      "scenarios": [
+        {
+          "name": "jhc-chat startup dashboard is detailed, bounded, and clean-first",
+          "status": "partial",
+          "owner_role": "build-lead",
+          "epic_ids": [
+            "BA-02",
+            "BA-03"
+          ]
+        },
+        {
+          "name": "Startup dashboard runtime metrics count only active autonomous execution",
+          "status": "gap",
+          "owner_role": "build-lead",
+          "epic_ids": [
+            "BA-02",
+            "BA-03"
+          ]
+        },
+        {
+          "name": "Review retrieval is grouped, compact-first, and newest-first within each group",
+          "status": "partial",
+          "owner_role": "build-lead",
+          "epic_ids": [
+            "BA-02",
+            "BA-03"
+          ]
+        },
+        {
+          "name": "jhc-chat uses persisted state for answers and control routing",
+          "status": "gap",
+          "owner_role": "build-lead",
+          "epic_ids": [
+            "BA-02",
+            "BA-03"
+          ]
+        },
+        {
+          "name": "Default change summaries cover activity since the last completed expert review",
+          "status": "gap",
+          "owner_role": "build-lead",
+          "epic_ids": [
+            "BA-02",
+            "BA-03"
+          ]
+        },
+        {
+          "name": "Expert guidance becomes live immediately but conflicting or uncertain reuse asks first",
+          "status": "gap",
+          "owner_role": "build-lead",
+          "epic_ids": [
+            "BA-02",
+            "BA-03"
+          ]
+        },
+        {
+          "name": "Conflicting expert guidance pauses the whole autonomous system",
+          "status": "gap",
+          "owner_role": "build-lead",
+          "epic_ids": [
+            "BA-02",
+            "BA-03"
+          ]
+        },
+        {
+          "name": "Expert-requested background tasks require explicit handoff summary and exclusive focus",
+          "status": "gap",
+          "owner_role": "build-lead",
+          "epic_ids": [
+            "BA-02",
+            "BA-03"
+          ]
+        },
+        {
+          "name": "Expert-requested background task outcomes return to review appropriately",
+          "status": "gap",
+          "owner_role": "build-lead",
+          "epic_ids": [
+            "BA-02",
+            "BA-03"
+          ]
+        },
+        {
+          "name": "AI agent surfaces the current review queue in chat",
+          "status": "gap",
+          "owner_role": "quality-engineer",
+          "epic_ids": [
+            "BA-03",
+            "BA-09"
+          ]
+        }
+      ]
+    },
+    {
+      "gap_id": "BA10_CHAT_IDLE_TIMEOUT_RESUME",
+      "title": "Idle-timeout resume is still backlog",
+      "reason": "Explicit-close and explicit-resume paths exist, but unexpected `jhc-chat` exits still require a later explicit resume because automatic idle-timeout recovery is not implemented.",
+      "next_slice": "BA-10-S3",
+      "rules": [
+        "Supervisor Agent behavior"
+      ],
+      "owner_roles": [
+        "build-lead"
+      ],
+      "epic_ids": [
+        "BA-02",
+        "BA-03"
+      ],
+      "open_scenario_count": 1,
+      "status_counts": {
+        "partial": 1,
+        "gap": 0
+      },
+      "evidence_summary": "Unexpected chat exit is recorded and a later explicit resume works, but no automatic idle-timeout resume helper exists.",
+      "evidence_code_refs": [
+        "job_hunt_copilot/local_runtime.py",
+        "job_hunt_copilot/runtime_pack.py"
+      ],
+      "evidence_test_refs": [
+        "tests/test_local_runtime.py",
+        "tests/test_runtime_pack.py",
+        "tests/test_acceptance_traceability.py"
+      ],
+      "validation_commands": [
+        {
+          "command_id": "qa_runtime_control_regressions",
+          "title": "Runtime control regressions",
+          "kind": "automated",
+          "command": "python3.11 -m pytest tests/test_local_runtime.py",
+          "description": "Covers launchd plist wiring, control commands, chat lifecycle state, delayed feedback runners, and explicit negative control cases."
+        },
+        {
+          "command_id": "qa_runtime_pack_regressions",
+          "title": "Runtime pack regressions",
+          "kind": "automated",
+          "command": "python3.11 -m pytest tests/test_runtime_pack.py",
+          "description": "Confirms generated runtime scaffolding stays honest about current action-catalog and maintenance placeholder status."
+        },
+        {
+          "command_id": "qa_acceptance_reports",
+          "title": "Acceptance report guards",
+          "kind": "automated",
+          "command": "python3.11 -m pytest tests/test_acceptance_traceability.py tests/test_blocker_audit.py",
+          "description": "Keeps the committed BA-10 acceptance and blocker reports synchronized with repo code, tests, and state references."
+        }
+      ],
+      "scenarios": [
+        {
+          "name": "Expert-interaction resume follows explicit close, explicit resume, or safe idle timeout",
+          "status": "partial",
+          "owner_role": "build-lead",
+          "epic_ids": [
+            "BA-02",
+            "BA-03"
+          ]
+        }
+      ]
+    },
+    {
+      "gap_id": "BA10_POSTING_ABANDON_CONTROL",
+      "title": "Posting-abandon control surface is missing",
+      "reason": "There is no explicit user-facing or runtime control path that abandons a posting from arbitrary active orchestration states while preserving canonical history.",
+      "next_slice": "BA-10-S3",
+      "rules": [
+        "Current-build orchestration remains sequential"
+      ],
+      "owner_roles": [
+        "build-lead"
+      ],
+      "epic_ids": [
+        "BA-06",
+        "BA-07",
+        "BA-08",
+        "BA-09"
+      ],
+      "open_scenario_count": 1,
+      "status_counts": {
+        "partial": 0,
+        "gap": 1
+      },
+      "evidence_summary": "Agent-level start/stop/pause/resume/replan controls exist, but there is still no posting-scoped abandon command or runtime mutation path.",
+      "evidence_code_refs": [
+        "scripts/ops/control_agent.py",
+        "job_hunt_copilot/local_runtime.py",
+        "job_hunt_copilot/supervisor.py"
+      ],
+      "evidence_test_refs": [
+        "tests/test_local_runtime.py",
+        "tests/test_acceptance_traceability.py"
+      ],
+      "validation_commands": [
+        {
+          "command_id": "qa_runtime_control_regressions",
+          "title": "Runtime control regressions",
+          "kind": "automated",
+          "command": "python3.11 -m pytest tests/test_local_runtime.py",
+          "description": "Covers launchd plist wiring, control commands, chat lifecycle state, delayed feedback runners, and explicit negative control cases."
+        },
+        {
+          "command_id": "qa_acceptance_reports",
+          "title": "Acceptance report guards",
+          "kind": "automated",
+          "command": "python3.11 -m pytest tests/test_acceptance_traceability.py tests/test_blocker_audit.py",
+          "description": "Keeps the committed BA-10 acceptance and blocker reports synchronized with repo code, tests, and state references."
+        }
+      ],
+      "scenarios": [
+        {
+          "name": "The user may explicitly abandon a posting from any active orchestration state",
+          "status": "gap",
+          "owner_role": "build-lead",
+          "epic_ids": [
+            "BA-06",
+            "BA-07",
+            "BA-08",
+            "BA-09"
+          ]
+        }
+      ]
+    }
+  ],
+  "build_board_blockers": [
+    {
+      "blocker_id": "BA10-TRACE-001",
+      "status": "open",
+      "severity": "high",
+      "owner_role": "quality-engineer",
+      "summary": "The regenerated BA-10 trace matrix now reports 190 implemented / 8 partial / 14 gap scenarios; the remaining downstream-supervisor, chat, maintenance, and posting-abandon gaps now each carry explicit evidence refs and reproducible blocker notes, but the missing current-build behaviors themselves remain open.",
+      "impact": "Acceptance signoff is more credible now that committed smoke coverage, blocker-specific evidence refs, and explicit negative regressions exist, but BA-10 still cannot close until the remaining gap clusters are actually burned down or deliberately left open.",
+      "next_action": "Hand the next functional slice to the build-lead: downstream action-catalog burn-down beyond `lead_handoff` or a posting-abandon control implementation. Maintenance automation remains an explicit follow-up gap after those runtime-control surfaces.",
+      "evidence_refs": [
+        "build-agent/reports/ba-10-acceptance-trace-matrix.json",
+        "build-agent/reports/ba-10-acceptance-trace-matrix.md",
+        "build-agent/reports/ba-10-blocker-audit.json",
+        "build-agent/reports/ba-10-blocker-audit.md",
+        "scripts/quality/generate_blocker_audit.py",
+        "scripts/ops/control_agent.py",
+        "tests/test_acceptance_traceability.py",
+        "tests/test_blocker_audit.py",
+        "tests/test_local_runtime.py",
+        "tests/test_delivery_feedback.py",
+        "tests/test_schema.py",
+        "tests/test_smoke_harness.py",
+        "tests/test_supervisor.py",
+        "tests/test_runtime_pack.py",
+        "tests/test_resume_tailoring.py",
+        "tests/test_outreach.py",
+        "tests/test_review_queries.py"
+      ],
+      "missing_evidence_refs": [],
+      "validation_commands": [
+        {
+          "command_id": "qa_acceptance_reports",
+          "title": "Acceptance report guards",
+          "kind": "automated",
+          "command": "python3.11 -m pytest tests/test_acceptance_traceability.py tests/test_blocker_audit.py",
+          "description": "Keeps the committed BA-10 acceptance and blocker reports synchronized with repo code, tests, and state references."
+        },
+        {
+          "command_id": "qa_smoke_flow",
+          "title": "Smoke harness flow",
+          "kind": "automated",
+          "command": "python3.11 -m pytest tests/test_smoke_harness.py",
+          "description": "Replays the committed bootstrap -> tailoring -> discovery -> send -> feedback -> review-query smoke path."
+        },
+        {
+          "command_id": "qa_supervisor_regressions",
+          "title": "Supervisor hardening regressions",
+          "kind": "automated",
+          "command": "python3.11 -m pytest tests/test_supervisor.py",
+          "description": "Confirms durable run reuse, unsupported-stage escalation, and retry-safe review-packet behavior."
+        },
+        {
+          "command_id": "qa_runtime_control_regressions",
+          "title": "Runtime control regressions",
+          "kind": "automated",
+          "command": "python3.11 -m pytest tests/test_local_runtime.py",
+          "description": "Covers launchd plist wiring, control commands, chat lifecycle state, delayed feedback runners, and explicit negative control cases."
+        },
+        {
+          "command_id": "qa_review_surface_regressions",
+          "title": "Review surface regressions",
+          "kind": "automated",
+          "command": "python3.11 -m pytest tests/test_review_queries.py",
+          "description": "Verifies persisted grouped review surfaces and traceability reads that back the chat/review boundary."
+        },
+        {
+          "command_id": "qa_runtime_pack_regressions",
+          "title": "Runtime pack regressions",
+          "kind": "automated",
+          "command": "python3.11 -m pytest tests/test_runtime_pack.py",
+          "description": "Confirms generated runtime scaffolding stays honest about current action-catalog and maintenance placeholder status."
+        }
+      ]
+    },
+    {
+      "blocker_id": "BUILD-CLI-001",
+      "status": "open",
+      "severity": "medium",
+      "owner_role": "build-lead",
+      "summary": "`codex exec` no longer accepts `--ask-for-approval`, and unattended build-cycle logs show BA-00 sessions failing before work starts when that flag is present.",
+      "impact": "Unattended build sessions can fail before any implementation work starts if the CLI compatibility fix regresses.",
+      "next_action": "Re-run the unattended build-lead wrapper on the host and confirm it starts a real cycle without passing unsupported approval flags.",
+      "evidence_refs": [
+        "build-agent/scripts/run_build_lead_cycle.py",
+        "build-agent/logs/cycles/build-cycle-20260406T034335Z-66be05af.log"
+      ],
+      "missing_evidence_refs": [],
+      "validation_commands": [
+        {
+          "command_id": "qa_codex_cli_compatibility",
+          "title": "Codex CLI compatibility check",
+          "kind": "manual_local",
+          "command": "codex exec --help && codex --help",
+          "description": "Reconfirms the current CLI shape so unattended build wrappers do not reintroduce unsupported approval flags."
+        }
+      ]
+    },
+    {
+      "blocker_id": "OPS-LAUNCHD-001",
+      "status": "open",
+      "severity": "medium",
+      "owner_role": "build-lead",
+      "summary": "Live `launchctl bootstrap gui/$UID /Users/achyutaramsonti/Projects/job-hunt-copilot-v4/ops/launchd/job-hunt-copilot-supervisor.plist` still returns `Input/output error` in the current sandboxed session, so successful host-side launchd load validation remains pending for both the supervisor and delayed-feedback jobs even though their plists, wrappers, runners, and failed-start rollback validate locally.",
+      "impact": "Product-side background launchd startup is not yet verified outside the sandbox even though the repo-local helper code and rollback behavior are working.",
+      "next_action": "Run `bin/jhc-agent-start` on the host outside the sandbox, then inspect `launchctl print gui/$UID/com.jobhuntcopilot.supervisor` and system launchd logs to capture the real bootstrap outcome.",
+      "evidence_refs": [
+        "build-agent/logs/cycles/build-cycle-20260407T213533Z-5b2c1d98.log",
+        "bin/jhc-agent-start",
+        "bin/jhc-feedback-sync-cycle",
+        "scripts/ops/materialize_supervisor_plist.py",
+        "scripts/ops/materialize_feedback_sync_plist.py",
+        "tests/test_local_runtime.py"
+      ],
+      "missing_evidence_refs": [],
+      "validation_commands": [
+        {
+          "command_id": "qa_runtime_control_regressions",
+          "title": "Runtime control regressions",
+          "kind": "automated",
+          "command": "python3.11 -m pytest tests/test_local_runtime.py",
+          "description": "Covers launchd plist wiring, control commands, chat lifecycle state, delayed feedback runners, and explicit negative control cases."
+        },
+        {
+          "command_id": "qa_host_launchd_validation",
+          "title": "Host launchd validation",
+          "kind": "manual_host",
+          "command": "bin/jhc-agent-start && launchctl print gui/$UID/com.jobhuntcopilot.supervisor",
+          "description": "Must run outside the sandbox to validate real host launchd bootstrap behavior and collect diagnostic output."
+        }
+      ]
+    }
+  ]
+}

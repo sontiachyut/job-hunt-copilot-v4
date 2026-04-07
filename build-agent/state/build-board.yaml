@@ -28,7 +28,7 @@ global_status:
     - "BA-09 is now complete in code: delivery feedback now dedupes repeated mailbox signals at the logical-event level, exposes queryable feedback-reuse candidates for bounced and `not_bounced` discovery reads, keeps replied outcomes review-only, and lets discovery consume those feedback signals without auto-clearing contact email state."
     - "BA-10-S1 is now complete: `build-agent/reports/ba-10-acceptance-trace-matrix.json` and `.md` now map all 214 acceptance scenarios to owning epics, code, tests, and explicit hardening gaps, with a guard test that keeps the matrix aligned to `prd/test-spec.feature`."
     - "BA-10-S2 is now complete: `tests/test_smoke_harness.py` now drives a committed bootstrap -> tailoring -> discovery -> send -> delayed-feedback -> review-query smoke flow with deterministic fakes, and the regenerated acceptance trace matrix now closes the explicit smoke-harness gap while leaving the remaining blocker clusters honest."
-    - "BA-10-S3 is in progress: targeted hardening regressions now prove unsupported tailoring asks stay explicit gaps, automatic outreach still requires approved review and blocks repeat ambiguity, outreach-message traceability omits raw reply excerpts, runtime secret values stay out of canonical state/handoff artifacts/review outputs, delayed feedback now has dedicated launchd scheduler wiring, supervisor heartbeats now use pmset-first sleep/wake detection with a conservative cycle-gap fallback, focused supervisor regressions now confirm downstream retries keep the same durable run and pending review packet while the narrow action catalog still blocks later-stage execution, and the acceptance matrix now carries blocker-specific evidence refs for the remaining maintenance, chat, downstream-supervisor, and posting-abandon gaps; the regenerated matrix still reports 190 implemented, 8 partial, and 14 gap scenarios."
+    - "BA-10-S3 is in progress: targeted hardening regressions now prove unsupported tailoring asks stay explicit gaps, automatic outreach still requires approved review and blocks repeat ambiguity, outreach-message traceability omits raw reply excerpts, runtime secret values stay out of canonical state/handoff artifacts/review outputs, delayed feedback now has dedicated launchd scheduler wiring, supervisor heartbeats now use pmset-first sleep/wake detection with a conservative cycle-gap fallback, focused supervisor regressions now confirm downstream retries keep the same durable run and pending review packet while the narrow action catalog still blocks later-stage execution, and the acceptance matrix now carries blocker-specific evidence refs for the remaining maintenance, chat, downstream-supervisor, and posting-abandon gaps; the regenerated matrix still reports 190 implemented, 8 partial, and 14 gap scenarios, and the new committed BA-10 blocker audit summarizes those open gaps plus build-board blockers with reproducible confirmation commands."
     - "`jhc-chat` now records canonical begin/end state, pauses autonomous work on open, resumes on clean explicit close when chat caused the pause, leaves unexpected-exit pauses intact until a later explicit resume or future idle-timeout handling, and now has focused regressions for the explicit-resume path plus generated chat-bootstrap scaffolding."
     - Host-side `launchctl bootstrap` success still needs follow-up validation outside the current sandboxed session even though the plist, wrapper wiring, and failed-start rollback all validate locally.
   execution_principles:
@@ -925,11 +925,15 @@ epics:
           - Added focused chat/runtime-pack regressions in `tests/test_local_runtime.py` and `tests/test_runtime_pack.py` so the unexpected-exit -> explicit-resume recovery path is proven and the generated `ops/agent/chat-bootstrap.md` prompt stays anchored to persisted control-state, review-surface, and snapshot guidance while richer in-chat review/control behavior remains an explicit gap.
           - Refined `job_hunt_copilot.acceptance_traceability` plus the regenerated BA-10 reports so every remaining explicit gap now carries a short evidence summary and concrete code/test refs instead of only a prose reason.
           - Added focused blocker regressions proving `scripts/ops/control_agent.py` still rejects the missing `abandon` command and the generated `ops/agent/ops-plan.yaml` keeps maintenance in backlog-only placeholder state instead of implying an implemented workflow.
+          - Added `job_hunt_copilot.blocker_audit`, `scripts/quality/generate_blocker_audit.py`, committed `build-agent/reports/ba-10-blocker-audit.json` plus `.md`, and `tests/test_blocker_audit.py` so the remaining acceptance-gap clusters and open build-board blockers are summarized in one durable report with explicit confirmation commands and evidence-hygiene checks.
         validation:
           - "`python3.11 -m py_compile job_hunt_copilot/local_runtime.py job_hunt_copilot/acceptance_traceability.py job_hunt_copilot/runtime_pack.py job_hunt_copilot/paths.py scripts/ops/materialize_feedback_sync_plist.py scripts/ops/run_feedback_sync.py tests/test_local_runtime.py`"
           - "`zsh -n bin/jhc-agent-start bin/jhc-agent-stop bin/jhc-agent-cycle bin/jhc-feedback-sync-cycle bin/jhc-chat`"
           - "`python3.11 -m pytest tests/test_local_runtime.py tests/test_delivery_feedback.py tests/test_acceptance_traceability.py`"
           - "`python3.11 scripts/quality/generate_acceptance_trace_matrix.py --project-root /Users/achyutaramsonti/Projects/job-hunt-copilot-v4`"
+          - "`python3.11 scripts/quality/generate_blocker_audit.py --project-root /Users/achyutaramsonti/Projects/job-hunt-copilot-v4`"
+          - "`python3.11 -m py_compile job_hunt_copilot/blocker_audit.py scripts/quality/generate_blocker_audit.py tests/test_blocker_audit.py`"
+          - "`python3.11 -m pytest tests/test_acceptance_traceability.py tests/test_blocker_audit.py tests/test_smoke_harness.py tests/test_local_runtime.py tests/test_supervisor.py tests/test_review_queries.py tests/test_runtime_pack.py`"
           - "`python3.11 -m pytest`"
           - "`python3.11 -m py_compile job_hunt_copilot/acceptance_traceability.py tests/test_supervisor.py tests/test_acceptance_traceability.py`"
           - "`python3.11 -m pytest tests/test_supervisor.py tests/test_acceptance_traceability.py`"
@@ -939,16 +943,26 @@ epics:
           - chat review/control behavior and idle-timeout resume
           - maintenance automation
           - posting-abandon control
+      - id: BA-10-S4
+        name: Downstream supervisor action-catalog burn-down
+        owner_role: build-lead
+        status: pending
+        dependencies:
+          - BA-10-S3
+        deliverables:
+          - bounded supervisor action registration beyond `lead_handoff` for the current role-targeted flow
+          - durable stage progression that reduces the downstream-supervisor partial cluster in the acceptance matrix
+          - updated supervisor or smoke regressions proving end-to-end stage advancement instead of unsupported-stage escalation for the newly implemented boundaries
 
 current_focus:
   epic_id: BA-10
-  slice_id: BA-10-S3
-  owner_role: quality-engineer
-  reason: BA-10-S3 safety/privacy hardening, delayed-feedback scheduler wiring, sleep/wake recovery detection, downstream-supervisor blocker confirmation, chat lifecycle/control regression evidence, and blocker-specific gap evidence refs are now landed while the matrix remains at 190 implemented / 8 partial / 14 gap scenarios, so the highest-value next work is a build-lead functional slice for downstream action-catalog burn-down beyond `lead_handoff` or explicit posting-abandon control while maintenance automation stays an explicit follow-up gap.
+  slice_id: BA-10-S4
+  owner_role: build-lead
+  reason: BA-10-S3 now has a committed blocker audit and fresh validation evidence, while the matrix still sits at 190 implemented / 8 partial / 14 gap scenarios; the next highest-value slice is a build-lead implementation pass on downstream supervisor action-catalog steps beyond `lead_handoff`, because that single cluster accounts for the largest remaining acceptance partial set and blocks the strongest end-to-end closure.
   exit_criteria:
-    - remaining BA-10 trace-matrix gaps are either fixed or explicitly retained with fresh evidence
-    - targeted regression coverage exists for retry/idempotency edges plus any blocker confirmation work touched during hardening
-    - final BA-10 state notes identify what still blocks full acceptance signoff after smoke coverage
+    - supervisor action-catalog coverage advances at least one bounded downstream stage beyond `lead_handoff` without breaking durable run or review-packet semantics
+    - targeted supervisor and smoke regressions prove the new stage advancement or honestly retain the remaining blocker with fresh evidence
+    - the acceptance trace matrix, blocker audit, and state notes all agree on the updated downstream-supervisor status
 
 focus_order:
   - epic_id: BA-10
@@ -967,8 +981,12 @@ known_blockers:
     evidence:
       - build-agent/reports/ba-10-acceptance-trace-matrix.json
       - build-agent/reports/ba-10-acceptance-trace-matrix.md
+      - build-agent/reports/ba-10-blocker-audit.json
+      - build-agent/reports/ba-10-blocker-audit.md
+      - scripts/quality/generate_blocker_audit.py
       - scripts/ops/control_agent.py
       - tests/test_acceptance_traceability.py
+      - tests/test_blocker_audit.py
       - tests/test_local_runtime.py
       - tests/test_delivery_feedback.py
       - tests/test_schema.py
@@ -985,13 +1003,22 @@ known_blockers:
     severity: medium
     owner_role: build-lead
     summary: "`codex exec` no longer accepts `--ask-for-approval`, and unattended build-cycle logs show BA-00 sessions failing before work starts when that flag is present."
+    evidence:
+      - build-agent/scripts/run_build_lead_cycle.py
+      - build-agent/logs/cycles/build-cycle-20260406T034335Z-66be05af.log
+    impact: Unattended build sessions can fail before any implementation work starts if the CLI compatibility fix regresses.
+    next_action: Re-run the unattended build-lead wrapper on the host and confirm it starts a real cycle without passing unsupported approval flags.
   - blocker_id: OPS-LAUNCHD-001
     status: open
     severity: medium
     owner_role: build-lead
     summary: "Live `launchctl bootstrap gui/$UID /Users/achyutaramsonti/Projects/job-hunt-copilot-v4/ops/launchd/job-hunt-copilot-supervisor.plist` still returns `Input/output error` in the current sandboxed session, so successful host-side launchd load validation remains pending for both the supervisor and delayed-feedback jobs even though their plists, wrappers, runners, and failed-start rollback validate locally."
     evidence:
-      - build-agent/logs/cycles/build-cycle-20260406T032821Z-8f48507c.log
+      - build-agent/logs/cycles/build-cycle-20260407T213533Z-5b2c1d98.log
       - bin/jhc-agent-start
+      - bin/jhc-feedback-sync-cycle
+      - scripts/ops/materialize_supervisor_plist.py
+      - scripts/ops/materialize_feedback_sync_plist.py
+      - tests/test_local_runtime.py
     impact: Product-side background launchd startup is not yet verified outside the sandbox even though the repo-local helper code and rollback behavior are working.
     next_action: Run `bin/jhc-agent-start` on the host outside the sandbox, then inspect `launchctl print gui/$UID/com.jobhuntcopilot.supervisor` and system launchd logs to capture the real bootstrap outcome.
