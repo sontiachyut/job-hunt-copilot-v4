@@ -29,6 +29,8 @@ It should stay aligned with:
 - `BA-06-S1` is complete: `job_hunt_copilot.resume_tailoring` can now bootstrap from `job_posting_id`, evaluate hard eligibility from the persisted posting-linked `jd.md`, write `applications/{company}/{role}/eligibility.yaml`, mark `hard_ineligible` postings honestly, and create or reuse the first `resume_tailoring_runs` row with canonical timestamps plus workspace linkage for bootstrap-ready postings.
 - `BA-06-S2` is complete: eligible postings now materialize `resume-tailoring/output/tailored/{company}/{role}/` with shared-contract `meta.yaml`, mirrored `jd.md`, optional mirrored `post.md` / `poster-profile.md`, working `resume.tex`, `scope-baseline.resume.tex`, component-local input mirrors, and Step 3 through Step 7 scaffold artifacts that later finalize logic can fill.
 - `BA-06-S3` is complete: `job_hunt_copilot.resume_tailoring` now replaces the scaffold files with deterministic Step 3 through Step 7 artifacts, generates honest JD signals plus evidence mapping from the persisted `jd.md` and master profile, applies the selected Step 6 payload to `resume.tex`, enforces scope against `scope-baseline.resume.tex`, compiles `Achyutaram Sonti.pdf`, verifies one-page output, and moves successful runs into `tailoring_status = tailored` plus `resume_review_status = resume_review_pending`.
+- `BA-06-S4` is complete: `job_hunt_copilot.resume_tailoring` now records mandatory review decisions as durable per-run artifacts, transitions pending review runs into `approved` or `rejected`, advances approved postings into `requires_contacts` or `ready_for_outreach`, records owner overrides with prior-decision context in canonical `override_events`, and snapshots completed run workspaces before retailoring so previous run rows keep immutable history references.
+- `BA-06` is now complete in code overall: Resume Tailoring now runs from `job_posting_id` bootstrap through eligibility, workspace materialization, deterministic intelligence, finalize plus one-page verification, mandatory review approval or rejection, DB-first outreach handoff, override lineage, and repeated-run history preservation.
 - Explicit implementation note: failed startup no longer leaves dishonest control state behind; `jhc-agent-start` now rolls canonical state back to `stopped` if `launchctl bootstrap` fails before the job is actually loaded.
 - Explicit implementation note: the generated `ops/agent/` files remain runtime-local artifacts under `.gitignore`, so the repo tracks the materialization code and tests rather than checking in those mutable rendered outputs.
 - Explicit implementation note: `jhc-chat` now records begin/end metadata plus `active_chat_session_id` in canonical control state, pauses autonomous work immediately on open, resumes on clean explicit close when chat itself caused the pause, and intentionally keeps unexpected-exit pauses active until later explicit resume or future idle-timeout automation exists.
@@ -37,7 +39,7 @@ It should stay aligned with:
 - Explicit implementation inference: Gmail zero-card review thresholds are currently derived from retained `email.json` metadata under `linkedin-scraping/runtime/gmail/` rather than a dedicated DB table, which keeps this slice bounded while still making unresolved zero-card history queryable for later review surfaces.
 - Explicit implementation note: Gmail-derived leads with a recovered canonical `jd.md` now surface posting-materialization readiness or blocking reasons through `lead-manifest.yaml`, while downstream creation of later posting-linked runtime state remains a separate responsibility from the bounded Gmail intake slice.
 - Explicit implementation note: the current tailoring runtime now backfills workspace files for preexisting active runs that predate BA-06-S2, but repeated bootstrap on an already-materialized active run intentionally preserves existing `resume.tex` and intelligence artifacts instead of clobbering in-progress tailoring work.
-- Explicit implementation note: Step 3 through Step 7 persistence currently stays artifact-first rather than adding new dedicated tailoring tables, which keeps BA-06-S3 bounded while still making generated intelligence, verification blockers, and compile outputs durable and reviewable from the workspace.
+- Explicit implementation note: Step 3 through Step 7 persistence and the later mandatory review boundary currently stay artifact-first rather than adding new dedicated tailoring tables, which keeps BA-06 bounded while still making generated intelligence, review decisions, verification blockers, and compile outputs durable and reviewable from the workspace.
 - Known operational blocker: live `launchctl bootstrap gui/$UID ...` still returns `Input/output error` in this sandboxed session, and the system log needed for richer launchd diagnostics is itself blocked by sandbox restrictions.
 - Known operational risk: unattended build-lead execution needs a follow-up validation pass for the `codex exec` CLI compatibility fix already present in the worktree.
 
@@ -106,12 +108,12 @@ It should stay aligned with:
 
 ## Next Slice
 
-- Current focus: `BA-06-S4` Mandatory agent review and override handling.
-- Why next: structured intelligence generation, finalize, compile, one-page verification, and `resume_review_pending` handoff now exist, so the next dependency is persisting the mandatory tailoring review decision and any later override lineage before outreach work can begin safely.
+- Current focus: `BA-07-S1` Apollo search and shortlist materialization.
+- Why next: BA-06 now lands the agent-approved tailoring boundary and DB-first `requires_contacts` / `ready_for_outreach` handoff, so the next dependency is company-scoped people search for approved postings that still need linked contacts.
 - Done when:
-  - the active tailoring run can transition from `resume_review_pending` to `approved` or `rejected` through a persisted mandatory agent-review action
-  - review rejection or later retailoring preserves prior run history instead of overwriting the existing `resume_tailoring_runs` row
-  - override or review-decision lineage is queryable with timestamps and prior-decision context
+  - company-scoped search can start from agent-approved `requires_contacts` postings by `job_posting_id`
+  - broad search results and shortlisted canonical contacts persist without fabricating enrichment or send state
+  - posting-contact linkage stays compatible with the current outreach-ready prerequisites
 
 ## Working Rules
 

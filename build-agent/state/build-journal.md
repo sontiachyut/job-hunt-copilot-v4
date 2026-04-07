@@ -586,3 +586,31 @@ Use this file as an append-only implementation log for the build agent.
 - Explicit implementation note: Step 3 through Step 7 persistence remains artifact-first for now; this slice intentionally did not add new dedicated tailoring tables beyond the existing canonical run row and state-transition history.
 - Explicit implementation note: the scope guard currently validates the supported resume template by masking editable regions and comparing the remainder against `scope-baseline.resume.tex`, which keeps finalize bounded to the current LaTeX structure without pretending to support arbitrary resume layouts yet.
 - `OPS-LAUNCHD-001` and `BUILD-CLI-001` remain open and untouched because this slice stayed inside tailoring ownership and did not alter the supervisor or build-loop runtime surfaces.
+
+### Session
+- Date: 2026-04-06 20:27:27 MST
+- Slice: BA-06-S4 Mandatory agent review and override handling
+- Goal: Persist the tailoring review gate, owner override lineage, and repeated-run history so Outreach can trust approved posting state.
+
+### Work Done
+- Extended `job_hunt_copilot.resume_tailoring` with mandatory review decision helpers that move finalized runs from `resume_review_pending` into `approved` or `rejected`, publish per-run review artifacts under `resume-tailoring/output/tailored/{company}/{role}/review/{resume_tailoring_run_id}/`, and republish `meta.yaml` with the latest review-gate context.
+- Added DB-first post-review handoff evaluation so approved postings move directly into `requires_contacts` or `ready_for_outreach` based on linked-contact tier plus usable-email availability, while rejected review returns the posting to `tailoring_in_progress`.
+- Added owner override handling backed by canonical `override_events`, carrying prior-decision context, override reason, and timestamp without mutating the PRD or supervisor review-packet model.
+- Added completed-run workspace snapshots under `resume-tailoring/output/history/` before retailoring starts again so previous `resume_tailoring_runs` rows retain immutable workspace, meta, and final-PDF references.
+- Expanded `tests/test_resume_tailoring.py` to cover approval into `requires_contacts`, direct approval into `ready_for_outreach`, owner override lineage, and review-rejection retailoring history preservation, then updated `README.md`, `docs/ARCHITECTURE.md`, the build board, implementation plan, and short progress log to reflect BA-06 completion honestly.
+
+### Validation
+- Ran `python3.11 -m py_compile job_hunt_copilot/resume_tailoring.py job_hunt_copilot/paths.py tests/test_resume_tailoring.py` and confirmed the updated tailoring runtime, path helpers, and tests compile cleanly.
+- Ran `python3.11 -m pytest tests/test_resume_tailoring.py` and confirmed all 14 tailoring tests passed.
+- Ran full `python3.11 -m pytest` and confirmed all 70 repository tests passed across bootstrap, schema, artifacts, ingestion, tailoring, local runtime, runtime pack, and supervisor coverage.
+
+### Result
+- `done`
+
+### Next
+- Start `BA-07-S1`: bootstrap Apollo-first company-scoped people search and shortlist persistence from agent-approved `requires_contacts` postings.
+
+### Notes
+- Explicit implementation note: mandatory tailoring review currently persists as artifact-first runtime history plus canonical state transitions and `override_events`; this slice intentionally did not add new dedicated tailoring-review tables.
+- Explicit implementation note: the direct `ready_for_outreach` handoff remains conservative and only fires when the best available linked-contact tier already has at least one usable working email.
+- `OPS-LAUNCHD-001` and `BUILD-CLI-001` remain open and untouched because this slice stayed inside tailoring ownership and did not alter the supervisor or build-loop runtime surfaces.

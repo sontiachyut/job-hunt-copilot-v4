@@ -16,18 +16,27 @@ from job_hunt_copilot.resume_tailoring import (
     ELIGIBILITY_STATUS_UNKNOWN,
     FINALIZE_REASON_SCOPE_VIOLATION,
     JOB_POSTING_STATUS_HARD_INELIGIBLE,
+    JOB_POSTING_STATUS_READY_FOR_OUTREACH,
+    JOB_POSTING_STATUS_REQUIRES_CONTACTS,
     JOB_POSTING_STATUS_RESUME_REVIEW_PENDING,
     JOB_POSTING_STATUS_TAILORING_IN_PROGRESS,
+    MANDATORY_REVIEWER_AGENT,
+    MANDATORY_REVIEWER_OWNER,
     RESUME_REVIEW_STATUS_NOT_READY,
+    RESUME_REVIEW_STATUS_APPROVED,
     RESUME_REVIEW_STATUS_PENDING,
+    RESUME_REVIEW_STATUS_REJECTED,
     TAILORING_ELIGIBILITY_ARTIFACT_TYPE,
     TAILORING_META_ARTIFACT_TYPE,
+    TAILORING_REVIEW_ARTIFACT_TYPE,
     TAILORING_STATUS_NEEDS_REVISION,
     TAILORING_STATUS_IN_PROGRESS,
     TAILORING_STATUS_TAILORED,
     bootstrap_tailoring_run,
     finalize_tailoring_run,
     generate_tailoring_intelligence,
+    record_tailoring_review_decision,
+    record_tailoring_review_override,
 )
 from tests.support import create_minimal_project
 
@@ -145,6 +154,57 @@ def seed_posting(
     )
     connection.commit()
     return jd_path
+
+
+def seed_linked_contact(
+    connection,
+    *,
+    job_posting_id: str = "jp_test",
+    contact_id: str = "ct_test",
+    recipient_type: str = "recruiter",
+    current_working_email: str | None = None,
+    company_name: str = "Acme Data Systems",
+    timestamp: str = "2026-04-06T20:30:00Z",
+):
+    connection.execute(
+        """
+        INSERT INTO contacts (
+          contact_id, identity_key, display_name, company_name, origin_component,
+          contact_status, full_name, current_working_email, created_at, updated_at
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        """,
+        (
+            contact_id,
+            f"contact|{contact_id}",
+            "Jordan Recruiter",
+            company_name,
+            "linkedin_scraping",
+            "identified",
+            "Jordan Recruiter",
+            current_working_email,
+            timestamp,
+            timestamp,
+        ),
+    )
+    connection.execute(
+        """
+        INSERT INTO job_posting_contacts (
+          job_posting_contact_id, job_posting_id, contact_id, recipient_type,
+          relevance_reason, link_level_status, created_at, updated_at
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+        """,
+        (
+            f"jpc_{contact_id}",
+            job_posting_id,
+            contact_id,
+            recipient_type,
+            "seeded review-ready contact",
+            "identified",
+            timestamp,
+            timestamp,
+        ),
+    )
+    connection.commit()
 
 
 def prepare_real_tailoring_run(tmp_path, *, jd_body: str):
@@ -810,6 +870,296 @@ def test_finalize_tailoring_run_applies_payload_compiles_pdf_and_updates_status(
             RESUME_REVIEW_STATUS_PENDING,
         ),
     }
+
+
+def test_mandatory_agent_review_approval_moves_posting_to_requires_contacts(tmp_path):
+    _, paths, connection, bootstrap_result = prepare_real_tailoring_run(
+        tmp_path,
+        jd_body=(
+            "# JD\n"
+            "Requirements\n"
+            "- 3+ years of software engineering experience.\n"
+            "- Build distributed data services in Python and Apache Spark on AWS.\n"
+            "- Own monitoring and reliability for production pipelines.\n"
+        ),
+    )
+    generate_tailoring_intelligence(
+        connection,
+        paths,
+        job_posting_id="jp_test",
+        timestamp="2026-04-06T20:10:00Z",
+    )
+    finalize_tailoring_run(
+        connection,
+        paths,
+        job_posting_id="jp_test",
+        timestamp="2026-04-06T20:20:00Z",
+    )
+
+    review_result = record_tailoring_review_decision(
+        connection,
+        paths,
+        job_posting_id="jp_test",
+        decision_type=RESUME_REVIEW_STATUS_APPROVED,
+        decision_notes="Agent approved the tailored resume for downstream discovery.",
+        reviewer_type=MANDATORY_REVIEWER_AGENT,
+        timestamp="2026-04-06T20:25:00Z",
+    )
+
+    assert review_result.run.resume_tailoring_run_id == bootstrap_result.run.resume_tailoring_run_id
+    assert review_result.run.resume_review_status == RESUME_REVIEW_STATUS_APPROVED
+    assert review_result.posting_status == JOB_POSTING_STATUS_REQUIRES_CONTACTS
+    review_payload = yaml.safe_load(
+        review_result.review_artifact.location.absolute_path.read_text(encoding="utf-8")
+    )
+    assert review_payload["reviewer_type"] == MANDATORY_REVIEWER_AGENT
+    assert review_payload["decision_type"] == RESUME_REVIEW_STATUS_APPROVED
+    assert review_payload["outreach_handoff"]["ready_for_outreach"] is False
+    assert review_payload["new_posting_status"] == JOB_POSTING_STATUS_REQUIRES_CONTACTS
+
+    stored_posting = connection.execute(
+        "SELECT posting_status FROM job_postings WHERE job_posting_id = ?",
+        ("jp_test",),
+    ).fetchone()
+    assert stored_posting["posting_status"] == JOB_POSTING_STATUS_REQUIRES_CONTACTS
+
+    meta_payload = yaml.safe_load(
+        paths.tailoring_meta_path("Acme Data Systems", "Software Engineer").read_text(
+            encoding="utf-8"
+        )
+    )
+    assert meta_payload["resume_review_status"] == RESUME_REVIEW_STATUS_APPROVED
+    assert meta_payload["review_gate"]["latest_decision_type"] == RESUME_REVIEW_STATUS_APPROVED
+
+    artifact_rows = connection.execute(
+        """
+        SELECT artifact_type
+        FROM artifact_records
+        WHERE job_posting_id = ?
+          AND artifact_type = ?
+        """,
+        ("jp_test", TAILORING_REVIEW_ARTIFACT_TYPE),
+    ).fetchall()
+    assert len(artifact_rows) == 1
+
+    transitions = connection.execute(
+        """
+        SELECT object_type, stage, previous_state, new_state
+        FROM state_transition_events
+        WHERE job_posting_id = ?
+        ORDER BY transition_timestamp ASC, state_transition_event_id ASC
+        """,
+        ("jp_test",),
+    ).fetchall()
+    assert {
+        (row["object_type"], row["stage"], row["previous_state"], row["new_state"])
+        for row in transitions
+    } >= {
+        (
+            "resume_tailoring_runs",
+            "resume_review_status",
+            RESUME_REVIEW_STATUS_PENDING,
+            RESUME_REVIEW_STATUS_APPROVED,
+        ),
+        (
+            "job_postings",
+            "posting_status",
+            JOB_POSTING_STATUS_RESUME_REVIEW_PENDING,
+            JOB_POSTING_STATUS_REQUIRES_CONTACTS,
+        ),
+    }
+
+
+def test_mandatory_agent_review_can_move_directly_to_ready_for_outreach(tmp_path):
+    _, paths, connection, _ = prepare_real_tailoring_run(
+        tmp_path,
+        jd_body=(
+            "# JD\n"
+            "Requirements\n"
+            "- 3+ years of software engineering experience.\n"
+            "- Build distributed data services in Python and Apache Spark on AWS.\n"
+            "- Own monitoring and reliability for production pipelines.\n"
+        ),
+    )
+    generate_tailoring_intelligence(
+        connection,
+        paths,
+        job_posting_id="jp_test",
+        timestamp="2026-04-06T20:10:00Z",
+    )
+    finalize_tailoring_run(
+        connection,
+        paths,
+        job_posting_id="jp_test",
+        timestamp="2026-04-06T20:20:00Z",
+    )
+    seed_linked_contact(
+        connection,
+        job_posting_id="jp_test",
+        contact_id="ct_ready",
+        recipient_type="recruiter",
+        current_working_email="jordan@example.com",
+        timestamp="2026-04-06T20:22:00Z",
+    )
+
+    review_result = record_tailoring_review_decision(
+        connection,
+        paths,
+        job_posting_id="jp_test",
+        decision_type=RESUME_REVIEW_STATUS_APPROVED,
+        reviewer_type=MANDATORY_REVIEWER_AGENT,
+        timestamp="2026-04-06T20:25:00Z",
+    )
+
+    assert review_result.posting_status == JOB_POSTING_STATUS_READY_FOR_OUTREACH
+    review_payload = yaml.safe_load(
+        review_result.review_artifact.location.absolute_path.read_text(encoding="utf-8")
+    )
+    assert review_payload["outreach_handoff"] == {
+        "posting_status_after_review": JOB_POSTING_STATUS_READY_FOR_OUTREACH,
+        "ready_for_outreach": True,
+        "selected_tier": "primary",
+        "selected_recipient_types": ["hiring_manager", "recruiter", "founder"],
+        "linked_contacts_in_selected_tier": 1,
+        "linked_contacts_with_usable_email": 1,
+    }
+
+
+def test_review_override_records_prior_decision_context_and_applies_new_status(tmp_path):
+    _, paths, connection, bootstrap_result = prepare_real_tailoring_run(
+        tmp_path,
+        jd_body=(
+            "# JD\n"
+            "Requirements\n"
+            "- 3+ years of software engineering experience.\n"
+            "- Build distributed data services in Python and Apache Spark on AWS.\n"
+            "- Own monitoring and reliability for production pipelines.\n"
+        ),
+    )
+    generate_tailoring_intelligence(
+        connection,
+        paths,
+        job_posting_id="jp_test",
+        timestamp="2026-04-06T20:10:00Z",
+    )
+    finalize_tailoring_run(
+        connection,
+        paths,
+        job_posting_id="jp_test",
+        timestamp="2026-04-06T20:20:00Z",
+    )
+    rejected = record_tailoring_review_decision(
+        connection,
+        paths,
+        job_posting_id="jp_test",
+        decision_type=RESUME_REVIEW_STATUS_REJECTED,
+        decision_notes="Agent rejected the output because the summary framing needs revision.",
+        reviewer_type=MANDATORY_REVIEWER_AGENT,
+        timestamp="2026-04-06T20:25:00Z",
+    )
+
+    override_result = record_tailoring_review_override(
+        connection,
+        paths,
+        job_posting_id="jp_test",
+        decision_type=RESUME_REVIEW_STATUS_APPROVED,
+        override_reason="Owner approved the tailored output for contact discovery.",
+        override_by=MANDATORY_REVIEWER_OWNER,
+        timestamp="2026-04-06T20:30:00Z",
+    )
+
+    assert override_result.run.resume_tailoring_run_id == bootstrap_result.run.resume_tailoring_run_id
+    assert override_result.run.resume_review_status == RESUME_REVIEW_STATUS_APPROVED
+    assert override_result.posting_status == JOB_POSTING_STATUS_REQUIRES_CONTACTS
+    assert override_result.override_event is not None
+    assert override_result.override_event.override_reason == (
+        "Owner approved the tailored output for contact discovery."
+    )
+    previous_value = yaml.safe_load(override_result.review_artifact.location.absolute_path.read_text(encoding="utf-8"))
+    assert previous_value["previous_decision_context"] == {
+        "decision_type": RESUME_REVIEW_STATUS_REJECTED,
+        "reviewer_type": MANDATORY_REVIEWER_AGENT,
+        "reviewed_at": "2026-04-06T20:25:00Z",
+        "artifact_path": rejected.review_artifact.location.relative_path,
+        "override_event_id": None,
+    }
+
+    stored_override = connection.execute(
+        """
+        SELECT previous_value, new_value, override_reason, override_timestamp
+        FROM override_events
+        WHERE override_event_id = ?
+        """,
+        (override_result.override_event.override_event_id,),
+    ).fetchone()
+    assert stored_override["override_reason"] == "Owner approved the tailored output for contact discovery."
+    assert stored_override["override_timestamp"] == "2026-04-06T20:30:00Z"
+    previous_payload = yaml.safe_load(stored_override["previous_value"])
+    new_payload = yaml.safe_load(stored_override["new_value"])
+    assert previous_payload["decision_context"]["decision_type"] == RESUME_REVIEW_STATUS_REJECTED
+    assert new_payload["resume_review_status"] == RESUME_REVIEW_STATUS_APPROVED
+    assert new_payload["posting_status"] == JOB_POSTING_STATUS_REQUIRES_CONTACTS
+
+
+def test_retailoring_after_review_rejection_creates_new_run_and_snapshots_history(tmp_path):
+    _, paths, connection, bootstrap_result = prepare_real_tailoring_run(
+        tmp_path,
+        jd_body=(
+            "# JD\n"
+            "Requirements\n"
+            "- 3+ years of software engineering experience.\n"
+            "- Build distributed data services in Python and Apache Spark on AWS.\n"
+            "- Own monitoring and reliability for production pipelines.\n"
+        ),
+    )
+    generate_tailoring_intelligence(
+        connection,
+        paths,
+        job_posting_id="jp_test",
+        timestamp="2026-04-06T20:10:00Z",
+    )
+    finalize_tailoring_run(
+        connection,
+        paths,
+        job_posting_id="jp_test",
+        timestamp="2026-04-06T20:20:00Z",
+    )
+    record_tailoring_review_decision(
+        connection,
+        paths,
+        job_posting_id="jp_test",
+        decision_type=RESUME_REVIEW_STATUS_REJECTED,
+        reviewer_type=MANDATORY_REVIEWER_AGENT,
+        timestamp="2026-04-06T20:25:00Z",
+    )
+
+    second_bootstrap = bootstrap_tailoring_run(
+        connection,
+        paths,
+        job_posting_id="jp_test",
+        timestamp="2026-04-06T20:35:00Z",
+    )
+
+    assert second_bootstrap.run is not None
+    assert second_bootstrap.run.resume_tailoring_run_id != bootstrap_result.run.resume_tailoring_run_id
+    assert second_bootstrap.reused_existing_run is False
+    run_rows = connection.execute(
+        """
+        SELECT resume_tailoring_run_id, workspace_path, meta_yaml_path, final_resume_path
+        FROM resume_tailoring_runs
+        WHERE job_posting_id = ?
+        ORDER BY created_at ASC, resume_tailoring_run_id ASC
+        """,
+        ("jp_test",),
+    ).fetchall()
+    assert len(run_rows) == 2
+    original_row = dict(run_rows[0])
+    assert original_row["resume_tailoring_run_id"] == bootstrap_result.run.resume_tailoring_run_id
+    assert original_row["workspace_path"].startswith("resume-tailoring/output/history/")
+    assert original_row["meta_yaml_path"].startswith("resume-tailoring/output/history/")
+    assert original_row["final_resume_path"].startswith("resume-tailoring/output/history/")
+    assert paths.resolve_from_root(original_row["meta_yaml_path"]).exists()
+    assert paths.resolve_from_root(original_row["final_resume_path"]).exists()
 
 
 def test_finalize_rejects_out_of_scope_resume_changes_before_compile(tmp_path):

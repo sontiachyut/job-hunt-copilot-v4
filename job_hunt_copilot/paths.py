@@ -282,6 +282,29 @@ class ProjectPaths:
             / workspace_slug(role_title)
         )
 
+    def tailoring_history_dir(self, company_name: str, role_title: str) -> Path:
+        return (
+            self.project_root
+            / "resume-tailoring"
+            / "output"
+            / "history"
+            / workspace_slug(company_name)
+            / workspace_slug(role_title)
+        )
+
+    def tailoring_run_snapshot_dir(
+        self,
+        company_name: str,
+        role_title: str,
+        resume_tailoring_run_id: str,
+        snapshot_slug: str,
+    ) -> Path:
+        return (
+            self.tailoring_history_dir(company_name, role_title)
+            / resume_tailoring_run_id
+            / snapshot_slug
+        )
+
     def tailoring_meta_path(self, company_name: str, role_title: str) -> Path:
         return self.tailoring_workspace_dir(company_name, role_title) / "meta.yaml"
 
@@ -332,6 +355,33 @@ class ProjectPaths:
 
     def tailoring_prompts_dir(self, company_name: str, role_title: str) -> Path:
         return self.tailoring_intelligence_dir(company_name, role_title) / "prompts"
+
+    def tailoring_review_dir(self, company_name: str, role_title: str) -> Path:
+        return self.tailoring_workspace_dir(company_name, role_title) / "review"
+
+    def tailoring_review_run_dir(
+        self,
+        company_name: str,
+        role_title: str,
+        resume_tailoring_run_id: str,
+    ) -> Path:
+        return self.tailoring_review_dir(company_name, role_title) / resume_tailoring_run_id
+
+    def tailoring_review_decision_path(
+        self,
+        company_name: str,
+        role_title: str,
+        resume_tailoring_run_id: str,
+        decision_slug: str,
+    ) -> Path:
+        return (
+            self.tailoring_review_run_dir(
+                company_name,
+                role_title,
+                resume_tailoring_run_id,
+            )
+            / f"{decision_slug}.yaml"
+        )
 
     def discovery_workspace_dir(self, company_name: str, role_title: str) -> Path:
         return (

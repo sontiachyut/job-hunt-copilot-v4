@@ -18,7 +18,7 @@ global_status:
     - BA-03 is now complete in code: runtime-pack materialization, local launchd/start-stop-cycle helpers, and the direct `jhc-chat` operator entrypoint now exist for the macOS runtime surface.
     - BA-04 is now complete in code: the repo has a bounded `linkedin_scraping` ingestion path that reads `paste/paste.txt` or browser-style capture bundles, creates canonical lead workspaces, persists `capture-bundle.json`, copies or assembles `raw/source.md`, derives deterministic manual split artifacts, materializes canonical manual postings and poster links, publishes `resume_tailoring`-ready lead manifests, and refreshes existing manual leads in place while snapshotting prior source or review artifacts under each lead-local `history/` directory.
     - BA-05 is now complete in code: the Gmail intake path now persists collected-email units before fan-out, dedupes by `job_id` or normalized LinkedIn job URL fallback, creates autonomous lead workspaces from parsed cards, merges multi-source JD candidates into canonical `jd.md` with LinkedIn conflict precedence, and records honest `incomplete`, review-blocked, or `blocked_no_jd` lead state with queryable provenance.
-    - BA-06 is now in progress: job_hunt_copilot.resume_tailoring can evaluate posting-linked hard eligibility from persisted jd.md, create or reuse the active resume_tailoring_runs row, materialize the per-posting tailoring workspace, generate deterministic Step 3 through Step 7 artifacts, apply the selected Step 6 payload through finalize with scope enforcement, compile `Achyutaram Sonti.pdf`, verify one-page output, and transition successful runs or postings into the mandatory `resume_review_pending` gate.
+    - BA-06 is now complete in code: job_hunt_copilot.resume_tailoring now covers posting-linked hard eligibility, workspace bootstrap, deterministic Step 3 through Step 7 artifacts, finalize plus one-page verification, persisted mandatory review decisions, direct posting handoff into `requires_contacts` or `ready_for_outreach`, owner override lineage in `override_events`, and snapshot-backed retailoring history across multiple runs.
     - "`jhc-chat` now records canonical begin/end state, pauses autonomous work on open, resumes on clean explicit close when chat caused the pause, and leaves unexpected-exit pauses intact for later explicit resume or future idle-timeout handling."
     - Host-side `launchctl bootstrap` success still needs follow-up validation outside the current sandboxed session even though the plist, wrapper wiring, and failed-start rollback all validate locally.
   execution_principles:
@@ -501,7 +501,7 @@ epics:
 
   - id: BA-06
     name: Resume tailoring runtime
-    status: in_progress
+    status: completed
     owner_role: tailoring-engineer
     phase: P3
     dependencies:
@@ -523,6 +523,7 @@ epics:
       - BA-06-S2 is complete: eligible postings now materialize their tailoring workspace under `resume-tailoring/output/tailored/{company}/{role}/` with `meta.yaml`, mirrored `jd.md`, optional mirrored `post.md` / `poster-profile.md`, `resume.tex`, `scope-baseline.resume.tex`, component-local input mirrors, and Step 3 through Step 7 intelligence scaffold artifacts.
       - Workspace bootstrap remains DB-first by `job_posting_id` plus persisted `jd.md`, publishes `meta.yaml` through the shared artifact-contract envelope, backfills older run rows that predate workspace files, and preserves existing workspace edits when the active run is merely being reused.
       - BA-06-S3 is complete: the tailoring runtime now replaces those scaffold files with deterministic Step 3 through Step 7 artifacts, maps JD signals to master-profile evidence honestly, applies the Step 6 payload only inside the allowed tailoring boundary, compiles `Achyutaram Sonti.pdf`, verifies one-page output, and transitions successful runs plus postings into `resume_review_pending`.
+      - BA-06-S4 is complete: the tailoring runtime now persists mandatory review decisions under `resume-tailoring/output/tailored/{company}/{role}/review/{resume_tailoring_run_id}/`, transitions `resume_review_pending` runs into `approved` or `rejected`, advances approved postings into `requires_contacts` or `ready_for_outreach`, records owner overrides with prior-decision context in `override_events`, and snapshots completed run workspaces before retailoring so prior rows keep immutable history references.
     near_term_slices:
       - id: BA-06-S1
         name: Eligibility and tailoring-run lifecycle
@@ -579,13 +580,21 @@ epics:
       - id: BA-06-S4
         name: Mandatory agent review and override handling
         owner_role: tailoring-engineer
-        status: pending
+        status: completed
         dependencies:
           - BA-06-S3
         deliverables:
           - "`resume_review_pending` to `approved` review transition"
           - retailoring history preservation across multiple runs
           - override persistence with prior-decision context and timestamps
+        completed_notes:
+          - Extended `job_hunt_copilot.resume_tailoring` with persisted mandatory review decision helpers that move finalized runs from `resume_review_pending` into `approved` or `rejected`, publish per-run review artifacts, and republish `meta.yaml` with the latest review-gate context.
+          - Approved review decisions now evaluate the current posting-contact plus working-email prerequisites and move postings directly into `requires_contacts` or `ready_for_outreach`, while rejection returns the posting to `tailoring_in_progress` for the next bounded retailoring attempt.
+          - Owner override handling now records prior-decision context, override reason, and timestamp in canonical `override_events`, and bootstrap snapshots completed run workspaces into `resume-tailoring/output/history/` before creating a new run so previous history rows keep immutable workspace, meta, and PDF references.
+        validation:
+          - "`python3.11 -m py_compile job_hunt_copilot/resume_tailoring.py job_hunt_copilot/paths.py tests/test_resume_tailoring.py`"
+          - "`python3.11 -m pytest tests/test_resume_tailoring.py`"
+          - "`python3.11 -m pytest`"
 
   - id: BA-07
     name: People search and discovery
@@ -790,18 +799,16 @@ epics:
           - final readiness notes for recruiter- or manager-facing repo surfaces
 
 current_focus:
-  epic_id: BA-06
-  slice_id: BA-06-S4
-  owner_role: tailoring-engineer
-  reason: Structured tailoring artifacts, finalize, compile, one-page verification, and `resume_review_pending` handoff now exist, so the next highest-value dependency is persisting the mandatory tailoring review decision and any override lineage before outreach can trust approved resume state.
+  epic_id: BA-07
+  slice_id: BA-07-S1
+  owner_role: outreach-engineer
+  reason: BA-06 now lands the agent-approved tailoring boundary and DB-first handoff state, so the next highest-value dependency is Apollo-first company-scoped search plus shortlist materialization for `requires_contacts` postings.
   exit_criteria:
-    - the active tailoring run can transition from `resume_review_pending` to `approved` or `rejected` through a persisted mandatory agent-review action
-    - rejection or later retailoring preserves prior run history instead of overwriting the existing `resume_tailoring_runs` row
-    - override or review-decision lineage is queryable with timestamps and prior-decision context
+    - company-scoped people search can bootstrap from agent-approved `requires_contacts` postings by `job_posting_id`
+    - broad search results and shortlisted canonical contacts persist without inventing downstream enrichment or send behavior
+    - recipient typing and posting-contact linkage stay compatible with the current outreach-ready state model
 
 focus_order:
-  - epic_id: BA-06
-    why_now: Tailoring depends on canonical postings and must be in place before outreach can begin.
   - epic_id: BA-07
     why_now: Search, enrichment, and discovery depend on approved tailoring state and canonical contact relationships.
   - epic_id: BA-08
@@ -810,6 +817,8 @@ focus_order:
     why_now: Feedback and review queries depend on canonical messages, supervisor review packets, and downstream state history.
   - epic_id: BA-10
     why_now: Hardening is most effective after the main component boundaries and artifacts exist.
+  - epic_id: BA-06
+    why_now: Tailoring is functionally complete in code, but later hardening or cross-epic fixes may still revisit it if validation exposes gaps.
 
 known_blockers:
   - blocker_id: BUILD-CLI-001

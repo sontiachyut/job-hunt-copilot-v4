@@ -170,3 +170,11 @@ Suggested format per session:
 - key files changed: job_hunt_copilot/resume_tailoring.py; tests/test_resume_tailoring.py; README.md; docs/ARCHITECTURE.md; build-agent/state/build-board.yaml; build-agent/state/build-journal.md; build-agent/state/codex-progress.txt; build-agent/state/IMPLEMENTATION_PLAN.md
 - validation summary: `python3.11 -m py_compile job_hunt_copilot/resume_tailoring.py tests/test_resume_tailoring.py` passed; `python3.11 -m pytest tests/test_resume_tailoring.py` passed (10 tests); full `python3.11 -m pytest` passed (66 tests); the tailoring runtime now generates deterministic Step 3 through Step 7 artifacts from persisted `jd.md` plus the master profile, enforces scope against `scope-baseline.resume.tex`, compiles `Achyutaram Sonti.pdf`, verifies one-page output, and moves successful runs plus postings into `resume_review_pending`
 - next recommended slice: BA-06-S4 Mandatory agent review and override handling
+
+- 2026-04-06 20:27:27 MST
+- role owner: tailoring-engineer
+- slice attempted: BA-06-S4 Mandatory agent review and override handling
+- result: done
+- key files changed: job_hunt_copilot/resume_tailoring.py; job_hunt_copilot/paths.py; tests/test_resume_tailoring.py; README.md; docs/ARCHITECTURE.md; build-agent/state/build-board.yaml; build-agent/state/build-journal.md; build-agent/state/codex-progress.txt; build-agent/state/IMPLEMENTATION_PLAN.md
+- validation summary: `python3.11 -m py_compile job_hunt_copilot/resume_tailoring.py job_hunt_copilot/paths.py tests/test_resume_tailoring.py` passed; `python3.11 -m pytest tests/test_resume_tailoring.py` passed (14 tests); full `python3.11 -m pytest` passed (70 tests); the tailoring runtime now persists mandatory review decisions, advances approved postings into `requires_contacts` or `ready_for_outreach`, records owner override lineage with prior-decision context, and snapshots completed run workspaces before retailoring so prior run rows keep immutable history references
+- next recommended slice: BA-07-S1 Apollo search and shortlist materialization

@@ -20,11 +20,13 @@ from .artifacts import (
 )
 from .paths import ProjectPaths
 from .records import lifecycle_timestamps, new_canonical_id, now_utc_iso
+from .supervisor import OverrideEventRecord, record_override_event
 
 
 RESUME_TAILORING_COMPONENT = "resume_tailoring"
 TAILORING_ELIGIBILITY_ARTIFACT_TYPE = "tailoring_eligibility"
 TAILORING_META_ARTIFACT_TYPE = "tailoring_meta"
+TAILORING_REVIEW_ARTIFACT_TYPE = "tailoring_review_decision"
 
 ELIGIBILITY_STATUS_ELIGIBLE = "eligible"
 ELIGIBILITY_STATUS_SOFT_FLAG = "soft-flag"
@@ -60,6 +62,8 @@ RESUME_REVIEW_STATUSES = frozenset(
 JOB_POSTING_STATUS_HARD_INELIGIBLE = "hard_ineligible"
 JOB_POSTING_STATUS_TAILORING_IN_PROGRESS = "tailoring_in_progress"
 JOB_POSTING_STATUS_RESUME_REVIEW_PENDING = "resume_review_pending"
+JOB_POSTING_STATUS_REQUIRES_CONTACTS = "requires_contacts"
+JOB_POSTING_STATUS_READY_FOR_OUTREACH = "ready_for_outreach"
 
 INTELLIGENCE_STATUS_GENERATED = "generated"
 VERIFICATION_OUTCOME_PASS = "pass"
@@ -74,6 +78,23 @@ FINALIZE_REASON_SCOPE_VIOLATION = "scope_violation"
 FINALIZE_REASON_VERIFICATION_BLOCKED = "verification_blocked"
 FINALIZE_REASON_COMPILE_FAILED = "compile_failed"
 FINALIZE_REASON_PAGE_BUDGET = "page_budget_exceeded"
+TAILORING_REVIEW_REASON_REJECTED = "review_rejected"
+TAILORING_REVIEW_REASON_OVERRIDE_APPLIED = "review_override_applied"
+
+MANDATORY_REVIEWER_AGENT = "agent"
+MANDATORY_REVIEWER_OWNER = "owner"
+REVIEWER_TYPES = frozenset({MANDATORY_REVIEWER_AGENT, MANDATORY_REVIEWER_OWNER})
+TAILORING_REVIEW_DECISION_TYPES = frozenset(
+    {
+        RESUME_REVIEW_STATUS_APPROVED,
+        RESUME_REVIEW_STATUS_REJECTED,
+    }
+)
+OUTREACH_READY_PRIORITY_TIERS: tuple[tuple[str, tuple[str, ...]], ...] = (
+    ("primary", ("hiring_manager", "recruiter", "founder")),
+    ("engineer_fallback", ("engineer",)),
+    ("internal_fallback", ("alumni", "other_internal")),
+)
 
 DEFAULT_SECTION_LOCKS = (
     "education",
@@ -474,6 +495,20 @@ class TailoringFinalizeResult:
 
 
 @dataclass(frozen=True)
+class TailoringReviewResult:
+    job_posting_id: str
+    resume_tailoring_run_id: str
+    reviewer_type: str
+    decision_type: str
+    result: str
+    reason_code: str | None
+    run: ResumeTailoringRunRecord
+    posting_status: str
+    review_artifact: PublishedArtifact
+    override_event: OverrideEventRecord | None = None
+
+
+@dataclass(frozen=True)
 class ParsedResumeDocument:
     summary: str
     technical_skills: list[dict[str, Any]]
@@ -561,11 +596,19 @@ def bootstrap_tailoring_run(
             connection,
             posting_row["job_posting_id"],
         )
-        if existing_run is not None:
+        if existing_run is not None and not _run_requires_fresh_tailoring_attempt(existing_run):
             run = existing_run
             reused_existing_run = True
             base_used = existing_run.base_used
         else:
+            if existing_run is not None:
+                existing_run = _snapshot_completed_run_workspace(
+                    connection,
+                    paths,
+                    posting_row=posting_row,
+                    run=existing_run,
+                    current_time=current_time,
+                )
             selected_base = _select_base_resume_track(
                 paths,
                 role_title=posting_row["role_title"],
@@ -1330,6 +1373,12 @@ def _publish_tailoring_meta_artifact(
         role_title,
     ).resolve()
     final_resume_path = _resolve_optional_project_path(paths, run.final_resume_path)
+    latest_review_contract = _load_latest_tailoring_review_contract(
+        connection,
+        paths,
+        posting_row=posting_row,
+        run=run,
+    )
     payload = {
         "resume_tailoring_run_id": run.resume_tailoring_run_id,
         "base_used": run.base_used,
@@ -1354,6 +1403,45 @@ def _publish_tailoring_meta_artifact(
         "resume_artifacts": {
             "tex_path": str(paths.tailoring_resume_tex_path(company_name, role_title).resolve()),
             "pdf_path": str(final_resume_path.resolve()) if final_resume_path is not None else None,
+        },
+        "review_gate": {
+            "history_dir": str(
+                paths.tailoring_review_run_dir(
+                    company_name,
+                    role_title,
+                    run.resume_tailoring_run_id,
+                ).resolve()
+            ),
+            "latest_decision_type": (
+                latest_review_contract.get("decision_type")
+                if latest_review_contract is not None
+                else None
+            ),
+            "latest_reviewer_type": (
+                latest_review_contract.get("reviewer_type")
+                if latest_review_contract is not None
+                else None
+            ),
+            "latest_reviewed_at": (
+                latest_review_contract.get("reviewed_at")
+                if latest_review_contract is not None
+                else None
+            ),
+            "latest_decision_path": (
+                str(
+                    paths.resolve_from_root(
+                        str(latest_review_contract["artifact_path"])
+                    ).resolve()
+                )
+                if latest_review_contract is not None
+                and latest_review_contract.get("artifact_path")
+                else None
+            ),
+            "override_event_id": (
+                latest_review_contract.get("override_event_id")
+                if latest_review_contract is not None
+                else None
+            ),
         },
         "send_linkage": {
             "outreach_mode": "role_targeted",
@@ -1499,6 +1587,472 @@ def _record_state_transition(
             None,
         ),
     )
+
+
+def _run_requires_fresh_tailoring_attempt(run: ResumeTailoringRunRecord) -> bool:
+    return run.resume_review_status in {
+        RESUME_REVIEW_STATUS_APPROVED,
+        RESUME_REVIEW_STATUS_REJECTED,
+    }
+
+
+def _snapshot_completed_run_workspace(
+    connection: sqlite3.Connection,
+    paths: ProjectPaths,
+    *,
+    posting_row: Mapping[str, Any],
+    run: ResumeTailoringRunRecord,
+    current_time: str,
+) -> ResumeTailoringRunRecord:
+    if not _run_requires_fresh_tailoring_attempt(run):
+        return run
+
+    company_name = str(posting_row["company_name"])
+    role_title = str(posting_row["role_title"])
+    live_workspace_dir = paths.tailoring_workspace_dir(company_name, role_title)
+    if not live_workspace_dir.exists():
+        return run
+
+    snapshot_dir = paths.tailoring_run_snapshot_dir(
+        company_name,
+        role_title,
+        run.resume_tailoring_run_id,
+        _timestamp_slug(current_time),
+    )
+    snapshot_dir.parent.mkdir(parents=True, exist_ok=True)
+    shutil.copytree(live_workspace_dir, snapshot_dir)
+    _rewrite_snapshot_meta_paths(
+        snapshot_dir=snapshot_dir,
+        live_workspace_dir=live_workspace_dir,
+    )
+
+    snapshot_workspace_ref = paths.relative_to_root(snapshot_dir).as_posix()
+    snapshot_meta_path = snapshot_dir / "meta.yaml"
+    snapshot_meta_ref = (
+        paths.relative_to_root(snapshot_meta_path).as_posix()
+        if snapshot_meta_path.exists()
+        else run.meta_yaml_path
+    )
+    snapshot_final_resume_ref = _snapshot_workspace_reference(
+        paths,
+        live_workspace_dir=live_workspace_dir,
+        snapshot_dir=snapshot_dir,
+        original_ref=run.final_resume_path,
+    )
+
+    with connection:
+        connection.execute(
+            """
+            UPDATE resume_tailoring_runs
+            SET workspace_path = ?, meta_yaml_path = ?, final_resume_path = ?, updated_at = ?
+            WHERE resume_tailoring_run_id = ?
+            """,
+            (
+                snapshot_workspace_ref,
+                snapshot_meta_ref,
+                snapshot_final_resume_ref,
+                current_time,
+                run.resume_tailoring_run_id,
+            ),
+        )
+    refreshed_run = get_resume_tailoring_run(connection, run.resume_tailoring_run_id)
+    if refreshed_run is None:
+        raise ResumeTailoringError(
+            f"Failed to reload resume_tailoring_run `{run.resume_tailoring_run_id}` after snapshotting."
+        )
+    return refreshed_run
+
+
+def _rewrite_snapshot_meta_paths(
+    *,
+    snapshot_dir: Path,
+    live_workspace_dir: Path,
+) -> None:
+    snapshot_meta_path = snapshot_dir / "meta.yaml"
+    if not snapshot_meta_path.exists():
+        return
+
+    payload = yaml.safe_load(snapshot_meta_path.read_text(encoding="utf-8")) or {}
+
+    def remap(value: Any) -> str | None:
+        if value is None:
+            return None
+        text = str(value).strip()
+        if not text:
+            return None
+        path = Path(text).resolve()
+        try:
+            relative = path.relative_to(live_workspace_dir.resolve())
+        except ValueError:
+            return text
+        return str((snapshot_dir / relative).resolve())
+
+    payload["workspace_path"] = str(snapshot_dir.resolve())
+    payload["context_file"] = remap(payload.get("context_file"))
+    context_files = dict(payload.get("context_files") or {})
+    for key in ("jd", "post", "poster_profile"):
+        context_files[key] = remap(context_files.get(key))
+    payload["context_files"] = context_files
+    payload["scope_baseline_file"] = remap(payload.get("scope_baseline_file"))
+    resume_artifacts = dict(payload.get("resume_artifacts") or {})
+    resume_artifacts["tex_path"] = remap(resume_artifacts.get("tex_path"))
+    resume_artifacts["pdf_path"] = remap(resume_artifacts.get("pdf_path"))
+    payload["resume_artifacts"] = resume_artifacts
+    review_gate = dict(payload.get("review_gate") or {})
+    review_gate["history_dir"] = remap(review_gate.get("history_dir"))
+    review_gate["latest_decision_path"] = remap(review_gate.get("latest_decision_path"))
+    payload["review_gate"] = review_gate
+
+    snapshot_meta_path.write_text(yaml.safe_dump(payload, sort_keys=False), encoding="utf-8")
+
+
+def _snapshot_workspace_reference(
+    paths: ProjectPaths,
+    *,
+    live_workspace_dir: Path,
+    snapshot_dir: Path,
+    original_ref: str | None,
+) -> str | None:
+    original_path = _resolve_optional_project_path(paths, original_ref)
+    if original_path is None:
+        return None
+    try:
+        relative = original_path.resolve().relative_to(live_workspace_dir.resolve())
+    except ValueError:
+        return original_ref
+    snapshot_path = snapshot_dir / relative
+    if not snapshot_path.exists():
+        return None
+    return paths.relative_to_root(snapshot_path).as_posix()
+
+
+def _timestamp_slug(value: str) -> str:
+    return re.sub(r"[^0-9A-Za-z]+", "", value)
+
+
+def _load_latest_tailoring_review_contract(
+    connection: sqlite3.Connection,
+    paths: ProjectPaths,
+    *,
+    posting_row: Mapping[str, Any],
+    run: ResumeTailoringRunRecord,
+) -> dict[str, Any] | None:
+    review_dir_ref = paths.relative_to_root(
+        paths.tailoring_review_run_dir(
+            str(posting_row["company_name"]),
+            str(posting_row["role_title"]),
+            run.resume_tailoring_run_id,
+        )
+    ).as_posix()
+    row = connection.execute(
+        """
+        SELECT file_path
+        FROM artifact_records
+        WHERE artifact_type = ?
+          AND job_posting_id = ?
+          AND file_path LIKE ?
+        ORDER BY created_at DESC, artifact_id DESC
+        LIMIT 1
+        """,
+        (
+            TAILORING_REVIEW_ARTIFACT_TYPE,
+            posting_row["job_posting_id"],
+            f"{review_dir_ref}/%",
+        ),
+    ).fetchone()
+    if row is None:
+        return None
+
+    artifact_path = paths.resolve_from_root(str(row["file_path"]))
+    if not artifact_path.exists():
+        return None
+    contract = yaml.safe_load(artifact_path.read_text(encoding="utf-8")) or {}
+    contract["artifact_path"] = str(row["file_path"])
+    return contract
+
+
+def _current_review_decision_context(
+    connection: sqlite3.Connection,
+    paths: ProjectPaths,
+    *,
+    posting_row: Mapping[str, Any],
+    run: ResumeTailoringRunRecord,
+) -> dict[str, Any]:
+    latest_contract = _load_latest_tailoring_review_contract(
+        connection,
+        paths,
+        posting_row=posting_row,
+        run=run,
+    )
+    if latest_contract is not None:
+        return {
+            "decision_type": latest_contract.get("decision_type"),
+            "reviewer_type": latest_contract.get("reviewer_type"),
+            "reviewed_at": latest_contract.get("reviewed_at"),
+            "artifact_path": latest_contract.get("artifact_path"),
+            "override_event_id": latest_contract.get("override_event_id"),
+        }
+    return {
+        "decision_type": (
+            run.resume_review_status
+            if run.resume_review_status in TAILORING_REVIEW_DECISION_TYPES
+            else None
+        ),
+        "reviewer_type": None,
+        "reviewed_at": None,
+        "artifact_path": None,
+        "override_event_id": None,
+    }
+
+
+def _evaluate_post_review_outreach_handoff(
+    connection: sqlite3.Connection,
+    job_posting_id: str,
+) -> dict[str, Any]:
+    rows = connection.execute(
+        """
+        SELECT jpc.recipient_type, jpc.link_level_status, c.current_working_email
+        FROM job_posting_contacts jpc
+        JOIN contacts c
+          ON c.contact_id = jpc.contact_id
+        WHERE jpc.job_posting_id = ?
+        """,
+        (job_posting_id,),
+    ).fetchall()
+    normalized_rows = [
+        {
+            "recipient_type": str(row["recipient_type"]).strip(),
+            "link_level_status": str(row["link_level_status"]).strip(),
+            "has_usable_email": bool(str(row["current_working_email"] or "").strip()),
+        }
+        for row in rows
+        if str(row["recipient_type"]).strip()
+    ]
+    for tier_name, recipient_types in OUTREACH_READY_PRIORITY_TIERS:
+        tier_rows = [
+            row for row in normalized_rows if row["recipient_type"] in recipient_types
+        ]
+        if not tier_rows:
+            continue
+        usable_email_count = sum(1 for row in tier_rows if row["has_usable_email"])
+        ready_for_outreach = usable_email_count > 0
+        return {
+            "posting_status_after_review": (
+                JOB_POSTING_STATUS_READY_FOR_OUTREACH
+                if ready_for_outreach
+                else JOB_POSTING_STATUS_REQUIRES_CONTACTS
+            ),
+            "ready_for_outreach": ready_for_outreach,
+            "selected_tier": tier_name,
+            "selected_recipient_types": list(recipient_types),
+            "linked_contacts_in_selected_tier": len(tier_rows),
+            "linked_contacts_with_usable_email": usable_email_count,
+        }
+    return {
+        "posting_status_after_review": JOB_POSTING_STATUS_REQUIRES_CONTACTS,
+        "ready_for_outreach": False,
+        "selected_tier": None,
+        "selected_recipient_types": [],
+        "linked_contacts_in_selected_tier": 0,
+        "linked_contacts_with_usable_email": 0,
+    }
+
+
+def _apply_tailoring_review_outcome(
+    connection: sqlite3.Connection,
+    paths: ProjectPaths,
+    *,
+    posting_row: Mapping[str, Any],
+    run: ResumeTailoringRunRecord,
+    decision_type: str,
+    decision_notes: str | None,
+    reviewer_type: str,
+    current_time: str,
+    previous_decision_context: Mapping[str, Any],
+    override_event: OverrideEventRecord | None,
+    handoff: Mapping[str, Any] | None = None,
+) -> TailoringReviewResult:
+    if decision_type == RESUME_REVIEW_STATUS_APPROVED:
+        handoff_details = dict(
+            handoff
+            or _evaluate_post_review_outreach_handoff(connection, run.job_posting_id)
+        )
+        posting_status_after_review = str(handoff_details["posting_status_after_review"])
+        transition_reason = (
+            "Mandatory tailoring review approved the current tailored output and advanced the "
+            "posting to the next DB-first outreach handoff state."
+            if override_event is None
+            else "Owner override approved the current tailored output and advanced the posting."
+        )
+        artifact_result = "success"
+        reason_code = None
+        message = None
+    else:
+        handoff_details = dict(
+            handoff
+            or {
+                "posting_status_after_review": JOB_POSTING_STATUS_TAILORING_IN_PROGRESS,
+                "ready_for_outreach": False,
+                "selected_tier": None,
+                "selected_recipient_types": [],
+                "linked_contacts_in_selected_tier": 0,
+                "linked_contacts_with_usable_email": 0,
+            }
+        )
+        posting_status_after_review = JOB_POSTING_STATUS_TAILORING_IN_PROGRESS
+        handoff_details["posting_status_after_review"] = posting_status_after_review
+        transition_reason = (
+            "Mandatory tailoring review rejected the current tailored output and returned the "
+            "posting to retailoring."
+            if override_event is None
+            else "Owner override rejected the current tailored output and returned the posting to retailoring."
+        )
+        artifact_result = "blocked"
+        reason_code = TAILORING_REVIEW_REASON_REJECTED
+        message = (
+            "Mandatory tailoring review rejected the current tailored output, so downstream "
+            "progression remains blocked until retailoring produces a new approved run."
+            if override_event is None
+            else "Owner override rejected the current tailored output, so downstream progression "
+            "returns to retailoring for a new approved run."
+        )
+
+    updated_run = _update_tailoring_run_state(
+        connection,
+        posting_row=posting_row,
+        run=run,
+        tailoring_status=run.tailoring_status,
+        resume_review_status=decision_type,
+        verification_outcome=run.verification_outcome,
+        current_time=current_time,
+        transition_reason=transition_reason,
+        final_resume_path=run.final_resume_path,
+        completed_at=run.completed_at,
+    )
+    posting_status = _set_job_posting_status(
+        connection,
+        job_posting_id=run.job_posting_id,
+        lead_id=str(posting_row["lead_id"]),
+        previous_status=str(posting_row["posting_status"]),
+        new_status=posting_status_after_review,
+        current_time=current_time,
+        transition_reason=transition_reason,
+    )
+    review_artifact = _publish_tailoring_review_artifact(
+        connection,
+        paths,
+        posting_row=posting_row,
+        run=updated_run,
+        reviewer_type=reviewer_type,
+        decision_type=decision_type,
+        decision_notes=decision_notes,
+        current_time=current_time,
+        previous_posting_status=str(posting_row["posting_status"]),
+        new_posting_status=posting_status,
+        previous_decision_context=previous_decision_context,
+        handoff_details=handoff_details,
+        override_event=override_event,
+        result=artifact_result,
+        reason_code=reason_code,
+        message=message,
+    )
+    posting_row = dict(posting_row)
+    posting_row["posting_status"] = posting_status
+    _publish_tailoring_meta_artifact(
+        connection,
+        paths,
+        posting_row=posting_row,
+        run=updated_run,
+        current_time=current_time,
+    )
+    return TailoringReviewResult(
+        job_posting_id=run.job_posting_id,
+        resume_tailoring_run_id=run.resume_tailoring_run_id,
+        reviewer_type=reviewer_type,
+        decision_type=decision_type,
+        result=artifact_result,
+        reason_code=reason_code,
+        run=updated_run,
+        posting_status=posting_status,
+        review_artifact=review_artifact,
+        override_event=override_event,
+    )
+
+
+def _publish_tailoring_review_artifact(
+    connection: sqlite3.Connection,
+    paths: ProjectPaths,
+    *,
+    posting_row: Mapping[str, Any],
+    run: ResumeTailoringRunRecord,
+    reviewer_type: str,
+    decision_type: str,
+    decision_notes: str | None,
+    current_time: str,
+    previous_posting_status: str,
+    new_posting_status: str,
+    previous_decision_context: Mapping[str, Any],
+    handoff_details: Mapping[str, Any],
+    override_event: OverrideEventRecord | None,
+    result: str,
+    reason_code: str | None,
+    message: str | None,
+) -> PublishedArtifact:
+    artifact_path = paths.tailoring_review_decision_path(
+        str(posting_row["company_name"]),
+        str(posting_row["role_title"]),
+        run.resume_tailoring_run_id,
+        _review_decision_slug(
+            current_time=current_time,
+            reviewer_type=reviewer_type,
+            decision_type=decision_type,
+        ),
+    )
+    artifact_ref = paths.relative_to_root(artifact_path).as_posix()
+    return publish_yaml_artifact(
+        connection,
+        paths,
+        artifact_type=TAILORING_REVIEW_ARTIFACT_TYPE,
+        artifact_path=artifact_path,
+        producer_component=RESUME_TAILORING_COMPONENT,
+        result=result,
+        linkage=ArtifactLinkage(
+            lead_id=str(posting_row["lead_id"]),
+            job_posting_id=str(posting_row["job_posting_id"]),
+        ),
+        payload={
+            "artifact_path": artifact_ref,
+            "review_kind": "mandatory_agent_review",
+            "resume_tailoring_run_id": run.resume_tailoring_run_id,
+            "reviewer_type": reviewer_type,
+            "decision_type": decision_type,
+            "decision_notes": decision_notes,
+            "reviewed_at": current_time,
+            "tailoring_status": run.tailoring_status,
+            "resume_review_status": run.resume_review_status,
+            "previous_posting_status": previous_posting_status,
+            "new_posting_status": new_posting_status,
+            "final_resume_path": run.final_resume_path,
+            "meta_yaml_path": run.meta_yaml_path,
+            "outreach_handoff": dict(handoff_details),
+            "previous_decision_context": dict(previous_decision_context),
+            "override_event_id": (
+                override_event.override_event_id if override_event is not None else None
+            ),
+        },
+        produced_at=current_time,
+        reason_code=reason_code,
+        message=message,
+    )
+
+
+def _review_decision_slug(
+    *,
+    current_time: str,
+    reviewer_type: str,
+    decision_type: str,
+) -> str:
+    return f"{_timestamp_slug(current_time)}-{reviewer_type}-{decision_type}"
 
 
 def _extract_experience_lower_bound(line: str) -> int | None:
@@ -2103,6 +2657,158 @@ def finalize_tailoring_run(
         run=refreshed_run,
         final_resume_path=refreshed_run.final_resume_path,
         verification_outcome=refreshed_run.verification_outcome,
+    )
+
+
+def record_tailoring_review_decision(
+    connection: sqlite3.Connection,
+    paths: ProjectPaths,
+    *,
+    job_posting_id: str,
+    decision_type: str,
+    decision_notes: str | None = None,
+    reviewer_type: str = MANDATORY_REVIEWER_AGENT,
+    timestamp: str | None = None,
+) -> TailoringReviewResult:
+    if reviewer_type not in REVIEWER_TYPES:
+        raise ResumeTailoringError(f"Unsupported reviewer_type={reviewer_type!r}.")
+    if decision_type not in TAILORING_REVIEW_DECISION_TYPES:
+        raise ResumeTailoringError(f"Unsupported decision_type={decision_type!r}.")
+
+    current_time = timestamp or now_utc_iso()
+    posting_row = _load_posting_row(connection, job_posting_id=job_posting_id)
+    run = get_latest_resume_tailoring_run_for_posting(connection, job_posting_id)
+    if run is None:
+        raise ResumeTailoringError(
+            f"No active resume_tailoring_run exists for job_posting_id `{job_posting_id}`."
+        )
+    if run.tailoring_status != TAILORING_STATUS_TAILORED:
+        raise ResumeTailoringError(
+            "Mandatory tailoring review requires a finalized run with "
+            f"`tailoring_status = {TAILORING_STATUS_TAILORED}`."
+        )
+    if run.resume_review_status != RESUME_REVIEW_STATUS_PENDING:
+        raise ResumeTailoringError(
+            "Mandatory tailoring review requires the active run to be pending review, "
+            f"but found `{run.resume_review_status}`."
+        )
+
+    return _apply_tailoring_review_outcome(
+        connection,
+        paths,
+        posting_row=posting_row,
+        run=run,
+        decision_type=decision_type,
+        decision_notes=decision_notes,
+        reviewer_type=reviewer_type,
+        current_time=current_time,
+        override_event=None,
+        previous_decision_context=_current_review_decision_context(
+            connection,
+            paths,
+            posting_row=posting_row,
+            run=run,
+        ),
+    )
+
+
+def record_tailoring_review_override(
+    connection: sqlite3.Connection,
+    paths: ProjectPaths,
+    *,
+    job_posting_id: str,
+    decision_type: str,
+    override_reason: str,
+    override_by: str = MANDATORY_REVIEWER_OWNER,
+    decision_notes: str | None = None,
+    timestamp: str | None = None,
+) -> TailoringReviewResult:
+    if decision_type not in TAILORING_REVIEW_DECISION_TYPES:
+        raise ResumeTailoringError(f"Unsupported decision_type={decision_type!r}.")
+    if not override_reason.strip():
+        raise ResumeTailoringError("override_reason is required for tailoring review overrides.")
+
+    current_time = timestamp or now_utc_iso()
+    posting_row = _load_posting_row(connection, job_posting_id=job_posting_id)
+    run = get_latest_resume_tailoring_run_for_posting(connection, job_posting_id)
+    if run is None:
+        raise ResumeTailoringError(
+            f"No active resume_tailoring_run exists for job_posting_id `{job_posting_id}`."
+        )
+    if run.tailoring_status != TAILORING_STATUS_TAILORED:
+        raise ResumeTailoringError(
+            "Tailoring review overrides require a finalized run with "
+            f"`tailoring_status = {TAILORING_STATUS_TAILORED}`."
+        )
+    if run.resume_review_status not in {
+        RESUME_REVIEW_STATUS_APPROVED,
+        RESUME_REVIEW_STATUS_REJECTED,
+    }:
+        raise ResumeTailoringError(
+            "Tailoring review overrides require a prior review decision, "
+            f"but found `{run.resume_review_status}`."
+        )
+    if run.resume_review_status == decision_type:
+        raise ResumeTailoringError(
+            "Tailoring review override must change the existing review decision."
+        )
+
+    previous_decision_context = _current_review_decision_context(
+        connection,
+        paths,
+        posting_row=posting_row,
+        run=run,
+    )
+    handoff = (
+        _evaluate_post_review_outreach_handoff(connection, job_posting_id)
+        if decision_type == RESUME_REVIEW_STATUS_APPROVED
+        else {
+            "posting_status_after_review": JOB_POSTING_STATUS_TAILORING_IN_PROGRESS,
+            "ready_for_outreach": False,
+            "selected_tier": None,
+            "selected_recipient_types": [],
+            "linked_contacts_in_selected_tier": 0,
+            "linked_contacts_with_usable_email": 0,
+        }
+    )
+    override_event = record_override_event(
+        connection,
+        object_type="resume_tailoring_runs",
+        object_id=run.resume_tailoring_run_id,
+        component_stage="resume_review_status",
+        previous_value={
+            "decision_context": previous_decision_context,
+            "resume_review_status": run.resume_review_status,
+            "posting_status": posting_row["posting_status"],
+        },
+        new_value={
+            "decision_context": {
+                "decision_type": decision_type,
+                "reviewer_type": override_by,
+                "reviewed_at": current_time,
+                "applied_from": "owner_override",
+            },
+            "resume_review_status": decision_type,
+            "posting_status": handoff["posting_status_after_review"],
+        },
+        override_reason=override_reason,
+        override_by=override_by,
+        lead_id=str(posting_row["lead_id"]),
+        job_posting_id=str(posting_row["job_posting_id"]),
+        override_timestamp=current_time,
+    )
+    return _apply_tailoring_review_outcome(
+        connection,
+        paths,
+        posting_row=posting_row,
+        run=run,
+        decision_type=decision_type,
+        decision_notes=decision_notes or override_reason,
+        reviewer_type=override_by,
+        current_time=current_time,
+        override_event=override_event,
+        previous_decision_context=previous_decision_context,
+        handoff=handoff,
     )
 
 
