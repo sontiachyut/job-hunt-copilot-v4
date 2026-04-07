@@ -69,3 +69,24 @@ def test_runtime_pack_chat_bootstrap_scaffolds_review_and_control_surfaces(tmp_p
     assert "- agent_mode: stopped" in chat_bootstrap
     assert "- open_incident_count: 0" in chat_bootstrap
     assert "- pending_review_count: 0" in chat_bootstrap
+
+
+def test_runtime_pack_keeps_maintenance_as_backlog_placeholder(tmp_path):
+    project_root = tmp_path / "repo"
+    project_root.mkdir()
+    create_minimal_project(project_root)
+
+    materialize_runtime_pack(project_root=project_root)
+    ops_plan = yaml.safe_load((project_root / "ops" / "agent" / "ops-plan.yaml").read_text(encoding="utf-8"))
+
+    assert ops_plan["maintenance_backlog"] == [
+        {
+            "title": "Add idle-timeout expert-interaction auto-resume",
+            "reason": "Unexpected `jhc-chat` exit is recorded canonically, but automatic timeout-based resume is still a later helper slice.",
+            "blocked_by": "future_chat_runtime_followup",
+        }
+    ]
+    assert all(
+        priority["scope_type"] != "maintenance_change_batch"
+        for priority in ops_plan["active_priorities"]
+    )

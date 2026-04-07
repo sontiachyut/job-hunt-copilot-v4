@@ -41,3 +41,13 @@ def test_acceptance_trace_matrix_reports_are_current_and_reference_real_repo_pat
         assert note["ba10_smoke_targets"]
         for test_ref in note["primary_tests"]:
             assert (REPO_ROOT / test_ref).exists(), test_ref
+
+    for gap in matrix["gap_registry"]:
+        assert gap["title"]
+        assert gap["reason"]
+        assert gap["next_slice"]
+        assert gap["evidence_summary"]
+        assert gap["evidence_code_refs"]
+        assert gap["evidence_test_refs"]
+        for path_text in gap["evidence_code_refs"] + gap["evidence_test_refs"]:
+            assert (REPO_ROOT / path_text).exists(), path_text

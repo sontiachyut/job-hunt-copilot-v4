@@ -28,7 +28,7 @@ global_status:
     - "BA-09 is now complete in code: delivery feedback now dedupes repeated mailbox signals at the logical-event level, exposes queryable feedback-reuse candidates for bounced and `not_bounced` discovery reads, keeps replied outcomes review-only, and lets discovery consume those feedback signals without auto-clearing contact email state."
     - "BA-10-S1 is now complete: `build-agent/reports/ba-10-acceptance-trace-matrix.json` and `.md` now map all 214 acceptance scenarios to owning epics, code, tests, and explicit hardening gaps, with a guard test that keeps the matrix aligned to `prd/test-spec.feature`."
     - "BA-10-S2 is now complete: `tests/test_smoke_harness.py` now drives a committed bootstrap -> tailoring -> discovery -> send -> delayed-feedback -> review-query smoke flow with deterministic fakes, and the regenerated acceptance trace matrix now closes the explicit smoke-harness gap while leaving the remaining blocker clusters honest."
-    - "BA-10-S3 is in progress: targeted hardening regressions now prove unsupported tailoring asks stay explicit gaps, automatic outreach still requires approved review and blocks repeat ambiguity, outreach-message traceability omits raw reply excerpts, runtime secret values stay out of canonical state/handoff artifacts/review outputs, delayed feedback now has dedicated launchd scheduler wiring, supervisor heartbeats now use pmset-first sleep/wake detection with a conservative cycle-gap fallback, and focused supervisor regressions now confirm downstream retries keep the same durable run and pending review packet while the narrow action catalog still blocks later-stage execution; the regenerated matrix still reports 190 implemented, 8 partial, and 14 gap scenarios."
+    - "BA-10-S3 is in progress: targeted hardening regressions now prove unsupported tailoring asks stay explicit gaps, automatic outreach still requires approved review and blocks repeat ambiguity, outreach-message traceability omits raw reply excerpts, runtime secret values stay out of canonical state/handoff artifacts/review outputs, delayed feedback now has dedicated launchd scheduler wiring, supervisor heartbeats now use pmset-first sleep/wake detection with a conservative cycle-gap fallback, focused supervisor regressions now confirm downstream retries keep the same durable run and pending review packet while the narrow action catalog still blocks later-stage execution, and the acceptance matrix now carries blocker-specific evidence refs for the remaining maintenance, chat, downstream-supervisor, and posting-abandon gaps; the regenerated matrix still reports 190 implemented, 8 partial, and 14 gap scenarios."
     - "`jhc-chat` now records canonical begin/end state, pauses autonomous work on open, resumes on clean explicit close when chat caused the pause, leaves unexpected-exit pauses intact until a later explicit resume or future idle-timeout handling, and now has focused regressions for the explicit-resume path plus generated chat-bootstrap scaffolding."
     - Host-side `launchctl bootstrap` success still needs follow-up validation outside the current sandboxed session even though the plist, wrapper wiring, and failed-start rollback all validate locally.
   execution_principles:
@@ -923,6 +923,8 @@ epics:
           - Added targeted supervisor regressions across `agent_review`, `people_search`, `email_discovery`, `sending`, and `delivery_feedback` so unsupported downstream stages now have explicit blocker evidence showing the same durable `pipeline_run_id`, stage boundary, and pending review packet are retained instead of silently resetting to `lead_handoff`.
           - Refined `job_hunt_copilot.acceptance_traceability` and the regenerated BA-10 matrix notes so the downstream-supervisor gap now states the proven selector-ordering and retry-safe persistence evidence while still remaining an explicit action-catalog blocker.
           - Added focused chat/runtime-pack regressions in `tests/test_local_runtime.py` and `tests/test_runtime_pack.py` so the unexpected-exit -> explicit-resume recovery path is proven and the generated `ops/agent/chat-bootstrap.md` prompt stays anchored to persisted control-state, review-surface, and snapshot guidance while richer in-chat review/control behavior remains an explicit gap.
+          - Refined `job_hunt_copilot.acceptance_traceability` plus the regenerated BA-10 reports so every remaining explicit gap now carries a short evidence summary and concrete code/test refs instead of only a prose reason.
+          - Added focused blocker regressions proving `scripts/ops/control_agent.py` still rejects the missing `abandon` command and the generated `ops/agent/ops-plan.yaml` keeps maintenance in backlog-only placeholder state instead of implying an implemented workflow.
         validation:
           - "`python3.11 -m py_compile job_hunt_copilot/local_runtime.py job_hunt_copilot/acceptance_traceability.py job_hunt_copilot/runtime_pack.py job_hunt_copilot/paths.py scripts/ops/materialize_feedback_sync_plist.py scripts/ops/run_feedback_sync.py tests/test_local_runtime.py`"
           - "`zsh -n bin/jhc-agent-start bin/jhc-agent-stop bin/jhc-agent-cycle bin/jhc-feedback-sync-cycle bin/jhc-chat`"
@@ -942,7 +944,7 @@ current_focus:
   epic_id: BA-10
   slice_id: BA-10-S3
   owner_role: quality-engineer
-  reason: BA-10-S3 safety/privacy hardening, delayed-feedback scheduler wiring, sleep/wake recovery detection, downstream-supervisor blocker confirmation, and chat lifecycle/control regression evidence are now landed and the trace matrix remains at 190 implemented / 8 partial / 14 gap scenarios, so the highest-value remaining work is either functional action-catalog burn-down beyond `lead_handoff` or the next quality-owned blocker cluster across maintenance automation and posting-abandon control while chat review/control stays an explicit product gap.
+  reason: BA-10-S3 safety/privacy hardening, delayed-feedback scheduler wiring, sleep/wake recovery detection, downstream-supervisor blocker confirmation, chat lifecycle/control regression evidence, and blocker-specific gap evidence refs are now landed while the matrix remains at 190 implemented / 8 partial / 14 gap scenarios, so the highest-value next work is a build-lead functional slice for downstream action-catalog burn-down beyond `lead_handoff` or explicit posting-abandon control while maintenance automation stays an explicit follow-up gap.
   exit_criteria:
     - remaining BA-10 trace-matrix gaps are either fixed or explicitly retained with fresh evidence
     - targeted regression coverage exists for retry/idempotency edges plus any blocker confirmation work touched during hardening
@@ -961,21 +963,23 @@ known_blockers:
     status: open
     severity: high
     owner_role: quality-engineer
-    summary: "The regenerated BA-10 trace matrix now reports 190 implemented / 8 partial / 14 gap scenarios; safety/privacy hardening, delayed-feedback scheduler wiring, and sleep/wake recovery are closed, but unresolved current-build gaps remain across downstream supervisor orchestration, chat review/control behavior, maintenance automation, and posting-abandon control."
+    summary: "The regenerated BA-10 trace matrix now reports 190 implemented / 8 partial / 14 gap scenarios; the remaining downstream-supervisor, chat, maintenance, and posting-abandon gaps now each carry explicit evidence refs and reproducible blocker notes, but the missing current-build behaviors themselves remain open."
     evidence:
       - build-agent/reports/ba-10-acceptance-trace-matrix.json
       - build-agent/reports/ba-10-acceptance-trace-matrix.md
+      - scripts/ops/control_agent.py
       - tests/test_acceptance_traceability.py
       - tests/test_local_runtime.py
       - tests/test_delivery_feedback.py
+      - tests/test_schema.py
       - tests/test_smoke_harness.py
       - tests/test_supervisor.py
       - tests/test_runtime_pack.py
       - tests/test_resume_tailoring.py
       - tests/test_outreach.py
       - tests/test_review_queries.py
-    impact: Acceptance signoff is more credible now that committed smoke coverage and downstream-supervisor blocker evidence exist, but BA-10 still cannot close until the remaining gap clusters are either burned down or retained explicitly with evidence.
-    next_action: Hand the functional downstream action-catalog slice back to the build-lead or continue BA-10-S3 quality evidence work on maintenance automation and posting-abandon control if orchestration implementation remains deferred.
+    impact: Acceptance signoff is more credible now that committed smoke coverage, blocker-specific evidence refs, and explicit negative regressions exist, but BA-10 still cannot close until the remaining gap clusters are actually burned down or deliberately left open.
+    next_action: "Hand the next functional slice to the build-lead: downstream action-catalog burn-down beyond `lead_handoff` or a posting-abandon control implementation. Maintenance automation remains an explicit follow-up gap after those runtime-control surfaces."
   - blocker_id: BUILD-CLI-001
     status: open
     severity: medium

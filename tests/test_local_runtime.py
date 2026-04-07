@@ -267,6 +267,29 @@ def test_control_agent_script_persists_running_and_stopped_modes(tmp_path):
     }
 
 
+def test_control_agent_script_rejects_posting_abandon_command_until_surface_exists(tmp_path):
+    project_root = tmp_path / "repo"
+    project_root.mkdir()
+    create_minimal_project(project_root)
+
+    result = subprocess.run(
+        [
+            sys.executable,
+            str(REPO_ROOT / "scripts/ops/control_agent.py"),
+            "abandon",
+            "--project-root",
+            str(project_root),
+        ],
+        check=False,
+        capture_output=True,
+        text=True,
+    )
+
+    assert result.returncode == 2
+    assert "invalid choice: 'abandon'" in result.stderr
+    assert "{start,stop,pause,resume,replan,status}" in result.stderr
+
+
 def test_run_supervisor_cycle_script_records_no_work_launchd_cycle(tmp_path):
     project_root = tmp_path / "repo"
     project_root.mkdir()

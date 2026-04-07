@@ -1045,3 +1045,30 @@ Use this file as an append-only implementation log for the build agent.
 ### Notes
 - The acceptance matrix remains at 190 implemented, 8 partial, 14 gap, 1 deferred-optional, and 1 excluded-from-required-acceptance scenarios; this slice intentionally tightened evidence without changing gap status.
 - The remaining chat blocker is now narrower and more honest: wrapper lifecycle, explicit-close resume, explicit manual resume after unexpected exit, and chat-bootstrap scaffolding are covered, while actual in-chat review retrieval, control routing, and idle-timeout recovery are still missing behaviors.
+
+### Session
+- Date: 2026-04-07 14:53:39 MST
+- Slice: BA-10-S3 blocker evidence traceability refresh
+- Goal: Make the remaining maintenance and posting-abandon blockers explicitly evidenced in the BA-10 reports, add one reproducible missing-control regression, and checkpoint the updated blocker ledger without overstating feature completion.
+
+### Work Done
+- Extended `job_hunt_copilot.acceptance_traceability` so every explicit BA-10 gap entry now carries an evidence summary plus concrete code/test refs, and regenerated the committed `build-agent/reports/ba-10-acceptance-trace-matrix.json` and `.md` outputs with that richer blocker evidence.
+- Added a focused regression in `tests/test_local_runtime.py` proving `scripts/ops/control_agent.py` still rejects `abandon`, which keeps the posting-abandon gap tied to a reproducible missing control surface instead of a vague note.
+- Added a focused regression in `tests/test_runtime_pack.py` proving the generated `ops/agent/ops-plan.yaml` still keeps maintenance as backlog-only placeholder state and does not claim an active maintenance workflow.
+- Updated `build-agent/state/build-board.yaml`, `build-agent/state/IMPLEMENTATION_PLAN.md`, `build-agent/state/build-journal.md`, and `build-agent/state/codex-progress.txt` so the next session sees the sharpened blocker evidence and the shifted recommendation toward build-lead functional work.
+
+### Validation
+- Ran `python3.11 scripts/quality/generate_acceptance_trace_matrix.py --project-root /Users/achyutaramsonti/Projects/job-hunt-copilot-v4` and regenerated the committed BA-10 reports successfully.
+- Ran `python3.11 -m py_compile job_hunt_copilot/acceptance_traceability.py tests/test_acceptance_traceability.py tests/test_local_runtime.py tests/test_runtime_pack.py` and confirmed the changed quality-engineering surfaces compile cleanly.
+- Ran `python3.11 -m pytest tests/test_acceptance_traceability.py tests/test_local_runtime.py tests/test_runtime_pack.py` and confirmed all 18 focused traceability/runtime-pack/local-runtime tests passed.
+- Ran `python3.11 -m pytest tests/test_acceptance_traceability.py tests/test_smoke_harness.py tests/test_local_runtime.py tests/test_supervisor.py tests/test_review_queries.py` and confirmed all 41 broader BA-10 regression tests passed.
+
+### Result
+- `done`
+
+### Next
+- Hand the next functional slice to the build-lead: downstream action-catalog burn-down beyond `lead_handoff` or an explicit posting-abandon control implementation. Maintenance automation remains the next explicit follow-up gap after those runtime-control surfaces.
+
+### Notes
+- The acceptance matrix remains at 190 implemented, 8 partial, 14 gap, 1 deferred-optional, and 1 excluded-from-required-acceptance scenarios; this slice improved blocker traceability and reproducibility rather than changing acceptance status.
+- The remaining open gaps are now more defensible in review because each one carries code/test evidence in the committed BA-10 reports instead of only a prose reason.

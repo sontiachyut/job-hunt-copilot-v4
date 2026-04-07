@@ -34,6 +34,9 @@
 ### BA10_SUPERVISOR_DOWNSTREAM_ACTION_CATALOG: Supervisor orchestration still stops at lead handoff
 - Next slice: `BA-10-S3`
 - Reason: The durable heartbeat, selector ordering, and retry-safe run persistence exist, but the registered action catalog still only advances autonomous work through `lead_handoff`; later stages reselect the same durable run and escalate instead of executing.
+- Evidence summary: Selector ordering, durable run reuse, and unsupported-stage escalation are covered, but later-stage autonomous actions remain unregistered.
+- Evidence code refs: `job_hunt_copilot/supervisor.py`, `job_hunt_copilot/local_runtime.py`, `job_hunt_copilot/runtime_pack.py`
+- Evidence test refs: `tests/test_supervisor.py`, `tests/test_acceptance_traceability.py`
 - Scenarios: `5`
   - Supervisor work selection follows the current default priority order
   - Role-targeted orchestration follows the current dependency order
@@ -44,6 +47,9 @@
 ### BA10_MAINTENANCE_AUTOMATION: Maintenance workflow and artifacts are not implemented
 - Next slice: `BA-10-S3`
 - Reason: The schema and runtime pack reserve maintenance surfaces, but there is no autonomous maintenance batch workflow, no maintenance artifacts, and no maintenance review flow yet.
+- Evidence summary: Schema and runtime scaffolding reserve maintenance surfaces, but there is still no maintenance module, runner, or review-artifact workflow.
+- Evidence code refs: `job_hunt_copilot/migrations/0002_canonical_schema.sql`, `job_hunt_copilot/paths.py`, `job_hunt_copilot/runtime_pack.py`
+- Evidence test refs: `tests/test_schema.py`, `tests/test_runtime_pack.py`, `tests/test_acceptance_traceability.py`
 - Scenarios: `5`
   - Maintenance change artifacts exist for every autonomous maintenance batch
   - Daily maintenance is mandatory, bounded, and run-boundary aware
@@ -54,6 +60,9 @@
 ### BA10_CHAT_REVIEW_AND_CONTROL: Chat review and control remain wrapper-only
 - Next slice: `BA-10-S3`
 - Reason: The direct `jhc-chat` entrypoint manages chat session lifecycle, but richer review retrieval, control routing, and expert-guidance behaviors are not yet implemented in the chat surface.
+- Evidence summary: Chat lifecycle, review-query reads, and bootstrap scaffolding exist, but chat itself still does not retrieve grouped reviews or route control decisions.
+- Evidence code refs: `scripts/ops/chat_session.py`, `job_hunt_copilot/local_runtime.py`, `job_hunt_copilot/review_queries.py`, `job_hunt_copilot/runtime_pack.py`
+- Evidence test refs: `tests/test_local_runtime.py`, `tests/test_review_queries.py`, `tests/test_runtime_pack.py`, `tests/test_acceptance_traceability.py`
 - Scenarios: `10`
   - jhc-chat startup dashboard is detailed, bounded, and clean-first
   - Startup dashboard runtime metrics count only active autonomous execution
@@ -69,12 +78,18 @@
 ### BA10_CHAT_IDLE_TIMEOUT_RESUME: Idle-timeout resume is still backlog
 - Next slice: `BA-10-S3`
 - Reason: Explicit-close and explicit-resume paths exist, but unexpected `jhc-chat` exits still require a later explicit resume because automatic idle-timeout recovery is not implemented.
+- Evidence summary: Unexpected chat exit is recorded and a later explicit resume works, but no automatic idle-timeout resume helper exists.
+- Evidence code refs: `job_hunt_copilot/local_runtime.py`, `job_hunt_copilot/runtime_pack.py`
+- Evidence test refs: `tests/test_local_runtime.py`, `tests/test_runtime_pack.py`, `tests/test_acceptance_traceability.py`
 - Scenarios: `1`
   - Expert-interaction resume follows explicit close, explicit resume, or safe idle timeout
 
 ### BA10_POSTING_ABANDON_CONTROL: Posting-abandon control surface is missing
 - Next slice: `BA-10-S3`
 - Reason: There is no explicit user-facing or runtime control path that abandons a posting from arbitrary active orchestration states while preserving canonical history.
+- Evidence summary: Agent-level start/stop/pause/resume/replan controls exist, but there is still no posting-scoped abandon command or runtime mutation path.
+- Evidence code refs: `scripts/ops/control_agent.py`, `job_hunt_copilot/local_runtime.py`, `job_hunt_copilot/supervisor.py`
+- Evidence test refs: `tests/test_local_runtime.py`, `tests/test_acceptance_traceability.py`
 - Scenarios: `1`
   - The user may explicitly abandon a posting from any active orchestration state
 

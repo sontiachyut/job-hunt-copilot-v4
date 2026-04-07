@@ -7,7 +7,7 @@ from pathlib import Path
 from typing import Any
 
 
-TRACE_MATRIX_VERSION = 1
+TRACE_MATRIX_VERSION = 2
 FEATURE_PATH = Path("prd/test-spec.feature")
 REPORT_JSON_PATH = Path("build-agent/reports/ba-10-acceptance-trace-matrix.json")
 REPORT_MD_PATH = Path("build-agent/reports/ba-10-acceptance-trace-matrix.md")
@@ -38,47 +38,149 @@ class RuleBlueprint:
     note: str | None = None
 
 
-GAP_REGISTRY: dict[str, dict[str, str]] = {
-    "BA10_SMOKE_HARNESS": {
-        "title": "Integrated smoke harness is still missing",
-        "reason": "The repo has strong component tests, but no committed cross-component smoke run that exercises bootstrap through review-query surfaces in one pass.",
-        "next_slice": "BA-10-S2",
-    },
-    "BA10_SUPERVISOR_DOWNSTREAM_ACTION_CATALOG": {
-        "title": "Supervisor orchestration still stops at lead handoff",
-        "reason": "The durable heartbeat, selector ordering, and retry-safe run persistence exist, but the registered action catalog still only advances autonomous work through `lead_handoff`; later stages reselect the same durable run and escalate instead of executing.",
-        "next_slice": "BA-10-S3",
-    },
-    "BA10_MAINTENANCE_AUTOMATION": {
-        "title": "Maintenance workflow and artifacts are not implemented",
-        "reason": "The schema and runtime pack reserve maintenance surfaces, but there is no autonomous maintenance batch workflow, no maintenance artifacts, and no maintenance review flow yet.",
-        "next_slice": "BA-10-S3",
-    },
-    "BA10_CHAT_REVIEW_AND_CONTROL": {
-        "title": "Chat review and control remain wrapper-only",
-        "reason": "The direct `jhc-chat` entrypoint manages chat session lifecycle, but richer review retrieval, control routing, and expert-guidance behaviors are not yet implemented in the chat surface.",
-        "next_slice": "BA-10-S3",
-    },
-    "BA10_CHAT_IDLE_TIMEOUT_RESUME": {
-        "title": "Idle-timeout resume is still backlog",
-        "reason": "Explicit-close and explicit-resume paths exist, but unexpected `jhc-chat` exits still require a later explicit resume because automatic idle-timeout recovery is not implemented.",
-        "next_slice": "BA-10-S3",
-    },
-    "BA10_DELAYED_FEEDBACK_SCHEDULING": {
-        "title": "Delayed feedback scheduling is not wired to a scheduler",
-        "reason": "Delivery feedback syncing can run and persists scheduler metadata, but there is no committed launchd-driven delayed feedback poller yet.",
-        "next_slice": "BA-10-S3",
-    },
-    "BA10_SLEEP_WAKE_RECOVERY": {
-        "title": "Sleep and wake recovery is not implemented beyond metadata",
-        "reason": "Supervisor cycles record the intended sleep/wake detection method, but the actual pmset-log parsing and conservative fallback logic have not been implemented.",
-        "next_slice": "BA-10-S3",
-    },
-    "BA10_POSTING_ABANDON_CONTROL": {
-        "title": "Posting-abandon control surface is missing",
-        "reason": "There is no explicit user-facing or runtime control path that abandons a posting from arbitrary active orchestration states while preserving canonical history.",
-        "next_slice": "BA-10-S3",
-    },
+def _gap_metadata(
+    *,
+    title: str,
+    reason: str,
+    next_slice: str,
+    evidence_summary: str,
+    evidence_code_refs: tuple[str, ...],
+    evidence_test_refs: tuple[str, ...],
+) -> dict[str, Any]:
+    return {
+        "title": title,
+        "reason": reason,
+        "next_slice": next_slice,
+        "evidence_summary": evidence_summary,
+        "evidence_code_refs": evidence_code_refs,
+        "evidence_test_refs": evidence_test_refs,
+    }
+
+
+GAP_REGISTRY: dict[str, dict[str, Any]] = {
+    "BA10_SMOKE_HARNESS": _gap_metadata(
+        title="Integrated smoke harness is still missing",
+        reason="The repo has strong component tests, but no committed cross-component smoke run that exercises bootstrap through review-query surfaces in one pass.",
+        next_slice="BA-10-S2",
+        evidence_summary="The committed smoke harness now exercises bootstrap through review-query reads in one deterministic cross-component flow.",
+        evidence_code_refs=(
+            "job_hunt_copilot/bootstrap.py",
+            "job_hunt_copilot/outreach.py",
+            "job_hunt_copilot/delivery_feedback.py",
+            "job_hunt_copilot/review_queries.py",
+        ),
+        evidence_test_refs=(
+            "tests/test_smoke_harness.py",
+            "tests/test_acceptance_traceability.py",
+        ),
+    ),
+    "BA10_SUPERVISOR_DOWNSTREAM_ACTION_CATALOG": _gap_metadata(
+        title="Supervisor orchestration still stops at lead handoff",
+        reason="The durable heartbeat, selector ordering, and retry-safe run persistence exist, but the registered action catalog still only advances autonomous work through `lead_handoff`; later stages reselect the same durable run and escalate instead of executing.",
+        next_slice="BA-10-S3",
+        evidence_summary="Selector ordering, durable run reuse, and unsupported-stage escalation are covered, but later-stage autonomous actions remain unregistered.",
+        evidence_code_refs=(
+            "job_hunt_copilot/supervisor.py",
+            "job_hunt_copilot/local_runtime.py",
+            "job_hunt_copilot/runtime_pack.py",
+        ),
+        evidence_test_refs=(
+            "tests/test_supervisor.py",
+            "tests/test_acceptance_traceability.py",
+        ),
+    ),
+    "BA10_MAINTENANCE_AUTOMATION": _gap_metadata(
+        title="Maintenance workflow and artifacts are not implemented",
+        reason="The schema and runtime pack reserve maintenance surfaces, but there is no autonomous maintenance batch workflow, no maintenance artifacts, and no maintenance review flow yet.",
+        next_slice="BA-10-S3",
+        evidence_summary="Schema and runtime scaffolding reserve maintenance surfaces, but there is still no maintenance module, runner, or review-artifact workflow.",
+        evidence_code_refs=(
+            "job_hunt_copilot/migrations/0002_canonical_schema.sql",
+            "job_hunt_copilot/paths.py",
+            "job_hunt_copilot/runtime_pack.py",
+        ),
+        evidence_test_refs=(
+            "tests/test_schema.py",
+            "tests/test_runtime_pack.py",
+            "tests/test_acceptance_traceability.py",
+        ),
+    ),
+    "BA10_CHAT_REVIEW_AND_CONTROL": _gap_metadata(
+        title="Chat review and control remain wrapper-only",
+        reason="The direct `jhc-chat` entrypoint manages chat session lifecycle, but richer review retrieval, control routing, and expert-guidance behaviors are not yet implemented in the chat surface.",
+        next_slice="BA-10-S3",
+        evidence_summary="Chat lifecycle, review-query reads, and bootstrap scaffolding exist, but chat itself still does not retrieve grouped reviews or route control decisions.",
+        evidence_code_refs=(
+            "scripts/ops/chat_session.py",
+            "job_hunt_copilot/local_runtime.py",
+            "job_hunt_copilot/review_queries.py",
+            "job_hunt_copilot/runtime_pack.py",
+        ),
+        evidence_test_refs=(
+            "tests/test_local_runtime.py",
+            "tests/test_review_queries.py",
+            "tests/test_runtime_pack.py",
+            "tests/test_acceptance_traceability.py",
+        ),
+    ),
+    "BA10_CHAT_IDLE_TIMEOUT_RESUME": _gap_metadata(
+        title="Idle-timeout resume is still backlog",
+        reason="Explicit-close and explicit-resume paths exist, but unexpected `jhc-chat` exits still require a later explicit resume because automatic idle-timeout recovery is not implemented.",
+        next_slice="BA-10-S3",
+        evidence_summary="Unexpected chat exit is recorded and a later explicit resume works, but no automatic idle-timeout resume helper exists.",
+        evidence_code_refs=(
+            "job_hunt_copilot/local_runtime.py",
+            "job_hunt_copilot/runtime_pack.py",
+        ),
+        evidence_test_refs=(
+            "tests/test_local_runtime.py",
+            "tests/test_runtime_pack.py",
+            "tests/test_acceptance_traceability.py",
+        ),
+    ),
+    "BA10_DELAYED_FEEDBACK_SCHEDULING": _gap_metadata(
+        title="Delayed feedback scheduling is not wired to a scheduler",
+        reason="Delivery feedback syncing can run and persists scheduler metadata, but there is no committed launchd-driven delayed feedback poller yet.",
+        next_slice="BA-10-S3",
+        evidence_summary="The dedicated delayed-feedback launchd runner, plist materialization, and smoke-covered sync path are now committed.",
+        evidence_code_refs=(
+            "job_hunt_copilot/local_runtime.py",
+            "scripts/ops/run_feedback_sync.py",
+            "scripts/ops/materialize_feedback_sync_plist.py",
+            "bin/jhc-feedback-sync-cycle",
+        ),
+        evidence_test_refs=(
+            "tests/test_local_runtime.py",
+            "tests/test_smoke_harness.py",
+            "tests/test_acceptance_traceability.py",
+        ),
+    ),
+    "BA10_SLEEP_WAKE_RECOVERY": _gap_metadata(
+        title="Sleep and wake recovery is not implemented beyond metadata",
+        reason="Supervisor cycles record the intended sleep/wake detection method, but the actual pmset-log parsing and conservative fallback logic have not been implemented.",
+        next_slice="BA-10-S3",
+        evidence_summary="Supervisor heartbeats now parse pmset sleep/wake evidence first and fall back to a conservative cycle-gap recovery heuristic.",
+        evidence_code_refs=("job_hunt_copilot/local_runtime.py",),
+        evidence_test_refs=(
+            "tests/test_local_runtime.py",
+            "tests/test_acceptance_traceability.py",
+        ),
+    ),
+    "BA10_POSTING_ABANDON_CONTROL": _gap_metadata(
+        title="Posting-abandon control surface is missing",
+        reason="There is no explicit user-facing or runtime control path that abandons a posting from arbitrary active orchestration states while preserving canonical history.",
+        next_slice="BA-10-S3",
+        evidence_summary="Agent-level start/stop/pause/resume/replan controls exist, but there is still no posting-scoped abandon command or runtime mutation path.",
+        evidence_code_refs=(
+            "scripts/ops/control_agent.py",
+            "job_hunt_copilot/local_runtime.py",
+            "job_hunt_copilot/supervisor.py",
+        ),
+        evidence_test_refs=(
+            "tests/test_local_runtime.py",
+            "tests/test_acceptance_traceability.py",
+        ),
+    ),
 }
 
 
@@ -735,7 +837,12 @@ def build_acceptance_trace_matrix(project_root: Path | str) -> dict[str, Any]:
         gap_registry.append(
             {
                 "gap_id": gap_id,
-                **metadata,
+                "title": metadata["title"],
+                "reason": metadata["reason"],
+                "next_slice": metadata["next_slice"],
+                "evidence_summary": metadata["evidence_summary"],
+                "evidence_code_refs": list(metadata["evidence_code_refs"]),
+                "evidence_test_refs": list(metadata["evidence_test_refs"]),
                 "scenario_names": gap_scenarios.get(gap_id, []),
             }
         )
@@ -787,6 +894,15 @@ def render_acceptance_trace_markdown(matrix: dict[str, Any]) -> str:
         lines.append(f"### {gap['gap_id']}: {gap['title']}")
         lines.append(f"- Next slice: `{gap['next_slice']}`")
         lines.append(f"- Reason: {gap['reason']}")
+        lines.append(f"- Evidence summary: {gap['evidence_summary']}")
+        lines.append(
+            "- Evidence code refs: "
+            + ", ".join(f"`{path}`" for path in gap["evidence_code_refs"])
+        )
+        lines.append(
+            "- Evidence test refs: "
+            + ", ".join(f"`{path}`" for path in gap["evidence_test_refs"])
+        )
         lines.append(f"- Scenarios: `{len(gap['scenario_names'])}`")
         for scenario_name in gap["scenario_names"]:
             lines.append(f"  - {scenario_name}")
