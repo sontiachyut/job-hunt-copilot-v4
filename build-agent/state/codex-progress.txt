@@ -146,3 +146,11 @@ Suggested format per session:
 - key files changed: job_hunt_copilot/gmail_alerts.py; job_hunt_copilot/linkedin_scraping.py; tests/test_gmail_alerts.py; README.md; docs/ARCHITECTURE.md; build-agent/state/build-board.yaml; build-agent/state/build-journal.md; build-agent/state/codex-progress.txt; build-agent/state/IMPLEMENTATION_PLAN.md
 - validation summary: `python3.11 -m py_compile job_hunt_copilot/gmail_alerts.py job_hunt_copilot/linkedin_scraping.py tests/test_gmail_alerts.py` passed; `python3.11 -m pytest tests/test_gmail_alerts.py` passed (12 tests); `python3.11 -m pytest tests/test_linkedin_scraping.py` passed (13 tests); full `python3.11 -m pytest` passed (56 tests); `bin/jhc-linkedin-ingest gmail-batch --help` passed; autonomous Gmail intake now merges multi-source JD candidates into canonical `jd.md`, preserves final provenance plus identity-reconciliation metadata in `jd-fetch.json` and `lead-manifest.yaml`, blocks downstream handoff on material card-vs-JD mismatches while tolerating normalization-only differences, and dedupes missing-`job_id` cards by normalized LinkedIn job URL fallback
 - next recommended slice: BA-06-S1 Eligibility and tailoring-run lifecycle
+
+- 2026-04-06 18:45:21 MST
+- role owner: tailoring-engineer
+- slice attempted: BA-06-S1 Eligibility and tailoring-run lifecycle
+- result: done
+- key files changed: job_hunt_copilot/resume_tailoring.py; job_hunt_copilot/paths.py; tests/test_resume_tailoring.py; README.md; docs/ARCHITECTURE.md; build-agent/state/build-board.yaml; build-agent/state/build-journal.md; build-agent/state/codex-progress.txt; build-agent/state/IMPLEMENTATION_PLAN.md
+- validation summary: `python3.11 -m py_compile job_hunt_copilot/resume_tailoring.py tests/test_resume_tailoring.py job_hunt_copilot/paths.py` passed; `python3.11 -m pytest tests/test_resume_tailoring.py` passed (6 tests); full `python3.11 -m pytest` passed (62 tests); tailoring bootstrap now writes canonical `eligibility.yaml`, records explicit unknown or hard-ineligible decisions from persisted `jd.md`, blocks honestly when `jd.md` or base resumes are missing, and creates or reuses the first `resume_tailoring_runs` row with state-transition audit history for bootstrap-ready postings
+- next recommended slice: BA-06-S2 Workspace bootstrap and step artifact scaffolding

@@ -98,10 +98,12 @@ The product runtime now has an explicit bootstrap layer under `job_hunt_copilot/
 - manual lead materialization helpers that create canonical `job_postings`, poster `contacts`, `linkedin_lead_contacts`, and `job_posting_contacts`, then upgrade `lead-manifest.yaml` with created entity ids plus `resume_tailoring` handoff readiness
 - refresh-in-place manual lead updates that replace the live source workspace while snapshotting prior source or review artifacts under each lead-local `history/` directory for auditability
 - Gmail alert intake helpers that persist `email.md`, `email.json`, and `job-cards.json` under `linkedin-scraping/runtime/gmail/`, prefer the plain-text LinkedIn digest for multi-card parsing, fall back to HTML-derived text only when the plain-text body is unusable, retain zero-card threshold metadata for later review surfaces, dedupe by `job_id` or normalized LinkedIn job URL fallback, merge multiple JD candidates into canonical `jd.md` with LinkedIn conflict precedence, and fan out parsed cards into canonical lead workspaces with `alert-email.md`, `alert-card.json`, `jd-fetch.json`, `lead-manifest.yaml`, plus honest review-blocked or `blocked_no_jd` handoff state when identity or JD recovery issues remain
+- Resume Tailoring eligibility and lifecycle helpers that evaluate the persisted posting-linked `jd.md`, write `applications/{company}/{role}/eligibility.yaml`, register that artifact in canonical metadata, mark hard-ineligible postings honestly, and create the first `resume_tailoring_runs` row with durable workspace linkage plus state-transition audit rows
 
 Important artifact families:
 - `lead-manifest.yaml`
 - `capture-bundle.json`
+- `eligibility.yaml`
 - `meta.yaml`
 - `people_search_result.json`
 - `recipient_profile.json`

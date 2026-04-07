@@ -18,6 +18,7 @@ global_status:
     - BA-03 is now complete in code: runtime-pack materialization, local launchd/start-stop-cycle helpers, and the direct `jhc-chat` operator entrypoint now exist for the macOS runtime surface.
     - BA-04 is now complete in code: the repo has a bounded `linkedin_scraping` ingestion path that reads `paste/paste.txt` or browser-style capture bundles, creates canonical lead workspaces, persists `capture-bundle.json`, copies or assembles `raw/source.md`, derives deterministic manual split artifacts, materializes canonical manual postings and poster links, publishes `resume_tailoring`-ready lead manifests, and refreshes existing manual leads in place while snapshotting prior source or review artifacts under each lead-local `history/` directory.
     - BA-05 is now complete in code: the Gmail intake path now persists collected-email units before fan-out, dedupes by `job_id` or normalized LinkedIn job URL fallback, creates autonomous lead workspaces from parsed cards, merges multi-source JD candidates into canonical `jd.md` with LinkedIn conflict precedence, and records honest `incomplete`, review-blocked, or `blocked_no_jd` lead state with queryable provenance.
+    - BA-06 is now in progress: job_hunt_copilot.resume_tailoring can evaluate posting-linked hard eligibility from persisted jd.md, write canonical eligibility.yaml audit artifacts under applications/, mark hard_ineligible postings honestly, and create or reuse the first resume_tailoring_runs row with workspace linkage plus state-transition audit rows.
     - "`jhc-chat` now records canonical begin/end state, pauses autonomous work on open, resumes on clean explicit close when chat caused the pause, and leaves unexpected-exit pauses intact for later explicit resume or future idle-timeout handling."
     - Host-side `launchctl bootstrap` success still needs follow-up validation outside the current sandboxed session even though the plist, wrapper wiring, and failed-start rollback all validate locally.
   execution_principles:
@@ -500,7 +501,7 @@ epics:
 
   - id: BA-06
     name: Resume tailoring runtime
-    status: pending
+    status: in_progress
     owner_role: tailoring-engineer
     phase: P3
     dependencies:
@@ -516,15 +517,26 @@ epics:
       - eligible postings create tailoring workspaces with the required artifacts and metadata
       - finalize enforces scope, compile safety, and one-page output
       - tailoring runs persist from bootstrap through agent approval or explicit override history
+    completed_notes:
+      - BA-06-S1 is complete: job_hunt_copilot.resume_tailoring now bootstraps from job_posting_id, evaluates hard eligibility against the persisted posting-linked jd.md, writes applications/{company}/{role}/eligibility.yaml, registers that artifact in artifact_records, and records explicit unknown handling instead of failing closed when hard-eligibility language is absent.
+      - The slice also short-circuits hard-ineligible postings honestly, creates or reuses the first resume_tailoring_runs row with canonical timestamps plus workspace linkage for bootstrap-ready postings, and records state-transition audit rows for posting hard-stop decisions plus run creation.
     near_term_slices:
       - id: BA-06-S1
         name: Eligibility and tailoring-run lifecycle
         owner_role: tailoring-engineer
-        status: pending
+        status: completed
         deliverables:
           - hard-eligibility evaluation with evidence-grounded audit artifact
           - "`resume_tailoring_runs` lifecycle bootstrap and posting gating"
           - current global greater-than-5-years experience threshold and explicit unknown handling
+        completed_notes:
+          - Added job_hunt_copilot.resume_tailoring with job_posting_id-rooted bootstrap helpers, regex-bounded hard-eligibility evaluation, soft sponsorship flagging, explicit unknown handling, base-track selection, and idempotent initial run reuse for already-bootstrapped postings.
+          - Added canonical applications/{company}/{role}/eligibility.yaml publication plus artifact_records replacement semantics for the current eligibility artifact, and recorded state_transition_events for both hard-ineligible posting changes and initial tailoring-run creation.
+          - Honest bootstrap gating now blocks missing jd.md or missing base-resume assets without fabricating run state, while hard-ineligible postings stop before resume_tailoring_runs creation per the current PRD rule.
+        validation:
+          - "`python3.11 -m py_compile job_hunt_copilot/resume_tailoring.py tests/test_resume_tailoring.py job_hunt_copilot/paths.py`"
+          - "`python3.11 -m pytest tests/test_resume_tailoring.py`"
+          - "`python3.11 -m pytest`"
       - id: BA-06-S2
         name: Workspace bootstrap and step artifact scaffolding
         owner_role: tailoring-engineer
@@ -760,13 +772,13 @@ epics:
 
 current_focus:
   epic_id: BA-06
-  slice_id: BA-06-S1
+  slice_id: BA-06-S2
   owner_role: tailoring-engineer
-  reason: Gmail and manual ingestion now land bounded lead handoff artifacts with persisted `jd.md`, so the next highest-value dependency is hard-eligibility and tailoring-run lifecycle bootstrap from canonical posting-linked context.
+  reason: Eligibility and initial tailoring-run bootstrap now exist, so the next highest-value dependency is materializing the actual tailoring workspace, mirrored posting context, scope baseline, and Step 3-7 artifact scaffold from canonical posting-linked state.
   exit_criteria:
-    - eligible postings create a persisted `resume_tailoring_runs` row with canonical lifecycle timestamps and workspace linkage
-    - tailoring bootstrap blocks honestly when `jd.md` or other required posting context is missing
-    - the current global greater-than-5-years experience gate is evaluated and recorded with explicit unknown handling
+    - per-posting tailoring workspaces contain `meta.yaml`, mirrored context, `resume.tex`, `scope-baseline.resume.tex`, and Step 3-7 artifact slots
+    - selected base resume track plus current scope constraints are persisted in `meta.yaml`
+    - workspace bootstrap stays rooted in `job_posting_id` and persisted `jd.md` rather than requiring `raw/source.md`
 
 focus_order:
   - epic_id: BA-06

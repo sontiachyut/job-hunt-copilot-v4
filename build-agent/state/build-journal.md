@@ -502,3 +502,31 @@ Use this file as an append-only implementation log for the build agent.
 - Explicit implementation note: Gmail lead manifests now carry posting-materialization readiness or blocking reasons, but later posting-linked runtime state still remains downstream work outside this bounded intake slice.
 - Explicit implementation note: accepted-source JD recovery remains intentionally fixture-driven and offline-testable for now; live LinkedIn or company-page fetch integration still belongs to a later external-integration pass.
 - `OPS-LAUNCHD-001` and `BUILD-CLI-001` remain open and untouched because this slice stayed within ingestion ownership.
+
+### Session
+- Date: 2026-04-06 18:45:21 MST
+- Slice: BA-06-S1 Eligibility and tailoring-run lifecycle
+- Goal: Bootstrap Resume Tailoring from canonical posting state with evidence-grounded hard eligibility, honest blocker handling, and the first persisted `resume_tailoring_runs` lifecycle row.
+
+### Work Done
+- Added `job_hunt_copilot.resume_tailoring` with `job_posting_id`-rooted bootstrap helpers, regex-bounded hard-eligibility evaluation, soft sponsorship flagging, explicit unknown handling, deterministic base-track selection from the bundled resume assets, and idempotent reuse of an already-bootstrapped tailoring run.
+- Added canonical `applications/{company}/{role}/eligibility.yaml` publication with shared contract-envelope fields, job-posting artifact linkage in `artifact_records`, and bootstrap metadata such as `bootstrap_ready`, blockers, selected base, and the active tailoring-run id when one exists.
+- Implemented honest gating so missing persisted `jd.md` or missing base-resume assets block bootstrap without fabricating run state, while hard-ineligible postings are short-circuited before `resume_tailoring_runs` creation and update `job_postings.posting_status = hard_ineligible` as required.
+- Recorded `state_transition_events` for posting hard-stop decisions plus initial `tailoring_status` and `resume_review_status` creation on the first tailoring run, and added a focused tailoring test module covering eligible, soft-flag, unknown, hard-ineligible, missing-JD, and idempotent bootstrap paths.
+- Updated `README.md`, `docs/ARCHITECTURE.md`, the build board, implementation plan, and the short progress log so repo-facing and build-agent-facing surfaces now reflect that the first tailoring slice is complete and BA-06 is in progress.
+
+### Validation
+- Ran `python3.11 -m py_compile job_hunt_copilot/resume_tailoring.py tests/test_resume_tailoring.py job_hunt_copilot/paths.py` and confirmed the new tailoring module, tests, and path helper compile cleanly.
+- Ran `python3.11 -m pytest tests/test_resume_tailoring.py` and confirmed all 6 tailoring-slice tests passed.
+- Ran full `python3.11 -m pytest` and confirmed all 62 repository tests passed across bootstrap, schema, artifacts, ingestion, tailoring, local runtime, runtime pack, and supervisor coverage.
+
+### Result
+- `done`
+
+### Next
+- Implement `BA-06-S2`: materialize the actual tailoring workspace files and Step 3 through Step 7 scaffold from canonical posting context, including `meta.yaml`, mirrored `jd.md`, `resume.tex`, and `scope-baseline.resume.tex`.
+
+### Notes
+- Explicit implementation note: the current tailoring slice intentionally stops at eligibility plus run bootstrap; it does not yet create workspace files, intelligence artifacts, finalize outputs, or mandatory agent-review transitions.
+- Explicit implementation inference: `eligibility.yaml` now doubles as the persisted blocker surface for missing `jd.md` or missing base-resume assets, which keeps the slice bounded while still making bootstrap failures queryable from canonical artifact metadata.
+- `OPS-LAUNCHD-001` and `BUILD-CLI-001` remain open and untouched because this slice stayed within tailoring ownership and did not alter the supervisor or build-loop runtime surfaces.
