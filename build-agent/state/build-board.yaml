@@ -18,7 +18,7 @@ global_status:
     - BA-03 is now complete in code: runtime-pack materialization, local launchd/start-stop-cycle helpers, and the direct `jhc-chat` operator entrypoint now exist for the macOS runtime surface.
     - BA-04 is now complete in code: the repo has a bounded `linkedin_scraping` ingestion path that reads `paste/paste.txt` or browser-style capture bundles, creates canonical lead workspaces, persists `capture-bundle.json`, copies or assembles `raw/source.md`, derives deterministic manual split artifacts, materializes canonical manual postings and poster links, publishes `resume_tailoring`-ready lead manifests, and refreshes existing manual leads in place while snapshotting prior source or review artifacts under each lead-local `history/` directory.
     - BA-05 is now complete in code: the Gmail intake path now persists collected-email units before fan-out, dedupes by `job_id` or normalized LinkedIn job URL fallback, creates autonomous lead workspaces from parsed cards, merges multi-source JD candidates into canonical `jd.md` with LinkedIn conflict precedence, and records honest `incomplete`, review-blocked, or `blocked_no_jd` lead state with queryable provenance.
-    - BA-06 is now in progress: job_hunt_copilot.resume_tailoring can evaluate posting-linked hard eligibility from persisted jd.md, write canonical eligibility.yaml audit artifacts under applications/, create or reuse the active resume_tailoring_runs row, and materialize a per-posting tailoring workspace with shared-contract meta.yaml, mirrored context, resume.tex, scope-baseline.resume.tex, component-local input mirrors, and Step 3 through Step 7 scaffold artifacts.
+    - BA-06 is now in progress: job_hunt_copilot.resume_tailoring can evaluate posting-linked hard eligibility from persisted jd.md, create or reuse the active resume_tailoring_runs row, materialize the per-posting tailoring workspace, generate deterministic Step 3 through Step 7 artifacts, apply the selected Step 6 payload through finalize with scope enforcement, compile `Achyutaram Sonti.pdf`, verify one-page output, and transition successful runs or postings into the mandatory `resume_review_pending` gate.
     - "`jhc-chat` now records canonical begin/end state, pauses autonomous work on open, resumes on clean explicit close when chat caused the pause, and leaves unexpected-exit pauses intact for later explicit resume or future idle-timeout handling."
     - Host-side `launchctl bootstrap` success still needs follow-up validation outside the current sandboxed session even though the plist, wrapper wiring, and failed-start rollback all validate locally.
   execution_principles:
@@ -522,6 +522,7 @@ epics:
       - The slice also short-circuits hard-ineligible postings honestly, creates or reuses the first resume_tailoring_runs row with canonical timestamps plus workspace linkage for bootstrap-ready postings, and records state-transition audit rows for posting hard-stop decisions plus run creation.
       - BA-06-S2 is complete: eligible postings now materialize their tailoring workspace under `resume-tailoring/output/tailored/{company}/{role}/` with `meta.yaml`, mirrored `jd.md`, optional mirrored `post.md` / `poster-profile.md`, `resume.tex`, `scope-baseline.resume.tex`, component-local input mirrors, and Step 3 through Step 7 intelligence scaffold artifacts.
       - Workspace bootstrap remains DB-first by `job_posting_id` plus persisted `jd.md`, publishes `meta.yaml` through the shared artifact-contract envelope, backfills older run rows that predate workspace files, and preserves existing workspace edits when the active run is merely being reused.
+      - BA-06-S3 is complete: the tailoring runtime now replaces those scaffold files with deterministic Step 3 through Step 7 artifacts, maps JD signals to master-profile evidence honestly, applies the Step 6 payload only inside the allowed tailoring boundary, compiles `Achyutaram Sonti.pdf`, verifies one-page output, and transitions successful runs plus postings into `resume_review_pending`.
     near_term_slices:
       - id: BA-06-S1
         name: Eligibility and tailoring-run lifecycle
@@ -560,13 +561,21 @@ epics:
       - id: BA-06-S3
         name: Structured edit generation and finalize verification
         owner_role: tailoring-engineer
-        status: pending
+        status: completed
         dependencies:
           - BA-06-S2
         deliverables:
           - Step 3 through Step 7 intelligence generation with honest evidence mapping
           - structured Step 6 edit payload, scope guard, and claim discipline
           - compile-safe finalize path producing one-page `Achyutaram Sonti.pdf`
+        completed_notes:
+          - Extended `job_hunt_copilot.resume_tailoring` with deterministic Step 3 through Step 7 generation that reads the persisted workspace `jd.md`, master profile mirror, and current `resume.tex`, then writes structured JD signals, evidence matches or gaps, controlled-elaboration markdown, Step 6 candidate edits, and non-pending Step 7 verification output.
+          - Added guarded finalize helpers that apply the selected Step 6 payload to workspace `resume.tex`, validate the result against `scope-baseline.resume.tex`, compile the canonical `Achyutaram Sonti.pdf`, verify one-page output with `pdfinfo`, and persist run plus posting transitions into `tailored` / `resume_review_pending` only on success.
+          - Added focused tailoring tests that exercise generated artifacts, real LaTeX finalize success, and explicit scope-violation rejection before compile so the slice validates both the happy path and honest failure behavior.
+        validation:
+          - "`python3.11 -m py_compile job_hunt_copilot/resume_tailoring.py tests/test_resume_tailoring.py`"
+          - "`python3.11 -m pytest tests/test_resume_tailoring.py`"
+          - "`python3.11 -m pytest`"
       - id: BA-06-S4
         name: Mandatory agent review and override handling
         owner_role: tailoring-engineer
@@ -782,13 +791,13 @@ epics:
 
 current_focus:
   epic_id: BA-06
-  slice_id: BA-06-S3
+  slice_id: BA-06-S4
   owner_role: tailoring-engineer
-  reason: Workspace bootstrap, shared-contract meta publication, and Step 3 through Step 7 scaffold files now exist, so the next highest-value dependency is generating the actual structured intelligence plus finalize or compile verification that turns the active run into a review-ready tailored output.
+  reason: Structured tailoring artifacts, finalize, compile, one-page verification, and `resume_review_pending` handoff now exist, so the next highest-value dependency is persisting the mandatory tailoring review decision and any override lineage before outreach can trust approved resume state.
   exit_criteria:
-    - Step 3 through Step 7 artifacts are populated with honest JD signals, evidence mapping, candidate edits, and verification output instead of bootstrap placeholders
-    - finalize validates scope against `scope-baseline.resume.tex`, applies the selected Step 6 payload to `resume.tex`, compiles `Achyutaram Sonti.pdf`, and verifies one-page output
-    - successful finalize moves the active run to `tailoring_status = tailored` and `resume_review_status = resume_review_pending`
+    - the active tailoring run can transition from `resume_review_pending` to `approved` or `rejected` through a persisted mandatory agent-review action
+    - rejection or later retailoring preserves prior run history instead of overwriting the existing `resume_tailoring_runs` row
+    - override or review-decision lineage is queryable with timestamps and prior-decision context
 
 focus_order:
   - epic_id: BA-06

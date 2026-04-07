@@ -558,3 +558,31 @@ Use this file as an append-only implementation log for the build agent.
 - Explicit implementation note: the new Step 3 through Step 7 files are bootstrap scaffolds only; they intentionally remain `not_started` / `pending` until BA-06-S3 generates real intelligence and verification output.
 - Explicit implementation note: `meta.yaml` now carries the shared contract envelope and downstream-supporting artifact references, but Tailoring and later Outreach bootstrap remain DB-first by `job_posting_id` rather than meta-first.
 - `OPS-LAUNCHD-001` and `BUILD-CLI-001` remain open and untouched because this slice stayed within tailoring ownership and did not alter the supervisor or build-loop runtime surfaces.
+
+### Session
+- Date: 2026-04-06 19:46:59 MST
+- Slice: BA-06-S3 Structured edit generation and finalize verification
+- Goal: Replace the Tailoring scaffold artifacts with deterministic Step 3 through Step 7 outputs, add guarded finalize plus compile behavior, and move successful runs into the mandatory review gate.
+
+### Work Done
+- Extended `job_hunt_copilot.resume_tailoring` with deterministic Step 3 through Step 7 generation rooted in workspace `jd.md`, the mirrored master profile, and the current `resume.tex`, producing structured JD signals, evidence-map matches or gaps, controlled-elaboration markdown, Step 6 candidate edits, and non-pending Step 7 verification results.
+- Added finalize helpers that apply the selected Step 6 payload to workspace `resume.tex`, enforce scope against `scope-baseline.resume.tex`, compile the canonical `Achyutaram Sonti.pdf`, verify one-page output with `pdfinfo`, and record honest `needs_revision`, `failed`, or `tailored` outcomes in canonical run state.
+- Wired successful finalize to transition `resume_tailoring_runs` into `tailoring_status = tailored` and `resume_review_status = resume_review_pending`, republish `meta.yaml` with the final PDF reference, and advance the linked posting into `posting_status = resume_review_pending`.
+- Added focused tailoring tests that cover artifact generation, real LaTeX finalize success, and explicit scope-violation rejection before compile.
+- Updated `README.md`, `docs/ARCHITECTURE.md`, the build board, the implementation plan, and the short progress log so repo-facing and build-agent-facing surfaces reflect the now-landed finalize path honestly.
+
+### Validation
+- Ran `python3.11 -m py_compile job_hunt_copilot/resume_tailoring.py tests/test_resume_tailoring.py` and confirmed the tailoring runtime plus its focused tests compile cleanly.
+- Ran `python3.11 -m pytest tests/test_resume_tailoring.py` and confirmed all 10 tailoring tests passed, including the real finalize or compile or one-page path.
+- Ran full `python3.11 -m pytest` and confirmed all 66 repository tests passed across bootstrap, schema, artifacts, ingestion, tailoring, local runtime, runtime pack, and supervisor coverage.
+
+### Result
+- `done`
+
+### Next
+- Implement `BA-06-S4`: persist the mandatory tailoring agent-review decision, support `resume_review_pending` to `approved` or `rejected` transitions, and preserve prior run history when rejection leads to retailoring.
+
+### Notes
+- Explicit implementation note: Step 3 through Step 7 persistence remains artifact-first for now; this slice intentionally did not add new dedicated tailoring tables beyond the existing canonical run row and state-transition history.
+- Explicit implementation note: the scope guard currently validates the supported resume template by masking editable regions and comparing the remainder against `scope-baseline.resume.tex`, which keeps finalize bounded to the current LaTeX structure without pretending to support arbitrary resume layouts yet.
+- `OPS-LAUNCHD-001` and `BUILD-CLI-001` remain open and untouched because this slice stayed inside tailoring ownership and did not alter the supervisor or build-loop runtime surfaces.

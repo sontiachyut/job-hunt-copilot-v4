@@ -28,6 +28,7 @@ It should stay aligned with:
 - `BA-05` is now complete in code overall: autonomous Gmail intake now merges multi-source JD candidates into canonical `jd.md`, preserves final merge provenance plus identity-reconciliation metadata in `jd-fetch.json` and `lead-manifest.yaml`, blocks downstream handoff honestly on material Gmail-card versus JD identity mismatches, and tolerates normalization-only differences without creating unnecessary review debt.
 - `BA-06-S1` is complete: `job_hunt_copilot.resume_tailoring` can now bootstrap from `job_posting_id`, evaluate hard eligibility from the persisted posting-linked `jd.md`, write `applications/{company}/{role}/eligibility.yaml`, mark `hard_ineligible` postings honestly, and create or reuse the first `resume_tailoring_runs` row with canonical timestamps plus workspace linkage for bootstrap-ready postings.
 - `BA-06-S2` is complete: eligible postings now materialize `resume-tailoring/output/tailored/{company}/{role}/` with shared-contract `meta.yaml`, mirrored `jd.md`, optional mirrored `post.md` / `poster-profile.md`, working `resume.tex`, `scope-baseline.resume.tex`, component-local input mirrors, and Step 3 through Step 7 scaffold artifacts that later finalize logic can fill.
+- `BA-06-S3` is complete: `job_hunt_copilot.resume_tailoring` now replaces the scaffold files with deterministic Step 3 through Step 7 artifacts, generates honest JD signals plus evidence mapping from the persisted `jd.md` and master profile, applies the selected Step 6 payload to `resume.tex`, enforces scope against `scope-baseline.resume.tex`, compiles `Achyutaram Sonti.pdf`, verifies one-page output, and moves successful runs into `tailoring_status = tailored` plus `resume_review_status = resume_review_pending`.
 - Explicit implementation note: failed startup no longer leaves dishonest control state behind; `jhc-agent-start` now rolls canonical state back to `stopped` if `launchctl bootstrap` fails before the job is actually loaded.
 - Explicit implementation note: the generated `ops/agent/` files remain runtime-local artifacts under `.gitignore`, so the repo tracks the materialization code and tests rather than checking in those mutable rendered outputs.
 - Explicit implementation note: `jhc-chat` now records begin/end metadata plus `active_chat_session_id` in canonical control state, pauses autonomous work immediately on open, resumes on clean explicit close when chat itself caused the pause, and intentionally keeps unexpected-exit pauses active until later explicit resume or future idle-timeout automation exists.
@@ -36,7 +37,7 @@ It should stay aligned with:
 - Explicit implementation inference: Gmail zero-card review thresholds are currently derived from retained `email.json` metadata under `linkedin-scraping/runtime/gmail/` rather than a dedicated DB table, which keeps this slice bounded while still making unresolved zero-card history queryable for later review surfaces.
 - Explicit implementation note: Gmail-derived leads with a recovered canonical `jd.md` now surface posting-materialization readiness or blocking reasons through `lead-manifest.yaml`, while downstream creation of later posting-linked runtime state remains a separate responsibility from the bounded Gmail intake slice.
 - Explicit implementation note: the current tailoring runtime now backfills workspace files for preexisting active runs that predate BA-06-S2, but repeated bootstrap on an already-materialized active run intentionally preserves existing `resume.tex` and intelligence artifacts instead of clobbering in-progress tailoring work.
-- Explicit implementation note: the Step 3 through Step 7 files added in BA-06-S2 are truthful bootstrap scaffolds only; actual JD-signal extraction, evidence mapping, Step 6 edit payload generation, finalize, compile, one-page verification, and review transitions remain the next tailoring slices.
+- Explicit implementation note: Step 3 through Step 7 persistence currently stays artifact-first rather than adding new dedicated tailoring tables, which keeps BA-06-S3 bounded while still making generated intelligence, verification blockers, and compile outputs durable and reviewable from the workspace.
 - Known operational blocker: live `launchctl bootstrap gui/$UID ...` still returns `Input/output error` in this sandboxed session, and the system log needed for richer launchd diagnostics is itself blocked by sandbox restrictions.
 - Known operational risk: unattended build-lead execution needs a follow-up validation pass for the `codex exec` CLI compatibility fix already present in the worktree.
 
@@ -105,12 +106,12 @@ It should stay aligned with:
 
 ## Next Slice
 
-- Current focus: `BA-06-S3` Structured edit generation and finalize verification.
-- Why next: workspace bootstrap, `meta.yaml`, input mirrors, and Step 3 through Step 7 scaffold files now exist, so the next dependency is replacing those placeholders with actual structured intelligence and a compile-safe finalize path that yields a review-ready tailored run.
+- Current focus: `BA-06-S4` Mandatory agent review and override handling.
+- Why next: structured intelligence generation, finalize, compile, one-page verification, and `resume_review_pending` handoff now exist, so the next dependency is persisting the mandatory tailoring review decision and any later override lineage before outreach work can begin safely.
 - Done when:
-  - Step 3 through Step 7 artifacts are populated with honest JD signals, evidence mapping, controlled elaboration, candidate edits, and verification output instead of bootstrap scaffolds
-  - finalize validates required artifacts, applies the selected Step 6 edit payload to workspace `resume.tex`, compiles `Achyutaram Sonti.pdf`, and verifies one-page output
-  - successful finalize moves the active run to `tailoring_status = tailored` and `resume_review_status = resume_review_pending`
+  - the active tailoring run can transition from `resume_review_pending` to `approved` or `rejected` through a persisted mandatory agent-review action
+  - review rejection or later retailoring preserves prior run history instead of overwriting the existing `resume_tailoring_runs` row
+  - override or review-decision lineage is queryable with timestamps and prior-decision context
 
 ## Working Rules
 

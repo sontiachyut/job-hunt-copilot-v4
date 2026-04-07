@@ -1,10 +1,12 @@
 from __future__ import annotations
 
 import re
+import shutil
 import sqlite3
+import subprocess
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, Mapping
+from typing import Any, Mapping, Sequence
 
 import yaml
 
@@ -56,9 +58,22 @@ RESUME_REVIEW_STATUSES = frozenset(
 )
 
 JOB_POSTING_STATUS_HARD_INELIGIBLE = "hard_ineligible"
+JOB_POSTING_STATUS_TAILORING_IN_PROGRESS = "tailoring_in_progress"
+JOB_POSTING_STATUS_RESUME_REVIEW_PENDING = "resume_review_pending"
+
+INTELLIGENCE_STATUS_GENERATED = "generated"
+VERIFICATION_OUTCOME_PASS = "pass"
+VERIFICATION_OUTCOME_FAIL = "fail"
+VERIFICATION_OUTCOME_NEEDS_REVISION = "needs_revision"
 
 BOOTSTRAP_REASON_MISSING_JD = "missing_jd"
 BOOTSTRAP_REASON_MISSING_BASE_RESUME = "missing_base_resume"
+FINALIZE_REASON_MISSING_STEP_ARTIFACT = "missing_step_artifact"
+FINALIZE_REASON_INVALID_STEP_ARTIFACT = "invalid_step_artifact"
+FINALIZE_REASON_SCOPE_VIOLATION = "scope_violation"
+FINALIZE_REASON_VERIFICATION_BLOCKED = "verification_blocked"
+FINALIZE_REASON_COMPILE_FAILED = "compile_failed"
+FINALIZE_REASON_PAGE_BUDGET = "page_budget_exceeded"
 
 DEFAULT_SECTION_LOCKS = (
     "education",
@@ -75,6 +90,14 @@ STEP_7_CHECK_IDS = (
     "line-budget",
     "compile-page-readiness",
 )
+STEP_6_BULLET_TARGET_MIN = 210
+STEP_6_BULLET_TARGET_MAX = 255
+STEP_6_BULLET_HARD_MIN = 100
+STEP_6_BULLET_HARD_MAX = 275
+
+FRONTEND_AI_TRACK = "frontend_ai"
+DISTRIBUTED_INFRA_TRACK = "distributed_infra"
+GENERALIST_SWE_TRACK = "generalist_swe"
 
 HARD_DISQUALIFIER_EXPERIENCE = "experience_gt_5_years"
 HARD_DISQUALIFIER_CITIZENSHIP = "citizenship_required"
@@ -150,6 +173,227 @@ SOFT_FLAG_PATTERNS = (
     ),
 )
 
+SUMMARY_BLOCK_RE = re.compile(
+    r"(?P<prefix>\\section\{SUMMARY\}\s*\\begin\{onecolentry\}\s*)(?P<summary>.*?)(?P<suffix>\s*\\end\{onecolentry\})",
+    re.DOTALL,
+)
+TECHNICAL_SKILLS_BLOCK_RE = re.compile(
+    r"(?P<prefix>\\section\{TECHNICAL SKILLS\}\s*)(?P<skills>(?:\\begin\{onecolentry\}.*?\\end\{onecolentry\}\s*)+)(?P<suffix>\\end\{document\})",
+    re.DOTALL,
+)
+TECHNICAL_SKILL_LINE_RE = re.compile(
+    r"\\begin\{onecolentry\}\s*\\textbf\{(?P<category>[^:]+):\}\s*(?P<items>.*?)\s*\\end\{onecolentry\}",
+    re.DOTALL,
+)
+SOFTWARE_ENGINEER_BLOCK_RE = re.compile(
+    r"(?P<prefix>\\textbf\{Software Engineer\}.*?\\end\{twocolentry\}\s*\\vspace\{0\.05cm\}\s*\\begin\{onecolentry\}\s*\\textit\{)"
+    r"(?P<stack>[^}]*)"
+    r"(?P<middle>\}\s*\\begin\{highlights\}\s*)"
+    r"(?P<bullets>(?:\s*\\item .*?\n)+)"
+    r"(?P<suffix>\s*\\end\{highlights\}\s*\\end\{onecolentry\})",
+    re.DOTALL,
+)
+MARKDOWN_HEADING_RE = re.compile(r"^(?P<hashes>#+)\s+(?P<title>.+?)\s*$")
+TOKEN_RE = re.compile(r"[a-z0-9][a-z0-9.+/#-]*")
+LEVEL_TOKEN_RE = re.compile(r"\b(intern|junior|mid|senior|staff|principal|lead)\b", re.IGNORECASE)
+LOCATION_TOKEN_RE = re.compile(r"\b(remote|hybrid|on-site|onsite)\b", re.IGNORECASE)
+EMPLOYMENT_TYPE_RE = re.compile(r"\b(full[- ]time|part[- ]time|contract|internship)\b", re.IGNORECASE)
+NUMBER_WORD_METRIC_RE = re.compile(
+    r"\b(one|two|three|four|five|six|seven|eight|nine|ten|twenty|thirty|forty|fifty)\b",
+    re.IGNORECASE,
+)
+PAGES_RE = re.compile(r"^Pages:\s+(?P<pages>\d+)\s*$", re.MULTILINE)
+
+COMMON_SIGNAL_STOPWORDS = frozenset(
+    {
+        "a",
+        "an",
+        "and",
+        "the",
+        "to",
+        "of",
+        "for",
+        "with",
+        "in",
+        "on",
+        "or",
+        "our",
+        "your",
+        "you",
+        "we",
+        "will",
+        "be",
+        "is",
+        "are",
+        "using",
+        "build",
+        "develop",
+        "experience",
+    }
+)
+FRONTEND_AI_TERMS = frozenset(
+    {
+        "react",
+        "typescript",
+        "javascript",
+        "node",
+        "node.js",
+        "frontend",
+        "web",
+        "mobile",
+        "swift",
+        "kotlin",
+        "ui",
+        "ux",
+        "conversational",
+        "llm",
+        "ai",
+        "ml",
+        "agentic",
+        "real-time",
+    }
+)
+DISTRIBUTED_INFRA_TERMS = frozenset(
+    {
+        "python",
+        "scala",
+        "spark",
+        "aws",
+        "emr",
+        "distributed",
+        "reliability",
+        "monitoring",
+        "throughput",
+        "etl",
+        "hl7",
+        "cloud",
+        "pipeline",
+        "kubernetes",
+    }
+)
+
+TRACK_LIBRARY = {
+    FRONTEND_AI_TRACK: {
+        "summary": (
+            "MS CS candidate with 3+ years of experience building full-stack applications and "
+            "real-time AI-driven systems, focused on translating complex intelligent systems "
+            "into intuitive, high-performance user experiences across web and mobile platforms"
+        ),
+        "technical_skills": [
+            {
+                "category": "Languages",
+                "items": ["Python", "TypeScript", "JavaScript", "Kotlin", "Java", "Golang", "SQL"],
+            },
+            {
+                "category": "Frontend \\& AI",
+                "items": ["React", "Next.js", "Node.js", "Swift", "Android (Kotlin)", "LLMs", "Agentic AI"],
+            },
+            {
+                "category": "Cloud \\& DevOps",
+                "items": ["AWS (Lambda, S3, DynamoDB, API Gateway, EC2)", "Docker", "Kubernetes", "GitLab CI/CD"],
+            },
+            {
+                "category": "Data \\& Storage",
+                "items": ["PostgreSQL", "DynamoDB", "MongoDB", "Neo4j", "Redis"],
+            },
+            {
+                "category": "Testing \\& Reliability",
+                "items": ["Pytest", "JUnit", "Unit/Integration Testing", "Monitoring", "Performance Profiling"],
+            },
+        ],
+        "software_engineer": {
+            "tech_stack_line": (
+                "Python, Spark, Databricks, Azure (ADF, ADLS Gen2), PostgreSQL, Tableau, "
+                "Datadog, Docker, GitLab CI/CD"
+            ),
+            "bullets": [
+                "Built real-time clinical data processing services ingesting 50M+ daily HL7 records (~580 TPS) from ICU bedside devices and patient monitors to power clinician-facing KPI dashboards across 1,500+ hospitals with 24/7 uptime",
+                "Developed Spark pipelines transforming raw multi-EMR clinical data through bronze/silver/gold lakehouse layers into STAR schema tables consumed by Tableau dashboards, reducing data-to-dashboard turnaround by 40\\% to enable near real-time decisions",
+                "Optimized 25+ Spark jobs on Databricks with parallel execution and Delta Lake caching, improving throughput by 50\\% (20K to 30K records/sec) and reducing data-to-dashboard latency for clinician-facing analytics",
+                "Owned observability across multi-tenant clinical pipelines handling PHI --- monitoring, alerting, audit logging, and incident triage --- maintaining $\\geq$99\\% availability SLA in regulated environments where failures impact clinical workflows",
+            ],
+        },
+    },
+    DISTRIBUTED_INFRA_TRACK: {
+        "summary": (
+            "MS CS candidate with 3+ years of experience building large-scale distributed systems "
+            "and data services, focused on reliable cloud infrastructure, performance "
+            "optimization, and production-safe analytics delivery"
+        ),
+        "technical_skills": [
+            {
+                "category": "Languages",
+                "items": ["Python", "Golang", "Java", "Scala", "SQL", "Bash", "C++"],
+            },
+            {
+                "category": "Infrastructure \\& Systems",
+                "items": ["Distributed Systems", "Microservices", "Load Balancing", "gRPC", "Protocol Buffers", "System Design"],
+            },
+            {
+                "category": "Cloud \\& DevOps",
+                "items": ["AWS (EMR, EC2, S3, Lambda, SQS)", "Kubernetes", "Docker", "Terraform", "GitLab CI/CD", "Linux"],
+            },
+            {
+                "category": "Data \\& Storage",
+                "items": ["Apache Spark", "PostgreSQL", "MySQL", "DynamoDB", "MongoDB", "Redis"],
+            },
+            {
+                "category": "Testing \\& Reliability",
+                "items": ["Pytest", "JUnit", "Unit/Integration Testing", "Monitoring", "Debugging", "Performance Profiling"],
+            },
+        ],
+        "software_engineer": {
+            "tech_stack_line": (
+                "Python, Apache Spark, PostgreSQL, AWS (S3, EMR), Terraform, Docker, GitLab CI/CD"
+            ),
+            "bullets": [
+                "Built and maintained distributed, high-availability clinical data services in Python and Scala on AWS (EMR, S3), processing 50M+ daily HL7 records (~580 TPS) for real-time analytics across 1,500+ hospitals with 24/7 uptime",
+                "Developed Python and Apache Spark ETL pipelines with custom HL7 parsers, cutting processing time 40\\% from 6 hours to 3.6 hours on 2TB+ daily healthcare data so downstream clinical analytics stayed same-day and operationally dependable",
+                "Optimized 25+ Apache Spark jobs with parallel execution and caching on AWS EMR, improving throughput by 50\\% from 20K to 30K records/sec while reducing monthly cloud spend by \\$15K and keeping time-sensitive analytics delivery stable",
+                "Designed monitoring and alerting for production HL7 workflows, triaged data-quality issues, and resolved incidents against SLA expectations to support reliable analytics delivery for 1,500+ hospitals in a 24/7 production environment",
+            ],
+        },
+    },
+    GENERALIST_SWE_TRACK: {
+        "summary": (
+            "MS CS candidate with 3+ years of experience building production software across "
+            "cloud, data, and AI-adjacent systems, focused on reliable delivery, measurable "
+            "performance gains, and recruiter-readable product impact"
+        ),
+        "technical_skills": [
+            {
+                "category": "Languages",
+                "items": ["Python", "Java", "TypeScript", "JavaScript", "Golang", "SQL", "Kotlin"],
+            },
+            {
+                "category": "Application \\& Systems",
+                "items": ["React", "Next.js", "Distributed Systems", "System Design", "Node.js", "Agentic AI"],
+            },
+            {
+                "category": "Cloud \\& DevOps",
+                "items": ["AWS (EMR, EC2, S3, Lambda, SQS)", "Kubernetes", "Docker", "GitLab CI/CD", "Linux"],
+            },
+            {
+                "category": "Data \\& Storage",
+                "items": ["Apache Spark", "PostgreSQL", "DynamoDB", "MongoDB", "Neo4j", "Redis"],
+            },
+            {
+                "category": "Testing \\& Reliability",
+                "items": ["Pytest", "JUnit", "Unit/Integration Testing", "Monitoring", "Performance Profiling"],
+            },
+        ],
+        "software_engineer": {
+            "tech_stack_line": "Python, Java, PostgreSQL, AWS, Docker, GitLab CI/CD, Spark, Kubernetes",
+            "bullets": [
+                "Built production data services in Python and Scala on AWS, processing 50M+ daily HL7 records (~580 TPS) with 24/7 uptime and reliable downstream analytics for 1,500+ hospitals",
+                "Developed ETL and data-processing flows across Python, Apache Spark, and custom parsers, reducing runtime 40\\% from 6 hours to 3.6 hours on 2TB+ daily healthcare data while keeping same-day analytics delivery dependable",
+                "Improved Spark throughput 50\\% across 25+ jobs through parallel execution and caching, keeping large-scale analytics delivery performant while reducing recurring infrastructure spend by \\$15K monthly across production workloads",
+                "Owned monitoring, alerting, and incident triage for production HL7 workflows, resolving data-quality issues quickly enough to maintain SLA-aligned analytics delivery in a high-availability, always-on environment",
+            ],
+        },
+    },
+}
+
 
 class ResumeTailoringError(RuntimeError):
     """Raised when resume-tailoring bootstrap cannot load required canonical state."""
@@ -206,6 +450,35 @@ class TailoringBootstrapResult:
     run: ResumeTailoringRunRecord | None
     blocked_reason_code: str | None
     reused_existing_run: bool
+
+
+@dataclass(frozen=True)
+class TailoringIntelligenceResult:
+    job_posting_id: str
+    resume_tailoring_run_id: str | None
+    track_name: str | None
+    verification_outcome: str | None
+    blocked_reason_code: str | None
+    step_artifact_paths: dict[str, str]
+
+
+@dataclass(frozen=True)
+class TailoringFinalizeResult:
+    job_posting_id: str
+    resume_tailoring_run_id: str
+    result: str
+    reason_code: str | None
+    run: ResumeTailoringRunRecord
+    final_resume_path: str | None
+    verification_outcome: str | None
+
+
+@dataclass(frozen=True)
+class ParsedResumeDocument:
+    summary: str
+    technical_skills: list[dict[str, Any]]
+    software_engineer_stack_line: str
+    software_engineer_bullets: list[str]
 
 
 def bootstrap_tailoring_run(
@@ -350,6 +623,16 @@ def bootstrap_tailoring_run(
                 posting_row=posting_row,
                 run=run,
             )
+            if bootstrap_ready:
+                posting_status = _set_job_posting_status(
+                    connection,
+                    job_posting_id=posting_row["job_posting_id"],
+                    lead_id=posting_row["lead_id"],
+                    previous_status=posting_status,
+                    new_status=JOB_POSTING_STATUS_TAILORING_IN_PROGRESS,
+                    current_time=current_time,
+                    transition_reason="Resume Tailoring bootstrap entered the active tailoring workspace stage.",
+                )
 
     eligibility_artifact = _write_eligibility_artifact(
         connection,
@@ -1046,6 +1329,7 @@ def _publish_tailoring_meta_artifact(
         company_name,
         role_title,
     ).resolve()
+    final_resume_path = _resolve_optional_project_path(paths, run.final_resume_path)
     payload = {
         "resume_tailoring_run_id": run.resume_tailoring_run_id,
         "base_used": run.base_used,
@@ -1069,6 +1353,7 @@ def _publish_tailoring_meta_artifact(
         "workspace_path": str(paths.tailoring_workspace_dir(company_name, role_title).resolve()),
         "resume_artifacts": {
             "tex_path": str(paths.tailoring_resume_tex_path(company_name, role_title).resolve()),
+            "pdf_path": str(final_resume_path.resolve()) if final_resume_path is not None else None,
         },
         "send_linkage": {
             "outreach_mode": "role_targeted",
@@ -1273,3 +1558,1695 @@ def _resume_tailoring_run_from_row(row: sqlite3.Row) -> ResumeTailoringRunRecord
         created_at=row[11],
         updated_at=row[12],
     )
+
+
+def generate_tailoring_intelligence(
+    connection: sqlite3.Connection,
+    paths: ProjectPaths,
+    *,
+    job_posting_id: str,
+    timestamp: str | None = None,
+) -> TailoringIntelligenceResult:
+    current_time = timestamp or now_utc_iso()
+    bootstrap_result = bootstrap_tailoring_run(
+        connection,
+        paths,
+        job_posting_id=job_posting_id,
+        timestamp=current_time,
+    )
+    if bootstrap_result.run is None:
+        return TailoringIntelligenceResult(
+            job_posting_id=bootstrap_result.job_posting_id,
+            resume_tailoring_run_id=None,
+            track_name=None,
+            verification_outcome=None,
+            blocked_reason_code=bootstrap_result.blocked_reason_code,
+            step_artifact_paths={},
+        )
+
+    posting_row = _load_posting_row(connection, job_posting_id=job_posting_id)
+    run = get_resume_tailoring_run(connection, bootstrap_result.run.resume_tailoring_run_id)
+    if run is None:
+        raise ResumeTailoringError(
+            f"Failed to reload resume_tailoring_run `{bootstrap_result.run.resume_tailoring_run_id}`."
+        )
+
+    company_name = str(posting_row["company_name"])
+    role_title = str(posting_row["role_title"])
+    workspace_jd_path = paths.tailoring_workspace_jd_path(company_name, role_title)
+    profile_path = paths.tailoring_input_profile_path
+    resume_tex_path = paths.tailoring_resume_tex_path(company_name, role_title)
+    meta_path = paths.tailoring_meta_path(company_name, role_title)
+
+    if not workspace_jd_path.exists():
+        raise ResumeTailoringError(
+            f"Tailoring workspace JD mirror is missing for job_posting_id `{job_posting_id}`."
+        )
+    if not profile_path.exists():
+        raise ResumeTailoringError("Tailoring input profile mirror is missing.")
+    if not resume_tex_path.exists():
+        raise ResumeTailoringError("Tailoring workspace resume.tex is missing.")
+    if not meta_path.exists():
+        raise ResumeTailoringError("Tailoring workspace meta.yaml is missing.")
+
+    jd_text = workspace_jd_path.read_text(encoding="utf-8")
+    profile_text = profile_path.read_text(encoding="utf-8")
+    resume_doc = _parse_resume_document(resume_tex_path.read_text(encoding="utf-8"))
+    meta_payload = _load_yaml_file(meta_path)
+    section_locks = _normalized_slug_list(meta_payload.get("section_locks"))
+    experience_role_allowlist = _normalized_slug_list(meta_payload.get("experience_role_allowlist"))
+
+    step_3_payload = _build_step_3_signal_artifact(
+        posting_row=posting_row,
+        run=run,
+        jd_text=jd_text,
+    )
+    track_name = _select_tailoring_track(step_3_payload)
+    profile_snippets = _extract_profile_snippets(profile_text, source_path=profile_path)
+    step_4_payload = _build_step_4_evidence_artifact(
+        posting_row=posting_row,
+        run=run,
+        step_3_payload=step_3_payload,
+        profile_snippets=profile_snippets,
+    )
+    step_5_markdown = _build_step_5_context_markdown(
+        posting_row=posting_row,
+        run=run,
+        track_name=track_name,
+        step_4_payload=step_4_payload,
+    )
+    step_6_payload = _build_step_6_candidate_payload(
+        posting_row=posting_row,
+        run=run,
+        track_name=track_name,
+        resume_doc=resume_doc,
+        step_3_payload=step_3_payload,
+        step_4_payload=step_4_payload,
+        section_locks=section_locks,
+        experience_role_allowlist=experience_role_allowlist,
+    )
+    step_7_payload = _build_step_7_verification_artifact(
+        posting_row=posting_row,
+        run=run,
+        resume_doc=resume_doc,
+        step_3_payload=step_3_payload,
+        step_4_payload=step_4_payload,
+        step_6_payload=step_6_payload,
+        section_locks=section_locks,
+        experience_role_allowlist=experience_role_allowlist,
+    )
+
+    _write_yaml_file(
+        paths.tailoring_step_3_jd_signals_path(company_name, role_title),
+        step_3_payload,
+        overwrite=True,
+    )
+    _write_yaml_file(
+        paths.tailoring_step_4_evidence_map_path(company_name, role_title),
+        step_4_payload,
+        overwrite=True,
+    )
+    _write_text_file(
+        paths.tailoring_step_5_context_path(company_name, role_title),
+        step_5_markdown,
+        overwrite=True,
+    )
+    _write_yaml_file(
+        paths.tailoring_step_6_candidate_bullets_path(company_name, role_title),
+        step_6_payload,
+        overwrite=True,
+    )
+    _write_yaml_file(
+        paths.tailoring_step_7_verification_path(company_name, role_title),
+        step_7_payload,
+        overwrite=True,
+    )
+    _update_intelligence_manifest(
+        paths,
+        posting_row=posting_row,
+        run=run,
+        current_time=current_time,
+        track_name=track_name,
+        verification_outcome=str(step_7_payload["verification_outcome"]),
+    )
+
+    refreshed_run = run
+    verification_outcome = str(step_7_payload["verification_outcome"])
+    if verification_outcome != VERIFICATION_OUTCOME_PASS:
+        refreshed_run = _update_tailoring_run_state(
+            connection,
+            posting_row=posting_row,
+            run=run,
+            tailoring_status=TAILORING_STATUS_NEEDS_REVISION,
+            resume_review_status=RESUME_REVIEW_STATUS_NOT_READY,
+            verification_outcome=verification_outcome,
+            current_time=current_time,
+            transition_reason="Structured tailoring verification surfaced explicit blockers or revision guidance.",
+            final_resume_path=run.final_resume_path,
+            completed_at=None,
+        )
+        _publish_tailoring_meta_artifact(
+            connection,
+            paths,
+            posting_row=posting_row,
+            run=refreshed_run,
+            current_time=current_time,
+        )
+    elif run.tailoring_status == TAILORING_STATUS_NEEDS_REVISION:
+        refreshed_run = _update_tailoring_run_state(
+            connection,
+            posting_row=posting_row,
+            run=run,
+            tailoring_status=TAILORING_STATUS_IN_PROGRESS,
+            resume_review_status=RESUME_REVIEW_STATUS_NOT_READY,
+            verification_outcome=verification_outcome,
+            current_time=current_time,
+            transition_reason="Structured tailoring artifacts were regenerated and cleared the current verification gate.",
+            final_resume_path=run.final_resume_path,
+            completed_at=None,
+        )
+        _publish_tailoring_meta_artifact(
+            connection,
+            paths,
+            posting_row=posting_row,
+            run=refreshed_run,
+            current_time=current_time,
+        )
+
+    return TailoringIntelligenceResult(
+        job_posting_id=job_posting_id,
+        resume_tailoring_run_id=refreshed_run.resume_tailoring_run_id,
+        track_name=track_name,
+        verification_outcome=verification_outcome,
+        blocked_reason_code=None,
+        step_artifact_paths={
+            "step_3": paths.relative_to_root(
+                paths.tailoring_step_3_jd_signals_path(company_name, role_title)
+            ).as_posix(),
+            "step_4": paths.relative_to_root(
+                paths.tailoring_step_4_evidence_map_path(company_name, role_title)
+            ).as_posix(),
+            "step_5": paths.relative_to_root(
+                paths.tailoring_step_5_context_path(company_name, role_title)
+            ).as_posix(),
+            "step_6": paths.relative_to_root(
+                paths.tailoring_step_6_candidate_bullets_path(company_name, role_title)
+            ).as_posix(),
+            "step_7": paths.relative_to_root(
+                paths.tailoring_step_7_verification_path(company_name, role_title)
+            ).as_posix(),
+        },
+    )
+
+
+def finalize_tailoring_run(
+    connection: sqlite3.Connection,
+    paths: ProjectPaths,
+    *,
+    job_posting_id: str,
+    timestamp: str | None = None,
+) -> TailoringFinalizeResult:
+    current_time = timestamp or now_utc_iso()
+    posting_row = _load_posting_row(connection, job_posting_id=job_posting_id)
+    run = get_latest_resume_tailoring_run_for_posting(connection, job_posting_id)
+    if run is None:
+        raise ResumeTailoringError(
+            f"No active resume_tailoring_run exists for job_posting_id `{job_posting_id}`."
+        )
+
+    company_name = str(posting_row["company_name"])
+    role_title = str(posting_row["role_title"])
+    resume_tex_path = paths.tailoring_resume_tex_path(company_name, role_title)
+    baseline_path = paths.tailoring_scope_baseline_path(company_name, role_title)
+    step_3_path = paths.tailoring_step_3_jd_signals_path(company_name, role_title)
+    step_4_path = paths.tailoring_step_4_evidence_map_path(company_name, role_title)
+    step_6_path = paths.tailoring_step_6_candidate_bullets_path(company_name, role_title)
+    step_7_path = paths.tailoring_step_7_verification_path(company_name, role_title)
+
+    required_paths = {
+        "step_3_jd_signals": step_3_path,
+        "step_4_evidence_map": step_4_path,
+        "step_6_candidate_resume_edits": step_6_path,
+        "step_7_verification": step_7_path,
+        "scope_baseline": baseline_path,
+        "resume_tex": resume_tex_path,
+    }
+    missing = [artifact_name for artifact_name, path in required_paths.items() if not path.exists()]
+    if missing:
+        refreshed_run = _update_tailoring_run_state(
+            connection,
+            posting_row=posting_row,
+            run=run,
+            tailoring_status=TAILORING_STATUS_NEEDS_REVISION,
+            resume_review_status=RESUME_REVIEW_STATUS_NOT_READY,
+            verification_outcome=VERIFICATION_OUTCOME_NEEDS_REVISION,
+            current_time=current_time,
+            transition_reason="Finalize is blocked because required tailoring artifacts are missing.",
+            final_resume_path=run.final_resume_path,
+            completed_at=None,
+        )
+        _write_finalize_blocker(
+            step_7_path,
+            posting_row=posting_row,
+            run=refreshed_run,
+            reason_code=FINALIZE_REASON_MISSING_STEP_ARTIFACT,
+            blocker_message=(
+                "Finalize requires Step 3, Step 4, Step 6, Step 7, scope baseline, and resume.tex."
+            ),
+            blocker_details=[f"Missing artifact: {artifact_name}" for artifact_name in missing],
+            current_time=current_time,
+            severity=VERIFICATION_OUTCOME_NEEDS_REVISION,
+        )
+        _publish_tailoring_meta_artifact(
+            connection,
+            paths,
+            posting_row=posting_row,
+            run=refreshed_run,
+            current_time=current_time,
+        )
+        return TailoringFinalizeResult(
+            job_posting_id=job_posting_id,
+            resume_tailoring_run_id=refreshed_run.resume_tailoring_run_id,
+            result=VERIFICATION_OUTCOME_NEEDS_REVISION,
+            reason_code=FINALIZE_REASON_MISSING_STEP_ARTIFACT,
+            run=refreshed_run,
+            final_resume_path=refreshed_run.final_resume_path,
+            verification_outcome=refreshed_run.verification_outcome,
+        )
+
+    step_3_payload = _load_yaml_file(step_3_path)
+    step_4_payload = _load_yaml_file(step_4_path)
+    step_6_payload = _load_yaml_file(step_6_path)
+    step_7_payload = _load_yaml_file(step_7_path)
+    if not _step_artifacts_are_valid(step_3_payload, step_4_payload, step_6_payload, step_7_payload):
+        refreshed_run = _update_tailoring_run_state(
+            connection,
+            posting_row=posting_row,
+            run=run,
+            tailoring_status=TAILORING_STATUS_NEEDS_REVISION,
+            resume_review_status=RESUME_REVIEW_STATUS_NOT_READY,
+            verification_outcome=VERIFICATION_OUTCOME_NEEDS_REVISION,
+            current_time=current_time,
+            transition_reason="Finalize found malformed Step 3 through Step 7 artifacts.",
+            final_resume_path=run.final_resume_path,
+            completed_at=None,
+        )
+        _write_finalize_blocker(
+            step_7_path,
+            posting_row=posting_row,
+            run=refreshed_run,
+            reason_code=FINALIZE_REASON_INVALID_STEP_ARTIFACT,
+            blocker_message="Finalize found malformed Step 3 through Step 7 artifacts.",
+            blocker_details=["Regenerate the tailoring intelligence artifacts before finalize."],
+            current_time=current_time,
+            severity=VERIFICATION_OUTCOME_NEEDS_REVISION,
+        )
+        _publish_tailoring_meta_artifact(
+            connection,
+            paths,
+            posting_row=posting_row,
+            run=refreshed_run,
+            current_time=current_time,
+        )
+        return TailoringFinalizeResult(
+            job_posting_id=job_posting_id,
+            resume_tailoring_run_id=refreshed_run.resume_tailoring_run_id,
+            result=VERIFICATION_OUTCOME_NEEDS_REVISION,
+            reason_code=FINALIZE_REASON_INVALID_STEP_ARTIFACT,
+            run=refreshed_run,
+            final_resume_path=refreshed_run.final_resume_path,
+            verification_outcome=refreshed_run.verification_outcome,
+        )
+
+    verification_outcome = str(step_7_payload.get("verification_outcome", "")).strip()
+    if verification_outcome != VERIFICATION_OUTCOME_PASS:
+        refreshed_run = _update_tailoring_run_state(
+            connection,
+            posting_row=posting_row,
+            run=run,
+            tailoring_status=TAILORING_STATUS_NEEDS_REVISION,
+            resume_review_status=RESUME_REVIEW_STATUS_NOT_READY,
+            verification_outcome=verification_outcome or VERIFICATION_OUTCOME_NEEDS_REVISION,
+            current_time=current_time,
+            transition_reason="Finalize stopped because Step 7 verification has not reached pass.",
+            final_resume_path=run.final_resume_path,
+            completed_at=None,
+        )
+        _write_finalize_blocker(
+            step_7_path,
+            posting_row=posting_row,
+            run=refreshed_run,
+            reason_code=FINALIZE_REASON_VERIFICATION_BLOCKED,
+            blocker_message="Finalize requires Step 7 verification to reach `pass`.",
+            blocker_details=[
+                f"Current Step 7 verification_outcome is `{verification_outcome or 'missing'}`."
+            ],
+            current_time=current_time,
+            severity=VERIFICATION_OUTCOME_NEEDS_REVISION,
+        )
+        _publish_tailoring_meta_artifact(
+            connection,
+            paths,
+            posting_row=posting_row,
+            run=refreshed_run,
+            current_time=current_time,
+        )
+        return TailoringFinalizeResult(
+            job_posting_id=job_posting_id,
+            resume_tailoring_run_id=refreshed_run.resume_tailoring_run_id,
+            result=VERIFICATION_OUTCOME_NEEDS_REVISION,
+            reason_code=FINALIZE_REASON_VERIFICATION_BLOCKED,
+            run=refreshed_run,
+            final_resume_path=refreshed_run.final_resume_path,
+            verification_outcome=refreshed_run.verification_outcome,
+        )
+
+    current_resume_content = resume_tex_path.read_text(encoding="utf-8")
+    baseline_content = baseline_path.read_text(encoding="utf-8")
+    candidate_resume_content = _apply_step_6_payload_to_resume(
+        current_resume_content,
+        step_6_payload,
+    )
+    scope_result = _validate_scope_against_baseline(
+        baseline_content=baseline_content,
+        candidate_content=candidate_resume_content,
+    )
+    if scope_result is not None:
+        refreshed_run = _update_tailoring_run_state(
+            connection,
+            posting_row=posting_row,
+            run=run,
+            tailoring_status=TAILORING_STATUS_NEEDS_REVISION,
+            resume_review_status=RESUME_REVIEW_STATUS_NOT_READY,
+            verification_outcome=VERIFICATION_OUTCOME_NEEDS_REVISION,
+            current_time=current_time,
+            transition_reason="Finalize rejected resume edits outside the allowed tailoring boundary.",
+            final_resume_path=run.final_resume_path,
+            completed_at=None,
+        )
+        _write_finalize_blocker(
+            step_7_path,
+            posting_row=posting_row,
+            run=refreshed_run,
+            reason_code=FINALIZE_REASON_SCOPE_VIOLATION,
+            blocker_message="Finalize detected edits outside the allowed tailoring boundary.",
+            blocker_details=scope_result,
+            current_time=current_time,
+            severity=VERIFICATION_OUTCOME_NEEDS_REVISION,
+        )
+        _publish_tailoring_meta_artifact(
+            connection,
+            paths,
+            posting_row=posting_row,
+            run=refreshed_run,
+            current_time=current_time,
+        )
+        return TailoringFinalizeResult(
+            job_posting_id=job_posting_id,
+            resume_tailoring_run_id=refreshed_run.resume_tailoring_run_id,
+            result=VERIFICATION_OUTCOME_NEEDS_REVISION,
+            reason_code=FINALIZE_REASON_SCOPE_VIOLATION,
+            run=refreshed_run,
+            final_resume_path=refreshed_run.final_resume_path,
+            verification_outcome=refreshed_run.verification_outcome,
+        )
+
+    resume_tex_path.write_text(candidate_resume_content, encoding="utf-8")
+    compile_result = _compile_tailored_resume(paths, company_name=company_name, role_title=role_title)
+    if compile_result["status"] == "failed":
+        refreshed_run = _update_tailoring_run_state(
+            connection,
+            posting_row=posting_row,
+            run=run,
+            tailoring_status=TAILORING_STATUS_FAILED,
+            resume_review_status=RESUME_REVIEW_STATUS_NOT_READY,
+            verification_outcome=VERIFICATION_OUTCOME_FAIL,
+            current_time=current_time,
+            transition_reason="Finalize failed because LaTeX compilation did not succeed.",
+            final_resume_path=None,
+            completed_at=current_time,
+        )
+        _write_finalize_blocker(
+            step_7_path,
+            posting_row=posting_row,
+            run=refreshed_run,
+            reason_code=FINALIZE_REASON_COMPILE_FAILED,
+            blocker_message="LaTeX compilation failed during finalize.",
+            blocker_details=compile_result["notes"],
+            current_time=current_time,
+            severity=VERIFICATION_OUTCOME_FAIL,
+            compiled_pdf_path=compile_result.get("compiled_pdf_path"),
+        )
+        _publish_tailoring_meta_artifact(
+            connection,
+            paths,
+            posting_row=posting_row,
+            run=refreshed_run,
+            current_time=current_time,
+        )
+        return TailoringFinalizeResult(
+            job_posting_id=job_posting_id,
+            resume_tailoring_run_id=refreshed_run.resume_tailoring_run_id,
+            result=VERIFICATION_OUTCOME_FAIL,
+            reason_code=FINALIZE_REASON_COMPILE_FAILED,
+            run=refreshed_run,
+            final_resume_path=refreshed_run.final_resume_path,
+            verification_outcome=refreshed_run.verification_outcome,
+        )
+
+    page_count = int(compile_result["page_count"])
+    if page_count != 1:
+        refreshed_run = _update_tailoring_run_state(
+            connection,
+            posting_row=posting_row,
+            run=run,
+            tailoring_status=TAILORING_STATUS_NEEDS_REVISION,
+            resume_review_status=RESUME_REVIEW_STATUS_NOT_READY,
+            verification_outcome=VERIFICATION_OUTCOME_NEEDS_REVISION,
+            current_time=current_time,
+            transition_reason="Finalize compiled a resume that violates the one-page rule.",
+            final_resume_path=compile_result["final_pdf_relative_path"],
+            completed_at=None,
+        )
+        _write_finalize_blocker(
+            step_7_path,
+            posting_row=posting_row,
+            run=refreshed_run,
+            reason_code=FINALIZE_REASON_PAGE_BUDGET,
+            blocker_message="Finalize compiled successfully but the rendered PDF exceeds one page.",
+            blocker_details=[f"Rendered page count: {page_count}."],
+            current_time=current_time,
+            severity=VERIFICATION_OUTCOME_NEEDS_REVISION,
+            compiled_pdf_path=compile_result.get("compiled_pdf_path"),
+            page_count=page_count,
+        )
+        _publish_tailoring_meta_artifact(
+            connection,
+            paths,
+            posting_row=posting_row,
+            run=refreshed_run,
+            current_time=current_time,
+        )
+        return TailoringFinalizeResult(
+            job_posting_id=job_posting_id,
+            resume_tailoring_run_id=refreshed_run.resume_tailoring_run_id,
+            result=VERIFICATION_OUTCOME_NEEDS_REVISION,
+            reason_code=FINALIZE_REASON_PAGE_BUDGET,
+            run=refreshed_run,
+            final_resume_path=refreshed_run.final_resume_path,
+            verification_outcome=refreshed_run.verification_outcome,
+        )
+
+    refreshed_run = _update_tailoring_run_state(
+        connection,
+        posting_row=posting_row,
+        run=run,
+        tailoring_status=TAILORING_STATUS_TAILORED,
+        resume_review_status=RESUME_REVIEW_STATUS_PENDING,
+        verification_outcome=VERIFICATION_OUTCOME_PASS,
+        current_time=current_time,
+        transition_reason="Finalize applied the Step 6 payload, compiled the PDF, and verified one-page output.",
+        final_resume_path=compile_result["final_pdf_relative_path"],
+        completed_at=current_time,
+    )
+    updated_posting_status = _set_job_posting_status(
+        connection,
+        job_posting_id=job_posting_id,
+        lead_id=str(posting_row["lead_id"]),
+        previous_status=str(posting_row["posting_status"]),
+        new_status=JOB_POSTING_STATUS_RESUME_REVIEW_PENDING,
+        current_time=current_time,
+        transition_reason="Resume Tailoring finalize completed and handed the run to the mandatory review gate.",
+    )
+    posting_row = dict(posting_row)
+    posting_row["posting_status"] = updated_posting_status
+    _write_finalize_success(
+        step_7_path,
+        posting_row=posting_row,
+        run=refreshed_run,
+        current_time=current_time,
+        compiled_pdf_path=compile_result["compiled_pdf_path"],
+        page_count=page_count,
+    )
+    _publish_tailoring_meta_artifact(
+        connection,
+        paths,
+        posting_row=posting_row,
+        run=refreshed_run,
+        current_time=current_time,
+    )
+    return TailoringFinalizeResult(
+        job_posting_id=job_posting_id,
+        resume_tailoring_run_id=refreshed_run.resume_tailoring_run_id,
+        result=VERIFICATION_OUTCOME_PASS,
+        reason_code=None,
+        run=refreshed_run,
+        final_resume_path=refreshed_run.final_resume_path,
+        verification_outcome=refreshed_run.verification_outcome,
+    )
+
+
+def _step_artifacts_are_valid(
+    step_3_payload: Mapping[str, Any],
+    step_4_payload: Mapping[str, Any],
+    step_6_payload: Mapping[str, Any],
+    step_7_payload: Mapping[str, Any],
+) -> bool:
+    return all(
+        (
+            step_3_payload.get("status") == INTELLIGENCE_STATUS_GENERATED,
+            isinstance(step_3_payload.get("signals"), list),
+            step_4_payload.get("status") == INTELLIGENCE_STATUS_GENERATED,
+            isinstance(step_4_payload.get("matches"), list),
+            step_6_payload.get("status") == INTELLIGENCE_STATUS_GENERATED,
+            isinstance(step_6_payload.get("technical_skills"), list),
+            isinstance(step_6_payload.get("summary"), str),
+            step_7_payload.get("status") == INTELLIGENCE_STATUS_GENERATED,
+            step_7_payload.get("verification_outcome") in {
+                VERIFICATION_OUTCOME_PASS,
+                VERIFICATION_OUTCOME_FAIL,
+                VERIFICATION_OUTCOME_NEEDS_REVISION,
+            },
+            isinstance(step_7_payload.get("checks"), list),
+        )
+    )
+
+
+def _parse_resume_document(content: str) -> ParsedResumeDocument:
+    summary_match = SUMMARY_BLOCK_RE.search(content)
+    skills_match = TECHNICAL_SKILLS_BLOCK_RE.search(content)
+    software_engineer_match = SOFTWARE_ENGINEER_BLOCK_RE.search(content)
+    if summary_match is None or skills_match is None or software_engineer_match is None:
+        raise ResumeTailoringError(
+            "resume.tex does not match the current supported tailoring template."
+        )
+
+    technical_skills: list[dict[str, Any]] = []
+    for match in TECHNICAL_SKILL_LINE_RE.finditer(skills_match.group("skills")):
+        items = [item.strip() for item in match.group("items").split(",") if item.strip()]
+        technical_skills.append(
+            {
+                "category": match.group("category").strip(),
+                "items": items,
+            }
+        )
+    bullets = [
+        line.strip()[6:].strip()
+        for line in software_engineer_match.group("bullets").splitlines()
+        if line.strip().startswith("\\item ")
+    ]
+    return ParsedResumeDocument(
+        summary=summary_match.group("summary").strip(),
+        technical_skills=technical_skills,
+        software_engineer_stack_line=software_engineer_match.group("stack").strip(),
+        software_engineer_bullets=bullets,
+    )
+
+
+def _apply_step_6_payload_to_resume(content: str, step_6_payload: Mapping[str, Any]) -> str:
+    summary_text = str(step_6_payload["summary"]).strip()
+    skill_lines = _render_technical_skills_block(
+        step_6_payload.get("technical_skills", [])
+    )
+    software_engineer = dict(step_6_payload.get("software_engineer") or {})
+    stack_line = str(software_engineer.get("tech_stack_line") or "").strip()
+    bullets = software_engineer.get("bullets") or []
+    bullet_lines = "\n".join(
+        f"            \\item {str(entry['text']).strip()}"
+        for entry in bullets
+    )
+
+    updated = SUMMARY_BLOCK_RE.sub(
+        lambda match: f"{match.group('prefix')}{summary_text}{match.group('suffix')}",
+        content,
+        count=1,
+    )
+    updated = TECHNICAL_SKILLS_BLOCK_RE.sub(
+        lambda match: f"{match.group('prefix')}{skill_lines}{match.group('suffix')}",
+        updated,
+        count=1,
+    )
+    updated = SOFTWARE_ENGINEER_BLOCK_RE.sub(
+        lambda match: (
+            f"{match.group('prefix')}{stack_line}{match.group('middle')}{bullet_lines}\n"
+            f"{match.group('suffix')}"
+        ),
+        updated,
+        count=1,
+    )
+    return updated
+
+
+def _render_technical_skills_block(technical_skills: Sequence[Mapping[str, Any]]) -> str:
+    rendered_blocks = []
+    for entry in technical_skills:
+        category = str(entry.get("category") or "").strip()
+        items = ", ".join(str(item).strip() for item in entry.get("items") or [] if str(item).strip())
+        rendered_blocks.append(
+            "    \\begin{onecolentry}\n"
+            f"        \\textbf{{{category}:}} {items}\n"
+            "    \\end{onecolentry}\n"
+        )
+    return "\n".join(rendered_blocks).rstrip() + "\n\n"
+
+
+def _validate_scope_against_baseline(
+    *,
+    baseline_content: str,
+    candidate_content: str,
+) -> list[str] | None:
+    baseline_masked = _mask_resume_scope(baseline_content)
+    candidate_masked = _mask_resume_scope(candidate_content)
+    if [
+        line.strip() for line in baseline_masked.splitlines()
+    ] == [
+        line.strip() for line in candidate_masked.splitlines()
+    ]:
+        return None
+
+    baseline_lines = baseline_masked.splitlines()
+    candidate_lines = candidate_masked.splitlines()
+    diff_messages: list[str] = []
+    max_lines = max(len(baseline_lines), len(candidate_lines))
+    for index in range(max_lines):
+        baseline_line = (baseline_lines[index] if index < len(baseline_lines) else "").strip()
+        candidate_line = (candidate_lines[index] if index < len(candidate_lines) else "").strip()
+        if baseline_line == candidate_line:
+            continue
+        diff_messages.append(
+            f"Out-of-scope change near line {index + 1}: baseline={baseline_line!r}, candidate={candidate_line!r}"
+        )
+        if len(diff_messages) == 5:
+            break
+    return diff_messages or ["Out-of-scope change detected outside the allowed tailoring boundary."]
+
+
+def _mask_resume_scope(content: str) -> str:
+    masked = SUMMARY_BLOCK_RE.sub(
+        lambda match: f"{match.group('prefix')}<summary>{match.group('suffix')}",
+        content,
+        count=1,
+    )
+    masked = TECHNICAL_SKILLS_BLOCK_RE.sub(
+        lambda match: f"{match.group('prefix')}<technical-skills>\n{match.group('suffix')}",
+        masked,
+        count=1,
+    )
+    masked = SOFTWARE_ENGINEER_BLOCK_RE.sub(
+        lambda match: (
+            f"{match.group('prefix')}<software-engineer-stack>"
+            f"{match.group('middle')}<software-engineer-bullets>\n{match.group('suffix')}"
+        ),
+        masked,
+        count=1,
+    )
+    return masked
+
+
+def _build_step_3_signal_artifact(
+    *,
+    posting_row: Mapping[str, Any],
+    run: ResumeTailoringRunRecord,
+    jd_text: str,
+) -> dict[str, Any]:
+    current_heading = ""
+    signals: list[dict[str, Any]] = []
+    seen_signals: set[str] = set()
+    counts = {
+        "must_have": 0,
+        "core_responsibility": 0,
+        "nice_to_have": 0,
+        "informational": 0,
+    }
+    for raw_line in jd_text.splitlines():
+        stripped = raw_line.strip()
+        if not stripped:
+            continue
+        if stripped.startswith("#"):
+            current_heading = stripped.lstrip("#").strip()
+            continue
+        normalized_line = _normalize_jd_line(stripped)
+        if not normalized_line:
+            continue
+        priority = _classify_signal_priority(current_heading, normalized_line)
+        if priority is None:
+            continue
+        category = _categorize_signal(normalized_line)
+        dedupe_key = f"{priority}|{normalized_line.lower()}"
+        if dedupe_key in seen_signals:
+            continue
+        seen_signals.add(dedupe_key)
+        counts[priority] += 1
+        signal_id = f"signal_{priority}_{counts[priority]}"
+        signals.append(
+            {
+                "signal_id": signal_id,
+                "priority": priority,
+                "weight": _signal_priority_weight(priority),
+                "category": category,
+                "signal": normalized_line,
+                "tokens": sorted(_tokenize(normalized_line)),
+                "rationale": _signal_rationale(priority, current_heading, normalized_line),
+                "jd_evidence": normalized_line,
+                "source_heading": current_heading or None,
+            }
+        )
+
+    role_title = str(posting_row["role_title"])
+    role_intent_signals = [
+        signal["signal"]
+        for signal in signals
+        if signal["priority"] in {"core_responsibility", "must_have"}
+    ][:2]
+    role_intent_summary = (
+        "; ".join(role_intent_signals)
+        if role_intent_signals
+        else f"Role-targeted tailoring for {role_title} using the persisted JD mirror."
+    )
+    return {
+        "job_posting_id": posting_row["job_posting_id"],
+        "resume_tailoring_run_id": run.resume_tailoring_run_id,
+        "status": INTELLIGENCE_STATUS_GENERATED,
+        "role_metadata": {
+            "role_title": role_title,
+            "level": _extract_level(role_title),
+            "location": _extract_with_regex(jd_text, LOCATION_TOKEN_RE),
+            "employment_type": _extract_with_regex(jd_text, EMPLOYMENT_TYPE_RE),
+        },
+        "role_intent_summary": role_intent_summary,
+        "signal_priority_weights": {
+            "must_have": 1.00,
+            "core_responsibility": 0.75,
+            "nice_to_have": 0.40,
+            "informational": 0.15,
+        },
+        "signals_by_priority": {
+            priority: [signal for signal in signals if signal["priority"] == priority]
+            for priority in ("must_have", "core_responsibility", "nice_to_have", "informational")
+        },
+        "signals": signals,
+    }
+
+
+def _build_step_4_evidence_artifact(
+    *,
+    posting_row: Mapping[str, Any],
+    run: ResumeTailoringRunRecord,
+    step_3_payload: Mapping[str, Any],
+    profile_snippets: Sequence[Mapping[str, Any]],
+) -> dict[str, Any]:
+    matches: list[dict[str, Any]] = []
+    gaps: list[dict[str, Any]] = []
+    for signal in step_3_payload.get("signals", []):
+        ranked_snippets = sorted(
+            profile_snippets,
+            key=lambda snippet: _score_profile_snippet(signal, snippet),
+            reverse=True,
+        )
+        matched_any = False
+        for snippet in ranked_snippets[:2]:
+            score = _score_profile_snippet(signal, snippet)
+            if score <= 0:
+                continue
+            matched_any = True
+            confidence = "high" if score >= 4 else "medium" if score >= 2 else "low"
+            matches.append(
+                {
+                    "match_id": f"match_{len(matches) + 1}",
+                    "jd_signal_id": signal["signal_id"],
+                    "jd_signal": signal["signal"],
+                    "priority": signal["priority"],
+                    "source_file": snippet["source_file"],
+                    "source_section": snippet["source_section"],
+                    "source_excerpt": snippet["source_excerpt"],
+                    "confidence": confidence,
+                    "covered_terms": sorted(set(signal["tokens"]) & set(snippet["tokens"])),
+                    "notes": _match_note(signal, snippet, confidence),
+                }
+            )
+        if not matched_any and signal["priority"] in {"must_have", "core_responsibility"}:
+            gaps.append(
+                {
+                    "jd_signal_id": signal["signal_id"],
+                    "jd_signal": signal["signal"],
+                    "priority": signal["priority"],
+                    "gap_reason": "No truthful candidate evidence was retrieved from the master profile.",
+                    "suggested_resume_section": _suggest_resume_section(signal["category"]),
+                }
+            )
+
+    return {
+        "job_posting_id": posting_row["job_posting_id"],
+        "resume_tailoring_run_id": run.resume_tailoring_run_id,
+        "status": INTELLIGENCE_STATUS_GENERATED,
+        "profile_file": profile_snippets[0]["source_file"] if profile_snippets else None,
+        "matches": matches,
+        "gaps": gaps,
+    }
+
+
+def _build_step_5_context_markdown(
+    *,
+    posting_row: Mapping[str, Any],
+    run: ResumeTailoringRunRecord,
+    track_name: str,
+    step_4_payload: Mapping[str, Any],
+) -> str:
+    top_matches = list(step_4_payload.get("matches", []))[:4]
+    selected_scope = ", ".join(
+        sorted({match["source_section"].split(" > ")[-1] for match in top_matches})
+    ) or "software-engineer"
+    claim_lines = []
+    for match in top_matches:
+        claim_lines.append(
+            f"| evidence | {match['jd_signal']} | {match['source_excerpt']} | {match['source_section']} |"
+        )
+    if not claim_lines:
+        claim_lines.append("| evidence | No high-confidence profile evidence was matched yet. | N/A | N/A |")
+
+    controlled_elaboration = []
+    for match in top_matches:
+        controlled_elaboration.append(
+            f"- Evidence: {match['source_excerpt']}"
+        )
+        controlled_elaboration.append(
+            f"- Low-risk inference: This evidence credibly supports `{match['jd_signal']}` without inventing new ownership."
+        )
+    if not controlled_elaboration:
+        controlled_elaboration.append("- Evidence retrieval did not surface high-confidence material for this JD yet.")
+
+    narrative = (
+        "The current tailoring pass emphasizes adjacent, interview-safe overlap from the master profile, "
+        "keeps unsupported asks explicit as gaps, and limits elaboration to the selected software-engineer scope."
+    )
+    return (
+        "# Step 5 Elaborated SWE Context\n\n"
+        f"- job_posting_id: {posting_row['job_posting_id']}\n"
+        f"- resume_tailoring_run_id: {run.resume_tailoring_run_id}\n"
+        f"- status: {INTELLIGENCE_STATUS_GENERATED}\n"
+        f"- selected_track: {track_name}\n\n"
+        "## Selected Pipeline Scope\n\n"
+        f"- Primary evidence scope: {selected_scope}\n"
+        f"- Track framing: {track_name}\n"
+        "- Constraint boundary: summary, technical-skills, and software-engineer only\n\n"
+        "## Controlled Elaboration\n\n"
+        + "\n".join(controlled_elaboration)
+        + "\n\n## Claim Ledger\n\n"
+        "| label | jd_signal | support | source_section |\n"
+        "| --- | --- | --- | --- |\n"
+        + "\n".join(claim_lines)
+        + "\n\n## Interview-Safe Narrative\n\n"
+        + narrative
+        + "\n"
+    )
+
+
+def _build_step_6_candidate_payload(
+    *,
+    posting_row: Mapping[str, Any],
+    run: ResumeTailoringRunRecord,
+    track_name: str,
+    resume_doc: ParsedResumeDocument,
+    step_3_payload: Mapping[str, Any],
+    step_4_payload: Mapping[str, Any],
+    section_locks: set[str],
+    experience_role_allowlist: set[str],
+) -> dict[str, Any]:
+    track_plan = TRACK_LIBRARY[track_name]
+    summary_locked = "summary" in section_locks
+    skills_locked = "technical-skills" in section_locks
+    software_engineer_allowed = "software-engineer" in experience_role_allowlist
+
+    technical_skills = (
+        _annotate_technical_skills(
+            resume_doc.technical_skills,
+            step_3_payload=step_3_payload,
+        )
+        if skills_locked
+        else _annotate_technical_skills(
+            track_plan["technical_skills"],
+            step_3_payload=step_3_payload,
+        )
+    )
+    summary_text = resume_doc.summary if summary_locked else str(track_plan["summary"])
+    software_engineer_stack_line = (
+        resume_doc.software_engineer_stack_line
+        if not software_engineer_allowed
+        else str(track_plan["software_engineer"]["tech_stack_line"])
+    )
+    source_bullets = (
+        resume_doc.software_engineer_bullets
+        if not software_engineer_allowed
+        else list(track_plan["software_engineer"]["bullets"])
+    )
+    bullet_entries = []
+    purpose_labels = (
+        "scale-impact",
+        "end-to-end-flow",
+        "optimization",
+        "reliability-operations",
+    )
+    matches = list(step_4_payload.get("matches", []))
+    for index, bullet_text in enumerate(source_bullets[:4]):
+        support_pointers = _select_support_pointers_for_text(
+            bullet_text,
+            matches,
+            limit=2,
+        )
+        bullet_entries.append(
+            {
+                "text": bullet_text,
+                "purpose": purpose_labels[index] if index < len(purpose_labels) else "supporting",
+                "support_pointers": support_pointers,
+                "covered_signal_ids": sorted(
+                    {
+                        match["jd_signal_id"]
+                        for match in matches
+                        if match["match_id"] in support_pointers
+                    }
+                ),
+                "char_count": len(bullet_text),
+            }
+        )
+
+    summary_support_pointers = _select_support_pointers_for_text(
+        summary_text,
+        matches,
+        limit=2,
+    )
+    return {
+        "job_posting_id": posting_row["job_posting_id"],
+        "resume_tailoring_run_id": run.resume_tailoring_run_id,
+        "status": INTELLIGENCE_STATUS_GENERATED,
+        "selected_track": track_name,
+        "summary": summary_text,
+        "summary_support_pointers": summary_support_pointers,
+        "technical_skills": technical_skills,
+        "software_engineer": {
+            "tech_stack_line": software_engineer_stack_line,
+            "bullets": bullet_entries,
+        },
+        "support_pointers": sorted(
+            {
+                pointer
+                for bullet in bullet_entries
+                for pointer in bullet["support_pointers"]
+            }
+        ),
+        "blockers": [],
+    }
+
+
+def _build_step_7_verification_artifact(
+    *,
+    posting_row: Mapping[str, Any],
+    run: ResumeTailoringRunRecord,
+    resume_doc: ParsedResumeDocument,
+    step_3_payload: Mapping[str, Any],
+    step_4_payload: Mapping[str, Any],
+    step_6_payload: Mapping[str, Any],
+    section_locks: set[str],
+    experience_role_allowlist: set[str],
+) -> dict[str, Any]:
+    checks: list[dict[str, Any]] = []
+    blockers: list[str] = []
+    revision_guidance: list[str] = []
+    matches_by_id = {
+        match["match_id"]: match
+        for match in step_4_payload.get("matches", [])
+    }
+
+    bullet_entries = list((step_6_payload.get("software_engineer") or {}).get("bullets") or [])
+    proof_notes: list[str] = []
+    proof_status = VERIFICATION_OUTCOME_PASS
+    if not step_6_payload.get("summary_support_pointers"):
+        proof_status = VERIFICATION_OUTCOME_NEEDS_REVISION
+        proof_notes.append("Summary is missing explicit support pointers into the Step 4 evidence map.")
+    for bullet in bullet_entries:
+        if not bullet.get("support_pointers"):
+            proof_status = VERIFICATION_OUTCOME_NEEDS_REVISION
+            proof_notes.append(
+                f"Bullet `{bullet.get('purpose', 'unknown')}` is missing support pointers."
+            )
+        else:
+            for pointer in bullet["support_pointers"]:
+                if pointer not in matches_by_id:
+                    proof_status = VERIFICATION_OUTCOME_FAIL
+                    proof_notes.append(
+                        f"Bullet support pointer `{pointer}` does not exist in the Step 4 evidence map."
+                    )
+    if proof_status != VERIFICATION_OUTCOME_PASS:
+        blockers.extend(proof_notes)
+    checks.append(
+        {
+            "check_id": "proof-grounding",
+            "status": proof_status,
+            "notes": proof_notes,
+        }
+    )
+
+    must_have_ids = {
+        signal["signal_id"]
+        for signal in step_3_payload.get("signals", [])
+        if signal["priority"] == "must_have"
+    }
+    core_ids = {
+        signal["signal_id"]
+        for signal in step_3_payload.get("signals", [])
+        if signal["priority"] == "core_responsibility"
+    }
+    covered_ids = set(step_6_payload.get("summary_support_pointers") or [])
+    covered_signal_ids = {
+        matches_by_id[pointer]["jd_signal_id"]
+        for pointer in covered_ids
+        if pointer in matches_by_id
+    }
+    for entry in step_6_payload.get("technical_skills", []):
+        covered_signal_ids.update(entry.get("matched_signal_ids") or [])
+    for bullet in bullet_entries:
+        covered_signal_ids.update(bullet.get("covered_signal_ids") or [])
+    uncovered_must = sorted(must_have_ids - covered_signal_ids)
+    uncovered_core = sorted(core_ids - covered_signal_ids)
+    coverage_notes: list[str] = []
+    coverage_status = VERIFICATION_OUTCOME_PASS
+    if uncovered_must:
+        coverage_status = VERIFICATION_OUTCOME_NEEDS_REVISION
+        coverage_notes.append(
+            "Uncovered must-have signal ids: " + ", ".join(uncovered_must)
+        )
+        revision_guidance.append(
+            "Tighten summary, skills, or bullets to cover the uncovered must-have JD signals or leave an explicit gap note."
+        )
+    if uncovered_core:
+        coverage_status = VERIFICATION_OUTCOME_NEEDS_REVISION
+        coverage_notes.append(
+            "Uncovered core-responsibility signal ids: " + ", ".join(uncovered_core)
+        )
+    if coverage_status != VERIFICATION_OUTCOME_PASS:
+        blockers.extend(coverage_notes)
+    checks.append(
+        {
+            "check_id": "jd-coverage",
+            "status": coverage_status,
+            "notes": coverage_notes,
+        }
+    )
+
+    metric_notes: list[str] = []
+    metric_status = VERIFICATION_OUTCOME_PASS
+    metric_texts = [str(step_6_payload.get("summary") or "")] + [
+        str(entry.get("text") or "") for entry in bullet_entries
+    ]
+    for text in metric_texts:
+        if NUMBER_WORD_METRIC_RE.search(text):
+            metric_status = VERIFICATION_OUTCOME_NEEDS_REVISION
+            metric_notes.append(
+                f"Metric language should stay numeric rather than spelled out: {text}"
+            )
+    if metric_status != VERIFICATION_OUTCOME_PASS:
+        revision_guidance.append(
+            "Rewrite metric phrases into digit form so Step 6 stays compile-safe and consistent."
+        )
+    checks.append(
+        {
+            "check_id": "metric-sanity",
+            "status": metric_status,
+            "notes": metric_notes,
+        }
+    )
+
+    line_notes: list[str] = []
+    line_status = VERIFICATION_OUTCOME_PASS
+    if len(bullet_entries) != 4:
+        line_status = VERIFICATION_OUTCOME_FAIL
+        line_notes.append("Step 6 must contain exactly 4 software-engineer bullets.")
+    for entry in bullet_entries:
+        char_count = int(entry.get("char_count") or len(str(entry.get("text") or "")))
+        if char_count < STEP_6_BULLET_HARD_MIN or char_count > STEP_6_BULLET_HARD_MAX:
+            line_status = VERIFICATION_OUTCOME_FAIL
+            line_notes.append(
+                f"Bullet `{entry.get('purpose', 'unknown')}` is outside the hard character bounds ({char_count})."
+            )
+        elif char_count < STEP_6_BULLET_TARGET_MIN or char_count > STEP_6_BULLET_TARGET_MAX:
+            if line_status != VERIFICATION_OUTCOME_FAIL:
+                line_status = VERIFICATION_OUTCOME_NEEDS_REVISION
+            line_notes.append(
+                f"Bullet `{entry.get('purpose', 'unknown')}` misses the target character range ({char_count})."
+            )
+    if len(step_6_payload.get("technical_skills") or []) > len(resume_doc.technical_skills):
+        if line_status != VERIFICATION_OUTCOME_FAIL:
+            line_status = VERIFICATION_OUTCOME_NEEDS_REVISION
+        line_notes.append("Technical-skills block exceeds the baseline line count.")
+    if line_status != VERIFICATION_OUTCOME_PASS:
+        revision_guidance.append(
+            "Keep the Step 6 bullets within the current character budget and avoid adding extra skills rows."
+        )
+    checks.append(
+        {
+            "check_id": "line-budget",
+            "status": line_status,
+            "notes": line_notes,
+        }
+    )
+
+    compile_notes: list[str] = []
+    compile_status = VERIFICATION_OUTCOME_PASS
+    if "software-engineer" not in experience_role_allowlist:
+        compile_status = VERIFICATION_OUTCOME_NEEDS_REVISION
+        compile_notes.append(
+            "meta.yaml does not permit software-engineer edits, so finalize cannot truthfully tailor the owned experience block."
+        )
+    if "summary" in section_locks:
+        compile_notes.append("Summary is locked in meta.yaml; Step 6 reuses the baseline summary.")
+    if "technical-skills" in section_locks:
+        compile_notes.append("Technical-skills is locked in meta.yaml; Step 6 reuses the baseline skills rows.")
+    if any(
+        check["status"] in {VERIFICATION_OUTCOME_FAIL, VERIFICATION_OUTCOME_NEEDS_REVISION}
+        for check in checks
+    ) and compile_status == VERIFICATION_OUTCOME_PASS:
+        compile_status = VERIFICATION_OUTCOME_NEEDS_REVISION
+        compile_notes.append("Fix the upstream verification issues before compile is allowed.")
+    if compile_status != VERIFICATION_OUTCOME_PASS:
+        blockers.extend(compile_notes)
+    checks.append(
+        {
+            "check_id": "compile-page-readiness",
+            "status": compile_status,
+            "notes": compile_notes,
+        }
+    )
+
+    verification_outcome = VERIFICATION_OUTCOME_PASS
+    if any(check["status"] == VERIFICATION_OUTCOME_FAIL for check in checks):
+        verification_outcome = VERIFICATION_OUTCOME_FAIL
+    elif any(check["status"] == VERIFICATION_OUTCOME_NEEDS_REVISION for check in checks):
+        verification_outcome = VERIFICATION_OUTCOME_NEEDS_REVISION
+
+    return {
+        "job_posting_id": posting_row["job_posting_id"],
+        "resume_tailoring_run_id": run.resume_tailoring_run_id,
+        "status": INTELLIGENCE_STATUS_GENERATED,
+        "generated_at": now_utc_iso(),
+        "verification_outcome": verification_outcome,
+        "final_decision": verification_outcome,
+        "checks": checks,
+        "blockers": blockers,
+        "revision_guidance": revision_guidance,
+    }
+
+
+def _write_finalize_blocker(
+    step_7_path: Path,
+    *,
+    posting_row: Mapping[str, Any],
+    run: ResumeTailoringRunRecord,
+    reason_code: str,
+    blocker_message: str,
+    blocker_details: Sequence[str],
+    current_time: str,
+    severity: str,
+    compiled_pdf_path: str | None = None,
+    page_count: int | None = None,
+) -> None:
+    payload = _load_yaml_file(step_7_path)
+    payload["status"] = INTELLIGENCE_STATUS_GENERATED
+    payload["generated_at"] = current_time
+    payload["verification_outcome"] = severity
+    payload["final_decision"] = severity
+    payload["blockers"] = list(dict.fromkeys(list(payload.get("blockers") or []) + [blocker_message, *blocker_details]))
+    payload["revision_guidance"] = list(payload.get("revision_guidance") or [])
+    if severity == VERIFICATION_OUTCOME_NEEDS_REVISION:
+        payload["revision_guidance"].append("Fix the listed blockers and rerun finalize.")
+    compile_check = _find_check_entry(payload, "compile-page-readiness")
+    compile_check["status"] = severity
+    compile_check["notes"] = [blocker_message, *blocker_details]
+    if compiled_pdf_path is not None:
+        payload["compiled_pdf_path"] = compiled_pdf_path
+    if page_count is not None:
+        payload["page_count"] = page_count
+    payload["reason_code"] = reason_code
+    payload["job_posting_id"] = posting_row["job_posting_id"]
+    payload["resume_tailoring_run_id"] = run.resume_tailoring_run_id
+    _write_yaml_file(step_7_path, payload, overwrite=True)
+
+
+def _write_finalize_success(
+    step_7_path: Path,
+    *,
+    posting_row: Mapping[str, Any],
+    run: ResumeTailoringRunRecord,
+    current_time: str,
+    compiled_pdf_path: str,
+    page_count: int,
+) -> None:
+    payload = _load_yaml_file(step_7_path)
+    payload["status"] = INTELLIGENCE_STATUS_GENERATED
+    payload["generated_at"] = current_time
+    payload["verification_outcome"] = VERIFICATION_OUTCOME_PASS
+    payload["final_decision"] = VERIFICATION_OUTCOME_PASS
+    payload["compiled_pdf_path"] = compiled_pdf_path
+    payload["page_count"] = page_count
+    payload["reason_code"] = None
+    payload["blockers"] = []
+    compile_check = _find_check_entry(payload, "compile-page-readiness")
+    compile_check["status"] = VERIFICATION_OUTCOME_PASS
+    compile_check["notes"] = [
+        f"Compiled {compiled_pdf_path} successfully.",
+        f"Verified rendered page count = {page_count}.",
+    ]
+    payload["job_posting_id"] = posting_row["job_posting_id"]
+    payload["resume_tailoring_run_id"] = run.resume_tailoring_run_id
+    _write_yaml_file(step_7_path, payload, overwrite=True)
+
+
+def _find_check_entry(payload: dict[str, Any], check_id: str) -> dict[str, Any]:
+    for entry in payload.get("checks", []):
+        if entry.get("check_id") == check_id:
+            return entry
+    new_entry = {"check_id": check_id, "status": VERIFICATION_OUTCOME_NEEDS_REVISION, "notes": []}
+    payload.setdefault("checks", []).append(new_entry)
+    return new_entry
+
+
+def _compile_tailored_resume(
+    paths: ProjectPaths,
+    *,
+    company_name: str,
+    role_title: str,
+) -> dict[str, Any]:
+    workspace_dir = paths.tailoring_workspace_dir(company_name, role_title)
+    latexmk = shutil.which("latexmk")
+    pdflatex = shutil.which("pdflatex")
+    resume_filename = paths.tailoring_resume_tex_path(company_name, role_title).name
+    command: list[str]
+    if latexmk:
+        command = [
+            latexmk,
+            "-pdf",
+            "-interaction=nonstopmode",
+            "-halt-on-error",
+            "-file-line-error",
+            resume_filename,
+        ]
+    elif pdflatex:
+        command = [
+            pdflatex,
+            "-interaction=nonstopmode",
+            "-halt-on-error",
+            "-file-line-error",
+            resume_filename,
+        ]
+    else:
+        return {
+            "status": "failed",
+            "notes": ["Neither `latexmk` nor `pdflatex` is available on PATH."],
+        }
+
+    result = subprocess.run(
+        command,
+        cwd=workspace_dir,
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    pdf_path = workspace_dir / "resume.pdf"
+    final_pdf_path = paths.tailoring_pdf_path(company_name, role_title)
+    if result.returncode != 0 or not pdf_path.exists():
+        notes = []
+        stderr = result.stderr.strip()
+        stdout = result.stdout.strip()
+        if stderr:
+            notes.append(stderr.splitlines()[-1])
+        if stdout:
+            notes.append(stdout.splitlines()[-1])
+        if not notes:
+            notes.append("LaTeX returned a non-zero exit status without emitting diagnostics.")
+        return {
+            "status": "failed",
+            "notes": notes,
+            "compiled_pdf_path": str(pdf_path.resolve()) if pdf_path.exists() else None,
+        }
+
+    shutil.copyfile(pdf_path, final_pdf_path)
+    page_count = _read_pdf_page_count(final_pdf_path)
+    return {
+        "status": "success",
+        "notes": [],
+        "compiled_pdf_path": str(final_pdf_path.resolve()),
+        "final_pdf_relative_path": paths.relative_to_root(final_pdf_path).as_posix(),
+        "page_count": page_count,
+    }
+
+
+def _read_pdf_page_count(pdf_path: Path) -> int:
+    pdfinfo = shutil.which("pdfinfo")
+    if pdfinfo is None:
+        raise ResumeTailoringError("`pdfinfo` is required to verify the one-page resume constraint.")
+    result = subprocess.run(
+        [pdfinfo, str(pdf_path)],
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    if result.returncode != 0:
+        raise ResumeTailoringError(
+            f"`pdfinfo` failed while verifying `{pdf_path}`: {result.stderr.strip()}"
+        )
+    match = PAGES_RE.search(result.stdout)
+    if match is None:
+        raise ResumeTailoringError(
+            f"Could not read the page count from `pdfinfo` output for `{pdf_path}`."
+        )
+    return int(match.group("pages"))
+
+
+def _update_intelligence_manifest(
+    paths: ProjectPaths,
+    *,
+    posting_row: Mapping[str, Any],
+    run: ResumeTailoringRunRecord,
+    current_time: str,
+    track_name: str,
+    verification_outcome: str,
+) -> None:
+    manifest_path = paths.tailoring_intelligence_manifest_path(
+        posting_row["company_name"],
+        posting_row["role_title"],
+    )
+    manifest_payload = _load_yaml_file(manifest_path)
+    manifest_payload["generated_at"] = current_time
+    manifest_payload["selected_track"] = track_name
+    manifest_payload["verification_outcome"] = verification_outcome
+    manifest_payload["steps"]["step_3_jd_signals"]["status"] = INTELLIGENCE_STATUS_GENERATED
+    manifest_payload["steps"]["step_4_evidence_map"]["status"] = INTELLIGENCE_STATUS_GENERATED
+    manifest_payload["steps"]["step_5_elaborated_swe_context"]["status"] = INTELLIGENCE_STATUS_GENERATED
+    manifest_payload["steps"]["step_6_candidate_resume_edits"]["status"] = INTELLIGENCE_STATUS_GENERATED
+    manifest_payload["steps"]["step_7_verification"]["status"] = verification_outcome
+    manifest_payload["job_posting_id"] = posting_row["job_posting_id"]
+    manifest_payload["resume_tailoring_run_id"] = run.resume_tailoring_run_id
+    _write_yaml_file(manifest_path, manifest_payload, overwrite=True)
+
+
+def _update_tailoring_run_state(
+    connection: sqlite3.Connection,
+    *,
+    posting_row: Mapping[str, Any],
+    run: ResumeTailoringRunRecord,
+    tailoring_status: str,
+    resume_review_status: str,
+    verification_outcome: str | None,
+    current_time: str,
+    transition_reason: str,
+    final_resume_path: str | None,
+    completed_at: str | None,
+) -> ResumeTailoringRunRecord:
+    with connection:
+        connection.execute(
+            """
+            UPDATE resume_tailoring_runs
+            SET tailoring_status = ?, resume_review_status = ?, final_resume_path = ?,
+                verification_outcome = ?, completed_at = ?, updated_at = ?
+            WHERE resume_tailoring_run_id = ?
+            """,
+            (
+                tailoring_status,
+                resume_review_status,
+                final_resume_path,
+                verification_outcome,
+                completed_at,
+                current_time,
+                run.resume_tailoring_run_id,
+            ),
+        )
+        if run.tailoring_status != tailoring_status:
+            _record_state_transition(
+                connection,
+                object_type="resume_tailoring_runs",
+                object_id=run.resume_tailoring_run_id,
+                stage="tailoring_status",
+                previous_state=run.tailoring_status,
+                new_state=tailoring_status,
+                transition_timestamp=current_time,
+                transition_reason=transition_reason,
+                lead_id=posting_row["lead_id"],
+                job_posting_id=posting_row["job_posting_id"],
+            )
+        if run.resume_review_status != resume_review_status:
+            _record_state_transition(
+                connection,
+                object_type="resume_tailoring_runs",
+                object_id=run.resume_tailoring_run_id,
+                stage="resume_review_status",
+                previous_state=run.resume_review_status,
+                new_state=resume_review_status,
+                transition_timestamp=current_time,
+                transition_reason=transition_reason,
+                lead_id=posting_row["lead_id"],
+                job_posting_id=posting_row["job_posting_id"],
+            )
+    refreshed_run = get_resume_tailoring_run(connection, run.resume_tailoring_run_id)
+    if refreshed_run is None:
+        raise ResumeTailoringError(
+            f"Failed to reload resume_tailoring_run `{run.resume_tailoring_run_id}` after state update."
+        )
+    return refreshed_run
+
+
+def _annotate_technical_skills(
+    technical_skills: Sequence[Mapping[str, Any]],
+    *,
+    step_3_payload: Mapping[str, Any],
+) -> list[dict[str, Any]]:
+    signals = list(step_3_payload.get("signals", []))
+    annotated: list[dict[str, Any]] = []
+    for entry in technical_skills:
+        category = str(entry.get("category") or "").strip()
+        items = [str(item).strip() for item in entry.get("items") or [] if str(item).strip()]
+        matched_signal_ids = sorted(
+            {
+                signal["signal_id"]
+                for signal in signals
+                if _tokenize(" ".join(items)) & set(signal["tokens"])
+            }
+        )
+        annotated.append(
+            {
+                "category": category,
+                "items": items,
+                "matched_signal_ids": matched_signal_ids,
+            }
+        )
+    return annotated
+
+
+def _select_support_pointers_for_text(
+    text: str,
+    matches: Sequence[Mapping[str, Any]],
+    *,
+    limit: int,
+) -> list[str]:
+    text_tokens = _tokenize(text)
+    ranked = sorted(
+        matches,
+        key=lambda match: len(text_tokens & _tokenize(str(match.get("source_excerpt") or ""))),
+        reverse=True,
+    )
+    pointers: list[str] = []
+    for match in ranked:
+        overlap = text_tokens & _tokenize(str(match.get("source_excerpt") or ""))
+        if not overlap and pointers:
+            continue
+        if not overlap and len(pointers) == 0 and ranked:
+            overlap = set(str(match.get("jd_signal") or "").lower().split())
+        if not overlap:
+            continue
+        pointers.append(str(match["match_id"]))
+        if len(pointers) == limit:
+            break
+    return pointers
+
+
+def _extract_profile_snippets(profile_text: str, *, source_path: Path) -> list[dict[str, Any]]:
+    headings: list[str] = []
+    snippets: list[dict[str, Any]] = []
+    for raw_line in profile_text.splitlines():
+        stripped = raw_line.strip()
+        if not stripped or stripped.startswith("<!--"):
+            continue
+        heading_match = MARKDOWN_HEADING_RE.match(stripped)
+        if heading_match is not None:
+            level = len(heading_match.group("hashes"))
+            heading = heading_match.group("title").strip()
+            headings = headings[: level - 1]
+            headings.append(heading)
+            continue
+        if stripped.startswith("- "):
+            text = stripped[2:].strip()
+        elif re.match(r"^\d+\.\s+", stripped):
+            text = re.sub(r"^\d+\.\s+", "", stripped)
+        else:
+            text = stripped
+        if len(text) < 20:
+            continue
+        snippets.append(
+            {
+                "source_file": str(source_path.resolve()),
+                "source_section": " > ".join(headings) if headings else "profile",
+                "source_excerpt": text,
+                "tokens": _tokenize(text),
+            }
+        )
+    return snippets
+
+
+def _score_profile_snippet(signal: Mapping[str, Any], snippet: Mapping[str, Any]) -> int:
+    signal_tokens = set(signal.get("tokens") or [])
+    snippet_tokens = set(snippet.get("tokens") or [])
+    overlap = len(signal_tokens & snippet_tokens)
+    if overlap == 0:
+        return 0
+    section = str(snippet.get("source_section") or "").lower()
+    bonus = 0
+    if signal["priority"] == "must_have" and "skills" in section:
+        bonus += 1
+    if signal["priority"] == "core_responsibility" and (
+        "work experience" in section or "additional context" in section
+    ):
+        bonus += 1
+    if signal["category"] in {"frontend_ai", "distributed_infra"} and signal["category"] in section:
+        bonus += 1
+    return overlap + bonus
+
+
+def _match_note(signal: Mapping[str, Any], snippet: Mapping[str, Any], confidence: str) -> str:
+    return (
+        f"{confidence} confidence match for `{signal['signal']}` based on lexical overlap with "
+        f"{snippet['source_section']}."
+    )
+
+
+def _suggest_resume_section(signal_category: str) -> str:
+    if signal_category in {"frontend_ai", "fullstack", "ai_integration"}:
+        return "summary_or_skills"
+    return "software-engineer"
+
+
+def _select_tailoring_track(step_3_payload: Mapping[str, Any]) -> str:
+    all_tokens = {
+        token
+        for signal in step_3_payload.get("signals", [])
+        for token in signal.get("tokens", [])
+    }
+    frontend_score = len(all_tokens & FRONTEND_AI_TERMS)
+    distributed_score = len(all_tokens & DISTRIBUTED_INFRA_TERMS)
+    if frontend_score >= 3 and ("ai" in all_tokens or "llm" in all_tokens or "frontend" in all_tokens):
+        return FRONTEND_AI_TRACK
+    if distributed_score >= frontend_score:
+        return DISTRIBUTED_INFRA_TRACK
+    return GENERALIST_SWE_TRACK
+
+
+def _normalize_jd_line(line: str) -> str:
+    cleaned = re.sub(r"^\s*[-*]\s*", "", line).strip()
+    return cleaned if len(cleaned) >= 8 else ""
+
+
+def _classify_signal_priority(current_heading: str, line: str) -> str | None:
+    heading = current_heading.lower()
+    normalized = line.lower()
+    if any(term in heading for term in ("benefits", "salary", "compensation")):
+        return "informational"
+    if any(term in heading for term in ("nice", "preferred")):
+        return "nice_to_have"
+    if any(term in heading for term in ("responsibilit", "what you'll do", "what you will do", "about the role")):
+        return "core_responsibility"
+    if any(term in heading for term in ("requirement", "qualification", "must", "bring")):
+        return "must_have"
+    if any(term in normalized for term in ("required", "must", "minimum", "citizenship", "clearance")):
+        return "must_have"
+    if any(term in normalized for term in ("preferred", "nice to have", "bonus")):
+        return "nice_to_have"
+    if any(term in normalized for term in ("salary", "benefits", "compensation", "hybrid", "remote")):
+        return "informational"
+    if any(term in normalized for term in ("build", "design", "develop", "collaborate", "own")):
+        return "core_responsibility"
+    return None
+
+
+def _categorize_signal(line: str) -> str:
+    tokens = _tokenize(line)
+    if tokens & {"citizenship", "clearance", "security"}:
+        return "authorization"
+    if tokens & FRONTEND_AI_TERMS:
+        return "frontend_ai"
+    if tokens & DISTRIBUTED_INFRA_TERMS:
+        return "distributed_infra"
+    if tokens & {"communicate", "collaborate", "stakeholders", "team"}:
+        return "collaboration"
+    if tokens & {"reliability", "monitoring", "uptime", "incident"}:
+        return "reliability"
+    return "general"
+
+
+def _signal_priority_weight(priority: str) -> float:
+    return {
+        "must_have": 1.00,
+        "core_responsibility": 0.75,
+        "nice_to_have": 0.40,
+        "informational": 0.15,
+    }[priority]
+
+
+def _signal_rationale(priority: str, heading: str, line: str) -> str:
+    heading_note = f" under `{heading}`" if heading else ""
+    if priority == "must_have":
+        return f"Classified as must-have because the JD presents this requirement{heading_note}."
+    if priority == "core_responsibility":
+        return f"Classified as core responsibility because the JD frames this work item{heading_note}."
+    if priority == "nice_to_have":
+        return f"Classified as nice-to-have because the JD marks it as optional{heading_note}."
+    return f"Captured as informational context from the JD{heading_note}."
+
+
+def _tokenize(text: str) -> set[str]:
+    lowered = text.lower()
+    lowered = lowered.replace("node.js", "node js")
+    lowered = lowered.replace("next.js", "next js")
+    lowered = lowered.replace("c++", "cplusplus")
+    lowered = lowered.replace("real-time", "realtime")
+    tokens = {
+        token
+        for token in TOKEN_RE.findall(lowered)
+        if token not in COMMON_SIGNAL_STOPWORDS
+    }
+    if "realtime" in lowered:
+        tokens.add("real-time")
+    if "agentic ai" in lowered:
+        tokens.add("agentic")
+        tokens.add("ai")
+    return tokens
+
+
+def _extract_level(role_title: str) -> str | None:
+    match = LEVEL_TOKEN_RE.search(role_title)
+    return None if match is None else match.group(1).lower()
+
+
+def _extract_with_regex(text: str, pattern: re.Pattern[str]) -> str | None:
+    match = pattern.search(text)
+    return None if match is None else match.group(0)
+
+
+def _normalized_slug_list(value: Any) -> set[str]:
+    if not value:
+        return set()
+    return {_slugify_name(str(item)) for item in value if str(item).strip()}
+
+
+def _slugify_name(value: str) -> str:
+    return re.sub(r"[^a-z0-9]+", "-", value.lower()).strip("-")
+
+
+def _load_yaml_file(path: Path) -> dict[str, Any]:
+    payload = yaml.safe_load(path.read_text(encoding="utf-8"))
+    return dict(payload or {})

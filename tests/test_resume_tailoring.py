@@ -1,6 +1,8 @@
 from __future__ import annotations
 
+import shutil
 import sqlite3
+from pathlib import Path
 
 import yaml
 
@@ -12,20 +14,56 @@ from job_hunt_copilot.resume_tailoring import (
     ELIGIBILITY_STATUS_HARD_INELIGIBLE,
     ELIGIBILITY_STATUS_SOFT_FLAG,
     ELIGIBILITY_STATUS_UNKNOWN,
+    FINALIZE_REASON_SCOPE_VIOLATION,
     JOB_POSTING_STATUS_HARD_INELIGIBLE,
+    JOB_POSTING_STATUS_RESUME_REVIEW_PENDING,
+    JOB_POSTING_STATUS_TAILORING_IN_PROGRESS,
     RESUME_REVIEW_STATUS_NOT_READY,
+    RESUME_REVIEW_STATUS_PENDING,
     TAILORING_ELIGIBILITY_ARTIFACT_TYPE,
     TAILORING_META_ARTIFACT_TYPE,
+    TAILORING_STATUS_NEEDS_REVISION,
     TAILORING_STATUS_IN_PROGRESS,
+    TAILORING_STATUS_TAILORED,
     bootstrap_tailoring_run,
+    finalize_tailoring_run,
+    generate_tailoring_intelligence,
 )
 from tests.support import create_minimal_project
+
+REPO_ROOT = Path(__file__).resolve().parents[1]
+REAL_PROFILE_PATH = REPO_ROOT / "assets" / "resume-tailoring" / "profile.md"
+REAL_BASE_RESUME_PATH = (
+    REPO_ROOT / "assets" / "resume-tailoring" / "base" / "distributed-infra" / "base-resume.tex"
+)
 
 
 def bootstrap_project(tmp_path):
     project_root = tmp_path / "repo"
     project_root.mkdir()
     create_minimal_project(project_root)
+    run_bootstrap(project_root=project_root)
+    return project_root
+
+
+def bootstrap_project_with_real_tailoring_assets(tmp_path):
+    project_root = tmp_path / "repo"
+    project_root.mkdir()
+    create_minimal_project(project_root)
+
+    generalist_dir = project_root / "assets" / "resume-tailoring" / "base" / "generalist"
+    shutil.rmtree(generalist_dir)
+    (project_root / "assets" / "resume-tailoring" / "profile.md").write_text(
+        REAL_PROFILE_PATH.read_text(encoding="utf-8"),
+        encoding="utf-8",
+    )
+    distributed_dir = project_root / "assets" / "resume-tailoring" / "base" / "distributed-infra"
+    distributed_dir.mkdir(parents=True, exist_ok=True)
+    (distributed_dir / "base-resume.tex").write_text(
+        REAL_BASE_RESUME_PATH.read_text(encoding="utf-8"),
+        encoding="utf-8",
+    )
+
     run_bootstrap(project_root=project_root)
     return project_root
 
@@ -107,6 +145,28 @@ def seed_posting(
     )
     connection.commit()
     return jd_path
+
+
+def prepare_real_tailoring_run(tmp_path, *, jd_body: str):
+    project_root = bootstrap_project_with_real_tailoring_assets(tmp_path)
+    paths = ProjectPaths.from_root(project_root)
+    connection = connect_database(project_root / "job_hunt_copilot.db")
+    seed_posting(
+        connection,
+        paths,
+        jd_body=jd_body,
+        company_name="Acme Data Systems",
+        role_title="Software Engineer",
+        timestamp="2026-04-06T20:00:00Z",
+    )
+    bootstrap_result = bootstrap_tailoring_run(
+        connection,
+        paths,
+        job_posting_id="jp_test",
+        timestamp="2026-04-06T20:05:00Z",
+    )
+    assert bootstrap_result.run is not None
+    return project_root, paths, connection, bootstrap_result
 
 
 def test_bootstrap_tailoring_run_creates_workspace_metadata_and_scaffolds(tmp_path):
@@ -591,3 +651,211 @@ def test_bootstrap_reuses_existing_run_instead_of_creating_duplicates(tmp_path):
     assert connection.execute("SELECT COUNT(*) FROM resume_tailoring_runs").fetchone()[0] == 1
     assert resume_tex_path.read_text(encoding="utf-8") == "% manually edited resume\n"
     assert step_3_path.read_text(encoding="utf-8") == "status: generated\nsignals:\n  - jd: python\n"
+
+
+def test_generate_tailoring_intelligence_populates_step_artifacts_and_keeps_run_active(tmp_path):
+    _, paths, connection, bootstrap_result = prepare_real_tailoring_run(
+        tmp_path,
+        jd_body=(
+            "# JD\n"
+            "Requirements\n"
+            "- 3+ years of software engineering experience.\n"
+            "- Build distributed data services in Python and Apache Spark on AWS.\n"
+            "- Own monitoring, reliability, and incident response for production pipelines.\n"
+            "Preferred Qualifications\n"
+            "- Kubernetes exposure.\n"
+        ),
+    )
+
+    result = generate_tailoring_intelligence(
+        connection,
+        paths,
+        job_posting_id="jp_test",
+        timestamp="2026-04-06T20:10:00Z",
+    )
+
+    assert result.track_name == "distributed_infra"
+    assert result.verification_outcome == "pass"
+    assert result.resume_tailoring_run_id == bootstrap_result.run.resume_tailoring_run_id
+
+    step_3_payload = yaml.safe_load(
+        paths.tailoring_step_3_jd_signals_path("Acme Data Systems", "Software Engineer").read_text(
+            encoding="utf-8"
+        )
+    )
+    step_4_payload = yaml.safe_load(
+        paths.tailoring_step_4_evidence_map_path("Acme Data Systems", "Software Engineer").read_text(
+            encoding="utf-8"
+        )
+    )
+    step_6_payload = yaml.safe_load(
+        paths.tailoring_step_6_candidate_bullets_path("Acme Data Systems", "Software Engineer").read_text(
+            encoding="utf-8"
+        )
+    )
+    step_7_payload = yaml.safe_load(
+        paths.tailoring_step_7_verification_path("Acme Data Systems", "Software Engineer").read_text(
+            encoding="utf-8"
+        )
+    )
+
+    assert step_3_payload["status"] == "generated"
+    assert len(step_3_payload["signals"]) >= 3
+    assert step_4_payload["status"] == "generated"
+    assert step_4_payload["matches"]
+    assert step_6_payload["status"] == "generated"
+    assert len(step_6_payload["software_engineer"]["bullets"]) == 4
+    assert step_7_payload["verification_outcome"] == "pass"
+    assert "pending" not in {check["status"] for check in step_7_payload["checks"]}
+
+    run_row = connection.execute(
+        """
+        SELECT tailoring_status, resume_review_status
+        FROM resume_tailoring_runs
+        WHERE resume_tailoring_run_id = ?
+        """,
+        (bootstrap_result.run.resume_tailoring_run_id,),
+    ).fetchone()
+    assert dict(run_row) == {
+        "tailoring_status": TAILORING_STATUS_IN_PROGRESS,
+        "resume_review_status": RESUME_REVIEW_STATUS_NOT_READY,
+    }
+    posting_row = connection.execute(
+        "SELECT posting_status FROM job_postings WHERE job_posting_id = ?",
+        ("jp_test",),
+    ).fetchone()
+    assert posting_row["posting_status"] == JOB_POSTING_STATUS_TAILORING_IN_PROGRESS
+
+
+def test_finalize_tailoring_run_applies_payload_compiles_pdf_and_updates_status(tmp_path):
+    _, paths, connection, bootstrap_result = prepare_real_tailoring_run(
+        tmp_path,
+        jd_body=(
+            "# JD\n"
+            "Requirements\n"
+            "- 3+ years of software engineering experience.\n"
+            "- Build distributed data services in Python and Apache Spark on AWS.\n"
+            "- Own monitoring, reliability, and incident response for production pipelines.\n"
+            "Nice to Have\n"
+            "- Kubernetes exposure.\n"
+        ),
+    )
+    generate_tailoring_intelligence(
+        connection,
+        paths,
+        job_posting_id="jp_test",
+        timestamp="2026-04-06T20:10:00Z",
+    )
+
+    result = finalize_tailoring_run(
+        connection,
+        paths,
+        job_posting_id="jp_test",
+        timestamp="2026-04-06T20:20:00Z",
+    )
+
+    assert result.result == "pass"
+    assert result.reason_code is None
+    assert result.run.tailoring_status == TAILORING_STATUS_TAILORED
+    assert result.run.resume_review_status == RESUME_REVIEW_STATUS_PENDING
+    assert result.verification_outcome == "pass"
+    assert result.run.resume_tailoring_run_id == bootstrap_result.run.resume_tailoring_run_id
+
+    final_pdf_path = paths.resolve_from_root(result.final_resume_path)
+    assert final_pdf_path.exists()
+    assert final_pdf_path.name == "Achyutaram Sonti.pdf"
+    meta_payload = yaml.safe_load(
+        paths.tailoring_meta_path("Acme Data Systems", "Software Engineer").read_text(
+            encoding="utf-8"
+        )
+    )
+    step_7_payload = yaml.safe_load(
+        paths.tailoring_step_7_verification_path("Acme Data Systems", "Software Engineer").read_text(
+            encoding="utf-8"
+        )
+    )
+    assert meta_payload["tailoring_status"] == TAILORING_STATUS_TAILORED
+    assert meta_payload["resume_review_status"] == RESUME_REVIEW_STATUS_PENDING
+    assert meta_payload["resume_artifacts"]["pdf_path"] == str(final_pdf_path.resolve())
+    assert step_7_payload["verification_outcome"] == "pass"
+    assert step_7_payload["page_count"] == 1
+
+    stored_posting = connection.execute(
+        "SELECT posting_status FROM job_postings WHERE job_posting_id = ?",
+        ("jp_test",),
+    ).fetchone()
+    assert stored_posting["posting_status"] == JOB_POSTING_STATUS_RESUME_REVIEW_PENDING
+
+    transitions = connection.execute(
+        """
+        SELECT stage, previous_state, new_state
+        FROM state_transition_events
+        WHERE object_id = ?
+        ORDER BY transition_timestamp ASC, state_transition_event_id ASC
+        """,
+        (result.run.resume_tailoring_run_id,),
+    ).fetchall()
+    assert {
+        (row["stage"], row["previous_state"], row["new_state"])
+        for row in transitions
+    } >= {
+        (
+            "tailoring_status",
+            TAILORING_STATUS_IN_PROGRESS,
+            TAILORING_STATUS_TAILORED,
+        ),
+        (
+            "resume_review_status",
+            RESUME_REVIEW_STATUS_NOT_READY,
+            RESUME_REVIEW_STATUS_PENDING,
+        ),
+    }
+
+
+def test_finalize_rejects_out_of_scope_resume_changes_before_compile(tmp_path):
+    _, paths, connection, bootstrap_result = prepare_real_tailoring_run(
+        tmp_path,
+        jd_body=(
+            "# JD\n"
+            "Requirements\n"
+            "- 3+ years of software engineering experience.\n"
+            "- Build distributed data services in Python and Apache Spark on AWS.\n"
+            "- Own monitoring, reliability, and incident response for production pipelines.\n"
+        ),
+    )
+    generate_tailoring_intelligence(
+        connection,
+        paths,
+        job_posting_id="jp_test",
+        timestamp="2026-04-06T20:10:00Z",
+    )
+
+    resume_tex_path = paths.tailoring_resume_tex_path("Acme Data Systems", "Software Engineer")
+    tampered_resume = resume_tex_path.read_text(encoding="utf-8").replace(
+        "Arizona State University",
+        "Tampered State University",
+        1,
+    )
+    resume_tex_path.write_text(tampered_resume, encoding="utf-8")
+
+    result = finalize_tailoring_run(
+        connection,
+        paths,
+        job_posting_id="jp_test",
+        timestamp="2026-04-06T20:20:00Z",
+    )
+
+    assert result.result == "needs_revision"
+    assert result.reason_code == FINALIZE_REASON_SCOPE_VIOLATION
+    assert result.run.resume_tailoring_run_id == bootstrap_result.run.resume_tailoring_run_id
+    assert result.run.tailoring_status == TAILORING_STATUS_NEEDS_REVISION
+    assert result.run.resume_review_status == RESUME_REVIEW_STATUS_NOT_READY
+    assert result.final_resume_path is None
+
+    step_7_payload = yaml.safe_load(
+        paths.tailoring_step_7_verification_path("Acme Data Systems", "Software Engineer").read_text(
+            encoding="utf-8"
+        )
+    )
+    assert step_7_payload["reason_code"] == FINALIZE_REASON_SCOPE_VIOLATION
+    assert any("Out-of-scope change" in blocker for blocker in step_7_payload["blockers"])
