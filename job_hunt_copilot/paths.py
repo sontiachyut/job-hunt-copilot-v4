@@ -392,6 +392,25 @@ class ProjectPaths:
             / workspace_slug(role_title)
         )
 
+    def discovery_recipient_profiles_dir(self, company_name: str, role_title: str) -> Path:
+        return self.discovery_workspace_dir(company_name, role_title) / "recipient-profiles"
+
+    def discovery_recipient_profile_dir(
+        self,
+        company_name: str,
+        role_title: str,
+        contact_id: str,
+    ) -> Path:
+        return self.discovery_recipient_profiles_dir(company_name, role_title) / contact_id
+
+    def discovery_recipient_profile_path(
+        self,
+        company_name: str,
+        role_title: str,
+        contact_id: str,
+    ) -> Path:
+        return self.discovery_recipient_profile_dir(company_name, role_title, contact_id) / "recipient_profile.json"
+
     def outreach_workspace_dir(self, company_name: str, role_title: str) -> Path:
         return (
             self.project_root

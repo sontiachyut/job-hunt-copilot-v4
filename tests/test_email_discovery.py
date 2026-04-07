@@ -9,6 +9,7 @@ import pytest
 from job_hunt_copilot.bootstrap import run_bootstrap
 from job_hunt_copilot.email_discovery import (
     ApolloResolvedCompany,
+    CONTACT_STATUS_WORKING_EMAIL_FOUND,
     EmailDiscoveryError,
     POSTING_CONTACT_STATUS_IDENTIFIED,
     POSTING_CONTACT_STATUS_SHORTLISTED,
@@ -16,6 +17,7 @@ from job_hunt_copilot.email_discovery import (
     RECIPIENT_TYPE_ENGINEER,
     RECIPIENT_TYPE_HIRING_MANAGER,
     RECIPIENT_TYPE_RECRUITER,
+    run_apollo_contact_enrichment,
     run_apollo_people_search,
 )
 from job_hunt_copilot.paths import ProjectPaths
@@ -187,6 +189,49 @@ class FakeApolloProvider:
             }
         )
         return list(self.candidates)
+
+
+class FakeApolloEnrichmentProvider:
+    def __init__(self, responses: dict[str, dict[str, object] | None]) -> None:
+        self.responses = responses
+        self.calls: list[dict[str, str | None]] = []
+
+    def enrich_person(
+        self,
+        *,
+        provider_person_id: str | None,
+        linkedin_url: str | None,
+        person_name: str | None,
+        company_domain: str | None,
+        company_name: str | None,
+    ) -> dict[str, object] | None:
+        self.calls.append(
+            {
+                "provider_person_id": provider_person_id,
+                "linkedin_url": linkedin_url,
+                "person_name": person_name,
+                "company_domain": company_domain,
+                "company_name": company_name,
+            }
+        )
+        lookup_key = provider_person_id or linkedin_url or person_name or "unknown"
+        return self.responses.get(lookup_key)
+
+
+class FakeRecipientProfileExtractor:
+    def __init__(self, responses: dict[str, dict[str, object] | None]) -> None:
+        self.responses = responses
+        self.calls: list[str] = []
+
+    def extract_profile(
+        self,
+        *,
+        linkedin_url: str,
+        contact: dict[str, object],
+        posting: dict[str, object],
+    ) -> dict[str, object] | None:
+        self.calls.append(linkedin_url)
+        return self.responses.get(linkedin_url)
 
 
 def test_apollo_people_search_persists_broad_result_and_shortlists_only_selected_candidates(tmp_path: Path):
@@ -446,5 +491,296 @@ def test_apollo_people_search_falls_back_to_company_name_anchor_when_resolution_
     assert payload["search_anchor"] == "company_name_fallback"
     assert payload["candidate_count"] == 1
     assert len(result.shortlisted_contact_ids) == 1
+
+    connection.close()
+
+
+def test_apollo_contact_enrichment_only_runs_for_shortlisted_contacts_and_persists_recipient_profiles(tmp_path: Path):
+    project_root = bootstrap_project(tmp_path)
+    paths = ProjectPaths.from_root(project_root)
+    connection = connect_database(project_root / "job_hunt_copilot.db")
+    seed_search_ready_posting(connection, paths)
+
+    search_provider = FakeApolloProvider(
+        resolved_company=ApolloResolvedCompany(
+            organization_id="org_acme",
+            organization_name="Acme Robotics",
+            primary_domain="acmerobotics.com",
+        ),
+        candidates=[
+            build_candidate(provider_person_id="pp_r1", display_name="Isaiah Lo***e", title="Corporate Recruiter"),
+            build_candidate(
+                provider_person_id="pp_r2",
+                display_name="Priya Recruiter",
+                title="Technical Recruiter",
+                has_email=True,
+                email="priya@acmerobotics.com",
+                linkedin_url="https://linkedin.example/priya",
+            ),
+            build_candidate(provider_person_id="pp_m1", display_name="Morgan Manager", title="Engineering Manager"),
+            build_candidate(
+                provider_person_id="pp_m2",
+                display_name="Avery Director",
+                title="Director of Engineering",
+                has_email=True,
+                email="avery@acmerobotics.com",
+                linkedin_url="https://linkedin.example/avery",
+            ),
+            build_candidate(
+                provider_person_id="pp_e1",
+                display_name="Jamie Engineer",
+                title="Staff Software Engineer",
+                has_email=True,
+                email="jamie@acmerobotics.com",
+                linkedin_url="https://linkedin.example/jamie",
+            ),
+            build_candidate(
+                provider_person_id="pp_e2",
+                display_name="Casey Engineer",
+                title="Senior Software Engineer",
+                has_email=True,
+                email="casey@acmerobotics.com",
+                linkedin_url="https://linkedin.example/casey",
+            ),
+            build_candidate(provider_person_id="pp_o1", display_name="Pat Ops", title="Program Manager"),
+        ],
+    )
+    run_apollo_people_search(
+        project_root=project_root,
+        job_posting_id="jp_search",
+        provider=search_provider,
+    )
+
+    enrichment_provider = FakeApolloEnrichmentProvider(
+        {
+            "pp_r1": {
+                "person": {
+                    "id": "pp_r1",
+                    "first_name": "Isaiah",
+                    "last_name": "Love",
+                    "name": "Isaiah Love",
+                    "linkedin_url": "https://linkedin.example/isaiah",
+                    "title": "Corporate Recruiter",
+                    "email": "isaiah@acmerobotics.com",
+                    "email_status": "verified",
+                    "organization_id": "org_acme",
+                    "organization_name": "Acme Robotics",
+                    "city": "Phoenix",
+                    "state": "Arizona",
+                    "country": "United States",
+                    "headline": "Corporate Recruiter at Acme Robotics",
+                }
+            },
+            "pp_m1": None,
+        }
+    )
+    profile_extractor = FakeRecipientProfileExtractor(
+        {
+            "https://linkedin.example/isaiah": {
+                "profile_source": "linkedin_public_profile",
+                "source_method": "public_profile_html",
+                "profile": {
+                    "identity": {
+                        "display_name": "Isaiah Love",
+                        "full_name": "Isaiah Love",
+                        "first_name": "Isaiah",
+                        "last_name": "Love",
+                    },
+                    "top_card": {
+                        "current_company": "Acme Robotics",
+                        "current_title": "Corporate Recruiter",
+                        "headline": "Corporate Recruiter at Acme Robotics",
+                        "location": "Phoenix, Arizona, United States",
+                        "connections": "500+",
+                        "followers": "120",
+                    },
+                    "about": {"preview_text": "Helps hire strong backend and AI talent.", "is_truncated": False},
+                    "experience_hints": {
+                        "current_company_hint": "Acme Robotics",
+                        "education_hint": None,
+                        "experience_education_preview": "Acme Robotics recruiting leader",
+                    },
+                    "recent_public_activity": [],
+                    "public_signals": {
+                        "licenses_and_certifications": [],
+                        "honors_and_awards": [],
+                        "recommendation_entities": [],
+                    },
+                    "work_signals": ["recruiting function close to the target role"],
+                    "evidence_snippets": ["Current company hint: Acme Robotics"],
+                    "source_coverage": {
+                        "about": True,
+                        "activity": False,
+                        "experience_hint": True,
+                        "public_signals": False,
+                    },
+                },
+            },
+            "https://linkedin.example/priya": {
+                "profile_source": "linkedin_public_profile",
+                "source_method": "public_profile_html",
+                "profile": {
+                    "identity": {
+                        "display_name": "Priya Recruiter",
+                        "full_name": "Priya Recruiter",
+                        "first_name": "Priya",
+                        "last_name": "Recruiter",
+                    },
+                    "top_card": {
+                        "current_company": "Acme Robotics",
+                        "current_title": "Technical Recruiter",
+                        "headline": None,
+                        "location": None,
+                        "connections": None,
+                        "followers": None,
+                    },
+                    "about": {"preview_text": None, "is_truncated": False},
+                    "experience_hints": {
+                        "current_company_hint": "Acme Robotics",
+                        "education_hint": None,
+                        "experience_education_preview": None,
+                    },
+                    "recent_public_activity": [],
+                    "public_signals": {
+                        "licenses_and_certifications": [],
+                        "honors_and_awards": [],
+                        "recommendation_entities": [],
+                    },
+                    "work_signals": ["recruiting function close to the target role"],
+                    "evidence_snippets": ["Current company hint: Acme Robotics"],
+                    "source_coverage": {
+                        "about": False,
+                        "activity": False,
+                        "experience_hint": True,
+                        "public_signals": False,
+                    },
+                },
+            },
+        }
+    )
+
+    result = run_apollo_contact_enrichment(
+        project_root=project_root,
+        job_posting_id="jp_search",
+        provider=enrichment_provider,
+        recipient_profile_extractor=profile_extractor,
+    )
+
+    assert set(call["provider_person_id"] for call in enrichment_provider.calls) == {"pp_r1", "pp_m1"}
+    assert all(call["provider_person_id"] != "pp_o1" for call in enrichment_provider.calls)
+
+    isaiah_row = connection.execute(
+        """
+        SELECT full_name, linkedin_url, current_working_email, contact_status
+        FROM contacts
+        WHERE provider_person_id = 'pp_r1'
+        """
+    ).fetchone()
+    assert dict(isaiah_row) == {
+        "full_name": "Isaiah Love",
+        "linkedin_url": "https://linkedin.example/isaiah",
+        "current_working_email": "isaiah@acmerobotics.com",
+        "contact_status": CONTACT_STATUS_WORKING_EMAIL_FOUND,
+    }
+
+    priya_row = connection.execute(
+        """
+        SELECT current_working_email, contact_status
+        FROM contacts
+        WHERE provider_person_id = 'pp_r2'
+        """
+    ).fetchone()
+    assert dict(priya_row) == {
+        "current_working_email": "priya@acmerobotics.com",
+        "contact_status": CONTACT_STATUS_WORKING_EMAIL_FOUND,
+    }
+
+    morgan_link = connection.execute(
+        """
+        SELECT link_level_status
+        FROM job_posting_contacts jpc
+        JOIN contacts c
+          ON c.contact_id = jpc.contact_id
+        WHERE c.provider_person_id = 'pp_m1'
+        """
+    ).fetchone()
+    assert morgan_link["link_level_status"] == POSTING_CONTACT_STATUS_SHORTLISTED
+
+    isaiah_profile_path = paths.discovery_recipient_profile_path(
+        "Acme Robotics",
+        "Staff Software Engineer / AI",
+        connection.execute(
+            "SELECT contact_id FROM contacts WHERE provider_person_id = 'pp_r1'"
+        ).fetchone()[0],
+    )
+    priya_profile_path = paths.discovery_recipient_profile_path(
+        "Acme Robotics",
+        "Staff Software Engineer / AI",
+        connection.execute(
+            "SELECT contact_id FROM contacts WHERE provider_person_id = 'pp_r2'"
+        ).fetchone()[0],
+    )
+    assert isaiah_profile_path.exists()
+    assert priya_profile_path.exists()
+    isaiah_profile_payload = json.loads(isaiah_profile_path.read_text(encoding="utf-8"))
+    assert isaiah_profile_payload["contact_id"]
+    assert isaiah_profile_payload["job_posting_id"] == "jp_search"
+    assert isaiah_profile_payload["linkedin_url"] == "https://linkedin.example/isaiah"
+
+    posting_status = connection.execute(
+        "SELECT posting_status FROM job_postings WHERE job_posting_id = 'jp_search'"
+    ).fetchone()[0]
+    assert posting_status == "ready_for_outreach"
+    assert result.posting_status == "ready_for_outreach"
+    assert set(result.recipient_profile_contact_ids) >= {
+        connection.execute("SELECT contact_id FROM contacts WHERE provider_person_id = 'pp_r1'").fetchone()[0],
+        connection.execute("SELECT contact_id FROM contacts WHERE provider_person_id = 'pp_r2'").fetchone()[0],
+    }
+
+    connection.close()
+
+
+def test_apollo_contact_enrichment_removes_terminal_dead_end_shortlist_contacts(tmp_path: Path):
+    project_root = bootstrap_project(tmp_path)
+    paths = ProjectPaths.from_root(project_root)
+    connection = connect_database(project_root / "job_hunt_copilot.db")
+    seed_search_ready_posting(connection, paths)
+
+    search_provider = FakeApolloProvider(
+        resolved_company=ApolloResolvedCompany(
+            organization_id="org_acme",
+            organization_name="Acme Robotics",
+            primary_domain="acmerobotics.com",
+        ),
+        candidates=[
+            build_candidate(provider_person_id="pp_dead", display_name="Isa***h Lo***e", title="Corporate Recruiter")
+        ],
+    )
+    search_result = run_apollo_people_search(
+        project_root=project_root,
+        job_posting_id="jp_search",
+        provider=search_provider,
+    )
+
+    enrichment_provider = FakeApolloEnrichmentProvider({"pp_dead": None})
+    result = run_apollo_contact_enrichment(
+        project_root=project_root,
+        job_posting_id="jp_search",
+        provider=enrichment_provider,
+        recipient_profile_extractor=FakeRecipientProfileExtractor({}),
+    )
+
+    assert len(search_result.shortlisted_contact_ids) == 1
+    assert len(result.removed_job_posting_contact_ids) == 1
+    assert len(result.removed_contact_ids) == 1
+    assert connection.execute("SELECT COUNT(*) FROM job_posting_contacts").fetchone()[0] == 0
+    assert connection.execute("SELECT COUNT(*) FROM contacts").fetchone()[0] == 0
+    assert connection.execute(
+        "SELECT posting_status FROM job_postings WHERE job_posting_id = 'jp_search'"
+    ).fetchone()[0] == "requires_contacts"
+
+    people_search_payload = json.loads(search_result.artifact_path.read_text(encoding="utf-8"))
+    assert people_search_payload["candidate_count"] == 1
+    assert people_search_payload["candidates"][0]["provider_person_id"] == "pp_dead"
 
     connection.close()

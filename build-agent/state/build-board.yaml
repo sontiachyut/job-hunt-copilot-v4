@@ -20,6 +20,7 @@ global_status:
     - BA-05 is now complete in code: the Gmail intake path now persists collected-email units before fan-out, dedupes by `job_id` or normalized LinkedIn job URL fallback, creates autonomous lead workspaces from parsed cards, merges multi-source JD candidates into canonical `jd.md` with LinkedIn conflict precedence, and records honest `incomplete`, review-blocked, or `blocked_no_jd` lead state with queryable provenance.
     - BA-06 is now complete in code: job_hunt_copilot.resume_tailoring now covers posting-linked hard eligibility, workspace bootstrap, deterministic Step 3 through Step 7 artifacts, finalize plus one-page verification, persisted mandatory review decisions, direct posting handoff into `requires_contacts` or `ready_for_outreach`, owner override lineage in `override_events`, and snapshot-backed retailoring history across multiple runs.
     - "BA-07-S1 is now complete in code: `job_hunt_copilot.email_discovery` can bootstrap from approved `requires_contacts` postings, resolve Apollo company identity when available, persist broad `people_search_result.json`, and materialize only the capped shortlist into canonical `contacts` plus `job_posting_contacts`."
+    - "BA-07-S2 is now complete in code: shortlisted contacts can now run selective Apollo enrichment, persist optional `recipient_profile.json` snapshots when LinkedIn public-profile extraction succeeds, drop terminal sparse dead ends from canonical shortlist state, and promote postings into `ready_for_outreach` once the minimum linked-contact email prerequisites are met."
     - "`jhc-chat` now records canonical begin/end state, pauses autonomous work on open, resumes on clean explicit close when chat caused the pause, and leaves unexpected-exit pauses intact for later explicit resume or future idle-timeout handling."
     - Host-side `launchctl bootstrap` success still needs follow-up validation outside the current sandboxed session even though the plist, wrapper wiring, and failed-start rollback all validate locally.
   execution_principles:
@@ -634,13 +635,21 @@ epics:
       - id: BA-07-S2
         name: Contact enrichment and recipient profiles
         owner_role: outreach-engineer
-        status: pending
+        status: completed
         dependencies:
           - BA-07-S1
         deliverables:
           - selective enrichment for shortlisted contacts only
           - optional `recipient_profile.json` capture from public LinkedIn context
           - dead-end shortlist removal without losing broad search artifacts
+        completed_notes:
+          - Added shortlisted-contact enrichment in `job_hunt_copilot.email_discovery`, with Apollo `people/match` normalization only for canonical `shortlisted` posting-contact pairs that still need clearer identity, LinkedIn URL recovery, or a usable work email.
+          - Added best-effort `recipient_profile.json` persistence under `discovery/output/{company}/{role}/recipient-profiles/{contact_id}/`, including artifact registration and non-blocking LinkedIn public-profile extraction so sparse enrichment can still continue into later discovery without a profile snapshot.
+          - Added terminal dead-end cleanup for unusable sparse shortlist contacts, plus `identified -> working_email_found` contact promotion and `requires_contacts -> ready_for_outreach` posting promotion when shortlisted-contact emails now satisfy the minimum current outreach prerequisites.
+        validation:
+          - "`python3.11 -m py_compile job_hunt_copilot/email_discovery.py job_hunt_copilot/paths.py tests/test_email_discovery.py`"
+          - "`python3.11 -m pytest tests/test_email_discovery.py`"
+          - "`python3.11 -m pytest`"
       - id: BA-07-S3
         name: Email discovery cascade and budget tracking
         owner_role: outreach-engineer
@@ -809,13 +818,13 @@ epics:
 
 current_focus:
   epic_id: BA-07
-  slice_id: BA-07-S2
+  slice_id: BA-07-S3
   owner_role: outreach-engineer
-  reason: BA-07-S1 now lands Apollo-first broad search and shortlist-time canonical contact creation, so the next highest-value dependency is selective enrichment plus recipient-profile capture for those shortlisted contacts before email-finder fallback begins.
+  reason: BA-07-S2 now lands selective shortlisted-contact enrichment, optional recipient-profile capture, dead-end cleanup, and ready-state promotion, so the next highest-value dependency is the person-scoped discovery cascade plus provider-budget persistence and unresolved review visibility.
   exit_criteria:
-    - selective enrichment runs only for shortlisted contacts and preserves Apollo provider identity through the enrichment boundary
-    - "`recipient_profile.json` can be persisted for shortlisted contacts when LinkedIn URL extraction succeeds without blocking later discovery when it does not"
-    - shortlist dead ends can be removed from canonical shortlist state without losing the broad-search artifact history
+    - Prospeo, GetProspect, and Hunter run in the current ordered cascade and stop on the first usable email result
+    - "`discovery_attempts`, `provider_budget_state`, and `provider_budget_events` persist enough normalized history to make cascade outcomes and budget spend queryable"
+    - unresolved or exhausted contacts remain reviewable without losing the posting-contact linkage or reusable working-email shortcuts
 
 focus_order:
   - epic_id: BA-07

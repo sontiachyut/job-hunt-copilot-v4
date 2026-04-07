@@ -641,3 +641,31 @@ Use this file as an append-only implementation log for the build agent.
 ### Notes
 - Explicit implementation note: live Apollo HTTP validation did not run in this sandboxed session; this slice validated the provider-normalization, artifact, and canonical-state behavior through fake-provider tests and full local regression coverage.
 - `OPS-LAUNCHD-001` and `BUILD-CLI-001` remain open and untouched because this slice stayed inside outreach discovery ownership and did not alter the supervisor or build-loop runtime surfaces.
+
+### Session
+- Date: 2026-04-06 21:24:00 MST
+- Slice: BA-07-S2 Contact enrichment and recipient profiles
+- Goal: Add selective shortlisted-contact enrichment, optional recipient-profile persistence, and terminal dead-end cleanup without broadening the slice into the later email-finder cascade.
+
+### Work Done
+- Extended `job_hunt_copilot.email_discovery` with shortlisted-contact enrichment that only calls Apollo `people/match` for canonical `shortlisted` posting-contact pairs that still need clearer identity, LinkedIn URL recovery, or a usable work email.
+- Added contact-level `working_email_found` promotion plus posting-level `requires_contacts -> ready_for_outreach` promotion when shortlisted-contact emails now satisfy the minimum current outreach prerequisites.
+- Added best-effort LinkedIn public-profile extraction and `recipient_profile.json` persistence under `discovery/output/{company}/{role}/recipient-profiles/{contact_id}/`, including artifact registration without blocking later discovery when extraction fails or no LinkedIn URL exists.
+- Added terminal shortlist dead-end cleanup that removes unusable sparse shortlist links from canonical state and deletes orphaned contact rows when they were created only for that dead-end shortlist candidate.
+- Expanded `tests/test_email_discovery.py` to cover shortlist-only enrichment scope, recipient-profile persistence, ready-state promotion, non-terminal no-match handling for clear identities, and canonical cleanup for terminal sparse dead ends.
+- Updated `README.md`, `docs/ARCHITECTURE.md`, the build board, the implementation plan, and the handoff log so repo-facing and build-agent-facing status now reflects that BA-07-S2 is complete and BA-07-S3 is next.
+
+### Validation
+- Ran `python3.11 -m py_compile job_hunt_copilot/email_discovery.py job_hunt_copilot/paths.py tests/test_email_discovery.py` and confirmed the new discovery helpers, path additions, and targeted tests compile cleanly.
+- Ran `python3.11 -m pytest tests/test_email_discovery.py` and confirmed all 7 email-discovery tests passed.
+- Ran full `python3.11 -m pytest` and confirmed all 77 repository tests passed across bootstrap, schema, artifacts, ingestion, tailoring, discovery, local runtime, runtime pack, and supervisor coverage.
+
+### Result
+- `done`
+
+### Next
+- Start `BA-07-S3`: implement the person-scoped Prospeo -> GetProspect -> Hunter discovery cascade, provider-budget persistence, reusable working-email shortcuts, and unresolved/exhausted review visibility.
+
+### Notes
+- Explicit implementation inference: Apollo enrichment now uses the officially documented `people/match` query shapes keyed by Apollo person ID, LinkedIn URL, or name-plus-company context, while retaining provider identity canonically through the enrichment boundary.
+- Live Apollo and live public-LinkedIn HTTP validation still did not run in this sandboxed session; this slice validated normalization, artifact persistence, and state transitions through fake-provider tests plus full local regression coverage.
