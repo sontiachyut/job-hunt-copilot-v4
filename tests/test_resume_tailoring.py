@@ -787,6 +787,50 @@ def test_generate_tailoring_intelligence_populates_step_artifacts_and_keeps_run_
     assert posting_row["posting_status"] == JOB_POSTING_STATUS_TAILORING_IN_PROGRESS
 
 
+def test_generate_tailoring_intelligence_keeps_unsupported_requirements_as_explicit_gaps(
+    tmp_path,
+):
+    _, paths, connection, _ = prepare_real_tailoring_run(
+        tmp_path,
+        jd_body=(
+            "# JD\n"
+            "Requirements\n"
+            "- 3+ years of software engineering experience.\n"
+            "- Build distributed data services in Python on AWS.\n"
+            "- Build Verilog FPGA telemetry toolchains.\n"
+            "Responsibilities\n"
+            "- Improve reliability and monitoring for production pipelines.\n"
+        ),
+    )
+
+    generate_tailoring_intelligence(
+        connection,
+        paths,
+        job_posting_id="jp_test",
+        timestamp="2026-04-06T20:10:00Z",
+    )
+
+    step_4_payload = yaml.safe_load(
+        paths.tailoring_step_4_evidence_map_path("Acme Data Systems", "Software Engineer").read_text(
+            encoding="utf-8"
+        )
+    )
+    rust_gaps = [
+        gap
+        for gap in step_4_payload["gaps"]
+        if "verilog" in str(gap["jd_signal"]).lower()
+    ]
+
+    assert rust_gaps
+    assert rust_gaps[0]["gap_reason"] == (
+        "No truthful candidate evidence was retrieved from the master profile."
+    )
+    assert not any(
+        "verilog" in str(match["jd_signal"]).lower()
+        for match in step_4_payload["matches"]
+    )
+
+
 def test_finalize_tailoring_run_applies_payload_compiles_pdf_and_updates_status(tmp_path):
     _, paths, connection, bootstrap_result = prepare_real_tailoring_run(
         tmp_path,

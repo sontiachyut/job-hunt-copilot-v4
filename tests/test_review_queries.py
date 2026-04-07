@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 import sqlite3
 from pathlib import Path
 
@@ -34,6 +35,25 @@ def connect_database(db_path: Path) -> sqlite3.Connection:
     connection.row_factory = sqlite3.Row
     connection.execute("PRAGMA foreign_keys = ON;")
     return connection
+
+
+def dump_all_tables(connection: sqlite3.Connection) -> dict[str, list[dict[str, object]]]:
+    tables = [
+        row["name"]
+        for row in connection.execute(
+            """
+            SELECT name
+            FROM sqlite_master
+            WHERE type = 'table'
+              AND name NOT LIKE 'sqlite_%'
+            ORDER BY name
+            """
+        ).fetchall()
+    ]
+    return {
+        table_name: [dict(row) for row in connection.execute(f"SELECT * FROM {table_name}").fetchall()]
+        for table_name in tables
+    }
 
 
 def insert_lead(
@@ -1432,5 +1452,223 @@ def test_override_history_and_traceability_queries_surface_artifacts_transitions
     review_packets = traceability["downstream_records"]["expert_review_packets"]
     assert len(review_packets) == 1
     assert review_packets[0]["expert_review_packet_id"] == "erp_trace"
+
+    connection.close()
+
+
+def test_outreach_message_traceability_uses_reply_summary_without_raw_reply_excerpt(tmp_path: Path):
+    project_root, _ = bootstrap_project(tmp_path)
+    connection = connect_database(project_root / "job_hunt_copilot.db")
+
+    insert_lead(
+        connection,
+        lead_id="ld_privacy",
+        company_name="Vector Works",
+        role_title="Principal Platform Engineer",
+        created_at="2026-04-07T13:00:00Z",
+    )
+    insert_posting(
+        connection,
+        job_posting_id="jp_privacy",
+        lead_id="ld_privacy",
+        company_name="Vector Works",
+        role_title="Principal Platform Engineer",
+        posting_status="completed",
+        created_at="2026-04-07T13:00:00Z",
+    )
+    insert_contact(
+        connection,
+        contact_id="ct_privacy",
+        company_name="Vector Works",
+        display_name="Taylor Architect",
+        contact_status="sent",
+        current_working_email="taylor@vector.example",
+        created_at="2026-04-07T13:01:00Z",
+    )
+    insert_posting_contact(
+        connection,
+        job_posting_contact_id="jpc_privacy",
+        job_posting_id="jp_privacy",
+        contact_id="ct_privacy",
+        recipient_type="hiring_manager",
+        link_level_status="outreach_done",
+        created_at="2026-04-07T13:01:00Z",
+    )
+    insert_message(
+        connection,
+        outreach_message_id="msg_privacy",
+        contact_id="ct_privacy",
+        recipient_email="taylor@vector.example",
+        message_status="sent",
+        job_posting_id="jp_privacy",
+        job_posting_contact_id="jpc_privacy",
+        subject="Vector Works platform role",
+        body_text="Sharing a short note and attached resume.",
+        sent_at="2026-04-07T13:10:00Z",
+        thread_id="thread-msg_privacy",
+        delivery_tracking_id="delivery-msg_privacy",
+        created_at="2026-04-07T13:05:00Z",
+    )
+    insert_delivery_feedback_event(
+        connection,
+        delivery_feedback_event_id="dfe_privacy",
+        outreach_message_id="msg_privacy",
+        contact_id="ct_privacy",
+        job_posting_id="jp_privacy",
+        event_state="replied",
+        event_timestamp="2026-04-07T13:40:00Z",
+        reply_summary="Interested in talking next week.",
+        raw_reply_excerpt="Interested in talking next week after a family medical appointment.",
+    )
+    connection.commit()
+
+    traceability = query_object_traceability(
+        connection,
+        project_root=project_root,
+        object_type="outreach_message",
+        object_id="msg_privacy",
+    )
+    feedback_events = traceability["downstream_records"]["delivery_feedback_events"]
+    assert len(feedback_events) == 1
+    assert feedback_events[0]["delivery_feedback_event_id"] == "dfe_privacy"
+    assert feedback_events[0]["reply_summary"] == "Interested in talking next week."
+    assert "raw_reply_excerpt" not in feedback_events[0]
+
+    review_surfaces = query_review_surfaces(connection, project_root=project_root)
+    serialized_review_surfaces = json.dumps(review_surfaces, sort_keys=True)
+    assert "family medical appointment" not in serialized_review_surfaces
+
+    connection.close()
+
+
+def test_runtime_secret_values_stay_out_of_canonical_state_artifacts_and_review_outputs(tmp_path: Path):
+    project_root, paths = bootstrap_project(tmp_path)
+    connection = connect_database(project_root / "job_hunt_copilot.db")
+
+    insert_lead(
+        connection,
+        lead_id="ld_secret",
+        company_name="Vector Works",
+        role_title="Principal Platform Engineer",
+        created_at="2026-04-07T14:00:00Z",
+    )
+    insert_posting(
+        connection,
+        job_posting_id="jp_secret",
+        lead_id="ld_secret",
+        company_name="Vector Works",
+        role_title="Principal Platform Engineer",
+        posting_status="completed",
+        created_at="2026-04-07T14:00:00Z",
+    )
+    insert_contact(
+        connection,
+        contact_id="ct_secret",
+        company_name="Vector Works",
+        display_name="Taylor Architect",
+        contact_status="sent",
+        current_working_email="taylor@vector.example",
+        created_at="2026-04-07T14:01:00Z",
+    )
+    insert_posting_contact(
+        connection,
+        job_posting_contact_id="jpc_secret",
+        job_posting_id="jp_secret",
+        contact_id="ct_secret",
+        recipient_type="hiring_manager",
+        link_level_status="outreach_done",
+        created_at="2026-04-07T14:01:00Z",
+    )
+    insert_message(
+        connection,
+        outreach_message_id="msg_secret",
+        contact_id="ct_secret",
+        recipient_email="taylor@vector.example",
+        message_status="sent",
+        job_posting_id="jp_secret",
+        job_posting_contact_id="jpc_secret",
+        subject="Vector Works platform role",
+        body_text="Sharing a short note and attached resume.",
+        sent_at="2026-04-07T14:10:00Z",
+        thread_id="thread-msg_secret",
+        delivery_tracking_id="delivery-msg_secret",
+        created_at="2026-04-07T14:05:00Z",
+    )
+    publish_send_result_artifact(
+        connection,
+        paths,
+        company_name="Vector Works",
+        role_title="Principal Platform Engineer",
+        lead_id="ld_secret",
+        job_posting_id="jp_secret",
+        contact_id="ct_secret",
+        outreach_message_id="msg_secret",
+        result="success",
+        send_status="sent",
+        produced_at="2026-04-07T14:10:00Z",
+    )
+    insert_delivery_feedback_event(
+        connection,
+        delivery_feedback_event_id="dfe_secret",
+        outreach_message_id="msg_secret",
+        contact_id="ct_secret",
+        job_posting_id="jp_secret",
+        event_state="not_bounced",
+        event_timestamp="2026-04-07T14:40:00Z",
+        reply_summary="No bounce observed.",
+    )
+    publish_delivery_outcome_artifact(
+        connection,
+        paths,
+        company_name="Vector Works",
+        role_title="Principal Platform Engineer",
+        lead_id="ld_secret",
+        job_posting_id="jp_secret",
+        contact_id="ct_secret",
+        outreach_message_id="msg_secret",
+        delivery_feedback_event_id="dfe_secret",
+        event_state="not_bounced",
+        event_timestamp="2026-04-07T14:40:00Z",
+    )
+    connection.commit()
+
+    canonical_state_text = json.dumps(dump_all_tables(connection), sort_keys=True)
+    review_output_text = json.dumps(
+        {
+            "review_surfaces": query_review_surfaces(connection, project_root=project_root),
+            "traceability": query_object_traceability(
+                connection,
+                project_root=project_root,
+                object_type="outreach_message",
+                object_id="msg_secret",
+            ),
+        },
+        sort_keys=True,
+    )
+    send_result_text = paths.outreach_message_send_result_path(
+        "Vector Works",
+        "Principal Platform Engineer",
+        "msg_secret",
+    ).read_text(encoding="utf-8")
+    delivery_outcome_text = paths.outreach_message_delivery_outcome_path(
+        "Vector Works",
+        "Principal Platform Engineer",
+        "msg_secret",
+        "dfe_secret",
+    ).read_text(encoding="utf-8")
+
+    for secret_value in (
+        "apollo-key",
+        "prospeo-key",
+        "getprospect-key",
+        "hunter-key",
+        "refresh-token",
+        "client-id",
+        "project-id",
+    ):
+        assert secret_value not in canonical_state_text
+        assert secret_value not in review_output_text
+        assert secret_value not in send_result_text
+        assert secret_value not in delivery_outcome_text
 
     connection.close()

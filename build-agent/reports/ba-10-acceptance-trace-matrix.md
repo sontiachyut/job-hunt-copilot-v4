@@ -3,8 +3,8 @@
 - Feature file: `prd/test-spec.feature`
 - Scenario count: `214`
 - Status counts:
-  - `implemented`: `183`
-  - `partial`: `15`
+  - `implemented`: `187`
+  - `partial`: `11`
   - `gap`: `14`
   - `deferred_optional`: `1`
   - `excluded_from_required_acceptance`: `1`
@@ -14,7 +14,7 @@
 | Rule | Owner | Implemented | Partial | Gap | Deferred | Excluded |
 | --- | --- | ---: | ---: | ---: | ---: | ---: |
 | Build bootstrap and prerequisites | foundation-engineer | 7 | 0 | 0 | 0 | 0 |
-| Machine handoff contracts and canonical state | build-lead | 13 | 1 | 1 | 0 | 0 |
+| Machine handoff contracts and canonical state | build-lead | 14 | 0 | 1 | 0 | 0 |
 | State transitions and relationship records | build-lead | 12 | 0 | 0 | 0 | 0 |
 | External integrations and bootstrap configuration | ingestion-engineer | 25 | 0 | 0 | 1 | 0 |
 | Failure, retry, and idempotency behavior | quality-engineer | 8 | 0 | 0 | 0 | 0 |
@@ -27,7 +27,7 @@
 | Current-build orchestration remains sequential | build-lead | 19 | 2 | 1 | 0 | 0 |
 | LinkedIn Scraping acceptance | ingestion-engineer | 12 | 0 | 0 | 0 | 0 |
 | End-to-end acceptance | quality-engineer | 0 | 3 | 0 | 0 | 1 |
-| Current-build safety, privacy, and evidence-grounding boundaries | quality-engineer | 0 | 3 | 0 | 0 | 0 |
+| Current-build safety, privacy, and evidence-grounding boundaries | quality-engineer | 3 | 0 | 0 | 0 | 0 |
 
 ## Explicit Gaps
 
@@ -90,15 +90,6 @@
 - Reason: There is no explicit user-facing or runtime control path that abandons a posting from arbitrary active orchestration states while preserving canonical history.
 - Scenarios: `1`
   - The user may explicitly abandon a posting from any active orchestration state
-
-### BA10_SECURITY_REGRESSIONS_PENDING: Safety and privacy boundaries need explicit hardening checks
-- Next slice: `BA-10-S3`
-- Reason: The current implementation stays evidence-first and keeps secrets outside canonical tables, but BA-10 still needs explicit regression coverage for these acceptance boundaries.
-- Scenarios: `4`
-  - Secrets and tokens do not leak into canonical state or review surfaces
-  - Tailoring and outreach remain grounded in truthful stored evidence
-  - Persisted review surfaces expose only workflow-relevant personal data
-  - Autonomous outreach stays within the current safety boundary
 
 ## Epic Validation Ownership
 

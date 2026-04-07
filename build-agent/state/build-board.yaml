@@ -28,6 +28,7 @@ global_status:
     - "BA-09 is now complete in code: delivery feedback now dedupes repeated mailbox signals at the logical-event level, exposes queryable feedback-reuse candidates for bounced and `not_bounced` discovery reads, keeps replied outcomes review-only, and lets discovery consume those feedback signals without auto-clearing contact email state."
     - "BA-10-S1 is now complete: `build-agent/reports/ba-10-acceptance-trace-matrix.json` and `.md` now map all 214 acceptance scenarios to owning epics, code, tests, and explicit hardening gaps, with a guard test that keeps the matrix aligned to `prd/test-spec.feature`."
     - "BA-10-S2 is now complete: `tests/test_smoke_harness.py` now drives a committed bootstrap -> tailoring -> discovery -> send -> delayed-feedback -> review-query smoke flow with deterministic fakes, and the regenerated acceptance trace matrix now closes the explicit smoke-harness gap while leaving the remaining blocker clusters honest."
+    - "BA-10-S3 is in progress: targeted hardening regressions now prove unsupported tailoring asks stay explicit gaps, automatic outreach still requires approved review and blocks repeat ambiguity, outreach-message traceability omits raw reply excerpts, and runtime secret values stay out of canonical state, handoff artifacts, and review outputs; the regenerated matrix now reports 187 implemented, 11 partial, and 14 gap scenarios."
     - "`jhc-chat` now records canonical begin/end state, pauses autonomous work on open, resumes on clean explicit close when chat caused the pause, and leaves unexpected-exit pauses intact for later explicit resume or future idle-timeout handling."
     - Host-side `launchctl bootstrap` success still needs follow-up validation outside the current sandboxed session even though the plist, wrapper wiring, and failed-start rollback all validate locally.
   execution_principles:
@@ -905,22 +906,37 @@ epics:
       - id: BA-10-S3
         name: Cross-component regression and blocker burn-down
         owner_role: quality-engineer
-        status: pending
+        status: in_progress
         dependencies:
           - BA-10-S2
         deliverables:
           - targeted regression coverage for failure or retry, idempotency, and safety constraints
           - explicit blocker confirmation or closure for any acceptance gaps
           - final readiness notes for recruiter- or manager-facing repo surfaces
+        completed_notes:
+          - Added explicit BA-10 hardening regressions across `tests/test_resume_tailoring.py`, `tests/test_outreach.py`, and `tests/test_review_queries.py` so unsupported tailoring requirements stay recorded as Step 4 gaps, role-targeted drafting ignores raw-source claims outside the approved tailoring inputs, drafting refuses non-approved tailoring runs, and runtime secret values plus raw reply excerpts stay out of persisted review outputs.
+          - Tightened `job_hunt_copilot.review_queries` so outreach-message traceability now exposes reply summaries without copying `raw_reply_excerpt` into review-oriented traceability surfaces.
+          - Regenerated `build-agent/reports/ba-10-acceptance-trace-matrix.json` and `.md`, moving the safety/privacy rule to 3 implemented / 0 partial / 0 gap scenarios and raising the overall matrix to 187 implemented / 11 partial / 14 gap scenarios.
+        validation:
+          - "`python3.11 -m pytest tests/test_resume_tailoring.py tests/test_outreach.py tests/test_review_queries.py tests/test_acceptance_traceability.py`"
+          - "`python3.11 scripts/quality/generate_acceptance_trace_matrix.py`"
+          - "`python3.11 -m pytest`"
+        remaining_scope:
+          - downstream supervisor action-catalog orchestration beyond `lead_handoff`
+          - delayed-feedback scheduler wiring
+          - chat review/control behavior and idle-timeout resume
+          - maintenance automation
+          - sleep/wake recovery
+          - posting-abandon control
 
 current_focus:
   epic_id: BA-10
   slice_id: BA-10-S3
   owner_role: quality-engineer
-  reason: BA-10-S2 landed the committed smoke harness and closed the explicit smoke-coverage gap, so the highest-value next step is BA-10-S3 blocker burn-down across delayed-feedback scheduler wiring, downstream supervisor orchestration, chat review/control, maintenance automation, sleep/wake recovery, posting-abandon control, and safety/privacy hardening.
+  reason: BA-10-S3 safety/privacy hardening is now landed and the trace matrix is at 187 implemented / 11 partial / 14 gap scenarios, so the highest-value remaining work is blocker burn-down across downstream supervisor orchestration, delayed-feedback scheduler wiring, chat review/control, maintenance automation, sleep/wake recovery, and posting-abandon control.
   exit_criteria:
     - remaining BA-10 trace-matrix gaps are either fixed or explicitly retained with fresh evidence
-    - targeted regression coverage exists for safety/privacy boundaries plus retry/idempotency edges touched by hardening work
+    - targeted regression coverage exists for retry/idempotency edges plus any blocker confirmation work touched during hardening
     - final BA-10 state notes identify what still blocks full acceptance signoff after smoke coverage
 
 focus_order:
@@ -936,14 +952,17 @@ known_blockers:
     status: open
     severity: high
     owner_role: quality-engineer
-    summary: "The regenerated BA-10 trace matrix now closes the smoke-harness gap, but unresolved current-build gaps remain across downstream supervisor orchestration, delayed-feedback scheduler wiring, chat review/control behavior, maintenance automation, sleep/wake recovery, posting-abandon control, and safety/privacy hardening checks."
+    summary: "The regenerated BA-10 trace matrix now reports 187 implemented / 11 partial / 14 gap scenarios; safety/privacy hardening is closed, but unresolved current-build gaps remain across downstream supervisor orchestration, delayed-feedback scheduler wiring, chat review/control behavior, maintenance automation, sleep/wake recovery, and posting-abandon control."
     evidence:
       - build-agent/reports/ba-10-acceptance-trace-matrix.json
       - build-agent/reports/ba-10-acceptance-trace-matrix.md
       - tests/test_acceptance_traceability.py
       - tests/test_smoke_harness.py
+      - tests/test_resume_tailoring.py
+      - tests/test_outreach.py
+      - tests/test_review_queries.py
     impact: Acceptance signoff is more credible now that committed smoke coverage exists, but BA-10 still cannot close until the remaining gap clusters are either burned down or retained explicitly with evidence.
-    next_action: Execute BA-10-S3 blocker burn-down next, starting with the remaining trace-matrix gaps that have the highest acceptance impact.
+    next_action: Continue BA-10-S3 blocker burn-down with the remaining highest-impact gap cluster, starting with downstream supervisor orchestration or delayed-feedback scheduler wiring.
   - blocker_id: BUILD-CLI-001
     status: open
     severity: medium

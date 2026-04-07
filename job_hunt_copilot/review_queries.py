@@ -690,7 +690,7 @@ def query_object_traceability(
                 connection.execute(
                     """
                     SELECT delivery_feedback_event_id, event_state, event_timestamp,
-                           reply_summary, raw_reply_excerpt, created_at
+                           reply_summary, created_at
                     FROM delivery_feedback_events
                     WHERE outreach_message_id = ?
                     ORDER BY event_timestamp DESC,

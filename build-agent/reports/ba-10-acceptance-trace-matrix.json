@@ -3,8 +3,8 @@
   "feature_path": "prd/test-spec.feature",
   "scenario_count": 214,
   "status_counts": {
-    "implemented": 183,
-    "partial": 15,
+    "implemented": 187,
+    "partial": 11,
     "gap": 14,
     "deferred_optional": 1,
     "excluded_from_required_acceptance": 1
@@ -301,8 +301,8 @@
       ],
       "note": "Artifact contracts, DB-first bootstraps, and review-packet companions are validated at each component boundary rather than through one end-to-end smoke yet.",
       "status_counts": {
-        "implemented": 13,
-        "partial": 1,
+        "implemented": 14,
+        "partial": 0,
         "gap": 1,
         "deferred_optional": 0,
         "excluded_from_required_acceptance": 0
@@ -845,7 +845,7 @@
         {
           "name": "Secrets and tokens do not leak into canonical state or review surfaces",
           "scenario_line": 241,
-          "status": "partial",
+          "status": "implemented",
           "owner_role": "build-lead",
           "epic_ids": [
             "BA-01",
@@ -877,10 +877,8 @@
             "tests/test_delivery_feedback.py",
             "tests/test_review_queries.py"
           ],
-          "gap_ids": [
-            "BA10_SECURITY_REGRESSIONS_PENDING"
-          ],
-          "note": "The code stays evidence-first and keeps secrets outside canonical state, but dedicated BA-10 hardening checks are still needed for these acceptance boundaries."
+          "gap_ids": [],
+          "note": "BA-10 hardening coverage now scans canonical state, review outputs, and machine handoff artifacts to confirm runtime secret values stay out of persisted workflow surfaces."
         }
       ]
     },
@@ -6031,10 +6029,10 @@
         "tests/test_review_queries.py",
         "tests/test_artifacts.py"
       ],
-      "note": "The current implementation is evidence-first and keeps secrets outside canonical state, but BA-10 still needs explicit hardening checks for these boundaries.",
+      "note": "Explicit BA-10 hardening regressions now verify unsupported tailoring asks stay as gaps, automatic outreach still requires approved review and blocks repeat ambiguity, and review-oriented outputs stay summary-level.",
       "status_counts": {
-        "implemented": 0,
-        "partial": 3,
+        "implemented": 3,
+        "partial": 0,
         "gap": 0,
         "deferred_optional": 0,
         "excluded_from_required_acceptance": 0
@@ -6043,7 +6041,7 @@
         {
           "name": "Tailoring and outreach remain grounded in truthful stored evidence",
           "scenario_line": 1688,
-          "status": "partial",
+          "status": "implemented",
           "owner_role": "quality-engineer",
           "epic_ids": [
             "BA-06",
@@ -6066,15 +6064,13 @@
             "tests/test_review_queries.py",
             "tests/test_artifacts.py"
           ],
-          "gap_ids": [
-            "BA10_SECURITY_REGRESSIONS_PENDING"
-          ],
-          "note": "The code stays evidence-first and keeps secrets outside canonical state, but dedicated BA-10 hardening checks are still needed for these acceptance boundaries."
+          "gap_ids": [],
+          "note": "Explicit BA-10 hardening regressions now verify unsupported tailoring asks stay as gaps, automatic outreach still requires approved review and blocks repeat ambiguity, and review-oriented outputs stay summary-level."
         },
         {
           "name": "Persisted review surfaces expose only workflow-relevant personal data",
           "scenario_line": 1694,
-          "status": "partial",
+          "status": "implemented",
           "owner_role": "quality-engineer",
           "epic_ids": [
             "BA-06",
@@ -6097,15 +6093,13 @@
             "tests/test_review_queries.py",
             "tests/test_artifacts.py"
           ],
-          "gap_ids": [
-            "BA10_SECURITY_REGRESSIONS_PENDING"
-          ],
-          "note": "The code stays evidence-first and keeps secrets outside canonical state, but dedicated BA-10 hardening checks are still needed for these acceptance boundaries."
+          "gap_ids": [],
+          "note": "Explicit BA-10 hardening regressions now verify unsupported tailoring asks stay as gaps, automatic outreach still requires approved review and blocks repeat ambiguity, and review-oriented outputs stay summary-level."
         },
         {
           "name": "Autonomous outreach stays within the current safety boundary",
           "scenario_line": 1700,
-          "status": "partial",
+          "status": "implemented",
           "owner_role": "quality-engineer",
           "epic_ids": [
             "BA-06",
@@ -6128,10 +6122,8 @@
             "tests/test_review_queries.py",
             "tests/test_artifacts.py"
           ],
-          "gap_ids": [
-            "BA10_SECURITY_REGRESSIONS_PENDING"
-          ],
-          "note": "The code stays evidence-first and keeps secrets outside canonical state, but dedicated BA-10 hardening checks are still needed for these acceptance boundaries."
+          "gap_ids": [],
+          "note": "Explicit BA-10 hardening regressions now verify unsupported tailoring asks stay as gaps, automatic outreach still requires approved review and blocks repeat ambiguity, and review-oriented outputs stay summary-level."
         }
       ]
     }
@@ -6223,18 +6215,6 @@
       "next_slice": "BA-10-S3",
       "scenario_names": [
         "The user may explicitly abandon a posting from any active orchestration state"
-      ]
-    },
-    {
-      "gap_id": "BA10_SECURITY_REGRESSIONS_PENDING",
-      "title": "Safety and privacy boundaries need explicit hardening checks",
-      "reason": "The current implementation stays evidence-first and keeps secrets outside canonical tables, but BA-10 still needs explicit regression coverage for these acceptance boundaries.",
-      "next_slice": "BA-10-S3",
-      "scenario_names": [
-        "Secrets and tokens do not leak into canonical state or review surfaces",
-        "Tailoring and outreach remain grounded in truthful stored evidence",
-        "Persisted review surfaces expose only workflow-relevant personal data",
-        "Autonomous outreach stays within the current safety boundary"
       ]
     }
   ],

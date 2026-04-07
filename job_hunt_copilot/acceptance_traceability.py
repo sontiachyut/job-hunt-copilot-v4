@@ -79,11 +79,6 @@ GAP_REGISTRY: dict[str, dict[str, str]] = {
         "reason": "There is no explicit user-facing or runtime control path that abandons a posting from arbitrary active orchestration states while preserving canonical history.",
         "next_slice": "BA-10-S3",
     },
-    "BA10_SECURITY_REGRESSIONS_PENDING": {
-        "title": "Safety and privacy boundaries need explicit hardening checks",
-        "reason": "The current implementation stays evidence-first and keeps secrets outside canonical tables, but BA-10 still needs explicit regression coverage for these acceptance boundaries.",
-        "next_slice": "BA-10-S3",
-    },
 }
 
 
@@ -346,9 +341,7 @@ RULE_BLUEPRINTS: dict[str, RuleBlueprint] = {
             "tests/test_review_queries.py",
             "tests/test_artifacts.py",
         ),
-        default_status=STATUS_PARTIAL,
-        default_gap_ids=("BA10_SECURITY_REGRESSIONS_PENDING",),
-        note="The current implementation is evidence-first and keeps secrets outside canonical state, but BA-10 still needs explicit hardening checks for these boundaries.",
+        note="Explicit BA-10 hardening regressions now verify unsupported tailoring asks stay as gaps, automatic outreach still requires approved review and blocks repeat ambiguity, and review-oriented outputs stay summary-level.",
     ),
 }
 
@@ -621,15 +614,9 @@ _register_override(
     note="`tests/test_smoke_harness.py` now proves delayed bounce capture through the shared sync logic after send completion, but the recurring launchd scheduler wiring itself is still not implemented.",
 )
 _register_override(
-    scenarios=(
-        "Secrets and tokens do not leak into canonical state or review surfaces",
-        "Tailoring and outreach remain grounded in truthful stored evidence",
-        "Persisted review surfaces expose only workflow-relevant personal data",
-        "Autonomous outreach stays within the current safety boundary",
-    ),
-    status=STATUS_PARTIAL,
-    gap_ids=("BA10_SECURITY_REGRESSIONS_PENDING",),
-    note="The code stays evidence-first and keeps secrets outside canonical state, but dedicated BA-10 hardening checks are still needed for these acceptance boundaries.",
+    scenarios=("Secrets and tokens do not leak into canonical state or review surfaces",),
+    status=STATUS_IMPLEMENTED,
+    note="BA-10 hardening coverage now scans canonical state, review outputs, and machine handoff artifacts to confirm runtime secret values stay out of persisted workflow surfaces.",
 )
 
 

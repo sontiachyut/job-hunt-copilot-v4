@@ -914,3 +914,29 @@ Use this file as an append-only implementation log for the build agent.
 ### Notes
 - The regenerated trace matrix now covers 214 feature scenarios as 183 implemented, 15 partial, 14 gap, 1 deferred-optional, and 1 excluded-from-required-acceptance.
 - The remaining `Delayed bounce after the send session still gets captured` gap is now strictly about recurring scheduler wiring; the shared delayed-feedback sync logic itself is exercised by the new smoke harness.
+
+### Session
+- Date: 2026-04-07 12:58:16 MST
+- Slice: BA-10-S3 safety/privacy hardening and review-output regression pass
+- Goal: Close the BA-10 safety/privacy acceptance partials with explicit regression evidence, tighten any review-surface overexposure found during validation, and refresh the acceptance matrix honestly.
+
+### Work Done
+- Tightened `job_hunt_copilot.review_queries` so outreach-message traceability now returns reply summaries without exposing `raw_reply_excerpt` in the review-oriented traceability payload.
+- Added explicit hardening regressions in `tests/test_resume_tailoring.py`, `tests/test_outreach.py`, and `tests/test_review_queries.py` to prove unsupported tailoring asks stay as Step 4 gaps, role-targeted drafting ignores raw-source claims outside the approved tailoring inputs, drafting refuses non-approved tailoring runs, and runtime secret values plus raw reply excerpts stay out of canonical state, handoff artifacts, and review outputs.
+- Updated `job_hunt_copilot.acceptance_traceability` and regenerated `build-agent/reports/ba-10-acceptance-trace-matrix.json` plus `.md` so the safety/privacy rule now reads 3 implemented / 0 partial / 0 gap scenarios and the overall matrix now reports 187 implemented, 11 partial, 14 gap, 1 deferred-optional, and 1 excluded scenario.
+- Updated `build-agent/state/build-board.yaml`, `build-agent/state/IMPLEMENTATION_PLAN.md`, `build-agent/state/build-journal.md`, and `build-agent/state/codex-progress.txt` so BA-10-S3 is checkpointed as in progress with the narrowed blocker list.
+
+### Validation
+- Ran `python3.11 -m pytest tests/test_resume_tailoring.py tests/test_outreach.py tests/test_review_queries.py tests/test_acceptance_traceability.py` and confirmed all 37 focused hardening and traceability tests passed.
+- Ran `python3.11 scripts/quality/generate_acceptance_trace_matrix.py` and regenerated the committed BA-10 reports successfully.
+- Ran full `python3.11 -m pytest` and confirmed all 112 repository tests passed.
+
+### Result
+- `done`
+
+### Next
+- Continue `BA-10-S3` on the remaining highest-impact blocker cluster, starting with downstream supervisor orchestration or delayed-feedback scheduler wiring so the remaining 11 partial / 14 gap scenarios keep shrinking with evidence.
+
+### Notes
+- The safety/privacy blocker cluster is now closed in the acceptance matrix; the remaining explicit BA-10 gaps are downstream supervisor orchestration, chat review/control, idle-timeout resume, delayed-feedback scheduler wiring, maintenance automation, sleep/wake recovery, and posting-abandon control.
+- The host-side `launchctl bootstrap` sandbox limitation remains an operational blocker for launchd confirmation, but it did not block this bounded quality-engineering hardening slice.

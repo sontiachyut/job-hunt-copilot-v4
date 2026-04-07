@@ -1076,6 +1076,97 @@ def test_role_targeted_drafting_requires_persisted_ready_for_outreach_state(tmp_
     connection.close()
 
 
+def test_role_targeted_drafting_requires_an_approved_tailoring_run(tmp_path: Path):
+    project_root, paths = bootstrap_project(tmp_path)
+    connection = connect_database(project_root / "job_hunt_copilot.db")
+    write_sender_profile(paths)
+    seed_posting(connection)
+    seed_linked_contact(
+        connection,
+        contact_id="ct_r1",
+        job_posting_contact_id="jpc_r1",
+        display_name="Priya Recruiter",
+        recipient_type=RECIPIENT_TYPE_RECRUITER,
+        current_working_email="priya@acme.example",
+        created_at="2026-04-06T20:01:00Z",
+    )
+    seed_approved_tailoring_run(connection, paths)
+    connection.execute(
+        """
+        UPDATE resume_tailoring_runs
+        SET resume_review_status = ?, updated_at = ?
+        WHERE resume_tailoring_run_id = ?
+        """,
+        ("resume_review_pending", "2026-04-06T20:25:00Z", "rtr_outreach"),
+    )
+    connection.commit()
+
+    with pytest.raises(OutreachDraftingError, match="not backed by an approved tailoring run"):
+        generate_role_targeted_send_set_drafts(
+            connection,
+            project_root=project_root,
+            job_posting_id="jp_outreach",
+            current_time="2026-04-06T20:30:00Z",
+            local_timezone=ZoneInfo("UTC"),
+        )
+
+    connection.close()
+
+
+def test_role_targeted_drafting_stays_grounded_in_stored_inputs_not_raw_source_claims(
+    tmp_path: Path,
+):
+    project_root, paths = bootstrap_project(tmp_path)
+    connection = connect_database(project_root / "job_hunt_copilot.db")
+    write_sender_profile(paths)
+    seed_posting(connection)
+    seed_linked_contact(
+        connection,
+        contact_id="ct_r1",
+        job_posting_contact_id="jpc_r1",
+        display_name="Priya Recruiter",
+        recipient_type=RECIPIENT_TYPE_RECRUITER,
+        current_working_email="priya@acme.example",
+        created_at="2026-04-06T20:01:00Z",
+    )
+    lead_workspace = paths.lead_workspace_dir(
+        "Acme Robotics",
+        "Staff Software Engineer / AI",
+        "ld_outreach",
+    )
+    raw_source_path = lead_workspace / "raw" / "source.md"
+    raw_source_path.parent.mkdir(parents=True, exist_ok=True)
+    raw_source_path.write_text(
+        "# Raw source\nFormer teammate of the CEO with 12 years of Rust experience.\n",
+        encoding="utf-8",
+    )
+    seed_recipient_profile(
+        connection,
+        paths,
+        contact_id="ct_r1",
+        display_name="Priya Recruiter",
+        current_title="Corporate Recruiter",
+        work_signal="recruiting function close to the target role",
+    )
+    seed_approved_tailoring_run(connection, paths)
+
+    result = generate_role_targeted_send_set_drafts(
+        connection,
+        project_root=project_root,
+        job_posting_id="jp_outreach",
+        current_time="2026-04-06T20:30:00Z",
+        local_timezone=ZoneInfo("UTC"),
+    )
+
+    body_text = Path(result.drafted_messages[0].body_text_artifact_path).read_text(encoding="utf-8")
+    assert "recruiting function close to the target role" in body_text
+    assert "improving throughput by 50%" in body_text
+    assert "Former teammate of the CEO" not in body_text
+    assert "12 years of Rust experience" not in body_text
+
+    connection.close()
+
+
 def test_role_targeted_draft_batch_surfaces_failed_contact_without_losing_successes(tmp_path: Path):
     project_root, paths = bootstrap_project(tmp_path)
     connection = connect_database(project_root / "job_hunt_copilot.db")
