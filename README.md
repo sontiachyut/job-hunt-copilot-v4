@@ -38,9 +38,10 @@ What already exists:
 - a generated product-side runtime pack under `ops/agent/` with identity, policy, action-catalog, service-goal, escalation, progress-log, ops-plan, and bootstrap prompt surfaces
 - repo-local supervisor launchd wiring under `ops/launchd/` plus `bin/jhc-agent-start`, `bin/jhc-agent-stop`, `bin/jhc-agent-cycle`, and `bin/jhc-chat` for local heartbeat and operator control
 - the manual-ingestion and materialization slices under `job_hunt_copilot.linkedin_scraping`, including `bin/jhc-linkedin-ingest`, canonical lead workspace creation, `capture-bundle.json`, deterministic `post.md` / `jd.md` / `poster-profile.md` derivation, `source-split.yaml`, `source-split-review.yaml`, blocked-or-ready `lead-manifest.yaml` publication, canonical `job_postings` / poster-contact link creation for reviewed manual leads, and refresh-in-place history snapshotting under each lead workspace `history/`
+- the first Gmail-intake slice under `job_hunt_copilot.gmail_alerts`, including `jhc-linkedin-ingest gmail-batch`, persisted collected-email units under `linkedin-scraping/runtime/gmail/{received_at}-{gmail_message_id}/`, plain-text-first multi-card parsing with HTML fallback only when needed, and zero-card review-threshold metadata retained in `email.json`
 
 What is still in progress:
-- Gmail lead intake and the later runtime components on top of the now-landed local operator plus manual-ingestion, split-review, materialization, and refresh-history entrypoints
+- Gmail lead fan-out, JD recovery, mismatch review, and the later runtime components on top of the now-landed local operator plus manual-ingestion, split-review, materialization, refresh-history, and Gmail collection entrypoints
 
 ## System Overview
 

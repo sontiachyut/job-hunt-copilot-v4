@@ -413,3 +413,32 @@ Use this file as an append-only implementation log for the build agent.
 - Explicit implementation inference: refresh currently resets the live lead workspace to `lead_status = captured` plus `split_review_status = not_started` after source replacement, even when older canonical posting or contact entities still exist, because the live workspace must not pretend its stale split artifacts are current.
 - Explicit implementation inference: automatic refresh remains identity-key driven for manual-capture bundles, while paste fallback refresh is explicit because the scratch-buffer content fingerprint is still intentionally part of new-lead creation.
 - `OPS-LAUNCHD-001` and `BUILD-CLI-001` remain open and untouched because this slice stayed within ingestion ownership.
+
+### Session
+- Date: 2026-04-06 17:28:01 MST
+- Slice: BA-05-S1 Gmail collection unit and parser
+- Goal: Land the bounded Gmail collection stage with idempotent collected-email persistence, plain-text-first LinkedIn alert parsing, retained `job-cards.json`, and zero-card threshold metadata before autonomous lead fan-out begins.
+
+### Work Done
+- Added `job_hunt_copilot.gmail_alerts` with normalized Gmail message and batch contracts, timestamp-keyed collection directories, compact collected-email JSON contracts, plain-text-first multi-card parsing, HTML-derived fallback only when the plain-text body is unavailable or unusable, and per-run plus cross-history zero-card threshold metadata.
+- Extended the existing `bin/jhc-linkedin-ingest` surface with a `gmail-batch` subcommand that ingests normalized Gmail-alert fixture batches through the same repo-local ingestion entrypoint family as the manual capture flow.
+- Added focused pytest coverage for multi-card plain-text parsing, HTML fallback behavior, idempotent collection by `gmail_message_id`, same-thread independent collection, run-threshold zero-card escalation, and cross-run cumulative zero-card review triggering.
+- Updated `README.md` and `docs/ARCHITECTURE.md` so repo-facing surfaces now state honestly that Gmail collection and parsing exist while per-card lead fan-out, JD recovery, and mismatch review remain downstream work.
+- Updated the build board, implementation plan, and handoff note so BA-05 now reflects completed collection/parser work and advances focus to autonomous lead creation plus JD recovery.
+
+### Validation
+- Ran `python3.11 -m py_compile job_hunt_copilot/gmail_alerts.py job_hunt_copilot/linkedin_scraping.py job_hunt_copilot/paths.py tests/test_gmail_alerts.py`.
+- Ran `python3.11 -m pytest tests/test_gmail_alerts.py` and confirmed all 5 Gmail collection tests passed.
+- Ran full `python3.11 -m pytest` and confirmed all 49 tests passed across bootstrap, schema, artifacts, Gmail collection, manual ingestion, local runtime, runtime pack, and supervisor coverage.
+- Ran `bin/jhc-linkedin-ingest gmail-batch --help` and confirmed the repo-local wrapper exposes the new Gmail batch-ingest surface cleanly.
+
+### Result
+- `done`
+
+### Next
+- Implement `BA-05-S2`: create autonomous lead workspaces from retained parsed Gmail cards, dedupe conservatively by `job_id` or normalized URL, and persist JD recovery outcomes into canonical lead state.
+
+### Notes
+- Explicit implementation inference: zero-card Gmail review thresholds are currently derived from retained `email.json` metadata under `linkedin-scraping/runtime/gmail/` instead of a dedicated DB table, which keeps this slice bounded while still making unresolved history queryable for later review surfaces.
+- Explicit implementation inference: Gmail collection remains intentionally pre-lead for this slice, so no autonomous lead workspace is fabricated until the downstream fan-out and JD recovery slice lands.
+- `OPS-LAUNCHD-001` and `BUILD-CLI-001` remain open and untouched because this slice stayed within ingestion ownership.

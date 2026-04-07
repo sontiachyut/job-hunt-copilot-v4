@@ -11,6 +11,7 @@ from typing import Any, Mapping, Sequence
 
 from .artifacts import ArtifactLinkage, register_artifact_record, write_yaml_contract
 from .contracts import CONTRACT_VERSION
+from .gmail_alerts import ingest_gmail_alert_batch, load_gmail_alert_batch
 from .paths import ProjectPaths, workspace_slug
 from .records import lifecycle_timestamps, new_canonical_id, now_utc_iso
 
@@ -2676,6 +2677,9 @@ def _build_parser() -> argparse.ArgumentParser:
     materialize_parser = subparsers.add_parser("materialize")
     materialize_parser.add_argument("--lead-id", required=True)
 
+    gmail_batch_parser = subparsers.add_parser("gmail-batch")
+    gmail_batch_parser.add_argument("--batch", required=True)
+
     return parser
 
 
@@ -2706,6 +2710,11 @@ def main(argv: Sequence[str] | None = None) -> int:
                 result = materialize_manual_lead_entities(
                     args.project_root,
                     lead_id=args.lead_id,
+                )
+            elif args.command == "gmail-batch":
+                result = ingest_gmail_alert_batch(
+                    args.project_root,
+                    batch=load_gmail_alert_batch(args.batch),
                 )
             else:
                 result = ingest_manual_capture_submission(

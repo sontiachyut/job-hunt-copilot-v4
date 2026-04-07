@@ -58,6 +58,10 @@ class ProjectPaths:
         return self.paste_dir / "paste.txt"
 
     @property
+    def gmail_runtime_dir(self) -> Path:
+        return self.project_root / "linkedin-scraping" / "runtime" / "gmail"
+
+    @property
     def ops_dir(self) -> Path:
         return self.project_root / "ops"
 
@@ -294,7 +298,7 @@ class ProjectPaths:
         return [
             self.paste_dir,
             self.project_root / "applications",
-            self.project_root / "linkedin-scraping" / "runtime" / "gmail",
+            self.gmail_runtime_dir,
             self.project_root / "linkedin-scraping" / "runtime" / "leads",
             self.project_root / "resume-tailoring" / "input" / "job-postings",
             self.project_root / "resume-tailoring" / "output" / "tailored",

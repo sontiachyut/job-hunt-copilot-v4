@@ -122,3 +122,11 @@ Suggested format per session:
 - key files changed: job_hunt_copilot/linkedin_scraping.py; tests/test_linkedin_scraping.py; README.md; docs/ARCHITECTURE.md; build-agent/state/build-board.yaml; build-agent/state/build-journal.md; build-agent/state/codex-progress.txt; build-agent/state/IMPLEMENTATION_PLAN.md
 - validation summary: `python3.11 -m py_compile job_hunt_copilot/linkedin_scraping.py` passed; `python3.11 -m pytest tests/test_linkedin_scraping.py` passed (13 tests); full `python3.11 -m pytest` passed (44 tests); `bin/jhc-linkedin-ingest --help` and `bin/jhc-linkedin-ingest paste --help` both passed; refreshed manual leads now snapshot replaced source or review artifacts under `history/`, clear stale live split outputs, and preserve existing posting `jd_artifact_path` history by repointing canonical postings to the snapped `jd.md`
 - next recommended slice: BA-05-S1 Gmail collection unit and parser
+
+- 2026-04-06 17:28:01 MST
+- role owner: ingestion-engineer
+- slice attempted: BA-05-S1 Gmail collection unit and parser
+- result: done
+- key files changed: job_hunt_copilot/gmail_alerts.py; job_hunt_copilot/linkedin_scraping.py; job_hunt_copilot/paths.py; tests/test_gmail_alerts.py; README.md; docs/ARCHITECTURE.md; build-agent/state/build-board.yaml; build-agent/state/build-journal.md; build-agent/state/codex-progress.txt; build-agent/state/IMPLEMENTATION_PLAN.md
+- validation summary: `python3.11 -m py_compile job_hunt_copilot/gmail_alerts.py job_hunt_copilot/linkedin_scraping.py job_hunt_copilot/paths.py tests/test_gmail_alerts.py` passed; `python3.11 -m pytest tests/test_gmail_alerts.py` passed (5 tests); full `python3.11 -m pytest` passed (49 tests); `bin/jhc-linkedin-ingest gmail-batch --help` passed; Gmail collection now persists `email.md`, `email.json`, and retained `job-cards.json` idempotently by `gmail_message_id`, prefers the plain-text LinkedIn digest for parsing, falls back to HTML-derived text only when the plain-text body is unusable, and records zero-card review-threshold metadata without creating lead workspaces yet
+- next recommended slice: BA-05-S2 autonomous lead fan-out and JD recovery
