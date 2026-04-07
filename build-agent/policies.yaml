@@ -116,7 +116,7 @@ loop_policy:
     one bounded slice, validate it, checkpoint progress, and exit cleanly.
 
 runtime_policy:
-  heartbeat_interval_minutes: 10
+  heartbeat_interval_minutes: 5
   cycle_lease_ttl_minutes: 240
   codex_exec_sandbox_mode: workspace-write
   codex_exec_approval_policy: never

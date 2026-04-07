@@ -152,7 +152,7 @@ The next fresh session reads:
 That gives the new session continuity without relying on old prompt memory.
 
 In the current unattended runtime:
-- `launchd` invokes the build-lead heartbeat every 10 minutes
+- `launchd` invokes the build-lead heartbeat every 5 minutes
 - each cycle acquires a lease, selects one bounded slice, and launches one fresh `codex exec` implementation session
 - if a prior cycle is still active, the new heartbeat defers cleanly
 
