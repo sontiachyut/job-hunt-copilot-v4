@@ -51,6 +51,7 @@ RECIPIENT_TYPE_FOUNDER = "founder"
 RECIPIENT_TYPE_OTHER_INTERNAL = "other_internal"
 
 MANIFEST_REASON_AMBIGUOUS_SPLIT_REVIEW = "ambiguous_split_review"
+MANIFEST_REASON_IDENTITY_MISMATCH_REVIEW_REQUIRED = "identity_mismatch_review_required"
 MANIFEST_REASON_MISSING_JD = "missing_jd"
 MANIFEST_REASON_SPLIT_REVIEW_NOT_READY = "split_review_not_ready"
 MANIFEST_REASON_POSTING_NOT_MATERIALIZED = "posting_not_materialized"
@@ -102,6 +103,58 @@ PROFILE_CHROME_REASONS = {
     "connect": "profile_chrome",
     "follow": "profile_chrome",
 }
+LEGAL_COMPANY_SUFFIX_TOKENS = frozenset(
+    {
+        "co",
+        "company",
+        "corp",
+        "corporation",
+        "gmbh",
+        "inc",
+        "incorporated",
+        "limited",
+        "llc",
+        "ltd",
+        "plc",
+    }
+)
+ROLE_ABBREVIATIONS = {
+    "eng": "engineer",
+    "engr": "engineer",
+    "jr": "junior",
+    "sde": "software engineer",
+    "sr": "senior",
+    "swe": "software engineer",
+}
+ROMAN_NUMERAL_TOKENS = {
+    "i": "1",
+    "ii": "2",
+    "iii": "3",
+    "iv": "4",
+    "v": "5",
+    "vi": "6",
+}
+JD_SECTION_HEADINGS = frozenset(
+    {
+        "about the job",
+        "about the role",
+        "about you",
+        "benefits",
+        "bonus points",
+        "compensation",
+        "minimum qualifications",
+        "nice to have",
+        "preferred qualifications",
+        "qualifications",
+        "requirements",
+        "responsibilities",
+        "what we are looking for",
+        "what we're looking for",
+        "what we offer",
+        "what you will do",
+        "what you'll do",
+    }
+)
 
 
 class LinkedInScrapingError(ValueError):
@@ -446,6 +499,7 @@ class GmailLeadBatchIngestionResult:
     review_required_zero_card_messages: int
     leads_created: int
     lead_duplicates_ignored: int
+    review_required_leads: int
     blocked_no_jd_leads: int
     collection_results: tuple[GmailCollectionResult, ...]
     lead_results: tuple[GmailLeadIngestionResult, ...]
@@ -461,6 +515,7 @@ class GmailLeadBatchIngestionResult:
             "review_required_zero_card_messages": self.review_required_zero_card_messages,
             "leads_created": self.leads_created,
             "lead_duplicates_ignored": self.lead_duplicates_ignored,
+            "review_required_leads": self.review_required_leads,
             "blocked_no_jd_leads": self.blocked_no_jd_leads,
             "collections": [result.as_dict() for result in self.collection_results],
             "leads": [result.as_dict() for result in self.lead_results],
@@ -2107,9 +2162,12 @@ def _build_resume_tailoring_target(
     *,
     job_posting_id: str | None,
     jd_path: Path,
+    blocking_reason_code: str | None = None,
 ) -> dict[str, Any]:
-    ready = job_posting_id is not None and jd_path.exists()
-    if ready:
+    ready = job_posting_id is not None and jd_path.exists() and blocking_reason_code is None
+    if blocking_reason_code is not None:
+        reason_code = blocking_reason_code
+    elif ready:
         reason_code = None
     elif job_posting_id is None:
         reason_code = MANIFEST_REASON_POSTING_NOT_MATERIALIZED
@@ -2768,6 +2826,9 @@ def ingest_gmail_alert_batch_to_leads(
         review_required_zero_card_messages=collection_result.review_required_zero_card_messages,
         leads_created=sum(1 for result in lead_results if result.created),
         lead_duplicates_ignored=sum(1 for result in lead_results if result.duplicate),
+        review_required_leads=sum(
+            1 for result in lead_results if result.reason_code == MANIFEST_REASON_IDENTITY_MISMATCH_REVIEW_REQUIRED
+        ),
         blocked_no_jd_leads=sum(1 for result in lead_results if result.lead_status == LEAD_STATUS_BLOCKED_NO_JD),
         collection_results=collection_result.collection_results,
         lead_results=tuple(lead_results),
@@ -2876,24 +2937,32 @@ def _materialize_gmail_card_lead(
         },
     )
 
-    selected_candidate, matched_candidates = _select_gmail_jd_recovery_candidate(
+    jd_recovery = _assemble_gmail_jd_recovery(
         raw_message=raw_message,
         card=card,
     )
-    jd_text = _candidate_jd_text(selected_candidate)
+    jd_text = jd_recovery["merged_jd_text"]
     jd_recovered = jd_text is not None
     if jd_recovered:
         artifact_paths["jd_path"].write_text(_normalize_markdown_body(jd_text), encoding="utf-8")
 
     lead_status = LEAD_STATUS_INCOMPLETE if jd_recovered else LEAD_STATUS_BLOCKED_NO_JD
-    reason_code = None if jd_recovered else MANIFEST_REASON_MISSING_JD
+    identity_reconciliation = jd_recovery["identity_reconciliation"]
+    if identity_reconciliation["review_required"]:
+        reason_code = MANIFEST_REASON_IDENTITY_MISMATCH_REVIEW_REQUIRED
+    elif jd_recovered:
+        reason_code = None
+    else:
+        reason_code = MANIFEST_REASON_MISSING_JD
     jd_fetch_contract = _write_gmail_jd_fetch_artifact(
         artifact_path=artifact_paths["jd_fetch_path"],
         lead_id=lead_id,
         card=card,
         message=message,
-        matched_candidates=matched_candidates,
-        selected_candidate=selected_candidate,
+        matched_candidates=jd_recovery["matched_candidates"],
+        selected_candidate=jd_recovery["selected_candidate"],
+        merge_outcome=jd_recovery["merge_outcome"],
+        identity_reconciliation=identity_reconciliation,
         jd_path=artifact_paths["jd_path"],
         jd_recovered=jd_recovered,
     )
@@ -2916,16 +2985,19 @@ def _materialize_gmail_card_lead(
         "posting_materialization": _build_gmail_posting_materialization_target(
             lead_status=lead_status,
             jd_path=artifact_paths["jd_path"],
+            blocking_reason_code=reason_code,
         ),
         "resume_tailoring": _build_resume_tailoring_target(
             job_posting_id=None,
             jd_path=artifact_paths["jd_path"],
+            blocking_reason_code=reason_code,
         ),
     }
     lead_manifest_contract = _write_gmail_lead_manifest(
         artifact_paths["lead_manifest_path"],
         lead_row=lead_row,
         lead_status=lead_status,
+        reason_code=reason_code,
         artifact_paths=artifact_paths,
         handoff_targets=handoff_targets,
         collection=collection,
@@ -3049,6 +3121,9 @@ def _gmail_card_synthetic_identity_key(card: Mapping[str, Any]) -> str:
     existing_key = _normalize_optional_text(card.get("synthetic_identity_key"))
     if existing_key is not None:
         return existing_key
+    normalized_job_url = _normalize_job_url_reference(card.get("job_url"))
+    if normalized_job_url is not None:
+        return "|".join(["gmail_alert_job_url", normalized_job_url])
     return "|".join(
         [
             "gmail_alert_card_summary",
@@ -3168,6 +3243,280 @@ def _candidate_jd_text(candidate: Mapping[str, Any] | None) -> str | None:
     return _normalize_optional_text(candidate.get("jd_text"), preserve_whitespace=True)
 
 
+def _assemble_gmail_jd_recovery(
+    *,
+    raw_message: Mapping[str, Any],
+    card: Mapping[str, Any],
+) -> dict[str, Any]:
+    selected_candidate, matched_candidates = _select_gmail_jd_recovery_candidate(
+        raw_message=raw_message,
+        card=card,
+    )
+    usable_candidates = [
+        candidate for candidate in matched_candidates if _candidate_jd_text(candidate) is not None
+    ]
+    sorted_candidates = sorted(usable_candidates, key=_gmail_recovery_candidate_sort_key)
+    merge_outcome = _merge_gmail_jd_candidate_texts(sorted_candidates)
+    return {
+        "matched_candidates": matched_candidates,
+        "selected_candidate": selected_candidate,
+        "merged_jd_text": merge_outcome["merged_jd_text"],
+        "merge_outcome": merge_outcome,
+        "identity_reconciliation": _evaluate_gmail_identity_reconciliation(card, selected_candidate),
+    }
+
+
+def _merge_gmail_jd_candidate_texts(candidates: Sequence[Mapping[str, Any]]) -> dict[str, Any]:
+    if not candidates:
+        return {
+            "status": "no_usable_jd",
+            "merged_jd_text": None,
+            "usable_source_count": 0,
+            "contributing_source_count": 0,
+            "conflict_resolution_policy": "prefer_linkedin_derived_content_when_available_else_highest_priority_source",
+            "contributing_sources": [],
+        }
+
+    selected_candidate = candidates[0]
+    merged_sections = [dict(section) for section in _extract_jd_sections(_candidate_jd_text(selected_candidate) or "")]
+    merged_text_signatures = {section["text_signature"] for section in merged_sections}
+    merged_heading_index = {
+        section["heading_signature"]: index
+        for index, section in enumerate(merged_sections)
+        if section["heading_signature"] is not None
+    }
+    source_summaries: list[dict[str, Any]] = []
+
+    for index, candidate in enumerate(candidates):
+        sections = _extract_jd_sections(_candidate_jd_text(candidate) or "")
+        summary = _gmail_candidate_source_summary(candidate)
+        summary.update(
+            {
+                "selected_for_base": index == 0,
+                "merged_section_count": 0,
+                "duplicate_section_count": 0,
+                "conflict_section_count": 0,
+                "conflict_section_headings": [],
+                "included_in_canonical_jd": index == 0,
+            }
+        )
+        if index == 0:
+            summary["merged_section_count"] = len(sections)
+            source_summaries.append(summary)
+            continue
+
+        for section in sections:
+            if section["text_signature"] in merged_text_signatures:
+                summary["duplicate_section_count"] += 1
+                summary["included_in_canonical_jd"] = True
+                continue
+            heading_signature = section["heading_signature"]
+            if heading_signature is not None and heading_signature in merged_heading_index:
+                existing_section = merged_sections[merged_heading_index[heading_signature]]
+                if existing_section["text_signature"] != section["text_signature"]:
+                    summary["conflict_section_count"] += 1
+                    summary["conflict_section_headings"].append(
+                        section["heading"] or heading_signature
+                    )
+                    continue
+            merged_sections.append(section)
+            merged_text_signatures.add(section["text_signature"])
+            if heading_signature is not None and heading_signature not in merged_heading_index:
+                merged_heading_index[heading_signature] = len(merged_sections) - 1
+            summary["merged_section_count"] += 1
+            summary["included_in_canonical_jd"] = True
+
+        source_summaries.append(summary)
+
+    merged_jd_text = _render_jd_sections(merged_sections)
+    merged_sections_from_secondary_sources = any(
+        summary["merged_section_count"] > 0 for summary in source_summaries[1:]
+    )
+    if len(candidates) == 1:
+        status = "single_source"
+    elif merged_sections_from_secondary_sources:
+        status = "merged"
+    else:
+        status = "preferred_primary_source"
+
+    return {
+        "status": status,
+        "merged_jd_text": merged_jd_text,
+        "usable_source_count": len(candidates),
+        "contributing_source_count": sum(1 for summary in source_summaries if summary["included_in_canonical_jd"]),
+        "conflict_resolution_policy": "prefer_linkedin_derived_content_when_available_else_highest_priority_source",
+        "contributing_sources": source_summaries,
+    }
+
+
+def _gmail_candidate_source_summary(candidate: Mapping[str, Any]) -> dict[str, Any]:
+    return {
+        "source_type": _normalize_optional_text(candidate.get("source_type")) or "accepted_source",
+        "source_url": _normalize_optional_text(candidate.get("source_url")),
+        "company_name": _normalize_optional_text(candidate.get("company_name")),
+        "role_title": _normalize_optional_text(candidate.get("role_title")),
+        "company_resolution": _gmail_company_resolution_payload(candidate),
+    }
+
+
+def _extract_jd_sections(jd_text: str) -> list[dict[str, Any]]:
+    lines = [_normalize_optional_text(line, preserve_whitespace=True) or "" for line in jd_text.splitlines()]
+    sections: list[dict[str, Any]] = []
+    current_heading: str | None = None
+    current_body: list[str] = []
+
+    def flush_section() -> None:
+        nonlocal current_heading, current_body
+        if current_heading is None and not any(line.strip() for line in current_body):
+            current_body = []
+            return
+        rendered_lines: list[str] = []
+        if current_heading is not None:
+            rendered_lines.append(current_heading)
+        rendered_lines.extend(line for line in current_body if line.strip())
+        rendered_text = "\n".join(rendered_lines).strip()
+        if not rendered_text:
+            current_heading = None
+            current_body = []
+            return
+        sections.append(
+            {
+                "heading": current_heading,
+                "heading_signature": _heading_signature(current_heading),
+                "text": rendered_text,
+                "text_signature": _text_signature(rendered_text),
+            }
+        )
+        current_heading = None
+        current_body = []
+
+    for line in lines:
+        stripped = line.strip()
+        if not stripped:
+            if current_body and current_body[-1] != "":
+                current_body.append("")
+            continue
+        if _is_jd_section_heading(stripped):
+            flush_section()
+            current_heading = stripped.rstrip(":")
+            continue
+        current_body.append(stripped)
+
+    flush_section()
+    if sections:
+        return sections
+    normalized_text = jd_text.strip()
+    if not normalized_text:
+        return []
+    return [
+        {
+            "heading": None,
+            "heading_signature": None,
+            "text": normalized_text,
+            "text_signature": _text_signature(normalized_text),
+        }
+    ]
+
+
+def _render_jd_sections(sections: Sequence[Mapping[str, Any]]) -> str:
+    return "\n\n".join(section["text"] for section in sections if section.get("text")).strip()
+
+
+def _is_jd_section_heading(line: str) -> bool:
+    normalized = _heading_signature(line)
+    if normalized is None:
+        return False
+    if normalized in JD_SECTION_HEADINGS:
+        return True
+    return line.endswith(":")
+
+
+def _heading_signature(value: str | None) -> str | None:
+    if value is None:
+        return None
+    return _text_signature(value.rstrip(":"))
+
+
+def _text_signature(value: str) -> str:
+    return re.sub(r"\s+", " ", value).strip().lower()
+
+
+def _evaluate_gmail_identity_reconciliation(
+    card: Mapping[str, Any],
+    candidate: Mapping[str, Any] | None,
+) -> dict[str, Any]:
+    parsed_card_company_name = _gmail_card_company_name(card)
+    parsed_card_role_title = _gmail_card_role_title(card)
+    jd_candidate_company_name = None if candidate is None else _normalize_optional_text(candidate.get("company_name"))
+    jd_candidate_role_title = None if candidate is None else _normalize_optional_text(candidate.get("role_title"))
+    company_match = _compare_identity_field(
+        parsed_card_company_name,
+        jd_candidate_company_name,
+        normalizer=_normalize_company_identity,
+    )
+    role_match = _compare_identity_field(
+        parsed_card_role_title,
+        jd_candidate_role_title,
+        normalizer=_normalize_role_identity,
+    )
+    review_required = "mismatch" in {company_match, role_match}
+    if candidate is None or {company_match, role_match} == {"not_available"}:
+        status = "not_evaluated"
+    elif review_required:
+        status = "review_required"
+    elif company_match == "exact" and role_match == "exact":
+        status = "matched"
+    else:
+        status = "normalization_tolerated"
+    return {
+        "status": status,
+        "review_required": review_required,
+        "reason_code": MANIFEST_REASON_IDENTITY_MISMATCH_REVIEW_REQUIRED if review_required else None,
+        "parsed_card_company_name": parsed_card_company_name,
+        "parsed_card_role_title": parsed_card_role_title,
+        "jd_candidate_company_name": jd_candidate_company_name,
+        "jd_candidate_role_title": jd_candidate_role_title,
+        "comparison_source_type": None
+        if candidate is None
+        else _normalize_optional_text(candidate.get("source_type")) or "accepted_source",
+        "company_match": company_match,
+        "role_match": role_match,
+    }
+
+
+def _compare_identity_field(
+    left: str,
+    right: str | None,
+    *,
+    normalizer,
+) -> str:
+    if right is None:
+        return "not_available"
+    if left == right:
+        return "exact"
+    if normalizer(left) == normalizer(right):
+        return "normalized_match"
+    return "mismatch"
+
+
+def _normalize_company_identity(value: str) -> str:
+    normalized = value.lower().replace("&", " and ")
+    normalized = re.sub(r"[^a-z0-9]+", " ", normalized)
+    tokens = [token for token in normalized.split() if token not in LEGAL_COMPANY_SUFFIX_TOKENS]
+    return " ".join(tokens)
+
+
+def _normalize_role_identity(value: str) -> str:
+    normalized = value.lower().replace("&", " and ")
+    normalized = re.sub(r"[^a-z0-9]+", " ", normalized)
+    tokens: list[str] = []
+    for token in normalized.split():
+        expanded = ROLE_ABBREVIATIONS.get(token, token)
+        for expanded_token in expanded.split():
+            tokens.append(ROMAN_NUMERAL_TOKENS.get(expanded_token, expanded_token))
+    return " ".join(tokens)
+
+
 def _normalize_job_url_reference(value: Any) -> str | None:
     job_url = _normalize_optional_text(value)
     if job_url is None:
@@ -3199,6 +3548,8 @@ def _write_gmail_jd_fetch_artifact(
     message,
     matched_candidates: Sequence[Mapping[str, Any]],
     selected_candidate: Mapping[str, Any] | None,
+    merge_outcome: Mapping[str, Any],
+    identity_reconciliation: Mapping[str, Any],
     jd_path: Path,
     jd_recovered: bool,
 ) -> dict[str, Any]:
@@ -3214,12 +3565,7 @@ def _write_gmail_jd_fetch_artifact(
         "jd_recovery_status": "recovered" if jd_recovered else LEAD_STATUS_BLOCKED_NO_JD,
         "jd_artifact_path": str(jd_path.resolve()) if jd_recovered and jd_path.exists() else None,
         "matched_candidate_sources": [
-            {
-                "source_type": _normalize_optional_text(candidate.get("source_type")) or "accepted_source",
-                "source_url": _normalize_optional_text(candidate.get("source_url")),
-                "company_name": _normalize_optional_text(candidate.get("company_name")),
-                "role_title": _normalize_optional_text(candidate.get("role_title")),
-            }
+            _gmail_candidate_source_summary(candidate)
             for candidate in matched_candidates
         ],
         "selected_source": None
@@ -3232,18 +3578,13 @@ def _write_gmail_jd_fetch_artifact(
             "role_title": _normalize_optional_text(selected_candidate.get("role_title")),
         },
         "company_resolution": _gmail_company_resolution_payload(selected_candidate),
-        "identity_reconciliation": {
-            "status": "not_evaluated",
-            "parsed_card_company_name": _gmail_card_company_name(card),
-            "parsed_card_role_title": _gmail_card_role_title(card),
-            "jd_candidate_company_name": None
-            if selected_candidate is None
-            else _normalize_optional_text(selected_candidate.get("company_name")),
-            "jd_candidate_role_title": None
-            if selected_candidate is None
-            else _normalize_optional_text(selected_candidate.get("role_title")),
-        },
-        "merge_pending": len([candidate for candidate in matched_candidates if _candidate_jd_text(candidate)]) > 1,
+        "identity_reconciliation": dict(identity_reconciliation),
+        "merge_status": merge_outcome["status"],
+        "usable_source_count": merge_outcome["usable_source_count"],
+        "contributing_source_count": merge_outcome["contributing_source_count"],
+        "conflict_resolution_policy": merge_outcome["conflict_resolution_policy"],
+        "contributing_sources": list(merge_outcome["contributing_sources"]),
+        "merge_pending": False,
     }
 
     if jd_recovered:
@@ -3294,9 +3635,13 @@ def _build_gmail_posting_materialization_target(
     *,
     lead_status: str,
     jd_path: Path,
+    blocking_reason_code: str | None = None,
 ) -> dict[str, Any]:
-    ready = lead_status == LEAD_STATUS_INCOMPLETE and jd_path.exists()
-    reason_code = None if ready else MANIFEST_REASON_MISSING_JD
+    ready = lead_status == LEAD_STATUS_INCOMPLETE and jd_path.exists() and blocking_reason_code is None
+    if blocking_reason_code is not None:
+        reason_code = blocking_reason_code
+    else:
+        reason_code = None if ready else MANIFEST_REASON_MISSING_JD
     return {
         "ready": ready,
         "reason_code": reason_code,
@@ -3309,6 +3654,7 @@ def _write_gmail_lead_manifest(
     *,
     lead_row: Mapping[str, Any],
     lead_status: str,
+    reason_code: str | None,
     artifact_paths: Mapping[str, Path],
     handoff_targets: Mapping[str, Any],
     collection: GmailCollectionResult,
@@ -3327,11 +3673,22 @@ def _write_gmail_lead_manifest(
         "reason_code": "not_available_in_gmail_mode",
     }
     jd_available = artifact_paths["jd_path"].exists()
+    result = "blocked" if reason_code is not None else "success"
+    message_text = None
+    if reason_code == MANIFEST_REASON_MISSING_JD:
+        message_text = "No usable JD candidate was available for this autonomous Gmail alert lead."
+    elif reason_code == MANIFEST_REASON_IDENTITY_MISMATCH_REVIEW_REQUIRED:
+        message_text = (
+            "Autonomous Gmail lead requires review because the parsed card identity materially "
+            "disagrees with the recovered JD identity."
+        )
     return write_yaml_contract(
         lead_manifest_path,
         producer_component=LINKEDIN_SCRAPING_COMPONENT,
-        result="success",
+        result=result,
         linkage=ArtifactLinkage(lead_id=lead_row["lead_id"]),
+        reason_code=reason_code,
+        message=message_text,
         payload={
             "lead_status": lead_status,
             "lead_shape": LEAD_SHAPE_POSTING_ONLY,
@@ -3351,6 +3708,16 @@ def _write_gmail_lead_manifest(
                     "job_id": _normalize_optional_text(card.get("job_id")),
                     "job_url": _normalize_optional_text(card.get("job_url")),
                     "synthetic_identity_key": _gmail_card_synthetic_identity_key(card),
+                    "identity_reconciliation": dict(jd_fetch_contract["identity_reconciliation"]),
+                    "jd_merge": {
+                        "status": jd_fetch_contract["merge_status"],
+                        "usable_source_count": jd_fetch_contract["usable_source_count"],
+                        "contributing_source_count": jd_fetch_contract["contributing_source_count"],
+                        "contributing_source_types": [
+                            source["source_type"] for source in jd_fetch_contract["contributing_sources"]
+                        ],
+                        "conflict_resolution_policy": jd_fetch_contract["conflict_resolution_policy"],
+                    },
                 },
             },
             "summary": {
@@ -3388,6 +3755,11 @@ def _write_gmail_lead_manifest(
                         "selected_source_type": (
                             jd_fetch_contract.get("selected_source", {}) or {}
                         ).get("source_type"),
+                        "merge_status": jd_fetch_contract["merge_status"],
+                        "contributing_source_types": [
+                            source["source_type"] for source in jd_fetch_contract["contributing_sources"]
+                        ],
+                        "identity_reconciliation_status": jd_fetch_contract["identity_reconciliation"]["status"],
                     },
                 },
                 "poster_profile": poster_profile_availability,

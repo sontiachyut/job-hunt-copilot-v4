@@ -805,7 +805,7 @@ def _normalize_job_url(job_url: str) -> str:
         return f"https://www.linkedin.com/jobs/view/{job_id}/"
 
     path = re.sub(r"/+", "/", parsed.path.rstrip("/"))
-    return f"https://www.linkedin.com{path}"
+    return f"https://www.linkedin.com{path}/"
 
 
 def _extract_job_id(job_url: str | None) -> str | None:
@@ -836,7 +836,7 @@ def _synthetic_identity_key(
         return None
     if job_url is None:
         return None
-    return "|".join(["gmail_alert_card_url", workspace_slug(job_url)])
+    return "|".join(["gmail_alert_job_url", job_url])
 
 
 def _looks_like_location(line: str) -> bool:

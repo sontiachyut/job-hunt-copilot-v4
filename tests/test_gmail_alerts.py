@@ -583,3 +583,250 @@ def test_gmail_batch_fanout_blocks_no_jd_when_no_identifier_or_jd_recovery_exist
         "split_review_status": "not_applicable",
         "source_reference": "linkedin-scraping/runtime/gmail/20260406T233000Z-gmail-blocked-001/job-cards.json#card_index=1",
     }
+
+
+def test_gmail_batch_fanout_merges_multiple_jd_sources_and_prefers_linkedin_conflicts(tmp_path):
+    project_root = bootstrap_project(tmp_path)
+
+    batch = build_batch(
+        build_message(
+            gmail_message_id="gmail-merge-001",
+            received_at="2026-04-06T23:40:00Z",
+            text_plain_body=(
+                "-----\n"
+                "Staff Platform Engineer\n"
+                "Acme Corp\n"
+                "Remote\n"
+                "View job\n"
+                "https://www.linkedin.com/jobs/view/3333333333/?trk=email_digest\n"
+            ),
+            jd_recovery=[
+                {
+                    "job_id": "3333333333",
+                    "source_type": "linkedin_guest_job_payload",
+                    "source_url": "https://www.linkedin.com/jobs/view/3333333333/",
+                    "company_name": "Acme Corp",
+                    "role_title": "Staff Platform Engineer",
+                    "jd_text": (
+                        "About the job\n"
+                        "Build internal AI platforms for regulated products.\n\n"
+                        "Qualifications\n"
+                        "5+ years of distributed systems experience.\n"
+                    ),
+                },
+                {
+                    "job_id": "3333333333",
+                    "source_type": "company_careers_page",
+                    "source_url": "https://careers.acme.example/jobs/3333333333",
+                    "company_name": "Acme Corp",
+                    "role_title": "Staff Platform Engineer",
+                    "jd_text": (
+                        "About the job\n"
+                        "Build internal AI platforms for regulated products.\n\n"
+                        "Qualifications\n"
+                        "Experience with healthcare claims operations.\n\n"
+                        "Benefits\n"
+                        "Remote-first team with an annual learning stipend.\n"
+                    ),
+                },
+            ],
+        ),
+        ingestion_run_id="gmail-merge-run-001",
+    )
+
+    result = ingest_gmail_alert_batch_to_leads(project_root, batch=batch)
+
+    lead = result.lead_results[0]
+    jd_text = lead.jd_path.read_text(encoding="utf-8")
+    jd_fetch = json.loads(lead.jd_fetch_path.read_text(encoding="utf-8"))
+    manifest = yaml.safe_load(lead.lead_manifest_path.read_text(encoding="utf-8"))
+
+    assert lead.lead_status == "incomplete"
+    assert "5+ years of distributed systems experience." in jd_text
+    assert "Experience with healthcare claims operations." not in jd_text
+    assert "Benefits\nRemote-first team with an annual learning stipend." in jd_text
+    assert jd_fetch["merge_status"] == "merged"
+    assert jd_fetch["conflict_resolution_policy"] == (
+        "prefer_linkedin_derived_content_when_available_else_highest_priority_source"
+    )
+    assert any(
+        source["source_type"] == "company_careers_page"
+        and source["merged_section_count"] == 1
+        and source["conflict_section_count"] == 1
+        and source["included_in_canonical_jd"] is True
+        for source in jd_fetch["contributing_sources"]
+    )
+    assert manifest["artifact_availability"]["jd"]["provenance"]["merge_status"] == "merged"
+    assert manifest["handoff_targets"]["posting_materialization"]["ready"] is True
+
+
+def test_gmail_batch_fanout_blocks_posting_materialization_for_material_identity_mismatch(tmp_path):
+    project_root = bootstrap_project(tmp_path)
+
+    batch = build_batch(
+        build_message(
+            gmail_message_id="gmail-mismatch-001",
+            received_at="2026-04-06T23:45:00Z",
+            text_plain_body=(
+                "-----\n"
+                "Senior Software Engineer\n"
+                "Google\n"
+                "Remote\n"
+                "View job\n"
+                "https://www.linkedin.com/jobs/view/4444444444/\n"
+            ),
+            jd_recovery=[
+                {
+                    "job_id": "4444444444",
+                    "source_type": "linkedin_guest_job_payload",
+                    "source_url": "https://www.linkedin.com/jobs/view/4444444444/",
+                    "company_name": "Meta",
+                    "role_title": "Machine Learning Engineer",
+                    "jd_text": (
+                        "About the job\n"
+                        "Build ML ranking systems.\n"
+                    ),
+                }
+            ],
+        ),
+        ingestion_run_id="gmail-mismatch-run-001",
+    )
+
+    result = ingest_gmail_alert_batch_to_leads(project_root, batch=batch)
+
+    lead = result.lead_results[0]
+    manifest = yaml.safe_load(lead.lead_manifest_path.read_text(encoding="utf-8"))
+    jd_fetch = json.loads(lead.jd_fetch_path.read_text(encoding="utf-8"))
+
+    assert result.review_required_leads == 1
+    assert lead.lead_status == "incomplete"
+    assert lead.reason_code == "identity_mismatch_review_required"
+    assert lead.jd_path.exists()
+    assert manifest["result"] == "blocked"
+    assert manifest["reason_code"] == "identity_mismatch_review_required"
+    assert manifest["handoff_targets"]["posting_materialization"]["ready"] is False
+    assert manifest["handoff_targets"]["posting_materialization"]["reason_code"] == (
+        "identity_mismatch_review_required"
+    )
+    assert manifest["handoff_targets"]["resume_tailoring"]["ready"] is False
+    assert manifest["handoff_targets"]["resume_tailoring"]["reason_code"] == (
+        "identity_mismatch_review_required"
+    )
+    assert jd_fetch["result"] == "success"
+    assert jd_fetch["identity_reconciliation"]["status"] == "review_required"
+    assert jd_fetch["identity_reconciliation"]["company_match"] == "mismatch"
+    assert jd_fetch["identity_reconciliation"]["role_match"] == "mismatch"
+
+
+def test_gmail_batch_fanout_tolerates_normalization_only_identity_differences(tmp_path):
+    project_root = bootstrap_project(tmp_path)
+
+    batch = build_batch(
+        build_message(
+            gmail_message_id="gmail-normalization-001",
+            received_at="2026-04-06T23:46:00Z",
+            text_plain_body=(
+                "-----\n"
+                "SWE II\n"
+                "Google\n"
+                "Remote\n"
+                "View job\n"
+                "https://www.linkedin.com/jobs/view/5555555555/\n"
+            ),
+            jd_recovery=[
+                {
+                    "job_id": "5555555555",
+                    "source_type": "linkedin_guest_job_payload",
+                    "source_url": "https://www.linkedin.com/jobs/view/5555555555/",
+                    "company_name": "Google LLC",
+                    "role_title": "Software Engineer II",
+                    "jd_text": (
+                        "About the job\n"
+                        "Ship core product features.\n"
+                    ),
+                }
+            ],
+        ),
+        ingestion_run_id="gmail-normalization-run-001",
+    )
+
+    result = ingest_gmail_alert_batch_to_leads(project_root, batch=batch)
+
+    lead = result.lead_results[0]
+    manifest = yaml.safe_load(lead.lead_manifest_path.read_text(encoding="utf-8"))
+    jd_fetch = json.loads(lead.jd_fetch_path.read_text(encoding="utf-8"))
+
+    assert result.review_required_leads == 0
+    assert lead.reason_code is None
+    assert manifest["handoff_targets"]["posting_materialization"]["ready"] is True
+    assert "reason_code" not in manifest
+    assert jd_fetch["identity_reconciliation"]["status"] == "normalization_tolerated"
+    assert jd_fetch["identity_reconciliation"]["company_match"] == "normalized_match"
+    assert jd_fetch["identity_reconciliation"]["role_match"] == "normalized_match"
+
+
+def test_gmail_batch_fanout_dedupes_missing_job_id_cards_by_normalized_url_fallback(tmp_path):
+    project_root = bootstrap_project(tmp_path)
+
+    batch = build_batch(
+        build_message(
+            gmail_message_id="gmail-url-dedupe-001",
+            received_at="2026-04-06T23:50:00Z",
+            text_plain_body=(
+                "-----\n"
+                "Backend Engineer\n"
+                "Northwind\n"
+                "Remote\n"
+                "View job\n"
+                "https://www.linkedin.com/jobs/view/backend-engineer-at-northwind/?trk=email_digest\n"
+            ),
+            jd_recovery=[
+                {
+                    "job_url": "https://www.linkedin.com/jobs/view/backend-engineer-at-northwind/",
+                    "source_type": "linkedin_guest_job_payload",
+                    "source_url": "https://www.linkedin.com/jobs/view/backend-engineer-at-northwind/",
+                    "company_name": "Northwind",
+                    "role_title": "Backend Engineer",
+                    "jd_text": "About the job\nBuild APIs.\n",
+                }
+            ],
+        ),
+        build_message(
+            gmail_message_id="gmail-url-dedupe-002",
+            received_at="2026-04-06T23:51:00Z",
+            text_plain_body=(
+                "-----\n"
+                "Backend Engineer\n"
+                "Northwind\n"
+                "Remote\n"
+                "View job\n"
+                "https://www.linkedin.com/jobs/view/backend-engineer-at-northwind/?trackingId=second\n"
+            ),
+            jd_recovery=[
+                {
+                    "job_url": "https://www.linkedin.com/jobs/view/backend-engineer-at-northwind/",
+                    "source_type": "linkedin_guest_job_payload",
+                    "source_url": "https://www.linkedin.com/jobs/view/backend-engineer-at-northwind/",
+                    "company_name": "Northwind",
+                    "role_title": "Backend Engineer",
+                    "jd_text": "About the job\nBuild APIs.\n",
+                }
+            ],
+        ),
+        ingestion_run_id="gmail-url-dedupe-run-001",
+    )
+
+    result = ingest_gmail_alert_batch_to_leads(project_root, batch=batch)
+
+    created_lead = result.lead_results[0]
+    duplicate_lead = result.lead_results[1]
+    alert_card = json.loads(created_lead.alert_card_path.read_text(encoding="utf-8"))
+
+    assert result.leads_created == 1
+    assert result.lead_duplicates_ignored == 1
+    assert alert_card["job_id"] is None
+    assert alert_card["synthetic_identity_key"] == (
+        "gmail_alert_job_url|https://www.linkedin.com/jobs/view/backend-engineer-at-northwind/"
+    )
+    assert duplicate_lead.duplicate is True
+    assert duplicate_lead.duplicate_lead_id == created_lead.lead_id

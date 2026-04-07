@@ -472,3 +472,33 @@ Use this file as an append-only implementation log for the build agent.
 - Explicit implementation inference: successful Gmail-derived leads currently remain `incomplete` even after `jd.md` recovery because BA-05-S3 still owns multi-source JD merge, material mismatch review, and the downstream canonical posting-materialization handoff update.
 - Explicit implementation inference: the new accepted-source JD recovery input is intentionally bounded to batch-fixture metadata for now, which keeps this slice offline-testable while preserving the future external-fetch seam for a later integration pass.
 - `OPS-LAUNCHD-001` and `BUILD-CLI-001` remain open and untouched because this slice stayed within ingestion ownership.
+
+### Session
+- Date: 2026-04-06 18:21:31 MST
+- Slice: BA-05-S3 JD provenance merge and mismatch review
+- Goal: Merge multi-source autonomous Gmail JD candidates into one canonical `jd.md`, persist final provenance, and block downstream handoff only when card-vs-JD identity differences are materially inconsistent.
+
+### Work Done
+- Extended `job_hunt_copilot.linkedin_scraping` so autonomous Gmail leads now compare all matched usable JD candidates, build one canonical `jd.md`, merge non-conflicting additions, and preserve LinkedIn-derived content when later sources disagree on the same section heading.
+- Added queryable JD provenance and identity-reconciliation metadata to `jd-fetch.json` and `lead-manifest.yaml`, including source summaries, merge status, conflict-resolution policy, and review-required identity mismatch details.
+- Added review blocking for Gmail `handoff_targets.posting_materialization` and `handoff_targets.resume_tailoring` when the parsed card company or role materially disagrees with the recovered JD identity, while allowing normalization-only differences such as legal-suffix company variants or `SWE II` versus `Software Engineer II`.
+- Repaired the adjacent normalized-URL fallback identity path in both Gmail collection and lead fan-out so missing-`job_id` cards dedupe by normalized LinkedIn job URL instead of falling back immediately to a looser summary key.
+- Updated `README.md`, `docs/ARCHITECTURE.md`, the build board, the implementation plan, and the short handoff log so repo-facing and build-agent-facing surfaces now describe the completed Gmail intake boundary honestly and advance focus to tailoring bootstrap work.
+
+### Validation
+- Ran `python3.11 -m py_compile job_hunt_copilot/gmail_alerts.py job_hunt_copilot/linkedin_scraping.py tests/test_gmail_alerts.py`.
+- Ran `python3.11 -m pytest tests/test_gmail_alerts.py` and confirmed all 12 Gmail ingestion tests passed.
+- Ran `python3.11 -m pytest tests/test_linkedin_scraping.py` and confirmed all 13 adjacent manual-ingestion tests still passed after the shared-module changes.
+- Ran full `python3.11 -m pytest` and confirmed all 56 repository tests passed across bootstrap, schema, artifacts, Gmail intake, manual ingestion, local runtime, runtime pack, and supervisor coverage.
+- Ran `bin/jhc-linkedin-ingest gmail-batch --help` and confirmed the repo-local Gmail batch wrapper still exposes the bounded autonomous intake surface cleanly.
+
+### Result
+- `done`
+
+### Next
+- Implement `BA-06-S1`: bootstrap eligibility evaluation and persisted `resume_tailoring_runs` lifecycle state from posting-linked context with honest missing-prerequisite gating.
+
+### Notes
+- Explicit implementation note: Gmail lead manifests now carry posting-materialization readiness or blocking reasons, but later posting-linked runtime state still remains downstream work outside this bounded intake slice.
+- Explicit implementation note: accepted-source JD recovery remains intentionally fixture-driven and offline-testable for now; live LinkedIn or company-page fetch integration still belongs to a later external-integration pass.
+- `OPS-LAUNCHD-001` and `BUILD-CLI-001` remain open and untouched because this slice stayed within ingestion ownership.

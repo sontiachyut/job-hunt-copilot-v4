@@ -17,7 +17,7 @@ global_status:
     - BA-02 is now complete: the repo has canonical supervisor-state helpers, a bounded heartbeat executor, terminal-run review packet artifacts, expert review decisions, and override-event lineage persisted in canonical state.
     - BA-03 is now complete in code: runtime-pack materialization, local launchd/start-stop-cycle helpers, and the direct `jhc-chat` operator entrypoint now exist for the macOS runtime surface.
     - BA-04 is now complete in code: the repo has a bounded `linkedin_scraping` ingestion path that reads `paste/paste.txt` or browser-style capture bundles, creates canonical lead workspaces, persists `capture-bundle.json`, copies or assembles `raw/source.md`, derives deterministic manual split artifacts, materializes canonical manual postings and poster links, publishes `resume_tailoring`-ready lead manifests, and refreshes existing manual leads in place while snapshotting prior source or review artifacts under each lead-local `history/` directory.
-    - BA-05-S2 is now complete in code: the Gmail intake path now persists collected-email units before fan-out, creates autonomous lead workspaces from parsed cards, copies lead-local `alert-email.md` plus `alert-card.json`, writes `jd-fetch.json` and `lead-manifest.yaml`, dedupes conservatively by `job_id` or synthetic fallback identity, and records honest `incomplete` / `blocked_no_jd` lead state.
+    - BA-05 is now complete in code: the Gmail intake path now persists collected-email units before fan-out, dedupes by `job_id` or normalized LinkedIn job URL fallback, creates autonomous lead workspaces from parsed cards, merges multi-source JD candidates into canonical `jd.md` with LinkedIn conflict precedence, and records honest `incomplete`, review-blocked, or `blocked_no_jd` lead state with queryable provenance.
     - "`jhc-chat` now records canonical begin/end state, pauses autonomous work on open, resumes on clean explicit close when chat caused the pause, and leaves unexpected-exit pauses intact for later explicit resume or future idle-timeout handling."
     - Host-side `launchctl bootstrap` success still needs follow-up validation outside the current sandboxed session even though the plist, wrapper wiring, and failed-start rollback all validate locally.
   execution_principles:
@@ -419,7 +419,7 @@ epics:
 
   - id: BA-05
     name: Gmail alert intake
-    status: in_progress
+    status: completed
     owner_role: ingestion-engineer
     phase: P2
     dependencies:
@@ -438,6 +438,7 @@ epics:
       - The repo now has a bounded Gmail collection stage under `job_hunt_copilot.gmail_alerts`, exposed through `bin/jhc-linkedin-ingest gmail-batch`, that persists normalized collected-email units and parsed card artifacts before any lead workspace fan-out occurs.
       - Plain-text LinkedIn alert digests are now the primary parse input, HTML-derived fallback only runs when the plain-text body is unavailable or unusable, and zero-card cases remain retained with machine-readable review-threshold metadata for later review surfaces.
       - "`bin/jhc-linkedin-ingest gmail-batch` now runs the full bounded autonomous intake path: it fans retained parsed cards into canonical lead workspaces, copies lead-local `alert-email.md`, publishes `alert-card.json`, `jd-fetch.json`, and `lead-manifest.yaml`, and records conservative lead dedupe plus `incomplete` or `blocked_no_jd` state without fabricating manual split artifacts."
+      - Multi-source autonomous JD recovery now merges non-conflicting additions into canonical `jd.md`, prefers LinkedIn-derived content for conflicting sections, surfaces material Gmail-card versus recovered-JD identity mismatches for review, and tolerates normalization-only differences such as legal-suffix company variants or `SWE II` versus `Software Engineer II`.
     near_term_slices:
       - id: BA-05-S1
         name: Gmail collection unit and parser
@@ -479,13 +480,23 @@ epics:
       - id: BA-05-S3
         name: JD provenance merge and mismatch review
         owner_role: ingestion-engineer
-        status: pending
+        status: completed
         dependencies:
           - BA-05-S2
         deliverables:
           - merged JD persistence with LinkedIn conflict precedence
           - company or role mismatch review logic with tolerated normalization differences
           - autonomous lead manifest and posting materialization handoff updates
+        completed_notes:
+          - Extended Gmail lead materialization so multiple JD candidates now merge into canonical `jd.md`, preserving non-conflicting additions while keeping LinkedIn-derived content authoritative for conflicting sections.
+          - Added queryable JD provenance metadata under `jd-fetch.json` and `lead-manifest.yaml`, including contributing source summaries, merge status, conflict-resolution policy, and identity-reconciliation status.
+          - Added material mismatch review blocking for posting-materialization and resume-tailoring handoff targets while tolerating normalization-only company or role differences, and repaired the normalized-URL fallback identity path so missing-`job_id` autonomous cards dedupe the way the board already described.
+        validation:
+          - "`python3.11 -m py_compile job_hunt_copilot/gmail_alerts.py job_hunt_copilot/linkedin_scraping.py tests/test_gmail_alerts.py`"
+          - "`python3.11 -m pytest tests/test_gmail_alerts.py`"
+          - "`python3.11 -m pytest tests/test_linkedin_scraping.py`"
+          - "`python3.11 -m pytest`"
+          - "`bin/jhc-linkedin-ingest gmail-batch --help`"
 
   - id: BA-06
     name: Resume tailoring runtime
@@ -748,18 +759,16 @@ epics:
           - final readiness notes for recruiter- or manager-facing repo surfaces
 
 current_focus:
-  epic_id: BA-05
-  slice_id: BA-05-S3
-  owner_role: ingestion-engineer
-  reason: Autonomous Gmail lead workspaces and single-source JD recovery now exist, so the next bounded ingestion gap is merging multiple JD candidates, recording conflict provenance, and surfacing material Gmail-card versus JD identity mismatches without breaking the current lead contract.
+  epic_id: BA-06
+  slice_id: BA-06-S1
+  owner_role: tailoring-engineer
+  reason: Gmail and manual ingestion now land bounded lead handoff artifacts with persisted `jd.md`, so the next highest-value dependency is hard-eligibility and tailoring-run lifecycle bootstrap from canonical posting-linked context.
   exit_criteria:
-    - multi-source autonomous JD recovery merges non-conflicting additions into canonical `jd.md`
-    - materially conflicting JD portions prefer LinkedIn-derived content while provenance records every contributing source
-    - material Gmail-card versus fetched-JD company or role mismatches are queryable while minor normalization differences stay unblocked
+    - eligible postings create a persisted `resume_tailoring_runs` row with canonical lifecycle timestamps and workspace linkage
+    - tailoring bootstrap blocks honestly when `jd.md` or other required posting context is missing
+    - the current global greater-than-5-years experience gate is evaluated and recorded with explicit unknown handling
 
 focus_order:
-  - epic_id: BA-05
-    why_now: Gmail intake reuses lead materialization conventions and adds autonomous parsing and JD recovery on top.
   - epic_id: BA-06
     why_now: Tailoring depends on canonical postings and must be in place before outreach can begin.
   - epic_id: BA-07
