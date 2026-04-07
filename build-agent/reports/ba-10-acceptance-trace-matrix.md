@@ -33,7 +33,7 @@
 
 ### BA10_SUPERVISOR_DOWNSTREAM_ACTION_CATALOG: Supervisor orchestration still stops at lead handoff
 - Next slice: `BA-10-S3`
-- Reason: The durable heartbeat and incident model exist, but the registered action catalog still only advances autonomous work through `lead_handoff` before unsupported downstream stages escalate.
+- Reason: The durable heartbeat, selector ordering, and retry-safe run persistence exist, but the registered action catalog still only advances autonomous work through `lead_handoff`; later stages reselect the same durable run and escalate instead of executing.
 - Scenarios: `5`
   - Supervisor work selection follows the current default priority order
   - Role-targeted orchestration follows the current dependency order

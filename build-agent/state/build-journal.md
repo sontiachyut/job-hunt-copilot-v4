@@ -995,3 +995,30 @@ Use this file as an append-only implementation log for the build agent.
 ### Notes
 - The acceptance matrix now reports 190 implemented, 8 partial, 14 gap, 1 deferred-optional, and 1 excluded-from-required-acceptance scenarios.
 - `BA10_SLEEP_WAKE_RECOVERY` is now closed in the trace matrix; host-side `launchctl` validation remains a separate sandbox-blocked operational issue under `OPS-LAUNCHD-001`.
+
+### Session
+- Date: 2026-04-07 14:27:27 MST
+- Slice: BA-10-S3 downstream supervisor blocker confirmation
+- Goal: Add explicit regression evidence for the remaining downstream-supervisor acceptance partials, refresh the BA-10 trace matrix notes so they match that evidence, and checkpoint the blocker honestly without redesigning the supervisor.
+
+### Work Done
+- Broadened `tests/test_supervisor.py` so the unsupported-action regression now covers multiple real downstream stages: `agent_review`, `people_search`, `email_discovery`, `sending`, and `delivery_feedback`.
+- Added a retry/idempotency regression proving that when a downstream stage remains unsupported, the system retries on the same durable `pipeline_run_id`, keeps the blocked stage boundary, and reuses the existing pending review packet instead of silently resetting to `lead_handoff` or duplicating review artifacts.
+- Updated `job_hunt_copilot.acceptance_traceability` and regenerated `build-agent/reports/ba-10-acceptance-trace-matrix.json` plus `.md` so the downstream-supervisor gap note now reflects the proven selector-ordering and retry-safe persistence evidence while remaining an explicit gap.
+- Updated `build-agent/state/build-board.yaml`, `build-agent/state/IMPLEMENTATION_PLAN.md`, `build-agent/state/build-journal.md`, and `build-agent/state/codex-progress.txt` so the quality-engineering checkpoint records this as blocker confirmation rather than a hidden implementation closure.
+
+### Validation
+- Ran `python3.11 -m py_compile job_hunt_copilot/acceptance_traceability.py tests/test_supervisor.py tests/test_acceptance_traceability.py` and confirmed the changed quality-engineering surfaces compile cleanly.
+- Ran `python3.11 scripts/quality/generate_acceptance_trace_matrix.py --project-root /Users/achyutaramsonti/Projects/job-hunt-copilot-v4` and regenerated the committed BA-10 reports successfully.
+- Ran `python3.11 -m pytest tests/test_supervisor.py tests/test_acceptance_traceability.py` and confirmed all 19 focused supervisor/traceability tests passed.
+- Ran full `python3.11 -m pytest` and confirmed all 122 repository tests passed.
+
+### Result
+- `done`
+
+### Next
+- Hand the functional downstream action-catalog slice back to the build-lead if the team wants to shrink the biggest remaining partial cluster; otherwise continue BA-10-S3 with the next quality-owned blocker cluster around chat review/control behavior.
+
+### Notes
+- The acceptance matrix remains at 190 implemented, 8 partial, 14 gap, 1 deferred-optional, and 1 excluded-from-required-acceptance scenarios; this slice intentionally strengthened evidence without claiming additional feature closure.
+- The downstream-supervisor blocker is now more precise: selector ordering and retry-safe run persistence are evidenced, while later-stage autonomous execution beyond `lead_handoff` remains the actual missing capability.

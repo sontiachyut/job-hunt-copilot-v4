@@ -46,7 +46,7 @@ GAP_REGISTRY: dict[str, dict[str, str]] = {
     },
     "BA10_SUPERVISOR_DOWNSTREAM_ACTION_CATALOG": {
         "title": "Supervisor orchestration still stops at lead handoff",
-        "reason": "The durable heartbeat and incident model exist, but the registered action catalog still only advances autonomous work through `lead_handoff` before unsupported downstream stages escalate.",
+        "reason": "The durable heartbeat, selector ordering, and retry-safe run persistence exist, but the registered action catalog still only advances autonomous work through `lead_handoff`; later stages reselect the same durable run and escalate instead of executing.",
         "next_slice": "BA-10-S3",
     },
     "BA10_MAINTENANCE_AUTOMATION": {
@@ -539,14 +539,31 @@ _register_override(
 _register_override(
     scenarios=(
         "Supervisor work selection follows the current default priority order",
-        "Role-targeted flow completes from LinkedIn Scraping through delivery feedback",
-        "End-to-end retry resumes from the last successful stage boundary",
-        "Role-targeted orchestration follows the current dependency order",
-        "General learning outreach bypasses the role-targeted agent-review requirement",
     ),
     status=STATUS_PARTIAL,
     gap_ids=("BA10_SUPERVISOR_DOWNSTREAM_ACTION_CATALOG",),
-    note="The underlying downstream components exist, but the autonomous supervisor does not yet register downstream actions beyond `lead_handoff`.",
+    note="Current supervisor regressions prove open incidents outrank ordinary pipeline advancement and existing runs outrank new posting bootstrap, but due sends, delayed feedback, general-learning work, and maintenance still have no registered selector or action path.",
+)
+_register_override(
+    scenarios=(
+        "Role-targeted flow completes from LinkedIn Scraping through delivery feedback",
+        "Role-targeted orchestration follows the current dependency order",
+    ),
+    status=STATUS_PARTIAL,
+    gap_ids=("BA10_SUPERVISOR_DOWNSTREAM_ACTION_CATALOG",),
+    note="The downstream components and stage-boundary artifacts exist, but the autonomous supervisor still stops at `lead_handoff` and escalates later stages instead of executing the full dependency chain.",
+)
+_register_override(
+    scenarios=("End-to-end retry resumes from the last successful stage boundary",),
+    status=STATUS_PARTIAL,
+    gap_ids=("BA10_SUPERVISOR_DOWNSTREAM_ACTION_CATALOG",),
+    note="Focused supervisor regressions now prove downstream retries keep the same `pipeline_run_id`, blocked stage, and pending review packet instead of restarting from `lead_handoff`, but the later-stage autonomous actions are still not registered.",
+)
+_register_override(
+    scenarios=("General learning outreach bypasses the role-targeted agent-review requirement",),
+    status=STATUS_PARTIAL,
+    gap_ids=("BA10_SUPERVISOR_DOWNSTREAM_ACTION_CATALOG",),
+    note="General-learning drafting and sending exist in the outreach component, but the supervisor still has no contact-rooted general-learning action path.",
 )
 _register_override(
     scenarios=("Two-step outreach is excluded from required acceptance",),

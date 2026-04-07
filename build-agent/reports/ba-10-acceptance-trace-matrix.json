@@ -3924,7 +3924,7 @@
           "gap_ids": [
             "BA10_SUPERVISOR_DOWNSTREAM_ACTION_CATALOG"
           ],
-          "note": "The underlying downstream components exist, but the autonomous supervisor does not yet register downstream actions beyond `lead_handoff`."
+          "note": "Current supervisor regressions prove open incidents outrank ordinary pipeline advancement and existing runs outrank new posting bootstrap, but due sends, delayed feedback, general-learning work, and maintenance still have no registered selector or action path."
         },
         {
           "name": "Supervisor chooses only registered catalog actions and escalates unknown needs",
@@ -4976,7 +4976,7 @@
           "gap_ids": [
             "BA10_SUPERVISOR_DOWNSTREAM_ACTION_CATALOG"
           ],
-          "note": "The underlying downstream components exist, but the autonomous supervisor does not yet register downstream actions beyond `lead_handoff`."
+          "note": "The downstream components and stage-boundary artifacts exist, but the autonomous supervisor still stops at `lead_handoff` and escalates later stages instead of executing the full dependency chain."
         },
         {
           "name": "Posting remains requires-contacts until minimum outreach prerequisites exist",
@@ -5456,7 +5456,7 @@
           "gap_ids": [
             "BA10_SUPERVISOR_DOWNSTREAM_ACTION_CATALOG"
           ],
-          "note": "The underlying downstream components exist, but the autonomous supervisor does not yet register downstream actions beyond `lead_handoff`."
+          "note": "General-learning drafting and sending exist in the outreach component, but the supervisor still has no contact-rooted general-learning action path."
         },
         {
           "name": "Discovery can start per contact but drafting or sending waits for the ready send set",
@@ -5902,7 +5902,7 @@
           "gap_ids": [
             "BA10_SUPERVISOR_DOWNSTREAM_ACTION_CATALOG"
           ],
-          "note": "The underlying downstream components exist, but the autonomous supervisor does not yet register downstream actions beyond `lead_handoff`."
+          "note": "The downstream components and stage-boundary artifacts exist, but the autonomous supervisor still stops at `lead_handoff` and escalates later stages instead of executing the full dependency chain."
         },
         {
           "name": "Delayed bounce after the send session still gets captured",
@@ -5964,7 +5964,7 @@
           "gap_ids": [
             "BA10_SUPERVISOR_DOWNSTREAM_ACTION_CATALOG"
           ],
-          "note": "The underlying downstream components exist, but the autonomous supervisor does not yet register downstream actions beyond `lead_handoff`."
+          "note": "Focused supervisor regressions now prove downstream retries keep the same `pipeline_run_id`, blocked stage, and pending review packet instead of restarting from `lead_handoff`, but the later-stage autonomous actions are still not registered."
         },
         {
           "name": "Two-step outreach is excluded from required acceptance",
@@ -6133,7 +6133,7 @@
     {
       "gap_id": "BA10_SUPERVISOR_DOWNSTREAM_ACTION_CATALOG",
       "title": "Supervisor orchestration still stops at lead handoff",
-      "reason": "The durable heartbeat and incident model exist, but the registered action catalog still only advances autonomous work through `lead_handoff` before unsupported downstream stages escalate.",
+      "reason": "The durable heartbeat, selector ordering, and retry-safe run persistence exist, but the registered action catalog still only advances autonomous work through `lead_handoff`; later stages reselect the same durable run and escalate instead of executing.",
       "next_slice": "BA-10-S3",
       "scenario_names": [
         "Supervisor work selection follows the current default priority order",

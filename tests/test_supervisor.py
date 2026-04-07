@@ -35,6 +35,7 @@ from job_hunt_copilot.supervisor import (
     begin_replanning,
     complete_pipeline_run,
     create_agent_incident,
+    escalate_agent_incident,
     escalate_pipeline_run,
     ensure_role_targeted_pipeline_run,
     finalize_review_worthy_pipeline_run,
@@ -923,8 +924,19 @@ def test_run_supervisor_cycle_auto_pauses_on_critical_unresolved_incident(tmp_pa
     assert "canonical_state_integrity" in control_state.pause_reason
 
 
+@pytest.mark.parametrize(
+    "blocked_stage",
+    [
+        "agent_review",
+        "people_search",
+        "email_discovery",
+        "sending",
+        "delivery_feedback",
+    ],
+)
 def test_run_supervisor_cycle_emits_incident_when_selected_stage_has_no_registered_action(
     tmp_path,
+    blocked_stage,
 ):
     project_root = bootstrap_project(tmp_path)
     paths = ProjectPaths.from_root(project_root)
@@ -939,7 +951,7 @@ def test_run_supervisor_cycle_emits_incident_when_selected_stage_has_no_register
         connection,
         lead_id=lead_id,
         job_posting_id=job_posting_id,
-        current_stage="sending",
+        current_stage=blocked_stage,
         started_at="2026-04-06T00:31:00Z",
     )
 
@@ -967,20 +979,133 @@ def test_run_supervisor_cycle_emits_incident_when_selected_stage_has_no_register
     assert execution.cycle.result == SUPERVISOR_CYCLE_RESULT_FAILED
     assert execution.selected_work is not None
     assert execution.selected_work.work_type == "pipeline_run"
+    assert execution.selected_work.action_id is None
+    assert execution.selected_work.current_stage == blocked_stage
     assert execution.incident is not None
     assert execution.incident.incident_type == "unsupported_supervisor_action"
     assert execution.review_packet is not None
     assert execution.review_packet.packet_status == REVIEW_PACKET_STATUS_PENDING
     assert updated_run is not None
+    assert updated_run.pipeline_run_id == pipeline_run.pipeline_run_id
     assert updated_run.run_status == RUN_STATUS_ESCALATED
+    assert updated_run.current_stage == blocked_stage
     assert updated_run.review_packet_status == REVIEW_PACKET_STATUS_PENDING
-    assert "No registered bounded supervisor action" in updated_run.last_error_summary
+    assert updated_run.last_error_summary == (
+        f"No registered bounded supervisor action covers pipeline stage "
+        f"'{blocked_stage}' yet."
+    )
     assert stored_packets == [execution.review_packet]
+    assert snapshot["selected_work"]["current_stage"] == blocked_stage
+    assert snapshot["pipeline_run"]["current_stage"] == blocked_stage
     assert snapshot["review_packet"]["packet_path"] == execution.review_packet.packet_path
     assert [dict(row) for row in stored_incidents] == [
         {
             "incident_type": "unsupported_supervisor_action",
             "severity": "high",
-            "summary": "No registered bounded supervisor action covers pipeline stage 'sending' yet.",
+            "summary": (
+                "No registered bounded supervisor action covers pipeline stage "
+                f"'{blocked_stage}' yet."
+            ),
         }
     ]
+
+
+def test_retry_after_downstream_stage_blocker_reuses_same_run_and_pending_review_packet(
+    tmp_path,
+):
+    project_root = bootstrap_project(tmp_path)
+    paths = ProjectPaths.from_root(project_root)
+    connection = connect_database(project_root / "job_hunt_copilot.db")
+    lead_id, job_posting_id = seed_role_targeted_posting(connection)
+    resume_agent(
+        connection,
+        manual_command="jhc-agent-start",
+        timestamp="2026-04-06T00:40:00Z",
+    )
+    pipeline_run, _ = ensure_role_targeted_pipeline_run(
+        connection,
+        lead_id=lead_id,
+        job_posting_id=job_posting_id,
+        current_stage="delivery_feedback",
+        started_at="2026-04-06T00:41:00Z",
+    )
+
+    first_execution = run_supervisor_cycle(
+        connection,
+        paths,
+        trigger_type="launchd_heartbeat",
+        scheduler_name="launchd",
+        started_at="2026-04-06T00:42:00Z",
+    )
+    assert first_execution.incident is not None
+    assert first_execution.review_packet is not None
+
+    escalated_incident = escalate_agent_incident(
+        connection,
+        first_execution.incident.agent_incident_id,
+        escalation_reason=(
+            "Expert confirmed the downstream supervisor gap and recorded it for later "
+            "catalog work."
+        ),
+        timestamp="2026-04-06T00:43:00Z",
+    )
+    retried_run = advance_pipeline_run(
+        connection,
+        pipeline_run.pipeline_run_id,
+        current_stage="delivery_feedback",
+        run_summary="Retry the same downstream boundary without restarting the run.",
+        timestamp="2026-04-06T00:44:00Z",
+    )
+    reused_run, created = ensure_role_targeted_pipeline_run(
+        connection,
+        lead_id=lead_id,
+        job_posting_id=job_posting_id,
+        current_stage="lead_handoff",
+        started_at="2026-04-06T00:45:00Z",
+    )
+    second_execution = run_supervisor_cycle(
+        connection,
+        paths,
+        trigger_type="launchd_heartbeat",
+        scheduler_name="launchd",
+        started_at="2026-04-06T00:46:00Z",
+    )
+    stored_runs = connection.execute(
+        """
+        SELECT pipeline_run_id, run_status, current_stage
+        FROM pipeline_runs
+        WHERE job_posting_id = ?
+        ORDER BY started_at
+        """,
+        (job_posting_id,),
+    ).fetchall()
+    stored_packets = list_expert_review_packets_for_run(connection, pipeline_run.pipeline_run_id)
+    connection.close()
+
+    assert first_execution.cycle.result == SUPERVISOR_CYCLE_RESULT_FAILED
+    assert first_execution.pipeline_run is not None
+    assert first_execution.pipeline_run.pipeline_run_id == pipeline_run.pipeline_run_id
+    assert first_execution.pipeline_run.current_stage == "delivery_feedback"
+    assert escalated_incident.status == INCIDENT_STATUS_ESCALATED
+    assert retried_run.pipeline_run_id == pipeline_run.pipeline_run_id
+    assert retried_run.run_status == RUN_STATUS_IN_PROGRESS
+    assert retried_run.current_stage == "delivery_feedback"
+    assert created is False
+    assert reused_run.pipeline_run_id == pipeline_run.pipeline_run_id
+    assert reused_run.current_stage == "delivery_feedback"
+    assert second_execution.cycle.result == SUPERVISOR_CYCLE_RESULT_FAILED
+    assert second_execution.selected_work is not None
+    assert second_execution.selected_work.work_id == pipeline_run.pipeline_run_id
+    assert second_execution.selected_work.current_stage == "delivery_feedback"
+    assert second_execution.review_packet is not None
+    assert second_execution.review_packet.expert_review_packet_id == (
+        first_execution.review_packet.expert_review_packet_id
+    )
+    assert [dict(row) for row in stored_runs] == [
+        {
+            "pipeline_run_id": pipeline_run.pipeline_run_id,
+            "run_status": "escalated",
+            "current_stage": "delivery_feedback",
+        }
+    ]
+    assert len(stored_packets) == 1
