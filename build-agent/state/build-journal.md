@@ -777,3 +777,29 @@ Use this file as an append-only implementation log for the build agent.
 ### Notes
 - Explicit implementation note: send execution now derives the active wave from posting-contact links that already have drafted message history, so earlier discovery-exhausted contacts without outreach messages do not get misclassified as send-ready work.
 - Explicit implementation inference: the current send executor intentionally uses an injected sender interface rather than embedding Gmail API logic directly in `job_hunt_copilot.outreach`, which keeps this bounded slice testable while still persisting the thread or delivery metadata that BA-09 will reuse for feedback linkage.
+
+### Session
+- Date: 2026-04-07 11:06:21 MST
+- Slice: BA-09-S1 Feedback event ingestion and observation windows
+- Goal: Land reusable immediate and delayed delivery-feedback observation over canonical sent-message records, persist feedback event history, and publish `delivery_outcome.json` artifacts without mutating discovery state.
+
+### Work Done
+- Added `job_hunt_copilot.delivery_feedback` with reusable immediate-post-send and delayed mailbox-observation helpers that rehydrate sent outreach from canonical state, match mailbox signals back to the exact `outreach_message_id` through stored delivery metadata or recipient fallback, and persist auditable `feedback_sync_runs`.
+- Added per-event `delivery_feedback_events` persistence for `bounced`, `not_bounced`, and `replied` outcomes plus per-event `delivery_outcome.json` artifacts under each message workspace and latest-workspace mirrors through new delivery-feedback path helpers in `job_hunt_copilot.paths`.
+- Wired `job_hunt_copilot.outreach.execute_role_targeted_send_set` to trigger the immediate post-send feedback poll automatically when the send executor is given a mailbox observer, while preserving the old default behavior when no observer is supplied.
+- Added focused feedback tests for delayed bounce or reply ingestion, observation-window-close `not_bounced` persistence, and immediate post-send polling from send execution; updated `README.md`, `docs/ARCHITECTURE.md`, the build board, the implementation plan, and the progress handoff so the repository and build-agent surfaces reflect the new feedback boundary honestly.
+
+### Validation
+- Ran `python3.11 -m py_compile job_hunt_copilot/delivery_feedback.py job_hunt_copilot/outreach.py job_hunt_copilot/paths.py tests/test_delivery_feedback.py tests/test_outreach.py` and confirmed the new runtime, path helpers, and tests compile cleanly.
+- Ran `python3.11 -m pytest tests/test_delivery_feedback.py tests/test_outreach.py` and confirmed all 15 targeted feedback and outreach tests passed.
+- Ran full `python3.11 -m pytest` and confirmed all 98 repository tests passed across bootstrap, schema, artifacts, ingestion, tailoring, discovery, feedback, outreach, Gmail intake, local runtime, runtime pack, and supervisor coverage.
+
+### Result
+- `done`
+
+### Next
+- Start `BA-09-S2`: add canonical review queries and traceability surfaces for postings, contacts, sent-message history, unresolved discovery, incidents, and expert review packets.
+
+### Notes
+- Explicit implementation note: the new feedback runtime records per-event artifact history under each message workspace and mirrors only the latest `delivery_outcome.json` at the workspace root, preserving event history without giving up the PRD-listed top-level handoff path.
+- Explicit implementation note: delayed feedback sync currently remains reusable module logic plus persisted scheduler metadata; dedicated launchd invocation wiring for that sync still remains a later runtime-integration concern outside this bounded slice.

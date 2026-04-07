@@ -461,6 +461,39 @@ class ProjectPaths:
     def outreach_latest_send_result_path(self, company_name: str, role_title: str) -> Path:
         return self.outreach_workspace_dir(company_name, role_title) / "send_result.json"
 
+    def outreach_message_feedback_dir(
+        self,
+        company_name: str,
+        role_title: str,
+        outreach_message_id: str,
+        delivery_feedback_event_id: str,
+    ) -> Path:
+        return (
+            self.outreach_message_dir(company_name, role_title, outreach_message_id)
+            / "feedback"
+            / delivery_feedback_event_id
+        )
+
+    def outreach_message_delivery_outcome_path(
+        self,
+        company_name: str,
+        role_title: str,
+        outreach_message_id: str,
+        delivery_feedback_event_id: str,
+    ) -> Path:
+        return (
+            self.outreach_message_feedback_dir(
+                company_name,
+                role_title,
+                outreach_message_id,
+                delivery_feedback_event_id,
+            )
+            / "delivery_outcome.json"
+        )
+
+    def outreach_latest_delivery_outcome_path(self, company_name: str, role_title: str) -> Path:
+        return self.outreach_workspace_dir(company_name, role_title) / "delivery_outcome.json"
+
     def general_learning_outreach_workspace_dir(self, company_name: str, contact_id: str) -> Path:
         return (
             self.project_root
@@ -523,6 +556,47 @@ class ProjectPaths:
             )
             / "send_result.json"
         )
+
+    def general_learning_outreach_feedback_dir(
+        self,
+        company_name: str,
+        contact_id: str,
+        outreach_message_id: str,
+        delivery_feedback_event_id: str,
+    ) -> Path:
+        return (
+            self.general_learning_outreach_message_dir(
+                company_name,
+                contact_id,
+                outreach_message_id,
+            )
+            / "feedback"
+            / delivery_feedback_event_id
+        )
+
+    def general_learning_outreach_delivery_outcome_path(
+        self,
+        company_name: str,
+        contact_id: str,
+        outreach_message_id: str,
+        delivery_feedback_event_id: str,
+    ) -> Path:
+        return (
+            self.general_learning_outreach_feedback_dir(
+                company_name,
+                contact_id,
+                outreach_message_id,
+                delivery_feedback_event_id,
+            )
+            / "delivery_outcome.json"
+        )
+
+    def general_learning_outreach_latest_delivery_outcome_path(
+        self,
+        company_name: str,
+        contact_id: str,
+    ) -> Path:
+        return self.general_learning_outreach_workspace_dir(company_name, contact_id) / "delivery_outcome.json"
 
     def review_packet_dir(self, pipeline_run_id: str) -> Path:
         return self.ops_review_packets_dir / pipeline_run_id

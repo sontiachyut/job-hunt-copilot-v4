@@ -9,6 +9,7 @@ import pytest
 import yaml
 
 from job_hunt_copilot.bootstrap import run_bootstrap
+from job_hunt_copilot.delivery_feedback import DeliveryFeedbackSignal, OBSERVATION_SCOPE_IMMEDIATE
 from job_hunt_copilot.outreach import (
     CONTACT_STATUS_EXHAUSTED,
     CONTACT_STATUS_OUTREACH_IN_PROGRESS,
@@ -511,6 +512,31 @@ class RecordingOutreachSender:
             thread_id=f"thread-{message.outreach_message_id}",
             delivery_tracking_id=f"delivery-{message.outreach_message_id}",
         )
+
+
+class ImmediateBounceObserver:
+    def __init__(self, *, event_timestamp: str) -> None:
+        self.event_timestamp = event_timestamp
+        self.poll_calls: list[dict[str, object]] = []
+
+    def poll(self, messages, *, current_time, observation_scope):  # type: ignore[no-untyped-def]
+        self.poll_calls.append(
+            {
+                "message_ids": [message.outreach_message_id for message in messages],
+                "current_time": current_time,
+                "observation_scope": observation_scope,
+            }
+        )
+        if not messages:
+            return []
+        message = messages[0]
+        return [
+            DeliveryFeedbackSignal(
+                signal_type="bounced",
+                event_timestamp=self.event_timestamp,
+                delivery_tracking_id=message.delivery_tracking_id,
+            )
+        ]
 
 
 def test_send_set_prefers_ready_contacts_for_each_primary_class(tmp_path: Path):
@@ -1321,6 +1347,89 @@ def test_send_execution_persists_sent_metadata_and_delays_remaining_wave(tmp_pat
             "link_level_status": POSTING_CONTACT_STATUS_OUTREACH_DONE,
         },
     ]
+
+    connection.close()
+
+
+def test_send_execution_runs_immediate_feedback_poll_when_observer_is_provided(tmp_path: Path):
+    project_root, paths = bootstrap_project(tmp_path)
+    connection = connect_database(project_root / "job_hunt_copilot.db")
+    write_sender_profile(paths)
+    seed_posting(connection)
+    seed_linked_contact(
+        connection,
+        contact_id="ct_r1",
+        job_posting_contact_id="jpc_r1",
+        display_name="Priya Recruiter",
+        recipient_type=RECIPIENT_TYPE_RECRUITER,
+        current_working_email="priya@acme.example",
+        created_at="2026-04-06T20:01:00Z",
+    )
+    seed_approved_tailoring_run(connection, paths)
+    draft_batch = generate_role_targeted_send_set_drafts(
+        connection,
+        project_root=project_root,
+        job_posting_id="jp_outreach",
+        current_time="2026-04-06T20:30:00Z",
+        local_timezone=ZoneInfo("UTC"),
+    )
+    observer = ImmediateBounceObserver(event_timestamp="2026-04-06T20:40:30Z")
+
+    result = execute_role_targeted_send_set(
+        connection,
+        project_root=project_root,
+        job_posting_id="jp_outreach",
+        current_time="2026-04-06T20:40:00Z",
+        local_timezone=ZoneInfo("UTC"),
+        sender=RecordingOutreachSender(),
+        feedback_observer=observer,
+    )
+
+    message_id = draft_batch.drafted_messages[0].outreach_message_id
+    assert [message.outreach_message_id for message in result.sent_messages] == [message_id]
+    assert observer.poll_calls == [
+        {
+            "message_ids": [message_id],
+            "current_time": "2026-04-06T20:40:00Z",
+            "observation_scope": OBSERVATION_SCOPE_IMMEDIATE,
+        }
+    ]
+
+    feedback_row = connection.execute(
+        """
+        SELECT event_state, event_timestamp
+        FROM delivery_feedback_events
+        WHERE outreach_message_id = ?
+        """,
+        (message_id,),
+    ).fetchone()
+    assert dict(feedback_row) == {
+        "event_state": "bounced",
+        "event_timestamp": "2026-04-06T20:40:30Z",
+    }
+
+    sync_row = connection.execute(
+        """
+        SELECT scheduler_name, scheduler_type, observation_scope, result
+        FROM feedback_sync_runs
+        """
+    ).fetchone()
+    assert dict(sync_row) == {
+        "scheduler_name": "interactive_post_send",
+        "scheduler_type": "interactive",
+        "observation_scope": OBSERVATION_SCOPE_IMMEDIATE,
+        "result": "success",
+    }
+
+    latest_feedback_payload = json.loads(
+        paths.outreach_latest_delivery_outcome_path(
+            "Acme Robotics",
+            "Staff Software Engineer / AI",
+        ).read_text(encoding="utf-8")
+    )
+    assert latest_feedback_payload["outreach_message_id"] == message_id
+    assert latest_feedback_payload["event_state"] == "bounced"
+    assert latest_feedback_payload["matched_by"] == "delivery_tracking_id"
 
     connection.close()
 

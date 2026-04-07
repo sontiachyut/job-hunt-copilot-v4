@@ -39,6 +39,7 @@ It should stay aligned with:
 - `BA-08-S2` is complete: `job_hunt_copilot.outreach` now generates deterministic role-targeted and general-learning drafts from persisted posting, tailoring, sender-profile, and optional recipient-profile context, persists canonical `outreach_messages` rows plus stable per-message `email_draft.md` / `send_result.json` artifacts, mirrors the latest role-targeted draft artifacts at the posting workspace root, and advances postings plus linked contacts into `outreach_in_progress` when drafting begins.
 - `BA-08-S3` is complete: `job_hunt_copilot.outreach` now executes the active drafted outreach wave through a provider-injected send runner, persists canonical `sent_at` plus thread or delivery identifiers, blocks repeat-contact or ambiguous resend cases with review-safe `blocked` outcomes instead of double-sending, advances successful sends into `sent` / `outreach_done`, and closes postings into `completed` once the active wave reaches terminal sent or review-blocked states.
 - `BA-08` is now complete in code overall: send-set selection, draft persistence, paced send execution, duplicate-send guardrails, canonical message history, and posting-wave completion handling now exist behind the current outreach runtime boundary.
+- `BA-09-S1` is complete: `job_hunt_copilot.delivery_feedback` now supports immediate post-send and delayed mailbox observation over canonical sent-message rows, persists auditable `feedback_sync_runs`, records exact-message `delivery_feedback_events` for `bounced`, `not_bounced`, and `replied` outcomes, emits per-event `delivery_outcome.json` artifacts with workspace-root latest mirrors, and lets send execution trigger the immediate poll automatically when a mailbox observer is supplied.
 - Explicit implementation note: repeat-outreach evaluation now keys off previously sent message history instead of counting freshly generated drafts, so the active drafted wave can continue into send execution without treating its own unsent drafts as prior outreach.
 - Explicit implementation note: failed startup no longer leaves dishonest control state behind; `jhc-agent-start` now rolls canonical state back to `stopped` if `launchctl bootstrap` fails before the job is actually loaded.
 - Explicit implementation note: the generated `ops/agent/` files remain runtime-local artifacts under `.gitignore`, so the repo tracks the materialization code and tests rather than checking in those mutable rendered outputs.
@@ -118,12 +119,12 @@ It should stay aligned with:
 
 ## Next Slice
 
-- Current focus: `BA-09-S1` Feedback event ingestion and observation windows.
-- Why next: BA-08 now persists canonical sent-message rows, send timestamps, and secondary thread or delivery identifiers, so Delivery Feedback has the prerequisites it needs to ingest immediate and delayed mailbox outcomes without inventing linkage state.
+- Current focus: `BA-09-S2` Review queries and traceability surfaces.
+- Why next: BA-09-S1 now persists canonical feedback events plus `delivery_outcome.json` artifacts, so the highest-value follow-up is turning postings, contacts, messages, incidents, unresolved discovery, and review packets into readable query surfaces instead of forcing later chat or reviewer flows to stitch raw records together manually.
 - Done when:
-  - sent messages can persist `bounced`, `not_bounced`, and `replied` outcomes into `delivery_feedback_events` with exact `outreach_message_id` linkage
-  - reusable immediate and delayed 30-minute observation-window polling logic records `feedback_sync_runs`
-  - `delivery_outcome.json` is emitted from canonical feedback events while mailbox identifiers remain secondary references
+  - canonical review queries can surface postings, contacts, messages, unresolved discovery cases, incidents, and review packets directly from shared state
+  - sent-message history can trace from canonical message rows into feedback events, `delivery_outcome.json`, and later review artifacts without losing the primary internal identifiers
+  - the query grouping stays clean enough for `jhc-chat` and manager-facing inspection surfaces
 
 ## Working Rules
 

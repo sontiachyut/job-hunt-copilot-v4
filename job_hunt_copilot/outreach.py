@@ -14,6 +14,7 @@ from zoneinfo import ZoneInfo
 import yaml
 
 from .artifacts import ArtifactLinkage, publish_json_artifact, register_artifact_record
+from .delivery_feedback import MailboxFeedbackObserver, run_immediate_delivery_feedback_poll
 from .paths import ProjectPaths
 from .records import lifecycle_timestamps, new_canonical_id
 
@@ -1186,6 +1187,7 @@ def execute_role_targeted_send_set(
     current_time: str,
     sender: OutreachMessageSender,
     local_timezone: tzinfo | str | None = None,
+    feedback_observer: MailboxFeedbackObserver | None = None,
 ) -> RoleTargetedSendExecutionResult:
     paths = ProjectPaths.from_root(project_root)
     posting_row = _load_role_targeted_send_posting_row(connection, job_posting_id=job_posting_id)
@@ -1362,6 +1364,14 @@ def execute_role_targeted_send_set(
         connection,
         job_posting_id=job_posting_id,
     )
+    if sent_messages:
+        run_immediate_delivery_feedback_poll(
+            connection,
+            project_root=project_root,
+            current_time=current_time,
+            outreach_message_ids=[message.outreach_message_id for message in sent_messages],
+            observer=feedback_observer,
+        )
     return RoleTargetedSendExecutionResult(
         job_posting_id=job_posting_id,
         selected_contact_ids=tuple(message.contact_id for message in active_wave),

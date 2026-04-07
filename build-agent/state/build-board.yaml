@@ -23,6 +23,7 @@ global_status:
     - "BA-07-S2 is now complete in code: shortlisted contacts can now run selective Apollo enrichment, persist optional `recipient_profile.json` snapshots when LinkedIn public-profile extraction succeeds, drop terminal sparse dead ends from canonical shortlist state, and publish the contact-level readiness signals that now feed BA-08 send-set planning."
     - "BA-07 is now complete in code: `job_hunt_copilot.email_discovery` now also runs the person-scoped `prospeo -> getprospect -> hunter` cascade with normalized outcomes, reusable working-email shortcuts, bounce-aware retry handling, persisted `discovery_result.json` handoffs plus `discovery_attempts` / `provider_budget_state` / `provider_budget_events`, and canonical unresolved or exhausted review visibility."
     - "BA-08 is now complete in code: `job_hunt_copilot.outreach` now assembles the current autonomous role-targeted send set, keeps `ready_for_outreach` honest until the selected set is fully send-ready, excludes repeat-outreach contacts from the automatic set, computes queryable company pacing plus randomized inter-send-gap timing, persists grounded role-targeted plus general-learning drafts with canonical `outreach_messages`, and executes one safe automatic send at a time with persisted `sent_at` plus thread or delivery identifiers while blocking ambiguous or repeat-contact resends."
+    - "BA-09-S1 is now complete in code: `job_hunt_copilot.delivery_feedback` now reuses canonical sent-message metadata for immediate or delayed mailbox observation, persists `feedback_sync_runs` plus exact-message `delivery_feedback_events` for `bounced`, `not_bounced`, and `replied` outcomes, emits per-event `delivery_outcome.json` artifacts with workspace-root latest mirrors, and lets send execution trigger an immediate post-send feedback poll when a mailbox observer is provided."
     - "`jhc-chat` now records canonical begin/end state, pauses autonomous work on open, resumes on clean explicit close when chat caused the pause, and leaves unexpected-exit pauses intact for later explicit resume or future idle-timeout handling."
     - Host-side `launchctl bootstrap` success still needs follow-up validation outside the current sandboxed session even though the plist, wrapper wiring, and failed-start rollback all validate locally.
   execution_principles:
@@ -754,7 +755,7 @@ epics:
 
   - id: BA-09
     name: Delivery feedback and review surfaces
-    status: pending
+    status: in_progress
     owner_role: outreach-engineer
     phase: P4
     dependencies:
@@ -774,11 +775,19 @@ epics:
       - id: BA-09-S1
         name: Feedback event ingestion and observation windows
         owner_role: outreach-engineer
-        status: pending
+        status: completed
         deliverables:
           - immediate post-send poll plus delayed 5-minute sync within the 30-minute window
           - "`feedback_sync_runs` and `delivery_feedback_events` persistence"
           - "`delivery_outcome.json` publication per observed event"
+        completed_notes:
+          - Added `job_hunt_copilot.delivery_feedback` with reusable immediate and delayed mailbox-observation logic that rehydrates sent outreach from canonical state, matches mailbox signals back to the exact `outreach_message_id` through stored delivery metadata or recipient fallback, and records auditable `feedback_sync_runs`.
+          - Added canonical feedback persistence for `bounced`, `not_bounced`, and `replied` events, including exact-message `delivery_feedback_events` rows plus per-event `delivery_outcome.json` artifacts under each message workspace with latest-workspace mirrors for role-targeted and general-learning outreach.
+          - Wired `job_hunt_copilot.outreach.execute_role_targeted_send_set` to trigger an immediate post-send feedback poll whenever the send executor is given a mailbox observer, while leaving the default send path unchanged when no observer is available.
+        validation:
+          - "`python3.11 -m py_compile job_hunt_copilot/delivery_feedback.py job_hunt_copilot/outreach.py job_hunt_copilot/paths.py tests/test_delivery_feedback.py tests/test_outreach.py`"
+          - "`python3.11 -m pytest tests/test_delivery_feedback.py tests/test_outreach.py`"
+          - "`python3.11 -m pytest`"
       - id: BA-09-S2
         name: Review queries and traceability surfaces
         owner_role: outreach-engineer
@@ -797,9 +806,9 @@ epics:
         dependencies:
           - BA-09-S1
         deliverables:
-          - not-bounced recording at observation-window close
           - bounce-aware discovery reuse boundaries and reply retention for review only
           - idempotent feedback ingestion for repeated mailbox signals
+          - explicit reply-safe reuse constraints for later discovery-facing feedback reads
 
   - id: BA-10
     name: Validation and hardening
@@ -861,17 +870,17 @@ epics:
 
 current_focus:
   epic_id: BA-09
-  slice_id: BA-09-S1
+  slice_id: BA-09-S2
   owner_role: outreach-engineer
-  reason: BA-08 now persists grounded drafts plus canonical sent-message metadata, so the next highest-value outreach dependency is ingesting immediate and delayed delivery feedback from those sent messages while keeping mailbox identifiers secondary to canonical `outreach_message_id`.
+  reason: BA-09-S1 now persists canonical feedback events and `delivery_outcome.json` artifacts, so the next highest-value outreach dependency is surfacing those records through clean review queries and traceability joins that `jhc-chat` and later review flows can query directly.
   exit_criteria:
-    - sent messages can persist bounce, not-bounced, and reply events into `delivery_feedback_events` with exact `outreach_message_id` linkage
-    - immediate plus delayed 30-minute observation-window polling is represented through reusable feedback-sync logic and queryable `feedback_sync_runs`
-    - "`delivery_outcome.json` is emitted from canonical feedback events while mailbox thread or provider identifiers remain secondary references"
+    - canonical review queries can surface postings, contacts, messages, unresolved discovery cases, incidents, and review packets without reconstructing state from raw files
+    - sent-message traceability can join artifacts, state transitions, and downstream feedback records by canonical identifiers
+    - the review query output stays grouped and honest enough for `jhc-chat` and manager-facing repo inspection
 
 focus_order:
   - epic_id: BA-09
-    why_now: Delivery feedback now has the canonical sent-message records, thread references, and send timestamps it needs to begin bounce-window observation and event persistence.
+    why_now: Delivery feedback now has persisted event history and artifacts, so the next missing value is a readable review layer over postings, contacts, messages, incidents, and review packets.
   - epic_id: BA-10
     why_now: Hardening is most effective after the main component boundaries and artifacts exist.
   - epic_id: BA-06
