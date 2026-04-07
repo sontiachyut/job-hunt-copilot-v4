@@ -25,6 +25,7 @@ global_status:
     - "BA-08 is now complete in code: `job_hunt_copilot.outreach` now assembles the current autonomous role-targeted send set, keeps `ready_for_outreach` honest until the selected set is fully send-ready, excludes repeat-outreach contacts from the automatic set, computes queryable company pacing plus randomized inter-send-gap timing, persists grounded role-targeted plus general-learning drafts with canonical `outreach_messages`, and executes one safe automatic send at a time with persisted `sent_at` plus thread or delivery identifiers while blocking ambiguous or repeat-contact resends."
     - "BA-09-S1 is now complete in code: `job_hunt_copilot.delivery_feedback` now reuses canonical sent-message metadata for immediate or delayed mailbox observation, persists `feedback_sync_runs` plus exact-message `delivery_feedback_events` for `bounced`, `not_bounced`, and `replied` outcomes, emits per-event `delivery_outcome.json` artifacts with workspace-root latest mirrors, and lets send execution trigger an immediate post-send feedback poll when a mailbox observer is provided."
     - "BA-09-S2 is now complete in code: `job_hunt_copilot.review_queries` now exposes grouped read-only review surfaces for postings, contacts, sent-message history, unresolved discovery, bounced-email cases, expert review packets, open incidents, outstanding blocked/failed/repeat-outreach cases, override history, and per-object traceability over canonical artifacts, transitions, and downstream records."
+    - "BA-09 is now complete in code: delivery feedback now dedupes repeated mailbox signals at the logical-event level, exposes queryable feedback-reuse candidates for bounced and `not_bounced` discovery reads, keeps replied outcomes review-only, and lets discovery consume those feedback signals without auto-clearing contact email state."
     - "`jhc-chat` now records canonical begin/end state, pauses autonomous work on open, resumes on clean explicit close when chat caused the pause, and leaves unexpected-exit pauses intact for later explicit resume or future idle-timeout handling."
     - Host-side `launchctl bootstrap` success still needs follow-up validation outside the current sandboxed session even though the plist, wrapper wiring, and failed-start rollback all validate locally.
   execution_principles:
@@ -756,7 +757,7 @@ epics:
 
   - id: BA-09
     name: Delivery feedback and review surfaces
-    status: in_progress
+    status: completed
     owner_role: outreach-engineer
     phase: P4
     dependencies:
@@ -772,6 +773,10 @@ epics:
       - immediate and delayed feedback sync can persist bounced, not-bounced, and replied events
       - canonical review queries can surface postings, contacts, messages, unresolved discovery cases, incidents, and review packets
       - feedback reuse policy remains bounded to the current build rules
+    completed_notes:
+      - Delivery feedback now persists auditable exact-message event history for immediate and delayed mailbox observation, dedupes repeated logical mailbox outcomes, and keeps latest delivery state derived from that preserved history instead of rewriting the canonical record shape.
+      - Review queries now expose grouped operational inspection surfaces plus delivery-feedback reuse candidates so later chat or owner workflows can inspect what discovery may reuse and what remains review-only.
+      - Discovery now reads bounced and `not_bounced` feedback as bounded reuse input without auto-clearing `current_working_email`, while replied outcomes remain retained for review and outreach analysis rather than entering the current discovery-learning loop.
     near_term_slices:
       - id: BA-09-S1
         name: Feedback event ingestion and observation windows
@@ -812,13 +817,22 @@ epics:
       - id: BA-09-S3
         name: Feedback reuse and reply-safe handling
         owner_role: outreach-engineer
-        status: pending
+        status: completed
         dependencies:
           - BA-09-S1
         deliverables:
           - bounce-aware discovery reuse boundaries and reply retention for review only
           - idempotent feedback ingestion for repeated mailbox signals
           - explicit reply-safe reuse constraints for later discovery-facing feedback reads
+        completed_notes:
+          - Extended `job_hunt_copilot.delivery_feedback` with logical-event idempotency for repeated mailbox signals so duplicate bounce or reply ingestion no longer creates misleading duplicate history rows, while richer reply summaries can still refresh the existing artifact payload.
+          - Added queryable feedback-reuse candidates that classify bounced emails as blocked, `not_bounced` emails as eligible for bounded reuse, and replied-only outcomes as review-only state outside the current discovery-learning loop.
+          - Updated `job_hunt_copilot.email_discovery` to consume those feedback signals directly, reuse mailbox-confirmed `not_bounced` emails when available, skip bounced-provider retries, and stop auto-clearing `current_working_email` just because bounce feedback exists.
+        validation:
+          - "`python3.11 -m py_compile job_hunt_copilot/delivery_feedback.py job_hunt_copilot/email_discovery.py job_hunt_copilot/review_queries.py tests/test_delivery_feedback.py tests/test_email_discovery.py tests/test_review_queries.py`"
+          - "`python3.11 -m pytest tests/test_delivery_feedback.py tests/test_email_discovery.py tests/test_review_queries.py`"
+          - "`python3.11 -m pytest tests/test_outreach.py tests/test_delivery_feedback.py tests/test_email_discovery.py tests/test_review_queries.py`"
+          - "`python3.11 -m pytest`"
 
   - id: BA-10
     name: Validation and hardening
@@ -879,20 +893,20 @@ epics:
           - final readiness notes for recruiter- or manager-facing repo surfaces
 
 current_focus:
-  epic_id: BA-09
-  slice_id: BA-09-S3
-  owner_role: outreach-engineer
-  reason: BA-09-S2 now makes feedback and review state queryable from canonical records, so the next highest-value outreach dependency is bounding how bounced, not-bounced, and replied outcomes may influence later discovery-facing reuse without weakening the current reply-safe rules.
+  epic_id: BA-10
+  slice_id: BA-10-S1
+  owner_role: quality-engineer
+  reason: BA-09 is now complete in code, so the highest-value next step is acceptance traceability that maps the implemented slices back to the feature file before smoke-harness work broadens the validation surface.
   exit_criteria:
-    - repeated mailbox signals ingest idempotently without duplicating canonical feedback history
-    - bounced and not-bounced outcomes can be queried for later discovery-safe reuse without automatically rewriting current working-email state
-    - replied outcomes remain retained for review and outreach analysis while staying outside the current discovery-learning loop
+    - scenario-to-component traceability exists across the acceptance feature file
+    - deferred versus implemented acceptance behavior is called out explicitly
+    - validation ownership is clear enough for BA-10-S2 smoke harness work to proceed without replanning
 
 focus_order:
-  - epic_id: BA-09
-    why_now: Delivery feedback and review-query inspection are now in place, so the next missing value is safe bounded reuse semantics for those feedback outcomes.
   - epic_id: BA-10
     why_now: Hardening is most effective after the main component boundaries and artifacts exist.
+  - epic_id: BA-09
+    why_now: Delivery feedback and review surfaces are now complete in code, but BA-10 validation may still surface bounded follow-up fixes here.
   - epic_id: BA-06
     why_now: Tailoring is functionally complete in code, but later hardening or cross-epic fixes may still revisit it if validation exposes gaps.
 

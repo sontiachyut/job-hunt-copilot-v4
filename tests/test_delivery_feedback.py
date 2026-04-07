@@ -406,3 +406,95 @@ def test_sync_delivery_feedback_records_not_bounced_when_window_closes(tmp_path:
     assert latest_payload["matched_by"] == "observation_window_close"
 
     connection.close()
+
+
+def test_sync_delivery_feedback_dedupes_retried_reply_signal_by_logical_event(tmp_path: Path):
+    project_root, paths = bootstrap_project(tmp_path)
+    connection = connect_database(project_root / "job_hunt_copilot.db")
+    seed_posting(connection)
+    seed_linked_contact(
+        connection,
+        contact_id="ct_replied",
+        job_posting_contact_id="jpc_replied",
+        display_name="Morgan Manager",
+        recipient_email="morgan@acme.example",
+        recipient_type="hiring_manager",
+    )
+    seed_sent_message(
+        connection,
+        outreach_message_id="msg_replied",
+        contact_id="ct_replied",
+        recipient_email="morgan@acme.example",
+        thread_id="thread-msg_replied",
+        delivery_tracking_id="delivery-msg_replied",
+        sent_at="2026-04-07T10:04:00Z",
+        job_posting_contact_id="jpc_replied",
+    )
+
+    first_result = sync_delivery_feedback(
+        connection,
+        project_root=project_root,
+        current_time="2026-04-07T10:10:00Z",
+        scheduler_name="job-hunt-copilot-feedback-sync",
+        scheduler_type="launchd",
+        observer=FakeMailboxFeedbackObserver(
+            signals=[
+                DeliveryFeedbackSignal(
+                    signal_type=EVENT_STATE_REPLIED,
+                    event_timestamp="2026-04-07T10:06:00Z",
+                    thread_id="thread-msg_replied",
+                    reply_summary="Interested in chatting.",
+                    raw_reply_excerpt="Interested in chatting.",
+                )
+            ]
+        ),
+    )
+    second_result = sync_delivery_feedback(
+        connection,
+        project_root=project_root,
+        current_time="2026-04-07T10:11:00Z",
+        scheduler_name="job-hunt-copilot-feedback-sync",
+        scheduler_type="launchd",
+        observer=FakeMailboxFeedbackObserver(
+            signals=[
+                DeliveryFeedbackSignal(
+                    signal_type=EVENT_STATE_REPLIED,
+                    event_timestamp="2026-04-07T10:06:00Z",
+                    thread_id="thread-msg_replied",
+                    reply_summary="Interested in chatting next week.",
+                    raw_reply_excerpt="Interested in chatting next week if you have time.",
+                )
+            ]
+        ),
+    )
+
+    assert first_result.reply_events_written == 1
+    assert second_result.reply_events_written == 0
+    assert second_result.persisted_events == ()
+
+    event_rows = connection.execute(
+        """
+        SELECT event_state, event_timestamp, reply_summary, raw_reply_excerpt
+        FROM delivery_feedback_events
+        WHERE outreach_message_id = ?
+        """,
+        ("msg_replied",),
+    ).fetchall()
+    assert len(event_rows) == 1
+    assert dict(event_rows[0]) == {
+        "event_state": EVENT_STATE_REPLIED,
+        "event_timestamp": "2026-04-07T10:06:00Z",
+        "reply_summary": "Interested in chatting next week.",
+        "raw_reply_excerpt": "Interested in chatting next week if you have time.",
+    }
+
+    latest_payload = json.loads(
+        paths.outreach_latest_delivery_outcome_path(
+            "Acme Robotics",
+            "Staff Software Engineer / AI",
+        ).read_text(encoding="utf-8")
+    )
+    assert latest_payload["reply_summary"] == "Interested in chatting next week."
+    assert latest_payload["raw_reply_excerpt"] == "Interested in chatting next week if you have time."
+
+    connection.close()

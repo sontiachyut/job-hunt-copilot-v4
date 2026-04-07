@@ -15,6 +15,7 @@ from job_hunt_copilot.email_discovery import (
     DISCOVERY_OUTCOME_NOT_FOUND,
     EmailDiscoveryError,
     EmailDiscoveryProviderResult,
+    FEEDBACK_REUSE_PROVIDER_NAME,
     POSTING_CONTACT_STATUS_EXHAUSTED,
     POSTING_CONTACT_STATUS_IDENTIFIED,
     POSTING_CONTACT_STATUS_SHORTLISTED,
@@ -1408,6 +1409,14 @@ def test_email_discovery_retry_skips_bounced_provider_and_rejects_same_email(tmp
         "current_working_email": "maya.rivera@acmerobotics.com",
         "contact_status": CONTACT_STATUS_WORKING_EMAIL_FOUND,
     }
+    assert connection.execute(
+        """
+        SELECT COUNT(*)
+        FROM state_transition_events
+        WHERE object_type = 'contacts'
+          AND object_id = 'ct_target'
+        """
+    ).fetchone()[0] == 0
 
     budget_events = [
         dict(row)
@@ -1426,10 +1435,115 @@ def test_email_discovery_retry_skips_bounced_provider_and_rejects_same_email(tmp
     ]
 
     artifact_payload = json.loads(result.artifact_path.read_text(encoding="utf-8"))
+    assert artifact_payload["feedback_reuse_summary"]["blocked_bounced_emails"] == [
+        "maya@acmerobotics.com"
+    ]
     assert [step["outcome"] for step in artifact_payload["provider_steps"]] == [
         "skipped_bounced_provider",
         "bounced_match",
         "found",
+    ]
+
+    connection.close()
+
+
+def test_email_discovery_reuses_not_bounced_feedback_without_provider_calls(tmp_path: Path):
+    project_root = bootstrap_project(tmp_path)
+    paths = ProjectPaths.from_root(project_root)
+    connection = connect_database(project_root / "job_hunt_copilot.db")
+    seed_search_ready_posting(connection, paths)
+    seed_linked_contact(
+        connection,
+        current_working_email="maya@acmerobotics.com",
+        contact_status=CONTACT_STATUS_WORKING_EMAIL_FOUND,
+    )
+    connection.execute(
+        """
+        INSERT INTO outreach_messages (
+          outreach_message_id, contact_id, outreach_mode, recipient_email, message_status,
+          job_posting_id, job_posting_contact_id, subject, body_text, thread_id,
+          delivery_tracking_id, sent_at, created_at, updated_at
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        """,
+        (
+            "msg_not_bounced",
+            "ct_target",
+            "role_targeted",
+            "maya@acmerobotics.com",
+            "sent",
+            "jp_search",
+            "jpc_target",
+            "hello",
+            "body",
+            "thread-not-bounced",
+            "delivery-not-bounced",
+            "2026-04-06T21:36:00Z",
+            "2026-04-06T21:36:00Z",
+            "2026-04-06T21:36:00Z",
+        ),
+    )
+    connection.execute(
+        """
+        INSERT INTO delivery_feedback_events (
+          delivery_feedback_event_id, outreach_message_id, event_state, event_timestamp,
+          contact_id, job_posting_id, reply_summary, raw_reply_excerpt, created_at
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+        """,
+        (
+            "dfe_not_bounced",
+            "msg_not_bounced",
+            "not_bounced",
+            "2026-04-06T22:06:00Z",
+            "ct_target",
+            "jp_search",
+            None,
+            None,
+            "2026-04-06T22:06:00Z",
+        ),
+    )
+    connection.commit()
+
+    prospeo = FakeEmailFinderProvider(provider_name="prospeo", responses=[])
+    getprospect = FakeEmailFinderProvider(provider_name="getprospect", responses=[])
+    hunter = FakeEmailFinderProvider(provider_name="hunter", responses=[])
+
+    result = run_email_discovery_for_contact(
+        project_root=project_root,
+        job_posting_id="jp_search",
+        contact_id="ct_target",
+        providers=(prospeo, getprospect, hunter),
+        current_time="2026-04-06T22:10:00Z",
+    )
+
+    assert result.reused_existing_email is True
+    assert result.outcome == "found"
+    assert result.provider_name == FEEDBACK_REUSE_PROVIDER_NAME
+    assert result.email == "maya@acmerobotics.com"
+    assert prospeo.calls == []
+    assert getprospect.calls == []
+    assert hunter.calls == []
+
+    latest_attempt = connection.execute(
+        """
+        SELECT outcome, provider_name, email, provider_verification_status
+        FROM discovery_attempts
+        WHERE contact_id = 'ct_target'
+        ORDER BY created_at DESC, discovery_attempt_id DESC
+        LIMIT 1
+        """
+    ).fetchone()
+    assert dict(latest_attempt) == {
+        "outcome": "found",
+        "provider_name": FEEDBACK_REUSE_PROVIDER_NAME,
+        "email": "maya@acmerobotics.com",
+        "provider_verification_status": "mailbox_not_bounced",
+    }
+
+    artifact_payload = json.loads(result.artifact_path.read_text(encoding="utf-8"))
+    assert artifact_payload["observed_not_bounced"] is True
+    assert artifact_payload["reply_retained_for_review_only"] is False
+    assert artifact_payload["feedback_reuse_summary"]["reusable_not_bounced_emails"] == [
+        "maya@acmerobotics.com"
     ]
 
     connection.close()

@@ -830,3 +830,31 @@ Use this file as an append-only implementation log for the build agent.
 ### Notes
 - Explicit implementation note: the new review layer intentionally exposes grouped read-only retrieval and artifact references rather than introducing a separate denormalized review cache, which keeps later `jhc-chat` integration grounded in canonical state.
 - Explicit implementation inference: blocked/failed outreach reasons remain artifact-backed retrieval rather than new DB columns in this slice because the current acceptance need is queryable inspection, not another mutable send-status projection table.
+
+### Session
+- Date: 2026-04-07 11:50:30 MST
+- Slice: BA-09-S3 feedback reuse and reply-safe handling
+- Goal: Keep delivery-feedback reuse bounded to bounced and `not_bounced` signals, make repeated mailbox-signal ingestion logically idempotent, and preserve replied outcomes as review-only state.
+
+### Work Done
+- Extended `job_hunt_copilot.delivery_feedback` with logical-event dedupe for repeated mailbox ingestion keyed to the same message, state, and timestamp, while still allowing a later retry to refresh the stored reply summary or excerpt when richer context arrives.
+- Added queryable delivery-feedback reuse candidates and wired `job_hunt_copilot.review_queries` to expose them alongside the existing operational review surfaces so bounced emails are explicitly blocked, `not_bounced` emails remain eligible for bounded reuse, and reply-only cases stay outside the current discovery-learning loop.
+- Updated `job_hunt_copilot.email_discovery` to consume that feedback-reuse state directly, reuse mailbox-confirmed `not_bounced` emails without rerunning providers when possible, skip providers tied to bounced outcomes, and stop auto-clearing `current_working_email` simply because bounce feedback exists.
+- Added focused regression coverage for duplicate logical reply ingestion, feedback-driven discovery reuse from `not_bounced` evidence, bounce-retry behavior without contact-state rollback, and review-surface visibility for eligible, blocked, and reply-only feedback outcomes.
+- Updated `README.md`, `docs/ARCHITECTURE.md`, the build board, the implementation plan, and the progress handoff so the repo and build-agent surfaces now show BA-09 as complete in code and move focus to BA-10 hardening.
+
+### Validation
+- Ran `python3.11 -m py_compile job_hunt_copilot/delivery_feedback.py job_hunt_copilot/email_discovery.py job_hunt_copilot/review_queries.py tests/test_delivery_feedback.py tests/test_email_discovery.py tests/test_review_queries.py` and confirmed the changed runtime modules and focused tests compile cleanly.
+- Ran `python3.11 -m pytest tests/test_delivery_feedback.py tests/test_email_discovery.py tests/test_review_queries.py` and confirmed all 21 focused feedback, discovery, and review-query tests passed.
+- Ran `python3.11 -m pytest tests/test_outreach.py tests/test_delivery_feedback.py tests/test_email_discovery.py tests/test_review_queries.py` and confirmed all 34 targeted outreach-adjacent regression tests passed.
+- Ran full `python3.11 -m pytest` and confirmed all 104 repository tests passed.
+
+### Result
+- `done`
+
+### Next
+- Start `BA-10-S1`: build the acceptance trace matrix that maps feature scenarios to the now-landed implementation slices and calls out any deferred behavior explicitly.
+
+### Notes
+- Explicit implementation note: this slice keeps mailbox feedback as read-side evidence for later discovery decisions instead of using bounce ingestion to rewrite contact email state eagerly, which brings the code into line with the PRD’s bounded feedback-learning rule.
+- Explicit implementation note: the new feedback-reuse surface is intentionally query-first and derived from canonical event history plus sent-message records, so no new mutable review cache or feedback-learning table was introduced.

@@ -41,8 +41,12 @@ It should stay aligned with:
 - `BA-08` is now complete in code overall: send-set selection, draft persistence, paced send execution, duplicate-send guardrails, canonical message history, and posting-wave completion handling now exist behind the current outreach runtime boundary.
 - `BA-09-S1` is complete: `job_hunt_copilot.delivery_feedback` now supports immediate post-send and delayed mailbox observation over canonical sent-message rows, persists auditable `feedback_sync_runs`, records exact-message `delivery_feedback_events` for `bounced`, `not_bounced`, and `replied` outcomes, emits per-event `delivery_outcome.json` artifacts with workspace-root latest mirrors, and lets send execution trigger the immediate poll automatically when a mailbox observer is supplied.
 - `BA-09-S2` is complete: `job_hunt_copilot.review_queries` now exposes read-only review surfaces for posting states, contact states, sent-message history, unresolved discovery, bounced feedback, pending expert review packets, open incidents, blocked/failed/repeat-outreach cases, override history, and per-object traceability over artifacts, transitions, and downstream records.
+- `BA-09-S3` is complete: repeated mailbox signals now dedupe at the logical-event level while preserving richer reply context, delivery feedback exposes queryable bounced versus `not_bounced` reuse candidates with replied outcomes kept review-only, and `job_hunt_copilot.email_discovery` now consumes that bounded feedback state without auto-clearing `current_working_email` on bounce retry.
+- `BA-09` is now complete in code overall: delivery feedback persistence, review-query inspection, traceability, bounded feedback reuse, and reply-safe handling now exist across the outreach feedback boundary.
 - Explicit implementation note: repeat-outreach evaluation now keys off previously sent message history instead of counting freshly generated drafts, so the active drafted wave can continue into send execution without treating its own unsent drafts as prior outreach.
 - Explicit implementation note: the BA-09-S2 review layer stayed query-first and read-only by reusing canonical tables, existing review views, `artifact_records`, and artifact-file lookups for reason recovery instead of adding another mutable review-state table.
+- Explicit implementation note: BA-09-S3 keeps mailbox feedback as reusable read-side state instead of using bounce ingestion to rewrite `contacts.current_working_email`; discovery now decides how to consume those feedback signals when a later retry actually runs.
+- Explicit implementation note: BA-09-S3 treats identical message-state-timestamp feedback as the same logical event, so retried mailbox ingestion updates the existing reply context when richer text arrives instead of appending misleading duplicates.
 - Explicit implementation note: failed startup no longer leaves dishonest control state behind; `jhc-agent-start` now rolls canonical state back to `stopped` if `launchctl bootstrap` fails before the job is actually loaded.
 - Explicit implementation note: the generated `ops/agent/` files remain runtime-local artifacts under `.gitignore`, so the repo tracks the materialization code and tests rather than checking in those mutable rendered outputs.
 - Explicit implementation note: `jhc-chat` now records begin/end metadata plus `active_chat_session_id` in canonical control state, pauses autonomous work immediately on open, resumes on clean explicit close when chat itself caused the pause, and intentionally keeps unexpected-exit pauses active until later explicit resume or future idle-timeout automation exists.
@@ -121,12 +125,12 @@ It should stay aligned with:
 
 ## Next Slice
 
-- Current focus: `BA-09-S3` Feedback reuse and reply-safe handling.
-- Why next: BA-09-S2 now makes feedback and review state queryable enough for inspection, so the highest-value follow-up is bounding how bounced, not-bounced, and replied outcomes may influence later discovery reuse without leaking reply-only cases into the current learning loop.
+- Current focus: `BA-10-S1` Acceptance trace matrix.
+- Why next: the main product epics through BA-09 are now complete in code, so the highest-value follow-up is mapping the implemented behavior back to the acceptance feature file before the smoke harness and broader hardening work proceed.
 - Done when:
-  - repeated mailbox signals ingest idempotently without duplicating canonical feedback history
-  - bounced and not-bounced outcomes can be queried for later discovery-safe reuse without automatically rewriting current working-email state
-  - replied outcomes remain retained for review and outreach analysis while staying outside the current discovery-learning loop
+  - scenario-to-component coverage is traceable across the acceptance feature file
+  - implemented versus deferred acceptance behavior is called out explicitly
+  - validation ownership notes are concrete enough to guide BA-10-S2 smoke harness work
 
 ## Working Rules
 

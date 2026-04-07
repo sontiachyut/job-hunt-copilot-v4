@@ -12,6 +12,11 @@ from urllib.parse import urlencode
 from urllib.request import Request, urlopen
 
 from .artifacts import ArtifactLinkage, publish_json_artifact
+from .delivery_feedback import (
+    DISCOVERY_REUSE_STATE_BLOCKED_BOUNCED,
+    DISCOVERY_REUSE_STATE_ELIGIBLE_NOT_BOUNCED,
+    query_feedback_reuse_candidates,
+)
 from .outreach import evaluate_role_targeted_send_set
 from .paths import ProjectPaths, workspace_slug
 from .records import lifecycle_timestamps, new_canonical_id, now_utc_iso
@@ -25,6 +30,7 @@ PROVIDER_NAME_APOLLO = "apollo"
 PROVIDER_NAME_PROSPEO = "prospeo"
 PROVIDER_NAME_GETPROSPECT = "getprospect"
 PROVIDER_NAME_HUNTER = "hunter"
+FEEDBACK_REUSE_PROVIDER_NAME = "delivery_feedback"
 
 JOB_POSTING_STATUS_REQUIRES_CONTACTS = "requires_contacts"
 JOB_POSTING_STATUS_READY_FOR_OUTREACH = "ready_for_outreach"
@@ -1435,37 +1441,37 @@ def run_email_discovery_for_contact(
         )
         timestamp = current_time or now_utc_iso()
         discovery_attempt_id = new_canonical_id("discovery_attempts")
-        bounced_history = _load_bounced_contact_history(connection, contact_id=contact_id)
-
-        with connection:
-            cleared_bounced_email = _clear_bounced_working_email_if_needed(
-                connection,
-                target_row=target_row,
-                bounced_history=bounced_history,
-                current_time=timestamp,
-            )
-        if cleared_bounced_email:
-            target_row = _load_discovery_ready_contact_row(
-                connection,
-                job_posting_id=job_posting_id,
-                contact_id=contact_id,
-            )
+        feedback_reuse_state = _load_contact_feedback_reuse_state(
+            connection,
+            contact_id=contact_id,
+        )
 
         reusable_email = _normalize_optional_text(target_row.get("current_working_email"))
         provider_steps: list[dict[str, Any]] = []
         attempted_provider_names: list[str] = []
         reused_existing_email = False
 
+        feedback_reuse_result = _select_feedback_reusable_email(
+            target_row=target_row,
+            feedback_reuse_state=feedback_reuse_state,
+        )
         latest_found_attempt = (
             _load_latest_found_attempt_for_email(
                 connection,
                 contact_id=contact_id,
                 email=reusable_email,
             )
-            if _is_usable_email(reusable_email) and reusable_email not in bounced_history["emails"]
+            if (
+                feedback_reuse_result is None
+                and _is_usable_email(reusable_email)
+                and _normalize_email(reusable_email) not in feedback_reuse_state["blocked_emails"]
+            )
             else None
         )
-        if latest_found_attempt is not None and reusable_email is not None:
+        if feedback_reuse_result is not None:
+            reused_existing_email = True
+            final_result = feedback_reuse_result
+        elif latest_found_attempt is not None and reusable_email is not None:
             reused_existing_email = True
             final_result = EmailDiscoveryProviderResult(
                 provider_name=_normalize_optional_text(latest_found_attempt["provider_name"]) or "",
@@ -1488,7 +1494,7 @@ def run_email_discovery_for_contact(
                     raise EmailDiscoveryError("Email-finder providers must expose a non-empty `provider_name`.")
                 attempted_provider_names.append(provider_name)
 
-                if provider_name in bounced_history["providers"]:
+                if provider_name in feedback_reuse_state["blocked_providers"]:
                     skipped_result = EmailDiscoveryProviderResult(
                         provider_name=provider_name,
                         outcome=DISCOVERY_OUTCOME_SKIPPED_BOUNCED_PROVIDER,
@@ -1532,7 +1538,7 @@ def run_email_discovery_for_contact(
                 )
                 if (
                     _is_usable_email(normalized_result.email)
-                    and normalized_result.email in bounced_history["emails"]
+                    and _normalize_email(normalized_result.email) in feedback_reuse_state["blocked_emails"]
                 ):
                     normalized_result = replace(
                         normalized_result,
@@ -1600,7 +1606,7 @@ def run_email_discovery_for_contact(
                 discovery_attempt_id=discovery_attempt_id,
                 result=final_result,
                 provider_steps=provider_steps,
-                bounced_history=bounced_history,
+                feedback_reuse_state=feedback_reuse_state,
                 attempted_provider_names=attempted_provider_names,
                 produced_at=timestamp,
             )
@@ -2056,31 +2062,32 @@ def _load_discovery_ready_contact_row(
     return dict(row)
 
 
-def _load_bounced_contact_history(
+def _load_contact_feedback_reuse_state(
     connection: sqlite3.Connection,
     *,
     contact_id: str,
-) -> dict[str, set[str]]:
-    email_rows = connection.execute(
-        """
-        SELECT DISTINCT om.recipient_email
-        FROM delivery_feedback_events dfe
-        JOIN outreach_messages om
-          ON om.outreach_message_id = dfe.outreach_message_id
-        WHERE om.contact_id = ?
-          AND dfe.event_state = 'bounced'
-          AND om.recipient_email IS NOT NULL
-          AND TRIM(om.recipient_email) <> ''
-        """,
-        (contact_id,),
-    ).fetchall()
-    bounced_emails = {
-        str(row["recipient_email"]).strip().lower()
-        for row in email_rows
-        if str(row["recipient_email"]).strip()
+) -> dict[str, Any]:
+    candidates = query_feedback_reuse_candidates(connection, contact_id=contact_id)
+    blocked_emails = {
+        str(candidate["recipient_email"]).strip().lower()
+        for candidate in candidates
+        if candidate["discovery_reuse_state"] == DISCOVERY_REUSE_STATE_BLOCKED_BOUNCED
     }
-    bounced_providers: set[str] = set()
-    for email in bounced_emails:
+    reusable_emails = {
+        str(candidate["recipient_email"]).strip().lower()
+        for candidate in candidates
+        if candidate["discovery_reuse_state"] == DISCOVERY_REUSE_STATE_ELIGIBLE_NOT_BOUNCED
+    }
+    reply_only_emails = {
+        str(candidate["recipient_email"]).strip().lower()
+        for candidate in candidates
+        if candidate["discovery_reuse_state"] not in {
+            DISCOVERY_REUSE_STATE_BLOCKED_BOUNCED,
+            DISCOVERY_REUSE_STATE_ELIGIBLE_NOT_BOUNCED,
+        }
+    }
+    blocked_providers: set[str] = set()
+    for email in blocked_emails:
         provider_row = connection.execute(
             """
             SELECT provider_name
@@ -2095,64 +2102,58 @@ def _load_bounced_contact_history(
             (contact_id, email),
         ).fetchone()
         if provider_row is not None and provider_row["provider_name"]:
-            bounced_providers.add(str(provider_row["provider_name"]))
+            blocked_providers.add(str(provider_row["provider_name"]))
     return {
-        "emails": bounced_emails,
-        "providers": bounced_providers,
+        "rows": tuple(candidates),
+        "blocked_emails": blocked_emails,
+        "reusable_emails": reusable_emails,
+        "reply_only_emails": reply_only_emails,
+        "blocked_providers": blocked_providers,
     }
 
 
-def _clear_bounced_working_email_if_needed(
-    connection: sqlite3.Connection,
-    *,
+def _select_feedback_reusable_email(
     target_row: Mapping[str, Any],
-    bounced_history: Mapping[str, set[str]],
-    current_time: str,
-) -> bool:
+    feedback_reuse_state: Mapping[str, Any],
+) -> EmailDiscoveryProviderResult | None:
     current_working_email = _normalize_optional_text(target_row.get("current_working_email"))
-    if not _is_usable_email(current_working_email):
-        return False
-    normalized_email = str(current_working_email).lower()
-    if normalized_email not in bounced_history.get("emails", set()):
-        return False
+    reusable_emails = {
+        str(email).strip().lower()
+        for email in feedback_reuse_state.get("reusable_emails", set())
+        if str(email).strip()
+    }
+    blocked_emails = {
+        str(email).strip().lower()
+        for email in feedback_reuse_state.get("blocked_emails", set())
+        if str(email).strip()
+    }
 
-    previous_status = _normalize_optional_text(target_row.get("contact_status")) or CONTACT_STATUS_IDENTIFIED
-    next_status = (
-        CONTACT_STATUS_IDENTIFIED
-        if previous_status == CONTACT_STATUS_WORKING_EMAIL_FOUND
-        else previous_status
+    selected_email: str | None = None
+    if _is_usable_email(current_working_email):
+        normalized_current = str(current_working_email).strip().lower()
+        if normalized_current in reusable_emails and normalized_current not in blocked_emails:
+            selected_email = normalized_current
+
+    if selected_email is None:
+        reusable_candidates = [
+            candidate
+            for candidate in feedback_reuse_state.get("rows", ())
+            if candidate.get("discovery_reuse_state") == DISCOVERY_REUSE_STATE_ELIGIBLE_NOT_BOUNCED
+            and _normalize_email(candidate.get("recipient_email")) not in blocked_emails
+        ]
+        if len(reusable_candidates) == 1:
+            selected_email = _normalize_optional_text(reusable_candidates[0].get("recipient_email"))
+
+    if not _is_usable_email(selected_email):
+        return None
+
+    return EmailDiscoveryProviderResult(
+        provider_name=FEEDBACK_REUSE_PROVIDER_NAME,
+        outcome=DISCOVERY_OUTCOME_FOUND,
+        email=selected_email,
+        provider_verification_status="mailbox_not_bounced",
+        provider_score="1.0",
     )
-    connection.execute(
-        """
-        UPDATE contacts
-        SET current_working_email = NULL,
-            contact_status = ?,
-            discovery_summary = ?,
-            updated_at = ?
-        WHERE contact_id = ?
-        """,
-        (
-            next_status,
-            "bounced_email_retry_pending",
-            current_time,
-            target_row["contact_id"],
-        ),
-    )
-    if next_status != previous_status:
-        _record_state_transition(
-            connection,
-            object_type="contacts",
-            object_id=str(target_row["contact_id"]),
-            stage="contact_status",
-            previous_state=previous_status,
-            new_state=next_status,
-            transition_timestamp=current_time,
-            transition_reason="A previously discovered email bounced, so retry cleared the stale working-email state.",
-            lead_id=str(target_row["lead_id"]),
-            job_posting_id=str(target_row["job_posting_id"]),
-            contact_id=str(target_row["contact_id"]),
-        )
-    return True
 
 
 def _load_latest_found_attempt_for_email(
@@ -2498,7 +2499,7 @@ def _publish_discovery_result_artifact(
     discovery_attempt_id: str,
     result: EmailDiscoveryProviderResult,
     provider_steps: Sequence[Mapping[str, Any]],
-    bounced_history: Mapping[str, set[str]],
+    feedback_reuse_state: Mapping[str, Any],
     attempted_provider_names: Sequence[str],
     produced_at: str,
 ) -> Path:
@@ -2541,7 +2542,20 @@ def _publish_discovery_result_artifact(
             "provider_verification_status": result.provider_verification_status,
             "provider_score": result.provider_score,
             "detected_pattern": result.detected_pattern,
-            "observed_bounced": bool(bounced_history.get("emails")),
+            "observed_bounced": bool(feedback_reuse_state.get("blocked_emails")),
+            "observed_not_bounced": bool(feedback_reuse_state.get("reusable_emails")),
+            "reply_retained_for_review_only": bool(feedback_reuse_state.get("reply_only_emails")),
+            "feedback_reuse_summary": {
+                "blocked_bounced_emails": sorted(
+                    str(email) for email in feedback_reuse_state.get("blocked_emails", set())
+                ),
+                "reusable_not_bounced_emails": sorted(
+                    str(email) for email in feedback_reuse_state.get("reusable_emails", set())
+                ),
+                "reply_only_emails": sorted(
+                    str(email) for email in feedback_reuse_state.get("reply_only_emails", set())
+                ),
+            },
             "attempted_provider_names": list(attempted_provider_names),
             "provider_steps": [dict(step) for step in provider_steps],
             "recipient_profile_artifact_ref": recipient_profile["relative_path"],
@@ -3755,6 +3769,13 @@ def _normalize_optional_text(value: Any) -> str | None:
         return None
     normalized = str(value).strip()
     return normalized or None
+
+
+def _normalize_email(value: Any) -> str | None:
+    normalized = _normalize_optional_text(value)
+    if normalized is None:
+        return None
+    return normalized.lower()
 
 
 def _normalize_optional_int(value: Any) -> int | None:

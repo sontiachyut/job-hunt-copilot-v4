@@ -5,6 +5,7 @@ import sqlite3
 from pathlib import Path
 from typing import Any
 
+from .delivery_feedback import query_feedback_reuse_candidates
 from .paths import ProjectPaths
 
 
@@ -36,6 +37,7 @@ def query_review_surfaces(
                 """
             )
         ),
+        "delivery_feedback_reuse_candidates": query_feedback_reuse_candidates(connection),
         "bounced_email_cases": _fetchall_dicts(
             connection.execute(
                 """

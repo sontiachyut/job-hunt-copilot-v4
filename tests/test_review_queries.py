@@ -904,6 +904,170 @@ def test_query_review_surfaces_exposes_operational_review_state(tmp_path: Path):
     connection.close()
 
 
+def test_query_review_surfaces_exposes_feedback_reuse_policy(tmp_path: Path):
+    project_root, _ = bootstrap_project(tmp_path)
+    connection = connect_database(project_root / "job_hunt_copilot.db")
+
+    insert_lead(
+        connection,
+        lead_id="ld_feedback_policy",
+        company_name="Signal Stack",
+        role_title="Platform Engineer",
+        created_at="2026-04-07T13:00:00Z",
+    )
+    insert_posting(
+        connection,
+        job_posting_id="jp_feedback_policy",
+        lead_id="ld_feedback_policy",
+        company_name="Signal Stack",
+        role_title="Platform Engineer",
+        posting_status="requires_contacts",
+        created_at="2026-04-07T13:00:00Z",
+    )
+
+    insert_contact(
+        connection,
+        contact_id="ct_feedback_reuse",
+        company_name="Signal Stack",
+        display_name="Nina Recruiter",
+        contact_status="sent",
+        current_working_email="nina@signal.example",
+        created_at="2026-04-07T13:01:00Z",
+    )
+    insert_posting_contact(
+        connection,
+        job_posting_contact_id="jpc_feedback_reuse",
+        job_posting_id="jp_feedback_policy",
+        contact_id="ct_feedback_reuse",
+        recipient_type="recruiter",
+        link_level_status="outreach_done",
+        created_at="2026-04-07T13:01:00Z",
+    )
+    insert_message(
+        connection,
+        outreach_message_id="msg_feedback_reuse",
+        contact_id="ct_feedback_reuse",
+        recipient_email="nina@signal.example",
+        message_status="sent",
+        job_posting_id="jp_feedback_policy",
+        job_posting_contact_id="jpc_feedback_reuse",
+        sent_at="2026-04-07T13:10:00Z",
+        created_at="2026-04-07T13:10:00Z",
+    )
+    insert_delivery_feedback_event(
+        connection,
+        delivery_feedback_event_id="dfe_feedback_reuse",
+        outreach_message_id="msg_feedback_reuse",
+        contact_id="ct_feedback_reuse",
+        job_posting_id="jp_feedback_policy",
+        event_state="not_bounced",
+        event_timestamp="2026-04-07T13:40:00Z",
+    )
+
+    insert_contact(
+        connection,
+        contact_id="ct_feedback_reply",
+        company_name="Signal Stack",
+        display_name="Omar Engineer",
+        contact_status="sent",
+        current_working_email="omar@signal.example",
+        created_at="2026-04-07T13:02:00Z",
+    )
+    insert_posting_contact(
+        connection,
+        job_posting_contact_id="jpc_feedback_reply",
+        job_posting_id="jp_feedback_policy",
+        contact_id="ct_feedback_reply",
+        recipient_type="engineer",
+        link_level_status="outreach_done",
+        created_at="2026-04-07T13:02:00Z",
+    )
+    insert_message(
+        connection,
+        outreach_message_id="msg_feedback_reply",
+        contact_id="ct_feedback_reply",
+        recipient_email="omar@signal.example",
+        message_status="sent",
+        job_posting_id="jp_feedback_policy",
+        job_posting_contact_id="jpc_feedback_reply",
+        sent_at="2026-04-07T13:12:00Z",
+        thread_id="thread-feedback-reply",
+        delivery_tracking_id="delivery-feedback-reply",
+        created_at="2026-04-07T13:12:00Z",
+    )
+    insert_delivery_feedback_event(
+        connection,
+        delivery_feedback_event_id="dfe_feedback_reply",
+        outreach_message_id="msg_feedback_reply",
+        contact_id="ct_feedback_reply",
+        job_posting_id="jp_feedback_policy",
+        event_state="replied",
+        event_timestamp="2026-04-07T13:25:00Z",
+        reply_summary="Happy to share context next week.",
+    )
+
+    insert_contact(
+        connection,
+        contact_id="ct_feedback_bounce",
+        company_name="Signal Stack",
+        display_name="Priya Manager",
+        contact_status="sent",
+        current_working_email="priya@signal.example",
+        created_at="2026-04-07T13:03:00Z",
+    )
+    insert_posting_contact(
+        connection,
+        job_posting_contact_id="jpc_feedback_bounce",
+        job_posting_id="jp_feedback_policy",
+        contact_id="ct_feedback_bounce",
+        recipient_type="hiring_manager",
+        link_level_status="outreach_done",
+        created_at="2026-04-07T13:03:00Z",
+    )
+    insert_message(
+        connection,
+        outreach_message_id="msg_feedback_bounce",
+        contact_id="ct_feedback_bounce",
+        recipient_email="priya@signal.example",
+        message_status="sent",
+        job_posting_id="jp_feedback_policy",
+        job_posting_contact_id="jpc_feedback_bounce",
+        sent_at="2026-04-07T13:14:00Z",
+        created_at="2026-04-07T13:14:00Z",
+    )
+    insert_delivery_feedback_event(
+        connection,
+        delivery_feedback_event_id="dfe_feedback_bounce",
+        outreach_message_id="msg_feedback_bounce",
+        contact_id="ct_feedback_bounce",
+        job_posting_id="jp_feedback_policy",
+        event_state="bounced",
+        event_timestamp="2026-04-07T13:20:00Z",
+    )
+    connection.commit()
+
+    review_surfaces = query_review_surfaces(connection, project_root=project_root)
+    candidates = {
+        item["contact_id"]: item
+        for item in review_surfaces["delivery_feedback_reuse_candidates"]
+    }
+
+    assert candidates["ct_feedback_reuse"]["discovery_reuse_state"] == "eligible_not_bounced"
+    assert candidates["ct_feedback_reuse"]["eligible_for_discovery_reuse"] is True
+    assert candidates["ct_feedback_reuse"]["included_in_discovery_learning_loop"] is True
+
+    assert candidates["ct_feedback_reply"]["discovery_reuse_state"] == "review_only_reply"
+    assert candidates["ct_feedback_reply"]["eligible_for_discovery_reuse"] is False
+    assert candidates["ct_feedback_reply"]["included_in_discovery_learning_loop"] is False
+    assert candidates["ct_feedback_reply"]["latest_reply_summary"] == "Happy to share context next week."
+
+    assert candidates["ct_feedback_bounce"]["discovery_reuse_state"] == "blocked_bounced"
+    assert candidates["ct_feedback_bounce"]["eligible_for_discovery_reuse"] is False
+    assert candidates["ct_feedback_bounce"]["included_in_discovery_learning_loop"] is True
+
+    connection.close()
+
+
 def test_query_outstanding_outreach_review_items_includes_blocked_failed_and_repeat_cases(tmp_path: Path):
     project_root, paths = bootstrap_project(tmp_path)
     connection = connect_database(project_root / "job_hunt_copilot.db")

@@ -7,7 +7,7 @@ from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from typing import Any, Protocol, Sequence
 
-from .artifacts import ArtifactLinkage, publish_json_artifact
+from .artifacts import ArtifactLinkage, publish_json_artifact, write_json_contract
 from .paths import ProjectPaths
 from .records import new_canonical_id
 
@@ -24,6 +24,10 @@ EVENT_STATES = frozenset(
         EVENT_STATE_REPLIED,
     }
 )
+
+DISCOVERY_REUSE_STATE_ELIGIBLE_NOT_BOUNCED = "eligible_not_bounced"
+DISCOVERY_REUSE_STATE_BLOCKED_BOUNCED = "blocked_bounced"
+DISCOVERY_REUSE_STATE_REVIEW_ONLY_REPLY = "review_only_reply"
 
 OBSERVATION_SCOPE_IMMEDIATE = "immediate_post_send"
 OBSERVATION_SCOPE_DELAYED = "delayed_feedback_sync"
@@ -153,6 +157,135 @@ class _MatchedSignal:
     candidate: ObservedOutreachMessage
     signal: DeliveryFeedbackSignal
     matched_by: str
+
+
+def query_feedback_reuse_candidates(
+    connection: sqlite3.Connection,
+    *,
+    contact_id: str | None = None,
+) -> tuple[dict[str, Any], ...]:
+    filters = [
+        "dfe.event_state IN (?, ?, ?)",
+        "om.recipient_email IS NOT NULL",
+        "TRIM(om.recipient_email) <> ''",
+    ]
+    params: list[Any] = [
+        EVENT_STATE_BOUNCED,
+        EVENT_STATE_NOT_BOUNCED,
+        EVENT_STATE_REPLIED,
+    ]
+    if contact_id is not None:
+        filters.append("om.contact_id = ?")
+        params.append(contact_id)
+
+    rows = connection.execute(
+        f"""
+        SELECT
+          om.contact_id,
+          c.display_name,
+          c.company_name,
+          LOWER(om.recipient_email) AS recipient_email,
+          MAX(CASE
+            WHEN dfe.event_state = '{EVENT_STATE_BOUNCED}'
+            THEN dfe.event_timestamp
+          END) AS latest_bounced_at,
+          MAX(CASE
+            WHEN dfe.event_state = '{EVENT_STATE_NOT_BOUNCED}'
+            THEN dfe.event_timestamp
+          END) AS latest_not_bounced_at,
+          MAX(CASE
+            WHEN dfe.event_state = '{EVENT_STATE_REPLIED}'
+            THEN dfe.event_timestamp
+          END) AS latest_replied_at,
+          SUM(CASE
+            WHEN dfe.event_state = '{EVENT_STATE_BOUNCED}' THEN 1 ELSE 0
+          END) AS bounced_count,
+          SUM(CASE
+            WHEN dfe.event_state = '{EVENT_STATE_NOT_BOUNCED}' THEN 1 ELSE 0
+          END) AS not_bounced_count,
+          SUM(CASE
+            WHEN dfe.event_state = '{EVENT_STATE_REPLIED}' THEN 1 ELSE 0
+          END) AS reply_count,
+          (
+            SELECT dfe2.reply_summary
+            FROM delivery_feedback_events dfe2
+            JOIN outreach_messages om2
+              ON om2.outreach_message_id = dfe2.outreach_message_id
+            WHERE om2.contact_id = om.contact_id
+              AND LOWER(om2.recipient_email) = LOWER(om.recipient_email)
+              AND dfe2.event_state = '{EVENT_STATE_REPLIED}'
+            ORDER BY dfe2.event_timestamp DESC,
+                     COALESCE(dfe2.created_at, dfe2.event_timestamp) DESC,
+                     dfe2.delivery_feedback_event_id DESC
+            LIMIT 1
+          ) AS latest_reply_summary
+        FROM delivery_feedback_events dfe
+        JOIN outreach_messages om
+          ON om.outreach_message_id = dfe.outreach_message_id
+        JOIN contacts c
+          ON c.contact_id = om.contact_id
+        WHERE {" AND ".join(filters)}
+        GROUP BY
+          om.contact_id,
+          c.display_name,
+          c.company_name,
+          LOWER(om.recipient_email)
+        ORDER BY COALESCE(
+                 MAX(CASE
+                   WHEN dfe.event_state = '{EVENT_STATE_BOUNCED}'
+                   THEN dfe.event_timestamp
+                 END),
+                 MAX(CASE
+                   WHEN dfe.event_state = '{EVENT_STATE_NOT_BOUNCED}'
+                   THEN dfe.event_timestamp
+                 END),
+                 MAX(CASE
+                   WHEN dfe.event_state = '{EVENT_STATE_REPLIED}'
+                   THEN dfe.event_timestamp
+                 END)
+               ) DESC,
+               om.contact_id DESC
+        """,
+        tuple(params),
+    ).fetchall()
+
+    candidates: list[dict[str, Any]] = []
+    for row in rows:
+        bounced_count = int(row["bounced_count"] or 0)
+        not_bounced_count = int(row["not_bounced_count"] or 0)
+        reply_count = int(row["reply_count"] or 0)
+        if bounced_count > 0:
+            reuse_state = DISCOVERY_REUSE_STATE_BLOCKED_BOUNCED
+            included_in_discovery_learning_loop = True
+            eligible_for_discovery_reuse = False
+        elif not_bounced_count > 0:
+            reuse_state = DISCOVERY_REUSE_STATE_ELIGIBLE_NOT_BOUNCED
+            included_in_discovery_learning_loop = True
+            eligible_for_discovery_reuse = True
+        else:
+            reuse_state = DISCOVERY_REUSE_STATE_REVIEW_ONLY_REPLY
+            included_in_discovery_learning_loop = False
+            eligible_for_discovery_reuse = False
+
+        candidates.append(
+            {
+                "contact_id": str(row["contact_id"]),
+                "display_name": _normalize_optional_text(row["display_name"]),
+                "company_name": _normalize_optional_text(row["company_name"]),
+                "recipient_email": str(row["recipient_email"]),
+                "latest_bounced_at": _normalize_optional_text(row["latest_bounced_at"]),
+                "latest_not_bounced_at": _normalize_optional_text(row["latest_not_bounced_at"]),
+                "latest_replied_at": _normalize_optional_text(row["latest_replied_at"]),
+                "latest_reply_summary": _normalize_optional_text(row["latest_reply_summary"]),
+                "bounced_count": bounced_count,
+                "not_bounced_count": not_bounced_count,
+                "reply_count": reply_count,
+                "discovery_reuse_state": reuse_state,
+                "included_in_discovery_learning_loop": included_in_discovery_learning_loop,
+                "eligible_for_discovery_reuse": eligible_for_discovery_reuse,
+            }
+        )
+    return tuple(candidates)
 
 
 def sync_delivery_feedback(
@@ -660,14 +793,24 @@ def _persist_mailbox_feedback_signal(
     event_timestamp = _isoformat_utc(_parse_iso_datetime(signal.event_timestamp))
     reply_summary = _normalize_optional_text(signal.reply_summary)
     raw_reply_excerpt = _normalize_optional_text(signal.raw_reply_excerpt)
-    if _feedback_event_exists(
+    existing_event = _find_existing_logical_feedback_event(
         connection,
         outreach_message_id=candidate.outreach_message_id,
         event_state=signal_type,
         event_timestamp=event_timestamp,
-        reply_summary=reply_summary,
-        raw_reply_excerpt=raw_reply_excerpt,
-    ):
+    )
+    if existing_event is not None:
+        _refresh_existing_feedback_event(
+            connection,
+            paths,
+            candidate=candidate,
+            existing_event=existing_event,
+            reply_summary=reply_summary,
+            raw_reply_excerpt=raw_reply_excerpt,
+            matched_by=matched_by,
+            provider_message_id=_normalize_optional_text(signal.provider_message_id),
+            produced_at=produced_at,
+        )
         return None
     return _persist_delivery_feedback_event(
         connection,
@@ -698,14 +841,12 @@ def _persist_not_bounced_outcome_if_due(
     if current_dt < window_end_dt:
         return None
     event_timestamp = _isoformat_utc(window_end_dt)
-    if _feedback_event_exists(
+    if _find_existing_logical_feedback_event(
         connection,
         outreach_message_id=candidate.outreach_message_id,
         event_state=EVENT_STATE_NOT_BOUNCED,
         event_timestamp=event_timestamp,
-        reply_summary=None,
-        raw_reply_excerpt=None,
-    ):
+    ) is not None:
         return None
     return _persist_delivery_feedback_event(
         connection,
@@ -721,35 +862,85 @@ def _persist_not_bounced_outcome_if_due(
     )
 
 
-def _feedback_event_exists(
+def _find_existing_logical_feedback_event(
     connection: sqlite3.Connection,
     *,
     outreach_message_id: str,
     event_state: str,
     event_timestamp: str,
-    reply_summary: str | None,
-    raw_reply_excerpt: str | None,
-) -> bool:
-    row = connection.execute(
+) -> sqlite3.Row | None:
+    return connection.execute(
         """
-        SELECT 1
+        SELECT delivery_feedback_event_id, event_timestamp, reply_summary, raw_reply_excerpt
         FROM delivery_feedback_events
         WHERE outreach_message_id = ?
           AND event_state = ?
           AND event_timestamp = ?
-          AND COALESCE(reply_summary, '') = COALESCE(?, '')
-          AND COALESCE(raw_reply_excerpt, '') = COALESCE(?, '')
+        ORDER BY COALESCE(created_at, event_timestamp) DESC,
+                 delivery_feedback_event_id DESC
         LIMIT 1
         """,
         (
             outreach_message_id,
             event_state,
             event_timestamp,
-            reply_summary,
-            raw_reply_excerpt,
         ),
     ).fetchone()
-    return row is not None
+
+
+def _refresh_existing_feedback_event(
+    connection: sqlite3.Connection,
+    paths: ProjectPaths,
+    *,
+    candidate: ObservedOutreachMessage,
+    existing_event: sqlite3.Row,
+    reply_summary: str | None,
+    raw_reply_excerpt: str | None,
+    matched_by: str,
+    provider_message_id: str | None,
+    produced_at: str,
+) -> None:
+    existing_reply_summary = _normalize_optional_text(existing_event["reply_summary"])
+    existing_raw_reply_excerpt = _normalize_optional_text(existing_event["raw_reply_excerpt"])
+    merged_reply_summary = _prefer_richer_text(existing_reply_summary, reply_summary)
+    merged_raw_reply_excerpt = _prefer_richer_text(
+        existing_raw_reply_excerpt,
+        raw_reply_excerpt,
+    )
+    if (
+        merged_reply_summary == existing_reply_summary
+        and merged_raw_reply_excerpt == existing_raw_reply_excerpt
+    ):
+        return
+
+    delivery_feedback_event_id = str(existing_event["delivery_feedback_event_id"])
+    with connection:
+        connection.execute(
+            """
+            UPDATE delivery_feedback_events
+            SET reply_summary = ?, raw_reply_excerpt = ?
+            WHERE delivery_feedback_event_id = ?
+            """,
+            (
+                merged_reply_summary,
+                merged_raw_reply_excerpt,
+                delivery_feedback_event_id,
+            ),
+        )
+
+    _write_delivery_feedback_artifact(
+        paths,
+        candidate=candidate,
+        delivery_feedback_event_id=delivery_feedback_event_id,
+        event_state=EVENT_STATE_REPLIED,
+        event_timestamp=_normalize_optional_text(existing_event["event_timestamp"])
+        or candidate.sent_at,
+        reply_summary=merged_reply_summary,
+        raw_reply_excerpt=merged_raw_reply_excerpt,
+        matched_by=matched_by,
+        provider_message_id=provider_message_id,
+        produced_at=produced_at,
+    )
 
 
 def _persist_delivery_feedback_event(
@@ -806,24 +997,16 @@ def _persist_delivery_feedback_event(
             contact_id=candidate.contact_id,
             outreach_message_id=candidate.outreach_message_id,
         ),
-        payload={
-            "delivery_feedback_event_id": delivery_feedback_event_id,
-            "outreach_mode": candidate.outreach_mode,
-            "recipient_email": candidate.recipient_email,
-            "event_state": event_state,
-            "event_type": event_state,
-            "event_timestamp": event_timestamp,
-            "sent_at": candidate.sent_at,
-            "bounce_observation_window_ends_at": candidate.bounce_observation_ends_at,
-            "reply_summary": reply_summary,
-            "raw_reply_excerpt": raw_reply_excerpt,
-            "matched_by": matched_by,
-            "secondary_identifiers": {
-                "thread_id": candidate.thread_id,
-                "delivery_tracking_id": candidate.delivery_tracking_id,
-                "provider_message_id": provider_message_id,
-            },
-        },
+        payload=_delivery_feedback_artifact_payload(
+            candidate=candidate,
+            delivery_feedback_event_id=delivery_feedback_event_id,
+            event_state=event_state,
+            event_timestamp=event_timestamp,
+            reply_summary=reply_summary,
+            raw_reply_excerpt=raw_reply_excerpt,
+            matched_by=matched_by,
+            provider_message_id=provider_message_id,
+        ),
         produced_at=produced_at,
     )
     _write_text_file(latest_artifact_path, json.dumps(published.contract, indent=2) + "\n")
@@ -836,6 +1019,82 @@ def _persist_delivery_feedback_event(
         event_timestamp=event_timestamp,
         artifact_path=str(artifact_path.resolve()),
     )
+
+
+def _write_delivery_feedback_artifact(
+    paths: ProjectPaths,
+    *,
+    candidate: ObservedOutreachMessage,
+    delivery_feedback_event_id: str,
+    event_state: str,
+    event_timestamp: str,
+    reply_summary: str | None,
+    raw_reply_excerpt: str | None,
+    matched_by: str,
+    provider_message_id: str | None,
+    produced_at: str,
+) -> Path:
+    artifact_path = _delivery_outcome_artifact_path(
+        paths,
+        candidate=candidate,
+        delivery_feedback_event_id=delivery_feedback_event_id,
+    )
+    latest_artifact_path = _latest_delivery_outcome_path(paths, candidate=candidate)
+    contract = write_json_contract(
+        artifact_path=artifact_path,
+        producer_component=DELIVERY_FEEDBACK_COMPONENT,
+        result="success",
+        linkage=ArtifactLinkage(
+            lead_id=candidate.lead_id,
+            job_posting_id=candidate.job_posting_id,
+            contact_id=candidate.contact_id,
+            outreach_message_id=candidate.outreach_message_id,
+        ),
+        payload=_delivery_feedback_artifact_payload(
+            candidate=candidate,
+            delivery_feedback_event_id=delivery_feedback_event_id,
+            event_state=event_state,
+            event_timestamp=event_timestamp,
+            reply_summary=reply_summary,
+            raw_reply_excerpt=raw_reply_excerpt,
+            matched_by=matched_by,
+            provider_message_id=provider_message_id,
+        ),
+        produced_at=produced_at,
+    )
+    _write_text_file(latest_artifact_path, json.dumps(contract, indent=2) + "\n")
+    return artifact_path
+
+
+def _delivery_feedback_artifact_payload(
+    *,
+    candidate: ObservedOutreachMessage,
+    delivery_feedback_event_id: str,
+    event_state: str,
+    event_timestamp: str,
+    reply_summary: str | None,
+    raw_reply_excerpt: str | None,
+    matched_by: str,
+    provider_message_id: str | None,
+) -> dict[str, Any]:
+    return {
+        "delivery_feedback_event_id": delivery_feedback_event_id,
+        "outreach_mode": candidate.outreach_mode,
+        "recipient_email": candidate.recipient_email,
+        "event_state": event_state,
+        "event_type": event_state,
+        "event_timestamp": event_timestamp,
+        "sent_at": candidate.sent_at,
+        "bounce_observation_window_ends_at": candidate.bounce_observation_ends_at,
+        "reply_summary": reply_summary,
+        "raw_reply_excerpt": raw_reply_excerpt,
+        "matched_by": matched_by,
+        "secondary_identifiers": {
+            "thread_id": candidate.thread_id,
+            "delivery_tracking_id": candidate.delivery_tracking_id,
+            "provider_message_id": provider_message_id,
+        },
+    }
 
 
 def _delivery_outcome_artifact_path(
@@ -901,6 +1160,16 @@ def _normalize_email(value: object) -> str | None:
     if normalized is None:
         return None
     return normalized.lower()
+
+
+def _prefer_richer_text(existing_value: str | None, new_value: str | None) -> str | None:
+    if new_value is None:
+        return existing_value
+    if existing_value is None:
+        return new_value
+    if len(new_value) > len(existing_value):
+        return new_value
+    return existing_value
 
 
 def _write_text_file(path: Path, content: str) -> None:
