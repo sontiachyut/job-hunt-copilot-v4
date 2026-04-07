@@ -43,6 +43,9 @@ It should stay aligned with:
 - `BA-09-S2` is complete: `job_hunt_copilot.review_queries` now exposes read-only review surfaces for posting states, contact states, sent-message history, unresolved discovery, bounced feedback, pending expert review packets, open incidents, blocked/failed/repeat-outreach cases, override history, and per-object traceability over artifacts, transitions, and downstream records.
 - `BA-09-S3` is complete: repeated mailbox signals now dedupe at the logical-event level while preserving richer reply context, delivery feedback exposes queryable bounced versus `not_bounced` reuse candidates with replied outcomes kept review-only, and `job_hunt_copilot.email_discovery` now consumes that bounded feedback state without auto-clearing `current_working_email` on bounce retry.
 - `BA-09` is now complete in code overall: delivery feedback persistence, review-query inspection, traceability, bounded feedback reuse, and reply-safe handling now exist across the outreach feedback boundary.
+- `BA-10-S1` is complete: `job_hunt_copilot.acceptance_traceability`, `scripts/quality/generate_acceptance_trace_matrix.py`, and the committed `build-agent/reports/ba-10-acceptance-trace-matrix.{json,md}` reports now map all 214 acceptance scenarios to owning epics, code, tests, and explicit status.
+- Explicit implementation note: the acceptance trace matrix currently records 182 implemented scenarios, 15 partial scenarios, 15 gap scenarios, 1 deferred-optional scenario, and 1 excluded-from-required-acceptance scenario.
+- Explicit blocker note: the trace matrix now makes the current BA-10 hardening gaps explicit, including the missing smoke harness, downstream supervisor action registration beyond `lead_handoff`, chat review/control behavior, delayed-feedback scheduling, maintenance automation, sleep/wake recovery, posting-abandon control, and safety/privacy hardening regressions.
 - Explicit implementation note: repeat-outreach evaluation now keys off previously sent message history instead of counting freshly generated drafts, so the active drafted wave can continue into send execution without treating its own unsent drafts as prior outreach.
 - Explicit implementation note: the BA-09-S2 review layer stayed query-first and read-only by reusing canonical tables, existing review views, `artifact_records`, and artifact-file lookups for reason recovery instead of adding another mutable review-state table.
 - Explicit implementation note: BA-09-S3 keeps mailbox feedback as reusable read-side state instead of using bounce ingestion to rewrite `contacts.current_working_email`; discovery now decides how to consume those feedback signals when a later retry actually runs.
@@ -125,12 +128,12 @@ It should stay aligned with:
 
 ## Next Slice
 
-- Current focus: `BA-10-S1` Acceptance trace matrix.
-- Why next: the main product epics through BA-09 are now complete in code, so the highest-value follow-up is mapping the implemented behavior back to the acceptance feature file before the smoke harness and broader hardening work proceed.
+- Current focus: `BA-10-S2` Smoke harness and fixtures.
+- Why next: BA-10-S1 now makes the implemented versus missing acceptance surface explicit, so the highest-value follow-up is landing the committed smoke coverage that closes the bootstrap and end-to-end validation holes before broader blocker burn-down.
 - Done when:
-  - scenario-to-component coverage is traceable across the acceptance feature file
-  - implemented versus deferred acceptance behavior is called out explicitly
-  - validation ownership notes are concrete enough to guide BA-10-S2 smoke harness work
+  - bootstrap smoke coverage exercises DB init, required assets, secrets loading, and paste/runtime-pack support paths
+  - sample posting and contact fixtures drive tailoring, discovery, send, feedback, and review-query smoke checks
+  - machine-valid `discovery_result.json`, `send_result.json`, and review-surface checks exist as committed validation evidence
 
 ## Working Rules
 

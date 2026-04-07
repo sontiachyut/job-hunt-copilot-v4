@@ -26,6 +26,7 @@ global_status:
     - "BA-09-S1 is now complete in code: `job_hunt_copilot.delivery_feedback` now reuses canonical sent-message metadata for immediate or delayed mailbox observation, persists `feedback_sync_runs` plus exact-message `delivery_feedback_events` for `bounced`, `not_bounced`, and `replied` outcomes, emits per-event `delivery_outcome.json` artifacts with workspace-root latest mirrors, and lets send execution trigger an immediate post-send feedback poll when a mailbox observer is provided."
     - "BA-09-S2 is now complete in code: `job_hunt_copilot.review_queries` now exposes grouped read-only review surfaces for postings, contacts, sent-message history, unresolved discovery, bounced-email cases, expert review packets, open incidents, outstanding blocked/failed/repeat-outreach cases, override history, and per-object traceability over canonical artifacts, transitions, and downstream records."
     - "BA-09 is now complete in code: delivery feedback now dedupes repeated mailbox signals at the logical-event level, exposes queryable feedback-reuse candidates for bounced and `not_bounced` discovery reads, keeps replied outcomes review-only, and lets discovery consume those feedback signals without auto-clearing contact email state."
+    - "BA-10-S1 is now complete: `build-agent/reports/ba-10-acceptance-trace-matrix.json` and `.md` now map all 214 acceptance scenarios to owning epics, code, tests, and explicit hardening gaps, with a guard test that keeps the matrix aligned to `prd/test-spec.feature`."
     - "`jhc-chat` now records canonical begin/end state, pauses autonomous work on open, resumes on clean explicit close when chat caused the pause, and leaves unexpected-exit pauses intact for later explicit resume or future idle-timeout handling."
     - Host-side `launchctl bootstrap` success still needs follow-up validation outside the current sandboxed session even though the plist, wrapper wiring, and failed-start rollback all validate locally.
   execution_principles:
@@ -836,7 +837,7 @@ epics:
 
   - id: BA-10
     name: Validation and hardening
-    status: pending
+    status: in_progress
     owner_role: quality-engineer
     phase: P5
     dependencies:
@@ -862,11 +863,20 @@ epics:
       - id: BA-10-S1
         name: Acceptance trace matrix
         owner_role: quality-engineer
-        status: pending
+        status: completed
         deliverables:
           - scenario-to-component traceability for the feature file
           - explicit gap list for not-yet-implemented or deferred behavior
           - validation ownership notes for each epic
+        completed_notes:
+          - Added `job_hunt_copilot.acceptance_traceability` plus `scripts/quality/generate_acceptance_trace_matrix.py` so the acceptance matrix is generated from `prd/test-spec.feature` instead of maintained as a hand-edited status note.
+          - Published `build-agent/reports/ba-10-acceptance-trace-matrix.json` and `.md`, covering all 214 scenarios with explicit owner role, epic linkage, component or test references, and an honest status split of 182 implemented, 15 partial, 15 gap, 1 deferred-optional, and 1 excluded-from-required-acceptance.
+          - Added `tests/test_acceptance_traceability.py` to fail if the feature file changes without regenerating the trace matrix or if the matrix points at stale repo paths.
+          - The trace matrix records the current hardening blockers explicitly: no integrated smoke harness yet, supervisor orchestration still stops at `lead_handoff`, chat review or control is wrapper-only, delayed feedback is not scheduler-wired, maintenance automation is absent, sleep or wake recovery is metadata-only, posting abandon control is missing, and safety/privacy hardening regressions are still pending.
+        validation:
+          - "`python3.11 scripts/quality/generate_acceptance_trace_matrix.py --project-root /Users/achyutaramsonti/Projects/job-hunt-copilot-v4`"
+          - "`python3.11 -m py_compile job_hunt_copilot/acceptance_traceability.py scripts/quality/generate_acceptance_trace_matrix.py tests/test_acceptance_traceability.py`"
+          - "`python3.11 -m pytest tests/test_acceptance_traceability.py`"
       - id: BA-10-S2
         name: Smoke harness and fixtures
         owner_role: quality-engineer
@@ -894,13 +904,13 @@ epics:
 
 current_focus:
   epic_id: BA-10
-  slice_id: BA-10-S1
+  slice_id: BA-10-S2
   owner_role: quality-engineer
-  reason: BA-09 is now complete in code, so the highest-value next step is acceptance traceability that maps the implemented slices back to the feature file before smoke-harness work broadens the validation surface.
+  reason: BA-10-S1 now makes the acceptance surface explicit, so the highest-value next step is BA-10-S2 smoke coverage for bootstrap, tailoring, discovery, send, feedback, and review-query flows before blocker burn-down starts.
   exit_criteria:
-    - scenario-to-component traceability exists across the acceptance feature file
-    - deferred versus implemented acceptance behavior is called out explicitly
-    - validation ownership is clear enough for BA-10-S2 smoke harness work to proceed without replanning
+    - a committed smoke harness exists for bootstrap, tailoring, discovery, send, feedback, and review-query flows
+    - sample fixtures can drive machine-valid `discovery_result.json`, `send_result.json`, and review-surface checks
+    - the BA-10-S1 trace-matrix gaps tied to missing smoke validation have direct evidence or closure
 
 focus_order:
   - epic_id: BA-10
@@ -911,6 +921,17 @@ focus_order:
     why_now: Tailoring is functionally complete in code, but later hardening or cross-epic fixes may still revisit it if validation exposes gaps.
 
 known_blockers:
+  - blocker_id: BA10-TRACE-001
+    status: open
+    severity: high
+    owner_role: quality-engineer
+    summary: "The BA-10-S1 acceptance trace matrix exposes unresolved current-build gaps across smoke coverage, downstream supervisor orchestration, chat review/control behavior, delayed feedback scheduling, maintenance automation, sleep/wake recovery, posting-abandon control, and safety/privacy hardening checks."
+    evidence:
+      - build-agent/reports/ba-10-acceptance-trace-matrix.json
+      - build-agent/reports/ba-10-acceptance-trace-matrix.md
+      - tests/test_acceptance_traceability.py
+    impact: Acceptance signoff is not yet credible even though the component epics through BA-09 are implemented and individually validated.
+    next_action: Land BA-10-S2 smoke coverage first, then burn down or explicitly retain the remaining BA-10-S1 gap clusters in BA-10-S3 with evidence.
   - blocker_id: BUILD-CLI-001
     status: open
     severity: medium

@@ -858,3 +858,30 @@ Use this file as an append-only implementation log for the build agent.
 ### Notes
 - Explicit implementation note: this slice keeps mailbox feedback as read-side evidence for later discovery decisions instead of using bounce ingestion to rewrite contact email state eagerly, which brings the code into line with the PRD’s bounded feedback-learning rule.
 - Explicit implementation note: the new feedback-reuse surface is intentionally query-first and derived from canonical event history plus sent-message records, so no new mutable review cache or feedback-learning table was introduced.
+
+### Session
+- Date: 2026-04-07 12:12:12 MST
+- Slice: BA-10-S1 acceptance trace matrix
+- Goal: Publish an acceptance-driven traceability artifact that maps the feature file to landed code/tests, calls out explicit current-build gaps, and gives BA-10-S2 concrete validation ownership to build on.
+
+### Work Done
+- Added `job_hunt_copilot.acceptance_traceability` with a parser for `prd/test-spec.feature`, rule-level ownership blueprints, scenario overrides for partial/gap/deferred behavior, and deterministic report rendering for the BA-10 trace matrix.
+- Added `scripts/quality/generate_acceptance_trace_matrix.py` and generated committed reports at `build-agent/reports/ba-10-acceptance-trace-matrix.json` and `build-agent/reports/ba-10-acceptance-trace-matrix.md`.
+- Added `tests/test_acceptance_traceability.py` so the matrix now fails fast if the feature file changes without regenerating the reports or if any mapped code/test path goes stale.
+- Recorded the current blocker clusters explicitly in the matrix and build board: missing smoke harness, downstream supervisor action coverage beyond `lead_handoff`, wrapper-only chat review/control, delayed-feedback scheduler wiring, maintenance automation, sleep/wake recovery, posting-abandon control, and safety/privacy hardening regressions.
+- Updated `build-agent/state/build-board.yaml`, `build-agent/state/IMPLEMENTATION_PLAN.md`, `build-agent/state/build-journal.md`, and `build-agent/state/codex-progress.txt` so BA-10-S1 is checkpointed cleanly and BA-10-S2 becomes the next focus.
+
+### Validation
+- Ran `python3.11 scripts/quality/generate_acceptance_trace_matrix.py --project-root /Users/achyutaramsonti/Projects/job-hunt-copilot-v4` and confirmed the committed JSON/Markdown reports render successfully.
+- Ran `python3.11 -m py_compile job_hunt_copilot/acceptance_traceability.py scripts/quality/generate_acceptance_trace_matrix.py tests/test_acceptance_traceability.py` and confirmed the new quality-engineering helpers compile cleanly.
+- Ran `python3.11 -m pytest tests/test_acceptance_traceability.py` and confirmed the guard test passed.
+
+### Result
+- `done`
+
+### Next
+- Start `BA-10-S2`: add the committed smoke harness and reusable fixtures for bootstrap, tailoring, discovery, send, feedback, and review-query validation.
+
+### Notes
+- The generated trace matrix currently covers 214 feature scenarios: 182 implemented, 15 partial, 15 gap, 1 deferred-optional, and 1 excluded-from-required-acceptance.
+- The current acceptance gaps are now explicit repo artifacts rather than implied TODOs, which should keep BA-10-S2 and BA-10-S3 grounded in evidence instead of memory.
