@@ -1015,14 +1015,11 @@ def test_mandatory_agent_review_can_move_directly_to_ready_for_outreach(tmp_path
     review_payload = yaml.safe_load(
         review_result.review_artifact.location.absolute_path.read_text(encoding="utf-8")
     )
-    assert review_payload["outreach_handoff"] == {
-        "posting_status_after_review": JOB_POSTING_STATUS_READY_FOR_OUTREACH,
-        "ready_for_outreach": True,
-        "selected_tier": "primary",
-        "selected_recipient_types": ["hiring_manager", "recruiter", "founder"],
-        "linked_contacts_in_selected_tier": 1,
-        "linked_contacts_with_usable_email": 1,
-    }
+    assert review_payload["outreach_handoff"]["posting_status_after_review"] == JOB_POSTING_STATUS_READY_FOR_OUTREACH
+    assert review_payload["outreach_handoff"]["ready_for_outreach"] is True
+    assert review_payload["outreach_handoff"]["current_send_set_size"] == 1
+    assert review_payload["outreach_handoff"]["selected_contact_ids"] == ["ct_ready"]
+    assert review_payload["outreach_handoff"]["selected_slots"] == ["recruiter"]
 
 
 def test_review_override_records_prior_decision_context_and_applies_new_status(tmp_path):

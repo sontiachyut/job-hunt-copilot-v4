@@ -696,3 +696,30 @@ Use this file as an append-only implementation log for the build agent.
 ### Notes
 - Explicit implementation inference: the new provider-budget events intentionally record zero deltas when a provider balance is still unknown, so canonical budget state stays honest without synthetic remaining-credit guesses.
 - Live Prospeo, GetProspect, and Hunter HTTP validation still did not run in this sandboxed session; this slice validated provider normalization, cascade ordering, budget persistence, artifact output, and review-state behavior through fake-provider tests plus full local regression coverage.
+
+### Session
+- Date: 2026-04-07 09:52:37 MST
+- Slice: BA-08-S1 Send-set readiness and pacing selection
+- Goal: Replace the old single-tier outreach readiness shortcut with explicit current-send-set assembly, honest posting readiness evaluation, and queryable pacing decisions for the later draft and send runtime.
+
+### Work Done
+- Added `job_hunt_copilot.outreach` with a DB-first role-targeted send-set planner that reads canonical posting, contact, and prior-message state, prefers recruiter plus manager-adjacent plus engineer coverage, fills missing slots deterministically from fallback recipient types, and surfaces repeat-outreach contacts outside the automatic set.
+- Wired `job_hunt_copilot.email_discovery` and `job_hunt_copilot.resume_tailoring` to the shared send-set planner so `requires_contacts` versus `ready_for_outreach` is now based on the full currently selected send set rather than any one usable-email contact inside a coarse priority tier.
+- Added company-level pacing calculations that count prior same-company sends on the machine's local calendar day, derive a deterministic randomized 6-to-10-minute global inter-send gap, and expose the earliest allowed automatic send time for later BA-08 send execution.
+- Added `tests/test_outreach.py` plus a targeted `tests/test_resume_tailoring.py` update covering send-set composition, blocking on missing-email selected contacts, repeat-outreach exclusion, exhausted-contact fallback behavior, and pacing outcomes for both recent-send gaps and same-company daily-cap exhaustion.
+- Updated `README.md`, `docs/ARCHITECTURE.md`, the build board, the implementation plan, and the handoff log so repo-facing and build-agent-facing status now reflects that BA-08-S1 is complete and BA-08-S2 is next.
+
+### Validation
+- Ran `python3.11 -m py_compile job_hunt_copilot/outreach.py job_hunt_copilot/email_discovery.py job_hunt_copilot/resume_tailoring.py tests/test_outreach.py tests/test_resume_tailoring.py` and confirmed the new shared planner plus the rewired discovery and tailoring paths compile cleanly.
+- Ran `python3.11 -m pytest tests/test_outreach.py tests/test_email_discovery.py tests/test_resume_tailoring.py` and confirmed all 32 targeted outreach, discovery, and tailoring tests passed.
+- Ran full `python3.11 -m pytest` and confirmed all 88 repository tests passed across bootstrap, schema, artifacts, ingestion, tailoring, discovery, outreach planning, local runtime, runtime pack, Gmail intake, and supervisor coverage.
+
+### Result
+- `done`
+
+### Next
+- Start `BA-08-S2`: implement grounded draft generation plus canonical `outreach_messages`, `email_draft.md`, and `send_result.json` persistence for the send-set-selected contacts.
+
+### Notes
+- Explicit implementation inference: same-company daily send caps now evaluate against the machine's local calendar day while timestamps remain stored canonically as UTC ISO-8601 text, because the PRD specifies UTC storage but local-day operational summaries and daily limits.
+- The current pacing helper is intentionally queryable rather than persisting standalone send-window rows because the schema does not yet provide direct send-window linkage from `outreach_messages`; later send execution can reuse the computed earliest allowed send time without fabricating unused window records.

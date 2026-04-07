@@ -1,7 +1,7 @@
 project: job-hunt-copilot-v4
 board_version: 2
 last_reset_note: Initial seeded build board created from the finalized PRD and acceptance spec.
-last_planning_update: 2026-04-06
+last_planning_update: 2026-04-07
 
 global_status:
   current_build_goal: Implement the current-build PRD and acceptance spec in this repository with bounded, validated slices.
@@ -20,8 +20,9 @@ global_status:
     - BA-05 is now complete in code: the Gmail intake path now persists collected-email units before fan-out, dedupes by `job_id` or normalized LinkedIn job URL fallback, creates autonomous lead workspaces from parsed cards, merges multi-source JD candidates into canonical `jd.md` with LinkedIn conflict precedence, and records honest `incomplete`, review-blocked, or `blocked_no_jd` lead state with queryable provenance.
     - BA-06 is now complete in code: job_hunt_copilot.resume_tailoring now covers posting-linked hard eligibility, workspace bootstrap, deterministic Step 3 through Step 7 artifacts, finalize plus one-page verification, persisted mandatory review decisions, direct posting handoff into `requires_contacts` or `ready_for_outreach`, owner override lineage in `override_events`, and snapshot-backed retailoring history across multiple runs.
     - "BA-07-S1 is now complete in code: `job_hunt_copilot.email_discovery` can bootstrap from approved `requires_contacts` postings, resolve Apollo company identity when available, persist broad `people_search_result.json`, and materialize only the capped shortlist into canonical `contacts` plus `job_posting_contacts`."
-    - "BA-07-S2 is now complete in code: shortlisted contacts can now run selective Apollo enrichment, persist optional `recipient_profile.json` snapshots when LinkedIn public-profile extraction succeeds, drop terminal sparse dead ends from canonical shortlist state, and promote postings into `ready_for_outreach` once the minimum linked-contact email prerequisites are met."
+    - "BA-07-S2 is now complete in code: shortlisted contacts can now run selective Apollo enrichment, persist optional `recipient_profile.json` snapshots when LinkedIn public-profile extraction succeeds, drop terminal sparse dead ends from canonical shortlist state, and publish the contact-level readiness signals that now feed BA-08 send-set planning."
     - "BA-07 is now complete in code: `job_hunt_copilot.email_discovery` now also runs the person-scoped `prospeo -> getprospect -> hunter` cascade with normalized outcomes, reusable working-email shortcuts, bounce-aware retry handling, persisted `discovery_result.json` handoffs plus `discovery_attempts` / `provider_budget_state` / `provider_budget_events`, and canonical unresolved or exhausted review visibility."
+    - "BA-08-S1 is now complete in code: `job_hunt_copilot.outreach` now assembles the current autonomous role-targeted send set, keeps `ready_for_outreach` honest until the selected set is fully send-ready, excludes repeat-outreach contacts from the automatic set, and computes queryable company pacing plus randomized inter-send-gap timing for later send execution."
     - "`jhc-chat` now records canonical begin/end state, pauses autonomous work on open, resumes on clean explicit close when chat caused the pause, and leaves unexpected-exit pauses intact for later explicit resume or future idle-timeout handling."
     - Host-side `launchctl bootstrap` success still needs follow-up validation outside the current sandboxed session even though the plist, wrapper wiring, and failed-start rollback all validate locally.
   execution_principles:
@@ -618,7 +619,7 @@ epics:
       - discovery cascade, provider budgets, and exhaustion or unresolved review surfaces are queryable
     completed_notes:
       - "BA-07-S1 is complete: `job_hunt_copilot.email_discovery` now boots from approved `requires_contacts` postings, resolves Apollo company identity when available, persists broad `people_search_result.json`, and materializes only the capped shortlist into canonical `contacts` plus `job_posting_contacts`."
-      - "BA-07-S2 is complete: shortlisted contacts can now run selective Apollo enrichment, persist optional `recipient_profile.json` snapshots when LinkedIn public-profile extraction succeeds, drop terminal sparse dead ends from canonical shortlist state, and promote postings into `ready_for_outreach` once the minimum linked-contact email prerequisites are met."
+      - "BA-07-S2 is complete: shortlisted contacts can now run selective Apollo enrichment, persist optional `recipient_profile.json` snapshots when LinkedIn public-profile extraction succeeds, drop terminal sparse dead ends from canonical shortlist state, and publish the contact-level readiness signals that now feed BA-08 send-set planning."
       - "BA-07-S3 is complete: linked contacts without usable emails now run the ordered `prospeo -> getprospect -> hunter` cascade with normalized no-match or failure handling, reusable working-email shortcuts for clearly identified contacts, bounce-aware retry behavior, canonical `discovery_attempts`, provider budget state plus events, `discovery_result.json` handoff artifacts, and reviewable unresolved or exhausted outcomes through the existing SQLite views."
     near_term_slices:
       - id: BA-07-S1
@@ -676,7 +677,7 @@ epics:
 
   - id: BA-08
     name: Drafting and sending
-    status: pending
+    status: in_progress
     owner_role: outreach-engineer
     phase: P4
     dependencies:
@@ -692,15 +693,25 @@ epics:
       - ready send sets are assembled only after the current prerequisite contacts are fully ready
       - drafts and send artifacts persist with canonical message records
       - autonomous sending enforces repeat-contact guardrails and company pacing rules
+    completed_notes:
+      - "BA-08-S1 is complete: `job_hunt_copilot.outreach` now computes the current autonomous role-targeted send set, excludes repeat-outreach contacts from the automatic path, and exposes queryable pacing decisions for later draft and send execution."
     near_term_slices:
       - id: BA-08-S1
         name: Send-set readiness and pacing selection
         owner_role: outreach-engineer
-        status: pending
+        status: completed
         deliverables:
           - current send-set formation rules across recruiter, manager-adjacent, and engineer contacts
           - posting readiness evaluation for `requires_contacts` versus `ready_for_outreach`
           - company-level pacing windows and randomized send gaps
+        completed_notes:
+          - Added `job_hunt_copilot.outreach` with DB-first role-targeted send-set planning over canonical `job_postings`, `job_posting_contacts`, `contacts`, and prior `outreach_messages`, selecting up to three contacts with recruiter, manager-adjacent, and engineer coverage plus deterministic fallback ordering.
+          - Replaced the earlier single-tier `ready_for_outreach` shortcut in both `job_hunt_copilot.email_discovery` and `job_hunt_copilot.resume_tailoring` so postings now advance only when every contact in the currently selected automatic send set has a usable email, while repeat-outreach contacts are surfaced for review instead of silently blocking or auto-sending.
+          - Added queryable company-level pacing calculations that enforce the current 3-send same-company daily cap, derive deterministic randomized 6-to-10-minute inter-send gaps, and expose the earliest allowed automatic send time for the later BA-08 send runtime.
+        validation:
+          - "`python3.11 -m py_compile job_hunt_copilot/outreach.py job_hunt_copilot/email_discovery.py job_hunt_copilot/resume_tailoring.py tests/test_outreach.py tests/test_resume_tailoring.py`"
+          - "`python3.11 -m pytest tests/test_outreach.py tests/test_email_discovery.py tests/test_resume_tailoring.py`"
+          - "`python3.11 -m pytest`"
       - id: BA-08-S2
         name: Draft generation and artifact persistence
         owner_role: outreach-engineer
@@ -831,17 +842,17 @@ epics:
 
 current_focus:
   epic_id: BA-08
-  slice_id: BA-08-S1
+  slice_id: BA-08-S2
   owner_role: outreach-engineer
-  reason: BA-07 is now complete in code, so the next highest-value outreach dependency is send-set readiness and pacing selection on top of the now-queryable contacts, working emails, and discovery history.
+  reason: BA-08-S1 now makes the active send set and pacing rules explicit, so the next highest-value outreach dependency is persisting grounded drafts and send artifacts for those selected contacts.
   exit_criteria:
-    - current send-set formation rules exist across recruiter, manager-adjacent, and engineer contacts
-    - posting readiness evaluation is explicit for `requires_contacts` versus `ready_for_outreach`
-    - company-level pacing windows and randomized send gaps are queryable for later send execution
+    - role-targeted draft generation exists for send-set-selected contacts using posting, resume, and recipient context
+    - "`email_draft.md` and `send_result.json` persist with stable IDs and shared contract envelopes"
+    - "final subject, text body, and optional HTML body persist canonically on `outreach_messages`"
 
 focus_order:
   - epic_id: BA-08
-    why_now: Drafting and sending should start now that discovery, contact readiness, and provider-budget history exist in canonical state.
+    why_now: Draft generation should start now that discovery, send-set readiness, repeat-outreach exclusion, and pacing rules all exist in canonical state.
   - epic_id: BA-09
     why_now: Feedback and review queries depend on canonical messages, supervisor review packets, and downstream state history.
   - epic_id: BA-10

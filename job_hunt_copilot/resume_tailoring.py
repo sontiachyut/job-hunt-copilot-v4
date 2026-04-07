@@ -18,6 +18,7 @@ from .artifacts import (
     register_artifact_record,
     write_yaml_contract,
 )
+from .outreach import evaluate_role_targeted_send_set
 from .paths import ProjectPaths
 from .records import lifecycle_timestamps, new_canonical_id, now_utc_iso
 from .supervisor import OverrideEventRecord, record_override_event
@@ -90,12 +91,6 @@ TAILORING_REVIEW_DECISION_TYPES = frozenset(
         RESUME_REVIEW_STATUS_REJECTED,
     }
 )
-OUTREACH_READY_PRIORITY_TIERS: tuple[tuple[str, tuple[str, ...]], ...] = (
-    ("primary", ("hiring_manager", "recruiter", "founder")),
-    ("engineer_fallback", ("engineer",)),
-    ("internal_fallback", ("alumni", "other_internal")),
-)
-
 DEFAULT_SECTION_LOCKS = (
     "education",
     "projects",
@@ -1809,53 +1804,11 @@ def _evaluate_post_review_outreach_handoff(
     connection: sqlite3.Connection,
     job_posting_id: str,
 ) -> dict[str, Any]:
-    rows = connection.execute(
-        """
-        SELECT jpc.recipient_type, jpc.link_level_status, c.current_working_email
-        FROM job_posting_contacts jpc
-        JOIN contacts c
-          ON c.contact_id = jpc.contact_id
-        WHERE jpc.job_posting_id = ?
-        """,
-        (job_posting_id,),
-    ).fetchall()
-    normalized_rows = [
-        {
-            "recipient_type": str(row["recipient_type"]).strip(),
-            "link_level_status": str(row["link_level_status"]).strip(),
-            "has_usable_email": bool(str(row["current_working_email"] or "").strip()),
-        }
-        for row in rows
-        if str(row["recipient_type"]).strip()
-    ]
-    for tier_name, recipient_types in OUTREACH_READY_PRIORITY_TIERS:
-        tier_rows = [
-            row for row in normalized_rows if row["recipient_type"] in recipient_types
-        ]
-        if not tier_rows:
-            continue
-        usable_email_count = sum(1 for row in tier_rows if row["has_usable_email"])
-        ready_for_outreach = usable_email_count > 0
-        return {
-            "posting_status_after_review": (
-                JOB_POSTING_STATUS_READY_FOR_OUTREACH
-                if ready_for_outreach
-                else JOB_POSTING_STATUS_REQUIRES_CONTACTS
-            ),
-            "ready_for_outreach": ready_for_outreach,
-            "selected_tier": tier_name,
-            "selected_recipient_types": list(recipient_types),
-            "linked_contacts_in_selected_tier": len(tier_rows),
-            "linked_contacts_with_usable_email": usable_email_count,
-        }
-    return {
-        "posting_status_after_review": JOB_POSTING_STATUS_REQUIRES_CONTACTS,
-        "ready_for_outreach": False,
-        "selected_tier": None,
-        "selected_recipient_types": [],
-        "linked_contacts_in_selected_tier": 0,
-        "linked_contacts_with_usable_email": 0,
-    }
+    return evaluate_role_targeted_send_set(
+        connection,
+        job_posting_id=job_posting_id,
+        current_time=now_utc_iso(),
+    ).as_dict()
 
 
 def _apply_tailoring_review_outcome(
@@ -1893,10 +1846,24 @@ def _apply_tailoring_review_outcome(
             or {
                 "posting_status_after_review": JOB_POSTING_STATUS_TAILORING_IN_PROGRESS,
                 "ready_for_outreach": False,
-                "selected_tier": None,
-                "selected_recipient_types": [],
-                "linked_contacts_in_selected_tier": 0,
-                "linked_contacts_with_usable_email": 0,
+                "max_send_set_size": 3,
+                "current_send_set_size": 0,
+                "selected_slots": [],
+                "selected_contact_ids": [],
+                "selected_job_posting_contact_ids": [],
+                "selected_contacts": [],
+                "blocking_contact_ids": [],
+                "repeat_outreach_review_contact_ids": [],
+                "repeat_outreach_review_contacts": [],
+                "company_pacing": {
+                    "daily_send_cap": 3,
+                    "company_sent_today": 0,
+                    "remaining_company_daily_capacity": 3,
+                    "global_gap_minutes": 6,
+                    "earliest_allowed_send_at": now_utc_iso(),
+                    "pacing_allowed_now": True,
+                    "pacing_block_reason": None,
+                },
             }
         )
         posting_status_after_review = JOB_POSTING_STATUS_TAILORING_IN_PROGRESS
@@ -2765,10 +2732,24 @@ def record_tailoring_review_override(
         else {
             "posting_status_after_review": JOB_POSTING_STATUS_TAILORING_IN_PROGRESS,
             "ready_for_outreach": False,
-            "selected_tier": None,
-            "selected_recipient_types": [],
-            "linked_contacts_in_selected_tier": 0,
-            "linked_contacts_with_usable_email": 0,
+            "max_send_set_size": 3,
+            "current_send_set_size": 0,
+            "selected_slots": [],
+            "selected_contact_ids": [],
+            "selected_job_posting_contact_ids": [],
+            "selected_contacts": [],
+            "blocking_contact_ids": [],
+            "repeat_outreach_review_contact_ids": [],
+            "repeat_outreach_review_contacts": [],
+            "company_pacing": {
+                "daily_send_cap": 3,
+                "company_sent_today": 0,
+                "remaining_company_daily_capacity": 3,
+                "global_gap_minutes": 6,
+                "earliest_allowed_send_at": now_utc_iso(),
+                "pacing_allowed_now": True,
+                "pacing_block_reason": None,
+            },
         }
     )
     override_event = record_override_event(

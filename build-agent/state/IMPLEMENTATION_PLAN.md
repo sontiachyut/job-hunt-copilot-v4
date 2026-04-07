@@ -32,9 +32,10 @@ It should stay aligned with:
 - `BA-06-S4` is complete: `job_hunt_copilot.resume_tailoring` now records mandatory review decisions as durable per-run artifacts, transitions pending review runs into `approved` or `rejected`, advances approved postings into `requires_contacts` or `ready_for_outreach`, records owner overrides with prior-decision context in canonical `override_events`, and snapshots completed run workspaces before retailoring so previous run rows keep immutable history references.
 - `BA-06` is now complete in code overall: Resume Tailoring now runs from `job_posting_id` bootstrap through eligibility, workspace materialization, deterministic intelligence, finalize plus one-page verification, mandatory review approval or rejection, DB-first outreach handoff, override lineage, and repeated-run history preservation.
 - `BA-07-S1` is complete: `job_hunt_copilot.email_discovery` now boots strictly from approved `requires_contacts` postings, resolves Apollo company identity when available, persists broad `discovery/output/{company}/{role}/people_search_result.json`, and materializes only the initial 6-contact shortlist into canonical `contacts` plus `job_posting_contacts` while promoting reused `identified` links into `shortlisted`.
-- `BA-07-S2` is complete: `job_hunt_copilot.email_discovery` now runs selective Apollo enrichment only for canonical shortlisted contacts that still need clearer identity, LinkedIn URL recovery, or a usable work email, persists best-effort `recipient_profile.json` artifacts when public LinkedIn extraction succeeds, removes terminal sparse dead ends from canonical shortlist state, and promotes contacts or postings into `working_email_found` or `ready_for_outreach` when the minimum current outreach prerequisites are met.
+- `BA-07-S2` is complete: `job_hunt_copilot.email_discovery` now runs selective Apollo enrichment only for canonical shortlisted contacts that still need clearer identity, LinkedIn URL recovery, or a usable work email, persists best-effort `recipient_profile.json` artifacts when public LinkedIn extraction succeeds, removes terminal sparse dead ends from canonical shortlist state, and publishes the contact-level readiness signals that now feed BA-08 send-set planning.
 - `BA-07-S3` is complete: `job_hunt_copilot.email_discovery` now runs the ordered `prospeo -> getprospect -> hunter` cascade for linked contacts that still lack usable emails, normalizes provider-specific no-match and failure outcomes, reuses clearly identified working emails, skips bounced-provider retries, persists `discovery_result.json` plus one-row-per-cascade `discovery_attempts`, and updates canonical `provider_budget_state` plus `provider_budget_events`.
 - `BA-07` is now complete in code overall: People search, shortlist materialization, selective enrichment, recipient-profile capture, person-scoped email discovery fallback, provider-budget tracking, and unresolved or exhausted review visibility now exist behind the current outreach discovery boundary.
+- `BA-08-S1` is complete: `job_hunt_copilot.outreach` now computes the current autonomous role-targeted send set from canonical posting, contact, and prior-message state, prefers recruiter plus manager-adjacent plus engineer coverage with deterministic fallback fill, excludes repeat-outreach contacts from the automatic set, and exposes queryable company-cap plus randomized inter-send-gap pacing decisions for the later send runtime.
 - Explicit implementation note: failed startup no longer leaves dishonest control state behind; `jhc-agent-start` now rolls canonical state back to `stopped` if `launchctl bootstrap` fails before the job is actually loaded.
 - Explicit implementation note: the generated `ops/agent/` files remain runtime-local artifacts under `.gitignore`, so the repo tracks the materialization code and tests rather than checking in those mutable rendered outputs.
 - Explicit implementation note: `jhc-chat` now records begin/end metadata plus `active_chat_session_id` in canonical control state, pauses autonomous work immediately on open, resumes on clean explicit close when chat itself caused the pause, and intentionally keeps unexpected-exit pauses active until later explicit resume or future idle-timeout automation exists.
@@ -44,6 +45,7 @@ It should stay aligned with:
 - Explicit implementation note: Gmail-derived leads with a recovered canonical `jd.md` now surface posting-materialization readiness or blocking reasons through `lead-manifest.yaml`, while downstream creation of later posting-linked runtime state remains a separate responsibility from the bounded Gmail intake slice.
 - Explicit implementation note: the current tailoring runtime now backfills workspace files for preexisting active runs that predate BA-06-S2, but repeated bootstrap on an already-materialized active run intentionally preserves existing `resume.tex` and intelligence artifacts instead of clobbering in-progress tailoring work.
 - Explicit implementation note: Step 3 through Step 7 persistence and the later mandatory review boundary currently stay artifact-first rather than adding new dedicated tailoring tables, which keeps BA-06 bounded while still making generated intelligence, review decisions, verification blockers, and compile outputs durable and reviewable from the workspace.
+- Explicit implementation inference: the current company daily send cap is evaluated against the machine's local calendar day, while timestamps remain stored canonically as UTC ISO-8601 text and are converted only for the pacing check.
 - Known operational blocker: live `launchctl bootstrap gui/$UID ...` still returns `Input/output error` in this sandboxed session, and the system log needed for richer launchd diagnostics is itself blocked by sandbox restrictions.
 - Known operational risk: unattended build-lead execution needs a follow-up validation pass for the `codex exec` CLI compatibility fix already present in the worktree.
 
@@ -112,12 +114,12 @@ It should stay aligned with:
 
 ## Next Slice
 
-- Current focus: `BA-08-S1` Send-set readiness and pacing selection.
-- Why next: BA-07 is now complete in code, so the next highest-value outreach dependency is converting the now-queryable linked-contact and working-email state into explicit ready-send-set formation rules and pacing-safe company send windows.
+- Current focus: `BA-08-S2` Draft generation and artifact persistence.
+- Why next: the active send set, repeat-outreach exclusions, and pacing rules are now explicit in canonical code, so the next highest-value outreach dependency is persisting grounded drafts plus message records for those selected contacts.
 - Done when:
-  - send-set selection rules are explicit across recruiter, manager-adjacent, and engineer contacts
-  - posting readiness evaluation remains honest for `requires_contacts` versus `ready_for_outreach`
-  - company-level pacing windows and randomized send gaps are persisted or queryable for the later send runtime
+  - role-targeted and general-learning draft generation paths exist
+  - `email_draft.md` and `send_result.json` persist with stable IDs and shared contract envelopes
+  - final subject, text body, and optional HTML body persist canonically on `outreach_messages`
 
 ## Working Rules
 

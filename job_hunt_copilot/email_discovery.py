@@ -12,6 +12,7 @@ from urllib.parse import urlencode
 from urllib.request import Request, urlopen
 
 from .artifacts import ArtifactLinkage, publish_json_artifact
+from .outreach import evaluate_role_targeted_send_set
 from .paths import ProjectPaths, workspace_slug
 from .records import lifecycle_timestamps, new_canonical_id, now_utc_iso
 
@@ -94,12 +95,6 @@ SHORTLIST_BUCKETS = (
     ("manager_adjacent", {RECIPIENT_TYPE_HIRING_MANAGER}, 2),
     ("engineer", {RECIPIENT_TYPE_ENGINEER}, 2),
 )
-OUTREACH_READY_PRIORITY_TIERS: tuple[tuple[str, tuple[str, ...]], ...] = (
-    ("primary", (RECIPIENT_TYPE_HIRING_MANAGER, RECIPIENT_TYPE_RECRUITER, RECIPIENT_TYPE_FOUNDER)),
-    ("engineer_fallback", (RECIPIENT_TYPE_ENGINEER,)),
-    ("internal_fallback", (RECIPIENT_TYPE_ALUMNI, RECIPIENT_TYPE_OTHER_INTERNAL)),
-)
-
 STOPWORD_TOKENS = frozenset(
     {
         "and",
@@ -3144,8 +3139,12 @@ def _promote_posting_ready_for_outreach_if_eligible(
     current_status = str(posting_row["posting_status"])
     if current_status != JOB_POSTING_STATUS_REQUIRES_CONTACTS:
         return current_status
-    readiness = _evaluate_posting_ready_for_outreach(connection, job_posting_id=job_posting_id)
-    if not readiness["ready_for_outreach"]:
+    readiness = evaluate_role_targeted_send_set(
+        connection,
+        job_posting_id=job_posting_id,
+        current_time=current_time,
+    )
+    if not readiness.ready_for_outreach:
         return current_status
     connection.execute(
         """
@@ -3167,7 +3166,7 @@ def _promote_posting_ready_for_outreach_if_eligible(
         previous_state=current_status,
         new_state=JOB_POSTING_STATUS_READY_FOR_OUTREACH,
         transition_timestamp=current_time,
-        transition_reason="Selected-contact enrichment established the minimum ready-to-outreach contact set with usable emails.",
+        transition_reason="The active autonomous send set is fully ready with usable emails for each selected contact.",
         lead_id=lead_id,
         job_posting_id=job_posting_id,
         contact_id=None,
@@ -3180,46 +3179,11 @@ def _evaluate_posting_ready_for_outreach(
     *,
     job_posting_id: str,
 ) -> dict[str, Any]:
-    rows = connection.execute(
-        """
-        SELECT jpc.recipient_type, jpc.link_level_status, c.current_working_email
-        FROM job_posting_contacts jpc
-        JOIN contacts c
-          ON c.contact_id = jpc.contact_id
-        WHERE jpc.job_posting_id = ?
-        """,
-        (job_posting_id,),
-    ).fetchall()
-    normalized_rows = [
-        {
-            "recipient_type": str(row["recipient_type"]).strip(),
-            "link_level_status": str(row["link_level_status"]).strip(),
-            "has_usable_email": _is_usable_email(_normalize_optional_text(row["current_working_email"])),
-        }
-        for row in rows
-        if str(row["recipient_type"]).strip()
-    ]
-    for tier_name, recipient_types in OUTREACH_READY_PRIORITY_TIERS:
-        tier_rows = [
-            row for row in normalized_rows if row["recipient_type"] in recipient_types
-        ]
-        if not tier_rows:
-            continue
-        usable_email_count = sum(1 for row in tier_rows if row["has_usable_email"])
-        return {
-            "ready_for_outreach": usable_email_count > 0,
-            "selected_tier": tier_name,
-            "selected_recipient_types": list(recipient_types),
-            "linked_contacts_in_selected_tier": len(tier_rows),
-            "linked_contacts_with_usable_email": usable_email_count,
-        }
-    return {
-        "ready_for_outreach": False,
-        "selected_tier": None,
-        "selected_recipient_types": [],
-        "linked_contacts_in_selected_tier": 0,
-        "linked_contacts_with_usable_email": 0,
-    }
+    return evaluate_role_targeted_send_set(
+        connection,
+        job_posting_id=job_posting_id,
+        current_time=now_utc_iso(),
+    ).as_dict()
 
 
 def _materialize_shortlisted_candidate(
