@@ -969,3 +969,29 @@ Use this file as an append-only implementation log for the build agent.
 ### Notes
 - The acceptance matrix now reports 189 implemented, 9 partial, 14 gap, 1 deferred-optional, and 1 excluded-from-required-acceptance scenarios.
 - `BA10_DELAYED_FEEDBACK_SCHEDULING` is now closed in the trace matrix; host-side launchd load confirmation is still blocked by the sandbox and remains tracked separately under `OPS-LAUNCHD-001`.
+
+### Session
+- Date: 2026-04-07 14:12:45 MST
+- Slice: BA-10-S3 sleep/wake recovery hardening
+- Goal: Close the remaining sleep/wake recovery acceptance partial by teaching supervisor heartbeats to evaluate `pmset` evidence first, fall back conservatively when no explicit event is visible, and checkpoint the updated BA-10 blocker ledger honestly.
+
+### Work Done
+- Extended `job_hunt_copilot.local_runtime` with conservative sleep/wake recovery detection helpers, so `execute_supervisor_heartbeat` now checks `pmset -g log` first, records detected Sleep/Wake/DarkWake evidence into canonical control-state metadata, and falls back to a >1 hour supervisor-cycle gap heuristic when explicit power-event lines are unavailable.
+- Added focused local-runtime regressions in `tests/test_local_runtime.py` for both explicit `pmset` wake evidence and the fallback-gap recovery path, covering the persisted cycle metadata plus the control-state bookkeeping fields.
+- Updated `job_hunt_copilot.acceptance_traceability` and regenerated `build-agent/reports/ba-10-acceptance-trace-matrix.json` plus `.md` so the sleep/wake recovery scenario now moves from partial to implemented and the matrix rises to 190 implemented / 8 partial / 14 gap scenarios.
+- Updated `build-agent/state/build-board.yaml`, `build-agent/state/IMPLEMENTATION_PLAN.md`, `build-agent/state/build-journal.md`, and `build-agent/state/codex-progress.txt` so the BA-10 checkpoint now reflects the closed sleep/wake gap and the narrowed remaining blocker set.
+
+### Validation
+- Ran `python3.11 -m py_compile job_hunt_copilot/local_runtime.py job_hunt_copilot/acceptance_traceability.py tests/test_local_runtime.py` and confirmed the changed Python surfaces compile cleanly.
+- Ran `python3.11 scripts/quality/generate_acceptance_trace_matrix.py --project-root /Users/achyutaramsonti/Projects/job-hunt-copilot-v4` and regenerated the committed BA-10 reports successfully.
+- Ran full `python3.11 -m pytest` and confirmed all 117 repository tests passed.
+
+### Result
+- `done`
+
+### Next
+- Continue `BA-10-S3` with downstream supervisor orchestration beyond `lead_handoff`, then revisit the remaining chat review/control, maintenance, and posting-abandon gaps with the updated trace matrix as the blocker ledger.
+
+### Notes
+- The acceptance matrix now reports 190 implemented, 8 partial, 14 gap, 1 deferred-optional, and 1 excluded-from-required-acceptance scenarios.
+- `BA10_SLEEP_WAKE_RECOVERY` is now closed in the trace matrix; host-side `launchctl` validation remains a separate sandbox-blocked operational issue under `OPS-LAUNCHD-001`.

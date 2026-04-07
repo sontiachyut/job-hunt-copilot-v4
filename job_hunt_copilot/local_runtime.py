@@ -2,8 +2,11 @@ from __future__ import annotations
 
 import json
 import plistlib
+import re
 import sqlite3
+import subprocess
 import uuid
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
@@ -37,6 +40,9 @@ SUPERVISOR_HEARTBEAT_INTERVAL_SECONDS = 180
 SUPERVISOR_TRIGGER_TYPE = "launchd_heartbeat"
 SUPERVISOR_SCHEDULER_NAME = "launchd"
 SUPERVISOR_SLEEP_WAKE_DETECTION_METHOD = "pmset_log"
+SUPERVISOR_SLEEP_WAKE_FALLBACK_GAP_HOURS = 1
+SUPERVISOR_SLEEP_WAKE_FALLBACK_GAP_SECONDS = SUPERVISOR_SLEEP_WAKE_FALLBACK_GAP_HOURS * 3600
+SUPERVISOR_SLEEP_WAKE_FALLBACK_METHOD = "gap_fallback"
 FEEDBACK_SYNC_LAUNCHD_LABEL = "com.jobhuntcopilot.feedback-sync"
 FEEDBACK_SYNC_INTERVAL_SECONDS = DELAYED_FEEDBACK_POLL_INTERVAL_MINUTES * 60
 FEEDBACK_SYNC_SCHEDULER_NAME = "job-hunt-copilot-feedback-sync"
@@ -50,6 +56,150 @@ CHAT_SESSION_EXIT_MODES = frozenset(
     }
 )
 CHAT_INTERACTION_PAUSE_REASON = "expert_interaction"
+PMSET_EVENT_LINE_PATTERN = re.compile(
+    r"^(?P<timestamp>\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2} [+-]\d{4})\s+(?P<body>.+)$"
+)
+
+
+def _run_system_command(args: list[str]) -> subprocess.CompletedProcess[str]:
+    return subprocess.run(args, check=False, capture_output=True, text=True)
+
+
+def _parse_utc_iso(timestamp: str) -> datetime:
+    normalized = timestamp.replace("Z", "+00:00")
+    return datetime.fromisoformat(normalized).astimezone(timezone.utc)
+
+
+def _format_utc_iso(timestamp: datetime) -> str:
+    return timestamp.astimezone(timezone.utc).replace(microsecond=0).isoformat().replace(
+        "+00:00", "Z"
+    )
+
+
+def _latest_timestamp(*timestamps: str | None) -> str | None:
+    populated = [timestamp for timestamp in timestamps if timestamp]
+    if not populated:
+        return None
+    return max(populated, key=_parse_utc_iso)
+
+
+def _latest_supervisor_cycle_checkpoint_at(connection: sqlite3.Connection) -> str | None:
+    row = connection.execute(
+        """
+        SELECT COALESCE(
+          MAX(COALESCE(completed_at, started_at)),
+          ''
+        )
+        FROM supervisor_cycles
+        """
+    ).fetchone()
+    if row is None:
+        return None
+    return row[0] or None
+
+
+def _read_pmset_uuid() -> str | None:
+    result = _run_system_command(["pmset", "-g", "uuid"])
+    if result.returncode != 0:
+        return None
+    uuid_text = result.stdout.strip()
+    return uuid_text or None
+
+
+def _classify_pmset_event(body: str) -> str | None:
+    if "MaintenanceWake" in body:
+        return None
+    if re.search(r"\bDarkWake\b", body):
+        return "DarkWake"
+    if re.search(r"\bWake\b", body):
+        return "Wake"
+    if re.search(r"\bSleep\b", body):
+        return "Sleep"
+    return None
+
+
+def _find_recent_pmset_sleep_wake_event(
+    *,
+    since: str | None,
+) -> dict[str, Any] | None:
+    result = _run_system_command(["pmset", "-g", "log"])
+    if result.returncode != 0:
+        return None
+
+    since_dt = _parse_utc_iso(since) if since else None
+    pmset_uuid = _read_pmset_uuid()
+    for raw_line in reversed(result.stdout.splitlines()):
+        match = PMSET_EVENT_LINE_PATTERN.match(raw_line)
+        if match is None:
+            continue
+        event_type = _classify_pmset_event(match.group("body"))
+        if event_type is None:
+            continue
+        event_dt = datetime.strptime(match.group("timestamp"), "%Y-%m-%d %H:%M:%S %z").astimezone(
+            timezone.utc
+        )
+        if since_dt is not None and event_dt <= since_dt:
+            break
+        event_timestamp = _format_utc_iso(event_dt)
+        uuid_fragment = pmset_uuid or "unknown-uuid"
+        return {
+            "detection_method": SUPERVISOR_SLEEP_WAKE_DETECTION_METHOD,
+            "event_type": event_type,
+            "event_timestamp": event_timestamp,
+            "event_ref": f"pmset:{uuid_fragment}:{event_type.lower()}:{event_timestamp}",
+            "pmset_uuid": pmset_uuid,
+            "source_line": raw_line.strip(),
+        }
+    return None
+
+
+def _build_gap_fallback_recovery_context(
+    *,
+    current_time: str,
+    reference_cycle_at: str,
+) -> dict[str, Any] | None:
+    gap_seconds = int((_parse_utc_iso(current_time) - _parse_utc_iso(reference_cycle_at)).total_seconds())
+    if gap_seconds <= SUPERVISOR_SLEEP_WAKE_FALLBACK_GAP_SECONDS:
+        return None
+    return {
+        "detection_method": SUPERVISOR_SLEEP_WAKE_FALLBACK_METHOD,
+        "event_type": "GapRecovery",
+        "event_timestamp": current_time,
+        "event_ref": f"gap_fallback:{reference_cycle_at}->{current_time}",
+        "reference_cycle_at": reference_cycle_at,
+        "gap_seconds": gap_seconds,
+        "fallback_gap_hours": SUPERVISOR_SLEEP_WAKE_FALLBACK_GAP_HOURS,
+    }
+
+
+def detect_sleep_wake_recovery(
+    connection: sqlite3.Connection,
+    *,
+    current_time: str,
+) -> tuple[dict[str, str], dict[str, Any] | None]:
+    control_state = read_agent_control_state(connection, timestamp=current_time)
+    latest_cycle_at = _latest_supervisor_cycle_checkpoint_at(connection)
+    pmset_since = _latest_timestamp(control_state.last_sleep_wake_check_at, latest_cycle_at)
+
+    recovery_context = _find_recent_pmset_sleep_wake_event(since=pmset_since)
+    if recovery_context is None and latest_cycle_at is not None:
+        recovery_context = _build_gap_fallback_recovery_context(
+            current_time=current_time,
+            reference_cycle_at=latest_cycle_at,
+        )
+
+    updates: dict[str, str | bool | None] = {
+        "last_sleep_wake_check_at": current_time,
+    }
+    if recovery_context is not None:
+        if recovery_context["event_type"] == "Sleep":
+            updates["last_seen_sleep_event_at"] = recovery_context["event_timestamp"]
+        elif recovery_context["event_type"] in {"Wake", "DarkWake"}:
+            updates["last_seen_wake_event_at"] = recovery_context["event_timestamp"]
+        updates["last_sleep_wake_event_ref"] = recovery_context["event_ref"]
+
+    snapshot = upsert_control_values(connection, updates, timestamp=current_time)
+    return dict(snapshot.values), recovery_context
 
 
 def connect_canonical_database(paths: ProjectPaths) -> sqlite3.Connection:
@@ -450,15 +600,29 @@ def execute_supervisor_heartbeat(
 ) -> dict[str, Any]:
     paths = ProjectPaths.from_root(project_root)
     migration = initialize_database(paths.db_path)
+    effective_started_at = started_at or now_utc_iso()
 
     with connect_canonical_database(paths) as connection:
+        control_state_values, sleep_wake_recovery_context = detect_sleep_wake_recovery(
+            connection,
+            current_time=effective_started_at,
+        )
         execution = run_supervisor_cycle(
             connection,
             paths,
             trigger_type=SUPERVISOR_TRIGGER_TYPE,
             scheduler_name=SUPERVISOR_SCHEDULER_NAME,
-            sleep_wake_detection_method=SUPERVISOR_SLEEP_WAKE_DETECTION_METHOD,
-            started_at=started_at,
+            sleep_wake_detection_method=(
+                sleep_wake_recovery_context["detection_method"]
+                if sleep_wake_recovery_context is not None
+                else SUPERVISOR_SLEEP_WAKE_DETECTION_METHOD
+            ),
+            sleep_wake_event_ref=(
+                sleep_wake_recovery_context["event_ref"]
+                if sleep_wake_recovery_context is not None
+                else None
+            ),
+            started_at=effective_started_at,
         )
 
     runtime_pack = materialize_runtime_pack(paths.project_root)
@@ -490,6 +654,8 @@ def execute_supervisor_heartbeat(
             "supervisor_cycle_id": execution.cycle.supervisor_cycle_id,
             "trigger_type": execution.cycle.trigger_type,
             "scheduler_name": execution.cycle.scheduler_name,
+            "sleep_wake_detection_method": execution.cycle.sleep_wake_detection_method,
+            "sleep_wake_event_ref": execution.cycle.sleep_wake_event_ref,
             "started_at": execution.cycle.started_at,
             "completed_at": execution.cycle.completed_at,
             "result": execution.cycle.result,
@@ -501,6 +667,8 @@ def execute_supervisor_heartbeat(
         },
         "lease_status": execution.lease_status,
         "control_state": dict(execution.control_state.values),
+        "pre_cycle_control_state": control_state_values,
+        "sleep_wake_recovery_context": sleep_wake_recovery_context,
         "selected_work": selected_work,
         "pipeline_run_id": (
             execution.pipeline_run.pipeline_run_id

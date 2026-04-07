@@ -28,7 +28,7 @@ global_status:
     - "BA-09 is now complete in code: delivery feedback now dedupes repeated mailbox signals at the logical-event level, exposes queryable feedback-reuse candidates for bounced and `not_bounced` discovery reads, keeps replied outcomes review-only, and lets discovery consume those feedback signals without auto-clearing contact email state."
     - "BA-10-S1 is now complete: `build-agent/reports/ba-10-acceptance-trace-matrix.json` and `.md` now map all 214 acceptance scenarios to owning epics, code, tests, and explicit hardening gaps, with a guard test that keeps the matrix aligned to `prd/test-spec.feature`."
     - "BA-10-S2 is now complete: `tests/test_smoke_harness.py` now drives a committed bootstrap -> tailoring -> discovery -> send -> delayed-feedback -> review-query smoke flow with deterministic fakes, and the regenerated acceptance trace matrix now closes the explicit smoke-harness gap while leaving the remaining blocker clusters honest."
-    - "BA-10-S3 is in progress: targeted hardening regressions now prove unsupported tailoring asks stay explicit gaps, automatic outreach still requires approved review and blocks repeat ambiguity, outreach-message traceability omits raw reply excerpts, runtime secret values stay out of canonical state/handoff artifacts/review outputs, and delayed feedback now has dedicated launchd scheduler wiring; the regenerated matrix now reports 189 implemented, 9 partial, and 14 gap scenarios."
+    - "BA-10-S3 is in progress: targeted hardening regressions now prove unsupported tailoring asks stay explicit gaps, automatic outreach still requires approved review and blocks repeat ambiguity, outreach-message traceability omits raw reply excerpts, runtime secret values stay out of canonical state/handoff artifacts/review outputs, delayed feedback now has dedicated launchd scheduler wiring, and supervisor heartbeats now use pmset-first sleep/wake detection with a conservative cycle-gap fallback; the regenerated matrix now reports 190 implemented, 8 partial, and 14 gap scenarios."
     - "`jhc-chat` now records canonical begin/end state, pauses autonomous work on open, resumes on clean explicit close when chat caused the pause, and leaves unexpected-exit pauses intact for later explicit resume or future idle-timeout handling."
     - Host-side `launchctl bootstrap` success still needs follow-up validation outside the current sandboxed session even though the plist, wrapper wiring, and failed-start rollback all validate locally.
   execution_principles:
@@ -918,7 +918,8 @@ epics:
           - Tightened `job_hunt_copilot.review_queries` so outreach-message traceability now exposes reply summaries without copying `raw_reply_excerpt` into review-oriented traceability surfaces.
           - Added delayed-feedback scheduler wiring under `job_hunt_copilot.local_runtime`, `scripts/ops/run_feedback_sync.py`, `scripts/ops/materialize_feedback_sync_plist.py`, `bin/jhc-feedback-sync-cycle`, and the existing `jhc-agent-start`/`jhc-agent-stop` lifecycle so launchd now invokes reusable Delivery Feedback sync logic through a dedicated repo-local job.
           - Added focused local-runtime coverage for the delayed-feedback plist shape, auditable scheduler execution, delayed bounce capture after the interactive send session ends, and wrapper wiring around the new feedback-sync job.
-          - Regenerated `build-agent/reports/ba-10-acceptance-trace-matrix.json` and `.md`, removing the delayed-feedback scheduling blocker and raising the overall matrix to 189 implemented / 9 partial / 14 gap scenarios.
+          - Added conservative sleep/wake recovery detection in `job_hunt_copilot.local_runtime.execute_supervisor_heartbeat`, so supervisor heartbeats now check `pmset -g log` first, persist detected Sleep/Wake/DarkWake evidence into canonical control-state metadata, and fall back to a >1 hour supervisor-cycle gap heuristic when explicit power-event lines are unavailable.
+          - Added focused local-runtime regression coverage for both explicit `pmset` wake evidence and the >1 hour fallback-gap recovery path, then regenerated `build-agent/reports/ba-10-acceptance-trace-matrix.json` and `.md` so the sleep/wake recovery scenario is now implemented and the overall matrix now reports 190 implemented / 8 partial / 14 gap scenarios.
         validation:
           - "`python3.11 -m py_compile job_hunt_copilot/local_runtime.py job_hunt_copilot/acceptance_traceability.py job_hunt_copilot/runtime_pack.py job_hunt_copilot/paths.py scripts/ops/materialize_feedback_sync_plist.py scripts/ops/run_feedback_sync.py tests/test_local_runtime.py`"
           - "`zsh -n bin/jhc-agent-start bin/jhc-agent-stop bin/jhc-agent-cycle bin/jhc-feedback-sync-cycle bin/jhc-chat`"
@@ -929,14 +930,13 @@ epics:
           - downstream supervisor action-catalog orchestration beyond `lead_handoff`
           - chat review/control behavior and idle-timeout resume
           - maintenance automation
-          - sleep/wake recovery
           - posting-abandon control
 
 current_focus:
   epic_id: BA-10
   slice_id: BA-10-S3
   owner_role: quality-engineer
-  reason: BA-10-S3 safety/privacy hardening and delayed-feedback scheduler wiring are now landed and the trace matrix is at 189 implemented / 9 partial / 14 gap scenarios, so the highest-value remaining work is blocker burn-down across downstream supervisor orchestration, chat review/control, maintenance automation, sleep/wake recovery, and posting-abandon control.
+  reason: BA-10-S3 safety/privacy hardening, delayed-feedback scheduler wiring, and sleep/wake recovery detection are now landed and the trace matrix is at 190 implemented / 8 partial / 14 gap scenarios, so the highest-value remaining work is blocker burn-down across downstream supervisor orchestration, chat review/control, maintenance automation, and posting-abandon control.
   exit_criteria:
     - remaining BA-10 trace-matrix gaps are either fixed or explicitly retained with fresh evidence
     - targeted regression coverage exists for retry/idempotency edges plus any blocker confirmation work touched during hardening
@@ -955,7 +955,7 @@ known_blockers:
     status: open
     severity: high
     owner_role: quality-engineer
-    summary: "The regenerated BA-10 trace matrix now reports 189 implemented / 9 partial / 14 gap scenarios; safety/privacy hardening plus delayed-feedback scheduler wiring are closed, but unresolved current-build gaps remain across downstream supervisor orchestration, chat review/control behavior, maintenance automation, sleep/wake recovery, and posting-abandon control."
+    summary: "The regenerated BA-10 trace matrix now reports 190 implemented / 8 partial / 14 gap scenarios; safety/privacy hardening, delayed-feedback scheduler wiring, and sleep/wake recovery are closed, but unresolved current-build gaps remain across downstream supervisor orchestration, chat review/control behavior, maintenance automation, and posting-abandon control."
     evidence:
       - build-agent/reports/ba-10-acceptance-trace-matrix.json
       - build-agent/reports/ba-10-acceptance-trace-matrix.md

@@ -3,8 +3,8 @@
   "feature_path": "prd/test-spec.feature",
   "scenario_count": 214,
   "status_counts": {
-    "implemented": 189,
-    "partial": 9,
+    "implemented": 190,
+    "partial": 8,
     "gap": 14,
     "deferred_optional": 1,
     "excluded_from_required_acceptance": 1
@@ -3714,8 +3714,8 @@
       ],
       "note": "The durable supervisor core is real and tested, but its autonomous action catalog is still intentionally narrow and the richer chat or maintenance runtime remains incomplete.",
       "status_counts": {
-        "implemented": 17,
-        "partial": 5,
+        "implemented": 18,
+        "partial": 4,
         "gap": 11,
         "deferred_optional": 0,
         "excluded_from_required_acceptance": 0
@@ -4343,7 +4343,7 @@
         {
           "name": "Current macOS sleep or wake detection uses pmset logs first and conservative fallback second",
           "scenario_line": 1258,
-          "status": "partial",
+          "status": "implemented",
           "owner_role": "build-lead",
           "epic_ids": [
             "BA-02",
@@ -4366,10 +4366,8 @@
             "tests/test_local_runtime.py",
             "tests/test_runtime_pack.py"
           ],
-          "gap_ids": [
-            "BA10_SLEEP_WAKE_RECOVERY"
-          ],
-          "note": "The intended detection method is recorded in supervisor-cycle metadata, but the actual sleep or wake recovery logic is not implemented yet."
+          "gap_ids": [],
+          "note": "`job_hunt_copilot.local_runtime.execute_supervisor_heartbeat` now checks `pmset -g log` first, records detected Sleep/Wake/DarkWake evidence into canonical control-state metadata, and falls back to a >1 hour supervisor-cycle gap heuristic when explicit power-event lines are unavailable."
         },
         {
           "name": "Default change summaries cover activity since the last completed expert review",
@@ -6197,9 +6195,7 @@
       "title": "Sleep and wake recovery is not implemented beyond metadata",
       "reason": "Supervisor cycles record the intended sleep/wake detection method, but the actual pmset-log parsing and conservative fallback logic have not been implemented.",
       "next_slice": "BA-10-S3",
-      "scenario_names": [
-        "Current macOS sleep or wake detection uses pmset logs first and conservative fallback second"
-      ]
+      "scenario_names": []
     },
     {
       "gap_id": "BA10_POSTING_ABANDON_CONTROL",

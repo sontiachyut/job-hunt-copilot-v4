@@ -3,8 +3,8 @@
 - Feature file: `prd/test-spec.feature`
 - Scenario count: `214`
 - Status counts:
-  - `implemented`: `189`
-  - `partial`: `9`
+  - `implemented`: `190`
+  - `partial`: `8`
   - `gap`: `14`
   - `deferred_optional`: `1`
   - `excluded_from_required_acceptance`: `1`
@@ -22,7 +22,7 @@
 | Email Discovery behavior | outreach-engineer | 17 | 0 | 0 | 0 | 0 |
 | Email Drafting and Sending behavior | outreach-engineer | 14 | 0 | 0 | 0 | 0 |
 | Delivery Feedback behavior | outreach-engineer | 11 | 0 | 0 | 0 | 0 |
-| Supervisor Agent behavior | build-lead | 17 | 5 | 11 | 0 | 0 |
+| Supervisor Agent behavior | build-lead | 18 | 4 | 11 | 0 | 0 |
 | Review surfaces and chat-based control | quality-engineer | 6 | 0 | 1 | 0 | 0 |
 | Current-build orchestration remains sequential | build-lead | 19 | 2 | 1 | 0 | 0 |
 | LinkedIn Scraping acceptance | ingestion-engineer | 12 | 0 | 0 | 0 | 0 |
@@ -71,12 +71,6 @@
 - Reason: Explicit-close and explicit-resume paths exist, but unexpected `jhc-chat` exits still require a later explicit resume because automatic idle-timeout recovery is not implemented.
 - Scenarios: `1`
   - Expert-interaction resume follows explicit close, explicit resume, or safe idle timeout
-
-### BA10_SLEEP_WAKE_RECOVERY: Sleep and wake recovery is not implemented beyond metadata
-- Next slice: `BA-10-S3`
-- Reason: Supervisor cycles record the intended sleep/wake detection method, but the actual pmset-log parsing and conservative fallback logic have not been implemented.
-- Scenarios: `1`
-  - Current macOS sleep or wake detection uses pmset logs first and conservative fallback second
 
 ### BA10_POSTING_ABANDON_CONTROL: Posting-abandon control surface is missing
 - Next slice: `BA-10-S3`

@@ -7,8 +7,9 @@ import subprocess
 import sys
 from pathlib import Path
 
+import job_hunt_copilot.local_runtime as local_runtime
 from job_hunt_copilot.delivery_feedback import DeliveryFeedbackSignal
-from job_hunt_copilot.local_runtime import execute_delayed_feedback_sync
+from job_hunt_copilot.local_runtime import execute_delayed_feedback_sync, execute_supervisor_heartbeat
 from tests.support import create_minimal_project
 
 
@@ -29,6 +30,20 @@ def connect_database(db_path: Path) -> sqlite3.Connection:
     connection.row_factory = sqlite3.Row
     connection.execute("PRAGMA foreign_keys = ON;")
     return connection
+
+
+def make_command_result(
+    *,
+    stdout: str = "",
+    stderr: str = "",
+    returncode: int = 0,
+) -> subprocess.CompletedProcess[str]:
+    return subprocess.CompletedProcess(
+        args=["mocked-command"],
+        returncode=returncode,
+        stdout=stdout,
+        stderr=stderr,
+    )
 
 
 class FakeMailboxFeedbackObserver:
@@ -293,6 +308,176 @@ def test_run_supervisor_cycle_script_records_no_work_launchd_cycle(tmp_path):
         "trigger_type": "launchd_heartbeat",
         "scheduler_name": "launchd",
         "result": "no_work",
+    }
+
+
+def test_execute_supervisor_heartbeat_prefers_pmset_events_for_recovery_detection(
+    tmp_path,
+    monkeypatch,
+):
+    project_root = tmp_path / "repo"
+    project_root.mkdir()
+    create_minimal_project(project_root)
+
+    run_script(
+        "scripts/ops/control_agent.py",
+        "start",
+        "--project-root",
+        str(project_root),
+        "--manual-command",
+        "jhc-agent-start",
+    )
+
+    def install_pmset_responses(*, log_text: str) -> None:
+        def fake_run_system_command(args: list[str]) -> subprocess.CompletedProcess[str]:
+            if args == ["pmset", "-g", "uuid"]:
+                return make_command_result(stdout="6A16BAEF-7D6D-4E47-AEEE-19209976BB89\n")
+            if args == ["pmset", "-g", "log"]:
+                return make_command_result(stdout=log_text)
+            raise AssertionError(f"Unexpected system command: {args!r}")
+
+        monkeypatch.setattr(local_runtime, "_run_system_command", fake_run_system_command)
+
+    install_pmset_responses(log_text="")
+    execute_supervisor_heartbeat(
+        project_root=project_root,
+        started_at="2026-04-07T09:00:00Z",
+    )
+
+    install_pmset_responses(
+        log_text=(
+            "2026-04-07 01:55:00 -0700 Assertions PID 123(Test) Created Noop\n"
+            "2026-04-07 02:10:00 -0700 Wake from Normal Sleep [CDNVA] : due to EC.LidOpen\n"
+        )
+    )
+    report = execute_supervisor_heartbeat(
+        project_root=project_root,
+        started_at="2026-04-07T09:15:00Z",
+    )
+
+    connection = connect_database(project_root / "job_hunt_copilot.db")
+    cycle_row = connection.execute(
+        """
+        SELECT sleep_wake_detection_method, sleep_wake_event_ref
+        FROM supervisor_cycles
+        ORDER BY started_at DESC, supervisor_cycle_id DESC
+        LIMIT 1
+        """
+    ).fetchone()
+    control_rows = connection.execute(
+        """
+        SELECT control_key, control_value
+        FROM agent_control_state
+        WHERE control_key IN (
+          'last_sleep_wake_check_at',
+          'last_seen_sleep_event_at',
+          'last_seen_wake_event_at',
+          'last_sleep_wake_event_ref'
+        )
+        ORDER BY control_key
+        """
+    ).fetchall()
+    connection.close()
+
+    assert report["cycle"]["sleep_wake_detection_method"] == "pmset_log"
+    assert report["sleep_wake_recovery_context"] == {
+        "detection_method": "pmset_log",
+        "event_type": "Wake",
+        "event_timestamp": "2026-04-07T09:10:00Z",
+        "event_ref": "pmset:6A16BAEF-7D6D-4E47-AEEE-19209976BB89:wake:2026-04-07T09:10:00Z",
+        "pmset_uuid": "6A16BAEF-7D6D-4E47-AEEE-19209976BB89",
+        "source_line": "2026-04-07 02:10:00 -0700 Wake from Normal Sleep [CDNVA] : due to EC.LidOpen",
+    }
+    assert dict(cycle_row) == {
+        "sleep_wake_detection_method": "pmset_log",
+        "sleep_wake_event_ref": "pmset:6A16BAEF-7D6D-4E47-AEEE-19209976BB89:wake:2026-04-07T09:10:00Z",
+    }
+    assert dict(control_rows) == {
+        "last_seen_sleep_event_at": "",
+        "last_seen_wake_event_at": "2026-04-07T09:10:00Z",
+        "last_sleep_wake_check_at": "2026-04-07T09:15:00Z",
+        "last_sleep_wake_event_ref": "pmset:6A16BAEF-7D6D-4E47-AEEE-19209976BB89:wake:2026-04-07T09:10:00Z",
+    }
+
+
+def test_execute_supervisor_heartbeat_uses_gap_fallback_when_pmset_has_no_new_events(
+    tmp_path,
+    monkeypatch,
+):
+    project_root = tmp_path / "repo"
+    project_root.mkdir()
+    create_minimal_project(project_root)
+
+    run_script(
+        "scripts/ops/control_agent.py",
+        "start",
+        "--project-root",
+        str(project_root),
+        "--manual-command",
+        "jhc-agent-start",
+    )
+
+    def fake_run_system_command(args: list[str]) -> subprocess.CompletedProcess[str]:
+        if args == ["pmset", "-g", "uuid"]:
+            return make_command_result(stdout="6A16BAEF-7D6D-4E47-AEEE-19209976BB89\n")
+        if args == ["pmset", "-g", "log"]:
+            return make_command_result(stdout="")
+        raise AssertionError(f"Unexpected system command: {args!r}")
+
+    monkeypatch.setattr(local_runtime, "_run_system_command", fake_run_system_command)
+
+    execute_supervisor_heartbeat(
+        project_root=project_root,
+        started_at="2026-04-07T09:00:00Z",
+    )
+    report = execute_supervisor_heartbeat(
+        project_root=project_root,
+        started_at="2026-04-07T10:45:00Z",
+    )
+
+    connection = connect_database(project_root / "job_hunt_copilot.db")
+    cycle_row = connection.execute(
+        """
+        SELECT sleep_wake_detection_method, sleep_wake_event_ref
+        FROM supervisor_cycles
+        ORDER BY started_at DESC, supervisor_cycle_id DESC
+        LIMIT 1
+        """
+    ).fetchone()
+    control_rows = connection.execute(
+        """
+        SELECT control_key, control_value
+        FROM agent_control_state
+        WHERE control_key IN (
+          'last_sleep_wake_check_at',
+          'last_seen_sleep_event_at',
+          'last_seen_wake_event_at',
+          'last_sleep_wake_event_ref'
+        )
+        ORDER BY control_key
+        """
+    ).fetchall()
+    connection.close()
+
+    assert report["cycle"]["sleep_wake_detection_method"] == "gap_fallback"
+    assert report["sleep_wake_recovery_context"] == {
+        "detection_method": "gap_fallback",
+        "event_type": "GapRecovery",
+        "event_timestamp": "2026-04-07T10:45:00Z",
+        "event_ref": "gap_fallback:2026-04-07T09:00:00Z->2026-04-07T10:45:00Z",
+        "reference_cycle_at": "2026-04-07T09:00:00Z",
+        "gap_seconds": 6300,
+        "fallback_gap_hours": 1,
+    }
+    assert dict(cycle_row) == {
+        "sleep_wake_detection_method": "gap_fallback",
+        "sleep_wake_event_ref": "gap_fallback:2026-04-07T09:00:00Z->2026-04-07T10:45:00Z",
+    }
+    assert dict(control_rows) == {
+        "last_seen_sleep_event_at": "",
+        "last_seen_wake_event_at": "",
+        "last_sleep_wake_check_at": "2026-04-07T10:45:00Z",
+        "last_sleep_wake_event_ref": "gap_fallback:2026-04-07T09:00:00Z->2026-04-07T10:45:00Z",
     }
 
 

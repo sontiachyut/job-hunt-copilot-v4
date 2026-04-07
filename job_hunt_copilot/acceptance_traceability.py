@@ -591,9 +591,8 @@ _register_override(
 )
 _register_override(
     scenarios=("Current macOS sleep or wake detection uses pmset logs first and conservative fallback second",),
-    status=STATUS_PARTIAL,
-    gap_ids=("BA10_SLEEP_WAKE_RECOVERY",),
-    note="The intended detection method is recorded in supervisor-cycle metadata, but the actual sleep or wake recovery logic is not implemented yet.",
+    status=STATUS_IMPLEMENTED,
+    note="`job_hunt_copilot.local_runtime.execute_supervisor_heartbeat` now checks `pmset -g log` first, records detected Sleep/Wake/DarkWake evidence into canonical control-state metadata, and falls back to a >1 hour supervisor-cycle gap heuristic when explicit power-event lines are unavailable.",
 )
 _register_override(
     scenarios=(
