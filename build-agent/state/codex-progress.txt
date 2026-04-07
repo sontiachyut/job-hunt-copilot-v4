@@ -194,3 +194,11 @@ Suggested format per session:
 - key files changed: job_hunt_copilot/email_discovery.py; job_hunt_copilot/paths.py; tests/test_email_discovery.py; README.md; docs/ARCHITECTURE.md; build-agent/state/build-board.yaml; build-agent/state/build-journal.md; build-agent/state/codex-progress.txt; build-agent/state/IMPLEMENTATION_PLAN.md
 - validation summary: `python3.11 -m py_compile job_hunt_copilot/email_discovery.py job_hunt_copilot/paths.py tests/test_email_discovery.py` passed; `python3.11 -m pytest tests/test_email_discovery.py` passed (7 tests); full `python3.11 -m pytest` passed (77 tests); the new enrichment slice now limits Apollo `people/match` calls to canonical shortlisted contacts that still need clearer identity or usable emails, persists best-effort `recipient_profile.json` snapshots when LinkedIn public-profile extraction succeeds, removes terminal sparse dead ends from canonical shortlist state, and promotes postings into `ready_for_outreach` once the minimum linked-contact email prerequisites are satisfied
 - next recommended slice: BA-07-S3 Email discovery cascade and budget tracking
+
+- 2026-04-06 21:50:14 MST
+- role owner: outreach-engineer
+- slice attempted: BA-07-S3 Email discovery cascade and budget tracking
+- result: done
+- key files changed: job_hunt_copilot/email_discovery.py; tests/test_email_discovery.py; README.md; docs/ARCHITECTURE.md; build-agent/state/build-board.yaml; build-agent/state/build-journal.md; build-agent/state/codex-progress.txt; build-agent/state/IMPLEMENTATION_PLAN.md
+- validation summary: `python3.11 -m py_compile job_hunt_copilot/email_discovery.py tests/test_email_discovery.py` passed; `python3.11 -m pytest tests/test_email_discovery.py` passed (13 tests); full `python3.11 -m pytest` passed (83 tests); the discovery runtime now runs the ordered `prospeo -> getprospect -> hunter` cascade for linked contacts that still need usable emails, persists one-row-per-cascade `discovery_attempts` plus `provider_budget_state` and `provider_budget_events`, reuses clearly identified working emails, handles bounced-provider retries safely, emits `discovery_result.json`, and leaves unresolved or exhausted contacts queryable through canonical review views
+- next recommended slice: BA-08-S1 Send-set readiness and pacing selection

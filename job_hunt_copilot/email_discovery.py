@@ -4,7 +4,7 @@ import html
 import json
 import re
 import sqlite3
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from pathlib import Path
 from typing import Any, Mapping, Protocol, Sequence
 from urllib.error import HTTPError, URLError
@@ -19,7 +19,11 @@ from .records import lifecycle_timestamps, new_canonical_id, now_utc_iso
 EMAIL_DISCOVERY_COMPONENT = "email_discovery"
 PEOPLE_SEARCH_ARTIFACT_TYPE = "people_search_result"
 RECIPIENT_PROFILE_ARTIFACT_TYPE = "recipient_profile"
+DISCOVERY_RESULT_ARTIFACT_TYPE = "discovery_result"
 PROVIDER_NAME_APOLLO = "apollo"
+PROVIDER_NAME_PROSPEO = "prospeo"
+PROVIDER_NAME_GETPROSPECT = "getprospect"
+PROVIDER_NAME_HUNTER = "hunter"
 
 JOB_POSTING_STATUS_REQUIRES_CONTACTS = "requires_contacts"
 JOB_POSTING_STATUS_READY_FOR_OUTREACH = "ready_for_outreach"
@@ -27,6 +31,7 @@ RESUME_REVIEW_STATUS_APPROVED = "approved"
 
 CONTACT_STATUS_IDENTIFIED = "identified"
 CONTACT_STATUS_WORKING_EMAIL_FOUND = "working_email_found"
+CONTACT_STATUS_EXHAUSTED = "exhausted"
 POSTING_CONTACT_STATUS_IDENTIFIED = "identified"
 POSTING_CONTACT_STATUS_SHORTLISTED = "shortlisted"
 POSTING_CONTACT_STATUS_OUTREACH_IN_PROGRESS = "outreach_in_progress"
@@ -42,9 +47,31 @@ RECIPIENT_TYPE_FOUNDER = "founder"
 
 DEFAULT_SHORTLIST_LIMIT = 6
 
+DISCOVERY_OUTCOME_FOUND = "found"
+DISCOVERY_OUTCOME_NOT_FOUND = "not_found"
+DISCOVERY_OUTCOME_DOMAIN_UNRESOLVED = "domain_unresolved"
+DISCOVERY_OUTCOME_INVALID_API_KEY = "invalid_api_key"
+DISCOVERY_OUTCOME_RATE_LIMITED = "rate_limited"
+DISCOVERY_OUTCOME_QUOTA_EXHAUSTED = "quota_exhausted"
+DISCOVERY_OUTCOME_NETWORK_ERROR = "network_error"
+DISCOVERY_OUTCOME_PROVIDER_ERROR = "provider_error"
+DISCOVERY_OUTCOME_SKIPPED_BOUNCED_PROVIDER = "skipped_bounced_provider"
+DISCOVERY_OUTCOME_BOUNCED_MATCH = "bounced_match"
+
+EMAIL_FINDER_PROVIDER_ORDER = (
+    PROVIDER_NAME_PROSPEO,
+    PROVIDER_NAME_GETPROSPECT,
+    PROVIDER_NAME_HUNTER,
+)
+
 APOLLO_COMPANY_SEARCH_URL = "https://api.apollo.io/api/v1/mixed_companies/search"
 APOLLO_PEOPLE_SEARCH_URL = "https://api.apollo.io/api/v1/mixed_people/api_search"
 APOLLO_PEOPLE_ENRICH_URL = "https://api.apollo.io/api/v1/people/match"
+PROSPEO_ENRICH_URL = "https://api.prospeo.io/enrich-person"
+PROSPEO_ACCOUNT_URL = "https://api.prospeo.io/account-information"
+GETPROSPECT_EMAIL_FINDER_URL = "https://api.getprospect.com/v2/email-finder"
+HUNTER_EMAIL_FINDER_URL = "https://api.hunter.io/v2/email-finder"
+HUNTER_ACCOUNT_URL = "https://api.hunter.io/v2/account"
 
 OBFUSCATED_NAME_RE = re.compile(r"[*•·]|(?:[A-Za-z]{2,}\*{2,})|(?:\*{2,}[A-Za-z]{2,})")
 EMAIL_RE = re.compile(r"^[^@\s]+@[^@\s]+\.[^@\s]+$")
@@ -351,6 +378,62 @@ class ContactEnrichmentRunResult:
     posting_status: str
 
 
+@dataclass(frozen=True)
+class EmailDiscoveryProviderResult:
+    provider_name: str
+    outcome: str
+    email: str | None = None
+    provider_verification_status: str | None = None
+    provider_score: str | None = None
+    detected_pattern: str | None = None
+    remaining_credits: int | None = None
+    credit_limit: int | None = None
+    reset_at: str | None = None
+    message: str | None = None
+
+    @classmethod
+    def from_mapping(
+        cls,
+        payload: Mapping[str, Any],
+        *,
+        provider_name: str,
+    ) -> "EmailDiscoveryProviderResult":
+        return cls(
+            provider_name=provider_name,
+            outcome=_normalize_optional_text(payload.get("outcome")) or DISCOVERY_OUTCOME_PROVIDER_ERROR,
+            email=_normalize_optional_text(payload.get("email")),
+            provider_verification_status=_normalize_optional_text(payload.get("provider_verification_status")),
+            provider_score=_normalize_optional_text(payload.get("provider_score")),
+            detected_pattern=_normalize_optional_text(payload.get("detected_pattern")),
+            remaining_credits=_normalize_optional_int(payload.get("remaining_credits")),
+            credit_limit=_normalize_optional_int(payload.get("credit_limit")),
+            reset_at=_normalize_optional_text(payload.get("reset_at")),
+            message=_normalize_optional_text(payload.get("message")),
+        )
+
+    @property
+    def is_found(self) -> bool:
+        return self.outcome == DISCOVERY_OUTCOME_FOUND and _is_usable_email(self.email)
+
+
+@dataclass(frozen=True)
+class EmailDiscoveryRunResult:
+    job_posting_id: str
+    lead_id: str
+    contact_id: str
+    job_posting_contact_id: str
+    discovery_attempt_id: str
+    artifact_path: Path
+    outcome: str
+    provider_name: str | None
+    email: str | None
+    attempted_provider_names: tuple[str, ...]
+    posting_status: str
+    contact_status: str
+    link_level_status: str
+    reused_existing_email: bool
+
+
 class ApolloPeopleSearchProvider(Protocol):
     def resolve_company(
         self,
@@ -395,6 +478,86 @@ class RecipientProfileExtractor(Protocol):
         ...
 
 
+class EmailFinderProvider(Protocol):
+    provider_name: str
+    requires_domain: bool
+
+    def discover_email(
+        self,
+        *,
+        contact: Mapping[str, Any],
+        posting: Mapping[str, Any],
+        company_domain: str | None,
+        company_name: str | None,
+    ) -> EmailDiscoveryProviderResult | Mapping[str, Any]:
+        ...
+
+
+def _request_json(
+    request: Request,
+    *,
+    timeout_seconds: float,
+    provider_label: str,
+    http_error_map: Mapping[int, str],
+) -> Mapping[str, Any]:
+    try:
+        with urlopen(request, timeout=timeout_seconds) as response:
+            response_body = response.read().decode("utf-8")
+            status_code = response.getcode()
+    except HTTPError as exc:  # pragma: no cover - covered via normalization logic only
+        reason_code = http_error_map.get(exc.code, DISCOVERY_OUTCOME_PROVIDER_ERROR)
+        raise EmailDiscoveryError(
+            f"{provider_label} request failed with HTTP {exc.code}.",
+            reason_code=reason_code,
+        ) from exc
+    except URLError as exc:  # pragma: no cover - covered via normalization logic only
+        raise EmailDiscoveryError(
+            f"{provider_label} request failed with a network error.",
+            reason_code=DISCOVERY_OUTCOME_NETWORK_ERROR,
+        ) from exc
+
+    if status_code != 200:  # pragma: no cover - defensive guard
+        raise EmailDiscoveryError(
+            f"{provider_label} request returned unexpected status {status_code}.",
+            reason_code=DISCOVERY_OUTCOME_PROVIDER_ERROR,
+        )
+    try:
+        payload = json.loads(response_body)
+    except json.JSONDecodeError as exc:  # pragma: no cover - defensive guard
+        raise EmailDiscoveryError(
+            f"{provider_label} returned malformed JSON.",
+            reason_code=DISCOVERY_OUTCOME_PROVIDER_ERROR,
+        ) from exc
+    if not isinstance(payload, Mapping):
+        raise EmailDiscoveryError(
+            f"{provider_label} returned a malformed top-level response body.",
+            reason_code=DISCOVERY_OUTCOME_PROVIDER_ERROR,
+        )
+    return payload
+
+
+def _load_provider_secret_payload(
+    paths: ProjectPaths,
+    *,
+    filename: str,
+    provider_label: str,
+    reason_code_prefix: str,
+) -> Mapping[str, Any]:
+    secret_path = paths.secrets_dir / filename
+    if not secret_path.exists():
+        raise EmailDiscoveryError(
+            f"{provider_label} secret file was not found at `{secret_path}`.",
+            reason_code=f"missing_{reason_code_prefix}_secret",
+        )
+    payload = json.loads(secret_path.read_text(encoding="utf-8"))
+    if not isinstance(payload, Mapping):
+        raise EmailDiscoveryError(
+            f"{provider_label} secret file must contain a JSON object.",
+            reason_code=f"missing_{reason_code_prefix}_secret",
+        )
+    return payload
+
+
 class ConfiguredApolloClient:
     def __init__(self, *, api_key: str, timeout_seconds: float = 30.0) -> None:
         if not api_key.strip():
@@ -404,13 +567,12 @@ class ConfiguredApolloClient:
 
     @classmethod
     def from_paths(cls, paths: ProjectPaths) -> "ConfiguredApolloClient":
-        secret_path = paths.secrets_dir / "apollo_keys.json"
-        if not secret_path.exists():
-            raise EmailDiscoveryError(
-                f"Apollo secret file was not found at `{secret_path}`.",
-                reason_code="missing_apollo_secret",
-            )
-        payload = json.loads(secret_path.read_text(encoding="utf-8"))
+        payload = _load_provider_secret_payload(
+            paths,
+            filename="apollo_keys.json",
+            provider_label="Apollo",
+            reason_code_prefix="apollo",
+        )
         api_key = _normalize_optional_text(payload.get("api_key"))
         if api_key is None:
             raise EmailDiscoveryError(
@@ -542,44 +704,40 @@ class ConfiguredApolloClient:
             },
             method="POST",
         )
-        try:
-            with urlopen(request, timeout=self.timeout_seconds) as response:
-                response_body = response.read().decode("utf-8")
-                status_code = response.getcode()
-        except HTTPError as exc:  # pragma: no cover - covered via normalization logic only
-            reason_code = {
-                401: "invalid_api_key",
+        return _request_json(
+            request,
+            timeout_seconds=self.timeout_seconds,
+            provider_label="Apollo",
+            http_error_map={
+                401: DISCOVERY_OUTCOME_INVALID_API_KEY,
                 403: "plan_restricted",
-                429: "rate_limited",
-            }.get(exc.code, "provider_error")
-            raise EmailDiscoveryError(
-                f"Apollo request failed with HTTP {exc.code}.",
-                reason_code=reason_code,
-            ) from exc
-        except URLError as exc:  # pragma: no cover - covered via normalization logic only
-            raise EmailDiscoveryError(
-                "Apollo request failed with a network error.",
-                reason_code="network_error",
-            ) from exc
+                429: DISCOVERY_OUTCOME_RATE_LIMITED,
+            },
+        )
 
-        if status_code != 200:  # pragma: no cover - defensive guard
-            raise EmailDiscoveryError(
-                f"Apollo request returned unexpected status {status_code}.",
-                reason_code="provider_error",
-            )
-        try:
-            payload = json.loads(response_body)
-        except json.JSONDecodeError as exc:  # pragma: no cover - defensive guard
-            raise EmailDiscoveryError(
-                "Apollo returned malformed JSON.",
-                reason_code="provider_error",
-            ) from exc
-        if not isinstance(payload, Mapping):
-            raise EmailDiscoveryError(
-                "Apollo returned a malformed top-level response body.",
-                reason_code="provider_error",
-            )
-        return payload
+    def _post_query(self, url: str, query_params: Mapping[str, Any]) -> Mapping[str, Any]:
+        request_url = f"{url}?{urlencode(query_params, doseq=True)}"
+        request = Request(
+            request_url,
+            data=b"",
+            headers={
+                "Accept": "application/json",
+                "Content-Type": "application/json",
+                "Cache-Control": "no-cache",
+                "x-api-key": self.api_key,
+            },
+            method="POST",
+        )
+        return _request_json(
+            request,
+            timeout_seconds=self.timeout_seconds,
+            provider_label="Apollo",
+            http_error_map={
+                401: DISCOVERY_OUTCOME_INVALID_API_KEY,
+                403: "plan_restricted",
+                429: DISCOVERY_OUTCOME_RATE_LIMITED,
+            },
+        )
 
 
 class LinkedInPublicProfileExtractor:
@@ -626,57 +784,365 @@ class LinkedInPublicProfileExtractor:
             "profile": profile,
         }
 
-    def _post_query(self, url: str, query_params: Mapping[str, Any]) -> Mapping[str, Any]:
-        request_url = f"{url}?{urlencode(query_params, doseq=True)}"
+
+class ConfiguredProspeoClient:
+    provider_name = PROVIDER_NAME_PROSPEO
+    requires_domain = True
+
+    def __init__(self, *, api_key: str, timeout_seconds: float = 30.0) -> None:
+        if not api_key.strip():
+            raise EmailDiscoveryError("Prospeo API key is required for person-scoped email discovery.")
+        self.api_key = api_key.strip()
+        self.timeout_seconds = timeout_seconds
+
+    @classmethod
+    def from_paths(cls, paths: ProjectPaths) -> "ConfiguredProspeoClient":
+        payload = _load_provider_secret_payload(
+            paths,
+            filename="prospeo_keys.json",
+            provider_label="Prospeo",
+            reason_code_prefix="prospeo",
+        )
+        api_key = _normalize_optional_text(payload.get("api_key"))
+        if api_key is None:
+            raise EmailDiscoveryError(
+                "Prospeo secret file does not include `api_key`.",
+                reason_code="missing_prospeo_api_key",
+            )
+        return cls(api_key=api_key)
+
+    def discover_email(
+        self,
+        *,
+        contact: Mapping[str, Any],
+        posting: Mapping[str, Any],
+        company_domain: str | None,
+        company_name: str | None,
+    ) -> EmailDiscoveryProviderResult:
+        linkedin_url = _normalize_optional_text(contact.get("linkedin_url"))
+        first_name, last_name = _contact_name_parts(contact)
+        if linkedin_url:
+            payload = {
+                "only_verified_email": True,
+                "data": {"linkedin_url": linkedin_url},
+            }
+        elif company_domain and first_name and last_name:
+            payload = {
+                "only_verified_email": True,
+                "data": {
+                    "first_name": first_name,
+                    "last_name": last_name,
+                    "company_website": company_domain,
+                },
+            }
+        elif company_domain is None:
+            return EmailDiscoveryProviderResult(
+                provider_name=self.provider_name,
+                outcome=DISCOVERY_OUTCOME_DOMAIN_UNRESOLVED,
+            )
+        else:
+            return EmailDiscoveryProviderResult(
+                provider_name=self.provider_name,
+                outcome=DISCOVERY_OUTCOME_NOT_FOUND,
+            )
+
+        try:
+            response = self._post_json(PROSPEO_ENRICH_URL, payload)
+        except EmailDiscoveryError as exc:
+            return EmailDiscoveryProviderResult(
+                provider_name=self.provider_name,
+                outcome=exc.reason_code or DISCOVERY_OUTCOME_PROVIDER_ERROR,
+                message=str(exc),
+            )
+
+        result = _normalize_prospeo_discovery_result(response, company_domain=company_domain)
+        budget_snapshot = self._fetch_budget_snapshot()
+        if budget_snapshot:
+            result = replace(
+                result,
+                remaining_credits=budget_snapshot["remaining_credits"],
+                credit_limit=budget_snapshot["credit_limit"],
+                reset_at=budget_snapshot["reset_at"],
+            )
+        return result
+
+    def _post_json(self, url: str, payload: Mapping[str, Any]) -> Mapping[str, Any]:
         request = Request(
-            request_url,
-            data=b"",
+            url,
+            data=json.dumps(payload).encode("utf-8"),
             headers={
                 "Accept": "application/json",
                 "Content-Type": "application/json",
-                "Cache-Control": "no-cache",
-                "x-api-key": self.api_key,
+                "X-KEY": self.api_key,
             },
             method="POST",
         )
-        try:
-            with urlopen(request, timeout=self.timeout_seconds) as response:
-                response_body = response.read().decode("utf-8")
-                status_code = response.getcode()
-        except HTTPError as exc:  # pragma: no cover - covered via normalization logic only
-            reason_code = {
-                401: "invalid_api_key",
-                403: "plan_restricted",
-                429: "rate_limited",
-            }.get(exc.code, "provider_error")
-            raise EmailDiscoveryError(
-                f"Apollo request failed with HTTP {exc.code}.",
-                reason_code=reason_code,
-            ) from exc
-        except URLError as exc:  # pragma: no cover - covered via normalization logic only
-            raise EmailDiscoveryError(
-                "Apollo request failed with a network error.",
-                reason_code="network_error",
-            ) from exc
+        return _request_json(
+            request,
+            timeout_seconds=self.timeout_seconds,
+            provider_label="Prospeo",
+            http_error_map={
+                401: DISCOVERY_OUTCOME_INVALID_API_KEY,
+                429: DISCOVERY_OUTCOME_RATE_LIMITED,
+            },
+        )
 
-        if status_code != 200:  # pragma: no cover - defensive guard
-            raise EmailDiscoveryError(
-                f"Apollo request returned unexpected status {status_code}.",
-                reason_code="provider_error",
-            )
+    def _fetch_budget_snapshot(self) -> dict[str, int | str | None] | None:
+        request = Request(
+            PROSPEO_ACCOUNT_URL,
+            headers={
+                "Accept": "application/json",
+                "X-KEY": self.api_key,
+            },
+            method="GET",
+        )
         try:
-            payload = json.loads(response_body)
-        except json.JSONDecodeError as exc:  # pragma: no cover - defensive guard
-            raise EmailDiscoveryError(
-                "Apollo returned malformed JSON.",
-                reason_code="provider_error",
-            ) from exc
-        if not isinstance(payload, Mapping):
-            raise EmailDiscoveryError(
-                "Apollo returned a malformed top-level response body.",
-                reason_code="provider_error",
+            payload = _request_json(
+                request,
+                timeout_seconds=self.timeout_seconds,
+                provider_label="Prospeo",
+                http_error_map={
+                    401: DISCOVERY_OUTCOME_INVALID_API_KEY,
+                    429: DISCOVERY_OUTCOME_RATE_LIMITED,
+                },
             )
-        return payload
+        except EmailDiscoveryError:
+            return None
+        return _extract_budget_snapshot(
+            payload,
+            remaining_paths=(
+                ("credits", "remaining"),
+                ("data", "credits", "remaining"),
+                ("remaining_credits",),
+                ("remaining",),
+            ),
+            limit_paths=(
+                ("credits", "limit"),
+                ("data", "credits", "limit"),
+                ("credit_limit",),
+                ("limit",),
+            ),
+            reset_paths=(
+                ("credits", "reset_at"),
+                ("data", "credits", "reset_at"),
+                ("reset_at",),
+                ("next_quota_renewal_date",),
+            ),
+        )
+
+
+class ConfiguredGetProspectClient:
+    provider_name = PROVIDER_NAME_GETPROSPECT
+    requires_domain = True
+
+    def __init__(self, *, api_key: str, timeout_seconds: float = 30.0) -> None:
+        if not api_key.strip():
+            raise EmailDiscoveryError("GetProspect API key is required for person-scoped email discovery.")
+        self.api_key = api_key.strip()
+        self.timeout_seconds = timeout_seconds
+
+    @classmethod
+    def from_paths(cls, paths: ProjectPaths) -> "ConfiguredGetProspectClient":
+        payload = _load_provider_secret_payload(
+            paths,
+            filename="getprospect_keys.json",
+            provider_label="GetProspect",
+            reason_code_prefix="getprospect",
+        )
+        api_key = _normalize_optional_text(payload.get("api_key"))
+        if api_key is None:
+            raise EmailDiscoveryError(
+                "GetProspect secret file does not include `api_key`.",
+                reason_code="missing_getprospect_api_key",
+            )
+        return cls(api_key=api_key)
+
+    def discover_email(
+        self,
+        *,
+        contact: Mapping[str, Any],
+        posting: Mapping[str, Any],
+        company_domain: str | None,
+        company_name: str | None,
+    ) -> EmailDiscoveryProviderResult:
+        full_name = _best_known_contact_name(contact)
+        if company_domain is None:
+            return EmailDiscoveryProviderResult(
+                provider_name=self.provider_name,
+                outcome=DISCOVERY_OUTCOME_DOMAIN_UNRESOLVED,
+            )
+        if full_name is None:
+            return EmailDiscoveryProviderResult(
+                provider_name=self.provider_name,
+                outcome=DISCOVERY_OUTCOME_NOT_FOUND,
+            )
+
+        query_params = {
+            "full_name": full_name,
+            "domain": company_domain,
+            "api_key": self.api_key,
+        }
+        request = Request(
+            f"{GETPROSPECT_EMAIL_FINDER_URL}?{urlencode(query_params)}",
+            headers={"Accept": "application/json"},
+            method="GET",
+        )
+        try:
+            response = _request_json(
+                request,
+                timeout_seconds=self.timeout_seconds,
+                provider_label="GetProspect",
+                http_error_map={
+                    401: DISCOVERY_OUTCOME_INVALID_API_KEY,
+                    429: DISCOVERY_OUTCOME_RATE_LIMITED,
+                },
+            )
+        except EmailDiscoveryError as exc:
+            return EmailDiscoveryProviderResult(
+                provider_name=self.provider_name,
+                outcome=exc.reason_code or DISCOVERY_OUTCOME_PROVIDER_ERROR,
+                message=str(exc),
+            )
+
+        return _normalize_getprospect_discovery_result(response, company_domain=company_domain)
+
+
+class ConfiguredHunterClient:
+    provider_name = PROVIDER_NAME_HUNTER
+    requires_domain = False
+
+    def __init__(self, *, api_keys: Sequence[str], timeout_seconds: float = 30.0) -> None:
+        normalized_keys = [key.strip() for key in api_keys if key and key.strip()]
+        if not normalized_keys:
+            raise EmailDiscoveryError("At least one Hunter API key is required for person-scoped email discovery.")
+        self.api_keys = tuple(normalized_keys)
+        self.timeout_seconds = timeout_seconds
+
+    @classmethod
+    def from_paths(cls, paths: ProjectPaths) -> "ConfiguredHunterClient":
+        payload = _load_provider_secret_payload(
+            paths,
+            filename="hunter_keys.json",
+            provider_label="Hunter",
+            reason_code_prefix="hunter",
+        )
+        keys_payload = payload.get("keys")
+        if isinstance(keys_payload, Sequence) and not isinstance(keys_payload, (str, bytes)):
+            api_keys = [_normalize_optional_text(value) or "" for value in keys_payload]
+        else:
+            api_key = _normalize_optional_text(payload.get("api_key"))
+            api_keys = [api_key or ""]
+        return cls(api_keys=api_keys)
+
+    def discover_email(
+        self,
+        *,
+        contact: Mapping[str, Any],
+        posting: Mapping[str, Any],
+        company_domain: str | None,
+        company_name: str | None,
+    ) -> EmailDiscoveryProviderResult:
+        first_name, last_name = _contact_name_parts(contact)
+        if first_name is None or last_name is None:
+            return EmailDiscoveryProviderResult(
+                provider_name=self.provider_name,
+                outcome=DISCOVERY_OUTCOME_NOT_FOUND,
+            )
+
+        last_result = EmailDiscoveryProviderResult(
+            provider_name=self.provider_name,
+            outcome=DISCOVERY_OUTCOME_PROVIDER_ERROR,
+        )
+        for api_key in self.api_keys:
+            query_params: dict[str, str] = {
+                "first_name": first_name,
+                "last_name": last_name,
+                "api_key": api_key,
+            }
+            if company_domain:
+                query_params["domain"] = company_domain
+            elif company_name:
+                query_params["company"] = company_name
+
+            request = Request(
+                f"{HUNTER_EMAIL_FINDER_URL}?{urlencode(query_params)}",
+                headers={"Accept": "application/json"},
+                method="GET",
+            )
+            try:
+                response = _request_json(
+                    request,
+                    timeout_seconds=self.timeout_seconds,
+                    provider_label="Hunter",
+                    http_error_map={
+                        401: DISCOVERY_OUTCOME_INVALID_API_KEY,
+                        403: DISCOVERY_OUTCOME_RATE_LIMITED,
+                        429: DISCOVERY_OUTCOME_QUOTA_EXHAUSTED,
+                    },
+                )
+                last_result = _normalize_hunter_discovery_result(response, company_domain=company_domain)
+            except EmailDiscoveryError as exc:
+                last_result = EmailDiscoveryProviderResult(
+                    provider_name=self.provider_name,
+                    outcome=exc.reason_code or DISCOVERY_OUTCOME_PROVIDER_ERROR,
+                    message=str(exc),
+                )
+
+            budget_snapshot = self._fetch_budget_snapshot(api_key)
+            if budget_snapshot:
+                last_result = replace(
+                    last_result,
+                    remaining_credits=budget_snapshot["remaining_credits"],
+                    credit_limit=budget_snapshot["credit_limit"],
+                    reset_at=budget_snapshot["reset_at"],
+                )
+            if last_result.outcome not in {
+                DISCOVERY_OUTCOME_INVALID_API_KEY,
+                DISCOVERY_OUTCOME_RATE_LIMITED,
+                DISCOVERY_OUTCOME_QUOTA_EXHAUSTED,
+            }:
+                return last_result
+        return last_result
+
+    def _fetch_budget_snapshot(self, api_key: str) -> dict[str, int | str | None] | None:
+        request = Request(
+            f"{HUNTER_ACCOUNT_URL}?{urlencode({'api_key': api_key})}",
+            headers={"Accept": "application/json"},
+            method="GET",
+        )
+        try:
+            payload = _request_json(
+                request,
+                timeout_seconds=self.timeout_seconds,
+                provider_label="Hunter",
+                http_error_map={
+                    401: DISCOVERY_OUTCOME_INVALID_API_KEY,
+                    403: DISCOVERY_OUTCOME_RATE_LIMITED,
+                    429: DISCOVERY_OUTCOME_QUOTA_EXHAUSTED,
+                },
+            )
+        except EmailDiscoveryError:
+            return None
+        return _extract_budget_snapshot(
+            payload,
+            remaining_paths=(
+                ("data", "calls", "searches", "remaining"),
+                ("data", "searches", "left"),
+                ("data", "available_searches"),
+                ("searches", "left"),
+            ),
+            limit_paths=(
+                ("data", "calls", "searches", "limit"),
+                ("data", "searches", "limit"),
+                ("data", "searches", "total"),
+                ("searches", "total"),
+            ),
+            reset_paths=(
+                ("data", "reset_date",),
+                ("data", "plan", "reset_date"),
+                ("reset_date",),
+            ),
+        )
 
 
 def run_apollo_people_search(
@@ -953,6 +1419,256 @@ def run_apollo_contact_enrichment(
         connection.close()
 
 
+def run_email_discovery_for_contact(
+    *,
+    project_root: Path | str,
+    job_posting_id: str,
+    contact_id: str,
+    providers: Sequence[EmailFinderProvider] | None = None,
+    current_time: str | None = None,
+) -> EmailDiscoveryRunResult:
+    paths = ProjectPaths.from_root(project_root)
+    connection = sqlite3.connect(paths.db_path)
+    connection.row_factory = sqlite3.Row
+    connection.execute("PRAGMA foreign_keys = ON;")
+
+    try:
+        target_row = _load_discovery_ready_contact_row(
+            connection,
+            job_posting_id=job_posting_id,
+            contact_id=contact_id,
+        )
+        timestamp = current_time or now_utc_iso()
+        discovery_attempt_id = new_canonical_id("discovery_attempts")
+        bounced_history = _load_bounced_contact_history(connection, contact_id=contact_id)
+
+        with connection:
+            cleared_bounced_email = _clear_bounced_working_email_if_needed(
+                connection,
+                target_row=target_row,
+                bounced_history=bounced_history,
+                current_time=timestamp,
+            )
+        if cleared_bounced_email:
+            target_row = _load_discovery_ready_contact_row(
+                connection,
+                job_posting_id=job_posting_id,
+                contact_id=contact_id,
+            )
+
+        reusable_email = _normalize_optional_text(target_row.get("current_working_email"))
+        provider_steps: list[dict[str, Any]] = []
+        attempted_provider_names: list[str] = []
+        reused_existing_email = False
+
+        latest_found_attempt = (
+            _load_latest_found_attempt_for_email(
+                connection,
+                contact_id=contact_id,
+                email=reusable_email,
+            )
+            if _is_usable_email(reusable_email) and reusable_email not in bounced_history["emails"]
+            else None
+        )
+        if latest_found_attempt is not None and reusable_email is not None:
+            reused_existing_email = True
+            final_result = EmailDiscoveryProviderResult(
+                provider_name=_normalize_optional_text(latest_found_attempt["provider_name"]) or "",
+                outcome=DISCOVERY_OUTCOME_FOUND,
+                email=reusable_email,
+                provider_verification_status=_normalize_optional_text(
+                    latest_found_attempt["provider_verification_status"]
+                ),
+                provider_score=_normalize_optional_text(latest_found_attempt["provider_score"]),
+                detected_pattern=_normalize_optional_text(latest_found_attempt["detected_pattern"]),
+            )
+        else:
+            company_domain = _derive_company_domain(target_row)
+            provider_sequence = tuple(providers) if providers is not None else _build_default_email_finder_providers(paths)
+            final_result: EmailDiscoveryProviderResult | None = None
+
+            for provider in provider_sequence:
+                provider_name = _normalize_optional_text(getattr(provider, "provider_name", None))
+                if provider_name is None:
+                    raise EmailDiscoveryError("Email-finder providers must expose a non-empty `provider_name`.")
+                attempted_provider_names.append(provider_name)
+
+                if provider_name in bounced_history["providers"]:
+                    skipped_result = EmailDiscoveryProviderResult(
+                        provider_name=provider_name,
+                        outcome=DISCOVERY_OUTCOME_SKIPPED_BOUNCED_PROVIDER,
+                    )
+                    provider_steps.append(_provider_step_payload(skipped_result))
+                    with connection:
+                        _persist_provider_budget_signal(
+                            connection,
+                            result=skipped_result,
+                            discovery_attempt_id=discovery_attempt_id,
+                            contact_id=contact_id,
+                            created_at=timestamp,
+                        )
+                    continue
+
+                if bool(getattr(provider, "requires_domain", False)) and company_domain is None:
+                    unresolved_result = EmailDiscoveryProviderResult(
+                        provider_name=provider_name,
+                        outcome=DISCOVERY_OUTCOME_DOMAIN_UNRESOLVED,
+                    )
+                    provider_steps.append(_provider_step_payload(unresolved_result))
+                    with connection:
+                        _persist_provider_budget_signal(
+                            connection,
+                            result=unresolved_result,
+                            discovery_attempt_id=discovery_attempt_id,
+                            contact_id=contact_id,
+                            created_at=timestamp,
+                        )
+                    continue
+
+                raw_result = provider.discover_email(
+                    contact=target_row,
+                    posting=target_row,
+                    company_domain=company_domain,
+                    company_name=_normalize_optional_text(target_row.get("company_name")),
+                )
+                normalized_result = _normalize_email_finder_provider_result(
+                    raw_result,
+                    provider_name=provider_name,
+                )
+                if (
+                    _is_usable_email(normalized_result.email)
+                    and normalized_result.email in bounced_history["emails"]
+                ):
+                    normalized_result = replace(
+                        normalized_result,
+                        email=normalized_result.email,
+                        outcome=DISCOVERY_OUTCOME_BOUNCED_MATCH,
+                    )
+                provider_steps.append(_provider_step_payload(normalized_result))
+                with connection:
+                    _persist_provider_budget_signal(
+                        connection,
+                        result=normalized_result,
+                        discovery_attempt_id=discovery_attempt_id,
+                        contact_id=contact_id,
+                        created_at=timestamp,
+                    )
+                if normalized_result.is_found:
+                    final_result = normalized_result
+                    break
+
+            if final_result is None:
+                final_result = EmailDiscoveryProviderResult(
+                    provider_name="",
+                    outcome=_select_final_discovery_outcome(provider_steps),
+                )
+
+        with connection:
+            _persist_discovery_attempt(
+                connection,
+                discovery_attempt_id=discovery_attempt_id,
+                target_row=target_row,
+                result=final_result,
+                created_at=timestamp,
+            )
+            if final_result.is_found:
+                _apply_discovery_success(
+                    connection,
+                    target_row=target_row,
+                    result=final_result,
+                    current_time=timestamp,
+                )
+            else:
+                _apply_discovery_failure(
+                    connection,
+                    target_row=target_row,
+                    provider_steps=provider_steps,
+                    result=final_result,
+                    current_time=timestamp,
+                )
+
+            posting_status = _promote_posting_ready_for_outreach_if_eligible(
+                connection,
+                job_posting_id=job_posting_id,
+                lead_id=str(target_row["lead_id"]),
+                current_time=timestamp,
+            )
+            refreshed_row = _load_discovery_ready_contact_row(
+                connection,
+                job_posting_id=job_posting_id,
+                contact_id=contact_id,
+            )
+            artifact_path = _publish_discovery_result_artifact(
+                connection,
+                paths,
+                target_row=refreshed_row,
+                discovery_attempt_id=discovery_attempt_id,
+                result=final_result,
+                provider_steps=provider_steps,
+                bounced_history=bounced_history,
+                attempted_provider_names=attempted_provider_names,
+                produced_at=timestamp,
+            )
+
+        return EmailDiscoveryRunResult(
+            job_posting_id=str(refreshed_row["job_posting_id"]),
+            lead_id=str(refreshed_row["lead_id"]),
+            contact_id=str(refreshed_row["contact_id"]),
+            job_posting_contact_id=str(refreshed_row["job_posting_contact_id"]),
+            discovery_attempt_id=discovery_attempt_id,
+            artifact_path=artifact_path,
+            outcome=final_result.outcome,
+            provider_name=final_result.provider_name or None,
+            email=final_result.email,
+            attempted_provider_names=tuple(attempted_provider_names),
+            posting_status=posting_status,
+            contact_status=str(refreshed_row["contact_status"]),
+            link_level_status=str(refreshed_row["link_level_status"]),
+            reused_existing_email=reused_existing_email,
+        )
+    finally:
+        connection.close()
+
+
+def load_provider_budget_summary(
+    *,
+    project_root: Path | str,
+) -> dict[str, Any]:
+    paths = ProjectPaths.from_root(project_root)
+    connection = sqlite3.connect(paths.db_path)
+    connection.row_factory = sqlite3.Row
+
+    try:
+        rows = connection.execute(
+            """
+            SELECT provider_name, remaining_credits, credit_limit, reset_at, updated_at
+            FROM provider_budget_state
+            ORDER BY provider_name ASC
+            """
+        ).fetchall()
+        providers = [
+            {
+                "provider_name": str(row["provider_name"]),
+                "remaining_credits": row["remaining_credits"],
+                "credit_limit": row["credit_limit"],
+                "reset_at": row["reset_at"],
+                "updated_at": row["updated_at"],
+            }
+            for row in rows
+        ]
+        combined_known_remaining_credits = sum(
+            int(row["remaining_credits"])
+            for row in rows
+            if row["remaining_credits"] is not None
+        )
+        return {
+            "providers": providers,
+            "combined_known_remaining_credits": combined_known_remaining_credits,
+        }
+    finally:
+        connection.close()
+
+
 def select_initial_enrichment_shortlist(
     candidates: Sequence[PeopleSearchCandidate],
     *,
@@ -1219,6 +1935,878 @@ def _load_shortlisted_contact_row(
         (job_posting_contact_id,),
     ).fetchone()
     return dict(row) if row is not None else None
+
+
+def _build_default_email_finder_providers(paths: ProjectPaths) -> tuple[EmailFinderProvider, ...]:
+    return (
+        ConfiguredProspeoClient.from_paths(paths),
+        ConfiguredGetProspectClient.from_paths(paths),
+        ConfiguredHunterClient.from_paths(paths),
+    )
+
+
+def _normalize_email_finder_provider_result(
+    payload: EmailDiscoveryProviderResult | Mapping[str, Any],
+    *,
+    provider_name: str,
+) -> EmailDiscoveryProviderResult:
+    if isinstance(payload, EmailDiscoveryProviderResult):
+        return payload if payload.provider_name else replace(payload, provider_name=provider_name)
+    if isinstance(payload, Mapping):
+        return EmailDiscoveryProviderResult.from_mapping(payload, provider_name=provider_name)
+    raise EmailDiscoveryError("Email-finder providers must return mappings or EmailDiscoveryProviderResult values.")
+
+
+def _provider_step_payload(result: EmailDiscoveryProviderResult) -> dict[str, Any]:
+    return {
+        "provider_name": result.provider_name,
+        "outcome": result.outcome,
+        "email": result.email,
+        "provider_verification_status": result.provider_verification_status,
+        "provider_score": result.provider_score,
+        "detected_pattern": result.detected_pattern,
+        "remaining_credits": result.remaining_credits,
+        "credit_limit": result.credit_limit,
+        "reset_at": result.reset_at,
+        "message": result.message,
+    }
+
+
+def _select_final_discovery_outcome(provider_steps: Sequence[Mapping[str, Any]]) -> str:
+    outcomes = {
+        _normalize_optional_text(step.get("outcome"))
+        for step in provider_steps
+        if _normalize_optional_text(step.get("outcome"))
+    }
+    if DISCOVERY_OUTCOME_DOMAIN_UNRESOLVED in outcomes:
+        return DISCOVERY_OUTCOME_DOMAIN_UNRESOLVED
+    if DISCOVERY_OUTCOME_QUOTA_EXHAUSTED in outcomes:
+        return DISCOVERY_OUTCOME_QUOTA_EXHAUSTED
+    if DISCOVERY_OUTCOME_RATE_LIMITED in outcomes:
+        return DISCOVERY_OUTCOME_RATE_LIMITED
+    if DISCOVERY_OUTCOME_INVALID_API_KEY in outcomes:
+        return DISCOVERY_OUTCOME_INVALID_API_KEY
+    if DISCOVERY_OUTCOME_NETWORK_ERROR in outcomes:
+        return DISCOVERY_OUTCOME_NETWORK_ERROR
+    if DISCOVERY_OUTCOME_PROVIDER_ERROR in outcomes:
+        return DISCOVERY_OUTCOME_PROVIDER_ERROR
+    return DISCOVERY_OUTCOME_NOT_FOUND
+
+
+def _load_discovery_ready_contact_row(
+    connection: sqlite3.Connection,
+    *,
+    job_posting_id: str,
+    contact_id: str,
+) -> dict[str, Any]:
+    row = connection.execute(
+        """
+        SELECT jp.job_posting_id, jp.lead_id, jp.company_name, jp.role_title, jp.posting_status,
+               jp.location AS posting_location, jp.jd_artifact_path, ll.source_url,
+               jpc.job_posting_contact_id, jpc.recipient_type, jpc.relevance_reason, jpc.link_level_status,
+               c.contact_id, c.identity_key, c.display_name, c.company_name AS contact_company_name,
+               c.origin_component, c.contact_status, c.full_name, c.first_name, c.last_name,
+               c.linkedin_url, c.position_title, c.location, c.discovery_summary,
+               c.current_working_email, c.identity_source, c.provider_name, c.provider_person_id,
+               c.name_quality, c.created_at, c.updated_at
+        FROM job_postings jp
+        JOIN linkedin_leads ll
+          ON ll.lead_id = jp.lead_id
+        JOIN job_posting_contacts jpc
+          ON jpc.job_posting_id = jp.job_posting_id
+        JOIN contacts c
+          ON c.contact_id = jpc.contact_id
+        WHERE jp.job_posting_id = ?
+          AND c.contact_id = ?
+        ORDER BY jpc.created_at ASC, jpc.job_posting_contact_id ASC
+        LIMIT 1
+        """,
+        (job_posting_id, contact_id),
+    ).fetchone()
+    if row is None:
+        raise EmailDiscoveryError(
+            f"Contact `{contact_id}` is not linked to job posting `{job_posting_id}`."
+        )
+
+    posting_status = str(row["posting_status"]).strip()
+    if posting_status not in {JOB_POSTING_STATUS_REQUIRES_CONTACTS, JOB_POSTING_STATUS_READY_FOR_OUTREACH}:
+        raise EmailDiscoveryError(
+            f"Job posting `{job_posting_id}` is `{posting_status}`; person-scoped email discovery starts only from `requires_contacts` or `ready_for_outreach`."
+        )
+
+    link_level_status = str(row["link_level_status"]).strip()
+    if link_level_status not in {
+        POSTING_CONTACT_STATUS_IDENTIFIED,
+        POSTING_CONTACT_STATUS_SHORTLISTED,
+        POSTING_CONTACT_STATUS_EXHAUSTED,
+    }:
+        raise EmailDiscoveryError(
+            f"Posting-contact link `{row['job_posting_contact_id']}` is `{link_level_status}`; discovery only runs for selected or reviewable linked contacts."
+        )
+
+    latest_run = connection.execute(
+        """
+        SELECT resume_review_status
+        FROM resume_tailoring_runs
+        WHERE job_posting_id = ?
+        ORDER BY created_at DESC, resume_tailoring_run_id DESC
+        LIMIT 1
+        """,
+        (job_posting_id,),
+    ).fetchone()
+    if latest_run is None or latest_run["resume_review_status"] != RESUME_REVIEW_STATUS_APPROVED:
+        raise EmailDiscoveryError(
+            f"Job posting `{job_posting_id}` is not backed by an approved tailoring review."
+        )
+    return dict(row)
+
+
+def _load_bounced_contact_history(
+    connection: sqlite3.Connection,
+    *,
+    contact_id: str,
+) -> dict[str, set[str]]:
+    email_rows = connection.execute(
+        """
+        SELECT DISTINCT om.recipient_email
+        FROM delivery_feedback_events dfe
+        JOIN outreach_messages om
+          ON om.outreach_message_id = dfe.outreach_message_id
+        WHERE om.contact_id = ?
+          AND dfe.event_state = 'bounced'
+          AND om.recipient_email IS NOT NULL
+          AND TRIM(om.recipient_email) <> ''
+        """,
+        (contact_id,),
+    ).fetchall()
+    bounced_emails = {
+        str(row["recipient_email"]).strip().lower()
+        for row in email_rows
+        if str(row["recipient_email"]).strip()
+    }
+    bounced_providers: set[str] = set()
+    for email in bounced_emails:
+        provider_row = connection.execute(
+            """
+            SELECT provider_name
+            FROM discovery_attempts
+            WHERE contact_id = ?
+              AND email = ?
+              AND provider_name IS NOT NULL
+              AND TRIM(provider_name) <> ''
+            ORDER BY created_at DESC, discovery_attempt_id DESC
+            LIMIT 1
+            """,
+            (contact_id, email),
+        ).fetchone()
+        if provider_row is not None and provider_row["provider_name"]:
+            bounced_providers.add(str(provider_row["provider_name"]))
+    return {
+        "emails": bounced_emails,
+        "providers": bounced_providers,
+    }
+
+
+def _clear_bounced_working_email_if_needed(
+    connection: sqlite3.Connection,
+    *,
+    target_row: Mapping[str, Any],
+    bounced_history: Mapping[str, set[str]],
+    current_time: str,
+) -> bool:
+    current_working_email = _normalize_optional_text(target_row.get("current_working_email"))
+    if not _is_usable_email(current_working_email):
+        return False
+    normalized_email = str(current_working_email).lower()
+    if normalized_email not in bounced_history.get("emails", set()):
+        return False
+
+    previous_status = _normalize_optional_text(target_row.get("contact_status")) or CONTACT_STATUS_IDENTIFIED
+    next_status = (
+        CONTACT_STATUS_IDENTIFIED
+        if previous_status == CONTACT_STATUS_WORKING_EMAIL_FOUND
+        else previous_status
+    )
+    connection.execute(
+        """
+        UPDATE contacts
+        SET current_working_email = NULL,
+            contact_status = ?,
+            discovery_summary = ?,
+            updated_at = ?
+        WHERE contact_id = ?
+        """,
+        (
+            next_status,
+            "bounced_email_retry_pending",
+            current_time,
+            target_row["contact_id"],
+        ),
+    )
+    if next_status != previous_status:
+        _record_state_transition(
+            connection,
+            object_type="contacts",
+            object_id=str(target_row["contact_id"]),
+            stage="contact_status",
+            previous_state=previous_status,
+            new_state=next_status,
+            transition_timestamp=current_time,
+            transition_reason="A previously discovered email bounced, so retry cleared the stale working-email state.",
+            lead_id=str(target_row["lead_id"]),
+            job_posting_id=str(target_row["job_posting_id"]),
+            contact_id=str(target_row["contact_id"]),
+        )
+    return True
+
+
+def _load_latest_found_attempt_for_email(
+    connection: sqlite3.Connection,
+    *,
+    contact_id: str,
+    email: str | None,
+) -> sqlite3.Row | None:
+    if not _is_usable_email(email):
+        return None
+    return connection.execute(
+        """
+        SELECT discovery_attempt_id, provider_name, provider_verification_status, provider_score,
+               detected_pattern, created_at
+        FROM discovery_attempts
+        WHERE contact_id = ?
+          AND outcome = ?
+          AND email = ?
+        ORDER BY created_at DESC, discovery_attempt_id DESC
+        LIMIT 1
+        """,
+        (
+            contact_id,
+            DISCOVERY_OUTCOME_FOUND,
+            str(email).strip().lower(),
+        ),
+    ).fetchone()
+
+
+def _persist_provider_budget_signal(
+    connection: sqlite3.Connection,
+    *,
+    result: EmailDiscoveryProviderResult,
+    discovery_attempt_id: str,
+    contact_id: str,
+    created_at: str,
+) -> None:
+    provider_name = _normalize_optional_text(result.provider_name)
+    if provider_name is None:
+        return
+
+    current_state = connection.execute(
+        """
+        SELECT remaining_credits, credit_limit, reset_at
+        FROM provider_budget_state
+        WHERE provider_name = ?
+        """,
+        (provider_name,),
+    ).fetchone()
+    previous_remaining = (
+        _normalize_optional_int(current_state["remaining_credits"])
+        if current_state is not None
+        else None
+    )
+    next_remaining = result.remaining_credits if result.remaining_credits is not None else previous_remaining
+    next_limit = (
+        result.credit_limit
+        if result.credit_limit is not None
+        else (_normalize_optional_int(current_state["credit_limit"]) if current_state is not None else None)
+    )
+    next_reset = (
+        result.reset_at
+        if result.reset_at is not None
+        else (_normalize_optional_text(current_state["reset_at"]) if current_state is not None else None)
+    )
+
+    if current_state is None:
+        connection.execute(
+            """
+            INSERT INTO provider_budget_state (
+              provider_name, remaining_credits, credit_limit, reset_at, updated_at
+            ) VALUES (?, ?, ?, ?, ?)
+            """,
+            (
+                provider_name,
+                next_remaining,
+                next_limit,
+                next_reset,
+                created_at,
+            ),
+        )
+    else:
+        connection.execute(
+            """
+            UPDATE provider_budget_state
+            SET remaining_credits = ?, credit_limit = ?, reset_at = ?, updated_at = ?
+            WHERE provider_name = ?
+            """,
+            (
+                next_remaining,
+                next_limit,
+                next_reset,
+                created_at,
+                provider_name,
+            ),
+        )
+
+    credit_delta = 0
+    if previous_remaining is not None and result.remaining_credits is not None:
+        credit_delta = result.remaining_credits - previous_remaining
+    connection.execute(
+        """
+        INSERT INTO provider_budget_events (
+          provider_budget_event_id, provider_name, event_type, credit_delta,
+          remaining_credits_after, related_discovery_attempt_id, related_contact_id, created_at
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+        """,
+        (
+            new_canonical_id("provider_budget_events"),
+            provider_name,
+            result.outcome,
+            credit_delta,
+            next_remaining,
+            discovery_attempt_id,
+            contact_id,
+            created_at,
+        ),
+    )
+
+
+def _persist_discovery_attempt(
+    connection: sqlite3.Connection,
+    *,
+    discovery_attempt_id: str,
+    target_row: Mapping[str, Any],
+    result: EmailDiscoveryProviderResult,
+    created_at: str,
+) -> None:
+    email = _normalize_optional_text(result.email)
+    connection.execute(
+        """
+        INSERT INTO discovery_attempts (
+          discovery_attempt_id, contact_id, job_posting_id, window_id, outcome,
+          provider_name, email, email_local_part, detected_pattern, provider_verification_status,
+          provider_score, bounced, display_name, first_name, last_name, full_name,
+          linkedin_url, position_title, location, provider_person_id, name_quality, created_at
+        ) VALUES (?, ?, ?, NULL, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        """,
+        (
+            discovery_attempt_id,
+            target_row["contact_id"],
+            target_row["job_posting_id"],
+            result.outcome,
+            _normalize_optional_text(result.provider_name),
+            email,
+            email.split("@", 1)[0] if _is_usable_email(email) else None,
+            result.detected_pattern,
+            result.provider_verification_status,
+            result.provider_score,
+            0,
+            _normalize_optional_text(target_row.get("display_name")),
+            _normalize_optional_text(target_row.get("first_name")),
+            _normalize_optional_text(target_row.get("last_name")),
+            _normalize_optional_text(target_row.get("full_name")),
+            _normalize_optional_text(target_row.get("linkedin_url")),
+            _normalize_optional_text(target_row.get("position_title")),
+            _normalize_optional_text(target_row.get("location")),
+            _normalize_optional_text(target_row.get("provider_person_id")),
+            _normalize_optional_text(target_row.get("name_quality")),
+            created_at,
+        ),
+    )
+
+
+def _apply_discovery_success(
+    connection: sqlite3.Connection,
+    *,
+    target_row: Mapping[str, Any],
+    result: EmailDiscoveryProviderResult,
+    current_time: str,
+) -> None:
+    connection.execute(
+        """
+        UPDATE contacts
+        SET current_working_email = ?, discovery_summary = ?, updated_at = ?
+        WHERE contact_id = ?
+        """,
+        (
+            result.email,
+            CONTACT_STATUS_WORKING_EMAIL_FOUND,
+            current_time,
+            target_row["contact_id"],
+        ),
+    )
+    if _normalize_optional_text(target_row.get("link_level_status")) == POSTING_CONTACT_STATUS_EXHAUSTED:
+        connection.execute(
+            """
+            UPDATE job_posting_contacts
+            SET link_level_status = ?, updated_at = ?
+            WHERE job_posting_contact_id = ?
+            """,
+            (
+                POSTING_CONTACT_STATUS_SHORTLISTED,
+                current_time,
+                target_row["job_posting_contact_id"],
+            ),
+        )
+        _record_state_transition(
+            connection,
+            object_type="job_posting_contacts",
+            object_id=str(target_row["job_posting_contact_id"]),
+            stage="link_level_status",
+            previous_state=POSTING_CONTACT_STATUS_EXHAUSTED,
+            new_state=POSTING_CONTACT_STATUS_SHORTLISTED,
+            transition_timestamp=current_time,
+            transition_reason="Email discovery recovered a usable work email for this linked contact.",
+            lead_id=str(target_row["lead_id"]),
+            job_posting_id=str(target_row["job_posting_id"]),
+            contact_id=str(target_row["contact_id"]),
+        )
+    refreshed_row = _load_discovery_ready_contact_row(
+        connection,
+        job_posting_id=str(target_row["job_posting_id"]),
+        contact_id=str(target_row["contact_id"]),
+    )
+    _promote_contact_to_working_email_found_if_ready(
+        connection,
+        posting_row=refreshed_row,
+        contact_row=refreshed_row,
+        current_time=current_time,
+    )
+
+
+def _apply_discovery_failure(
+    connection: sqlite3.Connection,
+    *,
+    target_row: Mapping[str, Any],
+    provider_steps: Sequence[Mapping[str, Any]],
+    result: EmailDiscoveryProviderResult,
+    current_time: str,
+) -> None:
+    exhausted = _all_email_finder_providers_exhausted(
+        connection,
+        contact_id=str(target_row["contact_id"]),
+    )
+    discovery_summary = "all_providers_exhausted" if exhausted else result.outcome
+    connection.execute(
+        """
+        UPDATE contacts
+        SET discovery_summary = ?, updated_at = ?
+        WHERE contact_id = ?
+        """,
+        (
+            discovery_summary,
+            current_time,
+            target_row["contact_id"],
+        ),
+    )
+    if not exhausted:
+        return
+
+    previous_contact_status = _normalize_optional_text(target_row.get("contact_status")) or CONTACT_STATUS_IDENTIFIED
+    if previous_contact_status != CONTACT_STATUS_EXHAUSTED:
+        connection.execute(
+            """
+            UPDATE contacts
+            SET contact_status = ?, current_working_email = NULL, updated_at = ?
+            WHERE contact_id = ?
+            """,
+            (
+                CONTACT_STATUS_EXHAUSTED,
+                current_time,
+                target_row["contact_id"],
+            ),
+        )
+        _record_state_transition(
+            connection,
+            object_type="contacts",
+            object_id=str(target_row["contact_id"]),
+            stage="contact_status",
+            previous_state=previous_contact_status,
+            new_state=CONTACT_STATUS_EXHAUSTED,
+            transition_timestamp=current_time,
+            transition_reason="Email discovery exhausted the current provider set without a non-bounced usable email.",
+            lead_id=str(target_row["lead_id"]),
+            job_posting_id=str(target_row["job_posting_id"]),
+            contact_id=str(target_row["contact_id"]),
+        )
+    previous_link_status = _normalize_optional_text(target_row.get("link_level_status")) or POSTING_CONTACT_STATUS_IDENTIFIED
+    if previous_link_status != POSTING_CONTACT_STATUS_EXHAUSTED:
+        connection.execute(
+            """
+            UPDATE job_posting_contacts
+            SET link_level_status = ?, updated_at = ?
+            WHERE job_posting_contact_id = ?
+            """,
+            (
+                POSTING_CONTACT_STATUS_EXHAUSTED,
+                current_time,
+                target_row["job_posting_contact_id"],
+            ),
+        )
+        _record_state_transition(
+            connection,
+            object_type="job_posting_contacts",
+            object_id=str(target_row["job_posting_contact_id"]),
+            stage="link_level_status",
+            previous_state=previous_link_status,
+            new_state=POSTING_CONTACT_STATUS_EXHAUSTED,
+            transition_timestamp=current_time,
+            transition_reason="Email discovery exhausted the current provider set for this linked contact.",
+            lead_id=str(target_row["lead_id"]),
+            job_posting_id=str(target_row["job_posting_id"]),
+            contact_id=str(target_row["contact_id"]),
+        )
+
+
+def _all_email_finder_providers_exhausted(
+    connection: sqlite3.Connection,
+    *,
+    contact_id: str,
+) -> bool:
+    rows = connection.execute(
+        """
+        SELECT DISTINCT provider_name
+        FROM provider_budget_events
+        WHERE related_contact_id = ?
+          AND event_type IN (?, ?, ?, ?, ?, ?)
+        """,
+        (
+            contact_id,
+            DISCOVERY_OUTCOME_NOT_FOUND,
+            DISCOVERY_OUTCOME_RATE_LIMITED,
+            DISCOVERY_OUTCOME_QUOTA_EXHAUSTED,
+            DISCOVERY_OUTCOME_INVALID_API_KEY,
+            DISCOVERY_OUTCOME_BOUNCED_MATCH,
+            DISCOVERY_OUTCOME_SKIPPED_BOUNCED_PROVIDER,
+        ),
+    ).fetchall()
+    exhausted_provider_names = {
+        str(row["provider_name"]).strip()
+        for row in rows
+        if str(row["provider_name"]).strip()
+    }
+    return all(provider_name in exhausted_provider_names for provider_name in EMAIL_FINDER_PROVIDER_ORDER)
+
+
+def _publish_discovery_result_artifact(
+    connection: sqlite3.Connection,
+    paths: ProjectPaths,
+    *,
+    target_row: Mapping[str, Any],
+    discovery_attempt_id: str,
+    result: EmailDiscoveryProviderResult,
+    provider_steps: Sequence[Mapping[str, Any]],
+    bounced_history: Mapping[str, set[str]],
+    attempted_provider_names: Sequence[str],
+    produced_at: str,
+) -> Path:
+    artifact_path = (
+        paths.discovery_workspace_dir(str(target_row["company_name"]), str(target_row["role_title"]))
+        / "discovery_result.json"
+    )
+    connection.execute(
+        """
+        DELETE FROM artifact_records
+        WHERE artifact_type = ? AND job_posting_id = ?
+        """,
+        (
+            DISCOVERY_RESULT_ARTIFACT_TYPE,
+            target_row["job_posting_id"],
+        ),
+    )
+    recipient_profile = _lookup_recipient_profile_artifact(
+        connection,
+        paths,
+        job_posting_id=str(target_row["job_posting_id"]),
+        contact_id=str(target_row["contact_id"]),
+    )
+    publish_json_artifact(
+        connection,
+        paths,
+        artifact_type=DISCOVERY_RESULT_ARTIFACT_TYPE,
+        artifact_path=artifact_path,
+        producer_component=EMAIL_DISCOVERY_COMPONENT,
+        result="success" if result.is_found else "blocked",
+        linkage=ArtifactLinkage(
+            job_posting_id=str(target_row["job_posting_id"]),
+            contact_id=str(target_row["contact_id"]),
+        ),
+        payload={
+            "discovery_attempt_id": discovery_attempt_id,
+            "outcome": result.outcome,
+            "email": result.email,
+            "provider_name": _normalize_optional_text(result.provider_name),
+            "provider_verification_status": result.provider_verification_status,
+            "provider_score": result.provider_score,
+            "detected_pattern": result.detected_pattern,
+            "observed_bounced": bool(bounced_history.get("emails")),
+            "attempted_provider_names": list(attempted_provider_names),
+            "provider_steps": [dict(step) for step in provider_steps],
+            "recipient_profile_artifact_ref": recipient_profile["relative_path"],
+            "recipient_profile_artifact_path": recipient_profile["absolute_path"],
+        },
+        produced_at=produced_at,
+        reason_code=None if result.is_found else result.outcome,
+        message=None if result.is_found else _discovery_blocked_message(result.outcome),
+    )
+    return artifact_path
+
+
+def _lookup_recipient_profile_artifact(
+    connection: sqlite3.Connection,
+    paths: ProjectPaths,
+    *,
+    job_posting_id: str,
+    contact_id: str,
+) -> dict[str, str | None]:
+    row = connection.execute(
+        """
+        SELECT file_path
+        FROM artifact_records
+        WHERE artifact_type = ?
+          AND job_posting_id = ?
+          AND contact_id = ?
+        ORDER BY created_at DESC, artifact_id DESC
+        LIMIT 1
+        """,
+        (
+            RECIPIENT_PROFILE_ARTIFACT_TYPE,
+            job_posting_id,
+            contact_id,
+        ),
+    ).fetchone()
+    if row is None or not row["file_path"]:
+        return {"relative_path": None, "absolute_path": None}
+    relative_path = str(row["file_path"])
+    return {
+        "relative_path": relative_path,
+        "absolute_path": str(paths.resolve_from_root(relative_path)),
+    }
+
+
+def _discovery_blocked_message(outcome: str) -> str:
+    if outcome == DISCOVERY_OUTCOME_DOMAIN_UNRESOLVED:
+        return "Email discovery could not resolve a usable company domain for every required provider path."
+    if outcome == DISCOVERY_OUTCOME_RATE_LIMITED:
+        return "Email discovery hit a rate-limited provider path before producing a usable email."
+    if outcome == DISCOVERY_OUTCOME_QUOTA_EXHAUSTED:
+        return "Email discovery exhausted a provider quota before producing a usable email."
+    if outcome == DISCOVERY_OUTCOME_INVALID_API_KEY:
+        return "Email discovery hit an invalid provider credential while trying to find a usable email."
+    if outcome == DISCOVERY_OUTCOME_NETWORK_ERROR:
+        return "Email discovery hit a network failure before producing a usable email."
+    if outcome == DISCOVERY_OUTCOME_PROVIDER_ERROR:
+        return "Email discovery hit a provider execution failure before producing a usable email."
+    return "Email discovery did not produce a usable work email for this linked contact."
+
+
+def _contact_name_parts(contact_row: Mapping[str, Any]) -> tuple[str | None, str | None]:
+    first_name = _normalize_optional_text(contact_row.get("first_name"))
+    last_name = _normalize_optional_text(contact_row.get("last_name"))
+    if first_name and last_name:
+        return first_name, last_name
+    inferred_first, inferred_last = _split_name(_best_known_contact_name(contact_row) or "")
+    return first_name or inferred_first, last_name or inferred_last
+
+
+def _normalize_prospeo_discovery_result(
+    payload: Mapping[str, Any],
+    *,
+    company_domain: str | None,
+) -> EmailDiscoveryProviderResult:
+    error_code = _normalize_optional_text(payload.get("error_code"))
+    if error_code == "NO_MATCH":
+        return EmailDiscoveryProviderResult(
+            provider_name=PROVIDER_NAME_PROSPEO,
+            outcome=DISCOVERY_OUTCOME_NOT_FOUND,
+        )
+
+    data_payload = payload.get("data") if isinstance(payload.get("data"), Mapping) else payload
+    email_payload = data_payload.get("email")
+    person_payload = data_payload.get("person") if isinstance(data_payload.get("person"), Mapping) else data_payload
+    email = _normalize_optional_text(data_payload.get("email"))
+    if isinstance(email_payload, Mapping):
+        email = email or _normalize_optional_text(
+            email_payload.get("email") or email_payload.get("address") or email_payload.get("value")
+        )
+    if isinstance(person_payload, Mapping):
+        email = email or _normalize_optional_text(
+            person_payload.get("email") or person_payload.get("work_email")
+        )
+    verification_status = _normalize_optional_text(
+        (email_payload.get("status") if isinstance(email_payload, Mapping) else None)
+        or data_payload.get("email_status")
+        or (person_payload.get("email_status") if isinstance(person_payload, Mapping) else None)
+    )
+    provider_score = _normalize_optional_text(
+        (email_payload.get("score") if isinstance(email_payload, Mapping) else None)
+        or data_payload.get("score")
+        or payload.get("score")
+    )
+    detected_pattern = _normalize_optional_text(
+        (email_payload.get("pattern") if isinstance(email_payload, Mapping) else None)
+        or data_payload.get("pattern")
+    )
+    if email and _email_matches_company_domain(email, company_domain):
+        if verification_status is None or verification_status.upper() == "VERIFIED":
+            return EmailDiscoveryProviderResult(
+                provider_name=PROVIDER_NAME_PROSPEO,
+                outcome=DISCOVERY_OUTCOME_FOUND,
+                email=email,
+                provider_verification_status=(verification_status or "VERIFIED").lower(),
+                provider_score=provider_score,
+                detected_pattern=detected_pattern,
+            )
+        return EmailDiscoveryProviderResult(
+            provider_name=PROVIDER_NAME_PROSPEO,
+            outcome=DISCOVERY_OUTCOME_NOT_FOUND,
+        )
+    return EmailDiscoveryProviderResult(
+        provider_name=PROVIDER_NAME_PROSPEO,
+        outcome=DISCOVERY_OUTCOME_NOT_FOUND,
+    )
+
+
+def _normalize_getprospect_discovery_result(
+    payload: Mapping[str, Any],
+    *,
+    company_domain: str | None,
+) -> EmailDiscoveryProviderResult:
+    success_flag = payload.get("success")
+    data_payload = payload.get("data") if isinstance(payload.get("data"), Mapping) else {}
+    provider_status = _normalize_optional_text(
+        data_payload.get("status") or payload.get("status")
+    )
+    if success_flag is False and provider_status == "not_found":
+        return EmailDiscoveryProviderResult(
+            provider_name=PROVIDER_NAME_GETPROSPECT,
+            outcome=DISCOVERY_OUTCOME_NOT_FOUND,
+        )
+
+    email = _normalize_optional_text(
+        data_payload.get("email") or data_payload.get("email_address")
+    )
+    if (
+        success_flag is True
+        and email
+        and _email_matches_company_domain(email, company_domain)
+        and provider_status in {"valid", "risky", "accept_all"}
+    ):
+        return EmailDiscoveryProviderResult(
+            provider_name=PROVIDER_NAME_GETPROSPECT,
+            outcome=DISCOVERY_OUTCOME_FOUND,
+            email=email,
+            provider_verification_status=provider_status,
+            provider_score=_normalize_optional_text(
+                data_payload.get("score") or data_payload.get("confidence")
+            ),
+            detected_pattern=_normalize_optional_text(data_payload.get("pattern")),
+        )
+    if success_flag is False or email is None:
+        return EmailDiscoveryProviderResult(
+            provider_name=PROVIDER_NAME_GETPROSPECT,
+            outcome=DISCOVERY_OUTCOME_NOT_FOUND,
+        )
+    return EmailDiscoveryProviderResult(
+        provider_name=PROVIDER_NAME_GETPROSPECT,
+        outcome=DISCOVERY_OUTCOME_PROVIDER_ERROR,
+    )
+
+
+def _normalize_hunter_discovery_result(
+    payload: Mapping[str, Any],
+    *,
+    company_domain: str | None,
+) -> EmailDiscoveryProviderResult:
+    data_payload = payload.get("data") if isinstance(payload.get("data"), Mapping) else {}
+    email = _normalize_optional_text(data_payload.get("email"))
+    if email is None:
+        return EmailDiscoveryProviderResult(
+            provider_name=PROVIDER_NAME_HUNTER,
+            outcome=DISCOVERY_OUTCOME_NOT_FOUND,
+        )
+    if not _email_matches_company_domain(email, company_domain):
+        return EmailDiscoveryProviderResult(
+            provider_name=PROVIDER_NAME_HUNTER,
+            outcome=DISCOVERY_OUTCOME_NOT_FOUND,
+        )
+    return EmailDiscoveryProviderResult(
+        provider_name=PROVIDER_NAME_HUNTER,
+        outcome=DISCOVERY_OUTCOME_FOUND,
+        email=email,
+        provider_verification_status=_normalize_optional_text(
+            data_payload.get("verification") or data_payload.get("status") or data_payload.get("result")
+        ),
+        provider_score=_normalize_optional_text(
+            data_payload.get("score") or data_payload.get("confidence")
+        ),
+        detected_pattern=_normalize_optional_text(data_payload.get("pattern")),
+    )
+
+
+def _extract_budget_snapshot(
+    payload: Mapping[str, Any],
+    *,
+    remaining_paths: Sequence[Sequence[str]],
+    limit_paths: Sequence[Sequence[str]],
+    reset_paths: Sequence[Sequence[str]],
+) -> dict[str, int | str | None] | None:
+    remaining_credits = _first_non_none_int(payload, remaining_paths)
+    credit_limit = _first_non_none_int(payload, limit_paths)
+    reset_at = _first_non_none_text(payload, reset_paths)
+    if remaining_credits is None and credit_limit is None and reset_at is None:
+        return None
+    return {
+        "remaining_credits": remaining_credits,
+        "credit_limit": credit_limit,
+        "reset_at": reset_at,
+    }
+
+
+def _first_non_none_int(payload: Mapping[str, Any], paths: Sequence[Sequence[str]]) -> int | None:
+    for path in paths:
+        value = _mapping_value_at_path(payload, path)
+        normalized = _normalize_optional_int(value)
+        if normalized is not None:
+            return normalized
+    return None
+
+
+def _first_non_none_text(payload: Mapping[str, Any], paths: Sequence[Sequence[str]]) -> str | None:
+    for path in paths:
+        value = _mapping_value_at_path(payload, path)
+        normalized = _normalize_optional_text(value)
+        if normalized is not None:
+            return normalized
+    return None
+
+
+def _mapping_value_at_path(payload: Mapping[str, Any], path: Sequence[str]) -> Any:
+    current: Any = payload
+    for key in path:
+        if not isinstance(current, Mapping):
+            return None
+        current = current.get(key)
+    return current
+
+
+def _email_matches_company_domain(email: str, company_domain: str | None) -> bool:
+    if company_domain is None:
+        return True
+    email_domain = email.split("@", 1)[-1].strip().lower()
+    normalized_domain = company_domain.strip().lower()
+    return (
+        email_domain == normalized_domain
+        or normalized_domain.endswith(f".{email_domain}")
+        or email_domain.endswith(f".{normalized_domain}")
+    )
 
 
 def _needs_apollo_contact_enrichment(contact_row: Mapping[str, Any]) -> bool:
@@ -2203,6 +3791,22 @@ def _normalize_optional_text(value: Any) -> str | None:
         return None
     normalized = str(value).strip()
     return normalized or None
+
+
+def _normalize_optional_int(value: Any) -> int | None:
+    if value is None or value == "":
+        return None
+    if isinstance(value, bool):
+        return int(value)
+    if isinstance(value, int):
+        return value
+    if isinstance(value, float):
+        return int(value) if value.is_integer() else None
+    normalized = str(value).strip().replace(",", "")
+    if normalized.startswith("-"):
+        digits = normalized[1:]
+        return int(normalized) if digits.isdigit() else None
+    return int(normalized) if normalized.isdigit() else None
 
 
 def _coerce_bool(value: Any) -> bool:

@@ -9,16 +9,26 @@ import pytest
 from job_hunt_copilot.bootstrap import run_bootstrap
 from job_hunt_copilot.email_discovery import (
     ApolloResolvedCompany,
+    CONTACT_STATUS_EXHAUSTED,
     CONTACT_STATUS_WORKING_EMAIL_FOUND,
+    DISCOVERY_OUTCOME_DOMAIN_UNRESOLVED,
+    DISCOVERY_OUTCOME_NOT_FOUND,
     EmailDiscoveryError,
+    EmailDiscoveryProviderResult,
+    POSTING_CONTACT_STATUS_EXHAUSTED,
     POSTING_CONTACT_STATUS_IDENTIFIED,
     POSTING_CONTACT_STATUS_SHORTLISTED,
     PROVIDER_NAME_APOLLO,
     RECIPIENT_TYPE_ENGINEER,
     RECIPIENT_TYPE_HIRING_MANAGER,
     RECIPIENT_TYPE_RECRUITER,
+    _normalize_getprospect_discovery_result,
+    _normalize_hunter_discovery_result,
+    _normalize_prospeo_discovery_result,
+    load_provider_budget_summary,
     run_apollo_contact_enrichment,
     run_apollo_people_search,
+    run_email_discovery_for_contact,
 )
 from job_hunt_copilot.paths import ProjectPaths
 from tests.support import create_minimal_project
@@ -232,6 +242,115 @@ class FakeRecipientProfileExtractor:
     ) -> dict[str, object] | None:
         self.calls.append(linkedin_url)
         return self.responses.get(linkedin_url)
+
+
+class FakeEmailFinderProvider:
+    def __init__(
+        self,
+        *,
+        provider_name: str,
+        responses: list[EmailDiscoveryProviderResult | dict[str, object]],
+        requires_domain: bool = False,
+    ) -> None:
+        self.provider_name = provider_name
+        self.responses = list(responses)
+        self.requires_domain = requires_domain
+        self.calls: list[dict[str, object | None]] = []
+
+    def discover_email(
+        self,
+        *,
+        contact: dict[str, object],
+        posting: dict[str, object],
+        company_domain: str | None,
+        company_name: str | None,
+    ) -> EmailDiscoveryProviderResult | dict[str, object]:
+        self.calls.append(
+            {
+                "contact_id": contact.get("contact_id"),
+                "job_posting_id": posting.get("job_posting_id"),
+                "company_domain": company_domain,
+                "company_name": company_name,
+            }
+        )
+        if not self.responses:
+            raise AssertionError(f"Fake provider {self.provider_name} ran out of responses.")
+        return self.responses.pop(0)
+
+
+def seed_linked_contact(
+    connection: sqlite3.Connection,
+    *,
+    contact_id: str = "ct_target",
+    job_posting_contact_id: str = "jpc_target",
+    job_posting_id: str = "jp_search",
+    company_name: str = "Acme Robotics",
+    display_name: str = "Maya Rivera",
+    full_name: str | None = "Maya Rivera",
+    first_name: str | None = "Maya",
+    last_name: str | None = "Rivera",
+    linkedin_url: str | None = "https://linkedin.example/maya",
+    position_title: str = "Engineering Manager",
+    recipient_type: str = RECIPIENT_TYPE_HIRING_MANAGER,
+    current_working_email: str | None = None,
+    contact_status: str = "identified",
+    link_level_status: str = POSTING_CONTACT_STATUS_SHORTLISTED,
+    provider_name: str | None = PROVIDER_NAME_APOLLO,
+    provider_person_id: str | None = "pp_target",
+    identity_key: str = "apollo_person|pp_target",
+    created_at: str = "2026-04-06T21:30:00Z",
+) -> None:
+    connection.execute(
+        """
+        INSERT INTO contacts (
+          contact_id, identity_key, display_name, company_name, origin_component, contact_status,
+          full_name, first_name, last_name, linkedin_url, position_title, location,
+          discovery_summary, current_working_email, identity_source, provider_name,
+          provider_person_id, name_quality, created_at, updated_at
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        """,
+        (
+            contact_id,
+            identity_key,
+            display_name,
+            company_name,
+            "email_discovery",
+            contact_status,
+            full_name,
+            first_name,
+            last_name,
+            linkedin_url,
+            position_title,
+            "Phoenix, AZ",
+            "selected_for_discovery",
+            current_working_email,
+            "apollo_people_search_shortlist",
+            provider_name,
+            provider_person_id,
+            "provider_full" if full_name else "provider_sparse",
+            created_at,
+            created_at,
+        ),
+    )
+    connection.execute(
+        """
+        INSERT INTO job_posting_contacts (
+          job_posting_contact_id, job_posting_id, contact_id, recipient_type, relevance_reason,
+          link_level_status, created_at, updated_at
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+        """,
+        (
+            job_posting_contact_id,
+            job_posting_id,
+            contact_id,
+            recipient_type,
+            "Selected contact for person-scoped discovery.",
+            link_level_status,
+            created_at,
+            created_at,
+        ),
+    )
+    connection.commit()
 
 
 def test_apollo_people_search_persists_broad_result_and_shortlists_only_selected_candidates(tmp_path: Path):
@@ -784,3 +903,548 @@ def test_apollo_contact_enrichment_removes_terminal_dead_end_shortlist_contacts(
     assert people_search_payload["candidates"][0]["provider_person_id"] == "pp_dead"
 
     connection.close()
+
+
+def test_email_discovery_stops_on_first_usable_result_and_persists_budget_state(tmp_path: Path):
+    project_root = bootstrap_project(tmp_path)
+    paths = ProjectPaths.from_root(project_root)
+    connection = connect_database(project_root / "job_hunt_copilot.db")
+    seed_search_ready_posting(connection, paths)
+    seed_linked_contact(connection)
+
+    prospeo = FakeEmailFinderProvider(
+        provider_name="prospeo",
+        requires_domain=True,
+        responses=[
+            {
+                "outcome": "not_found",
+                "remaining_credits": 49,
+                "credit_limit": 100,
+                "reset_at": "2026-05-01T00:00:00Z",
+            }
+        ],
+    )
+    getprospect = FakeEmailFinderProvider(
+        provider_name="getprospect",
+        requires_domain=True,
+        responses=[
+            {
+                "outcome": "found",
+                "email": "maya@acmerobotics.com",
+                "provider_verification_status": "valid",
+                "provider_score": "0.92",
+                "detected_pattern": "first",
+                "remaining_credits": 74,
+                "credit_limit": 120,
+                "reset_at": "2026-05-01T00:00:00Z",
+            }
+        ],
+    )
+    hunter = FakeEmailFinderProvider(
+        provider_name="hunter",
+        responses=[
+            {
+                "outcome": "found",
+                "email": "should-not-run@acmerobotics.com",
+            }
+        ],
+    )
+
+    result = run_email_discovery_for_contact(
+        project_root=project_root,
+        job_posting_id="jp_search",
+        contact_id="ct_target",
+        providers=(prospeo, getprospect, hunter),
+        current_time="2026-04-06T21:45:00Z",
+    )
+
+    assert len(prospeo.calls) == 1
+    assert len(getprospect.calls) == 1
+    assert hunter.calls == []
+    assert result.outcome == "found"
+    assert result.provider_name == "getprospect"
+    assert result.email == "maya@acmerobotics.com"
+    assert result.posting_status == "ready_for_outreach"
+
+    attempt_row = connection.execute(
+        """
+        SELECT outcome, provider_name, email, provider_verification_status, provider_score
+        FROM discovery_attempts
+        WHERE contact_id = 'ct_target'
+        ORDER BY created_at DESC, discovery_attempt_id DESC
+        LIMIT 1
+        """
+    ).fetchone()
+    assert dict(attempt_row) == {
+        "outcome": "found",
+        "provider_name": "getprospect",
+        "email": "maya@acmerobotics.com",
+        "provider_verification_status": "valid",
+        "provider_score": "0.92",
+    }
+
+    budget_summary = load_provider_budget_summary(project_root=project_root)
+    assert budget_summary["combined_known_remaining_credits"] == 123
+    assert budget_summary["providers"] == [
+        {
+            "provider_name": "getprospect",
+            "remaining_credits": 74,
+            "credit_limit": 120,
+            "reset_at": "2026-05-01T00:00:00Z",
+            "updated_at": "2026-04-06T21:45:00Z",
+        },
+        {
+            "provider_name": "prospeo",
+            "remaining_credits": 49,
+            "credit_limit": 100,
+            "reset_at": "2026-05-01T00:00:00Z",
+            "updated_at": "2026-04-06T21:45:00Z",
+        },
+    ]
+
+    budget_events = [
+        dict(row)
+        for row in connection.execute(
+            """
+            SELECT provider_name, event_type, remaining_credits_after
+            FROM provider_budget_events
+            ORDER BY provider_name ASC
+            """
+        ).fetchall()
+    ]
+    assert budget_events == [
+        {
+            "provider_name": "getprospect",
+            "event_type": "found",
+            "remaining_credits_after": 74,
+        },
+        {
+            "provider_name": "prospeo",
+            "event_type": "not_found",
+            "remaining_credits_after": 49,
+        },
+    ]
+
+    contact_row = connection.execute(
+        """
+        SELECT current_working_email, contact_status, discovery_summary
+        FROM contacts
+        WHERE contact_id = 'ct_target'
+        """
+    ).fetchone()
+    assert dict(contact_row) == {
+        "current_working_email": "maya@acmerobotics.com",
+        "contact_status": CONTACT_STATUS_WORKING_EMAIL_FOUND,
+        "discovery_summary": CONTACT_STATUS_WORKING_EMAIL_FOUND,
+    }
+
+    artifact_payload = json.loads(result.artifact_path.read_text(encoding="utf-8"))
+    assert artifact_payload["result"] == "success"
+    assert artifact_payload["outcome"] == "found"
+    assert artifact_payload["provider_name"] == "getprospect"
+    assert artifact_payload["attempted_provider_names"] == ["prospeo", "getprospect"]
+    assert artifact_payload["provider_steps"][0]["outcome"] == "not_found"
+    assert artifact_payload["provider_steps"][1]["outcome"] == "found"
+
+    connection.close()
+
+
+def test_email_discovery_reuses_known_working_email_without_provider_calls(tmp_path: Path):
+    project_root = bootstrap_project(tmp_path)
+    paths = ProjectPaths.from_root(project_root)
+    connection = connect_database(project_root / "job_hunt_copilot.db")
+    seed_search_ready_posting(connection, paths)
+    seed_linked_contact(
+        connection,
+        current_working_email="maya@acmerobotics.com",
+        contact_status=CONTACT_STATUS_WORKING_EMAIL_FOUND,
+    )
+    connection.execute(
+        """
+        INSERT INTO discovery_attempts (
+          discovery_attempt_id, contact_id, job_posting_id, outcome, provider_name, email,
+          email_local_part, detected_pattern, provider_verification_status, provider_score,
+          bounced, display_name, first_name, last_name, full_name, linkedin_url, position_title,
+          location, provider_person_id, name_quality, created_at
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        """,
+        (
+            "da_existing",
+            "ct_target",
+            "jp_search",
+            "found",
+            "hunter",
+            "maya@acmerobotics.com",
+            "maya",
+            "first.last",
+            "verified",
+            "0.97",
+            0,
+            "Maya Rivera",
+            "Maya",
+            "Rivera",
+            "Maya Rivera",
+            "https://linkedin.example/maya",
+            "Engineering Manager",
+            "Phoenix, AZ",
+            "pp_target",
+            "provider_full",
+            "2026-04-06T21:35:00Z",
+        ),
+    )
+    connection.commit()
+
+    prospeo = FakeEmailFinderProvider(provider_name="prospeo", responses=[])
+    getprospect = FakeEmailFinderProvider(provider_name="getprospect", responses=[])
+    hunter = FakeEmailFinderProvider(provider_name="hunter", responses=[])
+
+    result = run_email_discovery_for_contact(
+        project_root=project_root,
+        job_posting_id="jp_search",
+        contact_id="ct_target",
+        providers=(prospeo, getprospect, hunter),
+        current_time="2026-04-06T21:46:00Z",
+    )
+
+    assert result.reused_existing_email is True
+    assert result.outcome == "found"
+    assert result.provider_name == "hunter"
+    assert prospeo.calls == []
+    assert getprospect.calls == []
+    assert hunter.calls == []
+    assert connection.execute(
+        "SELECT COUNT(*) FROM provider_budget_events"
+    ).fetchone()[0] == 0
+
+    latest_attempt = connection.execute(
+        """
+        SELECT outcome, provider_name, email
+        FROM discovery_attempts
+        WHERE contact_id = 'ct_target'
+        ORDER BY created_at DESC, discovery_attempt_id DESC
+        LIMIT 1
+        """
+    ).fetchone()
+    assert dict(latest_attempt) == {
+        "outcome": "found",
+        "provider_name": "hunter",
+        "email": "maya@acmerobotics.com",
+    }
+
+    connection.close()
+
+
+def test_email_discovery_records_domain_unresolved_but_continues_hunter(tmp_path: Path):
+    project_root = bootstrap_project(tmp_path)
+    paths = ProjectPaths.from_root(project_root)
+    connection = connect_database(project_root / "job_hunt_copilot.db")
+    seed_search_ready_posting(
+        connection,
+        paths,
+        source_url="https://www.linkedin.com/jobs/view/123",
+    )
+    seed_linked_contact(connection, linkedin_url=None, provider_person_id=None, identity_key="manual|maya")
+
+    prospeo = FakeEmailFinderProvider(
+        provider_name="prospeo",
+        requires_domain=True,
+        responses=[],
+    )
+    getprospect = FakeEmailFinderProvider(
+        provider_name="getprospect",
+        requires_domain=True,
+        responses=[],
+    )
+    hunter = FakeEmailFinderProvider(
+        provider_name="hunter",
+        responses=[
+            {
+                "outcome": "not_found",
+                "remaining_credits": 12,
+                "credit_limit": 50,
+            }
+        ],
+    )
+
+    result = run_email_discovery_for_contact(
+        project_root=project_root,
+        job_posting_id="jp_search",
+        contact_id="ct_target",
+        providers=(prospeo, getprospect, hunter),
+        current_time="2026-04-06T21:47:00Z",
+    )
+
+    assert result.outcome == DISCOVERY_OUTCOME_DOMAIN_UNRESOLVED
+    assert prospeo.calls == []
+    assert getprospect.calls == []
+    assert len(hunter.calls) == 1
+
+    attempt_row = connection.execute(
+        """
+        SELECT outcome, provider_name
+        FROM discovery_attempts
+        WHERE contact_id = 'ct_target'
+        ORDER BY created_at DESC, discovery_attempt_id DESC
+        LIMIT 1
+        """
+    ).fetchone()
+    assert dict(attempt_row) == {
+        "outcome": DISCOVERY_OUTCOME_DOMAIN_UNRESOLVED,
+        "provider_name": None,
+    }
+
+    contact_row = connection.execute(
+        """
+        SELECT contact_status, discovery_summary
+        FROM contacts
+        WHERE contact_id = 'ct_target'
+        """
+    ).fetchone()
+    assert dict(contact_row) == {
+        "contact_status": POSTING_CONTACT_STATUS_IDENTIFIED,
+        "discovery_summary": DISCOVERY_OUTCOME_DOMAIN_UNRESOLVED,
+    }
+
+    unresolved_row = connection.execute(
+        """
+        SELECT unresolved_reason
+        FROM unresolved_contacts_review
+        WHERE contact_id = 'ct_target'
+        """
+    ).fetchone()
+    assert unresolved_row["unresolved_reason"] == "latest_outcome_domain_unresolved"
+
+    connection.close()
+
+
+def test_email_discovery_marks_contact_exhausted_after_full_no_match_cascade(tmp_path: Path):
+    project_root = bootstrap_project(tmp_path)
+    paths = ProjectPaths.from_root(project_root)
+    connection = connect_database(project_root / "job_hunt_copilot.db")
+    seed_search_ready_posting(connection, paths)
+    seed_linked_contact(connection)
+
+    providers = (
+        FakeEmailFinderProvider(provider_name="prospeo", requires_domain=True, responses=[{"outcome": "not_found"}]),
+        FakeEmailFinderProvider(provider_name="getprospect", requires_domain=True, responses=[{"outcome": "not_found"}]),
+        FakeEmailFinderProvider(provider_name="hunter", responses=[{"outcome": "not_found"}]),
+    )
+
+    result = run_email_discovery_for_contact(
+        project_root=project_root,
+        job_posting_id="jp_search",
+        contact_id="ct_target",
+        providers=providers,
+        current_time="2026-04-06T21:48:00Z",
+    )
+
+    assert result.outcome == DISCOVERY_OUTCOME_NOT_FOUND
+    contact_row = connection.execute(
+        """
+        SELECT contact_status, discovery_summary
+        FROM contacts
+        WHERE contact_id = 'ct_target'
+        """
+    ).fetchone()
+    assert dict(contact_row) == {
+        "contact_status": CONTACT_STATUS_EXHAUSTED,
+        "discovery_summary": "all_providers_exhausted",
+    }
+
+    link_row = connection.execute(
+        """
+        SELECT link_level_status
+        FROM job_posting_contacts
+        WHERE job_posting_contact_id = 'jpc_target'
+        """
+    ).fetchone()
+    assert link_row["link_level_status"] == POSTING_CONTACT_STATUS_EXHAUSTED
+
+    unresolved_row = connection.execute(
+        """
+        SELECT unresolved_reason
+        FROM unresolved_contacts_review
+        WHERE contact_id = 'ct_target'
+        """
+    ).fetchone()
+    assert unresolved_row["unresolved_reason"] == "contact_exhausted"
+
+    posting_status = connection.execute(
+        "SELECT posting_status FROM job_postings WHERE job_posting_id = 'jp_search'"
+    ).fetchone()[0]
+    assert posting_status == "requires_contacts"
+
+    artifact_payload = json.loads(result.artifact_path.read_text(encoding="utf-8"))
+    assert artifact_payload["result"] == "blocked"
+    assert artifact_payload["reason_code"] == DISCOVERY_OUTCOME_NOT_FOUND
+
+    connection.close()
+
+
+def test_email_discovery_retry_skips_bounced_provider_and_rejects_same_email(tmp_path: Path):
+    project_root = bootstrap_project(tmp_path)
+    paths = ProjectPaths.from_root(project_root)
+    connection = connect_database(project_root / "job_hunt_copilot.db")
+    seed_search_ready_posting(connection, paths)
+    seed_linked_contact(
+        connection,
+        current_working_email="maya@acmerobotics.com",
+        contact_status=CONTACT_STATUS_WORKING_EMAIL_FOUND,
+    )
+    connection.execute(
+        """
+        INSERT INTO discovery_attempts (
+          discovery_attempt_id, contact_id, job_posting_id, outcome, provider_name, email,
+          email_local_part, detected_pattern, provider_verification_status, provider_score,
+          bounced, display_name, first_name, last_name, full_name, linkedin_url, position_title,
+          location, provider_person_id, name_quality, created_at
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        """,
+        (
+            "da_bounced",
+            "ct_target",
+            "jp_search",
+            "found",
+            "prospeo",
+            "maya@acmerobotics.com",
+            "maya",
+            "first",
+            "verified",
+            "0.99",
+            0,
+            "Maya Rivera",
+            "Maya",
+            "Rivera",
+            "Maya Rivera",
+            "https://linkedin.example/maya",
+            "Engineering Manager",
+            "Phoenix, AZ",
+            "pp_target",
+            "provider_full",
+            "2026-04-06T21:35:00Z",
+        ),
+    )
+    connection.execute(
+        """
+        INSERT INTO outreach_messages (
+          outreach_message_id, contact_id, outreach_mode, recipient_email, message_status,
+          job_posting_id, job_posting_contact_id, subject, body_text, body_html, thread_id,
+          delivery_tracking_id, sent_at, created_at, updated_at
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        """,
+        (
+            "msg_bounced",
+            "ct_target",
+            "email",
+            "maya@acmerobotics.com",
+            "sent",
+            "jp_search",
+            "jpc_target",
+            "hello",
+            "body",
+            None,
+            "thread-1",
+            "delivery-1",
+            "2026-04-06T21:36:00Z",
+            "2026-04-06T21:36:00Z",
+            "2026-04-06T21:36:00Z",
+        ),
+    )
+    connection.execute(
+        """
+        INSERT INTO delivery_feedback_events (
+          delivery_feedback_event_id, outreach_message_id, event_state, event_timestamp,
+          contact_id, job_posting_id, reply_summary, raw_reply_excerpt, created_at
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+        """,
+        (
+            "dfe_bounced",
+            "msg_bounced",
+            "bounced",
+            "2026-04-06T21:40:00Z",
+            "ct_target",
+            "jp_search",
+            None,
+            None,
+            "2026-04-06T21:40:00Z",
+        ),
+    )
+    connection.commit()
+
+    prospeo = FakeEmailFinderProvider(provider_name="prospeo", responses=[])
+    getprospect = FakeEmailFinderProvider(
+        provider_name="getprospect",
+        requires_domain=True,
+        responses=[{"outcome": "found", "email": "maya@acmerobotics.com"}],
+    )
+    hunter = FakeEmailFinderProvider(
+        provider_name="hunter",
+        responses=[{"outcome": "found", "email": "maya.rivera@acmerobotics.com"}],
+    )
+
+    result = run_email_discovery_for_contact(
+        project_root=project_root,
+        job_posting_id="jp_search",
+        contact_id="ct_target",
+        providers=(prospeo, getprospect, hunter),
+        current_time="2026-04-06T21:49:00Z",
+    )
+
+    assert prospeo.calls == []
+    assert len(getprospect.calls) == 1
+    assert len(hunter.calls) == 1
+    assert result.outcome == "found"
+    assert result.provider_name == "hunter"
+    assert result.email == "maya.rivera@acmerobotics.com"
+
+    contact_row = connection.execute(
+        """
+        SELECT current_working_email, contact_status
+        FROM contacts
+        WHERE contact_id = 'ct_target'
+        """
+    ).fetchone()
+    assert dict(contact_row) == {
+        "current_working_email": "maya.rivera@acmerobotics.com",
+        "contact_status": CONTACT_STATUS_WORKING_EMAIL_FOUND,
+    }
+
+    budget_events = [
+        dict(row)
+        for row in connection.execute(
+            """
+            SELECT provider_name, event_type
+            FROM provider_budget_events
+            ORDER BY provider_name ASC
+            """
+        ).fetchall()
+    ]
+    assert budget_events == [
+        {"provider_name": "getprospect", "event_type": "bounced_match"},
+        {"provider_name": "hunter", "event_type": "found"},
+        {"provider_name": "prospeo", "event_type": "skipped_bounced_provider"},
+    ]
+
+    artifact_payload = json.loads(result.artifact_path.read_text(encoding="utf-8"))
+    assert [step["outcome"] for step in artifact_payload["provider_steps"]] == [
+        "skipped_bounced_provider",
+        "bounced_match",
+        "found",
+    ]
+
+    connection.close()
+
+
+def test_provider_no_match_payloads_normalize_to_not_found():
+    assert _normalize_prospeo_discovery_result(
+        {"error_code": "NO_MATCH"},
+        company_domain="acmerobotics.com",
+    ).outcome == DISCOVERY_OUTCOME_NOT_FOUND
+    assert _normalize_getprospect_discovery_result(
+        {"success": False, "data": {"status": "not_found"}},
+        company_domain="acmerobotics.com",
+    ).outcome == DISCOVERY_OUTCOME_NOT_FOUND
+    assert _normalize_hunter_discovery_result(
+        {"data": {"email": None}},
+        company_domain="acmerobotics.com",
+    ).outcome == DISCOVERY_OUTCOME_NOT_FOUND

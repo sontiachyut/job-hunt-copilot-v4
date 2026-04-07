@@ -33,6 +33,8 @@ It should stay aligned with:
 - `BA-06` is now complete in code overall: Resume Tailoring now runs from `job_posting_id` bootstrap through eligibility, workspace materialization, deterministic intelligence, finalize plus one-page verification, mandatory review approval or rejection, DB-first outreach handoff, override lineage, and repeated-run history preservation.
 - `BA-07-S1` is complete: `job_hunt_copilot.email_discovery` now boots strictly from approved `requires_contacts` postings, resolves Apollo company identity when available, persists broad `discovery/output/{company}/{role}/people_search_result.json`, and materializes only the initial 6-contact shortlist into canonical `contacts` plus `job_posting_contacts` while promoting reused `identified` links into `shortlisted`.
 - `BA-07-S2` is complete: `job_hunt_copilot.email_discovery` now runs selective Apollo enrichment only for canonical shortlisted contacts that still need clearer identity, LinkedIn URL recovery, or a usable work email, persists best-effort `recipient_profile.json` artifacts when public LinkedIn extraction succeeds, removes terminal sparse dead ends from canonical shortlist state, and promotes contacts or postings into `working_email_found` or `ready_for_outreach` when the minimum current outreach prerequisites are met.
+- `BA-07-S3` is complete: `job_hunt_copilot.email_discovery` now runs the ordered `prospeo -> getprospect -> hunter` cascade for linked contacts that still lack usable emails, normalizes provider-specific no-match and failure outcomes, reuses clearly identified working emails, skips bounced-provider retries, persists `discovery_result.json` plus one-row-per-cascade `discovery_attempts`, and updates canonical `provider_budget_state` plus `provider_budget_events`.
+- `BA-07` is now complete in code overall: People search, shortlist materialization, selective enrichment, recipient-profile capture, person-scoped email discovery fallback, provider-budget tracking, and unresolved or exhausted review visibility now exist behind the current outreach discovery boundary.
 - Explicit implementation note: failed startup no longer leaves dishonest control state behind; `jhc-agent-start` now rolls canonical state back to `stopped` if `launchctl bootstrap` fails before the job is actually loaded.
 - Explicit implementation note: the generated `ops/agent/` files remain runtime-local artifacts under `.gitignore`, so the repo tracks the materialization code and tests rather than checking in those mutable rendered outputs.
 - Explicit implementation note: `jhc-chat` now records begin/end metadata plus `active_chat_session_id` in canonical control state, pauses autonomous work immediately on open, resumes on clean explicit close when chat itself caused the pause, and intentionally keeps unexpected-exit pauses active until later explicit resume or future idle-timeout automation exists.
@@ -110,12 +112,12 @@ It should stay aligned with:
 
 ## Next Slice
 
-- Current focus: `BA-07-S3` Email discovery cascade and budget tracking.
-- Why next: BA-07-S2 now lands selective shortlisted-contact enrichment, optional recipient-profile capture, dead-end cleanup, and ready-state promotion, so the next dependency is the person-scoped email-finder cascade plus budget persistence and unresolved review visibility for the contacts that still lack usable emails.
+- Current focus: `BA-08-S1` Send-set readiness and pacing selection.
+- Why next: BA-07 is now complete in code, so the next highest-value outreach dependency is converting the now-queryable linked-contact and working-email state into explicit ready-send-set formation rules and pacing-safe company send windows.
 - Done when:
-  - Prospeo, GetProspect, and Hunter run in the current ordered cascade and stop on the first usable email result
-  - discovery attempts, provider-budget state, and provider-budget events persist enough normalized history to make cascade outcomes and spend queryable
-  - unresolved or exhausted contacts remain reviewable without losing posting-contact linkage or reusable working-email shortcuts
+  - send-set selection rules are explicit across recruiter, manager-adjacent, and engineer contacts
+  - posting readiness evaluation remains honest for `requires_contacts` versus `ready_for_outreach`
+  - company-level pacing windows and randomized send gaps are persisted or queryable for the later send runtime
 
 ## Working Rules
 

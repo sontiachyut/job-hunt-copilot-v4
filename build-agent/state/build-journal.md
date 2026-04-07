@@ -669,3 +669,30 @@ Use this file as an append-only implementation log for the build agent.
 ### Notes
 - Explicit implementation inference: Apollo enrichment now uses the officially documented `people/match` query shapes keyed by Apollo person ID, LinkedIn URL, or name-plus-company context, while retaining provider identity canonically through the enrichment boundary.
 - Live Apollo and live public-LinkedIn HTTP validation still did not run in this sandboxed session; this slice validated normalization, artifact persistence, and state transitions through fake-provider tests plus full local regression coverage.
+
+### Session
+- Date: 2026-04-06 21:50:14 MST
+- Slice: BA-07-S3 Email discovery cascade and budget tracking
+- Goal: Add the ordered person-scoped email-finder cascade, provider-budget persistence, working-email reuse, and unresolved or exhausted review visibility without broadening into drafting or send execution.
+
+### Work Done
+- Extended `job_hunt_copilot.email_discovery` with `run_email_discovery_for_contact`, default Prospeo, GetProspect, and Hunter provider clients, provider-specific no-match normalization, a reusable working-email fast path for clearly identified contacts, and bounce-aware retry handling that skips the provider tied to a bounced email and rejects the same bounced email if it is returned again.
+- Added canonical `discovery_attempts` persistence with one row per completed cascade, `discovery_result.json` publication under `discovery/output/{company}/{role}/`, provider-budget state plus event persistence, and a derived combined-budget query helper over `provider_budget_state`.
+- Added unresolved and exhausted-state handling that keeps review visibility in the existing SQLite views by updating contact-level `discovery_summary`, setting provider-exhausted contacts and posting-contact links explicitly when the current provider set is spent, and preserving posting-contact linkage for later review.
+- Expanded `tests/test_email_discovery.py` with acceptance-focused coverage for stop-on-first-hit cascade behavior, budget persistence, working-email reuse without new provider calls, domain-unresolved handling with continued Hunter fallback, provider-exhaustion review state, bounce-aware retry behavior, and provider-specific no-match normalization.
+- Updated `README.md`, `docs/ARCHITECTURE.md`, the build board, the implementation plan, and the progress handoff so repo-facing and build-agent-facing status now reflects that BA-07 is complete in code and BA-08-S1 is next.
+
+### Validation
+- Ran `python3.11 -m py_compile job_hunt_copilot/email_discovery.py tests/test_email_discovery.py` and confirmed the new discovery runtime plus tests compile cleanly.
+- Ran `python3.11 -m pytest tests/test_email_discovery.py` and confirmed all 13 email-discovery tests passed.
+- Ran full `python3.11 -m pytest` and confirmed all 83 repository tests passed across bootstrap, schema, artifacts, ingestion, tailoring, discovery, local runtime, runtime pack, and supervisor coverage.
+
+### Result
+- `done`
+
+### Next
+- Start `BA-08-S1`: implement send-set readiness and pacing selection on top of the now-queryable linked-contact, working-email, and discovery-history state.
+
+### Notes
+- Explicit implementation inference: the new provider-budget events intentionally record zero deltas when a provider balance is still unknown, so canonical budget state stays honest without synthetic remaining-credit guesses.
+- Live Prospeo, GetProspect, and Hunter HTTP validation still did not run in this sandboxed session; this slice validated provider normalization, cascade ordering, budget persistence, artifact output, and review-state behavior through fake-provider tests plus full local regression coverage.
