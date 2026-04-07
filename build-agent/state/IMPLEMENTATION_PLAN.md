@@ -37,6 +37,9 @@ It should stay aligned with:
 - `BA-07` is now complete in code overall: People search, shortlist materialization, selective enrichment, recipient-profile capture, person-scoped email discovery fallback, provider-budget tracking, and unresolved or exhausted review visibility now exist behind the current outreach discovery boundary.
 - `BA-08-S1` is complete: `job_hunt_copilot.outreach` now computes the current autonomous role-targeted send set from canonical posting, contact, and prior-message state, prefers recruiter plus manager-adjacent plus engineer coverage with deterministic fallback fill, excludes repeat-outreach contacts from the automatic set, and exposes queryable company-cap plus randomized inter-send-gap pacing decisions for the later send runtime.
 - `BA-08-S2` is complete: `job_hunt_copilot.outreach` now generates deterministic role-targeted and general-learning drafts from persisted posting, tailoring, sender-profile, and optional recipient-profile context, persists canonical `outreach_messages` rows plus stable per-message `email_draft.md` / `send_result.json` artifacts, mirrors the latest role-targeted draft artifacts at the posting workspace root, and advances postings plus linked contacts into `outreach_in_progress` when drafting begins.
+- `BA-08-S3` is complete: `job_hunt_copilot.outreach` now executes the active drafted outreach wave through a provider-injected send runner, persists canonical `sent_at` plus thread or delivery identifiers, blocks repeat-contact or ambiguous resend cases with review-safe `blocked` outcomes instead of double-sending, advances successful sends into `sent` / `outreach_done`, and closes postings into `completed` once the active wave reaches terminal sent or review-blocked states.
+- `BA-08` is now complete in code overall: send-set selection, draft persistence, paced send execution, duplicate-send guardrails, canonical message history, and posting-wave completion handling now exist behind the current outreach runtime boundary.
+- Explicit implementation note: repeat-outreach evaluation now keys off previously sent message history instead of counting freshly generated drafts, so the active drafted wave can continue into send execution without treating its own unsent drafts as prior outreach.
 - Explicit implementation note: failed startup no longer leaves dishonest control state behind; `jhc-agent-start` now rolls canonical state back to `stopped` if `launchctl bootstrap` fails before the job is actually loaded.
 - Explicit implementation note: the generated `ops/agent/` files remain runtime-local artifacts under `.gitignore`, so the repo tracks the materialization code and tests rather than checking in those mutable rendered outputs.
 - Explicit implementation note: `jhc-chat` now records begin/end metadata plus `active_chat_session_id` in canonical control state, pauses autonomous work immediately on open, resumes on clean explicit close when chat itself caused the pause, and intentionally keeps unexpected-exit pauses active until later explicit resume or future idle-timeout automation exists.
@@ -115,12 +118,12 @@ It should stay aligned with:
 
 ## Next Slice
 
-- Current focus: `BA-08-S3` Send execution and repeat-outreach guardrails.
-- Why next: grounded drafts, stable send artifacts, and canonical message rows now exist for the active ready set, so the next highest-value outreach dependency is executing sends under the existing pacing rules without duplicate-send or repeat-contact regressions.
+- Current focus: `BA-09-S1` Feedback event ingestion and observation windows.
+- Why next: BA-08 now persists canonical sent-message rows, send timestamps, and secondary thread or delivery identifiers, so Delivery Feedback has the prerequisites it needs to ingest immediate and delayed mailbox outcomes without inventing linkage state.
 - Done when:
-  - send execution persists canonical send timestamps plus provider thread or delivery identifiers on `outreach_messages`
-  - repeat-outreach and ambiguous prior-history contacts remain blocked from automatic resends and surfaced for review
-  - the existing company daily cap and inter-send-gap pacing decisions are enforced during actual send execution
+  - sent messages can persist `bounced`, `not_bounced`, and `replied` outcomes into `delivery_feedback_events` with exact `outreach_message_id` linkage
+  - reusable immediate and delayed 30-minute observation-window polling logic records `feedback_sync_runs`
+  - `delivery_outcome.json` is emitted from canonical feedback events while mailbox identifiers remain secondary references
 
 ## Working Rules
 

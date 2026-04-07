@@ -8,7 +8,7 @@ import sqlite3
 from dataclasses import dataclass
 from datetime import UTC, date, datetime, time, timedelta, tzinfo
 from pathlib import Path
-from typing import Any, Mapping, Sequence
+from typing import Any, Mapping, Protocol, Sequence
 from zoneinfo import ZoneInfo
 
 import yaml
@@ -25,9 +25,11 @@ SEND_RESULT_ARTIFACT_TYPE = "send_result"
 JOB_POSTING_STATUS_REQUIRES_CONTACTS = "requires_contacts"
 JOB_POSTING_STATUS_READY_FOR_OUTREACH = "ready_for_outreach"
 JOB_POSTING_STATUS_OUTREACH_IN_PROGRESS = "outreach_in_progress"
+JOB_POSTING_STATUS_COMPLETED = "completed"
 
 CONTACT_STATUS_WORKING_EMAIL_FOUND = "working_email_found"
 CONTACT_STATUS_OUTREACH_IN_PROGRESS = "outreach_in_progress"
+CONTACT_STATUS_SENT = "sent"
 CONTACT_STATUS_EXHAUSTED = "exhausted"
 POSTING_CONTACT_STATUS_IDENTIFIED = "identified"
 POSTING_CONTACT_STATUS_SHORTLISTED = "shortlisted"
@@ -69,8 +71,13 @@ _CANDIDATE_STATE_UNAVAILABLE = "unavailable"
 OUTREACH_MODE_ROLE_TARGETED = "role_targeted"
 OUTREACH_MODE_GENERAL_LEARNING = "general_learning"
 MESSAGE_STATUS_GENERATED = "generated"
+MESSAGE_STATUS_BLOCKED = "blocked"
 MESSAGE_STATUS_FAILED = "failed"
 MESSAGE_STATUS_SENT = "sent"
+
+SEND_OUTCOME_SENT = "sent"
+SEND_OUTCOME_FAILED = "failed"
+SEND_OUTCOME_AMBIGUOUS = "ambiguous"
 
 PROFILE_FIELD_RE = re.compile(r"^- \*\*(?P<label>[^*]+):\*\* (?P<value>.+?)\s*$")
 MARKDOWN_HEADING_RE = re.compile(r"^(?P<hashes>#{1,6})\s+(?P<title>.+?)\s*$")
@@ -183,6 +190,10 @@ class RoleTargetedSendSetPlan:
 
 
 class OutreachDraftingError(RuntimeError):
+    pass
+
+
+class OutreachSendingError(RuntimeError):
     pass
 
 
@@ -315,6 +326,117 @@ class GeneralLearningDraftResult:
 
     def as_dict(self) -> dict[str, Any]:
         return {"drafted_message": self.drafted_message.as_dict()}
+
+
+@dataclass(frozen=True)
+class OutboundOutreachMessage:
+    outreach_message_id: str
+    contact_id: str
+    job_posting_id: str | None
+    job_posting_contact_id: str | None
+    outreach_mode: str
+    recipient_email: str
+    subject: str
+    body_text: str
+    body_html: str | None
+    resume_attachment_path: str | None
+
+
+@dataclass(frozen=True)
+class SendAttemptOutcome:
+    outcome: str
+    thread_id: str | None = None
+    delivery_tracking_id: str | None = None
+    sent_at: str | None = None
+    reason_code: str | None = None
+    message: str | None = None
+
+
+class OutreachMessageSender(Protocol):
+    def send(self, message: OutboundOutreachMessage) -> SendAttemptOutcome:
+        raise NotImplementedError
+
+
+@dataclass(frozen=True)
+class SentOutreachMessage:
+    outreach_message_id: str
+    contact_id: str
+    job_posting_contact_id: str
+    recipient_email: str
+    sent_at: str
+    thread_id: str | None
+    delivery_tracking_id: str | None
+    send_result_artifact_path: str
+
+    def as_dict(self) -> dict[str, Any]:
+        return {
+            "outreach_message_id": self.outreach_message_id,
+            "contact_id": self.contact_id,
+            "job_posting_contact_id": self.job_posting_contact_id,
+            "recipient_email": self.recipient_email,
+            "sent_at": self.sent_at,
+            "thread_id": self.thread_id,
+            "delivery_tracking_id": self.delivery_tracking_id,
+            "send_result_artifact_path": self.send_result_artifact_path,
+        }
+
+
+@dataclass(frozen=True)
+class SendExecutionIssue:
+    outreach_message_id: str
+    contact_id: str
+    job_posting_contact_id: str
+    reason_code: str
+    message: str
+
+    def as_dict(self) -> dict[str, Any]:
+        return {
+            "outreach_message_id": self.outreach_message_id,
+            "contact_id": self.contact_id,
+            "job_posting_contact_id": self.job_posting_contact_id,
+            "reason_code": self.reason_code,
+            "message": self.message,
+        }
+
+
+@dataclass(frozen=True)
+class DelayedOutreachMessage:
+    outreach_message_id: str
+    contact_id: str
+    job_posting_contact_id: str
+    earliest_allowed_send_at: str
+    pacing_block_reason: str | None
+
+    def as_dict(self) -> dict[str, Any]:
+        return {
+            "outreach_message_id": self.outreach_message_id,
+            "contact_id": self.contact_id,
+            "job_posting_contact_id": self.job_posting_contact_id,
+            "earliest_allowed_send_at": self.earliest_allowed_send_at,
+            "pacing_block_reason": self.pacing_block_reason,
+        }
+
+
+@dataclass(frozen=True)
+class RoleTargetedSendExecutionResult:
+    job_posting_id: str
+    selected_contact_ids: tuple[str, ...]
+    sent_messages: tuple[SentOutreachMessage, ...]
+    blocked_messages: tuple[SendExecutionIssue, ...]
+    failed_messages: tuple[SendExecutionIssue, ...]
+    delayed_messages: tuple[DelayedOutreachMessage, ...]
+    posting_status_after_execution: str
+
+    def as_dict(self) -> dict[str, Any]:
+        return {
+            "job_posting_id": self.job_posting_id,
+            "selected_contact_ids": list(self.selected_contact_ids),
+            "sent_messages": [message.as_dict() for message in self.sent_messages],
+            "blocked_messages": [issue.as_dict() for issue in self.blocked_messages],
+            "failed_messages": [issue.as_dict() for issue in self.failed_messages],
+            "delayed_messages": [message.as_dict() for message in self.delayed_messages],
+            "posting_status_after_execution": self.posting_status_after_execution,
+        }
 
 
 class OutreachDraftRenderer:
@@ -490,6 +612,8 @@ def _load_candidate_rows(
         WITH outreach_history AS (
           SELECT contact_id, COUNT(*) AS prior_outreach_count
           FROM outreach_messages
+          WHERE sent_at IS NOT NULL
+             OR message_status = ?
           GROUP BY contact_id
         )
         SELECT jpc.job_posting_contact_id, jpc.contact_id, jpc.recipient_type, jpc.link_level_status,
@@ -503,7 +627,7 @@ def _load_candidate_rows(
         WHERE jpc.job_posting_id = ?
         ORDER BY jpc.created_at ASC, jpc.job_posting_contact_id ASC
         """,
-        (job_posting_id,),
+        (MESSAGE_STATUS_SENT, job_posting_id),
     ).fetchall()
     return [
         _CandidateRow(
@@ -1030,6 +1154,956 @@ def generate_general_learning_draft(
         current_time=current_time,
     )
     return GeneralLearningDraftResult(drafted_message=drafted_message)
+
+
+@dataclass(frozen=True)
+class _ActiveWaveMessage:
+    contact_id: str
+    job_posting_contact_id: str
+    recipient_type: str
+    display_name: str
+    recipient_email: str | None
+    contact_status: str
+    link_level_status: str
+    link_created_at: str
+    outreach_message_id: str
+    message_status: str
+    subject: str | None
+    body_text: str | None
+    body_html: str | None
+    thread_id: str | None
+    delivery_tracking_id: str | None
+    sent_at: str | None
+    message_created_at: str
+    message_updated_at: str
+
+
+def execute_role_targeted_send_set(
+    connection: sqlite3.Connection,
+    *,
+    project_root: Path | str,
+    job_posting_id: str,
+    current_time: str,
+    sender: OutreachMessageSender,
+    local_timezone: tzinfo | str | None = None,
+) -> RoleTargetedSendExecutionResult:
+    paths = ProjectPaths.from_root(project_root)
+    posting_row = _load_role_targeted_send_posting_row(connection, job_posting_id=job_posting_id)
+    if posting_row["posting_status"] not in {
+        JOB_POSTING_STATUS_READY_FOR_OUTREACH,
+        JOB_POSTING_STATUS_OUTREACH_IN_PROGRESS,
+        JOB_POSTING_STATUS_COMPLETED,
+    }:
+        raise OutreachSendingError(
+            f"Job posting `{job_posting_id}` is `{posting_row['posting_status']}`; sending starts only from `ready_for_outreach`, `outreach_in_progress`, or `completed`."
+        )
+
+    active_wave = _load_active_role_targeted_wave(connection, job_posting_id=job_posting_id)
+    if not active_wave:
+        raise OutreachSendingError(
+            f"Job posting `{job_posting_id}` does not have an active drafted outreach wave."
+        )
+    _validate_active_role_targeted_wave(active_wave, job_posting_id=job_posting_id)
+
+    current_dt = _parse_iso_datetime(current_time)
+    resolved_timezone = _resolve_local_timezone(current_dt, local_timezone)
+    wave_contact_ids = [message.contact_id for message in active_wave]
+    global_gap_minutes = _determine_global_gap_minutes(
+        job_posting_id=job_posting_id,
+        selected_contact_ids=wave_contact_ids,
+        current_dt=current_dt,
+        local_timezone=resolved_timezone,
+    )
+
+    sent_messages: list[SentOutreachMessage] = []
+    blocked_messages: list[SendExecutionIssue] = []
+    failed_messages: list[SendExecutionIssue] = []
+    delayed_messages: list[DelayedOutreachMessage] = []
+
+    for index, active_message in enumerate(active_wave):
+        if active_message.message_status == MESSAGE_STATUS_SENT:
+            continue
+        if active_message.message_status in {MESSAGE_STATUS_FAILED, MESSAGE_STATUS_BLOCKED}:
+            continue
+        if active_message.message_status != MESSAGE_STATUS_GENERATED:
+            issue = _persist_blocked_send(
+                connection,
+                paths,
+                posting_row=posting_row,
+                active_message=active_message,
+                current_time=current_time,
+                reason_code="unexpected_message_status",
+                message=(
+                    f"Automatic sending only supports `{MESSAGE_STATUS_GENERATED}` messages, "
+                    f"but `{active_message.outreach_message_id}` is `{active_message.message_status}`."
+                ),
+                exhaust_link=False,
+            )
+            blocked_messages.append(issue)
+            continue
+
+        guardrail_block = _evaluate_send_guardrails(
+            connection,
+            paths,
+            posting_row=posting_row,
+            active_message=active_message,
+        )
+        if guardrail_block is not None:
+            issue = _persist_blocked_send(
+                connection,
+                paths,
+                posting_row=posting_row,
+                active_message=active_message,
+                current_time=current_time,
+                reason_code=guardrail_block["reason_code"],
+                message=guardrail_block["message"],
+                exhaust_link=bool(guardrail_block["exhaust_link"]),
+            )
+            blocked_messages.append(issue)
+            if bool(guardrail_block["stop_wave"]):
+                break
+            continue
+
+        pacing = _build_role_targeted_send_pacing_plan(
+            connection,
+            posting_row=posting_row,
+            current_dt=current_dt,
+            local_timezone=resolved_timezone,
+            global_gap_minutes=global_gap_minutes,
+        )
+        if not pacing["pacing_allowed_now"]:
+            delayed_messages.extend(
+                _build_delayed_messages(
+                    active_wave[index:],
+                    earliest_allowed_send_at=str(pacing["earliest_allowed_send_at"]),
+                    pacing_block_reason=_normalize_optional_text(pacing["pacing_block_reason"]),
+                )
+            )
+            break
+
+        outbound = OutboundOutreachMessage(
+            outreach_message_id=active_message.outreach_message_id,
+            contact_id=active_message.contact_id,
+            job_posting_id=str(posting_row["job_posting_id"]),
+            job_posting_contact_id=active_message.job_posting_contact_id,
+            outreach_mode=OUTREACH_MODE_ROLE_TARGETED,
+            recipient_email=str(active_message.recipient_email),
+            subject=str(active_message.subject),
+            body_text=str(active_message.body_text),
+            body_html=active_message.body_html,
+            resume_attachment_path=_load_resume_attachment_path(
+                paths,
+                company_name=str(posting_row["company_name"]),
+                role_title=str(posting_row["role_title"]),
+                outreach_message_id=active_message.outreach_message_id,
+            ),
+        )
+        outcome = sender.send(outbound)
+        normalized_outcome = _normalize_send_attempt_outcome(outcome)
+
+        if normalized_outcome.outcome == SEND_OUTCOME_SENT:
+            sent_messages.append(
+                _persist_successful_send(
+                    connection,
+                    paths,
+                    posting_row=posting_row,
+                    active_message=active_message,
+                    current_time=current_time,
+                    sent_at=normalized_outcome.sent_at or current_time,
+                    thread_id=normalized_outcome.thread_id,
+                    delivery_tracking_id=normalized_outcome.delivery_tracking_id,
+                )
+            )
+            if index + 1 < len(active_wave):
+                post_send_pacing = _build_role_targeted_send_pacing_plan(
+                    connection,
+                    posting_row=posting_row,
+                    current_dt=current_dt,
+                    local_timezone=resolved_timezone,
+                    global_gap_minutes=global_gap_minutes,
+                )
+                delayed_messages.extend(
+                    _build_delayed_messages(
+                        active_wave[index + 1 :],
+                        earliest_allowed_send_at=str(post_send_pacing["earliest_allowed_send_at"]),
+                        pacing_block_reason=_normalize_optional_text(post_send_pacing["pacing_block_reason"]),
+                    )
+                )
+            break
+
+        if normalized_outcome.outcome == SEND_OUTCOME_AMBIGUOUS:
+            blocked_messages.append(
+                _persist_blocked_send(
+                    connection,
+                    paths,
+                    posting_row=posting_row,
+                    active_message=active_message,
+                    current_time=current_time,
+                    reason_code=normalized_outcome.reason_code or "ambiguous_send_outcome",
+                    message=normalized_outcome.message or "The send outcome could not be reconciled safely.",
+                    exhaust_link=True,
+                )
+            )
+            break
+
+        failed_messages.append(
+            _persist_failed_send_attempt(
+                connection,
+                paths,
+                posting_row=posting_row,
+                active_message=active_message,
+                current_time=current_time,
+                reason_code=normalized_outcome.reason_code or "send_provider_failed",
+                message=normalized_outcome.message or "The outbound send provider returned a failure.",
+            )
+        )
+
+    posting_status_after_execution = _load_current_posting_status(
+        connection,
+        job_posting_id=job_posting_id,
+    )
+    return RoleTargetedSendExecutionResult(
+        job_posting_id=job_posting_id,
+        selected_contact_ids=tuple(message.contact_id for message in active_wave),
+        sent_messages=tuple(sent_messages),
+        blocked_messages=tuple(blocked_messages),
+        failed_messages=tuple(failed_messages),
+        delayed_messages=tuple(delayed_messages),
+        posting_status_after_execution=posting_status_after_execution,
+    )
+
+
+def _load_role_targeted_send_posting_row(
+    connection: sqlite3.Connection,
+    *,
+    job_posting_id: str,
+) -> sqlite3.Row:
+    row = connection.execute(
+        """
+        SELECT job_posting_id, lead_id, company_name, role_title, posting_status
+        FROM job_postings
+        WHERE job_posting_id = ?
+        """,
+        (job_posting_id,),
+    ).fetchone()
+    if row is None:
+        raise OutreachSendingError(f"Job posting `{job_posting_id}` was not found.")
+    return row
+
+
+def _load_active_role_targeted_wave(
+    connection: sqlite3.Connection,
+    *,
+    job_posting_id: str,
+) -> list[_ActiveWaveMessage]:
+    rows = connection.execute(
+        """
+        SELECT jpc.job_posting_contact_id, jpc.contact_id, jpc.recipient_type, jpc.link_level_status,
+               jpc.created_at AS link_created_at, c.display_name, c.current_working_email,
+               c.contact_status, om.outreach_message_id, om.message_status, om.subject,
+               om.body_text, om.body_html, om.thread_id, om.delivery_tracking_id, om.sent_at,
+               om.created_at AS message_created_at, om.updated_at AS message_updated_at
+        FROM job_posting_contacts jpc
+        JOIN contacts c
+          ON c.contact_id = jpc.contact_id
+        LEFT JOIN outreach_messages om
+          ON om.outreach_message_id = (
+            SELECT om2.outreach_message_id
+            FROM outreach_messages om2
+            WHERE om2.job_posting_id = jpc.job_posting_id
+              AND om2.contact_id = jpc.contact_id
+            ORDER BY om2.created_at DESC, om2.outreach_message_id DESC
+            LIMIT 1
+          )
+        WHERE jpc.job_posting_id = ?
+          AND jpc.link_level_status IN (?, ?, ?)
+          AND EXISTS (
+            SELECT 1
+            FROM outreach_messages om3
+            WHERE om3.job_posting_id = jpc.job_posting_id
+              AND om3.contact_id = jpc.contact_id
+          )
+        ORDER BY jpc.created_at ASC, jpc.job_posting_contact_id ASC
+        """,
+        (
+            job_posting_id,
+            POSTING_CONTACT_STATUS_OUTREACH_IN_PROGRESS,
+            POSTING_CONTACT_STATUS_OUTREACH_DONE,
+            POSTING_CONTACT_STATUS_EXHAUSTED,
+        ),
+    ).fetchall()
+    wave = [
+        _ActiveWaveMessage(
+            contact_id=str(row["contact_id"]),
+            job_posting_contact_id=str(row["job_posting_contact_id"]),
+            recipient_type=str(row["recipient_type"]),
+            display_name=str(row["display_name"]),
+            recipient_email=_normalize_optional_text(row["current_working_email"]),
+            contact_status=str(row["contact_status"]),
+            link_level_status=str(row["link_level_status"]),
+            link_created_at=str(row["link_created_at"]),
+            outreach_message_id=str(row["outreach_message_id"]) if row["outreach_message_id"] else "",
+            message_status=str(row["message_status"]) if row["message_status"] else "",
+            subject=_normalize_optional_text(row["subject"]),
+            body_text=_normalize_optional_text(row["body_text"]),
+            body_html=_normalize_optional_text(row["body_html"]),
+            thread_id=_normalize_optional_text(row["thread_id"]),
+            delivery_tracking_id=_normalize_optional_text(row["delivery_tracking_id"]),
+            sent_at=_normalize_optional_text(row["sent_at"]),
+            message_created_at=str(row["message_created_at"]) if row["message_created_at"] else "",
+            message_updated_at=str(row["message_updated_at"]) if row["message_updated_at"] else "",
+        )
+        for row in rows
+    ]
+    return sorted(wave, key=_active_wave_sort_key)
+
+
+def _validate_active_role_targeted_wave(
+    active_wave: Sequence[_ActiveWaveMessage],
+    *,
+    job_posting_id: str,
+) -> None:
+    missing_messages = [
+        message.job_posting_contact_id
+        for message in active_wave
+        if not message.outreach_message_id or not message.message_status
+    ]
+    if missing_messages:
+        missing_label = ", ".join(missing_messages)
+        raise OutreachSendingError(
+            f"Job posting `{job_posting_id}` has active outreach contacts without persisted message rows: {missing_label}."
+        )
+
+
+def _active_wave_sort_key(message: _ActiveWaveMessage) -> tuple[int, int, str, str]:
+    return (
+        _selection_state_rank(_recipient_type_send_slot(message.recipient_type)),
+        _fallback_type_rank(message.recipient_type),
+        message.link_created_at,
+        message.contact_id,
+    )
+
+
+def _recipient_type_send_slot(recipient_type: str) -> str:
+    if recipient_type == RECIPIENT_TYPE_RECRUITER:
+        return _CANDIDATE_STATE_READY
+    if recipient_type in {RECIPIENT_TYPE_HIRING_MANAGER, RECIPIENT_TYPE_FOUNDER}:
+        return _CANDIDATE_STATE_NEEDS_EMAIL
+    if recipient_type == RECIPIENT_TYPE_ENGINEER:
+        return _CANDIDATE_STATE_REPEAT_REVIEW
+    return _CANDIDATE_STATE_UNAVAILABLE
+
+
+def _build_role_targeted_send_pacing_plan(
+    connection: sqlite3.Connection,
+    *,
+    posting_row: Mapping[str, Any],
+    current_dt: datetime,
+    local_timezone: tzinfo,
+    global_gap_minutes: int,
+) -> dict[str, Any]:
+    company_sent_today = _count_company_sends_today(
+        connection,
+        company_name=str(posting_row["company_name"]),
+        current_dt=current_dt,
+        local_timezone=local_timezone,
+    )
+    remaining_company_daily_capacity = max(
+        0,
+        AUTOMATIC_COMPANY_DAILY_SEND_CAP - company_sent_today,
+    )
+    return _build_pacing_plan(
+        connection,
+        current_dt=current_dt,
+        local_timezone=local_timezone,
+        company_name=str(posting_row["company_name"]),
+        company_sent_today=company_sent_today,
+        remaining_company_daily_capacity=remaining_company_daily_capacity,
+        global_gap_minutes=global_gap_minutes,
+    )
+
+
+def _build_delayed_messages(
+    messages: Sequence[_ActiveWaveMessage],
+    *,
+    earliest_allowed_send_at: str,
+    pacing_block_reason: str | None,
+) -> list[DelayedOutreachMessage]:
+    delayed: list[DelayedOutreachMessage] = []
+    for message in messages:
+        if message.message_status != MESSAGE_STATUS_GENERATED:
+            continue
+        delayed.append(
+            DelayedOutreachMessage(
+                outreach_message_id=message.outreach_message_id,
+                contact_id=message.contact_id,
+                job_posting_contact_id=message.job_posting_contact_id,
+                earliest_allowed_send_at=earliest_allowed_send_at,
+                pacing_block_reason=pacing_block_reason,
+            )
+        )
+    return delayed
+
+
+def _evaluate_send_guardrails(
+    connection: sqlite3.Connection,
+    paths: ProjectPaths,
+    *,
+    posting_row: Mapping[str, Any],
+    active_message: _ActiveWaveMessage,
+) -> dict[str, Any] | None:
+    if active_message.recipient_email is None:
+        return {
+            "reason_code": "missing_recipient_email",
+            "message": "Automatic sending requires a usable recipient email.",
+            "exhaust_link": False,
+            "stop_wave": False,
+        }
+    if active_message.subject is None or active_message.body_text is None:
+        return {
+            "reason_code": "missing_draft_content",
+            "message": "Automatic sending requires persisted draft subject and body content.",
+            "exhaust_link": False,
+            "stop_wave": False,
+        }
+
+    draft_path = paths.outreach_message_draft_path(
+        str(posting_row["company_name"]),
+        str(posting_row["role_title"]),
+        active_message.outreach_message_id,
+    )
+    send_result_path = paths.outreach_message_send_result_path(
+        str(posting_row["company_name"]),
+        str(posting_row["role_title"]),
+        active_message.outreach_message_id,
+    )
+    if not draft_path.exists():
+        return {
+            "reason_code": "missing_draft_artifact",
+            "message": f"Draft artifact is missing for `{active_message.outreach_message_id}`.",
+            "exhaust_link": False,
+            "stop_wave": False,
+        }
+    if not send_result_path.exists():
+        return {
+            "reason_code": "missing_send_result_artifact",
+            "message": f"send_result.json is missing for `{active_message.outreach_message_id}`.",
+            "exhaust_link": False,
+            "stop_wave": False,
+        }
+
+    try:
+        send_result_contract = _read_json_file(send_result_path)
+    except Exception:
+        return {
+            "reason_code": "invalid_send_result_artifact",
+            "message": f"send_result.json is unreadable for `{active_message.outreach_message_id}`.",
+            "exhaust_link": False,
+            "stop_wave": False,
+        }
+    send_status = _normalize_optional_text(send_result_contract.get("send_status"))
+    if send_status in {MESSAGE_STATUS_SENT, MESSAGE_STATUS_BLOCKED}:
+        return {
+            "reason_code": "ambiguous_send_state",
+            "message": "Stored send_result.json already reflects a non-generated send state, so automatic resend is unsafe.",
+            "exhaust_link": True,
+            "stop_wave": True,
+        }
+    if active_message.sent_at or active_message.thread_id or active_message.delivery_tracking_id:
+        return {
+            "reason_code": "ambiguous_send_state",
+            "message": "Message delivery metadata already exists without a clean completed send state, so automatic resend is unsafe.",
+            "exhaust_link": True,
+            "stop_wave": True,
+        }
+
+    prior_sent_count = int(
+        connection.execute(
+            """
+            SELECT COUNT(*)
+            FROM outreach_messages
+            WHERE contact_id = ?
+              AND outreach_message_id <> ?
+              AND (
+                sent_at IS NOT NULL
+                OR message_status = ?
+              )
+            """,
+            (
+                active_message.contact_id,
+                active_message.outreach_message_id,
+                MESSAGE_STATUS_SENT,
+            ),
+        ).fetchone()[0]
+        or 0
+    )
+    if prior_sent_count > 0:
+        return {
+            "reason_code": "repeat_outreach_review_required",
+            "message": "Prior outreach history exists for this contact, so automatic repeat sending is blocked pending review.",
+            "exhaust_link": True,
+            "stop_wave": False,
+        }
+
+    other_active_message_count = int(
+        connection.execute(
+            """
+            SELECT COUNT(*)
+            FROM outreach_messages
+            WHERE contact_id = ?
+              AND outreach_message_id <> ?
+              AND message_status IN (?, ?)
+            """,
+            (
+                active_message.contact_id,
+                active_message.outreach_message_id,
+                MESSAGE_STATUS_GENERATED,
+                MESSAGE_STATUS_BLOCKED,
+            ),
+        ).fetchone()[0]
+        or 0
+    )
+    if other_active_message_count > 0:
+        return {
+            "reason_code": "ambiguous_send_state",
+            "message": "Multiple active outreach messages exist for this contact, so automatic resend is unsafe.",
+            "exhaust_link": True,
+            "stop_wave": True,
+        }
+    return None
+
+
+def _normalize_send_attempt_outcome(outcome: SendAttemptOutcome) -> SendAttemptOutcome:
+    if outcome.outcome not in {
+        SEND_OUTCOME_SENT,
+        SEND_OUTCOME_FAILED,
+        SEND_OUTCOME_AMBIGUOUS,
+    }:
+        raise OutreachSendingError(
+            f"Unsupported send outcome `{outcome.outcome}` returned by the message sender."
+        )
+    return outcome
+
+
+def _load_resume_attachment_path(
+    paths: ProjectPaths,
+    *,
+    company_name: str,
+    role_title: str,
+    outreach_message_id: str,
+) -> str | None:
+    send_result_path = paths.outreach_message_send_result_path(company_name, role_title, outreach_message_id)
+    if not send_result_path.exists():
+        return None
+    payload = _read_json_file(send_result_path)
+    return _normalize_optional_text(payload.get("resume_attachment_path"))
+
+
+def _persist_successful_send(
+    connection: sqlite3.Connection,
+    paths: ProjectPaths,
+    *,
+    posting_row: Mapping[str, Any],
+    active_message: _ActiveWaveMessage,
+    current_time: str,
+    sent_at: str,
+    thread_id: str | None,
+    delivery_tracking_id: str | None,
+) -> SentOutreachMessage:
+    normalized_sent_at = _isoformat_utc(_parse_iso_datetime(sent_at))
+    with connection:
+        connection.execute(
+            """
+            UPDATE outreach_messages
+            SET message_status = ?, thread_id = ?, delivery_tracking_id = ?, sent_at = ?, updated_at = ?
+            WHERE outreach_message_id = ?
+            """,
+            (
+                MESSAGE_STATUS_SENT,
+                thread_id,
+                delivery_tracking_id,
+                normalized_sent_at,
+                current_time,
+                active_message.outreach_message_id,
+            ),
+        )
+    _transition_contact_to_sent(
+        connection,
+        posting_row=posting_row,
+        active_message=active_message,
+        current_time=current_time,
+    )
+    send_result_artifact_path = _publish_role_targeted_send_result(
+        connection,
+        paths,
+        posting_row=posting_row,
+        active_message=active_message,
+        current_time=current_time,
+        result="success",
+        send_status=MESSAGE_STATUS_SENT,
+        sent_at=normalized_sent_at,
+        thread_id=thread_id,
+        delivery_tracking_id=delivery_tracking_id,
+        reason_code=None,
+        message=None,
+    )
+    _complete_posting_if_wave_finished(
+        connection,
+        posting_row=posting_row,
+        current_time=current_time,
+    )
+    return SentOutreachMessage(
+        outreach_message_id=active_message.outreach_message_id,
+        contact_id=active_message.contact_id,
+        job_posting_contact_id=active_message.job_posting_contact_id,
+        recipient_email=str(active_message.recipient_email),
+        sent_at=normalized_sent_at,
+        thread_id=thread_id,
+        delivery_tracking_id=delivery_tracking_id,
+        send_result_artifact_path=send_result_artifact_path,
+    )
+
+
+def _persist_blocked_send(
+    connection: sqlite3.Connection,
+    paths: ProjectPaths,
+    *,
+    posting_row: Mapping[str, Any],
+    active_message: _ActiveWaveMessage,
+    current_time: str,
+    reason_code: str,
+    message: str,
+    exhaust_link: bool,
+) -> SendExecutionIssue:
+    with connection:
+        connection.execute(
+            """
+            UPDATE outreach_messages
+            SET message_status = ?, updated_at = ?
+            WHERE outreach_message_id = ?
+            """,
+            (
+                MESSAGE_STATUS_BLOCKED,
+                current_time,
+                active_message.outreach_message_id,
+            ),
+        )
+    if exhaust_link:
+        _mark_posting_contact_exhausted_for_review(
+            connection,
+            posting_row=posting_row,
+            active_message=active_message,
+            current_time=current_time,
+            transition_reason=message,
+        )
+    _publish_role_targeted_send_result(
+        connection,
+        paths,
+        posting_row=posting_row,
+        active_message=active_message,
+        current_time=current_time,
+        result="blocked",
+        send_status=MESSAGE_STATUS_BLOCKED,
+        sent_at=None,
+        thread_id=active_message.thread_id,
+        delivery_tracking_id=active_message.delivery_tracking_id,
+        reason_code=reason_code,
+        message=message,
+    )
+    _complete_posting_if_wave_finished(
+        connection,
+        posting_row=posting_row,
+        current_time=current_time,
+    )
+    return SendExecutionIssue(
+        outreach_message_id=active_message.outreach_message_id,
+        contact_id=active_message.contact_id,
+        job_posting_contact_id=active_message.job_posting_contact_id,
+        reason_code=reason_code,
+        message=message,
+    )
+
+
+def _persist_failed_send_attempt(
+    connection: sqlite3.Connection,
+    paths: ProjectPaths,
+    *,
+    posting_row: Mapping[str, Any],
+    active_message: _ActiveWaveMessage,
+    current_time: str,
+    reason_code: str,
+    message: str,
+) -> SendExecutionIssue:
+    with connection:
+        connection.execute(
+            """
+            UPDATE outreach_messages
+            SET message_status = ?, updated_at = ?
+            WHERE outreach_message_id = ?
+            """,
+            (
+                MESSAGE_STATUS_FAILED,
+                current_time,
+                active_message.outreach_message_id,
+            ),
+        )
+    _publish_role_targeted_send_result(
+        connection,
+        paths,
+        posting_row=posting_row,
+        active_message=active_message,
+        current_time=current_time,
+        result="failed",
+        send_status=MESSAGE_STATUS_FAILED,
+        sent_at=None,
+        thread_id=None,
+        delivery_tracking_id=None,
+        reason_code=reason_code,
+        message=message,
+    )
+    return SendExecutionIssue(
+        outreach_message_id=active_message.outreach_message_id,
+        contact_id=active_message.contact_id,
+        job_posting_contact_id=active_message.job_posting_contact_id,
+        reason_code=reason_code,
+        message=message,
+    )
+
+
+def _publish_role_targeted_send_result(
+    connection: sqlite3.Connection,
+    paths: ProjectPaths,
+    *,
+    posting_row: Mapping[str, Any],
+    active_message: _ActiveWaveMessage,
+    current_time: str,
+    result: str,
+    send_status: str,
+    sent_at: str | None,
+    thread_id: str | None,
+    delivery_tracking_id: str | None,
+    reason_code: str | None,
+    message: str | None,
+) -> str:
+    company_name = str(posting_row["company_name"])
+    role_title = str(posting_row["role_title"])
+    draft_path = paths.outreach_message_draft_path(company_name, role_title, active_message.outreach_message_id)
+    html_path = paths.outreach_message_html_path(company_name, role_title, active_message.outreach_message_id)
+    send_result_path = paths.outreach_message_send_result_path(
+        company_name,
+        role_title,
+        active_message.outreach_message_id,
+    )
+    published = publish_json_artifact(
+        connection,
+        paths,
+        artifact_type=SEND_RESULT_ARTIFACT_TYPE,
+        artifact_path=send_result_path,
+        producer_component=OUTREACH_COMPONENT,
+        result=result,
+        linkage=ArtifactLinkage(
+            lead_id=str(posting_row["lead_id"]),
+            job_posting_id=str(posting_row["job_posting_id"]),
+            contact_id=active_message.contact_id,
+            outreach_message_id=active_message.outreach_message_id,
+        ),
+        payload={
+            "outreach_mode": OUTREACH_MODE_ROLE_TARGETED,
+            "recipient_email": active_message.recipient_email,
+            "send_status": send_status,
+            "sent_at": sent_at,
+            "thread_id": thread_id,
+            "delivery_tracking_id": delivery_tracking_id,
+            "subject": active_message.subject,
+            "body_text_artifact_path": str(draft_path.resolve()) if draft_path.exists() else None,
+            "body_html_artifact_path": str(html_path.resolve()) if html_path.exists() else None,
+            "resume_attachment_path": _load_resume_attachment_path(
+                paths,
+                company_name=company_name,
+                role_title=role_title,
+                outreach_message_id=active_message.outreach_message_id,
+            ),
+        },
+        produced_at=current_time,
+        reason_code=reason_code,
+        message=message,
+    )
+    _write_text_file(
+        paths.outreach_latest_send_result_path(company_name, role_title),
+        json.dumps(published.contract, indent=2) + "\n",
+    )
+    return str(send_result_path.resolve())
+
+
+def _transition_contact_to_sent(
+    connection: sqlite3.Connection,
+    *,
+    posting_row: Mapping[str, Any],
+    active_message: _ActiveWaveMessage,
+    current_time: str,
+) -> None:
+    with connection:
+        if active_message.contact_status != CONTACT_STATUS_SENT:
+            connection.execute(
+                """
+                UPDATE contacts
+                SET contact_status = ?, updated_at = ?
+                WHERE contact_id = ?
+                """,
+                (
+                    CONTACT_STATUS_SENT,
+                    current_time,
+                    active_message.contact_id,
+                ),
+            )
+            _record_state_transition(
+                connection,
+                object_type="contact",
+                object_id=active_message.contact_id,
+                stage="contact_status",
+                previous_state=active_message.contact_status,
+                new_state=CONTACT_STATUS_SENT,
+                transition_timestamp=current_time,
+                transition_reason="An outreach message was sent for this contact.",
+                lead_id=str(posting_row["lead_id"]),
+                job_posting_id=str(posting_row["job_posting_id"]),
+                contact_id=active_message.contact_id,
+            )
+        if active_message.link_level_status != POSTING_CONTACT_STATUS_OUTREACH_DONE:
+            connection.execute(
+                """
+                UPDATE job_posting_contacts
+                SET link_level_status = ?, updated_at = ?
+                WHERE job_posting_contact_id = ?
+                """,
+                (
+                    POSTING_CONTACT_STATUS_OUTREACH_DONE,
+                    current_time,
+                    active_message.job_posting_contact_id,
+                ),
+            )
+            _record_state_transition(
+                connection,
+                object_type="job_posting_contact",
+                object_id=active_message.job_posting_contact_id,
+                stage="link_level_status",
+                previous_state=active_message.link_level_status,
+                new_state=POSTING_CONTACT_STATUS_OUTREACH_DONE,
+                transition_timestamp=current_time,
+                transition_reason="An outreach message was sent for this posting-contact pair.",
+                lead_id=str(posting_row["lead_id"]),
+                job_posting_id=str(posting_row["job_posting_id"]),
+                contact_id=active_message.contact_id,
+            )
+
+
+def _mark_posting_contact_exhausted_for_review(
+    connection: sqlite3.Connection,
+    *,
+    posting_row: Mapping[str, Any],
+    active_message: _ActiveWaveMessage,
+    current_time: str,
+    transition_reason: str,
+) -> None:
+    if active_message.link_level_status in {
+        POSTING_CONTACT_STATUS_OUTREACH_DONE,
+        POSTING_CONTACT_STATUS_EXHAUSTED,
+    }:
+        return
+    with connection:
+        connection.execute(
+            """
+            UPDATE job_posting_contacts
+            SET link_level_status = ?, updated_at = ?
+            WHERE job_posting_contact_id = ?
+            """,
+            (
+                POSTING_CONTACT_STATUS_EXHAUSTED,
+                current_time,
+                active_message.job_posting_contact_id,
+            ),
+        )
+        _record_state_transition(
+            connection,
+            object_type="job_posting_contact",
+            object_id=active_message.job_posting_contact_id,
+            stage="link_level_status",
+            previous_state=active_message.link_level_status,
+            new_state=POSTING_CONTACT_STATUS_EXHAUSTED,
+            transition_timestamp=current_time,
+            transition_reason=transition_reason,
+            lead_id=str(posting_row["lead_id"]),
+            job_posting_id=str(posting_row["job_posting_id"]),
+            contact_id=active_message.contact_id,
+        )
+
+
+def _complete_posting_if_wave_finished(
+    connection: sqlite3.Connection,
+    *,
+    posting_row: Mapping[str, Any],
+    current_time: str,
+) -> None:
+    active_wave = _load_active_role_targeted_wave(
+        connection,
+        job_posting_id=str(posting_row["job_posting_id"]),
+    )
+    if not active_wave:
+        return
+    latest_statuses = {message.message_status for message in active_wave}
+    if not latest_statuses or not latest_statuses.issubset({MESSAGE_STATUS_SENT, MESSAGE_STATUS_BLOCKED}):
+        return
+
+    current_status = _load_current_posting_status(
+        connection,
+        job_posting_id=str(posting_row["job_posting_id"]),
+    )
+    if current_status == JOB_POSTING_STATUS_COMPLETED:
+        return
+    with connection:
+        connection.execute(
+            """
+            UPDATE job_postings
+            SET posting_status = ?, updated_at = ?
+            WHERE job_posting_id = ?
+            """,
+            (
+                JOB_POSTING_STATUS_COMPLETED,
+                current_time,
+                posting_row["job_posting_id"],
+            ),
+        )
+        _record_state_transition(
+            connection,
+            object_type="job_posting",
+            object_id=str(posting_row["job_posting_id"]),
+            stage="posting_status",
+            previous_state=current_status,
+            new_state=JOB_POSTING_STATUS_COMPLETED,
+            transition_timestamp=current_time,
+            transition_reason="The active drafted outreach wave reached terminal sent or review-blocked states.",
+            lead_id=str(posting_row["lead_id"]),
+            job_posting_id=str(posting_row["job_posting_id"]),
+            contact_id=None,
+        )
+
+
+def _load_current_posting_status(
+    connection: sqlite3.Connection,
+    *,
+    job_posting_id: str,
+) -> str:
+    row = connection.execute(
+        """
+        SELECT posting_status
+        FROM job_postings
+        WHERE job_posting_id = ?
+        """,
+        (job_posting_id,),
+    ).fetchone()
+    if row is None:
+        raise OutreachSendingError(f"Job posting `{job_posting_id}` was not found.")
+    return str(row["posting_status"])
 
 
 def _load_role_targeted_draft_posting_row(

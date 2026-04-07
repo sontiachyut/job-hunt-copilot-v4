@@ -749,3 +749,31 @@ Use this file as an append-only implementation log for the build agent.
 ### Notes
 - Explicit implementation note: role-targeted draft publication now keeps stable per-message artifacts under `outreach/output/.../messages/<outreach_message_id>/` while still mirroring the latest `email_draft.md` and `send_result.json` at the posting workspace root so the PRD-listed top-level artifact paths remain honest.
 - Explicit implementation inference: the shared artifact-envelope helper still omits null linkage fields, so general-learning `send_result.json` currently represents absent `job_posting_id` by omission rather than an explicit JSON `null`; the canonical `outreach_messages.job_posting_id` remains `NULL`.
+
+### Session
+- Date: 2026-04-07 10:45:45 MST
+- Slice: BA-08-S3 Send execution and repeat-outreach guardrails
+- Goal: Execute the active drafted outreach wave under the existing pacing rules, persist canonical send metadata, and block unsafe repeat or ambiguous resends instead of risking duplicate outreach.
+
+### Work Done
+- Extended `job_hunt_copilot.outreach` with a provider-injected send execution path that loads the active drafted wave from canonical state, enforces the existing company-cap plus randomized inter-send-gap pacing rules at send time, and sends at most the currently safe next message while leaving later contacts delayed for future slots.
+- Added send-stage persistence that updates `outreach_messages` with canonical `sent_at`, `thread_id`, and `delivery_tracking_id`, rewrites per-message and workspace-root `send_result.json` artifacts with sent or blocked or failed outcomes, advances successful links into `outreach_done`, and promotes postings into `completed` once the active drafted wave reaches only sent or review-blocked terminal states.
+- Added duplicate-send guardrails that treat prior sent history, unreadable or contradictory `send_result.json` state, and multiple active message rows for one contact as automatic-send blockers; repeat-review blocks now persist canonical `blocked` outcomes instead of silently retrying or sending again.
+- Tightened repeat-outreach history counting so send-set planning keys off previously sent history rather than freshly generated drafts, preventing the active drafted wave from marking itself as repeat-review before send execution begins.
+- Expanded `tests/test_outreach.py` with paced send execution, posting-completion, and repeat-outreach block coverage, and updated `README.md`, `docs/ARCHITECTURE.md`, the build board, the implementation plan, and the progress handoff so the repo-facing and build-agent-facing surfaces reflect that BA-08 is now complete.
+
+### Validation
+- Ran `python3.11 -m py_compile job_hunt_copilot/outreach.py tests/test_outreach.py` and confirmed the new send runtime and focused tests compile cleanly.
+- Ran `python3.11 -m pytest tests/test_outreach.py` and confirmed all 12 outreach tests passed.
+- Ran `python3.11 -m pytest tests/test_outreach.py tests/test_email_discovery.py tests/test_resume_tailoring.py` and confirmed all 39 targeted outreach, discovery, and tailoring tests passed.
+- Ran full `python3.11 -m pytest` and confirmed all 95 repository tests passed across bootstrap, schema, artifacts, ingestion, tailoring, discovery, outreach, Gmail intake, local runtime, runtime pack, and supervisor coverage.
+
+### Result
+- `done`
+
+### Next
+- Start `BA-09-S1`: persist immediate and delayed delivery-feedback events plus observation-window scheduling state from the new canonical sent-message records.
+
+### Notes
+- Explicit implementation note: send execution now derives the active wave from posting-contact links that already have drafted message history, so earlier discovery-exhausted contacts without outreach messages do not get misclassified as send-ready work.
+- Explicit implementation inference: the current send executor intentionally uses an injected sender interface rather than embedding Gmail API logic directly in `job_hunt_copilot.outreach`, which keeps this bounded slice testable while still persisting the thread or delivery metadata that BA-09 will reuse for feedback linkage.

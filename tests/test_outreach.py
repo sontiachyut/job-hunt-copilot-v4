@@ -12,20 +12,27 @@ from job_hunt_copilot.bootstrap import run_bootstrap
 from job_hunt_copilot.outreach import (
     CONTACT_STATUS_EXHAUSTED,
     CONTACT_STATUS_OUTREACH_IN_PROGRESS,
+    CONTACT_STATUS_SENT,
+    JOB_POSTING_STATUS_COMPLETED,
     JOB_POSTING_STATUS_READY_FOR_OUTREACH,
     JOB_POSTING_STATUS_REQUIRES_CONTACTS,
     JOB_POSTING_STATUS_OUTREACH_IN_PROGRESS,
+    MESSAGE_STATUS_BLOCKED,
     MESSAGE_STATUS_FAILED,
     MESSAGE_STATUS_GENERATED,
+    MESSAGE_STATUS_SENT,
     OutreachDraftingError,
+    SendAttemptOutcome,
     POSTING_CONTACT_STATUS_EXHAUSTED,
     POSTING_CONTACT_STATUS_IDENTIFIED,
+    POSTING_CONTACT_STATUS_OUTREACH_DONE,
     POSTING_CONTACT_STATUS_OUTREACH_IN_PROGRESS,
     POSTING_CONTACT_STATUS_SHORTLISTED,
     RECIPIENT_TYPE_ALUMNI,
     RECIPIENT_TYPE_ENGINEER,
     RECIPIENT_TYPE_HIRING_MANAGER,
     RECIPIENT_TYPE_RECRUITER,
+    execute_role_targeted_send_set,
     evaluate_role_targeted_send_set,
     generate_general_learning_draft,
     generate_role_targeted_send_set_drafts,
@@ -472,6 +479,38 @@ class FailingRoleTargetedRenderer:
         from job_hunt_copilot.outreach import DeterministicOutreachDraftRenderer
 
         return DeterministicOutreachDraftRenderer().render_general_learning(context)
+
+
+class RecordingOutreachSender:
+    def __init__(
+        self,
+        *,
+        failing_message_ids: set[str] | None = None,
+        ambiguous_message_ids: set[str] | None = None,
+    ) -> None:
+        self.failing_message_ids = failing_message_ids or set()
+        self.ambiguous_message_ids = ambiguous_message_ids or set()
+        self.attempted_message_ids: list[str] = []
+
+    def send(self, message):  # type: ignore[no-untyped-def]
+        self.attempted_message_ids.append(message.outreach_message_id)
+        if message.outreach_message_id in self.ambiguous_message_ids:
+            return SendAttemptOutcome(
+                outcome="ambiguous",
+                reason_code="ambiguous_send_outcome",
+                message="Provider completion could not be reconciled.",
+            )
+        if message.outreach_message_id in self.failing_message_ids:
+            return SendAttemptOutcome(
+                outcome="failed",
+                reason_code="smtp_rejected",
+                message="Synthetic provider rejection.",
+            )
+        return SendAttemptOutcome(
+            outcome="sent",
+            thread_id=f"thread-{message.outreach_message_id}",
+            delivery_tracking_id=f"delivery-{message.outreach_message_id}",
+        )
 
 
 def test_send_set_prefers_ready_contacts_for_each_primary_class(tmp_path: Path):
@@ -1162,5 +1201,253 @@ def test_general_learning_draft_persists_without_posting_or_resume(tmp_path: Pat
     assert send_result_payload.get("job_posting_id") is None
     assert send_result_payload["outreach_mode"] == "general_learning"
     assert send_result_payload["send_status"] == MESSAGE_STATUS_GENERATED
+
+    connection.close()
+
+
+def test_send_execution_persists_sent_metadata_and_delays_remaining_wave(tmp_path: Path):
+    project_root, paths = bootstrap_project(tmp_path)
+    connection = connect_database(project_root / "job_hunt_copilot.db")
+    write_sender_profile(paths)
+    seed_posting(connection)
+    seed_linked_contact(
+        connection,
+        contact_id="ct_r1",
+        job_posting_contact_id="jpc_r1",
+        display_name="Priya Recruiter",
+        recipient_type=RECIPIENT_TYPE_RECRUITER,
+        current_working_email="priya@acme.example",
+        created_at="2026-04-06T20:01:00Z",
+    )
+    seed_linked_contact(
+        connection,
+        contact_id="ct_m1",
+        job_posting_contact_id="jpc_m1",
+        display_name="Morgan Manager",
+        recipient_type=RECIPIENT_TYPE_HIRING_MANAGER,
+        current_working_email="morgan@acme.example",
+        created_at="2026-04-06T20:02:00Z",
+    )
+    seed_linked_contact(
+        connection,
+        contact_id="ct_e1",
+        job_posting_contact_id="jpc_e1",
+        display_name="Jamie Engineer",
+        recipient_type=RECIPIENT_TYPE_ENGINEER,
+        current_working_email="jamie@acme.example",
+        created_at="2026-04-06T20:03:00Z",
+    )
+    seed_approved_tailoring_run(connection, paths)
+    draft_batch = generate_role_targeted_send_set_drafts(
+        connection,
+        project_root=project_root,
+        job_posting_id="jp_outreach",
+        current_time="2026-04-06T20:30:00Z",
+        local_timezone=ZoneInfo("UTC"),
+    )
+    sender = RecordingOutreachSender()
+
+    result = execute_role_targeted_send_set(
+        connection,
+        project_root=project_root,
+        job_posting_id="jp_outreach",
+        current_time="2026-04-06T20:40:00Z",
+        local_timezone=ZoneInfo("UTC"),
+        sender=sender,
+    )
+
+    recruiter_message = next(
+        message for message in draft_batch.drafted_messages if message.contact_id == "ct_r1"
+    )
+    assert sender.attempted_message_ids == [recruiter_message.outreach_message_id]
+    assert [message.contact_id for message in result.sent_messages] == ["ct_r1"]
+    assert [message.contact_id for message in result.delayed_messages] == ["ct_m1", "ct_e1"]
+    assert all(
+        delayed.pacing_block_reason == "global_inter_send_gap" for delayed in result.delayed_messages
+    )
+    assert all(
+        delayed.earliest_allowed_send_at > "2026-04-06T20:40:00Z" for delayed in result.delayed_messages
+    )
+    assert result.posting_status_after_execution == JOB_POSTING_STATUS_OUTREACH_IN_PROGRESS
+
+    sent_row = connection.execute(
+        """
+        SELECT message_status, sent_at, thread_id, delivery_tracking_id
+        FROM outreach_messages
+        WHERE outreach_message_id = ?
+        """,
+        (recruiter_message.outreach_message_id,),
+    ).fetchone()
+    assert dict(sent_row) == {
+        "message_status": MESSAGE_STATUS_SENT,
+        "sent_at": "2026-04-06T20:40:00Z",
+        "thread_id": f"thread-{recruiter_message.outreach_message_id}",
+        "delivery_tracking_id": f"delivery-{recruiter_message.outreach_message_id}",
+    }
+
+    send_result_payload = json.loads(
+        Path(result.sent_messages[0].send_result_artifact_path).read_text(encoding="utf-8")
+    )
+    assert send_result_payload["send_status"] == MESSAGE_STATUS_SENT
+    assert send_result_payload["sent_at"] == "2026-04-06T20:40:00Z"
+    assert send_result_payload["thread_id"] == f"thread-{recruiter_message.outreach_message_id}"
+    assert send_result_payload["delivery_tracking_id"] == f"delivery-{recruiter_message.outreach_message_id}"
+
+    contact_rows = connection.execute(
+        """
+        SELECT c.contact_id, c.contact_status, jpc.link_level_status
+        FROM contacts c
+        JOIN job_posting_contacts jpc
+          ON jpc.contact_id = c.contact_id
+        WHERE jpc.job_posting_id = ?
+        ORDER BY c.contact_id
+        """,
+        ("jp_outreach",),
+    ).fetchall()
+    assert [dict(row) for row in contact_rows] == [
+        {
+            "contact_id": "ct_e1",
+            "contact_status": CONTACT_STATUS_OUTREACH_IN_PROGRESS,
+            "link_level_status": POSTING_CONTACT_STATUS_OUTREACH_IN_PROGRESS,
+        },
+        {
+            "contact_id": "ct_m1",
+            "contact_status": CONTACT_STATUS_OUTREACH_IN_PROGRESS,
+            "link_level_status": POSTING_CONTACT_STATUS_OUTREACH_IN_PROGRESS,
+        },
+        {
+            "contact_id": "ct_r1",
+            "contact_status": CONTACT_STATUS_SENT,
+            "link_level_status": POSTING_CONTACT_STATUS_OUTREACH_DONE,
+        },
+    ]
+
+    connection.close()
+
+
+def test_send_execution_completes_posting_when_last_message_is_sent(tmp_path: Path):
+    project_root, paths = bootstrap_project(tmp_path)
+    connection = connect_database(project_root / "job_hunt_copilot.db")
+    write_sender_profile(paths)
+    seed_posting(connection)
+    seed_linked_contact(
+        connection,
+        contact_id="ct_r1",
+        job_posting_contact_id="jpc_r1",
+        display_name="Priya Recruiter",
+        recipient_type=RECIPIENT_TYPE_RECRUITER,
+        current_working_email="priya@acme.example",
+        created_at="2026-04-06T20:01:00Z",
+    )
+    seed_approved_tailoring_run(connection, paths)
+    generate_role_targeted_send_set_drafts(
+        connection,
+        project_root=project_root,
+        job_posting_id="jp_outreach",
+        current_time="2026-04-06T20:30:00Z",
+        local_timezone=ZoneInfo("UTC"),
+    )
+
+    result = execute_role_targeted_send_set(
+        connection,
+        project_root=project_root,
+        job_posting_id="jp_outreach",
+        current_time="2026-04-06T20:40:00Z",
+        local_timezone=ZoneInfo("UTC"),
+        sender=RecordingOutreachSender(),
+    )
+
+    assert [message.contact_id for message in result.sent_messages] == ["ct_r1"]
+    assert result.blocked_messages == ()
+    assert result.failed_messages == ()
+    assert result.delayed_messages == ()
+    assert result.posting_status_after_execution == JOB_POSTING_STATUS_COMPLETED
+
+    posting_status = connection.execute(
+        "SELECT posting_status FROM job_postings WHERE job_posting_id = ?",
+        ("jp_outreach",),
+    ).fetchone()[0]
+    assert posting_status == JOB_POSTING_STATUS_COMPLETED
+
+    connection.close()
+
+
+def test_send_execution_blocks_repeat_outreach_without_resend(tmp_path: Path):
+    project_root, paths = bootstrap_project(tmp_path)
+    connection = connect_database(project_root / "job_hunt_copilot.db")
+    write_sender_profile(paths)
+    seed_posting(connection)
+    seed_linked_contact(
+        connection,
+        contact_id="ct_r1",
+        job_posting_contact_id="jpc_r1",
+        display_name="Priya Recruiter",
+        recipient_type=RECIPIENT_TYPE_RECRUITER,
+        current_working_email="priya@acme.example",
+        created_at="2026-04-06T20:01:00Z",
+    )
+    seed_approved_tailoring_run(connection, paths)
+    draft_batch = generate_role_targeted_send_set_drafts(
+        connection,
+        project_root=project_root,
+        job_posting_id="jp_outreach",
+        current_time="2026-04-06T20:30:00Z",
+        local_timezone=ZoneInfo("UTC"),
+    )
+    current_message = draft_batch.drafted_messages[0]
+    seed_sent_message(
+        connection,
+        outreach_message_id="msg_previous",
+        contact_id="ct_r1",
+        recipient_email="priya@acme.example",
+        job_posting_contact_id="jpc_r1",
+        sent_at="2026-04-05T18:00:00Z",
+    )
+    sender = RecordingOutreachSender()
+
+    result = execute_role_targeted_send_set(
+        connection,
+        project_root=project_root,
+        job_posting_id="jp_outreach",
+        current_time="2026-04-06T20:40:00Z",
+        local_timezone=ZoneInfo("UTC"),
+        sender=sender,
+    )
+
+    assert sender.attempted_message_ids == []
+    assert result.sent_messages == ()
+    assert result.failed_messages == ()
+    assert [issue.outreach_message_id for issue in result.blocked_messages] == [
+        current_message.outreach_message_id
+    ]
+    assert result.blocked_messages[0].reason_code == "repeat_outreach_review_required"
+    assert result.posting_status_after_execution == JOB_POSTING_STATUS_COMPLETED
+
+    blocked_row = connection.execute(
+        """
+        SELECT message_status
+        FROM outreach_messages
+        WHERE outreach_message_id = ?
+        """,
+        (current_message.outreach_message_id,),
+    ).fetchone()
+    assert blocked_row["message_status"] == MESSAGE_STATUS_BLOCKED
+
+    link_row = connection.execute(
+        """
+        SELECT link_level_status
+        FROM job_posting_contacts
+        WHERE job_posting_contact_id = ?
+        """,
+        ("jpc_r1",),
+    ).fetchone()
+    assert link_row["link_level_status"] == POSTING_CONTACT_STATUS_EXHAUSTED
+
+    send_result_payload = json.loads(
+        Path(current_message.send_result_artifact_path).read_text(encoding="utf-8")
+    )
+    assert send_result_payload["result"] == "blocked"
+    assert send_result_payload["send_status"] == MESSAGE_STATUS_BLOCKED
+    assert send_result_payload["reason_code"] == "repeat_outreach_review_required"
 
     connection.close()
