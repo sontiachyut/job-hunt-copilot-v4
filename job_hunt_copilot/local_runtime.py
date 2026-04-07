@@ -9,12 +9,19 @@ from typing import Any
 
 from .contracts import CONTRACT_VERSION
 from .db import initialize_database
+from .delivery_feedback import (
+    DELAYED_FEEDBACK_POLL_INTERVAL_MINUTES,
+    OBSERVATION_SCOPE_DELAYED,
+    MailboxFeedbackObserver,
+    sync_delivery_feedback,
+)
 from .paths import ProjectPaths
 from .records import now_utc_iso
 from .runtime_pack import materialize_runtime_pack, write_text_atomic
 from .supervisor import (
     AGENT_MODE_PAUSED,
     AGENT_MODE_RUNNING,
+    AGENT_MODE_STOPPED,
     begin_replanning,
     pause_agent,
     read_agent_control_state,
@@ -30,6 +37,10 @@ SUPERVISOR_HEARTBEAT_INTERVAL_SECONDS = 180
 SUPERVISOR_TRIGGER_TYPE = "launchd_heartbeat"
 SUPERVISOR_SCHEDULER_NAME = "launchd"
 SUPERVISOR_SLEEP_WAKE_DETECTION_METHOD = "pmset_log"
+FEEDBACK_SYNC_LAUNCHD_LABEL = "com.jobhuntcopilot.feedback-sync"
+FEEDBACK_SYNC_INTERVAL_SECONDS = DELAYED_FEEDBACK_POLL_INTERVAL_MINUTES * 60
+FEEDBACK_SYNC_SCHEDULER_NAME = "job-hunt-copilot-feedback-sync"
+FEEDBACK_SYNC_SCHEDULER_TYPE = "launchd"
 CHAT_SESSION_EXIT_MODE_EXPLICIT_CLOSE = "explicit_close"
 CHAT_SESSION_EXIT_MODE_UNEXPECTED_EXIT = "unexpected_exit"
 CHAT_SESSION_EXIT_MODES = frozenset(
@@ -95,6 +106,50 @@ def materialize_supervisor_launchd_plist(
         "program_arguments": [str(paths.agent_cycle_entrypoint_path)],
         "stdout_log_path": str(paths.supervisor_stdout_log_path),
         "stderr_log_path": str(paths.supervisor_stderr_log_path),
+        "created": created,
+    }
+
+
+def render_feedback_sync_launchd_plist_payload(paths: ProjectPaths) -> dict[str, Any]:
+    return {
+        "Label": FEEDBACK_SYNC_LAUNCHD_LABEL,
+        "RunAtLoad": True,
+        "StartInterval": FEEDBACK_SYNC_INTERVAL_SECONDS,
+        "KeepAlive": False,
+        "WorkingDirectory": str(paths.project_root),
+        "ProgramArguments": [str(paths.feedback_sync_cycle_entrypoint_path)],
+        "StandardOutPath": str(paths.feedback_sync_stdout_log_path),
+        "StandardErrorPath": str(paths.feedback_sync_stderr_log_path),
+    }
+
+
+def render_feedback_sync_launchd_plist(paths: ProjectPaths) -> str:
+    payload = render_feedback_sync_launchd_plist_payload(paths)
+    return plistlib.dumps(payload, fmt=plistlib.FMT_XML, sort_keys=False).decode("utf-8")
+
+
+def materialize_feedback_sync_launchd_plist(
+    project_root: Path | str | None = None,
+) -> dict[str, Any]:
+    paths = ProjectPaths.from_root(project_root)
+    paths.ops_logs_dir.mkdir(parents=True, exist_ok=True)
+    paths.ops_launchd_dir.mkdir(parents=True, exist_ok=True)
+
+    rendered = render_feedback_sync_launchd_plist(paths)
+    created = not paths.feedback_sync_plist_path.exists()
+    write_text_atomic(paths.feedback_sync_plist_path, rendered)
+    paths.feedback_sync_plist_path.chmod(0o644)
+
+    return {
+        "contract_version": CONTRACT_VERSION,
+        "generated_at": now_utc_iso(),
+        "project_root": str(paths.project_root),
+        "plist_path": str(paths.feedback_sync_plist_path),
+        "launchd_label": FEEDBACK_SYNC_LAUNCHD_LABEL,
+        "poll_interval_seconds": FEEDBACK_SYNC_INTERVAL_SECONDS,
+        "program_arguments": [str(paths.feedback_sync_cycle_entrypoint_path)],
+        "stdout_log_path": str(paths.feedback_sync_stdout_log_path),
+        "stderr_log_path": str(paths.feedback_sync_stderr_log_path),
         "created": created,
     }
 
@@ -332,6 +387,59 @@ def end_chat_operator_session(
         "chat_sessions_log_path": str(paths.chat_sessions_log_path),
         "control_state": dict(snapshot.values),
         "runtime_pack": runtime_pack,
+    }
+
+
+def execute_delayed_feedback_sync(
+    *,
+    project_root: Path | str | None = None,
+    current_time: str | None = None,
+    observer: MailboxFeedbackObserver | None = None,
+) -> dict[str, Any]:
+    paths = ProjectPaths.from_root(project_root)
+    migration = initialize_database(paths.db_path)
+    effective_time = current_time or now_utc_iso()
+
+    with connect_canonical_database(paths) as connection:
+        control_state = read_agent_control_state(connection, timestamp=effective_time)
+        if not control_state.agent_enabled and control_state.agent_mode == AGENT_MODE_STOPPED:
+            return {
+                "contract_version": CONTRACT_VERSION,
+                "produced_at": now_utc_iso(),
+                "project_root": str(paths.project_root),
+                "database": {
+                    "db_path": str(migration.db_path),
+                    "applied_migrations": migration.applied_migrations,
+                    "user_version": migration.user_version,
+                },
+                "status": "skipped_agent_stopped",
+                "current_time": effective_time,
+                "control_state": dict(control_state.values),
+            }
+
+        result = sync_delivery_feedback(
+            connection,
+            project_root=paths.project_root,
+            current_time=effective_time,
+            scheduler_name=FEEDBACK_SYNC_SCHEDULER_NAME,
+            scheduler_type=FEEDBACK_SYNC_SCHEDULER_TYPE,
+            observation_scope=OBSERVATION_SCOPE_DELAYED,
+            observer=observer,
+        )
+
+    return {
+        "contract_version": CONTRACT_VERSION,
+        "produced_at": now_utc_iso(),
+        "project_root": str(paths.project_root),
+        "database": {
+            "db_path": str(migration.db_path),
+            "applied_migrations": migration.applied_migrations,
+            "user_version": migration.user_version,
+        },
+        "status": "completed",
+        "current_time": effective_time,
+        "control_state": dict(control_state.values),
+        "feedback_sync": result.as_dict(),
     }
 
 

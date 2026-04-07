@@ -510,9 +510,8 @@ _register_override(
 )
 _register_override(
     scenarios=("Delayed feedback scheduling uses launchd in the current deployment",),
-    status=STATUS_PARTIAL,
-    gap_ids=("BA10_DELAYED_FEEDBACK_SCHEDULING",),
-    note="Feedback syncing and launchd-related metadata exist, but no delayed scheduler entrypoint has been wired for feedback polling yet.",
+    status=STATUS_IMPLEMENTED,
+    note="`job_hunt_copilot.local_runtime`, `scripts/ops/run_feedback_sync.py`, `scripts/ops/materialize_feedback_sync_plist.py`, and the new `ops/launchd/job-hunt-copilot-feedback-sync.plist` now give delayed feedback polling a dedicated launchd invocation path that still calls the shared Delivery Feedback sync logic.",
 )
 _register_override(
     scenarios=(
@@ -609,9 +608,8 @@ _register_override(
 )
 _register_override(
     scenarios=("Delayed bounce after the send session still gets captured",),
-    status=STATUS_PARTIAL,
-    gap_ids=("BA10_DELAYED_FEEDBACK_SCHEDULING",),
-    note="`tests/test_smoke_harness.py` now proves delayed bounce capture through the shared sync logic after send completion, but the recurring launchd scheduler wiring itself is still not implemented.",
+    status=STATUS_IMPLEMENTED,
+    note="`tests/test_smoke_harness.py`, `tests/test_delivery_feedback.py`, and `tests/test_local_runtime.py` now cover delayed bounce capture after send completion through the shared sync logic plus the dedicated launchd-facing feedback-sync runner.",
 )
 _register_override(
     scenarios=("Secrets and tokens do not leak into canonical state or review surfaces",),

@@ -134,12 +134,24 @@ class ProjectPaths:
         return self.ops_launchd_dir / "job-hunt-copilot-supervisor.plist"
 
     @property
+    def feedback_sync_plist_path(self) -> Path:
+        return self.ops_launchd_dir / "job-hunt-copilot-feedback-sync.plist"
+
+    @property
     def supervisor_stdout_log_path(self) -> Path:
         return self.ops_logs_dir / "supervisor.stdout.log"
 
     @property
     def supervisor_stderr_log_path(self) -> Path:
         return self.ops_logs_dir / "supervisor.stderr.log"
+
+    @property
+    def feedback_sync_stdout_log_path(self) -> Path:
+        return self.ops_logs_dir / "feedback-sync.stdout.log"
+
+    @property
+    def feedback_sync_stderr_log_path(self) -> Path:
+        return self.ops_logs_dir / "feedback-sync.stderr.log"
 
     @property
     def chat_sessions_log_path(self) -> Path:
@@ -154,12 +166,20 @@ class ProjectPaths:
         return self.ops_scripts_dir / "materialize_supervisor_plist.py"
 
     @property
+    def materialize_feedback_sync_plist_script_path(self) -> Path:
+        return self.ops_scripts_dir / "materialize_feedback_sync_plist.py"
+
+    @property
     def control_agent_script_path(self) -> Path:
         return self.ops_scripts_dir / "control_agent.py"
 
     @property
     def run_supervisor_cycle_script_path(self) -> Path:
         return self.ops_scripts_dir / "run_supervisor_cycle.py"
+
+    @property
+    def run_feedback_sync_script_path(self) -> Path:
+        return self.ops_scripts_dir / "run_feedback_sync.py"
 
     @property
     def chat_session_script_path(self) -> Path:
@@ -176,6 +196,10 @@ class ProjectPaths:
     @property
     def agent_cycle_entrypoint_path(self) -> Path:
         return self.bin_dir / "jhc-agent-cycle"
+
+    @property
+    def feedback_sync_cycle_entrypoint_path(self) -> Path:
+        return self.bin_dir / "jhc-feedback-sync-cycle"
 
     @property
     def chat_entrypoint_path(self) -> Path:

@@ -3,7 +3,9 @@ set -euo pipefail
 
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 PLIST="$ROOT/ops/launchd/job-hunt-copilot-supervisor.plist"
+FEEDBACK_PLIST="$ROOT/ops/launchd/job-hunt-copilot-feedback-sync.plist"
 LABEL="gui/$UID/com.jobhuntcopilot.supervisor"
+FEEDBACK_LABEL="gui/$UID/com.jobhuntcopilot.feedback-sync"
 PYTHON_BIN="${JHC_PYTHON_BIN:-}"
 if [[ -z "$PYTHON_BIN" && -x /opt/homebrew/opt/python@3.11/libexec/bin/python3 ]]; then
   PYTHON_BIN="/opt/homebrew/opt/python@3.11/libexec/bin/python3"
@@ -21,6 +23,14 @@ fi
 
 "$PYTHON_BIN" "$ROOT/scripts/ops/control_agent.py" stop --project-root "$ROOT" --manual-command jhc-agent-stop >/dev/null
 
+if launchctl print "$FEEDBACK_LABEL" >/dev/null 2>&1; then
+  launchctl bootout "gui/$UID" "$FEEDBACK_PLIST" >/dev/null
+  if launchctl print "$FEEDBACK_LABEL" >/dev/null 2>&1; then
+    echo "Delayed feedback sync stop failed: launchd job is still loaded" >&2
+    exit 1
+  fi
+fi
+
 if launchctl print "$LABEL" >/dev/null 2>&1; then
   launchctl bootout "gui/$UID" "$PLIST" >/dev/null
   if launchctl print "$LABEL" >/dev/null 2>&1; then
@@ -29,4 +39,4 @@ if launchctl print "$LABEL" >/dev/null 2>&1; then
   fi
 fi
 
-echo "Job Hunt Copilot supervisor stopped"
+echo "Job Hunt Copilot supervisor and delayed feedback sync stopped"

@@ -940,3 +940,32 @@ Use this file as an append-only implementation log for the build agent.
 ### Notes
 - The safety/privacy blocker cluster is now closed in the acceptance matrix; the remaining explicit BA-10 gaps are downstream supervisor orchestration, chat review/control, idle-timeout resume, delayed-feedback scheduler wiring, maintenance automation, sleep/wake recovery, and posting-abandon control.
 - The host-side `launchctl bootstrap` sandbox limitation remains an operational blocker for launchd confirmation, but it did not block this bounded quality-engineering hardening slice.
+
+### Session
+- Date: 2026-04-07 13:55:27 MST
+- Slice: BA-10-S3 delayed-feedback scheduler wiring
+- Goal: Close the delayed-feedback scheduling acceptance gap by giving the shared Delivery Feedback sync logic a dedicated repo-local `launchd` job, then refresh the BA-10 trace matrix and blocker notes honestly.
+
+### Work Done
+- Extended `job_hunt_copilot.local_runtime` and `job_hunt_copilot.paths` with a dedicated delayed-feedback launchd plist, repo-local feedback-sync runner metadata, and an `execute_delayed_feedback_sync` helper that reuses the existing `sync_delivery_feedback` core logic instead of embedding mailbox behavior in the scheduler layer.
+- Added `scripts/ops/materialize_feedback_sync_plist.py`, `scripts/ops/run_feedback_sync.py`, and `bin/jhc-feedback-sync-cycle`, then updated `bin/jhc-agent-start` and `bin/jhc-agent-stop` so the local operator lifecycle now bootstraps and unloads both the supervisor heartbeat job and the delayed-feedback polling job together.
+- Added focused coverage in `tests/test_local_runtime.py` for feedback-sync plist rendering, auditable delayed-feedback runner execution, delayed bounce capture after the send session has already ended, and the new wrapper wiring.
+- Updated `job_hunt_copilot.acceptance_traceability`, regenerated `build-agent/reports/ba-10-acceptance-trace-matrix.json` plus `.md`, and refreshed `README.md` / `docs/ARCHITECTURE.md` so the repo-facing status now reflects the landed delayed-feedback scheduler surface.
+- Updated `build-agent/state/build-board.yaml`, `build-agent/state/IMPLEMENTATION_PLAN.md`, `build-agent/state/build-journal.md`, and `build-agent/state/codex-progress.txt` so the BA-10 checkpoint now reflects the closed delayed-feedback blocker and the next remaining gap cluster.
+
+### Validation
+- Ran `python3.11 -m py_compile job_hunt_copilot/local_runtime.py job_hunt_copilot/acceptance_traceability.py job_hunt_copilot/runtime_pack.py job_hunt_copilot/paths.py scripts/ops/materialize_feedback_sync_plist.py scripts/ops/run_feedback_sync.py tests/test_local_runtime.py` and confirmed the changed Python surfaces compile cleanly.
+- Ran `zsh -n bin/jhc-agent-start bin/jhc-agent-stop bin/jhc-agent-cycle bin/jhc-feedback-sync-cycle bin/jhc-chat` and confirmed the repo-local wrapper scripts remain syntactically valid.
+- Ran `python3.11 -m pytest tests/test_local_runtime.py tests/test_delivery_feedback.py tests/test_acceptance_traceability.py` and confirmed all 14 focused runtime/feedback/traceability tests passed.
+- Ran `python3.11 scripts/quality/generate_acceptance_trace_matrix.py --project-root /Users/achyutaramsonti/Projects/job-hunt-copilot-v4` and regenerated the committed BA-10 reports successfully.
+- Ran full `python3.11 -m pytest` and confirmed all 115 repository tests passed.
+
+### Result
+- `done`
+
+### Next
+- Continue `BA-10-S3` with downstream supervisor orchestration beyond `lead_handoff`, then revisit the remaining chat review/control, maintenance, sleep/wake, and posting-abandon gaps with the updated trace matrix as the blocker ledger.
+
+### Notes
+- The acceptance matrix now reports 189 implemented, 9 partial, 14 gap, 1 deferred-optional, and 1 excluded-from-required-acceptance scenarios.
+- `BA10_DELAYED_FEEDBACK_SCHEDULING` is now closed in the trace matrix; host-side launchd load confirmation is still blocked by the sandbox and remains tracked separately under `OPS-LAUNCHD-001`.

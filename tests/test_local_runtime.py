@@ -7,6 +7,8 @@ import subprocess
 import sys
 from pathlib import Path
 
+from job_hunt_copilot.delivery_feedback import DeliveryFeedbackSignal
+from job_hunt_copilot.local_runtime import execute_delayed_feedback_sync
 from tests.support import create_minimal_project
 
 
@@ -27,6 +29,131 @@ def connect_database(db_path: Path) -> sqlite3.Connection:
     connection.row_factory = sqlite3.Row
     connection.execute("PRAGMA foreign_keys = ON;")
     return connection
+
+
+class FakeMailboxFeedbackObserver:
+    def __init__(self, *, signals: list[DeliveryFeedbackSignal]) -> None:
+        self.signals = signals
+        self.poll_calls: list[dict[str, object]] = []
+
+    def poll(self, messages, *, current_time, observation_scope):  # type: ignore[no-untyped-def]
+        self.poll_calls.append(
+            {
+                "message_ids": [message.outreach_message_id for message in messages],
+                "current_time": current_time,
+                "observation_scope": observation_scope,
+            }
+        )
+        return list(self.signals)
+
+
+def seed_feedback_candidate(connection: sqlite3.Connection) -> None:
+    connection.execute(
+        """
+        INSERT INTO linkedin_leads (
+          lead_id, lead_identity_key, lead_status, lead_shape, split_review_status,
+          source_type, source_reference, source_mode, source_url, company_name, role_title,
+          created_at, updated_at
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        """,
+        (
+            "ld_feedback",
+            "acme-robotics|staff-software-engineer-ai",
+            "handed_off",
+            "posting_only",
+            "not_applicable",
+            "gmail_job_alert",
+            "gmail/message/feedback",
+            "gmail_job_alert",
+            "https://careers.acme.example/jobs/feedback",
+            "Acme Robotics",
+            "Staff Software Engineer / AI",
+            "2026-04-07T10:00:00Z",
+            "2026-04-07T10:00:00Z",
+        ),
+    )
+    connection.execute(
+        """
+        INSERT INTO job_postings (
+          job_posting_id, lead_id, posting_identity_key, company_name, role_title,
+          posting_status, created_at, updated_at
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+        """,
+        (
+            "jp_feedback",
+            "ld_feedback",
+            "acme-robotics|staff-software-engineer-ai",
+            "Acme Robotics",
+            "Staff Software Engineer / AI",
+            "completed",
+            "2026-04-07T10:00:00Z",
+            "2026-04-07T10:00:00Z",
+        ),
+    )
+    connection.execute(
+        """
+        INSERT INTO contacts (
+          contact_id, identity_key, display_name, company_name, origin_component, contact_status,
+          full_name, current_working_email, created_at, updated_at
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        """,
+        (
+            "ct_feedback",
+            "priya-recruiter|acme-robotics",
+            "Priya Recruiter",
+            "Acme Robotics",
+            "email_discovery",
+            "sent",
+            "Priya Recruiter",
+            "priya@acme.example",
+            "2026-04-07T10:01:00Z",
+            "2026-04-07T10:01:00Z",
+        ),
+    )
+    connection.execute(
+        """
+        INSERT INTO job_posting_contacts (
+          job_posting_contact_id, job_posting_id, contact_id, recipient_type,
+          relevance_reason, link_level_status, created_at, updated_at
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+        """,
+        (
+            "jpc_feedback",
+            "jp_feedback",
+            "ct_feedback",
+            "recruiter",
+            "Local runtime delayed feedback test linkage.",
+            "outreach_done",
+            "2026-04-07T10:01:00Z",
+            "2026-04-07T10:01:00Z",
+        ),
+    )
+    connection.execute(
+        """
+        INSERT INTO outreach_messages (
+          outreach_message_id, contact_id, outreach_mode, recipient_email, message_status,
+          job_posting_id, job_posting_contact_id, subject, body_text, thread_id,
+          delivery_tracking_id, sent_at, created_at, updated_at
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        """,
+        (
+            "msg_feedback",
+            "ct_feedback",
+            "role_targeted",
+            "priya@acme.example",
+            "sent",
+            "jp_feedback",
+            "jpc_feedback",
+            "Hello",
+            "Body",
+            "thread-msg_feedback",
+            "delivery-msg_feedback",
+            "2026-04-07T10:03:00Z",
+            "2026-04-07T10:03:00Z",
+            "2026-04-07T10:03:00Z",
+        ),
+    )
+    connection.commit()
 
 
 def test_materialize_supervisor_plist_script_renders_required_launchd_shape(tmp_path):
@@ -53,6 +180,33 @@ def test_materialize_supervisor_plist_script_renders_required_launchd_shape(tmp_
     assert payload["ProgramArguments"] == [str(project_root / "bin" / "jhc-agent-cycle")]
     assert payload["StandardOutPath"] == str(project_root / "ops" / "logs" / "supervisor.stdout.log")
     assert payload["StandardErrorPath"] == str(project_root / "ops" / "logs" / "supervisor.stderr.log")
+    assert plist_path.stat().st_mode & 0o777 == 0o644
+
+
+def test_materialize_feedback_sync_plist_script_renders_required_launchd_shape(tmp_path):
+    project_root = tmp_path / "repo"
+    project_root.mkdir()
+    create_minimal_project(project_root)
+
+    result = run_script(
+        "scripts/ops/materialize_feedback_sync_plist.py",
+        "--project-root",
+        str(project_root),
+    )
+    report = json.loads(result.stdout)
+
+    plist_path = project_root / "ops" / "launchd" / "job-hunt-copilot-feedback-sync.plist"
+    payload = plistlib.loads(plist_path.read_bytes())
+
+    assert report["plist_path"] == str(plist_path)
+    assert payload["Label"] == "com.jobhuntcopilot.feedback-sync"
+    assert payload["RunAtLoad"] is True
+    assert payload["StartInterval"] == 300
+    assert payload["KeepAlive"] is False
+    assert payload["WorkingDirectory"] == str(project_root)
+    assert payload["ProgramArguments"] == [str(project_root / "bin" / "jhc-feedback-sync-cycle")]
+    assert payload["StandardOutPath"] == str(project_root / "ops" / "logs" / "feedback-sync.stdout.log")
+    assert payload["StandardErrorPath"] == str(project_root / "ops" / "logs" / "feedback-sync.stderr.log")
     assert plist_path.stat().st_mode & 0o777 == 0o644
 
 
@@ -139,6 +293,127 @@ def test_run_supervisor_cycle_script_records_no_work_launchd_cycle(tmp_path):
         "trigger_type": "launchd_heartbeat",
         "scheduler_name": "launchd",
         "result": "no_work",
+    }
+
+
+def test_run_feedback_sync_script_records_launchd_feedback_sync_run(tmp_path):
+    project_root = tmp_path / "repo"
+    project_root.mkdir()
+    create_minimal_project(project_root)
+
+    run_script(
+        "scripts/ops/control_agent.py",
+        "start",
+        "--project-root",
+        str(project_root),
+        "--manual-command",
+        "jhc-agent-start",
+    )
+    result = run_script(
+        "scripts/ops/run_feedback_sync.py",
+        "--project-root",
+        str(project_root),
+        "--current-time",
+        "2026-04-07T10:10:00Z",
+    )
+    report = json.loads(result.stdout)
+
+    assert report["status"] == "completed"
+    assert report["feedback_sync"]["scheduler_name"] == "job-hunt-copilot-feedback-sync"
+    assert report["feedback_sync"]["scheduler_type"] == "launchd"
+    assert report["feedback_sync"]["observation_scope"] == "delayed_feedback_sync"
+    assert report["feedback_sync"]["messages_examined"] == 0
+
+    connection = connect_database(project_root / "job_hunt_copilot.db")
+    sync_row = connection.execute(
+        """
+        SELECT scheduler_name, scheduler_type, observation_scope, result, messages_examined
+        FROM feedback_sync_runs
+        ORDER BY started_at DESC, feedback_sync_run_id DESC
+        LIMIT 1
+        """
+    ).fetchone()
+    connection.close()
+
+    assert dict(sync_row) == {
+        "scheduler_name": "job-hunt-copilot-feedback-sync",
+        "scheduler_type": "launchd",
+        "observation_scope": "delayed_feedback_sync",
+        "result": "success",
+        "messages_examined": 0,
+    }
+
+
+def test_execute_delayed_feedback_sync_persists_bounce_after_send_session_end(tmp_path):
+    project_root = tmp_path / "repo"
+    project_root.mkdir()
+    create_minimal_project(project_root)
+
+    run_script(
+        "scripts/ops/control_agent.py",
+        "start",
+        "--project-root",
+        str(project_root),
+        "--manual-command",
+        "jhc-agent-start",
+    )
+    connection = connect_database(project_root / "job_hunt_copilot.db")
+    seed_feedback_candidate(connection)
+    observer = FakeMailboxFeedbackObserver(
+        signals=[
+            DeliveryFeedbackSignal(
+                signal_type="bounced",
+                event_timestamp="2026-04-07T10:08:00Z",
+                delivery_tracking_id="delivery-msg_feedback",
+            )
+        ]
+    )
+
+    report = execute_delayed_feedback_sync(
+        project_root=project_root,
+        current_time="2026-04-07T10:10:00Z",
+        observer=observer,
+    )
+
+    assert observer.poll_calls == [
+        {
+            "message_ids": ["msg_feedback"],
+            "current_time": "2026-04-07T10:10:00Z",
+            "observation_scope": "delayed_feedback_sync",
+        }
+    ]
+    assert report["status"] == "completed"
+    assert report["feedback_sync"]["bounce_events_written"] == 1
+
+    event_row = connection.execute(
+        """
+        SELECT outreach_message_id, event_state, event_timestamp
+        FROM delivery_feedback_events
+        WHERE outreach_message_id = ?
+        """,
+        ("msg_feedback",),
+    ).fetchone()
+    sync_row = connection.execute(
+        """
+        SELECT scheduler_name, scheduler_type, observation_scope, result, bounce_events_written
+        FROM feedback_sync_runs
+        ORDER BY started_at DESC, feedback_sync_run_id DESC
+        LIMIT 1
+        """
+    ).fetchone()
+    connection.close()
+
+    assert dict(event_row) == {
+        "outreach_message_id": "msg_feedback",
+        "event_state": "bounced",
+        "event_timestamp": "2026-04-07T10:08:00Z",
+    }
+    assert dict(sync_row) == {
+        "scheduler_name": "job-hunt-copilot-feedback-sync",
+        "scheduler_type": "launchd",
+        "observation_scope": "delayed_feedback_sync",
+        "result": "success",
+        "bounce_events_written": 1,
     }
 
 
@@ -336,23 +611,33 @@ def test_repo_agent_wrappers_use_expected_repo_local_wiring():
     start_wrapper = (REPO_ROOT / "bin" / "jhc-agent-start").read_text(encoding="utf-8")
     stop_wrapper = (REPO_ROOT / "bin" / "jhc-agent-stop").read_text(encoding="utf-8")
     cycle_wrapper = (REPO_ROOT / "bin" / "jhc-agent-cycle").read_text(encoding="utf-8")
+    feedback_cycle_wrapper = (REPO_ROOT / "bin" / "jhc-feedback-sync-cycle").read_text(encoding="utf-8")
     chat_wrapper = (REPO_ROOT / "bin" / "jhc-chat").read_text(encoding="utf-8")
 
     assert "scripts/ops/build_runtime_pack.py" in start_wrapper
     assert "scripts/ops/materialize_supervisor_plist.py" in start_wrapper
+    assert "scripts/ops/materialize_feedback_sync_plist.py" in start_wrapper
     assert "scripts/ops/control_agent.py\" start" in start_wrapper
+    assert 'launchctl bootstrap "gui/$UID" "$FEEDBACK_PLIST"' in start_wrapper
+    assert 'launchctl kickstart -k "$FEEDBACK_LABEL"' in start_wrapper
     assert "scripts/ops/control_agent.py\" stop" in start_wrapper
     assert "trap rollback_start_failure ERR" in start_wrapper
     assert 'launchctl bootstrap "gui/$UID" "$PLIST"' in start_wrapper
     assert 'launchctl kickstart -k "$LABEL"' in start_wrapper
     assert "com.jobhuntcopilot.supervisor" in start_wrapper
+    assert "com.jobhuntcopilot.feedback-sync" in start_wrapper
 
+    assert 'launchctl bootout "gui/$UID" "$FEEDBACK_PLIST"' in stop_wrapper
     assert "scripts/ops/control_agent.py\" stop" in stop_wrapper
     assert 'launchctl bootout "gui/$UID" "$PLIST"' in stop_wrapper
     assert "com.jobhuntcopilot.supervisor" in stop_wrapper
+    assert "com.jobhuntcopilot.feedback-sync" in stop_wrapper
 
     assert "scripts/ops/run_supervisor_cycle.py" in cycle_wrapper
     assert '--project-root "$ROOT"' in cycle_wrapper
+
+    assert "scripts/ops/run_feedback_sync.py" in feedback_cycle_wrapper
+    assert '--project-root "$ROOT"' in feedback_cycle_wrapper
 
     assert "scripts/ops/chat_session.py\" begin" in chat_wrapper
     assert "scripts/ops/chat_session.py\" end" in chat_wrapper

@@ -374,9 +374,10 @@ def build_service_goals_payload(generated_at: str) -> dict[str, Any]:
             "automatic_replanning_cooldown_hours": 6,
         },
         "current_build_note": (
-            "The local launchd plist plus `jhc-agent-start`, `jhc-agent-stop`, and "
-            "`jhc-agent-cycle` now exist in the repo, and `jhc-chat` now applies "
-            "canonical session begin/end wiring with pause-on-chat control-state handling."
+            "The local launchd plists plus `jhc-agent-start`, `jhc-agent-stop`, "
+            "`jhc-agent-cycle`, and `jhc-feedback-sync-cycle` now exist in the repo, "
+            "and `jhc-chat` now applies canonical session begin/end wiring with "
+            "pause-on-chat control-state handling."
         ),
     }
 

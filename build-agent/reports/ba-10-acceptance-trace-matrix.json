@@ -3,8 +3,8 @@
   "feature_path": "prd/test-spec.feature",
   "scenario_count": 214,
   "status_counts": {
-    "implemented": 187,
-    "partial": 11,
+    "implemented": 189,
+    "partial": 9,
     "gap": 14,
     "deferred_optional": 1,
     "excluded_from_required_acceptance": 1
@@ -3425,8 +3425,8 @@
       ],
       "note": null,
       "status_counts": {
-        "implemented": 10,
-        "partial": 1,
+        "implemented": 11,
+        "partial": 0,
         "gap": 0,
         "deferred_optional": 0,
         "excluded_from_required_acceptance": 0
@@ -3527,7 +3527,7 @@
         {
           "name": "Delayed feedback scheduling uses launchd in the current deployment",
           "scenario_line": 1035,
-          "status": "partial",
+          "status": "implemented",
           "owner_role": "outreach-engineer",
           "epic_ids": [
             "BA-03",
@@ -3544,10 +3544,8 @@
             "tests/test_local_runtime.py",
             "tests/test_smoke_harness.py"
           ],
-          "gap_ids": [
-            "BA10_DELAYED_FEEDBACK_SCHEDULING"
-          ],
-          "note": "Feedback syncing and launchd-related metadata exist, but no delayed scheduler entrypoint has been wired for feedback polling yet."
+          "gap_ids": [],
+          "note": "`job_hunt_copilot.local_runtime`, `scripts/ops/run_feedback_sync.py`, `scripts/ops/materialize_feedback_sync_plist.py`, and the new `ops/launchd/job-hunt-copilot-feedback-sync.plist` now give delayed feedback polling a dedicated launchd invocation path that still calls the shared Delivery Feedback sync logic."
         },
         {
           "name": "Not-bounced is recorded when the observation window closes without a bounce",
@@ -5869,8 +5867,8 @@
       ],
       "note": "The components exist and now have committed smoke coverage across tailoring, discovery, send, delayed feedback, and review-query boundaries, but the autonomous supervisor still does not orchestrate the full downstream pipeline past lead handoff.",
       "status_counts": {
-        "implemented": 0,
-        "partial": 3,
+        "implemented": 1,
+        "partial": 2,
         "gap": 0,
         "deferred_optional": 0,
         "excluded_from_required_acceptance": 1
@@ -5911,7 +5909,7 @@
         {
           "name": "Delayed bounce after the send session still gets captured",
           "scenario_line": 1665,
-          "status": "partial",
+          "status": "implemented",
           "owner_role": "quality-engineer",
           "epic_ids": [
             "BA-06",
@@ -5935,10 +5933,8 @@
             "tests/test_supervisor.py",
             "tests/test_smoke_harness.py"
           ],
-          "gap_ids": [
-            "BA10_DELAYED_FEEDBACK_SCHEDULING"
-          ],
-          "note": "`tests/test_smoke_harness.py` now proves delayed bounce capture through the shared sync logic after send completion, but the recurring launchd scheduler wiring itself is still not implemented."
+          "gap_ids": [],
+          "note": "`tests/test_smoke_harness.py`, `tests/test_delivery_feedback.py`, and `tests/test_local_runtime.py` now cover delayed bounce capture after send completion through the shared sync logic plus the dedicated launchd-facing feedback-sync runner."
         },
         {
           "name": "End-to-end retry resumes from the last successful stage boundary",
@@ -6194,10 +6190,7 @@
       "title": "Delayed feedback scheduling is not wired to a scheduler",
       "reason": "Delivery feedback syncing can run and persists scheduler metadata, but there is no committed launchd-driven delayed feedback poller yet.",
       "next_slice": "BA-10-S3",
-      "scenario_names": [
-        "Delayed feedback scheduling uses launchd in the current deployment",
-        "Delayed bounce after the send session still gets captured"
-      ]
+      "scenario_names": []
     },
     {
       "gap_id": "BA10_SLEEP_WAKE_RECOVERY",

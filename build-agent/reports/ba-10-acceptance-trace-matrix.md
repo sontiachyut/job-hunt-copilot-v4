@@ -3,8 +3,8 @@
 - Feature file: `prd/test-spec.feature`
 - Scenario count: `214`
 - Status counts:
-  - `implemented`: `187`
-  - `partial`: `11`
+  - `implemented`: `189`
+  - `partial`: `9`
   - `gap`: `14`
   - `deferred_optional`: `1`
   - `excluded_from_required_acceptance`: `1`
@@ -21,12 +21,12 @@
 | Resume Tailoring behavior | tailoring-engineer | 23 | 0 | 0 | 0 | 0 |
 | Email Discovery behavior | outreach-engineer | 17 | 0 | 0 | 0 | 0 |
 | Email Drafting and Sending behavior | outreach-engineer | 14 | 0 | 0 | 0 | 0 |
-| Delivery Feedback behavior | outreach-engineer | 10 | 1 | 0 | 0 | 0 |
+| Delivery Feedback behavior | outreach-engineer | 11 | 0 | 0 | 0 | 0 |
 | Supervisor Agent behavior | build-lead | 17 | 5 | 11 | 0 | 0 |
 | Review surfaces and chat-based control | quality-engineer | 6 | 0 | 1 | 0 | 0 |
 | Current-build orchestration remains sequential | build-lead | 19 | 2 | 1 | 0 | 0 |
 | LinkedIn Scraping acceptance | ingestion-engineer | 12 | 0 | 0 | 0 | 0 |
-| End-to-end acceptance | quality-engineer | 0 | 3 | 0 | 0 | 1 |
+| End-to-end acceptance | quality-engineer | 1 | 2 | 0 | 0 | 1 |
 | Current-build safety, privacy, and evidence-grounding boundaries | quality-engineer | 3 | 0 | 0 | 0 | 0 |
 
 ## Explicit Gaps
@@ -71,13 +71,6 @@
 - Reason: Explicit-close and explicit-resume paths exist, but unexpected `jhc-chat` exits still require a later explicit resume because automatic idle-timeout recovery is not implemented.
 - Scenarios: `1`
   - Expert-interaction resume follows explicit close, explicit resume, or safe idle timeout
-
-### BA10_DELAYED_FEEDBACK_SCHEDULING: Delayed feedback scheduling is not wired to a scheduler
-- Next slice: `BA-10-S3`
-- Reason: Delivery feedback syncing can run and persists scheduler metadata, but there is no committed launchd-driven delayed feedback poller yet.
-- Scenarios: `2`
-  - Delayed feedback scheduling uses launchd in the current deployment
-  - Delayed bounce after the send session still gets captured
 
 ### BA10_SLEEP_WAKE_RECOVERY: Sleep and wake recovery is not implemented beyond metadata
 - Next slice: `BA-10-S3`
