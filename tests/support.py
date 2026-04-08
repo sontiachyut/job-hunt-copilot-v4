@@ -1,7 +1,10 @@
 from __future__ import annotations
 
 import json
+import sqlite3
 from pathlib import Path
+
+from job_hunt_copilot.paths import ProjectPaths
 
 
 def create_minimal_project(root: Path) -> None:
@@ -53,3 +56,60 @@ def create_minimal_project(root: Path) -> None:
         + "\n",
         encoding="utf-8",
     )
+
+
+def seed_pending_review_tailoring_run(
+    connection: sqlite3.Connection,
+    paths: ProjectPaths,
+    *,
+    job_posting_id: str,
+    company_name: str,
+    role_title: str,
+    resume_tailoring_run_id: str = "rtr_pending_review",
+    base_used: str = "generalist",
+    timestamp: str = "2026-04-08T00:00:00Z",
+) -> str:
+    workspace_dir = paths.tailoring_workspace_dir(company_name, role_title)
+    workspace_dir.mkdir(parents=True, exist_ok=True)
+    final_resume_path = workspace_dir / "Achyutaram Sonti.pdf"
+    final_resume_path.write_text("% final resume placeholder\n", encoding="utf-8")
+    meta_path = paths.tailoring_meta_path(company_name, role_title)
+    meta_path.parent.mkdir(parents=True, exist_ok=True)
+    meta_path.write_text(
+        "\n".join(
+            [
+                f"resume_tailoring_run_id: {resume_tailoring_run_id}",
+                f"base_used: {base_used}",
+                "tailoring_status: tailored",
+                "resume_review_status: resume_review_pending",
+            ]
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+    connection.execute(
+        """
+        INSERT INTO resume_tailoring_runs (
+          resume_tailoring_run_id, job_posting_id, base_used, tailoring_status,
+          resume_review_status, workspace_path, meta_yaml_path, final_resume_path,
+          verification_outcome, started_at, completed_at, created_at, updated_at
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        """,
+        (
+            resume_tailoring_run_id,
+            job_posting_id,
+            base_used,
+            "tailored",
+            "resume_review_pending",
+            paths.relative_to_root(workspace_dir).as_posix(),
+            paths.relative_to_root(meta_path).as_posix(),
+            paths.relative_to_root(final_resume_path).as_posix(),
+            "pass",
+            timestamp,
+            timestamp,
+            timestamp,
+            timestamp,
+        ),
+    )
+    connection.commit()
+    return resume_tailoring_run_id

@@ -146,7 +146,6 @@ def _supervisor_downstream_implementation_snapshot() -> dict[str, Any]:
             SUPPORTED_PIPELINE_CHECKPOINT_STAGES
         ),
         "validated_blocked_role_targeted_stages": [
-            "agent_review",
             "people_search",
             "email_discovery",
             "sending",
@@ -176,10 +175,10 @@ GAP_REGISTRY: dict[str, dict[str, Any]] = {
         ),
     ),
     "BA10_SUPERVISOR_DOWNSTREAM_ACTION_CATALOG": _gap_metadata(
-        title="Supervisor orchestration still stops at lead handoff",
-        reason="The durable heartbeat, selector ordering, and retry-safe run persistence exist, but the registered action catalog still only advances autonomous work through `lead_handoff`; later stages reselect the same durable run and escalate instead of executing.",
+        title="Supervisor orchestration still stops before autonomous people search",
+        reason="The durable heartbeat, selector ordering, retry-safe run persistence, and bounded mandatory agent review now exist, but later stages from `people_search` onward still reselect the same durable run and escalate instead of executing.",
         next_slice="BA-10-S4",
-        evidence_summary="Focused downstream-stage regressions prove active incidents still outrank ordinary progression, existing durable runs are selected before bootstrapping new eligible postings, `lead_handoff` is the only registered checkpoint, later stages escalate with durable run and review-packet retention, retries reuse the same run instead of restarting, and a ready contact-rooted general-learning candidate still yields no selected supervisor work.",
+        evidence_summary="Focused downstream-stage regressions prove active incidents still outrank ordinary progression, existing durable runs are selected before bootstrapping new eligible postings, `lead_handoff` now advances into `agent_review`, bounded mandatory agent review advances the same run into `people_search`, later stages from `people_search` onward still escalate with durable run and review-packet retention, retries reuse the same run at the blocked downstream boundary, and a ready contact-rooted general-learning candidate still yields no selected supervisor work.",
         evidence_code_refs=(
             "job_hunt_copilot/supervisor.py",
             "job_hunt_copilot/local_runtime.py",
@@ -892,13 +891,12 @@ _register_override(
     ),
     status=STATUS_PARTIAL,
     gap_ids=("BA10_SUPERVISOR_DOWNSTREAM_ACTION_CATALOG",),
-    note="The downstream components and stage-boundary artifacts exist, and `tests/test_supervisor_downstream_actions.py` now proves the current heartbeat still stops at `lead_handoff` and escalates later stages instead of executing the full dependency chain.",
+    note="The downstream components and stage-boundary artifacts exist, and `tests/test_supervisor_downstream_actions.py` now proves the current heartbeat advances through `lead_handoff` and bounded mandatory agent review into `people_search`, but later stages still escalate instead of executing the full dependency chain.",
 )
 _register_override(
     scenarios=("End-to-end retry resumes from the last successful stage boundary",),
-    status=STATUS_PARTIAL,
-    gap_ids=("BA10_SUPERVISOR_DOWNSTREAM_ACTION_CATALOG",),
-    note="`tests/test_supervisor_downstream_actions.py` now proves downstream retries keep the same `pipeline_run_id`, blocked stage, and pending review packet instead of restarting from `lead_handoff`, but the later-stage autonomous actions are still not registered.",
+    status=STATUS_IMPLEMENTED,
+    note="`tests/test_supervisor_downstream_actions.py` now proves the durable run advances from `lead_handoff` through bounded mandatory agent review into `people_search`, and retries resume from that later blocked stage without restarting from LinkedIn Scraping.",
 )
 _register_override(
     scenarios=("General learning outreach bypasses the role-targeted agent-review requirement",),

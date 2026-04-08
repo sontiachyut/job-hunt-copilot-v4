@@ -818,10 +818,13 @@ def test_run_supervisor_cycle_reuses_existing_pipeline_run_without_duplicate_his
     assert execution.pipeline_run is not None
     assert execution.pipeline_run.pipeline_run_id == pipeline_run.pipeline_run_id
     assert execution.pipeline_run.run_status == RUN_STATUS_IN_PROGRESS
+    assert execution.pipeline_run.current_stage == "agent_review"
     assert len(stored_runs) == 1
     assert stored_runs[0]["pipeline_run_id"] == pipeline_run.pipeline_run_id
+    assert stored_runs[0]["current_stage"] == "agent_review"
     assert stored_runs[0]["run_summary"] == (
-        "Supervisor resumed the durable pipeline run at lead_handoff without creating duplicate work."
+        "Supervisor advanced the durable pipeline run from lead_handoff into mandatory "
+        "agent review without creating duplicate work."
     )
 
 
@@ -927,7 +930,6 @@ def test_run_supervisor_cycle_auto_pauses_on_critical_unresolved_incident(tmp_pa
 @pytest.mark.parametrize(
     "blocked_stage",
     [
-        "agent_review",
         "people_search",
         "email_discovery",
         "sending",

@@ -143,10 +143,17 @@ WORK_TYPE_PIPELINE_RUN: Final = "pipeline_run"
 
 ACTION_BOOTSTRAP_ROLE_TARGETED_RUN: Final = "bootstrap_role_targeted_run"
 ACTION_CHECKPOINT_PIPELINE_RUN: Final = "checkpoint_pipeline_run"
+ACTION_PERFORM_MANDATORY_AGENT_REVIEW: Final = "perform_mandatory_agent_review"
 ACTION_ESCALATE_OPEN_INCIDENT: Final = "escalate_open_incident"
 
 ELIGIBLE_POSTING_STATUSES_FOR_NEW_RUN = frozenset({"resume_review_pending"})
-SUPPORTED_PIPELINE_CHECKPOINT_STAGES = frozenset({"lead_handoff"})
+SUPPORTED_PIPELINE_CHECKPOINT_STAGES = frozenset({"agent_review", "lead_handoff"})
+ROLE_TARGETED_PIPELINE_STAGE_ACTIONS = MappingProxyType(
+    {
+        "lead_handoff": ACTION_CHECKPOINT_PIPELINE_RUN,
+        "agent_review": ACTION_PERFORM_MANDATORY_AGENT_REVIEW,
+    }
+)
 
 CONTROL_DEFAULTS = MappingProxyType(
     {
@@ -524,20 +531,41 @@ SUPERVISOR_ACTION_CATALOG = MappingProxyType(
         ACTION_CHECKPOINT_PIPELINE_RUN: SupervisorActionCatalogEntry(
             action_id=ACTION_CHECKPOINT_PIPELINE_RUN,
             work_type=WORK_TYPE_PIPELINE_RUN,
-            description="Resume one supported durable pipeline run and persist a bounded checkpoint.",
+            description="Advance a durable role-targeted pipeline run from lead handoff into mandatory agent review.",
             prerequisites=(
                 "pipeline_run exists and is non-terminal",
-                "pipeline_run.current_stage is covered by the bounded supervisor action catalog",
+                "pipeline_run.current_stage is `lead_handoff`",
                 "linked posting state remains available for the selected run",
             ),
             expected_outputs=(
                 "the existing pipeline_run is reused instead of creating a duplicate run",
                 "the pipeline_run remains canonical in_progress state after the checkpoint",
+                "the durable run advances into the `agent_review` stage",
                 "the cycle summary points at exactly one selected pipeline_run",
             ),
             validation_references=(
                 "prd/spec.md §12.5A items 3, 4, 41, and 42",
                 "prd/test-spec.feature durable pipeline-run resume scenario",
+            ),
+        ),
+        ACTION_PERFORM_MANDATORY_AGENT_REVIEW: SupervisorActionCatalogEntry(
+            action_id=ACTION_PERFORM_MANDATORY_AGENT_REVIEW,
+            work_type=WORK_TYPE_PIPELINE_RUN,
+            description="Apply the bounded autonomous mandatory tailoring review and advance the durable run into the next outreach boundary.",
+            prerequisites=(
+                "pipeline_run exists and is non-terminal",
+                "pipeline_run.current_stage is `agent_review`",
+                "job_posting.posting_status is `resume_review_pending`",
+                "the latest resume_tailoring_run is `tailored` and `resume_review_pending`",
+            ),
+            expected_outputs=(
+                "the active resume_tailoring_run is recorded as agent-approved",
+                "job_posting advances to `requires_contacts` or `ready_for_outreach`",
+                "the same durable pipeline_run advances to `people_search` or `sending` without duplicate run history",
+            ),
+            validation_references=(
+                "prd/spec.md FR-SYS-17I, FR-SYS-17J, FR-SYS-38, and FR-OPS-03",
+                "prd/test-spec.feature mandatory agent review and dependency-order scenarios",
             ),
         ),
         ACTION_ESCALATE_OPEN_INCIDENT: SupervisorActionCatalogEntry(
@@ -1961,6 +1989,7 @@ def run_supervisor_cycle(
                         else:
                             pipeline_run, incident = _execute_selected_work_unit(
                                 connection,
+                                paths,
                                 selected_work,
                                 catalog_entry=catalog_entry,
                                 timestamp=cycle_started_at,
@@ -2222,11 +2251,7 @@ def _select_open_pipeline_run_work_unit(
     if not rows:
         return None
     pipeline_run = _pipeline_run_from_row(rows[0])
-    action_id = (
-        ACTION_CHECKPOINT_PIPELINE_RUN
-        if pipeline_run.current_stage in SUPPORTED_PIPELINE_CHECKPOINT_STAGES
-        else None
-    )
+    action_id = ROLE_TARGETED_PIPELINE_STAGE_ACTIONS.get(pipeline_run.current_stage)
     return SupervisorWorkUnit(
         work_type=WORK_TYPE_PIPELINE_RUN,
         work_id=pipeline_run.pipeline_run_id,
@@ -2327,13 +2352,68 @@ def _validate_selected_work(
                 f"pipeline_run {selected_work.work_id!r} is not non-terminal; "
                 f"found {pipeline_run.run_status!r}."
             )
-        if pipeline_run.current_stage not in SUPPORTED_PIPELINE_CHECKPOINT_STAGES:
+        if pipeline_run.current_stage != "lead_handoff":
             return (
-                f"pipeline_run {selected_work.work_id!r} is at unsupported stage "
+                f"pipeline_run {selected_work.work_id!r} is at unsupported checkpoint stage "
                 f"{pipeline_run.current_stage!r}."
             )
         if not pipeline_run.job_posting_id:
             return f"pipeline_run {selected_work.work_id!r} is missing job_posting_id."
+        return None
+
+    if catalog_entry.action_id == ACTION_PERFORM_MANDATORY_AGENT_REVIEW:
+        pipeline_run = get_pipeline_run(connection, selected_work.work_id)
+        if pipeline_run is None:
+            return f"pipeline_run {selected_work.work_id!r} no longer exists."
+        if pipeline_run.run_status not in {RUN_STATUS_IN_PROGRESS, RUN_STATUS_PAUSED}:
+            return (
+                f"pipeline_run {selected_work.work_id!r} is not non-terminal; "
+                f"found {pipeline_run.run_status!r}."
+            )
+        if pipeline_run.current_stage != "agent_review":
+            return (
+                f"pipeline_run {selected_work.work_id!r} is at unsupported review stage "
+                f"{pipeline_run.current_stage!r}."
+            )
+        job_posting_id = _optional_text(pipeline_run.job_posting_id)
+        if job_posting_id is None:
+            return f"pipeline_run {selected_work.work_id!r} is missing job_posting_id."
+        posting_row = connection.execute(
+            """
+            SELECT posting_status
+            FROM job_postings
+            WHERE job_posting_id = ?
+            """,
+            (job_posting_id,),
+        ).fetchone()
+        if posting_row is None:
+            return f"job_posting {job_posting_id!r} no longer exists."
+        if posting_row[0] != "resume_review_pending":
+            return (
+                f"job_posting {job_posting_id!r} is not at the mandatory review boundary; "
+                f"found posting_status={posting_row[0]!r}."
+            )
+        latest_run = connection.execute(
+            """
+            SELECT tailoring_status, resume_review_status
+            FROM resume_tailoring_runs
+            WHERE job_posting_id = ?
+            ORDER BY COALESCE(completed_at, updated_at, created_at, started_at) DESC,
+                     resume_tailoring_run_id DESC
+            LIMIT 1
+            """,
+            (job_posting_id,),
+        ).fetchone()
+        if latest_run is None:
+            return (
+                f"job_posting {job_posting_id!r} has no resume_tailoring_run to review."
+            )
+        if latest_run[0] != "tailored" or latest_run[1] != "resume_review_pending":
+            return (
+                f"job_posting {job_posting_id!r} is missing a tailored pending-review run; "
+                f"found tailoring_status={latest_run[0]!r}, "
+                f"resume_review_status={latest_run[1]!r}."
+            )
         return None
 
     if catalog_entry.action_id == ACTION_ESCALATE_OPEN_INCIDENT:
@@ -2352,6 +2432,7 @@ def _validate_selected_work(
 
 def _execute_selected_work_unit(
     connection: sqlite3.Connection,
+    paths: ProjectPaths,
     selected_work: SupervisorWorkUnit,
     *,
     catalog_entry: SupervisorActionCatalogEntry,
@@ -2374,10 +2455,52 @@ def _execute_selected_work_unit(
         pipeline_run = advance_pipeline_run(
             connection,
             selected_work.work_id,
-            current_stage=_require_text(selected_work.current_stage, "current_stage"),
+            current_stage="agent_review",
             run_summary=(
-                "Supervisor resumed the durable pipeline run at "
-                f"{selected_work.current_stage} without creating duplicate work."
+                "Supervisor advanced the durable pipeline run from lead_handoff into "
+                "mandatory agent review without creating duplicate work."
+            ),
+            timestamp=timestamp,
+        )
+        return pipeline_run, None
+
+    if catalog_entry.action_id == ACTION_PERFORM_MANDATORY_AGENT_REVIEW:
+        from .resume_tailoring import (
+            JOB_POSTING_STATUS_READY_FOR_OUTREACH,
+            JOB_POSTING_STATUS_REQUIRES_CONTACTS,
+            MANDATORY_REVIEWER_AGENT,
+            RESUME_REVIEW_STATUS_APPROVED,
+            record_tailoring_review_decision,
+        )
+
+        review_result = record_tailoring_review_decision(
+            connection,
+            paths,
+            job_posting_id=_require_text(selected_work.job_posting_id, "job_posting_id"),
+            decision_type=RESUME_REVIEW_STATUS_APPROVED,
+            decision_notes=(
+                "Supervisor agent approved the verified tailored output under the current "
+                "bounded autonomous review policy."
+            ),
+            reviewer_type=MANDATORY_REVIEWER_AGENT,
+            timestamp=timestamp,
+        )
+        if review_result.posting_status == JOB_POSTING_STATUS_REQUIRES_CONTACTS:
+            next_stage = "people_search"
+        elif review_result.posting_status == JOB_POSTING_STATUS_READY_FOR_OUTREACH:
+            next_stage = "sending"
+        else:  # pragma: no cover - defensive invariant
+            raise SupervisorStateError(
+                "Mandatory agent review advanced the posting to an unsupported "
+                f"status {review_result.posting_status!r}."
+            )
+        pipeline_run = advance_pipeline_run(
+            connection,
+            selected_work.work_id,
+            current_stage=next_stage,
+            run_summary=(
+                "Supervisor completed the bounded mandatory agent review and "
+                f"advanced the durable pipeline run to {next_stage}."
             ),
             timestamp=timestamp,
         )
@@ -2436,6 +2559,68 @@ def _validate_selected_work_result(
             return (
                 "Checkpointed pipeline_run is not in progress after resume; found "
                 f"{pipeline_run.run_status!r}."
+            )
+        if pipeline_run.current_stage != "agent_review":
+            return (
+                "Lead handoff progression did not advance into agent_review; found "
+                f"{pipeline_run.current_stage!r}."
+            )
+        return None
+
+    if catalog_entry.action_id == ACTION_PERFORM_MANDATORY_AGENT_REVIEW:
+        if pipeline_run is None:
+            return "Supervisor failed to load the selected pipeline_run after mandatory review."
+        if pipeline_run.pipeline_run_id != selected_work.work_id:
+            return "Mandatory review changed the selected pipeline_run identity."
+        if pipeline_run.run_status != RUN_STATUS_IN_PROGRESS:
+            return (
+                "Mandatory review left the pipeline_run outside in-progress state; found "
+                f"{pipeline_run.run_status!r}."
+            )
+        if pipeline_run.current_stage not in {"people_search", "sending"}:
+            return (
+                "Mandatory review did not advance the durable pipeline run to the next "
+                f"supported outreach stage; found {pipeline_run.current_stage!r}."
+            )
+        if pipeline_run.job_posting_id is None:
+            return "Mandatory review completed without a linked job_posting_id."
+        latest_run = connection.execute(
+            """
+            SELECT resume_review_status
+            FROM resume_tailoring_runs
+            WHERE job_posting_id = ?
+            ORDER BY COALESCE(completed_at, updated_at, created_at, started_at) DESC,
+                     resume_tailoring_run_id DESC
+            LIMIT 1
+            """,
+            (pipeline_run.job_posting_id,),
+        ).fetchone()
+        if latest_run is None or latest_run[0] != "approved":
+            return "Mandatory review did not persist an approved tailoring decision."
+        posting_row = connection.execute(
+            """
+            SELECT posting_status
+            FROM job_postings
+            WHERE job_posting_id = ?
+            """,
+            (pipeline_run.job_posting_id,),
+        ).fetchone()
+        if posting_row is None:
+            return "Mandatory review completed without a persisted job_posting row."
+        if posting_row[0] == "requires_contacts" and pipeline_run.current_stage != "people_search":
+            return (
+                "Approved mandatory review should advance to people_search when "
+                f"posting_status=require_contacts, but found {pipeline_run.current_stage!r}."
+            )
+        if posting_row[0] == "ready_for_outreach" and pipeline_run.current_stage != "sending":
+            return (
+                "Approved mandatory review should advance to sending when "
+                f"posting_status=ready_for_outreach, but found {pipeline_run.current_stage!r}."
+            )
+        if posting_row[0] not in {"requires_contacts", "ready_for_outreach"}:
+            return (
+                "Mandatory review persisted an unexpected posting status "
+                f"{posting_row[0]!r}."
             )
         return None
 

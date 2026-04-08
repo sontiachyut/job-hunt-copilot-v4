@@ -99,9 +99,8 @@ def test_acceptance_trace_matrix_reports_are_current_and_reference_real_repo_pat
             "open_pipeline_run",
             "new_role_targeted_posting",
         ],
-        "registered_role_targeted_checkpoint_stages": ["lead_handoff"],
+        "registered_role_targeted_checkpoint_stages": ["agent_review", "lead_handoff"],
         "validated_blocked_role_targeted_stages": [
-            "agent_review",
             "people_search",
             "email_discovery",
             "sending",

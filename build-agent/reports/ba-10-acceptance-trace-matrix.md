@@ -3,8 +3,8 @@
 - Feature file: `prd/test-spec.feature`
 - Scenario count: `214`
 - Status counts:
-  - `implemented`: `190`
-  - `partial`: `8`
+  - `implemented`: `191`
+  - `partial`: `7`
   - `gap`: `14`
   - `deferred_optional`: `1`
   - `excluded_from_required_acceptance`: `1`
@@ -64,7 +64,7 @@
 | Review surfaces and chat-based control | quality-engineer | 6 | 0 | 1 | 0 | 0 |
 | Current-build orchestration remains sequential | build-lead | 19 | 2 | 1 | 0 | 0 |
 | LinkedIn Scraping acceptance | ingestion-engineer | 12 | 0 | 0 | 0 | 0 |
-| End-to-end acceptance | quality-engineer | 1 | 2 | 0 | 0 | 1 |
+| End-to-end acceptance | quality-engineer | 2 | 1 | 0 | 0 | 1 |
 | Current-build safety, privacy, and evidence-grounding boundaries | quality-engineer | 3 | 0 | 0 | 0 | 0 |
 
 ## Rule-To-Slice Mapping
@@ -117,24 +117,23 @@
 
 ## Explicit Gaps
 
-### BA10_SUPERVISOR_DOWNSTREAM_ACTION_CATALOG: Supervisor orchestration still stops at lead handoff
+### BA10_SUPERVISOR_DOWNSTREAM_ACTION_CATALOG: Supervisor orchestration still stops before autonomous people search
 - Next slice: `BA-10-S4`
 - Supporting slices: `BA-02-S1`, `BA-02-S2`, `BA-02-S3`, `BA-03-S1`, `BA-03-S2`, `BA-03-S3`, `BA-06-S1`, `BA-06-S2`, `BA-06-S3`, `BA-06-S4`, `BA-07-S1`, `BA-07-S2`, `BA-07-S3`, `BA-08-S1`, `BA-08-S2`, `BA-08-S3`, `BA-09-S1`, `BA-09-S2`, `BA-09-S3`, `BA-10-S4`
-- Reason: The durable heartbeat, selector ordering, and retry-safe run persistence exist, but the registered action catalog still only advances autonomous work through `lead_handoff`; later stages reselect the same durable run and escalate instead of executing.
-- Evidence summary: Focused downstream-stage regressions prove active incidents still outrank ordinary progression, existing durable runs are selected before bootstrapping new eligible postings, `lead_handoff` is the only registered checkpoint, later stages escalate with durable run and review-packet retention, retries reuse the same run instead of restarting, and a ready contact-rooted general-learning candidate still yields no selected supervisor work.
+- Reason: The durable heartbeat, selector ordering, retry-safe run persistence, and bounded mandatory agent review now exist, but later stages from `people_search` onward still reselect the same durable run and escalate instead of executing.
+- Evidence summary: Focused downstream-stage regressions prove active incidents still outrank ordinary progression, existing durable runs are selected before bootstrapping new eligible postings, `lead_handoff` now advances into `agent_review`, bounded mandatory agent review advances the same run into `people_search`, later stages from `people_search` onward still escalate with durable run and review-packet retention, retries reuse the same run at the blocked downstream boundary, and a ready contact-rooted general-learning candidate still yields no selected supervisor work.
 - Evidence code refs: `job_hunt_copilot/supervisor.py`, `job_hunt_copilot/local_runtime.py`, `job_hunt_copilot/runtime_pack.py`
 - Evidence test refs: `tests/test_supervisor_downstream_actions.py`, `tests/test_blocker_audit.py`, `tests/test_acceptance_traceability.py`
 - Implementation snapshot:
   - Current selector priority order: `active_incident`, `open_pipeline_run`, `new_role_targeted_posting`
-  - Registered role-targeted checkpoint stages: `lead_handoff`
-  - Validated blocked role-targeted stages: `agent_review`, `people_search`, `email_discovery`, `sending`, `delivery_feedback`
+  - Registered role-targeted checkpoint stages: `agent_review`, `lead_handoff`
+  - Validated blocked role-targeted stages: `people_search`, `email_discovery`, `sending`, `delivery_feedback`
   - Unsupported autonomous scope paths: `contact_rooted_general_learning`
-- Scenarios: `5`
+- Scenarios: `4`
   - Supervisor work selection follows the current default priority order
   - Role-targeted orchestration follows the current dependency order
   - General learning outreach bypasses the role-targeted agent-review requirement
   - Role-targeted flow completes from LinkedIn Scraping through delivery feedback
-  - End-to-end retry resumes from the last successful stage boundary
 
 ### BA10_MAINTENANCE_AUTOMATION: Maintenance workflow and artifacts are not implemented
 - Next slice: `BA-10-S3`

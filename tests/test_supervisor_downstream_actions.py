@@ -9,6 +9,7 @@ import pytest
 from job_hunt_copilot.bootstrap import run_bootstrap
 from job_hunt_copilot.paths import ProjectPaths
 from job_hunt_copilot.supervisor import (
+    ACTION_PERFORM_MANDATORY_AGENT_REVIEW,
     REVIEW_PACKET_STATUS_PENDING,
     RUN_STATUS_ESCALATED,
     RUN_STATUS_IN_PROGRESS,
@@ -23,7 +24,7 @@ from job_hunt_copilot.supervisor import (
     resume_agent,
     run_supervisor_cycle,
 )
-from tests.support import create_minimal_project
+from tests.support import create_minimal_project, seed_pending_review_tailoring_run
 
 
 def bootstrap_project(tmp_path: Path) -> Path:
@@ -129,11 +130,18 @@ def seed_general_learning_contact(
     return "ct_general_learning"
 
 
-def test_lead_handoff_remains_the_only_registered_checkpoint_boundary(tmp_path: Path) -> None:
+def test_lead_handoff_advances_the_durable_run_into_agent_review(tmp_path: Path) -> None:
     project_root = bootstrap_project(tmp_path)
     paths = ProjectPaths.from_root(project_root)
     connection = connect_database(project_root / "job_hunt_copilot.db")
     lead_id, job_posting_id = seed_role_targeted_posting(connection)
+    seed_pending_review_tailoring_run(
+        connection,
+        paths,
+        job_posting_id=job_posting_id,
+        company_name="Acme",
+        role_title="Platform Engineer",
+    )
     resume_agent(
         connection,
         manual_command="jhc-agent-start",
@@ -165,7 +173,87 @@ def test_lead_handoff_remains_the_only_registered_checkpoint_boundary(tmp_path: 
     assert updated_run is not None
     assert updated_run.pipeline_run_id == pipeline_run.pipeline_run_id
     assert updated_run.run_status == RUN_STATUS_IN_PROGRESS
-    assert updated_run.current_stage == "lead_handoff"
+    assert updated_run.current_stage == "agent_review"
+
+
+def test_agent_review_stage_advances_to_people_search_after_approval(tmp_path: Path) -> None:
+    project_root = bootstrap_project(tmp_path)
+    paths = ProjectPaths.from_root(project_root)
+    connection = connect_database(project_root / "job_hunt_copilot.db")
+    lead_id, job_posting_id = seed_role_targeted_posting(connection)
+    seed_pending_review_tailoring_run(
+        connection,
+        paths,
+        job_posting_id=job_posting_id,
+        company_name="Acme",
+        role_title="Platform Engineer",
+    )
+    resume_agent(
+        connection,
+        manual_command="jhc-agent-start",
+        timestamp="2026-04-08T00:08:00Z",
+    )
+    pipeline_run, _ = ensure_role_targeted_pipeline_run(
+        connection,
+        lead_id=lead_id,
+        job_posting_id=job_posting_id,
+        current_stage="agent_review",
+        started_at="2026-04-08T00:09:00Z",
+    )
+
+    execution = run_supervisor_cycle(
+        connection,
+        paths,
+        trigger_type="launchd_heartbeat",
+        scheduler_name="launchd",
+        started_at="2026-04-08T00:10:00Z",
+    )
+    updated_run = get_pipeline_run(connection, pipeline_run.pipeline_run_id)
+    posting_row = connection.execute(
+        """
+        SELECT posting_status
+        FROM job_postings
+        WHERE job_posting_id = ?
+        """,
+        (job_posting_id,),
+    ).fetchone()
+    tailoring_row = connection.execute(
+        """
+        SELECT resume_review_status
+        FROM resume_tailoring_runs
+        WHERE job_posting_id = ?
+        ORDER BY COALESCE(completed_at, updated_at, created_at, started_at) DESC,
+                 resume_tailoring_run_id DESC
+        LIMIT 1
+        """,
+        (job_posting_id,),
+    ).fetchone()
+    review_artifact_count = connection.execute(
+        """
+        SELECT COUNT(*)
+        FROM artifact_records
+        WHERE job_posting_id = ?
+          AND artifact_type = 'tailoring_review_decision'
+        """,
+        (job_posting_id,),
+    ).fetchone()[0]
+    connection.close()
+
+    assert execution.cycle.result == SUPERVISOR_CYCLE_RESULT_SUCCESS
+    assert execution.selected_work is not None
+    assert execution.selected_work.work_id == pipeline_run.pipeline_run_id
+    assert execution.selected_work.action_id == ACTION_PERFORM_MANDATORY_AGENT_REVIEW
+    assert execution.selected_work.current_stage == "agent_review"
+    assert execution.incident is None
+    assert execution.review_packet is None
+    assert updated_run is not None
+    assert updated_run.run_status == RUN_STATUS_IN_PROGRESS
+    assert updated_run.current_stage == "people_search"
+    assert posting_row is not None
+    assert posting_row["posting_status"] == "requires_contacts"
+    assert tailoring_row is not None
+    assert tailoring_row["resume_review_status"] == "approved"
+    assert review_artifact_count == 1
 
 
 def test_existing_pipeline_run_is_selected_before_bootstrapping_another_eligible_posting(
@@ -235,7 +323,7 @@ def test_existing_pipeline_run_is_selected_before_bootstrapping_another_eligible
         {
             "pipeline_run_id": pipeline_run.pipeline_run_id,
             "job_posting_id": job_posting_id,
-            "current_stage": "lead_handoff",
+            "current_stage": "agent_review",
         }
     ]
 
@@ -286,7 +374,6 @@ def test_contact_rooted_general_learning_work_is_not_selected_yet(tmp_path: Path
 @pytest.mark.parametrize(
     "blocked_stage",
     [
-        "agent_review",
         "people_search",
         "email_discovery",
         "sending",
@@ -356,6 +443,13 @@ def test_retry_after_downstream_stage_blocker_reuses_same_run_and_review_packet(
     paths = ProjectPaths.from_root(project_root)
     connection = connect_database(project_root / "job_hunt_copilot.db")
     lead_id, job_posting_id = seed_role_targeted_posting(connection)
+    seed_pending_review_tailoring_run(
+        connection,
+        paths,
+        job_posting_id=job_posting_id,
+        company_name="Acme",
+        role_title="Platform Engineer",
+    )
     resume_agent(
         connection,
         manual_command="jhc-agent-start",
@@ -365,7 +459,7 @@ def test_retry_after_downstream_stage_blocker_reuses_same_run_and_review_packet(
         connection,
         lead_id=lead_id,
         job_posting_id=job_posting_id,
-        current_stage="delivery_feedback",
+        current_stage="agent_review",
         started_at="2026-04-08T00:21:00Z",
     )
 
@@ -376,59 +470,69 @@ def test_retry_after_downstream_stage_blocker_reuses_same_run_and_review_packet(
         scheduler_name="launchd",
         started_at="2026-04-08T00:22:00Z",
     )
-    assert first_execution.incident is not None
-    assert first_execution.review_packet is not None
-
-    escalated_incident = escalate_agent_incident(
-        connection,
-        first_execution.incident.agent_incident_id,
-        escalation_reason=(
-            "Expert confirmed the downstream supervisor gap and recorded it for later "
-            "catalog work."
-        ),
-        timestamp="2026-04-08T00:23:00Z",
-    )
-    retried_run = advance_pipeline_run(
-        connection,
-        pipeline_run.pipeline_run_id,
-        current_stage="delivery_feedback",
-        run_summary="Retry the same downstream boundary without restarting the run.",
-        timestamp="2026-04-08T00:24:00Z",
-    )
-    reused_run, created = ensure_role_targeted_pipeline_run(
-        connection,
-        lead_id=lead_id,
-        job_posting_id=job_posting_id,
-        current_stage="lead_handoff",
-        started_at="2026-04-08T00:25:00Z",
-    )
+    assert first_execution.cycle.result == SUPERVISOR_CYCLE_RESULT_SUCCESS
+    assert first_execution.pipeline_run is not None
+    assert first_execution.pipeline_run.current_stage == "people_search"
 
     second_execution = run_supervisor_cycle(
         connection,
         paths,
         trigger_type="launchd_heartbeat",
         scheduler_name="launchd",
+        started_at="2026-04-08T00:23:00Z",
+    )
+    assert second_execution.incident is not None
+    assert second_execution.review_packet is not None
+
+    escalated_incident = escalate_agent_incident(
+        connection,
+        second_execution.incident.agent_incident_id,
+        escalation_reason=(
+            "Expert confirmed the downstream supervisor gap and recorded it for later "
+            "catalog work."
+        ),
+        timestamp="2026-04-08T00:24:00Z",
+    )
+    retried_run = advance_pipeline_run(
+        connection,
+        pipeline_run.pipeline_run_id,
+        current_stage="people_search",
+        run_summary="Retry the same downstream boundary without restarting the run.",
+        timestamp="2026-04-08T00:25:00Z",
+    )
+    reused_run, created = ensure_role_targeted_pipeline_run(
+        connection,
+        lead_id=lead_id,
+        job_posting_id=job_posting_id,
+        current_stage="lead_handoff",
         started_at="2026-04-08T00:26:00Z",
+    )
+
+    third_execution = run_supervisor_cycle(
+        connection,
+        paths,
+        trigger_type="launchd_heartbeat",
+        scheduler_name="launchd",
+        started_at="2026-04-08T00:27:00Z",
     )
     stored_packets = list_expert_review_packets_for_run(connection, pipeline_run.pipeline_run_id)
     connection.close()
 
-    assert first_execution.cycle.result == SUPERVISOR_CYCLE_RESULT_FAILED
     assert first_execution.pipeline_run is not None
     assert first_execution.pipeline_run.pipeline_run_id == pipeline_run.pipeline_run_id
     assert escalated_incident.status == "escalated"
     assert retried_run.pipeline_run_id == pipeline_run.pipeline_run_id
     assert retried_run.run_status == RUN_STATUS_IN_PROGRESS
-    assert retried_run.current_stage == "delivery_feedback"
+    assert retried_run.current_stage == "people_search"
     assert created is False
     assert reused_run.pipeline_run_id == pipeline_run.pipeline_run_id
-    assert reused_run.current_stage == "delivery_feedback"
-    assert second_execution.cycle.result == SUPERVISOR_CYCLE_RESULT_FAILED
-    assert second_execution.selected_work is not None
-    assert second_execution.selected_work.work_id == pipeline_run.pipeline_run_id
-    assert second_execution.selected_work.current_stage == "delivery_feedback"
-    assert second_execution.review_packet is not None
-    assert second_execution.review_packet.expert_review_packet_id == (
-        first_execution.review_packet.expert_review_packet_id
+    assert reused_run.current_stage == "people_search"
+    assert third_execution.cycle.result == SUPERVISOR_CYCLE_RESULT_FAILED
+    assert third_execution.selected_work is not None
+    assert third_execution.selected_work.work_id == pipeline_run.pipeline_run_id
+    assert third_execution.selected_work.current_stage == "people_search"
+    assert third_execution.review_packet is not None
+    assert third_execution.review_packet.expert_review_packet_id == (
+        second_execution.review_packet.expert_review_packet_id
     )
     assert len(stored_packets) == 1

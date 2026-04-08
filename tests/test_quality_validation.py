@@ -104,9 +104,9 @@ def test_validation_selector_details_include_requested_smoke_gap_blocker_and_cur
     ]
     assert details["acceptance_gaps"][0] == {
         "gap_id": "BA10_SUPERVISOR_DOWNSTREAM_ACTION_CATALOG",
-        "title": "Supervisor orchestration still stops at lead handoff",
+        "title": "Supervisor orchestration still stops before autonomous people search",
         "next_slice": "BA-10-S4",
-        "open_scenario_count": 5,
+        "open_scenario_count": 4,
         "validation_command_ids": [
             "qa_supervisor_regressions",
             "qa_acceptance_reports",
@@ -135,13 +135,13 @@ def test_validation_selector_details_include_requested_smoke_gap_blocker_and_cur
         "slice_id": "BA-10-S4",
         "owner_role": "build-lead",
         "reason": (
-            "BA-10-S4 now has a dedicated downstream-stage regression target plus "
-            "refreshed traceability and blocker reports, while the matrix still sits "
-            "at 190 implemented / 8 partial / 14 gap scenarios; the next highest-value "
-            "slice remains a build-lead implementation pass on downstream supervisor "
-            "action-catalog steps beyond `lead_handoff`, because that single cluster "
-            "still accounts for the largest remaining acceptance partial set and blocks "
-            "the strongest end-to-end closure."
+            "BA-10-S4 now has working `lead_handoff -> agent_review -> people_search` "
+            "supervisor progression plus refreshed traceability and blocker reports, "
+            "while the matrix now sits at 191 implemented / 7 partial / 14 gap "
+            "scenarios; the next highest-value slice remains a build-lead "
+            "implementation pass on downstream supervisor action-catalog steps beyond "
+            "`agent_review`, because that same cluster still blocks full role-targeted "
+            "orchestration and contact-rooted general-learning selection."
         ),
         "gap_ids": ["BA10_SUPERVISOR_DOWNSTREAM_ACTION_CATALOG"],
         "validation_command_ids": [
@@ -264,9 +264,9 @@ def test_quality_validation_suite_script_dry_run_expands_gap_ids():
     assert payload["selector_details"]["acceptance_gaps"] == [
         {
             "gap_id": "BA10_SUPERVISOR_DOWNSTREAM_ACTION_CATALOG",
-            "title": "Supervisor orchestration still stops at lead handoff",
+            "title": "Supervisor orchestration still stops before autonomous people search",
             "next_slice": "BA-10-S4",
-            "open_scenario_count": 5,
+            "open_scenario_count": 4,
             "validation_command_ids": [
                 "qa_supervisor_regressions",
                 "qa_acceptance_reports",
@@ -378,13 +378,13 @@ def test_quality_validation_suite_script_dry_run_expands_current_focus():
         "slice_id": "BA-10-S4",
         "owner_role": "build-lead",
         "reason": (
-            "BA-10-S4 now has a dedicated downstream-stage regression target plus "
-            "refreshed traceability and blocker reports, while the matrix still sits "
-            "at 190 implemented / 8 partial / 14 gap scenarios; the next highest-value "
-            "slice remains a build-lead implementation pass on downstream supervisor "
-            "action-catalog steps beyond `lead_handoff`, because that single cluster "
-            "still accounts for the largest remaining acceptance partial set and blocks "
-            "the strongest end-to-end closure."
+            "BA-10-S4 now has working `lead_handoff -> agent_review -> people_search` "
+            "supervisor progression plus refreshed traceability and blocker reports, "
+            "while the matrix now sits at 191 implemented / 7 partial / 14 gap "
+            "scenarios; the next highest-value slice remains a build-lead "
+            "implementation pass on downstream supervisor action-catalog steps beyond "
+            "`agent_review`, because that same cluster still blocks full role-targeted "
+            "orchestration and contact-rooted general-learning selection."
         ),
         "gap_ids": ["BA10_SUPERVISOR_DOWNSTREAM_ACTION_CATALOG"],
         "validation_command_ids": [

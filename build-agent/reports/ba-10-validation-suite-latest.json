@@ -1,88 +1,77 @@
 {
   "project_root": "/Users/achyutaramsonti/Projects/job-hunt-copilot-v4",
-  "refreshed_reports": {
-    "acceptance_trace_reports": {
-      "json_path": "/Users/achyutaramsonti/Projects/job-hunt-copilot-v4/build-agent/reports/ba-10-acceptance-trace-matrix.json",
-      "markdown_path": "/Users/achyutaramsonti/Projects/job-hunt-copilot-v4/build-agent/reports/ba-10-acceptance-trace-matrix.md"
-    },
-    "blocker_audit_reports": {
-      "json_path": "/Users/achyutaramsonti/Projects/job-hunt-copilot-v4/build-agent/reports/ba-10-blocker-audit.json",
-      "markdown_path": "/Users/achyutaramsonti/Projects/job-hunt-copilot-v4/build-agent/reports/ba-10-blocker-audit.md"
-    }
-  },
+  "refreshed_reports": null,
   "requested_command_ids": [],
   "requested_gap_ids": [],
-  "requested_blocker_ids": [
-    "BUILD-CLI-001"
-  ],
-  "requested_current_focus": false,
+  "requested_blocker_ids": [],
+  "requested_current_focus": true,
   "requested_smoke_targets": [],
-  "include_manual": true,
-  "skip_report_refresh": false,
+  "include_manual": false,
+  "skip_report_refresh": true,
   "selector_details": {
     "smoke_targets": [],
     "acceptance_gaps": [],
-    "build_board_blockers": [
-      {
-        "blocker_id": "BUILD-CLI-001",
-        "status": "open",
-        "owner_role": "build-lead",
-        "summary": "The unattended build wrapper now has automated regression coverage for its `codex exec` command shape, but real host-side cycle execution still needs confirmation after the `--ask-for-approval` incompatibility.",
-        "validation_command_ids": [
-          "qa_build_agent_cycle_regressions",
-          "qa_codex_cli_compatibility"
-        ],
-        "validation_suite_command": "python3.11 scripts/quality/run_ba10_validation_suite.py --project-root <repo_root> --blocker-id BUILD-CLI-001 --include-manual"
-      }
-    ],
-    "current_focus": null
+    "build_board_blockers": [],
+    "current_focus": {
+      "epic_id": "BA-10",
+      "slice_id": "BA-10-S4",
+      "owner_role": "build-lead",
+      "reason": "BA-10-S4 now has working `lead_handoff -> agent_review -> people_search` supervisor progression plus refreshed traceability and blocker reports, while the matrix now sits at 191 implemented / 7 partial / 14 gap scenarios; the next highest-value slice remains a build-lead implementation pass on downstream supervisor action-catalog steps beyond `agent_review`, because that same cluster still blocks full role-targeted orchestration and contact-rooted general-learning selection.",
+      "gap_ids": [
+        "BA10_SUPERVISOR_DOWNSTREAM_ACTION_CATALOG"
+      ],
+      "validation_command_ids": [
+        "qa_supervisor_regressions",
+        "qa_acceptance_reports"
+      ],
+      "validation_suite_command": "python3.11 scripts/quality/run_ba10_validation_suite.py --project-root <repo_root> --current-focus"
+    }
   },
   "commands": [
     {
-      "command_id": "qa_build_agent_cycle_regressions",
-      "title": "Build-agent cycle regressions",
+      "command_id": "qa_supervisor_regressions",
+      "title": "Supervisor downstream hardening regressions",
       "kind": "automated",
-      "command": "python3.11 -m pytest tests/test_build_agent_cycle.py",
-      "description": "Guards the unattended build-lead `codex exec` invocation shape so unsupported approval flags do not return.",
+      "command": "python3.11 -m pytest tests/test_supervisor_downstream_actions.py",
+      "description": "Confirms `lead_handoff` advances into `agent_review`, bounded mandatory review advances into `people_search`, later stages still escalate explicitly, and retries preserve the same durable run plus pending review packet.",
       "status": "passed",
       "returncode": 0,
-      "duration_seconds": 0.109
+      "duration_seconds": 0.639
     },
     {
-      "command_id": "qa_codex_cli_compatibility",
-      "title": "Codex CLI compatibility check",
-      "kind": "manual_local",
-      "command": "codex exec --help && codex --help",
-      "description": "Reconfirms the current CLI shape so unattended build wrappers do not reintroduce unsupported approval flags.",
+      "command_id": "qa_acceptance_reports",
+      "title": "Acceptance report guards",
+      "kind": "automated",
+      "command": "python3.11 -m pytest tests/test_acceptance_traceability.py tests/test_blocker_audit.py",
+      "description": "Keeps the committed BA-10 acceptance and blocker reports synchronized with repo code, tests, and state references.",
       "status": "passed",
       "returncode": 0,
-      "duration_seconds": 0.06
+      "duration_seconds": 0.309
     }
   ],
   "failed_command_ids": [],
   "passed": true,
   "validation_suite_report_version": 2,
-  "generated_at": "2026-04-08T22:00:03Z",
+  "generated_at": "2026-04-08T22:34:13Z",
   "summary": {
     "command_count": 2,
     "command_kind_counts": {
-      "automated": 1,
-      "manual_local": 1
+      "automated": 2
     },
     "passed_command_count": 2,
     "failed_command_count": 0,
-    "total_duration_seconds": 0.169
+    "total_duration_seconds": 0.948
   },
   "repo_status": {
     "acceptance_scenario_count": 214,
     "acceptance_status_counts": {
-      "implemented": 190,
-      "partial": 8,
+      "implemented": 191,
+      "partial": 7,
       "gap": 14,
       "deferred_optional": 1,
       "excluded_from_required_acceptance": 1
     },
-    "open_acceptance_scenario_count": 22,
+    "open_acceptance_scenario_count": 21,
     "open_acceptance_gap_cluster_count": 5,
     "open_acceptance_gap_ids": [
       "BA10_SUPERVISOR_DOWNSTREAM_ACTION_CATALOG",
