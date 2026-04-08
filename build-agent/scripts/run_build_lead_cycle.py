@@ -129,6 +129,26 @@ def run_sleep_wake_recovery(project_root: Path, cycle_id: str, started_at: str, 
     return 0
 
 
+def find_slice(epic: dict, slice_id: str | None) -> dict | None:
+    if not slice_id:
+        return None
+    for slice_item in epic.get("near_term_slices", []):
+        if slice_item.get("id") == slice_id:
+            return slice_item
+    return None
+
+
+def select_slice(epic: dict, preferred_slice_id: str | None = None) -> dict | None:
+    preferred = find_slice(epic, preferred_slice_id)
+    if preferred and preferred.get("status") not in {"completed", "done"}:
+        return preferred
+
+    for slice_item in epic.get("near_term_slices", []):
+        if slice_item.get("status") in {"in_progress", "pending", "not_started"}:
+            return slice_item
+    return None
+
+
 def select_epic(board: dict) -> dict | None:
     epics = board.get("epics", [])
     indexed = {epic["id"]: epic for epic in epics}
@@ -139,6 +159,19 @@ def select_epic(board: dict) -> dict | None:
         if epic.get("status") in {"pending", "in_progress", "not_started"}:
             return epic
     return None
+
+
+def select_work_target(board: dict) -> tuple[dict | None, dict | None]:
+    epic = select_epic(board)
+    if epic is None:
+        return None, None
+
+    focus = board.get("current_focus", {})
+    preferred_slice_id = None
+    if focus.get("epic_id") == epic.get("id"):
+        preferred_slice_id = focus.get("slice_id")
+
+    return epic, select_slice(epic, preferred_slice_id)
 
 
 def git_status_excerpt(project_root: Path, limit: int = 50) -> list[str]:
@@ -169,7 +202,14 @@ def changed_state_files(before: dict[str, int | None], after: dict[str, int | No
     return changed
 
 
-def build_snapshot(project_root: Path, cycle_id: str, board: dict, epic: dict, control_state: dict) -> tuple[Path, dict]:
+def build_snapshot(
+    project_root: Path,
+    cycle_id: str,
+    board: dict,
+    epic: dict,
+    slice_item: dict | None,
+    control_state: dict,
+) -> tuple[Path, dict]:
     status_excerpt = git_status_excerpt(project_root)
     snapshot = {
         "contract_version": "1.0",
@@ -190,6 +230,14 @@ def build_snapshot(project_root: Path, cycle_id: str, board: dict, epic: dict, c
             "objective": epic.get("objective"),
             "done_when": epic.get("done_when", []),
         },
+        "selected_slice": {
+            "slice_id": slice_item.get("id") if slice_item else None,
+            "name": slice_item.get("name") if slice_item else None,
+            "status": slice_item.get("status") if slice_item else None,
+            "owner_role": slice_item.get("owner_role") if slice_item else None,
+            "deliverables": slice_item.get("deliverables", []) if slice_item else [],
+            "dependencies": slice_item.get("dependencies", []) if slice_item else [],
+        },
         "board_summary": {
             "current_phase": board.get("global_status", {}).get("current_phase"),
             "overall_risk": board.get("global_status", {}).get("overall_risk"),
@@ -203,6 +251,7 @@ def build_snapshot(project_root: Path, cycle_id: str, board: dict, epic: dict, c
             "One bounded slice only",
             "Update build state before exit",
             "Validate before claiming progress",
+            "Current focus slice is authoritative when present",
         ],
     }
     path = context_snapshot_dir(project_root) / f"{cycle_id}.json"
@@ -210,15 +259,24 @@ def build_snapshot(project_root: Path, cycle_id: str, board: dict, epic: dict, c
     return path, snapshot
 
 
-def build_prompt(project_root: Path, cycle_id: str, epic: dict, snapshot_path: Path, snapshot: dict) -> str:
+def build_prompt(
+    project_root: Path,
+    cycle_id: str,
+    epic: dict,
+    slice_item: dict | None,
+    snapshot_path: Path,
+    snapshot: dict,
+) -> str:
     build_root = build_agent_root(project_root)
     bootstrap = (build_root / "builder-bootstrap.md").read_text(encoding="utf-8").strip()
-    owner_role = epic.get("owner_role", "build-lead")
+    owner_role = (slice_item or {}).get("owner_role") or epic.get("owner_role", "build-lead")
     role_brief_path = build_root / "team" / f"{owner_role}.md"
     role_brief = role_brief_path.read_text(encoding="utf-8").strip() if role_brief_path.exists() else ""
 
     done_when = epic.get("done_when", [])
     done_when_lines = "\n".join(f"- {item}" for item in done_when)
+    slice_deliverables = (slice_item or {}).get("deliverables", [])
+    slice_deliverable_lines = "\n".join(f"- {item}" for item in slice_deliverables)
     resume_rule = ""
     if snapshot.get("resume_mode"):
         resume_rule = """
@@ -235,6 +293,8 @@ Current unattended build cycle:
 - cycle_id: {cycle_id}
 - selected_epic_id: {epic.get('id')}
 - selected_epic_name: {epic.get('name')}
+- selected_slice_id: {(slice_item or {}).get('id') or 'unspecified'}
+- selected_slice_name: {(slice_item or {}).get('name') or 'unspecified'}
 - owner_role: {owner_role}
 - objective: {epic.get('objective')}
 - context_snapshot: {snapshot_path.relative_to(project_root)}
@@ -242,12 +302,17 @@ Current unattended build cycle:
 Done-when targets for this epic:
 {done_when_lines or "- No explicit done_when targets recorded."}
 
+Selected slice deliverables for this cycle:
+{slice_deliverable_lines or "- No explicit slice deliverables recorded."}
+
 Role brief for this cycle:
 {role_brief}
 
 Cycle rules:
-- Focus on one bounded implementation slice toward the selected epic.
+- Focus on the selected slice for this cycle. Treat the current focus slice as authoritative when it is present.
 - Stay primarily within the selected owner role's subsystem and responsibility boundary.
+- Do not switch to a neighboring support or evidence slice just because it is easier.
+- If the selected slice is blocked, record the blocker explicitly in the state files before doing any sidecar hardening.
 - Read the current repository and current git state before editing.
 - Update these files before exiting if anything meaningful changed:
   - build-agent/state/build-board.yaml
@@ -364,7 +429,7 @@ def main() -> int:
 
     try:
         board = load_yaml(build_agent_root(project_root) / "state" / "build-board.yaml")
-        epic = select_epic(board)
+        epic, slice_item = select_work_target(board)
         if epic is None:
             completed_at = now_utc_iso()
             control_state = load_control_state(project_root)
@@ -382,8 +447,15 @@ def main() -> int:
             return 0
 
         state_mtimes_before = tracked_state_file_mtimes(project_root)
-        snapshot_path, snapshot = build_snapshot(project_root, cycle_id, board, epic, load_control_state(project_root))
-        prompt = build_prompt(project_root, cycle_id, epic, snapshot_path, snapshot)
+        snapshot_path, snapshot = build_snapshot(
+            project_root,
+            cycle_id,
+            board,
+            epic,
+            slice_item,
+            load_control_state(project_root),
+        )
+        prompt = build_prompt(project_root, cycle_id, epic, slice_item, snapshot_path, snapshot)
 
         cycle_log_path = cycles_log_dir(project_root) / f"{cycle_id}.log"
         last_message_path = cycles_log_dir(project_root) / f"{cycle_id}.last-message.md"
@@ -397,6 +469,8 @@ def main() -> int:
             log_handle.write(f"# {cycle_id}\n")
             log_handle.write(f"started_at: {started_at}\n")
             log_handle.write(f"selected_epic: {epic.get('id')} {epic.get('name')}\n\n")
+            if slice_item:
+                log_handle.write(f"selected_slice: {slice_item.get('id')} {slice_item.get('name')}\n\n")
             completed = subprocess.run(
                 command,
                 input=prompt,
@@ -461,7 +535,8 @@ def main() -> int:
                 "completed_at": completed_at,
                 "result": result,
                 "selected_epic_id": epic.get("id"),
-                "owner_role": epic.get("owner_role"),
+                "selected_slice_id": slice_item.get("id") if slice_item else None,
+                "owner_role": (slice_item or {}).get("owner_role") or epic.get("owner_role"),
                 "context_snapshot": str(snapshot_path.relative_to(project_root)),
                 "cycle_log": str(cycle_log_path.relative_to(project_root)),
                 "last_message_path": str(last_message_path.relative_to(project_root)),
