@@ -16,7 +16,7 @@
 ## Acceptance Gap Clusters
 
 ### BA10_SUPERVISOR_DOWNSTREAM_ACTION_CATALOG: Supervisor orchestration still stops at lead handoff
-- Next slice: `BA-10-S3`
+- Next slice: `BA-10-S4`
 - Owner roles: `build-lead`, `quality-engineer`
 - Rules: `Current-build orchestration remains sequential`, `End-to-end acceptance`, `Supervisor Agent behavior`
 - Epics: `BA-02`, `BA-03`, `BA-06`, `BA-07`, `BA-08`, `BA-09`, `BA-10`

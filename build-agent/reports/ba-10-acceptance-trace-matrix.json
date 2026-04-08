@@ -6145,7 +6145,7 @@
       "gap_id": "BA10_SUPERVISOR_DOWNSTREAM_ACTION_CATALOG",
       "title": "Supervisor orchestration still stops at lead handoff",
       "reason": "The durable heartbeat, selector ordering, and retry-safe run persistence exist, but the registered action catalog still only advances autonomous work through `lead_handoff`; later stages reselect the same durable run and escalate instead of executing.",
-      "next_slice": "BA-10-S3",
+      "next_slice": "BA-10-S4",
       "evidence_summary": "Selector ordering, durable run reuse, and unsupported-stage escalation are covered, but later-stage autonomous actions remain unregistered.",
       "evidence_code_refs": [
         "job_hunt_copilot/supervisor.py",

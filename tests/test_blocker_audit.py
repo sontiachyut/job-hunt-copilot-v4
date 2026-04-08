@@ -60,3 +60,13 @@ def test_ba10_blocker_audit_reports_are_current_and_reference_real_repo_paths():
             assert command["command"]
             assert command["kind"]
             assert command["description"]
+
+
+def test_current_focus_slice_is_reflected_in_open_gap_clusters():
+    audit = build_ba10_blocker_audit(REPO_ROOT)
+
+    open_gap_next_slices = {
+        cluster["next_slice"] for cluster in audit["acceptance_gap_clusters"] if cluster["open_scenario_count"]
+    }
+
+    assert audit["current_focus"]["slice_id"] in open_gap_next_slices
