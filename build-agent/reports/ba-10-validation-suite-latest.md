@@ -1,14 +1,14 @@
 # BA-10 Validation Suite Report
 
-- Generated at: `2026-04-08T21:19:32Z`
+- Generated at: `2026-04-08T21:33:55Z`
 - Project root: `/Users/achyutaramsonti/Projects/job-hunt-copilot-v4`
 - Passed: `True`
-- Command count: `4`
-- Passed commands: `4`
+- Command count: `2`
+- Passed commands: `2`
 - Failed commands: `0`
-- Total duration seconds: `3.634`
+- Total duration seconds: `0.882`
 - Command ids: none
-- Smoke targets: `bootstrap`
+- Smoke targets: none
 - Acceptance gaps: none
 - Build-board blockers: none
 - Current focus requested: `True`
@@ -17,7 +17,7 @@
 
 ## Command Kind Counts
 
-- `automated`: `4`
+- `automated`: `2`
 
 ## Refreshed Reports
 
@@ -27,14 +27,6 @@
 - Blocker audit markdown: `/Users/achyutaramsonti/Projects/job-hunt-copilot-v4/build-agent/reports/ba-10-blocker-audit.md`
 
 ## Selector Details
-
-### Smoke Targets
-
-- `bootstrap`: Bootstrap and prerequisites
-  - Acceptance scenario: `Build smoke test passes`
-  - Acceptance checks: the system initializes or migrates `job_hunt_copilot.db`; the system loads runtime secrets successfully; the system reads the required files from `assets/`
-  - Validation command ids: `qa_smoke_flow`, `qa_bootstrap_regressions`
-  - Test refs: `tests/test_smoke_harness.py`, `tests/test_bootstrap.py`, `tests/test_schema.py`
 
 ### Current Focus
 
@@ -50,10 +42,8 @@
 
 | Command | Kind | Status | Returncode | Duration (s) |
 | --- | --- | --- | ---: | ---: |
-| qa_supervisor_regressions | automated | passed | 0 | 0.528 |
-| qa_acceptance_reports | automated | passed | 0 | 0.301 |
-| qa_smoke_flow | automated | passed | 0 | 2.360 |
-| qa_bootstrap_regressions | automated | passed | 0 | 0.445 |
+| qa_supervisor_regressions | automated | passed | 0 | 0.580 |
+| qa_acceptance_reports | automated | passed | 0 | 0.302 |
 
 ## Command Details
 
@@ -61,7 +51,7 @@
 - Kind: `automated`
 - Status: `passed`
 - Returncode: `0`
-- Duration seconds: `0.528`
+- Duration seconds: `0.58`
 - Command: `python3.11 -m pytest tests/test_supervisor_downstream_actions.py`
 - Description: Confirms `lead_handoff` remains the only registered checkpoint, later stages escalate explicitly, and retries preserve the same durable run plus pending review packet.
 
@@ -69,22 +59,6 @@
 - Kind: `automated`
 - Status: `passed`
 - Returncode: `0`
-- Duration seconds: `0.301`
+- Duration seconds: `0.302`
 - Command: `python3.11 -m pytest tests/test_acceptance_traceability.py tests/test_blocker_audit.py`
 - Description: Keeps the committed BA-10 acceptance and blocker reports synchronized with repo code, tests, and state references.
-
-### qa_smoke_flow: Smoke harness flow
-- Kind: `automated`
-- Status: `passed`
-- Returncode: `0`
-- Duration seconds: `2.36`
-- Command: `python3.11 -m pytest tests/test_smoke_harness.py`
-- Description: Replays the committed bootstrap -> tailoring -> discovery -> send -> feedback -> review-query smoke path.
-
-### qa_bootstrap_regressions: Bootstrap regressions
-- Kind: `automated`
-- Status: `passed`
-- Returncode: `0`
-- Duration seconds: `0.445`
-- Command: `python3.11 -m pytest tests/test_bootstrap.py tests/test_schema.py tests/test_artifacts.py`
-- Description: Confirms bootstrap prerequisites, canonical schema migration, and shared artifact contracts stay valid.

@@ -44,6 +44,12 @@ def connect_database(db_path: Path) -> sqlite3.Connection:
 def seed_role_targeted_posting(
     connection: sqlite3.Connection,
     *,
+    lead_id: str = "ld_downstream",
+    job_posting_id: str = "jp_downstream",
+    lead_identity_key: str = "acme|platform-engineer",
+    posting_identity_key: str = "acme|platform-engineer|remote",
+    company_name: str = "Acme",
+    role_title: str = "Platform Engineer",
     timestamp: str = "2026-04-08T00:00:00Z",
 ) -> tuple[str, str]:
     connection.execute(
@@ -55,16 +61,16 @@ def seed_role_targeted_posting(
         ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         """,
         (
-            "ld_downstream",
-            "acme|platform-engineer",
+            lead_id,
+            lead_identity_key,
             "reviewed",
             "posting_plus_contacts",
             "confident",
             "manual_paste",
             "paste/paste.txt",
             "manual_paste",
-            "Acme",
-            "Platform Engineer",
+            company_name,
+            role_title,
             timestamp,
             timestamp,
         ),
@@ -77,18 +83,18 @@ def seed_role_targeted_posting(
         ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
         """,
         (
-            "jp_downstream",
-            "ld_downstream",
-            "acme|platform-engineer|remote",
-            "Acme",
-            "Platform Engineer",
+            job_posting_id,
+            lead_id,
+            posting_identity_key,
+            company_name,
+            role_title,
             "resume_review_pending",
             timestamp,
             timestamp,
         ),
     )
     connection.commit()
-    return "ld_downstream", "jp_downstream"
+    return lead_id, job_posting_id
 
 
 def seed_general_learning_contact(
@@ -160,6 +166,78 @@ def test_lead_handoff_remains_the_only_registered_checkpoint_boundary(tmp_path: 
     assert updated_run.pipeline_run_id == pipeline_run.pipeline_run_id
     assert updated_run.run_status == RUN_STATUS_IN_PROGRESS
     assert updated_run.current_stage == "lead_handoff"
+
+
+def test_existing_pipeline_run_is_selected_before_bootstrapping_another_eligible_posting(
+    tmp_path: Path,
+) -> None:
+    project_root = bootstrap_project(tmp_path)
+    paths = ProjectPaths.from_root(project_root)
+    connection = connect_database(project_root / "job_hunt_copilot.db")
+    lead_id, job_posting_id = seed_role_targeted_posting(connection)
+    _, waiting_job_posting_id = seed_role_targeted_posting(
+        connection,
+        lead_id="ld_waiting",
+        job_posting_id="jp_waiting",
+        lead_identity_key="beta|data-engineer",
+        posting_identity_key="beta|data-engineer|remote",
+        company_name="Beta Systems",
+        role_title="Data Engineer",
+        timestamp="2026-04-08T00:01:00Z",
+    )
+    resume_agent(
+        connection,
+        manual_command="jhc-agent-start",
+        timestamp="2026-04-08T00:05:00Z",
+    )
+    pipeline_run, _ = ensure_role_targeted_pipeline_run(
+        connection,
+        lead_id=lead_id,
+        job_posting_id=job_posting_id,
+        current_stage="lead_handoff",
+        started_at="2026-04-08T00:06:00Z",
+    )
+
+    execution = run_supervisor_cycle(
+        connection,
+        paths,
+        trigger_type="launchd_heartbeat",
+        scheduler_name="launchd",
+        started_at="2026-04-08T00:07:00Z",
+    )
+    stored_runs = connection.execute(
+        """
+        SELECT pipeline_run_id, job_posting_id, current_stage
+        FROM pipeline_runs
+        ORDER BY started_at
+        """
+    ).fetchall()
+    waiting_run_count = connection.execute(
+        """
+        SELECT COUNT(*)
+        FROM pipeline_runs
+        WHERE job_posting_id = ?
+        """,
+        (waiting_job_posting_id,),
+    ).fetchone()[0]
+    connection.close()
+
+    assert execution.cycle.result == SUPERVISOR_CYCLE_RESULT_SUCCESS
+    assert execution.selected_work is not None
+    assert execution.selected_work.work_type == "pipeline_run"
+    assert execution.selected_work.work_id == pipeline_run.pipeline_run_id
+    assert execution.selected_work.action_id == "checkpoint_pipeline_run"
+    assert execution.pipeline_run is not None
+    assert execution.pipeline_run.pipeline_run_id == pipeline_run.pipeline_run_id
+    assert execution.pipeline_run.job_posting_id == job_posting_id
+    assert waiting_run_count == 0
+    assert [dict(row) for row in stored_runs] == [
+        {
+            "pipeline_run_id": pipeline_run.pipeline_run_id,
+            "job_posting_id": job_posting_id,
+            "current_stage": "lead_handoff",
+        }
+    ]
 
 
 def test_contact_rooted_general_learning_work_is_not_selected_yet(tmp_path: Path) -> None:

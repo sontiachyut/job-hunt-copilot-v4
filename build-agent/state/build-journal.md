@@ -1370,3 +1370,29 @@ Use this file as an append-only implementation log for the build agent.
 ### Notes
 - This slice improves validation traceability only; it does not change acceptance counts or close the downstream-supervisor blocker.
 - The latest BA-10 validation-suite snapshot now shows why a replay ran a given command set, which lowers handoff risk for the next lead resuming BA-10 from persisted evidence instead of chat memory.
+
+### Session
+- Date: 2026-04-08 14:34:18 MST
+- Slice: BA-10-S4 downstream supervisor selector-order evidence
+- Goal: Add one direct regression proving the current downstream-supervisor selector order beyond prose-only reporting, then refresh the BA-10 evidence surfaces around that blocker.
+
+### Work Done
+- Extended `tests/test_supervisor_downstream_actions.py` so the focused downstream suite now seeds both an existing durable run and a second eligible `resume_review_pending` posting, then proves the supervisor reselects the existing run instead of bootstrapping new work.
+- Updated `job_hunt_copilot.acceptance_traceability` and `job_hunt_copilot.blocker_audit` so the open downstream-supervisor gap now reports that selector-order evidence explicitly and carries a machine-readable `current_selector_priority_order` snapshot alongside the already-known blocked stages.
+- Regenerated `build-agent/reports/ba-10-acceptance-trace-matrix.json` plus `.md` and `build-agent/reports/ba-10-blocker-audit.json` plus `.md`, then replayed the current-focus BA-10 validation suite so `build-agent/reports/ba-10-validation-suite-latest.json` plus `.md` reflects the refreshed downstream evidence.
+- Updated `build-agent/state/build-board.yaml`, `build-agent/state/IMPLEMENTATION_PLAN.md`, `build-agent/state/build-journal.md`, and `build-agent/state/codex-progress.txt` so the persisted project record captures the stronger selector-order evidence while leaving the functional blocker open honestly.
+
+### Validation
+- Ran `python3.11 -m pytest tests/test_supervisor_downstream_actions.py tests/test_acceptance_traceability.py tests/test_blocker_audit.py tests/test_quality_validation.py` and confirmed all 28 focused downstream, report-guard, and validation-runner tests passed.
+- Ran `python3.11 scripts/quality/run_ba10_validation_suite.py --project-root /Users/achyutaramsonti/Projects/job-hunt-copilot-v4 --current-focus` and confirmed the focused current-focus replay passed while refreshing the committed BA-10 reports and writing a new latest validation-suite snapshot.
+- The current-focus replay executed `python3.11 -m pytest tests/test_supervisor_downstream_actions.py` successfully with 9 focused downstream-supervisor regressions and `python3.11 -m pytest tests/test_acceptance_traceability.py tests/test_blocker_audit.py` successfully with 3 report-guard tests.
+
+### Result
+- `done`
+
+### Next
+- Keep the next functional burn-down on `BA-10-S4`: a build-lead slice that registers at least one downstream supervisor action beyond `lead_handoff`, then reruns the BA-10 reports to reduce the largest remaining partial acceptance cluster.
+
+### Notes
+- This slice improved blocker evidence only; it did not change the acceptance counts or claim new downstream autonomous execution.
+- `build-agent/reports/ba-10-validation-suite-latest.*` now reflects the latest focused current-focus replay instead of the earlier mixed-selector snapshot.

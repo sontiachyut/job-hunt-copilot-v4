@@ -137,6 +137,11 @@ def _resolve_slice_ids(
 
 def _supervisor_downstream_implementation_snapshot() -> dict[str, Any]:
     return {
+        "current_selector_priority_order": [
+            "active_incident",
+            "open_pipeline_run",
+            "new_role_targeted_posting",
+        ],
         "registered_role_targeted_checkpoint_stages": sorted(
             SUPPORTED_PIPELINE_CHECKPOINT_STAGES
         ),
@@ -174,7 +179,7 @@ GAP_REGISTRY: dict[str, dict[str, Any]] = {
         title="Supervisor orchestration still stops at lead handoff",
         reason="The durable heartbeat, selector ordering, and retry-safe run persistence exist, but the registered action catalog still only advances autonomous work through `lead_handoff`; later stages reselect the same durable run and escalate instead of executing.",
         next_slice="BA-10-S4",
-        evidence_summary="Focused downstream-stage regressions prove `lead_handoff` is the only registered checkpoint, later stages escalate with durable run and review-packet retention, retries reuse the same run instead of restarting, and a ready contact-rooted general-learning candidate still yields no selected supervisor work.",
+        evidence_summary="Focused downstream-stage regressions prove active incidents still outrank ordinary progression, existing durable runs are selected before bootstrapping new eligible postings, `lead_handoff` is the only registered checkpoint, later stages escalate with durable run and review-packet retention, retries reuse the same run instead of restarting, and a ready contact-rooted general-learning candidate still yields no selected supervisor work.",
         evidence_code_refs=(
             "job_hunt_copilot/supervisor.py",
             "job_hunt_copilot/local_runtime.py",
@@ -1204,6 +1209,14 @@ def render_acceptance_trace_markdown(matrix: dict[str, Any]) -> str:
         implementation_snapshot = gap.get("implementation_snapshot") or {}
         if implementation_snapshot:
             lines.append("- Implementation snapshot:")
+            selector_priority = implementation_snapshot.get(
+                "current_selector_priority_order", []
+            )
+            if selector_priority:
+                lines.append(
+                    "  - Current selector priority order: "
+                    + ", ".join(f"`{entry}`" for entry in selector_priority)
+                )
             registered_stages = implementation_snapshot.get(
                 "registered_role_targeted_checkpoint_stages", []
             )

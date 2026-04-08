@@ -456,6 +456,14 @@ def render_ba10_blocker_audit_markdown(audit: dict[str, Any]) -> str:
         implementation_snapshot = cluster.get("implementation_snapshot") or {}
         if implementation_snapshot:
             lines.append("- Implementation snapshot:")
+            selector_priority = implementation_snapshot.get(
+                "current_selector_priority_order", []
+            )
+            if selector_priority:
+                lines.append(
+                    "  - Current selector priority order: "
+                    + ", ".join(f"`{entry}`" for entry in selector_priority)
+                )
             registered_stages = implementation_snapshot.get(
                 "registered_role_targeted_checkpoint_stages", []
             )

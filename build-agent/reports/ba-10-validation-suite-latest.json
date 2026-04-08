@@ -14,33 +14,11 @@
   "requested_gap_ids": [],
   "requested_blocker_ids": [],
   "requested_current_focus": true,
-  "requested_smoke_targets": [
-    "bootstrap"
-  ],
+  "requested_smoke_targets": [],
   "include_manual": false,
   "skip_report_refresh": false,
   "selector_details": {
-    "smoke_targets": [
-      {
-        "target_id": "bootstrap",
-        "title": "Bootstrap and prerequisites",
-        "acceptance_scenario": "Build smoke test passes",
-        "acceptance_checks": [
-          "the system initializes or migrates `job_hunt_copilot.db`",
-          "the system loads runtime secrets successfully",
-          "the system reads the required files from `assets/`"
-        ],
-        "validation_command_ids": [
-          "qa_smoke_flow",
-          "qa_bootstrap_regressions"
-        ],
-        "test_refs": [
-          "tests/test_smoke_harness.py",
-          "tests/test_bootstrap.py",
-          "tests/test_schema.py"
-        ]
-      }
-    ],
+    "smoke_targets": [],
     "acceptance_gaps": [],
     "build_board_blockers": [],
     "current_focus": {
@@ -67,7 +45,7 @@
       "description": "Confirms `lead_handoff` remains the only registered checkpoint, later stages escalate explicitly, and retries preserve the same durable run plus pending review packet.",
       "status": "passed",
       "returncode": 0,
-      "duration_seconds": 0.528
+      "duration_seconds": 0.58
     },
     {
       "command_id": "qa_acceptance_reports",
@@ -77,41 +55,21 @@
       "description": "Keeps the committed BA-10 acceptance and blocker reports synchronized with repo code, tests, and state references.",
       "status": "passed",
       "returncode": 0,
-      "duration_seconds": 0.301
-    },
-    {
-      "command_id": "qa_smoke_flow",
-      "title": "Smoke harness flow",
-      "kind": "automated",
-      "command": "python3.11 -m pytest tests/test_smoke_harness.py",
-      "description": "Replays the committed bootstrap -> tailoring -> discovery -> send -> feedback -> review-query smoke path.",
-      "status": "passed",
-      "returncode": 0,
-      "duration_seconds": 2.36
-    },
-    {
-      "command_id": "qa_bootstrap_regressions",
-      "title": "Bootstrap regressions",
-      "kind": "automated",
-      "command": "python3.11 -m pytest tests/test_bootstrap.py tests/test_schema.py tests/test_artifacts.py",
-      "description": "Confirms bootstrap prerequisites, canonical schema migration, and shared artifact contracts stay valid.",
-      "status": "passed",
-      "returncode": 0,
-      "duration_seconds": 0.445
+      "duration_seconds": 0.302
     }
   ],
   "failed_command_ids": [],
   "passed": true,
   "validation_suite_report_version": 1,
-  "generated_at": "2026-04-08T21:19:32Z",
+  "generated_at": "2026-04-08T21:33:55Z",
   "summary": {
-    "command_count": 4,
+    "command_count": 2,
     "command_kind_counts": {
-      "automated": 4
+      "automated": 2
     },
-    "passed_command_count": 4,
+    "passed_command_count": 2,
     "failed_command_count": 0,
-    "total_duration_seconds": 3.634
+    "total_duration_seconds": 0.882
   },
   "report_paths": {
     "json_path": "/Users/achyutaramsonti/Projects/job-hunt-copilot-v4/build-agent/reports/ba-10-validation-suite-latest.json",
