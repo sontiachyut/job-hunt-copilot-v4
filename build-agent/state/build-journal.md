@@ -1317,3 +1317,29 @@ Use this file as an append-only implementation log for the build agent.
 ### Notes
 - This slice strengthened validation evidence only; it did not claim closure of the downstream-supervisor, chat, maintenance, or posting-abandon acceptance gaps.
 - The new latest-run report is intentionally a snapshot of the most recent automated BA-10 replay, not a replacement for the committed acceptance trace matrix or blocker audit.
+
+### Session
+- Date: 2026-04-08 14:04:23 MST
+- Slice: BA-10-S4 contact-rooted general-learning supervisor gap evidence
+- Goal: Replace prose-only reporting for the missing contact-rooted general-learning supervisor path with one direct downstream regression and refreshed BA-10 evidence surfaces.
+
+### Work Done
+- Added a focused regression in `tests/test_supervisor_downstream_actions.py` that seeds a ready contact-rooted general-learning candidate and proves the supervisor still selects no bounded work and creates no `pipeline_run`, incident, or review packet for that path.
+- Updated `job_hunt_copilot.acceptance_traceability` so the downstream-supervisor gap evidence summary and the general-learning partial-scenario note now cite that direct regression instead of relying on prose-only explanation.
+- Refreshed `build-agent/reports/ba-10-acceptance-trace-matrix.json` plus `.md` and `build-agent/reports/ba-10-blocker-audit.json` plus `.md`, and let the current-focus BA-10 validation runner write a matching new `build-agent/reports/ba-10-validation-suite-latest.json` plus `.md` snapshot.
+- Updated `build-agent/state/build-board.yaml`, `build-agent/state/IMPLEMENTATION_PLAN.md`, `build-agent/state/build-journal.md`, and `build-agent/state/codex-progress.txt` so the persisted build state records the stronger downstream-supervisor evidence while keeping the next functional slice on build-lead action-catalog work.
+
+### Validation
+- Ran `python3.11 scripts/quality/run_ba10_validation_suite.py --project-root /Users/achyutaramsonti/Projects/job-hunt-copilot-v4 --current-focus` and confirmed the focused downstream-supervisor validation plan passed while refreshing the committed BA-10 reports and writing the latest validation-suite snapshot.
+- The runner replayed `python3.11 -m pytest tests/test_supervisor_downstream_actions.py`, which passed all 8 focused downstream-supervisor regressions including the new general-learning no-work case.
+- The runner replayed `python3.11 -m pytest tests/test_acceptance_traceability.py tests/test_blocker_audit.py`, which passed all 3 acceptance-report guard tests against the refreshed reports.
+
+### Result
+- `done`
+
+### Next
+- Keep the next functional burn-down on `BA-10-S4`: a build-lead slice that registers at least one downstream supervisor action beyond `lead_handoff`, then reruns the BA-10 reports to reduce the largest remaining partial acceptance cluster.
+
+### Notes
+- This slice improved blocker evidence only; it did not change the acceptance counts or claim new autonomous supervisor behavior.
+- `build-agent/reports/ba-10-validation-suite-latest.*` now reflects the most recent current-focus replay rather than the earlier full BA-10 automated suite run.

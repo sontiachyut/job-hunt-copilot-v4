@@ -13,81 +13,11 @@
   "requested_command_ids": [],
   "requested_gap_ids": [],
   "requested_blocker_ids": [],
-  "requested_current_focus": false,
+  "requested_current_focus": true,
   "requested_smoke_targets": [],
   "include_manual": false,
   "skip_report_refresh": false,
   "commands": [
-    {
-      "command_id": "qa_acceptance_reports",
-      "title": "Acceptance report guards",
-      "kind": "automated",
-      "command": "python3.11 -m pytest tests/test_acceptance_traceability.py tests/test_blocker_audit.py",
-      "description": "Keeps the committed BA-10 acceptance and blocker reports synchronized with repo code, tests, and state references.",
-      "status": "passed",
-      "returncode": 0,
-      "duration_seconds": 0.373
-    },
-    {
-      "command_id": "qa_smoke_flow",
-      "title": "Smoke harness flow",
-      "kind": "automated",
-      "command": "python3.11 -m pytest tests/test_smoke_harness.py",
-      "description": "Replays the committed bootstrap -> tailoring -> discovery -> send -> feedback -> review-query smoke path.",
-      "status": "passed",
-      "returncode": 0,
-      "duration_seconds": 2.364
-    },
-    {
-      "command_id": "qa_bootstrap_regressions",
-      "title": "Bootstrap regressions",
-      "kind": "automated",
-      "command": "python3.11 -m pytest tests/test_bootstrap.py tests/test_schema.py tests/test_artifacts.py",
-      "description": "Confirms bootstrap prerequisites, canonical schema migration, and shared artifact contracts stay valid.",
-      "status": "passed",
-      "returncode": 0,
-      "duration_seconds": 0.489
-    },
-    {
-      "command_id": "qa_tailoring_regressions",
-      "title": "Tailoring regressions",
-      "kind": "automated",
-      "command": "python3.11 -m pytest tests/test_resume_tailoring.py",
-      "description": "Confirms tailoring bootstrap, deterministic artifact generation, compile verification, and mandatory review gates stay intact.",
-      "status": "passed",
-      "returncode": 0,
-      "duration_seconds": 5.631
-    },
-    {
-      "command_id": "qa_discovery_regressions",
-      "title": "Discovery regressions",
-      "kind": "automated",
-      "command": "python3.11 -m pytest tests/test_email_discovery.py",
-      "description": "Confirms people search, shortlist materialization, enrichment, discovery artifacts, and provider-budget behavior stay intact.",
-      "status": "passed",
-      "returncode": 0,
-      "duration_seconds": 0.751
-    },
-    {
-      "command_id": "qa_outreach_regressions",
-      "title": "Outreach regressions",
-      "kind": "automated",
-      "command": "python3.11 -m pytest tests/test_outreach.py",
-      "description": "Confirms send-set readiness, draft persistence, safe send execution, and repeat-outreach guardrails stay intact.",
-      "status": "passed",
-      "returncode": 0,
-      "duration_seconds": 0.855
-    },
-    {
-      "command_id": "qa_feedback_regressions",
-      "title": "Delivery feedback regressions",
-      "kind": "automated",
-      "command": "python3.11 -m pytest tests/test_delivery_feedback.py",
-      "description": "Confirms immediate or delayed feedback ingestion, normalized event persistence, and delivery outcome artifacts stay intact.",
-      "status": "passed",
-      "returncode": 0,
-      "duration_seconds": 0.358
-    },
     {
       "command_id": "qa_supervisor_regressions",
       "title": "Supervisor downstream hardening regressions",
@@ -96,51 +26,31 @@
       "description": "Confirms `lead_handoff` remains the only registered checkpoint, later stages escalate explicitly, and retries preserve the same durable run plus pending review packet.",
       "status": "passed",
       "returncode": 0,
-      "duration_seconds": 0.479
+      "duration_seconds": 0.64
     },
     {
-      "command_id": "qa_runtime_control_regressions",
-      "title": "Runtime control regressions",
+      "command_id": "qa_acceptance_reports",
+      "title": "Acceptance report guards",
       "kind": "automated",
-      "command": "python3.11 -m pytest tests/test_local_runtime.py",
-      "description": "Covers launchd plist wiring, control commands, chat lifecycle state, delayed feedback runners, and explicit negative control cases.",
+      "command": "python3.11 -m pytest tests/test_acceptance_traceability.py tests/test_blocker_audit.py",
+      "description": "Keeps the committed BA-10 acceptance and blocker reports synchronized with repo code, tests, and state references.",
       "status": "passed",
       "returncode": 0,
-      "duration_seconds": 4.343
-    },
-    {
-      "command_id": "qa_review_surface_regressions",
-      "title": "Review surface regressions",
-      "kind": "automated",
-      "command": "python3.11 -m pytest tests/test_review_queries.py",
-      "description": "Verifies persisted grouped review surfaces and traceability reads that back the chat/review boundary.",
-      "status": "passed",
-      "returncode": 0,
-      "duration_seconds": 0.394
-    },
-    {
-      "command_id": "qa_runtime_pack_regressions",
-      "title": "Runtime pack regressions",
-      "kind": "automated",
-      "command": "python3.11 -m pytest tests/test_runtime_pack.py",
-      "description": "Confirms generated runtime scaffolding stays honest about current action-catalog and maintenance placeholder status.",
-      "status": "passed",
-      "returncode": 0,
-      "duration_seconds": 0.175
+      "duration_seconds": 0.3
     }
   ],
   "failed_command_ids": [],
   "passed": true,
   "validation_suite_report_version": 1,
-  "generated_at": "2026-04-08T20:53:42Z",
+  "generated_at": "2026-04-08T21:03:56Z",
   "summary": {
-    "command_count": 11,
+    "command_count": 2,
     "command_kind_counts": {
-      "automated": 11
+      "automated": 2
     },
-    "passed_command_count": 11,
+    "passed_command_count": 2,
     "failed_command_count": 0,
-    "total_duration_seconds": 16.212
+    "total_duration_seconds": 0.94
   },
   "report_paths": {
     "json_path": "/Users/achyutaramsonti/Projects/job-hunt-copilot-v4/build-agent/reports/ba-10-validation-suite-latest.json",

@@ -174,7 +174,7 @@ GAP_REGISTRY: dict[str, dict[str, Any]] = {
         title="Supervisor orchestration still stops at lead handoff",
         reason="The durable heartbeat, selector ordering, and retry-safe run persistence exist, but the registered action catalog still only advances autonomous work through `lead_handoff`; later stages reselect the same durable run and escalate instead of executing.",
         next_slice="BA-10-S4",
-        evidence_summary="Focused downstream-stage regressions prove `lead_handoff` is the only registered checkpoint, later stages escalate with durable run and review-packet retention, and retries reuse the same run instead of restarting.",
+        evidence_summary="Focused downstream-stage regressions prove `lead_handoff` is the only registered checkpoint, later stages escalate with durable run and review-packet retention, retries reuse the same run instead of restarting, and a ready contact-rooted general-learning candidate still yields no selected supervisor work.",
         evidence_code_refs=(
             "job_hunt_copilot/supervisor.py",
             "job_hunt_copilot/local_runtime.py",
@@ -899,7 +899,7 @@ _register_override(
     scenarios=("General learning outreach bypasses the role-targeted agent-review requirement",),
     status=STATUS_PARTIAL,
     gap_ids=("BA10_SUPERVISOR_DOWNSTREAM_ACTION_CATALOG",),
-    note="General-learning drafting and sending exist in the outreach component, but the supervisor still has no contact-rooted general-learning action path.",
+    note="General-learning drafting and sending exist in the outreach component, but `tests/test_supervisor_downstream_actions.py` now proves the supervisor still has no contact-rooted general-learning selector or action path.",
 )
 _register_override(
     scenarios=("Two-step outreach is excluded from required acceptance",),

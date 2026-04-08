@@ -337,7 +337,7 @@
         "partial": 5,
         "gap": 0
       },
-      "evidence_summary": "Focused downstream-stage regressions prove `lead_handoff` is the only registered checkpoint, later stages escalate with durable run and review-packet retention, and retries reuse the same run instead of restarting.",
+      "evidence_summary": "Focused downstream-stage regressions prove `lead_handoff` is the only registered checkpoint, later stages escalate with durable run and review-packet retention, retries reuse the same run instead of restarting, and a ready contact-rooted general-learning candidate still yields no selected supervisor work.",
       "evidence_code_refs": [
         "job_hunt_copilot/supervisor.py",
         "job_hunt_copilot/local_runtime.py",

@@ -13,6 +13,7 @@ from job_hunt_copilot.supervisor import (
     RUN_STATUS_ESCALATED,
     RUN_STATUS_IN_PROGRESS,
     SUPERVISOR_CYCLE_RESULT_FAILED,
+    SUPERVISOR_CYCLE_RESULT_NO_WORK,
     SUPERVISOR_CYCLE_RESULT_SUCCESS,
     advance_pipeline_run,
     ensure_role_targeted_pipeline_run,
@@ -90,6 +91,38 @@ def seed_role_targeted_posting(
     return "ld_downstream", "jp_downstream"
 
 
+def seed_general_learning_contact(
+    connection: sqlite3.Connection,
+    *,
+    timestamp: str = "2026-04-08T00:00:00Z",
+) -> str:
+    connection.execute(
+        """
+        INSERT INTO contacts (
+          contact_id, identity_key, display_name, company_name, origin_component,
+          contact_status, full_name, first_name, last_name, current_working_email,
+          created_at, updated_at
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        """,
+        (
+            "ct_general_learning",
+            "acme|sam-learner",
+            "Sam Learner",
+            "Acme",
+            "manual_capture",
+            "identified",
+            "Sam Learner",
+            "Sam",
+            "Learner",
+            "sam.learner@acme.example",
+            timestamp,
+            timestamp,
+        ),
+    )
+    connection.commit()
+    return "ct_general_learning"
+
+
 def test_lead_handoff_remains_the_only_registered_checkpoint_boundary(tmp_path: Path) -> None:
     project_root = bootstrap_project(tmp_path)
     paths = ProjectPaths.from_root(project_root)
@@ -127,6 +160,49 @@ def test_lead_handoff_remains_the_only_registered_checkpoint_boundary(tmp_path: 
     assert updated_run.pipeline_run_id == pipeline_run.pipeline_run_id
     assert updated_run.run_status == RUN_STATUS_IN_PROGRESS
     assert updated_run.current_stage == "lead_handoff"
+
+
+def test_contact_rooted_general_learning_work_is_not_selected_yet(tmp_path: Path) -> None:
+    project_root = bootstrap_project(tmp_path)
+    paths = ProjectPaths.from_root(project_root)
+    connection = connect_database(project_root / "job_hunt_copilot.db")
+    contact_id = seed_general_learning_contact(connection)
+    resume_agent(
+        connection,
+        manual_command="jhc-agent-start",
+        timestamp="2026-04-08T00:05:00Z",
+    )
+
+    execution = run_supervisor_cycle(
+        connection,
+        paths,
+        trigger_type="launchd_heartbeat",
+        scheduler_name="launchd",
+        started_at="2026-04-08T00:06:00Z",
+    )
+    pipeline_run_count = connection.execute(
+        "SELECT COUNT(*) FROM pipeline_runs"
+    ).fetchone()[0]
+    contact_row = connection.execute(
+        """
+        SELECT contact_id, current_working_email
+        FROM contacts
+        WHERE contact_id = ?
+        """,
+        (contact_id,),
+    ).fetchone()
+    connection.close()
+
+    assert execution.cycle.result == SUPERVISOR_CYCLE_RESULT_NO_WORK
+    assert execution.selected_work is None
+    assert execution.pipeline_run is None
+    assert execution.incident is None
+    assert execution.review_packet is None
+    assert execution.cycle.error_summary == "no bounded supervisor work unit is currently due"
+    assert pipeline_run_count == 0
+    assert contact_row is not None
+    assert contact_row["contact_id"] == contact_id
+    assert contact_row["current_working_email"] == "sam.learner@acme.example"
 
 
 @pytest.mark.parametrize(

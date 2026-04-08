@@ -25,7 +25,7 @@
 - Supporting slices: `BA-02-S1`, `BA-02-S2`, `BA-02-S3`, `BA-03-S1`, `BA-03-S2`, `BA-03-S3`, `BA-06-S1`, `BA-06-S2`, `BA-06-S3`, `BA-06-S4`, `BA-07-S1`, `BA-07-S2`, `BA-07-S3`, `BA-08-S1`, `BA-08-S2`, `BA-08-S3`, `BA-09-S1`, `BA-09-S2`, `BA-09-S3`, `BA-10-S4`
 - Open scenarios: `5` (`partial`: `5`, `gap`: `0`)
 - Reason: The durable heartbeat, selector ordering, and retry-safe run persistence exist, but the registered action catalog still only advances autonomous work through `lead_handoff`; later stages reselect the same durable run and escalate instead of executing.
-- Evidence summary: Focused downstream-stage regressions prove `lead_handoff` is the only registered checkpoint, later stages escalate with durable run and review-packet retention, and retries reuse the same run instead of restarting.
+- Evidence summary: Focused downstream-stage regressions prove `lead_handoff` is the only registered checkpoint, later stages escalate with durable run and review-packet retention, retries reuse the same run instead of restarting, and a ready contact-rooted general-learning candidate still yields no selected supervisor work.
 - Evidence code refs: `job_hunt_copilot/supervisor.py`, `job_hunt_copilot/local_runtime.py`, `job_hunt_copilot/runtime_pack.py`
 - Evidence test refs: `tests/test_supervisor_downstream_actions.py`, `tests/test_blocker_audit.py`, `tests/test_acceptance_traceability.py`
 - Validation suite: `python3.11 scripts/quality/run_ba10_validation_suite.py --project-root <repo_root> --gap-id BA10_SUPERVISOR_DOWNSTREAM_ACTION_CATALOG`
