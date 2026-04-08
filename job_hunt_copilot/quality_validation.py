@@ -16,7 +16,7 @@ from .blocker_audit import (
 
 
 AUTOMATED_VALIDATION_KIND = "automated"
-VALIDATION_SUITE_REPORT_VERSION = 1
+VALIDATION_SUITE_REPORT_VERSION = 2
 VALIDATION_SUITE_REPORT_JSON_PATH = Path(
     "build-agent/reports/ba-10-validation-suite-latest.json"
 )
@@ -337,6 +337,45 @@ def _utc_timestamp() -> str:
     )
 
 
+def _build_repo_status_snapshot(project_root: Path | str) -> dict[str, Any] | None:
+    root = Path(project_root)
+    try:
+        audit = build_ba10_blocker_audit(root)
+    except (FileNotFoundError, NotADirectoryError, OSError, ValueError):
+        return None
+
+    summary = dict(audit["summary"])
+    open_gap_ids = [
+        cluster["gap_id"]
+        for cluster in audit["acceptance_gap_clusters"]
+        if cluster.get("open_scenario_count")
+    ]
+    open_blocker_ids = [
+        blocker["blocker_id"]
+        for blocker in audit["build_board_blockers"]
+        if blocker.get("status") == "open"
+    ]
+    current_focus = audit.get("current_focus") or {}
+    return {
+        "acceptance_scenario_count": summary.get("acceptance_scenario_count"),
+        "acceptance_status_counts": dict(summary.get("acceptance_status_counts") or {}),
+        "open_acceptance_scenario_count": summary.get("open_acceptance_scenario_count"),
+        "open_acceptance_gap_cluster_count": summary.get(
+            "open_acceptance_gap_cluster_count"
+        ),
+        "open_acceptance_gap_ids": open_gap_ids,
+        "open_build_board_blocker_count": summary.get(
+            "open_build_board_blocker_count"
+        ),
+        "open_build_board_blocker_ids": open_blocker_ids,
+        "current_focus": {
+            "epic_id": current_focus.get("epic_id"),
+            "slice_id": current_focus.get("slice_id"),
+            "owner_role": current_focus.get("owner_role"),
+        },
+    }
+
+
 def build_ba10_validation_suite_report(
     payload: dict[str, Any],
     *,
@@ -371,6 +410,11 @@ def build_ba10_validation_suite_report(
         "failed_command_count": failed_command_count,
         "total_duration_seconds": round(total_duration_seconds, 3),
     }
+    repo_status = report.get("repo_status")
+    if repo_status is None:
+        repo_status = _build_repo_status_snapshot(report["project_root"])
+    if repo_status is not None:
+        report["repo_status"] = repo_status
     return report
 
 
@@ -394,10 +438,10 @@ def render_ba10_validation_suite_markdown(report: dict[str, Any]) -> str:
         f"- Passed commands: `{summary['passed_command_count']}`",
         f"- Failed commands: `{summary['failed_command_count']}`",
         f"- Total duration seconds: `{summary['total_duration_seconds']}`",
-        f"- Command ids: {_selector_value_text(report.get('requested_command_ids'))}",
-        f"- Smoke targets: {_selector_value_text(report.get('requested_smoke_targets'))}",
-        f"- Acceptance gaps: {_selector_value_text(report.get('requested_gap_ids'))}",
-        f"- Build-board blockers: {_selector_value_text(report.get('requested_blocker_ids'))}",
+        f"- Requested command ids: {_selector_value_text(report.get('requested_command_ids'))}",
+        f"- Requested smoke targets: {_selector_value_text(report.get('requested_smoke_targets'))}",
+        f"- Requested acceptance gaps: {_selector_value_text(report.get('requested_gap_ids'))}",
+        f"- Requested build-board blockers: {_selector_value_text(report.get('requested_blocker_ids'))}",
         f"- Current focus requested: `{report.get('requested_current_focus', False)}`",
         f"- Include manual commands: `{report.get('include_manual', False)}`",
         f"- Refresh reports before run: `{not report.get('skip_report_refresh', False)}`",
@@ -434,6 +478,47 @@ def render_ba10_validation_suite_markdown(report: dict[str, Any]) -> str:
             lines.append(
                 "- Blocker audit markdown: "
                 f"`{blocker_audit_reports.get('markdown_path', '')}`"
+            )
+
+    repo_status = report.get("repo_status") or {}
+    if repo_status:
+        status_counts = repo_status.get("acceptance_status_counts") or {}
+        lines.extend(["", "## Open BA-10 Status", ""])
+        lines.append(
+            f"- Acceptance scenarios: `{repo_status.get('acceptance_scenario_count')}`"
+        )
+        lines.append(
+            f"- Open acceptance scenarios: `{repo_status.get('open_acceptance_scenario_count')}`"
+        )
+        lines.append(
+            "- Acceptance status counts: "
+            + ", ".join(
+                f"`{status}`={count}" for status, count in status_counts.items()
+            )
+        )
+        lines.append(
+            "- Open acceptance gap clusters: "
+            f"`{repo_status.get('open_acceptance_gap_cluster_count')}`"
+        )
+        lines.append(
+            "- Open acceptance gap ids: "
+            + _selector_value_text(repo_status.get("open_acceptance_gap_ids"))
+        )
+        lines.append(
+            "- Open build-board blockers: "
+            f"`{repo_status.get('open_build_board_blocker_count')}`"
+        )
+        lines.append(
+            "- Open build-board blocker ids: "
+            + _selector_value_text(repo_status.get("open_build_board_blocker_ids"))
+        )
+        current_focus_snapshot = repo_status.get("current_focus") or {}
+        if current_focus_snapshot.get("slice_id"):
+            lines.append(
+                "- Current build focus: "
+                f"`{current_focus_snapshot.get('epic_id')}` / "
+                f"`{current_focus_snapshot.get('slice_id')}` / "
+                f"`{current_focus_snapshot.get('owner_role')}`"
             )
 
     smoke_targets = selector_details.get("smoke_targets") or []

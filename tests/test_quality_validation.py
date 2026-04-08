@@ -422,6 +422,36 @@ def test_build_ba10_validation_suite_report_summarizes_results():
         {
             "project_root": str(REPO_ROOT),
             "refreshed_reports": False,
+            "repo_status": {
+                "acceptance_scenario_count": 214,
+                "acceptance_status_counts": {
+                    "implemented": 190,
+                    "partial": 8,
+                    "gap": 14,
+                    "deferred_optional": 1,
+                    "excluded_from_required_acceptance": 1,
+                },
+                "open_acceptance_scenario_count": 22,
+                "open_acceptance_gap_cluster_count": 5,
+                "open_acceptance_gap_ids": [
+                    "BA10_SUPERVISOR_DOWNSTREAM_ACTION_CATALOG",
+                    "BA10_MAINTENANCE_AUTOMATION",
+                    "BA10_CHAT_REVIEW_AND_CONTROL",
+                    "BA10_CHAT_IDLE_TIMEOUT_RESUME",
+                    "BA10_POSTING_ABANDON_CONTROL",
+                ],
+                "open_build_board_blocker_count": 3,
+                "open_build_board_blocker_ids": [
+                    "BA10-TRACE-001",
+                    "BUILD-CLI-001",
+                    "OPS-LAUNCHD-001",
+                ],
+                "current_focus": {
+                    "epic_id": "BA-10",
+                    "slice_id": "BA-10-S4",
+                    "owner_role": "build-lead",
+                },
+            },
             "requested_command_ids": ["qa_smoke_flow"],
             "requested_gap_ids": ["BA10_SUPERVISOR_DOWNSTREAM_ACTION_CATALOG"],
             "requested_blocker_ids": [],
@@ -512,7 +542,7 @@ def test_build_ba10_validation_suite_report_summarizes_results():
         generated_at="2026-04-08T21:00:00Z",
     )
 
-    assert report["validation_suite_report_version"] == 1
+    assert report["validation_suite_report_version"] == 2
     assert report["generated_at"] == "2026-04-08T21:00:00Z"
     assert report["summary"] == {
         "command_count": 2,
@@ -524,12 +554,48 @@ def test_build_ba10_validation_suite_report_summarizes_results():
         "failed_command_count": 1,
         "total_duration_seconds": 1.75,
     }
+    assert report["repo_status"] == {
+        "acceptance_scenario_count": 214,
+        "acceptance_status_counts": {
+            "implemented": 190,
+            "partial": 8,
+            "gap": 14,
+            "deferred_optional": 1,
+            "excluded_from_required_acceptance": 1,
+        },
+        "open_acceptance_scenario_count": 22,
+        "open_acceptance_gap_cluster_count": 5,
+        "open_acceptance_gap_ids": [
+            "BA10_SUPERVISOR_DOWNSTREAM_ACTION_CATALOG",
+            "BA10_MAINTENANCE_AUTOMATION",
+            "BA10_CHAT_REVIEW_AND_CONTROL",
+            "BA10_CHAT_IDLE_TIMEOUT_RESUME",
+            "BA10_POSTING_ABANDON_CONTROL",
+        ],
+        "open_build_board_blocker_count": 3,
+        "open_build_board_blocker_ids": [
+            "BA10-TRACE-001",
+            "BUILD-CLI-001",
+            "OPS-LAUNCHD-001",
+        ],
+        "current_focus": {
+            "epic_id": "BA-10",
+            "slice_id": "BA-10-S4",
+            "owner_role": "build-lead",
+        },
+    }
 
     markdown = render_ba10_validation_suite_markdown(report)
     assert "# BA-10 Validation Suite Report" in markdown
-    assert "- Command ids: `qa_smoke_flow`" in markdown
-    assert "- Acceptance gaps: `BA10_SUPERVISOR_DOWNSTREAM_ACTION_CATALOG`" in markdown
+    assert "- Requested command ids: `qa_smoke_flow`" in markdown
+    assert (
+        "- Requested acceptance gaps: `BA10_SUPERVISOR_DOWNSTREAM_ACTION_CATALOG`"
+        in markdown
+    )
     assert "- Failed command ids: `qa_host_launchd_validation`" in markdown
+    assert "## Open BA-10 Status" in markdown
+    assert "- Open acceptance gap clusters: `5`" in markdown
+    assert "- Open build-board blocker ids: `BA10-TRACE-001`, `BUILD-CLI-001`, `OPS-LAUNCHD-001`" in markdown
     assert "## Selector Details" in markdown
     assert "### Smoke Targets" in markdown
     assert "### Acceptance Gaps" in markdown
@@ -553,6 +619,26 @@ def test_write_ba10_validation_suite_reports_persists_json_and_markdown(tmp_path
                 "blocker_audit_reports": {
                     "json_path": "/tmp/blocker.json",
                     "markdown_path": "/tmp/blocker.md",
+                },
+            },
+            "repo_status": {
+                "acceptance_scenario_count": 214,
+                "acceptance_status_counts": {
+                    "implemented": 190,
+                    "partial": 8,
+                    "gap": 14,
+                },
+                "open_acceptance_scenario_count": 22,
+                "open_acceptance_gap_cluster_count": 5,
+                "open_acceptance_gap_ids": [
+                    "BA10_SUPERVISOR_DOWNSTREAM_ACTION_CATALOG",
+                ],
+                "open_build_board_blocker_count": 1,
+                "open_build_board_blocker_ids": ["OPS-LAUNCHD-001"],
+                "current_focus": {
+                    "epic_id": "BA-10",
+                    "slice_id": "BA-10-S4",
+                    "owner_role": "build-lead",
                 },
             },
             "requested_command_ids": [],
@@ -629,7 +715,8 @@ def test_write_ba10_validation_suite_reports_persists_json_and_markdown(tmp_path
 
     markdown = md_path.read_text(encoding="utf-8")
     assert "## Refreshed Reports" in markdown
+    assert "## Open BA-10 Status" in markdown
     assert "### Build-Board Blockers" in markdown
-    assert "- Build-board blockers: `OPS-LAUNCHD-001`" in markdown
-    assert "- Smoke targets: `feedback`" in markdown
+    assert "- Requested build-board blockers: `OPS-LAUNCHD-001`" in markdown
+    assert "- Requested smoke targets: `feedback`" in markdown
     assert "### qa_feedback_regressions: Delivery feedback regressions" in markdown

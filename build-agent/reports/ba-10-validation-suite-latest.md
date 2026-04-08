@@ -1,16 +1,16 @@
 # BA-10 Validation Suite Report
 
-- Generated at: `2026-04-08T21:33:55Z`
+- Generated at: `2026-04-08T21:46:29Z`
 - Project root: `/Users/achyutaramsonti/Projects/job-hunt-copilot-v4`
 - Passed: `True`
 - Command count: `2`
 - Passed commands: `2`
 - Failed commands: `0`
-- Total duration seconds: `0.882`
-- Command ids: none
-- Smoke targets: none
-- Acceptance gaps: none
-- Build-board blockers: none
+- Total duration seconds: `0.929`
+- Requested command ids: none
+- Requested smoke targets: none
+- Requested acceptance gaps: none
+- Requested build-board blockers: none
 - Current focus requested: `True`
 - Include manual commands: `False`
 - Refresh reports before run: `True`
@@ -25,6 +25,17 @@
 - Acceptance trace markdown: `/Users/achyutaramsonti/Projects/job-hunt-copilot-v4/build-agent/reports/ba-10-acceptance-trace-matrix.md`
 - Blocker audit JSON: `/Users/achyutaramsonti/Projects/job-hunt-copilot-v4/build-agent/reports/ba-10-blocker-audit.json`
 - Blocker audit markdown: `/Users/achyutaramsonti/Projects/job-hunt-copilot-v4/build-agent/reports/ba-10-blocker-audit.md`
+
+## Open BA-10 Status
+
+- Acceptance scenarios: `214`
+- Open acceptance scenarios: `22`
+- Acceptance status counts: `implemented`=190, `partial`=8, `gap`=14, `deferred_optional`=1, `excluded_from_required_acceptance`=1
+- Open acceptance gap clusters: `5`
+- Open acceptance gap ids: `BA10_SUPERVISOR_DOWNSTREAM_ACTION_CATALOG`, `BA10_MAINTENANCE_AUTOMATION`, `BA10_CHAT_REVIEW_AND_CONTROL`, `BA10_CHAT_IDLE_TIMEOUT_RESUME`, `BA10_POSTING_ABANDON_CONTROL`
+- Open build-board blockers: `3`
+- Open build-board blocker ids: `BA10-TRACE-001`, `BUILD-CLI-001`, `OPS-LAUNCHD-001`
+- Current build focus: `BA-10` / `BA-10-S4` / `build-lead`
 
 ## Selector Details
 
@@ -42,8 +53,8 @@
 
 | Command | Kind | Status | Returncode | Duration (s) |
 | --- | --- | --- | ---: | ---: |
-| qa_supervisor_regressions | automated | passed | 0 | 0.580 |
-| qa_acceptance_reports | automated | passed | 0 | 0.302 |
+| qa_supervisor_regressions | automated | passed | 0 | 0.625 |
+| qa_acceptance_reports | automated | passed | 0 | 0.304 |
 
 ## Command Details
 
@@ -51,7 +62,7 @@
 - Kind: `automated`
 - Status: `passed`
 - Returncode: `0`
-- Duration seconds: `0.58`
+- Duration seconds: `0.625`
 - Command: `python3.11 -m pytest tests/test_supervisor_downstream_actions.py`
 - Description: Confirms `lead_handoff` remains the only registered checkpoint, later stages escalate explicitly, and retries preserve the same durable run plus pending review packet.
 
@@ -59,6 +70,6 @@
 - Kind: `automated`
 - Status: `passed`
 - Returncode: `0`
-- Duration seconds: `0.302`
+- Duration seconds: `0.304`
 - Command: `python3.11 -m pytest tests/test_acceptance_traceability.py tests/test_blocker_audit.py`
 - Description: Keeps the committed BA-10 acceptance and blocker reports synchronized with repo code, tests, and state references.
