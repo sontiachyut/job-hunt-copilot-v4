@@ -28,7 +28,7 @@ global_status:
     - "BA-09 is now complete in code: delivery feedback now dedupes repeated mailbox signals at the logical-event level, exposes queryable feedback-reuse candidates for bounced and `not_bounced` discovery reads, keeps replied outcomes review-only, and lets discovery consume those feedback signals without auto-clearing contact email state."
     - "BA-10-S1 is now complete: `build-agent/reports/ba-10-acceptance-trace-matrix.json` and `.md` now map all 214 acceptance scenarios to owning epics, code, tests, and explicit hardening gaps, with a guard test that keeps the matrix aligned to `prd/test-spec.feature`."
     - "BA-10-S2 is now complete: `tests/test_smoke_harness.py` now drives a committed bootstrap -> tailoring -> discovery -> send -> delayed-feedback -> review-query smoke flow with deterministic fakes, and the regenerated acceptance trace matrix now closes the explicit smoke-harness gap while leaving the remaining blocker clusters honest."
-    - "BA-10-S3 is in progress: targeted hardening regressions now prove unsupported tailoring asks stay explicit gaps, automatic outreach still requires approved review and blocks repeat ambiguity, outreach-message traceability omits raw reply excerpts, runtime secret values stay out of canonical state/handoff artifacts/review outputs, delayed feedback now has dedicated launchd scheduler wiring, supervisor heartbeats now use pmset-first sleep/wake detection with a conservative cycle-gap fallback, focused supervisor regressions now confirm downstream retries keep the same durable run and pending review packet while the narrow action catalog still blocks later-stage execution, and the acceptance matrix now carries blocker-specific evidence refs for the remaining maintenance, chat, downstream-supervisor, and posting-abandon gaps; the regenerated matrix still reports 190 implemented, 8 partial, and 14 gap scenarios, and the new committed BA-10 blocker audit summarizes those open gaps plus build-board blockers with reproducible confirmation commands."
+    - "BA-10-S3 is in progress: targeted hardening regressions now prove unsupported tailoring asks stay explicit gaps, automatic outreach still requires approved review and blocks repeat ambiguity, outreach-message traceability omits raw reply excerpts, runtime secret values stay out of canonical state/handoff artifacts/review outputs, delayed feedback now has dedicated launchd scheduler wiring, supervisor heartbeats now use pmset-first sleep/wake detection with a conservative cycle-gap fallback, focused supervisor regressions now confirm downstream retries keep the same durable run and pending review packet while the narrow action catalog still blocks later-stage execution, the acceptance matrix now carries blocker-specific evidence refs for the remaining maintenance, chat, downstream-supervisor, and posting-abandon gaps, and the new `scripts/quality/run_ba10_validation_suite.py` entrypoint can replay the committed automated BA-10 report/smoke/runtime regression suite from one place; the regenerated matrix still reports 190 implemented, 8 partial, and 14 gap scenarios, and the new committed BA-10 blocker audit summarizes those open gaps plus build-board blockers with reproducible confirmation commands."
     - "`jhc-chat` now records canonical begin/end state, pauses autonomous work on open, resumes on clean explicit close when chat caused the pause, leaves unexpected-exit pauses intact until a later explicit resume or future idle-timeout handling, and now has focused regressions for the explicit-resume path plus generated chat-bootstrap scaffolding."
     - Host-side `launchctl bootstrap` success still needs follow-up validation outside the current sandboxed session even though the plist, wrapper wiring, and failed-start rollback all validate locally.
   execution_principles:
@@ -926,6 +926,7 @@ epics:
           - Refined `job_hunt_copilot.acceptance_traceability` plus the regenerated BA-10 reports so every remaining explicit gap now carries a short evidence summary and concrete code/test refs instead of only a prose reason.
           - Added focused blocker regressions proving `scripts/ops/control_agent.py` still rejects the missing `abandon` command and the generated `ops/agent/ops-plan.yaml` keeps maintenance in backlog-only placeholder state instead of implying an implemented workflow.
           - Added `job_hunt_copilot.blocker_audit`, `scripts/quality/generate_blocker_audit.py`, committed `build-agent/reports/ba-10-blocker-audit.json` plus `.md`, and `tests/test_blocker_audit.py` so the remaining acceptance-gap clusters and open build-board blockers are summarized in one durable report with explicit confirmation commands and evidence-hygiene checks.
+          - Added `job_hunt_copilot.quality_validation`, `scripts/quality/run_ba10_validation_suite.py`, and `tests/test_quality_validation.py` so the automated BA-10 blocker-audit commands can now be resolved, dry-run inspected, and executed from one reproducible entrypoint after refreshing the committed acceptance-trace and blocker-audit reports.
         validation:
           - "`python3.11 -m py_compile job_hunt_copilot/local_runtime.py job_hunt_copilot/acceptance_traceability.py job_hunt_copilot/runtime_pack.py job_hunt_copilot/paths.py scripts/ops/materialize_feedback_sync_plist.py scripts/ops/run_feedback_sync.py tests/test_local_runtime.py`"
           - "`zsh -n bin/jhc-agent-start bin/jhc-agent-stop bin/jhc-agent-cycle bin/jhc-feedback-sync-cycle bin/jhc-chat`"
@@ -934,6 +935,9 @@ epics:
           - "`python3.11 scripts/quality/generate_blocker_audit.py --project-root /Users/achyutaramsonti/Projects/job-hunt-copilot-v4`"
           - "`python3.11 -m py_compile job_hunt_copilot/blocker_audit.py scripts/quality/generate_blocker_audit.py tests/test_blocker_audit.py`"
           - "`python3.11 -m pytest tests/test_acceptance_traceability.py tests/test_blocker_audit.py tests/test_smoke_harness.py tests/test_local_runtime.py tests/test_supervisor.py tests/test_review_queries.py tests/test_runtime_pack.py`"
+          - "`python3.11 -m py_compile job_hunt_copilot/quality_validation.py scripts/quality/run_ba10_validation_suite.py tests/test_quality_validation.py`"
+          - "`python3.11 -m pytest tests/test_quality_validation.py`"
+          - "`python3.11 scripts/quality/run_ba10_validation_suite.py --project-root /Users/achyutaramsonti/Projects/job-hunt-copilot-v4`"
           - "`python3.11 -m pytest`"
           - "`python3.11 -m py_compile job_hunt_copilot/acceptance_traceability.py tests/test_supervisor.py tests/test_acceptance_traceability.py`"
           - "`python3.11 -m pytest tests/test_supervisor.py tests/test_acceptance_traceability.py`"
@@ -983,11 +987,14 @@ known_blockers:
       - build-agent/reports/ba-10-acceptance-trace-matrix.md
       - build-agent/reports/ba-10-blocker-audit.json
       - build-agent/reports/ba-10-blocker-audit.md
+      - job_hunt_copilot/quality_validation.py
       - scripts/quality/generate_blocker_audit.py
+      - scripts/quality/run_ba10_validation_suite.py
       - scripts/ops/control_agent.py
       - tests/test_acceptance_traceability.py
       - tests/test_blocker_audit.py
       - tests/test_local_runtime.py
+      - tests/test_quality_validation.py
       - tests/test_delivery_feedback.py
       - tests/test_schema.py
       - tests/test_smoke_harness.py
