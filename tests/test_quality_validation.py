@@ -104,7 +104,7 @@ def test_validation_selector_details_include_requested_smoke_gap_blocker_and_cur
     ]
     assert details["acceptance_gaps"][0] == {
         "gap_id": "BA10_SUPERVISOR_DOWNSTREAM_ACTION_CATALOG",
-        "title": "Supervisor orchestration still stops before autonomous sending completes",
+        "title": "Supervisor orchestration still stops before autonomous delivery feedback completes",
         "next_slice": "BA-10-S4",
         "open_scenario_count": 4,
         "validation_command_ids": [
@@ -143,10 +143,10 @@ def test_validation_selector_details_include_requested_smoke_gap_blocker_and_cur
         "--project-root <repo_root> --current-focus"
     )
     assert (
-        "`lead_handoff -> agent_review -> people_search -> email_discovery -> sending`"
+        "`lead_handoff -> agent_review -> people_search -> email_discovery -> sending -> delivery_feedback`"
         in details["current_focus"]["reason"]
     )
-    assert "beyond `email_discovery`" in details["current_focus"]["reason"]
+    assert "beyond `sending`" in details["current_focus"]["reason"]
     assert "contact-rooted general-learning selection" in details["current_focus"]["reason"]
 
 
@@ -259,7 +259,7 @@ def test_quality_validation_suite_script_dry_run_expands_gap_ids():
     assert payload["selector_details"]["acceptance_gaps"] == [
         {
             "gap_id": "BA10_SUPERVISOR_DOWNSTREAM_ACTION_CATALOG",
-            "title": "Supervisor orchestration still stops before autonomous sending completes",
+            "title": "Supervisor orchestration still stops before autonomous delivery feedback completes",
             "next_slice": "BA-10-S4",
             "open_scenario_count": 4,
             "validation_command_ids": [
@@ -382,10 +382,10 @@ def test_quality_validation_suite_script_dry_run_expands_current_focus():
         "--project-root <repo_root> --current-focus"
     )
     assert (
-        "`lead_handoff -> agent_review -> people_search -> email_discovery -> sending`"
+        "`lead_handoff -> agent_review -> people_search -> email_discovery -> sending -> delivery_feedback`"
         in current_focus["reason"]
     )
-    assert "beyond `email_discovery`" in current_focus["reason"]
+    assert "beyond `sending`" in current_focus["reason"]
     assert "contact-rooted general-learning selection" in current_focus["reason"]
 
 
@@ -523,7 +523,7 @@ def test_build_ba10_validation_suite_report_summarizes_results():
                 "acceptance_gaps": [
                     {
                         "gap_id": "BA10_SUPERVISOR_DOWNSTREAM_ACTION_CATALOG",
-                        "title": "Supervisor orchestration still stops at lead handoff",
+                        "title": "Supervisor orchestration still stops before autonomous delivery feedback completes",
                         "next_slice": "BA-10-S4",
                         "open_scenario_count": 5,
                         "validation_command_ids": [
@@ -640,7 +640,10 @@ def test_build_ba10_validation_suite_report_summarizes_results():
     assert "### Acceptance Gaps" in markdown
     assert "### Current Focus" in markdown
     assert "- `bootstrap`: Bootstrap and prerequisites" in markdown
-    assert "- `BA10_SUPERVISOR_DOWNSTREAM_ACTION_CATALOG`: Supervisor orchestration still stops at lead handoff" in markdown
+    assert (
+        "- `BA10_SUPERVISOR_DOWNSTREAM_ACTION_CATALOG`: Supervisor orchestration "
+        "still stops before autonomous delivery feedback completes"
+    ) in markdown
     assert "| qa_smoke_flow | automated | passed | 0 | 1.250 |" in markdown
     assert "### qa_host_launchd_validation: Host launchd validation" in markdown
 

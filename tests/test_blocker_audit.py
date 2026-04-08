@@ -86,9 +86,9 @@ def test_ba10_blocker_audit_reports_are_current_and_reference_real_repo_paths():
             "email_discovery",
             "lead_handoff",
             "people_search",
+            "sending",
         ],
         "validated_blocked_role_targeted_stages": [
-            "sending",
             "delivery_feedback",
         ],
         "unsupported_autonomous_scope_paths": [

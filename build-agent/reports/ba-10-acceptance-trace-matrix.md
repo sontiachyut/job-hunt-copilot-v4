@@ -117,17 +117,17 @@
 
 ## Explicit Gaps
 
-### BA10_SUPERVISOR_DOWNSTREAM_ACTION_CATALOG: Supervisor orchestration still stops before autonomous sending completes
+### BA10_SUPERVISOR_DOWNSTREAM_ACTION_CATALOG: Supervisor orchestration still stops before autonomous delivery feedback completes
 - Next slice: `BA-10-S4`
 - Supporting slices: `BA-02-S1`, `BA-02-S2`, `BA-02-S3`, `BA-03-S1`, `BA-03-S2`, `BA-03-S3`, `BA-06-S1`, `BA-06-S2`, `BA-06-S3`, `BA-06-S4`, `BA-07-S1`, `BA-07-S2`, `BA-07-S3`, `BA-08-S1`, `BA-08-S2`, `BA-08-S3`, `BA-09-S1`, `BA-09-S2`, `BA-09-S3`, `BA-10-S4`
-- Reason: The durable heartbeat, selector ordering, retry-safe run persistence, bounded mandatory agent review, bounded people-search execution, and bounded email-discovery execution now exist, but later stages from `sending` onward still reselect the same durable run and escalate instead of executing.
-- Evidence summary: Focused downstream-stage regressions prove active incidents still outrank ordinary progression, existing durable runs are selected before bootstrapping new eligible postings, `lead_handoff` now advances into `agent_review`, bounded mandatory agent review advances the same run into `people_search`, bounded people search materializes shortlist artifacts and advances the same run into `email_discovery`, bounded email discovery now executes selected current send-set contacts and advances the same durable run into `sending` when readiness is satisfied, later stages from `sending` onward still escalate with durable run and review-packet retention, retries reuse the same run at that later blocked boundary, and a ready contact-rooted general-learning candidate still yields no selected supervisor work.
-- Evidence code refs: `job_hunt_copilot/supervisor.py`, `job_hunt_copilot/email_discovery.py`, `job_hunt_copilot/local_runtime.py`, `job_hunt_copilot/runtime_pack.py`
+- Reason: The durable heartbeat, selector ordering, retry-safe run persistence, bounded mandatory agent review, bounded people-search execution, bounded email-discovery execution, and bounded sending execution now exist, but later stages from `delivery_feedback` onward still reselect the same durable run and escalate instead of executing.
+- Evidence summary: Focused downstream-stage regressions prove active incidents still outrank ordinary progression, existing durable runs are selected before bootstrapping new eligible postings, `lead_handoff` now advances into `agent_review`, bounded mandatory agent review advances the same run into `people_search`, bounded people search materializes shortlist artifacts and advances the same run into `email_discovery`, bounded email discovery advances the same durable run into `sending` when readiness is satisfied, bounded sending now drafts the ready send set, executes one safe send, stays at `sending` while later-wave contacts remain paced, advances the same durable run into `delivery_feedback` after terminal sent waves, completes review-worthy no-send blocked outcomes with a persisted review packet, later stages from `delivery_feedback` onward still escalate with durable run and review-packet retention, and a ready contact-rooted general-learning candidate still yields no selected supervisor work.
+- Evidence code refs: `job_hunt_copilot/supervisor.py`, `job_hunt_copilot/email_discovery.py`, `job_hunt_copilot/outreach.py`, `job_hunt_copilot/local_runtime.py`, `job_hunt_copilot/runtime_pack.py`
 - Evidence test refs: `tests/test_supervisor_downstream_actions.py`, `tests/test_blocker_audit.py`, `tests/test_acceptance_traceability.py`
 - Implementation snapshot:
   - Current selector priority order: `active_incident`, `open_pipeline_run`, `new_role_targeted_posting`
   - Registered role-targeted checkpoint stages: `agent_review`, `lead_handoff`
-  - Validated blocked role-targeted stages: `sending`, `delivery_feedback`
+  - Validated blocked role-targeted stages: `delivery_feedback`
   - Unsupported autonomous scope paths: `contact_rooted_general_learning`
 - Scenarios: `4`
   - Supervisor work selection follows the current default priority order

@@ -7,12 +7,15 @@ from pathlib import Path
 import pytest
 
 from job_hunt_copilot.bootstrap import run_bootstrap
+from job_hunt_copilot.outreach import generate_role_targeted_send_set_drafts
 from job_hunt_copilot.paths import ProjectPaths
 from job_hunt_copilot.supervisor import (
     ACTION_PERFORM_MANDATORY_AGENT_REVIEW,
     ACTION_RUN_ROLE_TARGETED_EMAIL_DISCOVERY,
     ACTION_RUN_ROLE_TARGETED_PEOPLE_SEARCH,
+    ACTION_RUN_ROLE_TARGETED_SENDING,
     REVIEW_PACKET_STATUS_PENDING,
+    RUN_STATUS_COMPLETED,
     RUN_STATUS_ESCALATED,
     RUN_STATUS_IN_PROGRESS,
     SupervisorActionDependencies,
@@ -28,6 +31,12 @@ from job_hunt_copilot.supervisor import (
     run_supervisor_cycle,
 )
 from tests.support import create_minimal_project, seed_pending_review_tailoring_run
+from tests.test_outreach import (
+    ImmediateBounceObserver as OutreachImmediateBounceObserver,
+    RecordingOutreachSender as OutreachRecordingSender,
+    seed_approved_tailoring_run as seed_outreach_ready_tailoring_run,
+    write_sender_profile,
+)
 
 
 def bootstrap_project(tmp_path: Path) -> Path:
@@ -765,6 +774,325 @@ def test_email_discovery_stage_advances_to_sending_when_send_set_becomes_ready(
     }
 
 
+def test_sending_stage_drafts_ready_send_set_and_stays_active_while_more_sends_are_delayed(
+    tmp_path: Path,
+) -> None:
+    project_root = bootstrap_project(tmp_path)
+    paths = ProjectPaths.from_root(project_root)
+    write_sender_profile(paths)
+    connection = connect_database(project_root / "job_hunt_copilot.db")
+    lead_id, job_posting_id = seed_role_targeted_posting(
+        connection,
+        company_name="Acme Robotics",
+        role_title="Staff Software Engineer / AI",
+        posting_status="ready_for_outreach",
+        timestamp="2026-04-08T00:18:00Z",
+    )
+    seed_outreach_ready_tailoring_run(
+        connection,
+        paths,
+        company_name="Acme Robotics",
+        role_title="Staff Software Engineer / AI",
+        job_posting_id=job_posting_id,
+        current_time="2026-04-08T00:19:00Z",
+    )
+    seed_shortlisted_contact(
+        connection,
+        contact_id="ct_send_r1",
+        job_posting_contact_id="jpc_send_r1",
+        job_posting_id=job_posting_id,
+        company_name="Acme Robotics",
+        display_name="Priya Recruiter",
+        recipient_type="recruiter",
+        current_working_email="priya@acme.example",
+        position_title="Technical Recruiter",
+        created_at="2026-04-08T00:20:00Z",
+    )
+    seed_shortlisted_contact(
+        connection,
+        contact_id="ct_send_m1",
+        job_posting_contact_id="jpc_send_m1",
+        job_posting_id=job_posting_id,
+        company_name="Acme Robotics",
+        display_name="Morgan Manager",
+        recipient_type="hiring_manager",
+        current_working_email="morgan@acme.example",
+        position_title="Engineering Manager",
+        created_at="2026-04-08T00:21:00Z",
+    )
+    seed_shortlisted_contact(
+        connection,
+        contact_id="ct_send_e1",
+        job_posting_contact_id="jpc_send_e1",
+        job_posting_id=job_posting_id,
+        company_name="Acme Robotics",
+        display_name="Jamie Engineer",
+        recipient_type="engineer",
+        current_working_email="jamie@acme.example",
+        position_title="Staff Software Engineer",
+        created_at="2026-04-08T00:22:00Z",
+    )
+    resume_agent(
+        connection,
+        manual_command="jhc-agent-start",
+        timestamp="2026-04-08T00:23:00Z",
+    )
+    pipeline_run, _ = ensure_role_targeted_pipeline_run(
+        connection,
+        lead_id=lead_id,
+        job_posting_id=job_posting_id,
+        current_stage="sending",
+        started_at="2026-04-08T00:24:00Z",
+    )
+    sender = OutreachRecordingSender()
+
+    execution = run_supervisor_cycle(
+        connection,
+        paths,
+        trigger_type="launchd_heartbeat",
+        scheduler_name="launchd",
+        started_at="2026-04-08T00:25:00Z",
+        action_dependencies=SupervisorActionDependencies(
+            outreach_sender=sender,
+            local_timezone="UTC",
+        ),
+    )
+    updated_run = get_pipeline_run(connection, pipeline_run.pipeline_run_id)
+    posting_status = connection.execute(
+        """
+        SELECT posting_status
+        FROM job_postings
+        WHERE job_posting_id = ?
+        """,
+        (job_posting_id,),
+    ).fetchone()[0]
+    message_rows = connection.execute(
+        """
+        SELECT contact_id, message_status
+        FROM outreach_messages
+        WHERE job_posting_id = ?
+        ORDER BY contact_id
+        """,
+        (job_posting_id,),
+    ).fetchall()
+    connection.close()
+
+    assert execution.cycle.result == SUPERVISOR_CYCLE_RESULT_SUCCESS
+    assert execution.selected_work is not None
+    assert execution.selected_work.work_id == pipeline_run.pipeline_run_id
+    assert execution.selected_work.action_id == ACTION_RUN_ROLE_TARGETED_SENDING
+    assert execution.incident is None
+    assert execution.review_packet is None
+    assert sender.attempted_message_ids
+    assert len(sender.attempted_message_ids) == 1
+    assert updated_run is not None
+    assert updated_run.run_status == RUN_STATUS_IN_PROGRESS
+    assert updated_run.current_stage == "sending"
+    assert posting_status == "outreach_in_progress"
+    assert [dict(row) for row in message_rows] == [
+        {"contact_id": "ct_send_e1", "message_status": "generated"},
+        {"contact_id": "ct_send_m1", "message_status": "generated"},
+        {"contact_id": "ct_send_r1", "message_status": "sent"},
+    ]
+
+
+def test_sending_stage_advances_to_delivery_feedback_after_terminal_sent_wave(
+    tmp_path: Path,
+) -> None:
+    project_root = bootstrap_project(tmp_path)
+    paths = ProjectPaths.from_root(project_root)
+    write_sender_profile(paths)
+    connection = connect_database(project_root / "job_hunt_copilot.db")
+    lead_id, job_posting_id = seed_role_targeted_posting(
+        connection,
+        company_name="Acme Robotics",
+        role_title="Staff Software Engineer / AI",
+        posting_status="ready_for_outreach",
+        timestamp="2026-04-08T00:26:00Z",
+    )
+    seed_outreach_ready_tailoring_run(
+        connection,
+        paths,
+        company_name="Acme Robotics",
+        role_title="Staff Software Engineer / AI",
+        job_posting_id=job_posting_id,
+        current_time="2026-04-08T00:27:00Z",
+    )
+    seed_shortlisted_contact(
+        connection,
+        contact_id="ct_send_final",
+        job_posting_contact_id="jpc_send_final",
+        job_posting_id=job_posting_id,
+        company_name="Acme Robotics",
+        display_name="Priya Recruiter",
+        recipient_type="recruiter",
+        current_working_email="priya@acme.example",
+        position_title="Technical Recruiter",
+        created_at="2026-04-08T00:28:00Z",
+    )
+    resume_agent(
+        connection,
+        manual_command="jhc-agent-start",
+        timestamp="2026-04-08T00:29:00Z",
+    )
+    pipeline_run, _ = ensure_role_targeted_pipeline_run(
+        connection,
+        lead_id=lead_id,
+        job_posting_id=job_posting_id,
+        current_stage="sending",
+        started_at="2026-04-08T00:30:00Z",
+    )
+    sender = OutreachRecordingSender()
+    observer = OutreachImmediateBounceObserver(event_timestamp="2026-04-08T00:31:30Z")
+
+    execution = run_supervisor_cycle(
+        connection,
+        paths,
+        trigger_type="launchd_heartbeat",
+        scheduler_name="launchd",
+        started_at="2026-04-08T00:31:00Z",
+        action_dependencies=SupervisorActionDependencies(
+            outreach_sender=sender,
+            feedback_observer=observer,
+            local_timezone="UTC",
+        ),
+    )
+    updated_run = get_pipeline_run(connection, pipeline_run.pipeline_run_id)
+    posting_status = connection.execute(
+        """
+        SELECT posting_status
+        FROM job_postings
+        WHERE job_posting_id = ?
+        """,
+        (job_posting_id,),
+    ).fetchone()[0]
+    feedback_row = connection.execute(
+        """
+        SELECT event_state, event_timestamp
+        FROM delivery_feedback_events
+        ORDER BY event_timestamp DESC, delivery_feedback_event_id DESC
+        LIMIT 1
+        """
+    ).fetchone()
+    connection.close()
+
+    assert execution.cycle.result == SUPERVISOR_CYCLE_RESULT_SUCCESS
+    assert execution.selected_work is not None
+    assert execution.selected_work.action_id == ACTION_RUN_ROLE_TARGETED_SENDING
+    assert execution.incident is None
+    assert execution.review_packet is None
+    assert sender.attempted_message_ids
+    assert updated_run is not None
+    assert updated_run.run_status == RUN_STATUS_IN_PROGRESS
+    assert updated_run.current_stage == "delivery_feedback"
+    assert posting_status == "completed"
+    assert dict(feedback_row) == {
+        "event_state": "bounced",
+        "event_timestamp": "2026-04-08T00:31:30Z",
+    }
+
+
+def test_sending_stage_completes_review_worthy_run_when_terminal_wave_has_no_sent_messages(
+    tmp_path: Path,
+) -> None:
+    project_root = bootstrap_project(tmp_path)
+    paths = ProjectPaths.from_root(project_root)
+    write_sender_profile(paths)
+    connection = connect_database(project_root / "job_hunt_copilot.db")
+    lead_id, job_posting_id = seed_role_targeted_posting(
+        connection,
+        company_name="Acme Robotics",
+        role_title="Staff Software Engineer / AI",
+        posting_status="ready_for_outreach",
+        timestamp="2026-04-08T00:32:00Z",
+    )
+    seed_outreach_ready_tailoring_run(
+        connection,
+        paths,
+        company_name="Acme Robotics",
+        role_title="Staff Software Engineer / AI",
+        job_posting_id=job_posting_id,
+        current_time="2026-04-08T00:33:00Z",
+    )
+    seed_shortlisted_contact(
+        connection,
+        contact_id="ct_send_blocked",
+        job_posting_contact_id="jpc_send_blocked",
+        job_posting_id=job_posting_id,
+        company_name="Acme Robotics",
+        display_name="Priya Recruiter",
+        recipient_type="recruiter",
+        current_working_email="priya@acme.example",
+        position_title="Technical Recruiter",
+        created_at="2026-04-08T00:34:00Z",
+    )
+    draft_batch = generate_role_targeted_send_set_drafts(
+        connection,
+        project_root=project_root,
+        job_posting_id=job_posting_id,
+        current_time="2026-04-08T00:35:00Z",
+        local_timezone="UTC",
+    )
+    resume_agent(
+        connection,
+        manual_command="jhc-agent-start",
+        timestamp="2026-04-08T00:36:00Z",
+    )
+    pipeline_run, _ = ensure_role_targeted_pipeline_run(
+        connection,
+        lead_id=lead_id,
+        job_posting_id=job_posting_id,
+        current_stage="sending",
+        started_at="2026-04-08T00:37:00Z",
+    )
+    sender = OutreachRecordingSender(
+        ambiguous_message_ids={draft_batch.drafted_messages[0].outreach_message_id}
+    )
+
+    execution = run_supervisor_cycle(
+        connection,
+        paths,
+        trigger_type="launchd_heartbeat",
+        scheduler_name="launchd",
+        started_at="2026-04-08T00:38:00Z",
+        action_dependencies=SupervisorActionDependencies(
+            outreach_sender=sender,
+            local_timezone="UTC",
+        ),
+    )
+    updated_run = get_pipeline_run(connection, pipeline_run.pipeline_run_id)
+    posting_status = connection.execute(
+        """
+        SELECT posting_status
+        FROM job_postings
+        WHERE job_posting_id = ?
+        """,
+        (job_posting_id,),
+    ).fetchone()[0]
+    current_message = connection.execute(
+        """
+        SELECT message_status
+        FROM outreach_messages
+        WHERE outreach_message_id = ?
+        """,
+        (draft_batch.drafted_messages[0].outreach_message_id,),
+    ).fetchone()
+    connection.close()
+
+    assert execution.cycle.result == SUPERVISOR_CYCLE_RESULT_SUCCESS
+    assert execution.selected_work is not None
+    assert execution.selected_work.action_id == ACTION_RUN_ROLE_TARGETED_SENDING
+    assert execution.incident is None
+    assert execution.review_packet is not None
+    assert execution.review_packet.packet_status == REVIEW_PACKET_STATUS_PENDING
+    assert updated_run is not None
+    assert updated_run.run_status == RUN_STATUS_COMPLETED
+    assert updated_run.current_stage == "completed"
+    assert updated_run.review_packet_status == REVIEW_PACKET_STATUS_PENDING
+    assert posting_status == "completed"
+    assert dict(current_message) == {"message_status": "blocked"}
+
+
 def test_existing_pipeline_run_is_selected_before_bootstrapping_another_eligible_posting(
     tmp_path: Path,
 ) -> None:
@@ -883,7 +1211,6 @@ def test_contact_rooted_general_learning_work_is_not_selected_yet(tmp_path: Path
 @pytest.mark.parametrize(
     "blocked_stage",
     [
-        "sending",
         "delivery_feedback",
     ],
 )
@@ -948,12 +1275,35 @@ def test_retry_after_downstream_stage_blocker_reuses_same_run_and_review_packet(
 ) -> None:
     project_root = bootstrap_project(tmp_path)
     paths = ProjectPaths.from_root(project_root)
+    write_sender_profile(paths)
     connection = connect_database(project_root / "job_hunt_copilot.db")
     lead_id, job_posting_id = seed_role_targeted_posting(
         connection,
+        company_name="Acme Robotics",
+        role_title="Staff Software Engineer / AI",
         posting_status="requires_contacts",
     )
-    seed_approved_tailoring_run(connection, job_posting_id=job_posting_id)
+    seed_outreach_ready_tailoring_run(
+        connection,
+        paths,
+        company_name="Acme Robotics",
+        role_title="Staff Software Engineer / AI",
+        job_posting_id=job_posting_id,
+        current_time="2026-04-08T00:20:00Z",
+    )
+    connection.execute(
+        """
+        UPDATE job_postings
+        SET posting_status = ?, updated_at = ?
+        WHERE job_posting_id = ?
+        """,
+        (
+            "requires_contacts",
+            "2026-04-08T00:20:30Z",
+            job_posting_id,
+        ),
+    )
+    connection.commit()
     resume_agent(
         connection,
         manual_command="jhc-agent-start",
@@ -991,6 +1341,7 @@ def test_retry_after_downstream_stage_blocker_reuses_same_run_and_review_packet(
             }
         ],
     )
+    sender = OutreachRecordingSender()
 
     first_execution = run_supervisor_cycle(
         connection,
@@ -1027,23 +1378,38 @@ def test_retry_after_downstream_stage_blocker_reuses_same_run_and_review_packet(
         trigger_type="launchd_heartbeat",
         scheduler_name="launchd",
         started_at="2026-04-08T00:24:00Z",
+        action_dependencies=SupervisorActionDependencies(
+            outreach_sender=sender,
+            local_timezone="UTC",
+        ),
     )
-    assert third_execution.incident is not None
-    assert third_execution.review_packet is not None
+    assert third_execution.cycle.result == SUPERVISOR_CYCLE_RESULT_SUCCESS
+    assert third_execution.pipeline_run is not None
+    assert third_execution.pipeline_run.current_stage == "delivery_feedback"
+
+    fourth_execution = run_supervisor_cycle(
+        connection,
+        paths,
+        trigger_type="launchd_heartbeat",
+        scheduler_name="launchd",
+        started_at="2026-04-08T00:24:30Z",
+    )
+    assert fourth_execution.incident is not None
+    assert fourth_execution.review_packet is not None
 
     escalated_incident = escalate_agent_incident(
         connection,
-        third_execution.incident.agent_incident_id,
+        fourth_execution.incident.agent_incident_id,
         escalation_reason=(
-            "Expert confirmed the remaining downstream supervisor gap after email "
-            "discovery and recorded it for later catalog work."
+            "Expert confirmed the remaining downstream supervisor gap after sending "
+            "handoff and recorded it for later catalog work."
         ),
         timestamp="2026-04-08T00:25:00Z",
     )
     retried_run = advance_pipeline_run(
         connection,
         pipeline_run.pipeline_run_id,
-        current_stage="sending",
+        current_stage="delivery_feedback",
         run_summary="Retry the same downstream boundary without restarting the run.",
         timestamp="2026-04-08T00:26:00Z",
     )
@@ -1055,7 +1421,7 @@ def test_retry_after_downstream_stage_blocker_reuses_same_run_and_review_packet(
         started_at="2026-04-08T00:27:00Z",
     )
 
-    fourth_execution = run_supervisor_cycle(
+    fifth_execution = run_supervisor_cycle(
         connection,
         paths,
         trigger_type="launchd_heartbeat",
@@ -1069,19 +1435,21 @@ def test_retry_after_downstream_stage_blocker_reuses_same_run_and_review_packet(
     assert first_execution.pipeline_run.pipeline_run_id == pipeline_run.pipeline_run_id
     assert second_execution.pipeline_run is not None
     assert second_execution.pipeline_run.pipeline_run_id == pipeline_run.pipeline_run_id
+    assert third_execution.pipeline_run is not None
+    assert third_execution.pipeline_run.pipeline_run_id == pipeline_run.pipeline_run_id
     assert escalated_incident.status == "escalated"
     assert retried_run.pipeline_run_id == pipeline_run.pipeline_run_id
     assert retried_run.run_status == RUN_STATUS_IN_PROGRESS
-    assert retried_run.current_stage == "sending"
+    assert retried_run.current_stage == "delivery_feedback"
     assert created is False
     assert reused_run.pipeline_run_id == pipeline_run.pipeline_run_id
-    assert reused_run.current_stage == "sending"
-    assert fourth_execution.cycle.result == SUPERVISOR_CYCLE_RESULT_FAILED
-    assert fourth_execution.selected_work is not None
-    assert fourth_execution.selected_work.work_id == pipeline_run.pipeline_run_id
-    assert fourth_execution.selected_work.current_stage == "sending"
-    assert fourth_execution.review_packet is not None
-    assert fourth_execution.review_packet.expert_review_packet_id == (
-        third_execution.review_packet.expert_review_packet_id
+    assert reused_run.current_stage == "delivery_feedback"
+    assert fifth_execution.cycle.result == SUPERVISOR_CYCLE_RESULT_FAILED
+    assert fifth_execution.selected_work is not None
+    assert fifth_execution.selected_work.work_id == pipeline_run.pipeline_run_id
+    assert fifth_execution.selected_work.current_stage == "delivery_feedback"
+    assert fifth_execution.review_packet is not None
+    assert fifth_execution.review_packet.expert_review_packet_id == (
+        fourth_execution.review_packet.expert_review_packet_id
     )
     assert len(stored_packets) == 1

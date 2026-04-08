@@ -1534,3 +1534,31 @@ Use this file as an append-only implementation log for the build agent.
 ### Notes
 - The acceptance matrix still reports 191 implemented / 7 partial / 14 gap scenarios; this cycle narrowed the downstream-supervisor blocker boundary from `email_discovery` to `sending` without changing the aggregate counts.
 - The blocker now starts at `sending`; `delivery_feedback` and the contact-rooted general-learning selector path remain explicitly unimplemented in the supervisor action catalog after this checkpoint.
+
+### Session
+- Date: 2026-04-08 16:39:48 MST
+- Slice: BA-10-S4 downstream supervisor sending execution
+- Goal: Register one bounded downstream supervisor action at `sending`, prove durable advancement into `delivery_feedback` or a review-worthy terminal outcome, and checkpoint the narrower remaining blocker honestly.
+
+### Work Done
+- Extended `job_hunt_copilot.supervisor` with `run_role_targeted_sending`, added bounded supervisor dependencies for an injected outreach sender plus optional immediate-feedback observer, and wired the cycle runner so a durable role-targeted run at `sending` now drafts the ready send set when artifacts are missing, executes one safe send, stays at `sending` while later-wave contacts remain paced, advances terminal sent waves into `delivery_feedback`, and completes review-worthy no-send blocked waves through the existing review-packet flow.
+- Expanded `tests/test_supervisor_downstream_actions.py` with real sending-stage coverage for paced stay-active behavior, `sending -> delivery_feedback` advancement with immediate feedback evidence, no-send blocked terminal completion, and retry-safe resume from the remaining `delivery_feedback` blocker; narrowed the generic unsupported-stage regressions so only `delivery_feedback` remains the later-stage blocked role-targeted boundary.
+- Updated `job_hunt_copilot.acceptance_traceability`, `job_hunt_copilot.blocker_audit`, and their report-guard expectations so the committed BA-10 reports now describe the remaining downstream gap as `delivery_feedback` onward, list `sending` as a registered role-targeted action stage, and keep the missing contact-rooted general-learning selector path explicit.
+- Updated `build-agent/state/build-board.yaml`, `build-agent/state/IMPLEMENTATION_PLAN.md`, `build-agent/state/build-journal.md`, and `build-agent/state/codex-progress.txt` so the persisted project record captures the new `sending` boundary, refreshed blocker wording, and the next best downstream-supervisor slice.
+
+### Validation
+- Ran `python3.11 -m py_compile job_hunt_copilot/supervisor.py job_hunt_copilot/acceptance_traceability.py job_hunt_copilot/blocker_audit.py tests/test_supervisor_downstream_actions.py tests/test_supervisor.py tests/test_acceptance_traceability.py tests/test_blocker_audit.py tests/test_quality_validation.py` and confirmed the changed supervisor, report, and guard modules compile cleanly.
+- Ran `python3.11 -m pytest tests/test_supervisor_downstream_actions.py tests/test_supervisor.py` and confirmed all 26 focused supervisor regressions passed.
+- Ran `python3.11 scripts/quality/generate_acceptance_trace_matrix.py --project-root /Users/achyutaramsonti/Projects/job-hunt-copilot-v4` and `python3.11 scripts/quality/generate_blocker_audit.py --project-root /Users/achyutaramsonti/Projects/job-hunt-copilot-v4` to refresh the committed BA-10 reports after the supervisor change.
+- Ran `python3.11 -m pytest tests/test_acceptance_traceability.py tests/test_blocker_audit.py tests/test_quality_validation.py` and confirmed all 20 BA-10 report-guard and validation-runner tests passed.
+
+### Result
+- `partial`
+
+### Next
+- Keep BA-10-S4 in progress and register the next bounded downstream supervisor action at `delivery_feedback`, or explicitly move to the contact-rooted general-learning selector path if that orchestration gap becomes higher value.
+
+### Notes
+- The acceptance matrix still reports 191 implemented / 7 partial / 14 gap scenarios; this cycle narrowed the downstream-supervisor blocker boundary from `sending` to `delivery_feedback` without changing the aggregate counts.
+- The remaining downstream-supervisor blocker now starts at `delivery_feedback`; the contact-rooted general-learning selector path is still explicitly unimplemented.
+- The new sending action is intentionally dependency-injected through `SupervisorActionDependencies` for safe deterministic validation; wiring a concrete live sender into the repo-local heartbeat remains a later runtime integration concern rather than an implicit claim in this slice.

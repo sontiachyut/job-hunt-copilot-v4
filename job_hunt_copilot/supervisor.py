@@ -146,6 +146,7 @@ ACTION_CHECKPOINT_PIPELINE_RUN: Final = "checkpoint_pipeline_run"
 ACTION_PERFORM_MANDATORY_AGENT_REVIEW: Final = "perform_mandatory_agent_review"
 ACTION_RUN_ROLE_TARGETED_PEOPLE_SEARCH: Final = "run_role_targeted_people_search"
 ACTION_RUN_ROLE_TARGETED_EMAIL_DISCOVERY: Final = "run_role_targeted_email_discovery"
+ACTION_RUN_ROLE_TARGETED_SENDING: Final = "run_role_targeted_sending"
 ACTION_ESCALATE_OPEN_INCIDENT: Final = "escalate_open_incident"
 
 ELIGIBLE_POSTING_STATUSES_FOR_NEW_RUN = frozenset({"resume_review_pending"})
@@ -156,6 +157,7 @@ ROLE_TARGETED_PIPELINE_STAGE_ACTIONS = MappingProxyType(
         "agent_review": ACTION_PERFORM_MANDATORY_AGENT_REVIEW,
         "people_search": ACTION_RUN_ROLE_TARGETED_PEOPLE_SEARCH,
         "email_discovery": ACTION_RUN_ROLE_TARGETED_EMAIL_DISCOVERY,
+        "sending": ACTION_RUN_ROLE_TARGETED_SENDING,
     }
 )
 
@@ -509,6 +511,9 @@ class SupervisorActionDependencies:
     apollo_contact_enrichment_provider: object | None = None
     recipient_profile_extractor: object | None = None
     email_finder_providers: tuple[object, ...] | None = None
+    outreach_sender: object | None = None
+    feedback_observer: object | None = None
+    local_timezone: object | str | None = None
 
 
 @dataclass(frozen=True)
@@ -619,6 +624,28 @@ SUPERVISOR_ACTION_CATALOG = MappingProxyType(
             validation_references=(
                 "prd/spec.md FR-SYS-38, FR-SYS-38H, FR-SYS-41, FR-SYS-41B, and FR-OPS-03",
                 "prd/test-spec.feature dependency-order, discovery-readiness, and send-set gate scenarios",
+            ),
+        ),
+        ACTION_RUN_ROLE_TARGETED_SENDING: SupervisorActionCatalogEntry(
+            action_id=ACTION_RUN_ROLE_TARGETED_SENDING,
+            work_type=WORK_TYPE_PIPELINE_RUN,
+            description="Run one bounded role-targeted sending step, generating drafts when needed, and advance the durable run to delivery feedback once the active wave is complete.",
+            prerequisites=(
+                "pipeline_run exists and is non-terminal",
+                "pipeline_run.current_stage is `sending`",
+                "job_posting.posting_status is `ready_for_outreach`, `outreach_in_progress`, or `completed`",
+                "the selected posting remains linked to an approved tailoring decision",
+                "a bounded outreach sender is configured before any automatic send is attempted",
+            ),
+            expected_outputs=(
+                "the existing pipeline_run is reused instead of creating a duplicate run",
+                "the current ready send set is drafted before any automatic send attempt when draft artifacts are still missing",
+                "one safe automatic send may execute while pacing and repeat-outreach guardrails remain active",
+                "the durable run stays at `sending` while later-wave contacts remain due later, advances to `delivery_feedback` after a sent terminal wave, or completes with review artifacts after a no-send blocked terminal wave",
+            ),
+            validation_references=(
+                "prd/spec.md §1.2 current-build required path items 10 through 13",
+                "prd/test-spec.feature drafting-before-sending, pacing, dependency-order, and post-send feedback scenarios",
             ),
         ),
         ACTION_ESCALATE_OPEN_INCIDENT: SupervisorActionCatalogEntry(
@@ -2023,6 +2050,7 @@ def run_supervisor_cycle(
                             connection,
                             selected_work,
                             catalog_entry=catalog_entry,
+                            action_dependencies=resolved_action_dependencies,
                         )
                         if validation_error is not None:
                             error_summary = validation_error
@@ -2366,6 +2394,7 @@ def _validate_selected_work(
     selected_work: SupervisorWorkUnit,
     *,
     catalog_entry: SupervisorActionCatalogEntry,
+    action_dependencies: SupervisorActionDependencies,
 ) -> str | None:
     if catalog_entry.work_type != selected_work.work_type:
         return (
@@ -2583,6 +2612,72 @@ def _validate_selected_work(
             return (
                 f"job_posting {job_posting_id!r} has no current send-set contacts available "
                 "for bounded email discovery."
+            )
+        return None
+
+    if catalog_entry.action_id == ACTION_RUN_ROLE_TARGETED_SENDING:
+        pipeline_run = get_pipeline_run(connection, selected_work.work_id)
+        if pipeline_run is None:
+            return f"pipeline_run {selected_work.work_id!r} no longer exists."
+        if pipeline_run.run_status not in {RUN_STATUS_IN_PROGRESS, RUN_STATUS_PAUSED}:
+            return (
+                f"pipeline_run {selected_work.work_id!r} is not non-terminal; "
+                f"found {pipeline_run.run_status!r}."
+            )
+        if pipeline_run.current_stage != "sending":
+            return (
+                f"pipeline_run {selected_work.work_id!r} is at unsupported sending "
+                f"stage {pipeline_run.current_stage!r}."
+            )
+        job_posting_id = _optional_text(pipeline_run.job_posting_id)
+        if job_posting_id is None:
+            return f"pipeline_run {selected_work.work_id!r} is missing job_posting_id."
+        posting_row = connection.execute(
+            """
+            SELECT posting_status
+            FROM job_postings
+            WHERE job_posting_id = ?
+            """,
+            (job_posting_id,),
+        ).fetchone()
+        if posting_row is None:
+            return f"job_posting {job_posting_id!r} no longer exists."
+        posting_status = _require_text(
+            _optional_text(posting_row[0]),
+            "posting_status",
+        )
+        if posting_status not in {
+            "ready_for_outreach",
+            "outreach_in_progress",
+            "completed",
+        }:
+            return (
+                f"job_posting {job_posting_id!r} is not at the sending boundary; "
+                f"found posting_status={posting_status!r}."
+            )
+        latest_run = connection.execute(
+            """
+            SELECT resume_review_status
+            FROM resume_tailoring_runs
+            WHERE job_posting_id = ?
+            ORDER BY COALESCE(completed_at, updated_at, created_at, started_at) DESC,
+                     resume_tailoring_run_id DESC
+            LIMIT 1
+            """,
+            (job_posting_id,),
+        ).fetchone()
+        if latest_run is None or latest_run[0] != "approved":
+            return (
+                f"job_posting {job_posting_id!r} is not backed by an approved tailoring "
+                "review for sending."
+            )
+        if (
+            posting_status != "completed"
+            and action_dependencies.outreach_sender is None
+        ):
+            return (
+                "Supervisor sending requires an injected outreach sender before any "
+                f"automatic send is attempted for job_posting {job_posting_id!r}."
             )
         return None
 
@@ -2853,6 +2948,122 @@ def _execute_selected_work_unit(
         )
         return pipeline_run, None
 
+    if catalog_entry.action_id == ACTION_RUN_ROLE_TARGETED_SENDING:
+        from .outreach import (
+            JOB_POSTING_STATUS_COMPLETED,
+            JOB_POSTING_STATUS_OUTREACH_IN_PROGRESS,
+            JOB_POSTING_STATUS_READY_FOR_OUTREACH,
+            execute_role_targeted_send_set,
+            generate_role_targeted_send_set_drafts,
+        )
+
+        job_posting_id = _require_text(selected_work.job_posting_id, "job_posting_id")
+        posting_row = connection.execute(
+            """
+            SELECT posting_status
+            FROM job_postings
+            WHERE job_posting_id = ?
+            """,
+            (job_posting_id,),
+        ).fetchone()
+        if posting_row is None:  # pragma: no cover - validated earlier
+            raise SupervisorStateError(f"job_posting {job_posting_id!r} no longer exists.")
+
+        current_posting_status = _require_text(
+            _optional_text(posting_row[0]),
+            "posting_status",
+        )
+        drafted_count = 0
+        sent_count = 0
+        blocked_count = 0
+        failed_count = 0
+        delayed_count = 0
+
+        if current_posting_status == JOB_POSTING_STATUS_READY_FOR_OUTREACH:
+            draft_batch = generate_role_targeted_send_set_drafts(
+                connection,
+                project_root=paths.project_root,
+                job_posting_id=job_posting_id,
+                current_time=timestamp,
+                local_timezone=action_dependencies.local_timezone,
+            )
+            drafted_count = len(draft_batch.drafted_messages)
+
+        latest_posting_status = _load_posting_status(connection, job_posting_id=job_posting_id)
+        if latest_posting_status in {
+            JOB_POSTING_STATUS_READY_FOR_OUTREACH,
+            JOB_POSTING_STATUS_OUTREACH_IN_PROGRESS,
+        }:
+            send_result = execute_role_targeted_send_set(
+                connection,
+                project_root=paths.project_root,
+                job_posting_id=job_posting_id,
+                current_time=timestamp,
+                sender=_require_dependency(
+                    action_dependencies.outreach_sender,
+                    "Supervisor sending requires an injected outreach sender.",
+                ),
+                local_timezone=action_dependencies.local_timezone,
+                feedback_observer=action_dependencies.feedback_observer,
+            )
+            latest_posting_status = send_result.posting_status_after_execution
+            sent_count = len(send_result.sent_messages)
+            blocked_count = len(send_result.blocked_messages)
+            failed_count = len(send_result.failed_messages)
+            delayed_count = len(send_result.delayed_messages)
+
+        if latest_posting_status == JOB_POSTING_STATUS_COMPLETED:
+            if _count_posting_outreach_messages_with_status(
+                connection,
+                job_posting_id=job_posting_id,
+                message_status="sent",
+            ) > 0:
+                pipeline_run = advance_pipeline_run(
+                    connection,
+                    selected_work.work_id,
+                    current_stage="delivery_feedback",
+                    run_summary=(
+                        "Supervisor completed the bounded sending step, observed a "
+                        f"terminal outreach wave after {sent_count} sent, {blocked_count} "
+                        f"blocked, and {failed_count} failed messages in this cycle, and "
+                        "advanced the durable pipeline run to delivery_feedback."
+                    ),
+                    timestamp=timestamp,
+                )
+            else:
+                pipeline_run = complete_pipeline_run(
+                    connection,
+                    selected_work.work_id,
+                    current_stage="completed",
+                    run_summary=(
+                        "Supervisor completed the bounded sending step without a "
+                        "successful automatic send, so the durable pipeline run reached "
+                        "a review-worthy terminal blocked outcome."
+                    ),
+                    timestamp=timestamp,
+                )
+            return pipeline_run, None
+
+        if latest_posting_status != JOB_POSTING_STATUS_OUTREACH_IN_PROGRESS:
+            raise SupervisorStateError(
+                "Sending advanced the posting to an unsupported status "
+                f"{latest_posting_status!r}."
+            )
+
+        pipeline_run = advance_pipeline_run(
+            connection,
+            selected_work.work_id,
+            current_stage="sending",
+            run_summary=(
+                "Supervisor ran the bounded sending step with "
+                f"{drafted_count} drafted, {sent_count} sent, {blocked_count} blocked, "
+                f"{failed_count} failed, and {delayed_count} delayed messages in this cycle, "
+                "and kept the durable pipeline run at sending while later-wave work remains."
+            ),
+            timestamp=timestamp,
+        )
+        return pipeline_run, None
+
     if catalog_entry.action_id == ACTION_ESCALATE_OPEN_INCIDENT:
         incident = escalate_agent_incident(
             connection,
@@ -3090,6 +3301,92 @@ def _validate_selected_work_result(
         if posting_row[0] not in {"requires_contacts", "ready_for_outreach"}:
             return f"Email discovery persisted an unexpected posting status {posting_row[0]!r}."
         return None
+
+    if catalog_entry.action_id == ACTION_RUN_ROLE_TARGETED_SENDING:
+        if pipeline_run is None:
+            return "Supervisor failed to load the selected pipeline_run after sending."
+        if pipeline_run.pipeline_run_id != selected_work.work_id:
+            return "Sending changed the selected pipeline_run identity."
+        if pipeline_run.job_posting_id is None:
+            return "Sending completed without a linked job_posting_id."
+        posting_row = connection.execute(
+            """
+            SELECT posting_status
+            FROM job_postings
+            WHERE job_posting_id = ?
+            """,
+            (pipeline_run.job_posting_id,),
+        ).fetchone()
+        if posting_row is None:
+            return "Sending completed without a persisted job_posting row."
+        posting_status = posting_row[0]
+        message_row_count = int(
+            connection.execute(
+                """
+                SELECT COUNT(*)
+                FROM outreach_messages
+                WHERE job_posting_id = ?
+                """,
+                (pipeline_run.job_posting_id,),
+            ).fetchone()[0]
+            or 0
+        )
+        send_result_artifact_count = connection.execute(
+            """
+            SELECT COUNT(*)
+            FROM artifact_records
+            WHERE artifact_type = 'send_result'
+              AND job_posting_id = ?
+            """,
+            (pipeline_run.job_posting_id,),
+        ).fetchone()[0]
+        sent_message_count = _count_posting_outreach_messages_with_status(
+            connection,
+            job_posting_id=pipeline_run.job_posting_id,
+            message_status="sent",
+        )
+        if message_row_count <= 0 or send_result_artifact_count <= 0:
+            return (
+                "Sending completed without persisting outreach messages and send_result "
+                "artifacts for the selected posting."
+            )
+        if posting_status == "outreach_in_progress":
+            if pipeline_run.run_status != RUN_STATUS_IN_PROGRESS:
+                return (
+                    "Sending left the pipeline_run outside in-progress state while later "
+                    f"wave work remains; found {pipeline_run.run_status!r}."
+                )
+            if pipeline_run.current_stage != "sending":
+                return (
+                    "Sending should remain at the sending stage when the posting is still "
+                    f"outreach_in_progress, but found {pipeline_run.current_stage!r}."
+                )
+            return None
+        if posting_status == "completed":
+            if sent_message_count > 0:
+                if pipeline_run.run_status != RUN_STATUS_IN_PROGRESS:
+                    return (
+                        "Sending should hand off completed sent waves into delivery feedback "
+                        f"without terminalizing the run; found {pipeline_run.run_status!r}."
+                    )
+                if pipeline_run.current_stage != "delivery_feedback":
+                    return (
+                        "Sending should advance to delivery_feedback after the terminal "
+                        f"sent wave, but found {pipeline_run.current_stage!r}."
+                    )
+                return None
+            if pipeline_run.run_status != RUN_STATUS_COMPLETED:
+                return (
+                    "Sending should complete the pipeline_run when the terminal wave "
+                    f"contains no sent messages, but found {pipeline_run.run_status!r}."
+                )
+            if pipeline_run.current_stage != "completed":
+                return (
+                    "No-send blocked sending outcomes should complete the pipeline run at "
+                    f"`completed`, but found {pipeline_run.current_stage!r}."
+                )
+            return None
+        return f"Sending persisted an unexpected posting status {posting_status!r}."
 
     if catalog_entry.action_id == ACTION_ESCALATE_OPEN_INCIDENT:
         if incident is None:
@@ -3464,6 +3761,50 @@ def _count_posting_contacts_with_link_status(
         ).fetchone()[0]
         or 0
     )
+
+
+def _count_posting_outreach_messages_with_status(
+    connection: sqlite3.Connection,
+    *,
+    job_posting_id: str,
+    message_status: str,
+) -> int:
+    return int(
+        connection.execute(
+            """
+            SELECT COUNT(*)
+            FROM outreach_messages
+            WHERE job_posting_id = ?
+              AND message_status = ?
+            """,
+            (job_posting_id, message_status),
+        ).fetchone()[0]
+        or 0
+    )
+
+
+def _load_posting_status(
+    connection: sqlite3.Connection,
+    *,
+    job_posting_id: str,
+) -> str:
+    row = connection.execute(
+        """
+        SELECT posting_status
+        FROM job_postings
+        WHERE job_posting_id = ?
+        """,
+        (job_posting_id,),
+    ).fetchone()
+    if row is None:
+        raise SupervisorStateError(f"job_posting {job_posting_id!r} no longer exists.")
+    return _require_text(_optional_text(row[0]), "posting_status")
+
+
+def _require_dependency(value: object | None, message: str) -> object:
+    if value is None:
+        raise SupervisorStateError(message)
+    return value
 
 
 def _unsupported_work_summary(selected_work: SupervisorWorkUnit) -> str:

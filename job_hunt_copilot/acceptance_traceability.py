@@ -152,7 +152,6 @@ def _supervisor_downstream_implementation_snapshot() -> dict[str, Any]:
             ROLE_TARGETED_PIPELINE_STAGE_ACTIONS
         ),
         "validated_blocked_role_targeted_stages": [
-            "sending",
             "delivery_feedback",
         ],
         "unsupported_autonomous_scope_paths": [
@@ -179,13 +178,14 @@ GAP_REGISTRY: dict[str, dict[str, Any]] = {
         ),
     ),
     "BA10_SUPERVISOR_DOWNSTREAM_ACTION_CATALOG": _gap_metadata(
-        title="Supervisor orchestration still stops before autonomous sending completes",
-        reason="The durable heartbeat, selector ordering, retry-safe run persistence, bounded mandatory agent review, bounded people-search execution, and bounded email-discovery execution now exist, but later stages from `sending` onward still reselect the same durable run and escalate instead of executing.",
+        title="Supervisor orchestration still stops before autonomous delivery feedback completes",
+        reason="The durable heartbeat, selector ordering, retry-safe run persistence, bounded mandatory agent review, bounded people-search execution, bounded email-discovery execution, and bounded sending execution now exist, but later stages from `delivery_feedback` onward still reselect the same durable run and escalate instead of executing.",
         next_slice="BA-10-S4",
-        evidence_summary="Focused downstream-stage regressions prove active incidents still outrank ordinary progression, existing durable runs are selected before bootstrapping new eligible postings, `lead_handoff` now advances into `agent_review`, bounded mandatory agent review advances the same run into `people_search`, bounded people search materializes shortlist artifacts and advances the same run into `email_discovery`, bounded email discovery now executes selected current send-set contacts and advances the same durable run into `sending` when readiness is satisfied, later stages from `sending` onward still escalate with durable run and review-packet retention, retries reuse the same run at that later blocked boundary, and a ready contact-rooted general-learning candidate still yields no selected supervisor work.",
+        evidence_summary="Focused downstream-stage regressions prove active incidents still outrank ordinary progression, existing durable runs are selected before bootstrapping new eligible postings, `lead_handoff` now advances into `agent_review`, bounded mandatory agent review advances the same run into `people_search`, bounded people search materializes shortlist artifacts and advances the same run into `email_discovery`, bounded email discovery advances the same durable run into `sending` when readiness is satisfied, bounded sending now drafts the ready send set, executes one safe send, stays at `sending` while later-wave contacts remain paced, advances the same durable run into `delivery_feedback` after terminal sent waves, completes review-worthy no-send blocked outcomes with a persisted review packet, later stages from `delivery_feedback` onward still escalate with durable run and review-packet retention, and a ready contact-rooted general-learning candidate still yields no selected supervisor work.",
         evidence_code_refs=(
             "job_hunt_copilot/supervisor.py",
             "job_hunt_copilot/email_discovery.py",
+            "job_hunt_copilot/outreach.py",
             "job_hunt_copilot/local_runtime.py",
             "job_hunt_copilot/runtime_pack.py",
         ),
@@ -887,7 +887,7 @@ _register_override(
     ),
     status=STATUS_PARTIAL,
     gap_ids=("BA10_SUPERVISOR_DOWNSTREAM_ACTION_CATALOG",),
-    note="Current supervisor regressions prove open incidents outrank ordinary pipeline advancement and existing runs outrank new posting bootstrap, but due sends, delayed feedback, general-learning work, and maintenance still have no registered selector or action path.",
+    note="Current supervisor regressions prove open incidents outrank ordinary pipeline advancement, existing runs outrank new posting bootstrap, and open pipeline runs now cover due sending work, but delayed feedback, general-learning work, and maintenance still have no dedicated selector or action path.",
 )
 _register_override(
     scenarios=(
@@ -896,12 +896,12 @@ _register_override(
     ),
     status=STATUS_PARTIAL,
     gap_ids=("BA10_SUPERVISOR_DOWNSTREAM_ACTION_CATALOG",),
-    note="The downstream components and stage-boundary artifacts exist, and `tests/test_supervisor_downstream_actions.py` now proves the current heartbeat advances through `lead_handoff`, bounded mandatory agent review, bounded people search, and bounded email discovery into `sending`, but later stages still escalate instead of executing the full dependency chain.",
+    note="The downstream components and stage-boundary artifacts exist, and `tests/test_supervisor_downstream_actions.py` now proves the current heartbeat advances through `lead_handoff`, bounded mandatory agent review, bounded people search, bounded email discovery, and bounded sending into `delivery_feedback` or a review-worthy no-send terminal outcome, but delayed feedback and general-learning orchestration still do not execute the full dependency chain.",
 )
 _register_override(
     scenarios=("End-to-end retry resumes from the last successful stage boundary",),
     status=STATUS_IMPLEMENTED,
-    note="`tests/test_supervisor_downstream_actions.py` now proves the durable run advances from `lead_handoff` through bounded mandatory agent review, bounded people search, and bounded email discovery into `sending`, and retries resume from that later blocked stage without restarting from LinkedIn Scraping.",
+    note="`tests/test_supervisor_downstream_actions.py` now proves the durable run advances from `lead_handoff` through bounded mandatory agent review, bounded people search, bounded email discovery, and bounded sending into `delivery_feedback`, and retries resume from that later blocked stage without restarting from LinkedIn Scraping.",
 )
 _register_override(
     scenarios=("General learning outreach bypasses the role-targeted agent-review requirement",),

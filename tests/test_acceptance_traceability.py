@@ -105,9 +105,9 @@ def test_acceptance_trace_matrix_reports_are_current_and_reference_real_repo_pat
             "email_discovery",
             "lead_handoff",
             "people_search",
+            "sending",
         ],
         "validated_blocked_role_targeted_stages": [
-            "sending",
             "delivery_feedback",
         ],
         "unsupported_autonomous_scope_paths": [
