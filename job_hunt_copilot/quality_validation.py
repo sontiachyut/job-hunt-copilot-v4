@@ -94,15 +94,19 @@ def list_smoke_validation_targets() -> list[SmokeValidationTarget]:
     ]
 
 
-def _dedupe_command_ids(command_ids: Sequence[str]) -> list[str]:
+def _dedupe_values(values: Sequence[str]) -> list[str]:
     resolved: list[str] = []
-    seen_command_ids: set[str] = set()
-    for command_id in command_ids:
-        if command_id in seen_command_ids:
+    seen_values: set[str] = set()
+    for value in values:
+        if value in seen_values:
             continue
-        seen_command_ids.add(command_id)
-        resolved.append(command_id)
+        seen_values.add(value)
+        resolved.append(value)
     return resolved
+
+
+def _dedupe_command_ids(command_ids: Sequence[str]) -> list[str]:
+    return _dedupe_values(command_ids)
 
 
 def _resolve_audit_validation_command_ids(
@@ -164,6 +168,99 @@ def resolve_current_focus_validation_command_ids(project_root: Path | str) -> li
     return _dedupe_command_ids(
         [command["command_id"] for command in validation_commands]
     )
+
+
+def resolve_validation_selector_details(
+    project_root: Path | str,
+    *,
+    smoke_target_ids: Sequence[str] | None = None,
+    gap_ids: Sequence[str] | None = None,
+    blocker_ids: Sequence[str] | None = None,
+    include_current_focus: bool = False,
+) -> dict[str, Any]:
+    details: dict[str, Any] = {
+        "smoke_targets": [],
+        "acceptance_gaps": [],
+        "build_board_blockers": [],
+        "current_focus": None,
+    }
+
+    requested_smoke_target_ids = _dedupe_values(list(smoke_target_ids or ()))
+    if requested_smoke_target_ids:
+        available_targets = {
+            target.target_id: target.as_dict() for target in list_smoke_validation_targets()
+        }
+        for target_id in requested_smoke_target_ids:
+            target = available_targets.get(target_id)
+            if target is None:
+                raise ValueError(f"Unknown smoke validation target: {target_id}")
+            details["smoke_targets"].append(target)
+
+    requested_gap_ids = _dedupe_values(list(gap_ids or ()))
+    requested_blocker_ids = _dedupe_values(list(blocker_ids or ()))
+    if not (requested_gap_ids or requested_blocker_ids or include_current_focus):
+        return details
+
+    audit = build_ba10_blocker_audit(project_root)
+    gaps_by_id = {
+        cluster["gap_id"]: cluster for cluster in audit["acceptance_gap_clusters"]
+    }
+    blockers_by_id = {
+        blocker["blocker_id"]: blocker for blocker in audit["build_board_blockers"]
+    }
+
+    for gap_id in requested_gap_ids:
+        cluster = gaps_by_id.get(gap_id)
+        if cluster is None:
+            raise ValueError(f"Unknown BA-10 acceptance gap: {gap_id}")
+        details["acceptance_gaps"].append(
+            {
+                "gap_id": cluster["gap_id"],
+                "title": cluster["title"],
+                "next_slice": cluster["next_slice"],
+                "open_scenario_count": cluster["open_scenario_count"],
+                "validation_command_ids": [
+                    command["command_id"] for command in cluster["validation_commands"]
+                ],
+                "validation_suite_command": cluster["validation_suite"]["command"],
+            }
+        )
+
+    for blocker_id in requested_blocker_ids:
+        blocker = blockers_by_id.get(blocker_id)
+        if blocker is None:
+            raise ValueError(f"Unknown BA-10 build-board blocker: {blocker_id}")
+        details["build_board_blockers"].append(
+            {
+                "blocker_id": blocker["blocker_id"],
+                "status": blocker["status"],
+                "owner_role": blocker["owner_role"],
+                "summary": blocker["summary"],
+                "validation_command_ids": [
+                    command["command_id"] for command in blocker["validation_commands"]
+                ],
+                "validation_suite_command": blocker["validation_suite"]["command"],
+            }
+        )
+
+    if include_current_focus:
+        current_focus = audit["current_focus"]
+        details["current_focus"] = {
+            "epic_id": current_focus.get("epic_id"),
+            "slice_id": current_focus.get("slice_id"),
+            "owner_role": current_focus.get("owner_role"),
+            "reason": current_focus.get("reason"),
+            "gap_ids": list(current_focus.get("gap_ids") or []),
+            "validation_command_ids": [
+                command["command_id"]
+                for command in current_focus.get("validation_commands", [])
+            ],
+            "validation_suite_command": (
+                current_focus.get("validation_suite", {}) or {}
+            ).get("command"),
+        }
+
+    return details
 
 
 def build_smoke_validation_plan(
@@ -286,6 +383,7 @@ def _selector_value_text(values: Sequence[str] | None) -> str:
 def render_ba10_validation_suite_markdown(report: dict[str, Any]) -> str:
     summary = report["summary"]
     refreshed_reports = report.get("refreshed_reports") or {}
+    selector_details = report.get("selector_details") or {}
     lines = [
         "# BA-10 Validation Suite Report",
         "",
@@ -336,6 +434,98 @@ def render_ba10_validation_suite_markdown(report: dict[str, Any]) -> str:
             lines.append(
                 "- Blocker audit markdown: "
                 f"`{blocker_audit_reports.get('markdown_path', '')}`"
+            )
+
+    smoke_targets = selector_details.get("smoke_targets") or []
+    acceptance_gaps = selector_details.get("acceptance_gaps") or []
+    build_board_blockers = selector_details.get("build_board_blockers") or []
+    current_focus = selector_details.get("current_focus")
+    if smoke_targets or acceptance_gaps or build_board_blockers or current_focus:
+        lines.extend(["", "## Selector Details", ""])
+
+        if smoke_targets:
+            lines.extend(["### Smoke Targets", ""])
+            for target in smoke_targets:
+                lines.append(f"- `{target['target_id']}`: {target['title']}")
+                lines.append(
+                    f"  - Acceptance scenario: `{target['acceptance_scenario']}`"
+                )
+                lines.append(
+                    "  - Acceptance checks: "
+                    + "; ".join(target.get("acceptance_checks", []))
+                )
+                lines.append(
+                    "  - Validation command ids: "
+                    + ", ".join(
+                        f"`{command_id}`"
+                        for command_id in target.get("validation_command_ids", [])
+                    )
+                )
+                lines.append(
+                    "  - Test refs: "
+                    + ", ".join(
+                        f"`{test_ref}`" for test_ref in target.get("test_refs", [])
+                    )
+                )
+            lines.append("")
+
+        if acceptance_gaps:
+            lines.extend(["### Acceptance Gaps", ""])
+            for gap in acceptance_gaps:
+                lines.append(f"- `{gap['gap_id']}`: {gap['title']}")
+                lines.append(f"  - Next slice: `{gap['next_slice']}`")
+                lines.append(
+                    f"  - Open scenario count: `{gap['open_scenario_count']}`"
+                )
+                lines.append(
+                    "  - Validation command ids: "
+                    + ", ".join(
+                        f"`{command_id}`"
+                        for command_id in gap.get("validation_command_ids", [])
+                    )
+                )
+                lines.append(
+                    "  - Validation suite: "
+                    f"`{gap.get('validation_suite_command', '')}`"
+                )
+            lines.append("")
+
+        if build_board_blockers:
+            lines.extend(["### Build-Board Blockers", ""])
+            for blocker in build_board_blockers:
+                lines.append(f"- `{blocker['blocker_id']}`: {blocker['summary']}")
+                lines.append(f"  - Status: `{blocker['status']}`")
+                lines.append(f"  - Owner role: `{blocker['owner_role']}`")
+                lines.append(
+                    "  - Validation command ids: "
+                    + ", ".join(
+                        f"`{command_id}`"
+                        for command_id in blocker.get("validation_command_ids", [])
+                    )
+                )
+                lines.append(
+                    "  - Validation suite: "
+                    f"`{blocker.get('validation_suite_command', '')}`"
+                )
+            lines.append("")
+
+        if current_focus:
+            lines.extend(["### Current Focus", ""])
+            lines.append(f"- Epic: `{current_focus.get('epic_id')}`")
+            lines.append(f"- Slice: `{current_focus.get('slice_id')}`")
+            lines.append(f"- Owner role: `{current_focus.get('owner_role')}`")
+            lines.append(f"- Reason: {current_focus.get('reason')}")
+            lines.append(
+                "- Gap ids: "
+                + _selector_value_text(current_focus.get("gap_ids"))
+            )
+            lines.append(
+                "- Validation command ids: "
+                + _selector_value_text(current_focus.get("validation_command_ids"))
+            )
+            lines.append(
+                "- Validation suite: "
+                f"`{current_focus.get('validation_suite_command', '')}`"
             )
 
     lines.extend(

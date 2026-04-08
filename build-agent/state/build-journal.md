@@ -1343,3 +1343,30 @@ Use this file as an append-only implementation log for the build agent.
 ### Notes
 - This slice improved blocker evidence only; it did not change the acceptance counts or claim new autonomous supervisor behavior.
 - `build-agent/reports/ba-10-validation-suite-latest.*` now reflects the most recent current-focus replay rather than the earlier full BA-10 automated suite run.
+
+### Session
+- Date: 2026-04-08 14:19:02 MST
+- Slice: BA-10-S3 validation-suite selector-context evidence
+- Goal: Make the durable BA-10 validation-suite evidence self-describing by preserving the resolved selector context behind each replay, not just the flattened command list.
+
+### Work Done
+- Extended `job_hunt_copilot.quality_validation` with selector-detail resolution helpers for requested smoke targets, acceptance gaps, build-board blockers, and current focus, then taught the markdown renderer to surface that context in `build-agent/reports/ba-10-validation-suite-latest.md`.
+- Updated `scripts/quality/run_ba10_validation_suite.py` so both dry-run payloads and non-dry-run persisted reports now include the resolved selector context alongside the resolved command plan.
+- Expanded `tests/test_quality_validation.py` so the runner now fails if selector details disappear from dry-run output, from persisted JSON, or from the rendered markdown evidence surface.
+- Replayed the BA-10 validation runner with mixed `--current-focus --smoke-target bootstrap` selectors so the committed latest-run snapshot demonstrates the new context-rich evidence format, then updated `build-agent/state/build-board.yaml`, `build-agent/state/IMPLEMENTATION_PLAN.md`, `build-agent/state/build-journal.md`, and `build-agent/state/codex-progress.txt` to checkpoint the slice while keeping the next functional focus on build-lead downstream-supervisor work.
+
+### Validation
+- Ran `python3.11 -m py_compile job_hunt_copilot/quality_validation.py scripts/quality/run_ba10_validation_suite.py tests/test_quality_validation.py` and confirmed the selector-context changes compile cleanly.
+- Ran `python3.11 -m pytest tests/test_quality_validation.py tests/test_acceptance_traceability.py tests/test_blocker_audit.py` and confirmed all 19 focused BA-10 quality and report-guard tests passed.
+- Ran `python3.11 scripts/quality/run_ba10_validation_suite.py --project-root /Users/achyutaramsonti/Projects/job-hunt-copilot-v4 --dry-run --current-focus --smoke-target bootstrap` and confirmed the resolved payload now includes both current-focus and smoke-target selector details.
+- Ran `python3.11 scripts/quality/run_ba10_validation_suite.py --project-root /Users/achyutaramsonti/Projects/job-hunt-copilot-v4 --current-focus --smoke-target bootstrap` and confirmed the replay passed across supervisor, acceptance-report, smoke-harness, and bootstrap regression commands while writing updated `build-agent/reports/ba-10-validation-suite-latest.json` plus `.md`.
+
+### Result
+- `done`
+
+### Next
+- Keep the next functional burn-down on `BA-10-S4`: a build-lead slice that registers at least one downstream supervisor action beyond `lead_handoff`, then reruns the BA-10 reports to reduce the largest remaining partial acceptance cluster.
+
+### Notes
+- This slice improves validation traceability only; it does not change acceptance counts or close the downstream-supervisor blocker.
+- The latest BA-10 validation-suite snapshot now shows why a replay ran a given command set, which lowers handoff risk for the next lead resuming BA-10 from persisted evidence instead of chat memory.

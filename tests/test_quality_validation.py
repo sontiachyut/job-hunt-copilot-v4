@@ -19,6 +19,7 @@ from job_hunt_copilot.quality_validation import (
     render_ba10_validation_suite_markdown,
     resolve_acceptance_gap_validation_command_ids,
     resolve_current_focus_validation_command_ids,
+    resolve_validation_selector_details,
     write_ba10_validation_suite_reports,
 )
 
@@ -84,6 +85,76 @@ def test_smoke_validation_plan_dedupes_shared_smoke_command_and_preserves_regist
     ]
 
 
+def test_validation_selector_details_include_requested_smoke_gap_blocker_and_current_focus_context():
+    details = resolve_validation_selector_details(
+        REPO_ROOT,
+        smoke_target_ids=["bootstrap", "feedback"],
+        gap_ids=["BA10_SUPERVISOR_DOWNSTREAM_ACTION_CATALOG"],
+        blocker_ids=["BA10-TRACE-001"],
+        include_current_focus=True,
+    )
+
+    assert [target["target_id"] for target in details["smoke_targets"]] == [
+        "bootstrap",
+        "feedback",
+    ]
+    assert details["smoke_targets"][0]["validation_command_ids"] == [
+        "qa_smoke_flow",
+        "qa_bootstrap_regressions",
+    ]
+    assert details["acceptance_gaps"][0] == {
+        "gap_id": "BA10_SUPERVISOR_DOWNSTREAM_ACTION_CATALOG",
+        "title": "Supervisor orchestration still stops at lead handoff",
+        "next_slice": "BA-10-S4",
+        "open_scenario_count": 5,
+        "validation_command_ids": [
+            "qa_supervisor_regressions",
+            "qa_acceptance_reports",
+        ],
+        "validation_suite_command": (
+            "python3.11 scripts/quality/run_ba10_validation_suite.py "
+            "--project-root <repo_root> --gap-id BA10_SUPERVISOR_DOWNSTREAM_ACTION_CATALOG"
+        ),
+    }
+    assert details["build_board_blockers"][0]["blocker_id"] == "BA10-TRACE-001"
+    assert details["build_board_blockers"][0]["validation_command_ids"] == [
+        "qa_acceptance_reports",
+        "qa_smoke_flow",
+        "qa_bootstrap_regressions",
+        "qa_tailoring_regressions",
+        "qa_discovery_regressions",
+        "qa_outreach_regressions",
+        "qa_feedback_regressions",
+        "qa_supervisor_regressions",
+        "qa_runtime_control_regressions",
+        "qa_review_surface_regressions",
+        "qa_runtime_pack_regressions",
+    ]
+    assert details["current_focus"] == {
+        "epic_id": "BA-10",
+        "slice_id": "BA-10-S4",
+        "owner_role": "build-lead",
+        "reason": (
+            "BA-10-S4 now has a dedicated downstream-stage regression target plus "
+            "refreshed traceability and blocker reports, while the matrix still sits "
+            "at 190 implemented / 8 partial / 14 gap scenarios; the next highest-value "
+            "slice remains a build-lead implementation pass on downstream supervisor "
+            "action-catalog steps beyond `lead_handoff`, because that single cluster "
+            "still accounts for the largest remaining acceptance partial set and blocks "
+            "the strongest end-to-end closure."
+        ),
+        "gap_ids": ["BA10_SUPERVISOR_DOWNSTREAM_ACTION_CATALOG"],
+        "validation_command_ids": [
+            "qa_supervisor_regressions",
+            "qa_acceptance_reports",
+        ],
+        "validation_suite_command": (
+            "python3.11 scripts/quality/run_ba10_validation_suite.py "
+            "--project-root <repo_root> --current-focus"
+        ),
+    }
+
+
 def test_gap_validation_command_resolution_follows_open_gap_command_mapping():
     command_ids = resolve_acceptance_gap_validation_command_ids(
         REPO_ROOT, ["BA10_SUPERVISOR_DOWNSTREAM_ACTION_CATALOG"]
@@ -135,6 +206,12 @@ def test_quality_validation_suite_script_dry_run_reports_selected_commands():
         "qa_runtime_pack_regressions",
     ]
     assert payload["requested_smoke_targets"] == []
+    assert payload["selector_details"] == {
+        "smoke_targets": [],
+        "acceptance_gaps": [],
+        "build_board_blockers": [],
+        "current_focus": None,
+    }
 
 
 def test_quality_validation_suite_script_rejects_manual_commands_without_flag():
@@ -184,6 +261,22 @@ def test_quality_validation_suite_script_dry_run_expands_gap_ids():
         "qa_supervisor_regressions",
         "qa_acceptance_reports",
     ]
+    assert payload["selector_details"]["acceptance_gaps"] == [
+        {
+            "gap_id": "BA10_SUPERVISOR_DOWNSTREAM_ACTION_CATALOG",
+            "title": "Supervisor orchestration still stops at lead handoff",
+            "next_slice": "BA-10-S4",
+            "open_scenario_count": 5,
+            "validation_command_ids": [
+                "qa_supervisor_regressions",
+                "qa_acceptance_reports",
+            ],
+            "validation_suite_command": (
+                "python3.11 scripts/quality/run_ba10_validation_suite.py "
+                "--project-root <repo_root> --gap-id BA10_SUPERVISOR_DOWNSTREAM_ACTION_CATALOG"
+            ),
+        }
+    ]
 
 
 def test_quality_validation_suite_script_rejects_manual_blocker_without_flag():
@@ -232,6 +325,29 @@ def test_quality_validation_suite_script_dry_run_expands_current_focus():
         "qa_supervisor_regressions",
         "qa_acceptance_reports",
     ]
+    assert payload["selector_details"]["current_focus"] == {
+        "epic_id": "BA-10",
+        "slice_id": "BA-10-S4",
+        "owner_role": "build-lead",
+        "reason": (
+            "BA-10-S4 now has a dedicated downstream-stage regression target plus "
+            "refreshed traceability and blocker reports, while the matrix still sits "
+            "at 190 implemented / 8 partial / 14 gap scenarios; the next highest-value "
+            "slice remains a build-lead implementation pass on downstream supervisor "
+            "action-catalog steps beyond `lead_handoff`, because that single cluster "
+            "still accounts for the largest remaining acceptance partial set and blocks "
+            "the strongest end-to-end closure."
+        ),
+        "gap_ids": ["BA10_SUPERVISOR_DOWNSTREAM_ACTION_CATALOG"],
+        "validation_command_ids": [
+            "qa_supervisor_regressions",
+            "qa_acceptance_reports",
+        ],
+        "validation_suite_command": (
+            "python3.11 scripts/quality/run_ba10_validation_suite.py "
+            "--project-root <repo_root> --current-focus"
+        ),
+    }
 
 
 def test_quality_validation_suite_script_dry_run_expands_smoke_targets():
@@ -261,6 +377,44 @@ def test_quality_validation_suite_script_dry_run_expands_smoke_targets():
         "qa_bootstrap_regressions",
         "qa_feedback_regressions",
     ]
+    assert payload["selector_details"]["smoke_targets"] == [
+        {
+            "target_id": "bootstrap",
+            "title": "Bootstrap and prerequisites",
+            "acceptance_scenario": "Build smoke test passes",
+            "acceptance_checks": [
+                "the system initializes or migrates `job_hunt_copilot.db`",
+                "the system loads runtime secrets successfully",
+                "the system reads the required files from `assets/`",
+            ],
+            "validation_command_ids": [
+                "qa_smoke_flow",
+                "qa_bootstrap_regressions",
+            ],
+            "test_refs": [
+                "tests/test_smoke_harness.py",
+                "tests/test_bootstrap.py",
+                "tests/test_schema.py",
+            ],
+        },
+        {
+            "target_id": "feedback",
+            "title": "Delayed feedback sync",
+            "acceptance_scenario": "Build smoke test passes",
+            "acceptance_checks": [
+                "the delayed feedback sync logic can run once without crashing",
+            ],
+            "validation_command_ids": [
+                "qa_smoke_flow",
+                "qa_feedback_regressions",
+            ],
+            "test_refs": [
+                "tests/test_smoke_harness.py",
+                "tests/test_delivery_feedback.py",
+                "tests/test_local_runtime.py",
+            ],
+        },
+    ]
 
 
 def test_build_ba10_validation_suite_report_summarizes_results():
@@ -275,6 +429,61 @@ def test_build_ba10_validation_suite_report_summarizes_results():
             "requested_smoke_targets": ["bootstrap"],
             "include_manual": True,
             "skip_report_refresh": False,
+            "selector_details": {
+                "smoke_targets": [
+                    {
+                        "target_id": "bootstrap",
+                        "title": "Bootstrap and prerequisites",
+                        "acceptance_scenario": "Build smoke test passes",
+                        "acceptance_checks": [
+                            "the system initializes or migrates `job_hunt_copilot.db`",
+                            "the system loads runtime secrets successfully",
+                            "the system reads the required files from `assets/`",
+                        ],
+                        "validation_command_ids": [
+                            "qa_smoke_flow",
+                            "qa_bootstrap_regressions",
+                        ],
+                        "test_refs": [
+                            "tests/test_smoke_harness.py",
+                            "tests/test_bootstrap.py",
+                            "tests/test_schema.py",
+                        ],
+                    }
+                ],
+                "acceptance_gaps": [
+                    {
+                        "gap_id": "BA10_SUPERVISOR_DOWNSTREAM_ACTION_CATALOG",
+                        "title": "Supervisor orchestration still stops at lead handoff",
+                        "next_slice": "BA-10-S4",
+                        "open_scenario_count": 5,
+                        "validation_command_ids": [
+                            "qa_supervisor_regressions",
+                            "qa_acceptance_reports",
+                        ],
+                        "validation_suite_command": (
+                            "python3.11 scripts/quality/run_ba10_validation_suite.py "
+                            "--project-root <repo_root> --gap-id BA10_SUPERVISOR_DOWNSTREAM_ACTION_CATALOG"
+                        ),
+                    }
+                ],
+                "build_board_blockers": [],
+                "current_focus": {
+                    "epic_id": "BA-10",
+                    "slice_id": "BA-10-S4",
+                    "owner_role": "build-lead",
+                    "reason": "Focused downstream-supervisor verification remains active.",
+                    "gap_ids": ["BA10_SUPERVISOR_DOWNSTREAM_ACTION_CATALOG"],
+                    "validation_command_ids": [
+                        "qa_supervisor_regressions",
+                        "qa_acceptance_reports",
+                    ],
+                    "validation_suite_command": (
+                        "python3.11 scripts/quality/run_ba10_validation_suite.py "
+                        "--project-root <repo_root> --current-focus"
+                    ),
+                },
+            },
             "commands": [
                 {
                     "command_id": "qa_smoke_flow",
@@ -321,6 +530,12 @@ def test_build_ba10_validation_suite_report_summarizes_results():
     assert "- Command ids: `qa_smoke_flow`" in markdown
     assert "- Acceptance gaps: `BA10_SUPERVISOR_DOWNSTREAM_ACTION_CATALOG`" in markdown
     assert "- Failed command ids: `qa_host_launchd_validation`" in markdown
+    assert "## Selector Details" in markdown
+    assert "### Smoke Targets" in markdown
+    assert "### Acceptance Gaps" in markdown
+    assert "### Current Focus" in markdown
+    assert "- `bootstrap`: Bootstrap and prerequisites" in markdown
+    assert "- `BA10_SUPERVISOR_DOWNSTREAM_ACTION_CATALOG`: Supervisor orchestration still stops at lead handoff" in markdown
     assert "| qa_smoke_flow | automated | passed | 0 | 1.250 |" in markdown
     assert "### qa_host_launchd_validation: Host launchd validation" in markdown
 
@@ -347,6 +562,45 @@ def test_write_ba10_validation_suite_reports_persists_json_and_markdown(tmp_path
             "requested_smoke_targets": ["feedback"],
             "include_manual": False,
             "skip_report_refresh": False,
+            "selector_details": {
+                "smoke_targets": [
+                    {
+                        "target_id": "feedback",
+                        "title": "Delayed feedback sync",
+                        "acceptance_scenario": "Build smoke test passes",
+                        "acceptance_checks": [
+                            "the delayed feedback sync logic can run once without crashing",
+                        ],
+                        "validation_command_ids": [
+                            "qa_smoke_flow",
+                            "qa_feedback_regressions",
+                        ],
+                        "test_refs": [
+                            "tests/test_smoke_harness.py",
+                            "tests/test_delivery_feedback.py",
+                            "tests/test_local_runtime.py",
+                        ],
+                    }
+                ],
+                "acceptance_gaps": [],
+                "build_board_blockers": [
+                    {
+                        "blocker_id": "OPS-LAUNCHD-001",
+                        "status": "open",
+                        "owner_role": "build-lead",
+                        "summary": "Host launchd validation is still pending outside the sandbox.",
+                        "validation_command_ids": [
+                            "qa_runtime_control_regressions",
+                            "qa_host_launchd_validation",
+                        ],
+                        "validation_suite_command": (
+                            "python3.11 scripts/quality/run_ba10_validation_suite.py "
+                            "--project-root <repo_root> --blocker-id OPS-LAUNCHD-001 --include-manual"
+                        ),
+                    }
+                ],
+                "current_focus": None,
+            },
             "commands": [
                 {
                     "command_id": "qa_feedback_regressions",
@@ -375,6 +629,7 @@ def test_write_ba10_validation_suite_reports_persists_json_and_markdown(tmp_path
 
     markdown = md_path.read_text(encoding="utf-8")
     assert "## Refreshed Reports" in markdown
+    assert "### Build-Board Blockers" in markdown
     assert "- Build-board blockers: `OPS-LAUNCHD-001`" in markdown
     assert "- Smoke targets: `feedback`" in markdown
     assert "### qa_feedback_regressions: Delivery feedback regressions" in markdown

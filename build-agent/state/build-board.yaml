@@ -932,6 +932,7 @@ epics:
           - Refined `job_hunt_copilot.acceptance_traceability` plus `job_hunt_copilot.blocker_audit` so the committed BA-10 reports now publish a machine-checked implemented-slice catalog from `build-agent/state/build-board.yaml`, and each rule, scenario, gap cluster, and epic validation note carries supporting slice ids instead of stopping at epic-level traceability.
           - Refined `job_hunt_copilot.blocker_audit`, `job_hunt_copilot.quality_validation`, and `scripts/quality/run_ba10_validation_suite.py` so each open acceptance-gap cluster, build-board blocker, and current focus slice now exposes one canonical validation-suite invocation, and the runner can resolve `--gap-id`, `--blocker-id`, and `--current-focus` plans directly instead of rebuilding those command sets by hand.
           - Extended `job_hunt_copilot.quality_validation` plus `scripts/quality/run_ba10_validation_suite.py` so each non-dry-run BA-10 validation pass now writes durable `build-agent/reports/ba-10-validation-suite-latest.json` and `.md` evidence artifacts instead of leaving results only in terminal output.
+          - Extended `job_hunt_copilot.quality_validation` plus `scripts/quality/run_ba10_validation_suite.py` again so dry-run payloads and durable latest-run evidence now preserve the resolved smoke-target, acceptance-gap, build-board-blocker, and current-focus selector context rather than only the flattened command list.
           - Updated the repo-facing BA-10 report surfaces so `README.md`, `docs/ARCHITECTURE.md`, and `build-agent/reports/README.md` now point reviewers at the latest validation-suite snapshot alongside the acceptance trace matrix and blocker audit.
         validation:
           - "`python3.11 -m py_compile job_hunt_copilot/local_runtime.py job_hunt_copilot/acceptance_traceability.py job_hunt_copilot/runtime_pack.py job_hunt_copilot/paths.py scripts/ops/materialize_feedback_sync_plist.py scripts/ops/run_feedback_sync.py tests/test_local_runtime.py`"
@@ -961,6 +962,8 @@ epics:
           - "`python3.11 -m py_compile job_hunt_copilot/quality_validation.py scripts/quality/run_ba10_validation_suite.py tests/test_quality_validation.py`"
           - "`python3.11 -m pytest tests/test_quality_validation.py tests/test_blocker_audit.py tests/test_acceptance_traceability.py`"
           - "`python3.11 scripts/quality/run_ba10_validation_suite.py --project-root /Users/achyutaramsonti/Projects/job-hunt-copilot-v4`"
+          - "`python3.11 scripts/quality/run_ba10_validation_suite.py --project-root /Users/achyutaramsonti/Projects/job-hunt-copilot-v4 --dry-run --current-focus --smoke-target bootstrap`"
+          - "`python3.11 scripts/quality/run_ba10_validation_suite.py --project-root /Users/achyutaramsonti/Projects/job-hunt-copilot-v4 --current-focus --smoke-target bootstrap`"
         remaining_scope:
           - downstream supervisor action-catalog orchestration beyond `lead_handoff`
           - chat review/control behavior and idle-timeout resume
@@ -982,10 +985,12 @@ epics:
           - "`job_hunt_copilot.blocker_audit` now routes `qa_supervisor_regressions` to that focused downstream file, and the regenerated BA-10 acceptance-trace plus blocker-audit reports cite the dedicated evidence explicitly instead of pointing only at the broad supervisor suite."
           - "The downstream-supervisor gap reports now carry a machine-readable implementation snapshot listing the only registered role-targeted checkpoint stage (`lead_handoff`), the validated blocked downstream stages (`agent_review`, `people_search`, `email_discovery`, `sending`, `delivery_feedback`), and the still-missing contact-rooted general-learning path."
           - "The BA-10 blocker audit and validation runner now expose canonical `--current-focus`, `--gap-id`, and `--blocker-id` invocations, so the open downstream-supervisor focus can be revalidated from one stable entrypoint without reconstructing command plans manually."
+          - "The latest `build-agent/reports/ba-10-validation-suite-latest.*` snapshot now also records the resolved selector context for mixed `--current-focus` plus `--smoke-target` replays, so downstream-supervisor evidence shows why each validation command was included instead of only listing the executed commands."
           - The blocker remains open honestly: no downstream supervisor action beyond `lead_handoff` has been registered yet, so the next slice is still a build-lead implementation pass rather than another reporting-only refresh.
         validation:
           - "`python3.11 scripts/quality/run_ba10_validation_suite.py --project-root /Users/achyutaramsonti/Projects/job-hunt-copilot-v4 --current-focus`"
           - "`python3.11 -m pytest tests/test_quality_validation.py`"
+          - "`python3.11 scripts/quality/run_ba10_validation_suite.py --project-root /Users/achyutaramsonti/Projects/job-hunt-copilot-v4 --current-focus --smoke-target bootstrap`"
 
 current_focus:
   epic_id: BA-10

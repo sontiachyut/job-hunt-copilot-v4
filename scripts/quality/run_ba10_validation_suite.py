@@ -22,6 +22,7 @@ from job_hunt_copilot.quality_validation import (
     resolve_acceptance_gap_validation_command_ids,
     resolve_build_board_blocker_validation_command_ids,
     resolve_current_focus_validation_command_ids,
+    resolve_validation_selector_details,
     write_ba10_validation_suite_reports,
 )
 
@@ -106,6 +107,13 @@ def main() -> int:
             resolved_command_ids or None,
             include_manual=args.include_manual,
         )
+        selector_details = resolve_validation_selector_details(
+            project_root,
+            smoke_target_ids=args.smoke_target_ids,
+            gap_ids=args.gap_ids,
+            blocker_ids=args.blocker_ids,
+            include_current_focus=args.current_focus,
+        )
     except ValueError as exc:
         print(str(exc), file=sys.stderr)
         return 2
@@ -121,6 +129,7 @@ def main() -> int:
             "requested_smoke_targets": list(args.smoke_target_ids),
             "include_manual": args.include_manual,
             "skip_report_refresh": args.skip_report_refresh,
+            "selector_details": selector_details,
             "commands": [command.as_dict() for command in plan],
         }
         print(json.dumps(payload, indent=2))
@@ -165,6 +174,7 @@ def main() -> int:
         "requested_smoke_targets": list(args.smoke_target_ids),
         "include_manual": args.include_manual,
         "skip_report_refresh": args.skip_report_refresh,
+        "selector_details": selector_details,
         "commands": results,
         "failed_command_ids": failed_command_ids,
         "passed": not failed_command_ids,
