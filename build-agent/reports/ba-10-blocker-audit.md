@@ -11,7 +11,7 @@
 - Epic: `BA-10`
 - Slice: `BA-10-S4`
 - Owner role: `build-lead`
-- Reason: BA-10-S3 now has a committed blocker audit and fresh validation evidence, while the matrix still sits at 190 implemented / 8 partial / 14 gap scenarios; the next highest-value slice is a build-lead implementation pass on downstream supervisor action-catalog steps beyond `lead_handoff`, because that single cluster accounts for the largest remaining acceptance partial set and blocks the strongest end-to-end closure.
+- Reason: BA-10-S4 now has a dedicated downstream-stage regression target plus refreshed traceability and blocker reports, while the matrix still sits at 190 implemented / 8 partial / 14 gap scenarios; the next highest-value slice remains a build-lead implementation pass on downstream supervisor action-catalog steps beyond `lead_handoff`, because that single cluster still accounts for the largest remaining acceptance partial set and blocks the strongest end-to-end closure.
 
 ## Acceptance Gap Clusters
 
@@ -22,11 +22,11 @@
 - Epics: `BA-02`, `BA-03`, `BA-06`, `BA-07`, `BA-08`, `BA-09`, `BA-10`
 - Open scenarios: `5` (`partial`: `5`, `gap`: `0`)
 - Reason: The durable heartbeat, selector ordering, and retry-safe run persistence exist, but the registered action catalog still only advances autonomous work through `lead_handoff`; later stages reselect the same durable run and escalate instead of executing.
-- Evidence summary: Selector ordering, durable run reuse, and unsupported-stage escalation are covered, but later-stage autonomous actions remain unregistered.
+- Evidence summary: Focused downstream-stage regressions prove `lead_handoff` is the only registered checkpoint, later stages escalate with durable run and review-packet retention, and retries reuse the same run instead of restarting.
 - Evidence code refs: `job_hunt_copilot/supervisor.py`, `job_hunt_copilot/local_runtime.py`, `job_hunt_copilot/runtime_pack.py`
-- Evidence test refs: `tests/test_supervisor.py`, `tests/test_acceptance_traceability.py`
+- Evidence test refs: `tests/test_supervisor_downstream_actions.py`, `tests/test_blocker_audit.py`, `tests/test_acceptance_traceability.py`
 - Confirmation commands:
-  - `python3.11 -m pytest tests/test_supervisor.py` (automated: Confirms durable run reuse, unsupported-stage escalation, and retry-safe review-packet behavior.)
+  - `python3.11 -m pytest tests/test_supervisor_downstream_actions.py` (automated: Confirms `lead_handoff` remains the only registered checkpoint, later stages escalate explicitly, and retries preserve the same durable run plus pending review packet.)
   - `python3.11 -m pytest tests/test_acceptance_traceability.py tests/test_blocker_audit.py` (automated: Keeps the committed BA-10 acceptance and blocker reports synchronized with repo code, tests, and state references.)
 - Open scenarios:
   - `[partial]` Supervisor work selection follows the current default priority order
@@ -124,11 +124,11 @@
 - Summary: The regenerated BA-10 trace matrix now reports 190 implemented / 8 partial / 14 gap scenarios; the remaining downstream-supervisor, chat, maintenance, and posting-abandon gaps now each carry explicit evidence refs and reproducible blocker notes, but the missing current-build behaviors themselves remain open.
 - Impact: Acceptance signoff is more credible now that committed smoke coverage, blocker-specific evidence refs, and explicit negative regressions exist, but BA-10 still cannot close until the remaining gap clusters are actually burned down or deliberately left open.
 - Next action: Hand the next functional slice to the build-lead: downstream action-catalog burn-down beyond `lead_handoff` or a posting-abandon control implementation. Maintenance automation remains an explicit follow-up gap after those runtime-control surfaces.
-- Evidence refs: `build-agent/reports/ba-10-acceptance-trace-matrix.json`, `build-agent/reports/ba-10-acceptance-trace-matrix.md`, `build-agent/reports/ba-10-blocker-audit.json`, `build-agent/reports/ba-10-blocker-audit.md`, `job_hunt_copilot/quality_validation.py`, `scripts/quality/generate_blocker_audit.py`, `scripts/quality/run_ba10_validation_suite.py`, `scripts/ops/control_agent.py`, `tests/test_acceptance_traceability.py`, `tests/test_blocker_audit.py`, `tests/test_local_runtime.py`, `tests/test_quality_validation.py`, `tests/test_delivery_feedback.py`, `tests/test_schema.py`, `tests/test_smoke_harness.py`, `tests/test_supervisor.py`, `tests/test_runtime_pack.py`, `tests/test_resume_tailoring.py`, `tests/test_outreach.py`, `tests/test_review_queries.py`
+- Evidence refs: `build-agent/reports/ba-10-acceptance-trace-matrix.json`, `build-agent/reports/ba-10-acceptance-trace-matrix.md`, `build-agent/reports/ba-10-blocker-audit.json`, `build-agent/reports/ba-10-blocker-audit.md`, `job_hunt_copilot/quality_validation.py`, `scripts/quality/generate_blocker_audit.py`, `scripts/quality/run_ba10_validation_suite.py`, `scripts/ops/control_agent.py`, `tests/test_acceptance_traceability.py`, `tests/test_blocker_audit.py`, `tests/test_local_runtime.py`, `tests/test_quality_validation.py`, `tests/test_supervisor_downstream_actions.py`, `tests/test_delivery_feedback.py`, `tests/test_schema.py`, `tests/test_smoke_harness.py`, `tests/test_supervisor.py`, `tests/test_runtime_pack.py`, `tests/test_resume_tailoring.py`, `tests/test_outreach.py`, `tests/test_review_queries.py`
 - Confirmation commands:
   - `python3.11 -m pytest tests/test_acceptance_traceability.py tests/test_blocker_audit.py` (automated: Keeps the committed BA-10 acceptance and blocker reports synchronized with repo code, tests, and state references.)
   - `python3.11 -m pytest tests/test_smoke_harness.py` (automated: Replays the committed bootstrap -> tailoring -> discovery -> send -> feedback -> review-query smoke path.)
-  - `python3.11 -m pytest tests/test_supervisor.py` (automated: Confirms durable run reuse, unsupported-stage escalation, and retry-safe review-packet behavior.)
+  - `python3.11 -m pytest tests/test_supervisor_downstream_actions.py` (automated: Confirms `lead_handoff` remains the only registered checkpoint, later stages escalate explicitly, and retries preserve the same durable run plus pending review packet.)
   - `python3.11 -m pytest tests/test_local_runtime.py` (automated: Covers launchd plist wiring, control commands, chat lifecycle state, delayed feedback runners, and explicit negative control cases.)
   - `python3.11 -m pytest tests/test_review_queries.py` (automated: Verifies persisted grouped review surfaces and traceability reads that back the chat/review boundary.)
   - `python3.11 -m pytest tests/test_runtime_pack.py` (automated: Confirms generated runtime scaffolding stays honest about current action-catalog and maintenance placeholder status.)

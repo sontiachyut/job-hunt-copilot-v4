@@ -36,10 +36,10 @@ VALIDATION_COMMANDS: dict[str, dict[str, str]] = {
         "description": "Replays the committed bootstrap -> tailoring -> discovery -> send -> feedback -> review-query smoke path.",
     },
     "qa_supervisor_regressions": {
-        "title": "Supervisor hardening regressions",
+        "title": "Supervisor downstream hardening regressions",
         "kind": "automated",
-        "command": "python3.11 -m pytest tests/test_supervisor.py",
-        "description": "Confirms durable run reuse, unsupported-stage escalation, and retry-safe review-packet behavior.",
+        "command": "python3.11 -m pytest tests/test_supervisor_downstream_actions.py",
+        "description": "Confirms `lead_handoff` remains the only registered checkpoint, later stages escalate explicitly, and retries preserve the same durable run plus pending review packet.",
     },
     "qa_runtime_control_regressions": {
         "title": "Runtime control regressions",

@@ -34,9 +34,9 @@
 ### BA10_SUPERVISOR_DOWNSTREAM_ACTION_CATALOG: Supervisor orchestration still stops at lead handoff
 - Next slice: `BA-10-S4`
 - Reason: The durable heartbeat, selector ordering, and retry-safe run persistence exist, but the registered action catalog still only advances autonomous work through `lead_handoff`; later stages reselect the same durable run and escalate instead of executing.
-- Evidence summary: Selector ordering, durable run reuse, and unsupported-stage escalation are covered, but later-stage autonomous actions remain unregistered.
+- Evidence summary: Focused downstream-stage regressions prove `lead_handoff` is the only registered checkpoint, later stages escalate with durable run and review-packet retention, and retries reuse the same run instead of restarting.
 - Evidence code refs: `job_hunt_copilot/supervisor.py`, `job_hunt_copilot/local_runtime.py`, `job_hunt_copilot/runtime_pack.py`
-- Evidence test refs: `tests/test_supervisor.py`, `tests/test_acceptance_traceability.py`
+- Evidence test refs: `tests/test_supervisor_downstream_actions.py`, `tests/test_blocker_audit.py`, `tests/test_acceptance_traceability.py`
 - Scenarios: `5`
   - Supervisor work selection follows the current default priority order
   - Role-targeted orchestration follows the current dependency order
@@ -186,6 +186,7 @@
 - Primary tests:
   - `tests/test_acceptance_traceability.py`
   - `tests/test_blocker_audit.py`
+  - `tests/test_supervisor_downstream_actions.py`
   - `tests/test_smoke_harness.py`
 - BA-10 smoke targets:
   - feature-to-code coverage honesty

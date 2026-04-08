@@ -1154,3 +1154,29 @@ Use this file as an append-only implementation log for the build agent.
 ### Notes
 - This slice intentionally fixed report honesty and added a regression guard without claiming any new product behavior beyond `lead_handoff`.
 - The BA-10 reports now agree that the downstream-supervisor cluster's next slice is `BA-10-S4`, which matches the persisted board focus and the blocker audit's build-lead handoff.
+
+### Session
+- Date: 2026-04-08 12:17:05 MST
+- Slice: BA-10-S4 downstream supervisor validation-target hardening
+- Goal: Tighten the open downstream-supervisor blocker into one focused, reproducible QA target so BA-10 evidence and validation commands point at explicit stage-boundary behavior instead of the entire supervisor suite.
+
+### Work Done
+- Added `tests/test_supervisor_downstream_actions.py`, isolating the current `lead_handoff` checkpoint boundary, unsupported downstream-stage escalation across `agent_review`, `people_search`, `email_discovery`, `sending`, and `delivery_feedback`, and retry-safe reuse of the same durable run plus pending review packet.
+- Narrowed `job_hunt_copilot.blocker_audit` so `qa_supervisor_regressions` now runs that dedicated downstream file instead of the full `tests/test_supervisor.py` suite, which keeps the BA-10 blocker confirmation command aligned with the actual open gap.
+- Updated `job_hunt_copilot.acceptance_traceability` so the downstream-supervisor gap registry, affected rule blueprints, and BA-10 validation notes now reference the dedicated regression target and explain that this slice sharpened evidence rather than implementing a new supervisor action.
+- Regenerated the committed `build-agent/reports/ba-10-acceptance-trace-matrix.json` plus `.md` and `build-agent/reports/ba-10-blocker-audit.json` plus `.md` outputs so the refreshed BA-10 reports cite the focused downstream evidence explicitly.
+- Updated `build-agent/state/build-board.yaml`, `build-agent/state/IMPLEMENTATION_PLAN.md`, `build-agent/state/build-journal.md`, and `build-agent/state/codex-progress.txt` so the checkpoint records this as quality-owned BA-10-S4 support work while leaving the next functional slice on build-lead action registration beyond `lead_handoff`.
+
+### Validation
+- Ran `python3.11 scripts/quality/run_ba10_validation_suite.py --project-root /Users/achyutaramsonti/Projects/job-hunt-copilot-v4 --command-id qa_supervisor_regressions --command-id qa_acceptance_reports` and confirmed the focused downstream-supervisor regressions plus refreshed acceptance-report guards all passed.
+- Ran `python3.11 -m pytest tests/test_quality_validation.py` and confirmed all 5 quality-validation runner tests passed with the narrowed supervisor command registry.
+
+### Result
+- `done`
+
+### Next
+- Keep the next functional burn-down on `BA-10-S4`: a build-lead slice that registers at least one downstream supervisor action beyond `lead_handoff`, then reruns the BA-10 reports to measure how much of the largest remaining partial cluster closes.
+
+### Notes
+- This slice intentionally did not claim new autonomous behavior beyond `lead_handoff`; it made the remaining downstream-supervisor blocker easier to reproduce, validate, and review.
+- The acceptance matrix remains at 190 implemented, 8 partial, 14 gap, 1 deferred-optional, and 1 excluded-from-required-acceptance scenarios after the evidence refresh.

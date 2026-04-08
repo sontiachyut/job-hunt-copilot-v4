@@ -1,7 +1,7 @@
 project: job-hunt-copilot-v4
 board_version: 2
 last_reset_note: Initial seeded build board created from the finalized PRD and acceptance spec.
-last_planning_update: 2026-04-07
+last_planning_update: 2026-04-08
 
 global_status:
   current_build_goal: Implement the current-build PRD and acceptance spec in this repository with bounded, validated slices.
@@ -951,19 +951,26 @@ epics:
       - id: BA-10-S4
         name: Downstream supervisor action-catalog burn-down
         owner_role: build-lead
-        status: pending
+        status: in_progress
         dependencies:
           - BA-10-S3
         deliverables:
           - bounded supervisor action registration beyond `lead_handoff` for the current role-targeted flow
           - durable stage progression that reduces the downstream-supervisor partial cluster in the acceptance matrix
           - updated supervisor or smoke regressions proving end-to-end stage advancement instead of unsupported-stage escalation for the newly implemented boundaries
+        progress_notes:
+          - Quality-engineer support work added `tests/test_supervisor_downstream_actions.py`, which isolates the current `lead_handoff` checkpoint boundary, later-stage unsupported-action escalation, and retry-safe reuse of the same durable run plus pending review packet.
+          - "`job_hunt_copilot.blocker_audit` now routes `qa_supervisor_regressions` to that focused downstream file, and the regenerated BA-10 acceptance-trace plus blocker-audit reports cite the dedicated evidence explicitly instead of pointing only at the broad supervisor suite."
+          - The blocker remains open honestly: no downstream supervisor action beyond `lead_handoff` has been registered yet, so the next slice is still a build-lead implementation pass rather than another reporting-only refresh.
+        validation:
+          - "`python3.11 scripts/quality/run_ba10_validation_suite.py --project-root /Users/achyutaramsonti/Projects/job-hunt-copilot-v4 --command-id qa_supervisor_regressions --command-id qa_acceptance_reports`"
+          - "`python3.11 -m pytest tests/test_quality_validation.py`"
 
 current_focus:
   epic_id: BA-10
   slice_id: BA-10-S4
   owner_role: build-lead
-  reason: BA-10-S3 now has a committed blocker audit and fresh validation evidence, while the matrix still sits at 190 implemented / 8 partial / 14 gap scenarios; the next highest-value slice is a build-lead implementation pass on downstream supervisor action-catalog steps beyond `lead_handoff`, because that single cluster accounts for the largest remaining acceptance partial set and blocks the strongest end-to-end closure.
+  reason: BA-10-S4 now has a dedicated downstream-stage regression target plus refreshed traceability and blocker reports, while the matrix still sits at 190 implemented / 8 partial / 14 gap scenarios; the next highest-value slice remains a build-lead implementation pass on downstream supervisor action-catalog steps beyond `lead_handoff`, because that single cluster still accounts for the largest remaining acceptance partial set and blocks the strongest end-to-end closure.
   exit_criteria:
     - supervisor action-catalog coverage advances at least one bounded downstream stage beyond `lead_handoff` without breaking durable run or review-packet semantics
     - targeted supervisor and smoke regressions prove the new stage advancement or honestly retain the remaining blocker with fresh evidence
@@ -996,6 +1003,7 @@ known_blockers:
       - tests/test_blocker_audit.py
       - tests/test_local_runtime.py
       - tests/test_quality_validation.py
+      - tests/test_supervisor_downstream_actions.py
       - tests/test_delivery_feedback.py
       - tests/test_schema.py
       - tests/test_smoke_harness.py

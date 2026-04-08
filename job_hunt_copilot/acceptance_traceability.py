@@ -78,14 +78,15 @@ GAP_REGISTRY: dict[str, dict[str, Any]] = {
         title="Supervisor orchestration still stops at lead handoff",
         reason="The durable heartbeat, selector ordering, and retry-safe run persistence exist, but the registered action catalog still only advances autonomous work through `lead_handoff`; later stages reselect the same durable run and escalate instead of executing.",
         next_slice="BA-10-S4",
-        evidence_summary="Selector ordering, durable run reuse, and unsupported-stage escalation are covered, but later-stage autonomous actions remain unregistered.",
+        evidence_summary="Focused downstream-stage regressions prove `lead_handoff` is the only registered checkpoint, later stages escalate with durable run and review-packet retention, and retries reuse the same run instead of restarting.",
         evidence_code_refs=(
             "job_hunt_copilot/supervisor.py",
             "job_hunt_copilot/local_runtime.py",
             "job_hunt_copilot/runtime_pack.py",
         ),
         evidence_test_refs=(
-            "tests/test_supervisor.py",
+            "tests/test_supervisor_downstream_actions.py",
+            "tests/test_blocker_audit.py",
             "tests/test_acceptance_traceability.py",
         ),
     ),
@@ -283,6 +284,7 @@ RULE_BLUEPRINTS: dict[str, RuleBlueprint] = {
             "job_hunt_copilot/delivery_feedback.py",
         ),
         test_refs=(
+            "tests/test_supervisor_downstream_actions.py",
             "tests/test_supervisor.py",
             "tests/test_linkedin_scraping.py",
             "tests/test_gmail_alerts.py",
@@ -349,6 +351,7 @@ RULE_BLUEPRINTS: dict[str, RuleBlueprint] = {
             "bin/jhc-chat",
         ),
         test_refs=(
+            "tests/test_supervisor_downstream_actions.py",
             "tests/test_supervisor.py",
             "tests/test_local_runtime.py",
             "tests/test_runtime_pack.py",
@@ -385,6 +388,7 @@ RULE_BLUEPRINTS: dict[str, RuleBlueprint] = {
             "tests/test_email_discovery.py",
             "tests/test_outreach.py",
             "tests/test_delivery_feedback.py",
+            "tests/test_supervisor_downstream_actions.py",
             "tests/test_supervisor.py",
         ),
         note="Component-level state gates and sequencing exist, but the autonomous heartbeat does not yet walk the full downstream pipeline.",
@@ -418,6 +422,7 @@ RULE_BLUEPRINTS: dict[str, RuleBlueprint] = {
             "tests/test_email_discovery.py",
             "tests/test_outreach.py",
             "tests/test_delivery_feedback.py",
+            "tests/test_supervisor_downstream_actions.py",
             "tests/test_supervisor.py",
             "tests/test_smoke_harness.py",
         ),
@@ -565,6 +570,7 @@ EPIC_VALIDATION_NOTES: list[dict[str, Any]] = [
         "primary_tests": [
             "tests/test_acceptance_traceability.py",
             "tests/test_blocker_audit.py",
+            "tests/test_supervisor_downstream_actions.py",
             "tests/test_smoke_harness.py",
         ],
         "ba10_smoke_targets": [
@@ -654,13 +660,13 @@ _register_override(
     ),
     status=STATUS_PARTIAL,
     gap_ids=("BA10_SUPERVISOR_DOWNSTREAM_ACTION_CATALOG",),
-    note="The downstream components and stage-boundary artifacts exist, but the autonomous supervisor still stops at `lead_handoff` and escalates later stages instead of executing the full dependency chain.",
+    note="The downstream components and stage-boundary artifacts exist, and `tests/test_supervisor_downstream_actions.py` now proves the current heartbeat still stops at `lead_handoff` and escalates later stages instead of executing the full dependency chain.",
 )
 _register_override(
     scenarios=("End-to-end retry resumes from the last successful stage boundary",),
     status=STATUS_PARTIAL,
     gap_ids=("BA10_SUPERVISOR_DOWNSTREAM_ACTION_CATALOG",),
-    note="Focused supervisor regressions now prove downstream retries keep the same `pipeline_run_id`, blocked stage, and pending review packet instead of restarting from `lead_handoff`, but the later-stage autonomous actions are still not registered.",
+    note="`tests/test_supervisor_downstream_actions.py` now proves downstream retries keep the same `pipeline_run_id`, blocked stage, and pending review packet instead of restarting from `lead_handoff`, but the later-stage autonomous actions are still not registered.",
 )
 _register_override(
     scenarios=("General learning outreach bypasses the role-targeted agent-review requirement",),
