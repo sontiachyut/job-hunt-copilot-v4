@@ -25,7 +25,7 @@
       "epic_id": "BA-10",
       "slice_id": "BA-10-S4",
       "owner_role": "build-lead",
-      "reason": "BA-10-S4 now has working `lead_handoff -> agent_review -> people_search -> email_discovery|sending` supervisor progression plus refreshed traceability and blocker reports, while the matrix still sits at 191 implemented / 7 partial / 14 gap scenarios; the next highest-value slice remains a build-lead implementation pass on downstream supervisor action-catalog steps beyond `people_search`, because that same cluster still blocks full role-targeted orchestration and contact-rooted general-learning selection.",
+      "reason": "BA-10-S4 now has working `lead_handoff -> agent_review -> people_search -> email_discovery -> sending` supervisor progression plus refreshed traceability and blocker reports, while the matrix still sits at 191 implemented / 7 partial / 14 gap scenarios; the next highest-value slice remains a build-lead implementation pass on downstream supervisor action-catalog steps beyond `email_discovery`, because that same cluster still blocks full role-targeted orchestration and contact-rooted general-learning selection.",
       "gap_ids": [
         "BA10_SUPERVISOR_DOWNSTREAM_ACTION_CATALOG"
       ],
@@ -42,10 +42,10 @@
       "title": "Supervisor downstream hardening regressions",
       "kind": "automated",
       "command": "python3.11 -m pytest tests/test_supervisor_downstream_actions.py",
-      "description": "Confirms `lead_handoff` advances into `agent_review`, bounded mandatory review advances into `people_search`, bounded people search advances into `email_discovery`, later stages still escalate explicitly, and retries preserve the same durable run plus pending review packet.",
+      "description": "Confirms `lead_handoff` advances into `agent_review`, bounded mandatory review advances into `people_search`, bounded people search advances into `email_discovery`, bounded email discovery advances into `sending`, later stages still escalate explicitly, and retries preserve the same durable run plus pending review packet.",
       "status": "passed",
       "returncode": 0,
-      "duration_seconds": 0.704
+      "duration_seconds": 2.772
     },
     {
       "command_id": "qa_acceptance_reports",
@@ -55,13 +55,13 @@
       "description": "Keeps the committed BA-10 acceptance and blocker reports synchronized with repo code, tests, and state references.",
       "status": "passed",
       "returncode": 0,
-      "duration_seconds": 0.309
+      "duration_seconds": 0.325
     }
   ],
   "failed_command_ids": [],
   "passed": true,
   "validation_suite_report_version": 2,
-  "generated_at": "2026-04-08T22:54:26Z",
+  "generated_at": "2026-04-08T23:14:42Z",
   "summary": {
     "command_count": 2,
     "command_kind_counts": {
@@ -69,7 +69,7 @@
     },
     "passed_command_count": 2,
     "failed_command_count": 0,
-    "total_duration_seconds": 1.013
+    "total_duration_seconds": 3.097
   },
   "repo_status": {
     "acceptance_scenario_count": 214,

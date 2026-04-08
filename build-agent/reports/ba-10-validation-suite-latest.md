@@ -1,12 +1,12 @@
 # BA-10 Validation Suite Report
 
-- Generated at: `2026-04-08T22:54:26Z`
+- Generated at: `2026-04-08T23:14:42Z`
 - Project root: `/Users/achyutaramsonti/Projects/job-hunt-copilot-v4`
 - Passed: `True`
 - Command count: `2`
 - Passed commands: `2`
 - Failed commands: `0`
-- Total duration seconds: `1.013`
+- Total duration seconds: `3.097`
 - Requested command ids: none
 - Requested smoke targets: none
 - Requested acceptance gaps: none
@@ -44,7 +44,7 @@
 - Epic: `BA-10`
 - Slice: `BA-10-S4`
 - Owner role: `build-lead`
-- Reason: BA-10-S4 now has working `lead_handoff -> agent_review -> people_search -> email_discovery|sending` supervisor progression plus refreshed traceability and blocker reports, while the matrix still sits at 191 implemented / 7 partial / 14 gap scenarios; the next highest-value slice remains a build-lead implementation pass on downstream supervisor action-catalog steps beyond `people_search`, because that same cluster still blocks full role-targeted orchestration and contact-rooted general-learning selection.
+- Reason: BA-10-S4 now has working `lead_handoff -> agent_review -> people_search -> email_discovery -> sending` supervisor progression plus refreshed traceability and blocker reports, while the matrix still sits at 191 implemented / 7 partial / 14 gap scenarios; the next highest-value slice remains a build-lead implementation pass on downstream supervisor action-catalog steps beyond `email_discovery`, because that same cluster still blocks full role-targeted orchestration and contact-rooted general-learning selection.
 - Gap ids: `BA10_SUPERVISOR_DOWNSTREAM_ACTION_CATALOG`
 - Validation command ids: `qa_supervisor_regressions`, `qa_acceptance_reports`
 - Validation suite: `python3.11 scripts/quality/run_ba10_validation_suite.py --project-root <repo_root> --current-focus`
@@ -53,8 +53,8 @@
 
 | Command | Kind | Status | Returncode | Duration (s) |
 | --- | --- | --- | ---: | ---: |
-| qa_supervisor_regressions | automated | passed | 0 | 0.704 |
-| qa_acceptance_reports | automated | passed | 0 | 0.309 |
+| qa_supervisor_regressions | automated | passed | 0 | 2.772 |
+| qa_acceptance_reports | automated | passed | 0 | 0.325 |
 
 ## Command Details
 
@@ -62,14 +62,14 @@
 - Kind: `automated`
 - Status: `passed`
 - Returncode: `0`
-- Duration seconds: `0.704`
+- Duration seconds: `2.772`
 - Command: `python3.11 -m pytest tests/test_supervisor_downstream_actions.py`
-- Description: Confirms `lead_handoff` advances into `agent_review`, bounded mandatory review advances into `people_search`, bounded people search advances into `email_discovery`, later stages still escalate explicitly, and retries preserve the same durable run plus pending review packet.
+- Description: Confirms `lead_handoff` advances into `agent_review`, bounded mandatory review advances into `people_search`, bounded people search advances into `email_discovery`, bounded email discovery advances into `sending`, later stages still escalate explicitly, and retries preserve the same durable run plus pending review packet.
 
 ### qa_acceptance_reports: Acceptance report guards
 - Kind: `automated`
 - Status: `passed`
 - Returncode: `0`
-- Duration seconds: `0.309`
+- Duration seconds: `0.325`
 - Command: `python3.11 -m pytest tests/test_acceptance_traceability.py tests/test_blocker_audit.py`
 - Description: Keeps the committed BA-10 acceptance and blocker reports synchronized with repo code, tests, and state references.

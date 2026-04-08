@@ -145,6 +145,7 @@ ACTION_BOOTSTRAP_ROLE_TARGETED_RUN: Final = "bootstrap_role_targeted_run"
 ACTION_CHECKPOINT_PIPELINE_RUN: Final = "checkpoint_pipeline_run"
 ACTION_PERFORM_MANDATORY_AGENT_REVIEW: Final = "perform_mandatory_agent_review"
 ACTION_RUN_ROLE_TARGETED_PEOPLE_SEARCH: Final = "run_role_targeted_people_search"
+ACTION_RUN_ROLE_TARGETED_EMAIL_DISCOVERY: Final = "run_role_targeted_email_discovery"
 ACTION_ESCALATE_OPEN_INCIDENT: Final = "escalate_open_incident"
 
 ELIGIBLE_POSTING_STATUSES_FOR_NEW_RUN = frozenset({"resume_review_pending"})
@@ -154,6 +155,7 @@ ROLE_TARGETED_PIPELINE_STAGE_ACTIONS = MappingProxyType(
         "lead_handoff": ACTION_CHECKPOINT_PIPELINE_RUN,
         "agent_review": ACTION_PERFORM_MANDATORY_AGENT_REVIEW,
         "people_search": ACTION_RUN_ROLE_TARGETED_PEOPLE_SEARCH,
+        "email_discovery": ACTION_RUN_ROLE_TARGETED_EMAIL_DISCOVERY,
     }
 )
 
@@ -506,6 +508,7 @@ class SupervisorActionDependencies:
     apollo_people_search_provider: object | None = None
     apollo_contact_enrichment_provider: object | None = None
     recipient_profile_extractor: object | None = None
+    email_finder_providers: tuple[object, ...] | None = None
 
 
 @dataclass(frozen=True)
@@ -595,6 +598,27 @@ SUPERVISOR_ACTION_CATALOG = MappingProxyType(
             validation_references=(
                 "prd/spec.md §1.2 current-build required path items 6 through 9",
                 "prd/test-spec.feature role-targeted orchestration and dependency-order scenarios",
+            ),
+        ),
+        ACTION_RUN_ROLE_TARGETED_EMAIL_DISCOVERY: SupervisorActionCatalogEntry(
+            action_id=ACTION_RUN_ROLE_TARGETED_EMAIL_DISCOVERY,
+            work_type=WORK_TYPE_PIPELINE_RUN,
+            description="Run one bounded role-targeted email-discovery step and advance the durable run into sending when the active send set becomes ready.",
+            prerequisites=(
+                "pipeline_run exists and is non-terminal",
+                "pipeline_run.current_stage is `email_discovery`",
+                "job_posting.posting_status is `requires_contacts` unless canonical readiness already reached `ready_for_outreach`",
+                "the selected posting still has an approved tailoring decision and at least one current send-set contact to inspect",
+            ),
+            expected_outputs=(
+                "the existing pipeline_run is reused instead of creating a duplicate run",
+                "one current send-set contact runs through bounded email discovery or working-email reuse",
+                "discovery_result.json and canonical discovery state refresh when discovery work is still due",
+                "the durable run advances to `sending` only when the active send set is truly ready",
+            ),
+            validation_references=(
+                "prd/spec.md FR-SYS-38, FR-SYS-38H, FR-SYS-41, FR-SYS-41B, and FR-OPS-03",
+                "prd/test-spec.feature dependency-order, discovery-readiness, and send-set gate scenarios",
             ),
         ),
         ACTION_ESCALATE_OPEN_INCIDENT: SupervisorActionCatalogEntry(
@@ -2500,6 +2524,68 @@ def _validate_selected_work(
             )
         return None
 
+    if catalog_entry.action_id == ACTION_RUN_ROLE_TARGETED_EMAIL_DISCOVERY:
+        from .outreach import evaluate_role_targeted_send_set
+
+        pipeline_run = get_pipeline_run(connection, selected_work.work_id)
+        if pipeline_run is None:
+            return f"pipeline_run {selected_work.work_id!r} no longer exists."
+        if pipeline_run.run_status not in {RUN_STATUS_IN_PROGRESS, RUN_STATUS_PAUSED}:
+            return (
+                f"pipeline_run {selected_work.work_id!r} is not non-terminal; "
+                f"found {pipeline_run.run_status!r}."
+            )
+        if pipeline_run.current_stage != "email_discovery":
+            return (
+                f"pipeline_run {selected_work.work_id!r} is at unsupported email-discovery "
+                f"stage {pipeline_run.current_stage!r}."
+            )
+        job_posting_id = _optional_text(pipeline_run.job_posting_id)
+        if job_posting_id is None:
+            return f"pipeline_run {selected_work.work_id!r} is missing job_posting_id."
+        posting_row = connection.execute(
+            """
+            SELECT posting_status
+            FROM job_postings
+            WHERE job_posting_id = ?
+            """,
+            (job_posting_id,),
+        ).fetchone()
+        if posting_row is None:
+            return f"job_posting {job_posting_id!r} no longer exists."
+        if posting_row[0] not in {"requires_contacts", "ready_for_outreach"}:
+            return (
+                f"job_posting {job_posting_id!r} is not at the email-discovery boundary; "
+                f"found posting_status={posting_row[0]!r}."
+            )
+        latest_run = connection.execute(
+            """
+            SELECT resume_review_status
+            FROM resume_tailoring_runs
+            WHERE job_posting_id = ?
+            ORDER BY COALESCE(completed_at, updated_at, created_at, started_at) DESC,
+                     resume_tailoring_run_id DESC
+            LIMIT 1
+            """,
+            (job_posting_id,),
+        ).fetchone()
+        if latest_run is None or latest_run[0] != "approved":
+            return (
+                f"job_posting {job_posting_id!r} is not backed by an approved tailoring "
+                "review for email discovery."
+            )
+        send_set_plan = evaluate_role_targeted_send_set(
+            connection,
+            job_posting_id=job_posting_id,
+            current_time=now_utc_iso(),
+        )
+        if not send_set_plan.selected_contacts:
+            return (
+                f"job_posting {job_posting_id!r} has no current send-set contacts available "
+                "for bounded email discovery."
+            )
+        return None
+
     if catalog_entry.action_id == ACTION_ESCALATE_OPEN_INCIDENT:
         incident = get_agent_incident(connection, selected_work.work_id)
         if incident is None:
@@ -2664,6 +2750,97 @@ def _execute_selected_work_unit(
         else:  # pragma: no cover - validated earlier
             raise SupervisorStateError(
                 f"job_posting {job_posting_id!r} is at unsupported people-search "
+                f"posting_status={current_posting_status!r}."
+            )
+
+        pipeline_run = advance_pipeline_run(
+            connection,
+            selected_work.work_id,
+            current_stage=next_stage,
+            run_summary=run_summary,
+            timestamp=timestamp,
+        )
+        return pipeline_run, None
+
+    if catalog_entry.action_id == ACTION_RUN_ROLE_TARGETED_EMAIL_DISCOVERY:
+        from .email_discovery import (
+            JOB_POSTING_STATUS_READY_FOR_OUTREACH,
+            JOB_POSTING_STATUS_REQUIRES_CONTACTS,
+            run_email_discovery_for_contact,
+        )
+        from .outreach import evaluate_role_targeted_send_set
+
+        job_posting_id = _require_text(selected_work.job_posting_id, "job_posting_id")
+        posting_row = connection.execute(
+            """
+            SELECT posting_status
+            FROM job_postings
+            WHERE job_posting_id = ?
+            """,
+            (job_posting_id,),
+        ).fetchone()
+        if posting_row is None:  # pragma: no cover - validated earlier
+            raise SupervisorStateError(f"job_posting {job_posting_id!r} no longer exists.")
+
+        current_posting_status = _require_text(
+            _optional_text(posting_row[0]),
+            "posting_status",
+        )
+        if current_posting_status == JOB_POSTING_STATUS_READY_FOR_OUTREACH:
+            next_stage = "sending"
+            run_summary = (
+                "Supervisor detected that the current send set was already ready "
+                "for outreach and advanced the durable pipeline run directly to sending."
+            )
+        elif current_posting_status == JOB_POSTING_STATUS_REQUIRES_CONTACTS:
+            send_set_plan = evaluate_role_targeted_send_set(
+                connection,
+                job_posting_id=job_posting_id,
+                current_time=timestamp,
+            )
+            if not send_set_plan.selected_contacts:
+                raise SupervisorStateError(
+                    "Bounded email discovery found no current send-set contacts for "
+                    f"job_posting {job_posting_id!r}."
+                )
+            target_contact = next(
+                (
+                    contact
+                    for contact in send_set_plan.selected_contacts
+                    if not contact.has_usable_email
+                ),
+                send_set_plan.selected_contacts[0],
+            )
+            discovery_result = run_email_discovery_for_contact(
+                project_root=paths.project_root,
+                job_posting_id=job_posting_id,
+                contact_id=target_contact.contact_id,
+                providers=action_dependencies.email_finder_providers,
+                current_time=timestamp,
+            )
+            if discovery_result.posting_status == JOB_POSTING_STATUS_READY_FOR_OUTREACH:
+                next_stage = "sending"
+                run_summary = (
+                    "Supervisor ran bounded email discovery for "
+                    f"{target_contact.contact_id} and advanced the durable pipeline run to "
+                    "sending once the current send set became ready."
+                )
+            elif discovery_result.posting_status == JOB_POSTING_STATUS_REQUIRES_CONTACTS:
+                next_stage = "email_discovery"
+                run_summary = (
+                    "Supervisor ran bounded email discovery for "
+                    f"{target_contact.contact_id} and kept the durable pipeline run at "
+                    "email_discovery while other current send-set contacts still need "
+                    "usable emails."
+                )
+            else:  # pragma: no cover - defensive invariant
+                raise SupervisorStateError(
+                    "Email discovery advanced the posting to an unsupported status "
+                    f"{discovery_result.posting_status!r}."
+                )
+        else:  # pragma: no cover - validated earlier
+            raise SupervisorStateError(
+                f"job_posting {job_posting_id!r} is at unsupported email-discovery "
                 f"posting_status={current_posting_status!r}."
             )
 
@@ -2853,6 +3030,65 @@ def _validate_selected_work_result(
             )
         if posting_row[0] not in {"requires_contacts", "ready_for_outreach"}:
             return f"People search persisted an unexpected posting status {posting_row[0]!r}."
+        return None
+
+    if catalog_entry.action_id == ACTION_RUN_ROLE_TARGETED_EMAIL_DISCOVERY:
+        if pipeline_run is None:
+            return "Supervisor failed to load the selected pipeline_run after email discovery."
+        if pipeline_run.pipeline_run_id != selected_work.work_id:
+            return "Email discovery changed the selected pipeline_run identity."
+        if pipeline_run.run_status != RUN_STATUS_IN_PROGRESS:
+            return (
+                "Email discovery left the pipeline_run outside in-progress state; found "
+                f"{pipeline_run.run_status!r}."
+            )
+        if pipeline_run.current_stage not in {"email_discovery", "sending"}:
+            return (
+                "Email discovery did not keep the durable pipeline run at the current "
+                f"boundary or advance it to sending; found {pipeline_run.current_stage!r}."
+            )
+        if pipeline_run.job_posting_id is None:
+            return "Email discovery completed without a linked job_posting_id."
+        posting_row = connection.execute(
+            """
+            SELECT posting_status
+            FROM job_postings
+            WHERE job_posting_id = ?
+            """,
+            (pipeline_run.job_posting_id,),
+        ).fetchone()
+        if posting_row is None:
+            return "Email discovery completed without a persisted job_posting row."
+        discovery_artifact_count = connection.execute(
+            """
+            SELECT COUNT(*)
+            FROM artifact_records
+            WHERE artifact_type = 'discovery_result'
+              AND job_posting_id = ?
+            """,
+            (pipeline_run.job_posting_id,),
+        ).fetchone()[0]
+        if posting_row[0] == "requires_contacts":
+            if pipeline_run.current_stage != "email_discovery":
+                return (
+                    "Email discovery should stay at email_discovery when "
+                    f"posting_status=requires_contacts, but found {pipeline_run.current_stage!r}."
+                )
+            if discovery_artifact_count <= 0:
+                return (
+                    "Email discovery kept the run active without persisting a "
+                    "discovery_result artifact."
+                )
+            return None
+        if posting_row[0] == "ready_for_outreach":
+            if pipeline_run.current_stage != "sending":
+                return (
+                    "Email discovery should advance to sending when "
+                    f"posting_status=ready_for_outreach, but found {pipeline_run.current_stage!r}."
+                )
+            return None
+        if posting_row[0] not in {"requires_contacts", "ready_for_outreach"}:
+            return f"Email discovery persisted an unexpected posting status {posting_row[0]!r}."
         return None
 
     if catalog_entry.action_id == ACTION_ESCALATE_OPEN_INCIDENT:

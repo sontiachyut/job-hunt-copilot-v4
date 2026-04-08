@@ -104,7 +104,7 @@ def test_validation_selector_details_include_requested_smoke_gap_blocker_and_cur
     ]
     assert details["acceptance_gaps"][0] == {
         "gap_id": "BA10_SUPERVISOR_DOWNSTREAM_ACTION_CATALOG",
-        "title": "Supervisor orchestration still stops before autonomous people search",
+        "title": "Supervisor orchestration still stops before autonomous sending completes",
         "next_slice": "BA-10-S4",
         "open_scenario_count": 4,
         "validation_command_ids": [
@@ -130,29 +130,24 @@ def test_validation_selector_details_include_requested_smoke_gap_blocker_and_cur
         "qa_review_surface_regressions",
         "qa_runtime_pack_regressions",
     ]
-    assert details["current_focus"] == {
-        "epic_id": "BA-10",
-        "slice_id": "BA-10-S4",
-        "owner_role": "build-lead",
-        "reason": (
-            "BA-10-S4 now has working `lead_handoff -> agent_review -> people_search` "
-            "supervisor progression plus refreshed traceability and blocker reports, "
-            "while the matrix now sits at 191 implemented / 7 partial / 14 gap "
-            "scenarios; the next highest-value slice remains a build-lead "
-            "implementation pass on downstream supervisor action-catalog steps beyond "
-            "`agent_review`, because that same cluster still blocks full role-targeted "
-            "orchestration and contact-rooted general-learning selection."
-        ),
-        "gap_ids": ["BA10_SUPERVISOR_DOWNSTREAM_ACTION_CATALOG"],
-        "validation_command_ids": [
-            "qa_supervisor_regressions",
-            "qa_acceptance_reports",
-        ],
-        "validation_suite_command": (
-            "python3.11 scripts/quality/run_ba10_validation_suite.py "
-            "--project-root <repo_root> --current-focus"
-        ),
-    }
+    assert details["current_focus"]["epic_id"] == "BA-10"
+    assert details["current_focus"]["slice_id"] == "BA-10-S4"
+    assert details["current_focus"]["owner_role"] == "build-lead"
+    assert details["current_focus"]["gap_ids"] == ["BA10_SUPERVISOR_DOWNSTREAM_ACTION_CATALOG"]
+    assert details["current_focus"]["validation_command_ids"] == [
+        "qa_supervisor_regressions",
+        "qa_acceptance_reports",
+    ]
+    assert details["current_focus"]["validation_suite_command"] == (
+        "python3.11 scripts/quality/run_ba10_validation_suite.py "
+        "--project-root <repo_root> --current-focus"
+    )
+    assert (
+        "`lead_handoff -> agent_review -> people_search -> email_discovery -> sending`"
+        in details["current_focus"]["reason"]
+    )
+    assert "beyond `email_discovery`" in details["current_focus"]["reason"]
+    assert "contact-rooted general-learning selection" in details["current_focus"]["reason"]
 
 
 def test_gap_validation_command_resolution_follows_open_gap_command_mapping():
@@ -264,7 +259,7 @@ def test_quality_validation_suite_script_dry_run_expands_gap_ids():
     assert payload["selector_details"]["acceptance_gaps"] == [
         {
             "gap_id": "BA10_SUPERVISOR_DOWNSTREAM_ACTION_CATALOG",
-            "title": "Supervisor orchestration still stops before autonomous people search",
+            "title": "Supervisor orchestration still stops before autonomous sending completes",
             "next_slice": "BA-10-S4",
             "open_scenario_count": 4,
             "validation_command_ids": [
@@ -373,29 +368,25 @@ def test_quality_validation_suite_script_dry_run_expands_current_focus():
         "qa_supervisor_regressions",
         "qa_acceptance_reports",
     ]
-    assert payload["selector_details"]["current_focus"] == {
-        "epic_id": "BA-10",
-        "slice_id": "BA-10-S4",
-        "owner_role": "build-lead",
-        "reason": (
-            "BA-10-S4 now has working `lead_handoff -> agent_review -> people_search` "
-            "supervisor progression plus refreshed traceability and blocker reports, "
-            "while the matrix now sits at 191 implemented / 7 partial / 14 gap "
-            "scenarios; the next highest-value slice remains a build-lead "
-            "implementation pass on downstream supervisor action-catalog steps beyond "
-            "`agent_review`, because that same cluster still blocks full role-targeted "
-            "orchestration and contact-rooted general-learning selection."
-        ),
-        "gap_ids": ["BA10_SUPERVISOR_DOWNSTREAM_ACTION_CATALOG"],
-        "validation_command_ids": [
-            "qa_supervisor_regressions",
-            "qa_acceptance_reports",
-        ],
-        "validation_suite_command": (
-            "python3.11 scripts/quality/run_ba10_validation_suite.py "
-            "--project-root <repo_root> --current-focus"
-        ),
-    }
+    current_focus = payload["selector_details"]["current_focus"]
+    assert current_focus["epic_id"] == "BA-10"
+    assert current_focus["slice_id"] == "BA-10-S4"
+    assert current_focus["owner_role"] == "build-lead"
+    assert current_focus["gap_ids"] == ["BA10_SUPERVISOR_DOWNSTREAM_ACTION_CATALOG"]
+    assert current_focus["validation_command_ids"] == [
+        "qa_supervisor_regressions",
+        "qa_acceptance_reports",
+    ]
+    assert current_focus["validation_suite_command"] == (
+        "python3.11 scripts/quality/run_ba10_validation_suite.py "
+        "--project-root <repo_root> --current-focus"
+    )
+    assert (
+        "`lead_handoff -> agent_review -> people_search -> email_discovery -> sending`"
+        in current_focus["reason"]
+    )
+    assert "beyond `email_discovery`" in current_focus["reason"]
+    assert "contact-rooted general-learning selection" in current_focus["reason"]
 
 
 def test_quality_validation_suite_script_dry_run_expands_smoke_targets():

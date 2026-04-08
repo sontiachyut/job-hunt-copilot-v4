@@ -6041,7 +6041,7 @@
           "gap_ids": [
             "BA10_SUPERVISOR_DOWNSTREAM_ACTION_CATALOG"
           ],
-          "note": "Current supervisor regressions prove open incidents outrank ordinary pipeline advancement and existing runs outrank new posting bootstrap, but `email_discovery`, due sends, delayed feedback, general-learning work, and maintenance still have no registered selector or action path."
+          "note": "Current supervisor regressions prove open incidents outrank ordinary pipeline advancement and existing runs outrank new posting bootstrap, but due sends, delayed feedback, general-learning work, and maintenance still have no registered selector or action path."
         },
         {
           "name": "Supervisor chooses only registered catalog actions and escalates unknown needs",
@@ -7342,7 +7342,7 @@
         "tests/test_supervisor_downstream_actions.py",
         "tests/test_supervisor.py"
       ],
-      "note": "Component-level state gates and sequencing exist, but the autonomous heartbeat does not yet walk the full downstream pipeline.",
+      "note": "Component-level state gates and sequencing exist, but the autonomous heartbeat still stops short of the later send and feedback stages.",
       "status_counts": {
         "implemented": 19,
         "partial": 2,
@@ -7393,7 +7393,7 @@
             "tests/test_supervisor.py"
           ],
           "gap_ids": [],
-          "note": "Component-level state gates and sequencing exist, but the autonomous heartbeat does not yet walk the full downstream pipeline."
+          "note": "Component-level state gates and sequencing exist, but the autonomous heartbeat still stops short of the later send and feedback stages."
         },
         {
           "name": "Role-targeted orchestration follows the current dependency order",
@@ -7439,7 +7439,7 @@
           "gap_ids": [
             "BA10_SUPERVISOR_DOWNSTREAM_ACTION_CATALOG"
           ],
-          "note": "The downstream components and stage-boundary artifacts exist, and `tests/test_supervisor_downstream_actions.py` now proves the current heartbeat advances through `lead_handoff`, bounded mandatory agent review, and bounded people search into `email_discovery`, but later stages still escalate instead of executing the full dependency chain."
+          "note": "The downstream components and stage-boundary artifacts exist, and `tests/test_supervisor_downstream_actions.py` now proves the current heartbeat advances through `lead_handoff`, bounded mandatory agent review, bounded people search, and bounded email discovery into `sending`, but later stages still escalate instead of executing the full dependency chain."
         },
         {
           "name": "Posting remains requires-contacts until minimum outreach prerequisites exist",
@@ -7483,7 +7483,7 @@
             "tests/test_supervisor.py"
           ],
           "gap_ids": [],
-          "note": "Component-level state gates and sequencing exist, but the autonomous heartbeat does not yet walk the full downstream pipeline."
+          "note": "Component-level state gates and sequencing exist, but the autonomous heartbeat still stops short of the later send and feedback stages."
         },
         {
           "name": "Posting can move directly from agent review to ready-for-outreach when prerequisites already exist",
@@ -7527,7 +7527,7 @@
             "tests/test_supervisor.py"
           ],
           "gap_ids": [],
-          "note": "Component-level state gates and sequencing exist, but the autonomous heartbeat does not yet walk the full downstream pipeline."
+          "note": "Component-level state gates and sequencing exist, but the autonomous heartbeat still stops short of the later send and feedback stages."
         },
         {
           "name": "Posting becomes ready-for-outreach only when all minimum current prerequisites are satisfied",
@@ -7571,7 +7571,7 @@
             "tests/test_supervisor.py"
           ],
           "gap_ids": [],
-          "note": "Component-level state gates and sequencing exist, but the autonomous heartbeat does not yet walk the full downstream pipeline."
+          "note": "Component-level state gates and sequencing exist, but the autonomous heartbeat still stops short of the later send and feedback stages."
         },
         {
           "name": "Role-targeted outreach uses the current recipient priority order with pacing-aware progression",
@@ -7615,7 +7615,7 @@
             "tests/test_supervisor.py"
           ],
           "gap_ids": [],
-          "note": "Component-level state gates and sequencing exist, but the autonomous heartbeat does not yet walk the full downstream pipeline."
+          "note": "Component-level state gates and sequencing exist, but the autonomous heartbeat still stops short of the later send and feedback stages."
         },
         {
           "name": "Posting-contact linking is created before per-contact discovery or outreach begins",
@@ -7659,7 +7659,7 @@
             "tests/test_supervisor.py"
           ],
           "gap_ids": [],
-          "note": "Component-level state gates and sequencing exist, but the autonomous heartbeat does not yet walk the full downstream pipeline."
+          "note": "Component-level state gates and sequencing exist, but the autonomous heartbeat still stops short of the later send and feedback stages."
         },
         {
           "name": "Link records become shortlisted when contacts enter the intended outreach set",
@@ -7703,7 +7703,7 @@
             "tests/test_supervisor.py"
           ],
           "gap_ids": [],
-          "note": "Component-level state gates and sequencing exist, but the autonomous heartbeat does not yet walk the full downstream pipeline."
+          "note": "Component-level state gates and sequencing exist, but the autonomous heartbeat still stops short of the later send and feedback stages."
         },
         {
           "name": "Known working email allows a contact to skip fresh discovery in orchestration",
@@ -7747,7 +7747,7 @@
             "tests/test_supervisor.py"
           ],
           "gap_ids": [],
-          "note": "Component-level state gates and sequencing exist, but the autonomous heartbeat does not yet walk the full downstream pipeline."
+          "note": "Component-level state gates and sequencing exist, but the autonomous heartbeat still stops short of the later send and feedback stages."
         },
         {
           "name": "Prior outreach history blocks automatic repeat send during orchestration",
@@ -7791,7 +7791,7 @@
             "tests/test_supervisor.py"
           ],
           "gap_ids": [],
-          "note": "Component-level state gates and sequencing exist, but the autonomous heartbeat does not yet walk the full downstream pipeline."
+          "note": "Component-level state gates and sequencing exist, but the autonomous heartbeat still stops short of the later send and feedback stages."
         },
         {
           "name": "Posting enters outreach-in-progress when the first intended contact starts drafting or sending",
@@ -7835,7 +7835,7 @@
             "tests/test_supervisor.py"
           ],
           "gap_ids": [],
-          "note": "Component-level state gates and sequencing exist, but the autonomous heartbeat does not yet walk the full downstream pipeline."
+          "note": "Component-level state gates and sequencing exist, but the autonomous heartbeat still stops short of the later send and feedback stages."
         },
         {
           "name": "Contact and link records advance together once drafting or sending begins",
@@ -7879,7 +7879,7 @@
             "tests/test_supervisor.py"
           ],
           "gap_ids": [],
-          "note": "Component-level state gates and sequencing exist, but the autonomous heartbeat does not yet walk the full downstream pipeline."
+          "note": "Component-level state gates and sequencing exist, but the autonomous heartbeat still stops short of the later send and feedback stages."
         },
         {
           "name": "Posting reaches completed when the intended outreach set has been sent",
@@ -7923,7 +7923,7 @@
             "tests/test_supervisor.py"
           ],
           "gap_ids": [],
-          "note": "Component-level state gates and sequencing exist, but the autonomous heartbeat does not yet walk the full downstream pipeline."
+          "note": "Component-level state gates and sequencing exist, but the autonomous heartbeat still stops short of the later send and feedback stages."
         },
         {
           "name": "Reply from one contact does not retroactively cancel the active outreach wave",
@@ -7967,7 +7967,7 @@
             "tests/test_supervisor.py"
           ],
           "gap_ids": [],
-          "note": "Component-level state gates and sequencing exist, but the autonomous heartbeat does not yet walk the full downstream pipeline."
+          "note": "Component-level state gates and sequencing exist, but the autonomous heartbeat still stops short of the later send and feedback stages."
         },
         {
           "name": "Discovery, drafting, and feedback stages require both state persistence and handoff publication before downstream progression",
@@ -8011,7 +8011,7 @@
             "tests/test_supervisor.py"
           ],
           "gap_ids": [],
-          "note": "Component-level state gates and sequencing exist, but the autonomous heartbeat does not yet walk the full downstream pipeline."
+          "note": "Component-level state gates and sequencing exist, but the autonomous heartbeat still stops short of the later send and feedback stages."
         },
         {
           "name": "Stage failure or blocked state prevents dependent downstream progression",
@@ -8055,7 +8055,7 @@
             "tests/test_supervisor.py"
           ],
           "gap_ids": [],
-          "note": "Component-level state gates and sequencing exist, but the autonomous heartbeat does not yet walk the full downstream pipeline."
+          "note": "Component-level state gates and sequencing exist, but the autonomous heartbeat still stops short of the later send and feedback stages."
         },
         {
           "name": "Contact exhaustion is local to that contact rather than a global posting stop",
@@ -8099,7 +8099,7 @@
             "tests/test_supervisor.py"
           ],
           "gap_ids": [],
-          "note": "Component-level state gates and sequencing exist, but the autonomous heartbeat does not yet walk the full downstream pipeline."
+          "note": "Component-level state gates and sequencing exist, but the autonomous heartbeat still stops short of the later send and feedback stages."
         },
         {
           "name": "The user may explicitly abandon a posting from any active orchestration state",
@@ -8235,7 +8235,7 @@
             "tests/test_supervisor.py"
           ],
           "gap_ids": [],
-          "note": "Component-level state gates and sequencing exist, but the autonomous heartbeat does not yet walk the full downstream pipeline."
+          "note": "Component-level state gates and sequencing exist, but the autonomous heartbeat still stops short of the later send and feedback stages."
         },
         {
           "name": "One contact failure does not stop unrelated contacts in the same posting flow",
@@ -8279,7 +8279,7 @@
             "tests/test_supervisor.py"
           ],
           "gap_ids": [],
-          "note": "Component-level state gates and sequencing exist, but the autonomous heartbeat does not yet walk the full downstream pipeline."
+          "note": "Component-level state gates and sequencing exist, but the autonomous heartbeat still stops short of the later send and feedback stages."
         },
         {
           "name": "Current build does not automatically expand contact search after the selected set is sent",
@@ -8323,7 +8323,7 @@
             "tests/test_supervisor.py"
           ],
           "gap_ids": [],
-          "note": "Component-level state gates and sequencing exist, but the autonomous heartbeat does not yet walk the full downstream pipeline."
+          "note": "Component-level state gates and sequencing exist, but the autonomous heartbeat still stops short of the later send and feedback stages."
         }
       ]
     },
@@ -8779,7 +8779,7 @@
         "tests/test_supervisor.py",
         "tests/test_smoke_harness.py"
       ],
-      "note": "The components exist and now have committed smoke coverage across tailoring, discovery, send, delayed feedback, and review-query boundaries, but the autonomous supervisor still does not orchestrate the full downstream pipeline past the newly landed people-search boundary.",
+      "note": "The components exist and now have committed smoke coverage across tailoring, discovery, send, delayed feedback, and review-query boundaries, but the autonomous supervisor still does not orchestrate the full downstream pipeline past the newly landed email-discovery boundary.",
       "status_counts": {
         "implemented": 2,
         "partial": 1,
@@ -8834,7 +8834,7 @@
           "gap_ids": [
             "BA10_SUPERVISOR_DOWNSTREAM_ACTION_CATALOG"
           ],
-          "note": "The downstream components and stage-boundary artifacts exist, and `tests/test_supervisor_downstream_actions.py` now proves the current heartbeat advances through `lead_handoff`, bounded mandatory agent review, and bounded people search into `email_discovery`, but later stages still escalate instead of executing the full dependency chain."
+          "note": "The downstream components and stage-boundary artifacts exist, and `tests/test_supervisor_downstream_actions.py` now proves the current heartbeat advances through `lead_handoff`, bounded mandatory agent review, bounded people search, and bounded email discovery into `sending`, but later stages still escalate instead of executing the full dependency chain."
         },
         {
           "name": "Delayed bounce after the send session still gets captured",
@@ -8926,7 +8926,7 @@
             "tests/test_smoke_harness.py"
           ],
           "gap_ids": [],
-          "note": "`tests/test_supervisor_downstream_actions.py` now proves the durable run advances from `lead_handoff` through bounded mandatory agent review and bounded people search into `email_discovery`, and retries resume from that later blocked stage without restarting from LinkedIn Scraping."
+          "note": "`tests/test_supervisor_downstream_actions.py` now proves the durable run advances from `lead_handoff` through bounded mandatory agent review, bounded people search, and bounded email discovery into `sending`, and retries resume from that later blocked stage without restarting from LinkedIn Scraping."
         },
         {
           "name": "Two-step outreach is excluded from required acceptance",
@@ -9172,12 +9172,13 @@
     },
     {
       "gap_id": "BA10_SUPERVISOR_DOWNSTREAM_ACTION_CATALOG",
-      "title": "Supervisor orchestration still stops before autonomous email discovery",
-      "reason": "The durable heartbeat, selector ordering, retry-safe run persistence, bounded mandatory agent review, and bounded people-search execution now exist, but later stages from `email_discovery` onward still reselect the same durable run and escalate instead of executing.",
+      "title": "Supervisor orchestration still stops before autonomous sending completes",
+      "reason": "The durable heartbeat, selector ordering, retry-safe run persistence, bounded mandatory agent review, bounded people-search execution, and bounded email-discovery execution now exist, but later stages from `sending` onward still reselect the same durable run and escalate instead of executing.",
       "next_slice": "BA-10-S4",
-      "evidence_summary": "Focused downstream-stage regressions prove active incidents still outrank ordinary progression, existing durable runs are selected before bootstrapping new eligible postings, `lead_handoff` now advances into `agent_review`, bounded mandatory agent review advances the same run into `people_search`, bounded people search now materializes shortlist artifacts and advances the same run into `email_discovery`, later stages from `email_discovery` onward still escalate with durable run and review-packet retention, retries reuse the same run at that later blocked boundary, and a ready contact-rooted general-learning candidate still yields no selected supervisor work.",
+      "evidence_summary": "Focused downstream-stage regressions prove active incidents still outrank ordinary progression, existing durable runs are selected before bootstrapping new eligible postings, `lead_handoff` now advances into `agent_review`, bounded mandatory agent review advances the same run into `people_search`, bounded people search materializes shortlist artifacts and advances the same run into `email_discovery`, bounded email discovery now executes selected current send-set contacts and advances the same durable run into `sending` when readiness is satisfied, later stages from `sending` onward still escalate with durable run and review-packet retention, retries reuse the same run at that later blocked boundary, and a ready contact-rooted general-learning candidate still yields no selected supervisor work.",
       "evidence_code_refs": [
         "job_hunt_copilot/supervisor.py",
+        "job_hunt_copilot/email_discovery.py",
         "job_hunt_copilot/local_runtime.py",
         "job_hunt_copilot/runtime_pack.py"
       ],
@@ -9226,11 +9227,11 @@
         ],
         "registered_role_targeted_action_stages": [
           "agent_review",
+          "email_discovery",
           "lead_handoff",
           "people_search"
         ],
         "validated_blocked_role_targeted_stages": [
-          "email_discovery",
           "sending",
           "delivery_feedback"
         ],

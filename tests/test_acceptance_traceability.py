@@ -102,11 +102,11 @@ def test_acceptance_trace_matrix_reports_are_current_and_reference_real_repo_pat
         "registered_role_targeted_checkpoint_stages": ["agent_review", "lead_handoff"],
         "registered_role_targeted_action_stages": [
             "agent_review",
+            "email_discovery",
             "lead_handoff",
             "people_search",
         ],
         "validated_blocked_role_targeted_stages": [
-            "email_discovery",
             "sending",
             "delivery_feedback",
         ],

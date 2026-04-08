@@ -10,6 +10,7 @@ from job_hunt_copilot.bootstrap import run_bootstrap
 from job_hunt_copilot.paths import ProjectPaths
 from job_hunt_copilot.supervisor import (
     ACTION_PERFORM_MANDATORY_AGENT_REVIEW,
+    ACTION_RUN_ROLE_TARGETED_EMAIL_DISCOVERY,
     ACTION_RUN_ROLE_TARGETED_PEOPLE_SEARCH,
     REVIEW_PACKET_STATUS_PENDING,
     RUN_STATUS_ESCALATED,
@@ -160,6 +161,65 @@ def seed_general_learning_contact(
     return "ct_general_learning"
 
 
+def seed_shortlisted_contact(
+    connection: sqlite3.Connection,
+    *,
+    contact_id: str,
+    job_posting_contact_id: str,
+    job_posting_id: str = "jp_downstream",
+    company_name: str = "Acme",
+    display_name: str,
+    recipient_type: str,
+    current_working_email: str | None = None,
+    contact_status: str = "identified",
+    link_level_status: str = "shortlisted",
+    position_title: str | None = None,
+    provider_person_id: str | None = None,
+    created_at: str = "2026-04-08T00:00:00Z",
+) -> None:
+    connection.execute(
+        """
+        INSERT INTO contacts (
+          contact_id, identity_key, display_name, company_name, origin_component, contact_status,
+          full_name, current_working_email, position_title, provider_person_id, created_at, updated_at
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        """,
+        (
+            contact_id,
+            f"{company_name.lower()}|{display_name.lower().replace(' ', '-')}",
+            display_name,
+            company_name,
+            "email_discovery",
+            contact_status,
+            display_name,
+            current_working_email,
+            position_title,
+            provider_person_id,
+            created_at,
+            created_at,
+        ),
+    )
+    connection.execute(
+        """
+        INSERT INTO job_posting_contacts (
+          job_posting_contact_id, job_posting_id, contact_id, recipient_type, relevance_reason,
+          link_level_status, created_at, updated_at
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+        """,
+        (
+            job_posting_contact_id,
+            job_posting_id,
+            contact_id,
+            recipient_type,
+            "Selected for bounded supervisor discovery coverage.",
+            link_level_status,
+            created_at,
+            created_at,
+        ),
+    )
+    connection.commit()
+
+
 def build_candidate(
     *,
     provider_person_id: str,
@@ -246,6 +306,40 @@ class FakeApolloEnrichmentProvider:
         )
         lookup_key = provider_person_id or linkedin_url or person_name or "unknown"
         return self.responses.get(lookup_key)
+
+
+class FakeEmailFinderProvider:
+    def __init__(
+        self,
+        *,
+        provider_name: str,
+        responses: list[dict[str, object]],
+        requires_domain: bool = False,
+    ) -> None:
+        self.provider_name = provider_name
+        self.responses = list(responses)
+        self.requires_domain = requires_domain
+        self.calls: list[dict[str, str | None]] = []
+
+    def discover_email(
+        self,
+        *,
+        contact: dict[str, object],
+        posting: dict[str, object],
+        company_domain: str | None,
+        company_name: str | None,
+    ) -> dict[str, object]:
+        self.calls.append(
+            {
+                "contact_id": str(contact.get("contact_id") or ""),
+                "job_posting_id": str(posting.get("job_posting_id") or ""),
+                "company_domain": company_domain,
+                "company_name": company_name,
+            }
+        )
+        if self.responses:
+            return dict(self.responses.pop(0))
+        return {"outcome": "not_found"}
 
 
 def test_lead_handoff_advances_the_durable_run_into_agent_review(tmp_path: Path) -> None:
@@ -478,6 +572,199 @@ def test_people_search_stage_executes_and_advances_to_email_discovery(tmp_path: 
     assert (project_root / people_search_artifact_path).exists()
 
 
+def test_email_discovery_stage_runs_and_stays_active_until_send_set_is_ready(
+    tmp_path: Path,
+) -> None:
+    project_root = bootstrap_project(tmp_path)
+    paths = ProjectPaths.from_root(project_root)
+    connection = connect_database(project_root / "job_hunt_copilot.db")
+    lead_id, job_posting_id = seed_role_targeted_posting(
+        connection,
+        posting_status="requires_contacts",
+    )
+    seed_approved_tailoring_run(connection, job_posting_id=job_posting_id)
+    seed_shortlisted_contact(
+        connection,
+        contact_id="ct_discovery",
+        job_posting_contact_id="jpc_discovery",
+        job_posting_id=job_posting_id,
+        display_name="Priya Recruiter",
+        recipient_type="recruiter",
+        position_title="Technical Recruiter",
+        provider_person_id="pp_discovery",
+    )
+    resume_agent(
+        connection,
+        manual_command="jhc-agent-start",
+        timestamp="2026-04-08T00:12:00Z",
+    )
+    pipeline_run, _ = ensure_role_targeted_pipeline_run(
+        connection,
+        lead_id=lead_id,
+        job_posting_id=job_posting_id,
+        current_stage="email_discovery",
+        started_at="2026-04-08T00:13:00Z",
+    )
+    finder = FakeEmailFinderProvider(
+        provider_name="prospeo",
+        requires_domain=False,
+        responses=[
+            {
+                "outcome": "not_found",
+                "remaining_credits": 41,
+                "credit_limit": 100,
+                "reset_at": "2026-05-01T00:00:00Z",
+            }
+        ],
+    )
+
+    execution = run_supervisor_cycle(
+        connection,
+        paths,
+        trigger_type="launchd_heartbeat",
+        scheduler_name="launchd",
+        started_at="2026-04-08T00:14:00Z",
+        action_dependencies=SupervisorActionDependencies(
+            email_finder_providers=(finder,),
+        ),
+    )
+    updated_run = get_pipeline_run(connection, pipeline_run.pipeline_run_id)
+    posting_status = connection.execute(
+        """
+        SELECT posting_status
+        FROM job_postings
+        WHERE job_posting_id = ?
+        """,
+        (job_posting_id,),
+    ).fetchone()[0]
+    discovery_artifact_path = connection.execute(
+        """
+        SELECT file_path
+        FROM artifact_records
+        WHERE job_posting_id = ?
+          AND artifact_type = 'discovery_result'
+        """,
+        (job_posting_id,),
+    ).fetchone()[0]
+    connection.close()
+
+    assert execution.cycle.result == SUPERVISOR_CYCLE_RESULT_SUCCESS
+    assert execution.selected_work is not None
+    assert execution.selected_work.work_id == pipeline_run.pipeline_run_id
+    assert execution.selected_work.action_id == ACTION_RUN_ROLE_TARGETED_EMAIL_DISCOVERY
+    assert execution.selected_work.current_stage == "email_discovery"
+    assert execution.incident is None
+    assert execution.review_packet is None
+    assert len(finder.calls) == 1
+    assert updated_run is not None
+    assert updated_run.run_status == RUN_STATUS_IN_PROGRESS
+    assert updated_run.current_stage == "email_discovery"
+    assert posting_status == "requires_contacts"
+    assert (project_root / discovery_artifact_path).exists()
+
+
+def test_email_discovery_stage_advances_to_sending_when_send_set_becomes_ready(
+    tmp_path: Path,
+) -> None:
+    project_root = bootstrap_project(tmp_path)
+    paths = ProjectPaths.from_root(project_root)
+    connection = connect_database(project_root / "job_hunt_copilot.db")
+    lead_id, job_posting_id = seed_role_targeted_posting(
+        connection,
+        posting_status="requires_contacts",
+    )
+    seed_approved_tailoring_run(connection, job_posting_id=job_posting_id)
+    seed_shortlisted_contact(
+        connection,
+        contact_id="ct_ready",
+        job_posting_contact_id="jpc_ready",
+        job_posting_id=job_posting_id,
+        display_name="Priya Recruiter",
+        recipient_type="recruiter",
+        position_title="Technical Recruiter",
+        provider_person_id="pp_ready",
+    )
+    resume_agent(
+        connection,
+        manual_command="jhc-agent-start",
+        timestamp="2026-04-08T00:15:00Z",
+    )
+    pipeline_run, _ = ensure_role_targeted_pipeline_run(
+        connection,
+        lead_id=lead_id,
+        job_posting_id=job_posting_id,
+        current_stage="email_discovery",
+        started_at="2026-04-08T00:16:00Z",
+    )
+    finder = FakeEmailFinderProvider(
+        provider_name="getprospect",
+        requires_domain=False,
+        responses=[
+            {
+                "outcome": "found",
+                "email": "priya@acme.example",
+                "provider_verification_status": "valid",
+                "provider_score": "0.94",
+                "detected_pattern": "first",
+            }
+        ],
+    )
+
+    execution = run_supervisor_cycle(
+        connection,
+        paths,
+        trigger_type="launchd_heartbeat",
+        scheduler_name="launchd",
+        started_at="2026-04-08T00:17:00Z",
+        action_dependencies=SupervisorActionDependencies(
+            email_finder_providers=(finder,),
+        ),
+    )
+    updated_run = get_pipeline_run(connection, pipeline_run.pipeline_run_id)
+    posting_status = connection.execute(
+        """
+        SELECT posting_status
+        FROM job_postings
+        WHERE job_posting_id = ?
+        """,
+        (job_posting_id,),
+    ).fetchone()[0]
+    discovery_artifact_path = connection.execute(
+        """
+        SELECT file_path
+        FROM artifact_records
+        WHERE job_posting_id = ?
+          AND artifact_type = 'discovery_result'
+        """,
+        (job_posting_id,),
+    ).fetchone()[0]
+    contact_row = connection.execute(
+        """
+        SELECT current_working_email, contact_status
+        FROM contacts
+        WHERE contact_id = 'ct_ready'
+        """
+    ).fetchone()
+    connection.close()
+
+    assert execution.cycle.result == SUPERVISOR_CYCLE_RESULT_SUCCESS
+    assert execution.selected_work is not None
+    assert execution.selected_work.work_id == pipeline_run.pipeline_run_id
+    assert execution.selected_work.action_id == ACTION_RUN_ROLE_TARGETED_EMAIL_DISCOVERY
+    assert execution.incident is None
+    assert execution.review_packet is None
+    assert len(finder.calls) == 1
+    assert updated_run is not None
+    assert updated_run.run_status == RUN_STATUS_IN_PROGRESS
+    assert updated_run.current_stage == "sending"
+    assert posting_status == "ready_for_outreach"
+    assert (project_root / discovery_artifact_path).exists()
+    assert dict(contact_row) == {
+        "current_working_email": "priya@acme.example",
+        "contact_status": "working_email_found",
+    }
+
+
 def test_existing_pipeline_run_is_selected_before_bootstrapping_another_eligible_posting(
     tmp_path: Path,
 ) -> None:
@@ -596,7 +883,6 @@ def test_contact_rooted_general_learning_work_is_not_selected_yet(tmp_path: Path
 @pytest.mark.parametrize(
     "blocked_stage",
     [
-        "email_discovery",
         "sending",
         "delivery_feedback",
     ],
@@ -686,21 +972,24 @@ def test_retry_after_downstream_stage_blocker_reuses_same_run_and_review_packet(
                 provider_person_id="pp_r1",
                 display_name="Priya Recruiter",
                 title="Technical Recruiter",
-            ),
-            build_candidate(
-                provider_person_id="pp_m1",
-                display_name="Morgan Manager",
-                title="Engineering Manager",
-            ),
-            build_candidate(
-                provider_person_id="pp_e1",
-                display_name="Jamie Engineer",
-                title="Staff Software Engineer",
-            ),
+            )
         ]
     )
     enrichment_provider = FakeApolloEnrichmentProvider(
-        {"pp_r1": None, "pp_m1": None, "pp_e1": None}
+        {"pp_r1": None}
+    )
+    discovery_provider = FakeEmailFinderProvider(
+        provider_name="getprospect",
+        requires_domain=False,
+        responses=[
+            {
+                "outcome": "found",
+                "email": "priya@acme.example",
+                "provider_verification_status": "valid",
+                "provider_score": "0.91",
+                "detected_pattern": "first",
+            }
+        ],
     )
 
     first_execution = run_supervisor_cycle(
@@ -724,59 +1013,75 @@ def test_retry_after_downstream_stage_blocker_reuses_same_run_and_review_packet(
         trigger_type="launchd_heartbeat",
         scheduler_name="launchd",
         started_at="2026-04-08T00:23:00Z",
-    )
-    assert second_execution.incident is not None
-    assert second_execution.review_packet is not None
-
-    escalated_incident = escalate_agent_incident(
-        connection,
-        second_execution.incident.agent_incident_id,
-        escalation_reason=(
-            "Expert confirmed the downstream supervisor gap and recorded it for later "
-            "catalog work."
+        action_dependencies=SupervisorActionDependencies(
+            email_finder_providers=(discovery_provider,),
         ),
-        timestamp="2026-04-08T00:24:00Z",
     )
-    retried_run = advance_pipeline_run(
-        connection,
-        pipeline_run.pipeline_run_id,
-        current_stage="email_discovery",
-        run_summary="Retry the same downstream boundary without restarting the run.",
-        timestamp="2026-04-08T00:25:00Z",
-    )
-    reused_run, created = ensure_role_targeted_pipeline_run(
-        connection,
-        lead_id=lead_id,
-        job_posting_id=job_posting_id,
-        current_stage="lead_handoff",
-        started_at="2026-04-08T00:26:00Z",
-    )
+    assert second_execution.cycle.result == SUPERVISOR_CYCLE_RESULT_SUCCESS
+    assert second_execution.pipeline_run is not None
+    assert second_execution.pipeline_run.current_stage == "sending"
 
     third_execution = run_supervisor_cycle(
         connection,
         paths,
         trigger_type="launchd_heartbeat",
         scheduler_name="launchd",
+        started_at="2026-04-08T00:24:00Z",
+    )
+    assert third_execution.incident is not None
+    assert third_execution.review_packet is not None
+
+    escalated_incident = escalate_agent_incident(
+        connection,
+        third_execution.incident.agent_incident_id,
+        escalation_reason=(
+            "Expert confirmed the remaining downstream supervisor gap after email "
+            "discovery and recorded it for later catalog work."
+        ),
+        timestamp="2026-04-08T00:25:00Z",
+    )
+    retried_run = advance_pipeline_run(
+        connection,
+        pipeline_run.pipeline_run_id,
+        current_stage="sending",
+        run_summary="Retry the same downstream boundary without restarting the run.",
+        timestamp="2026-04-08T00:26:00Z",
+    )
+    reused_run, created = ensure_role_targeted_pipeline_run(
+        connection,
+        lead_id=lead_id,
+        job_posting_id=job_posting_id,
+        current_stage="lead_handoff",
         started_at="2026-04-08T00:27:00Z",
+    )
+
+    fourth_execution = run_supervisor_cycle(
+        connection,
+        paths,
+        trigger_type="launchd_heartbeat",
+        scheduler_name="launchd",
+        started_at="2026-04-08T00:28:00Z",
     )
     stored_packets = list_expert_review_packets_for_run(connection, pipeline_run.pipeline_run_id)
     connection.close()
 
     assert first_execution.pipeline_run is not None
     assert first_execution.pipeline_run.pipeline_run_id == pipeline_run.pipeline_run_id
+    assert second_execution.pipeline_run is not None
+    assert second_execution.pipeline_run.pipeline_run_id == pipeline_run.pipeline_run_id
     assert escalated_incident.status == "escalated"
     assert retried_run.pipeline_run_id == pipeline_run.pipeline_run_id
     assert retried_run.run_status == RUN_STATUS_IN_PROGRESS
-    assert retried_run.current_stage == "email_discovery"
+    assert retried_run.current_stage == "sending"
     assert created is False
     assert reused_run.pipeline_run_id == pipeline_run.pipeline_run_id
-    assert reused_run.current_stage == "email_discovery"
-    assert third_execution.cycle.result == SUPERVISOR_CYCLE_RESULT_FAILED
-    assert third_execution.selected_work is not None
-    assert third_execution.selected_work.work_id == pipeline_run.pipeline_run_id
-    assert third_execution.selected_work.current_stage == "email_discovery"
-    assert third_execution.review_packet is not None
-    assert third_execution.review_packet.expert_review_packet_id == (
-        second_execution.review_packet.expert_review_packet_id
+    assert reused_run.current_stage == "sending"
+    assert fourth_execution.cycle.result == SUPERVISOR_CYCLE_RESULT_FAILED
+    assert fourth_execution.selected_work is not None
+    assert fourth_execution.selected_work.work_id == pipeline_run.pipeline_run_id
+    assert fourth_execution.selected_work.current_stage == "sending"
+    assert fourth_execution.review_packet is not None
+    assert fourth_execution.review_packet.expert_review_packet_id == (
+        third_execution.review_packet.expert_review_packet_id
     )
     assert len(stored_packets) == 1

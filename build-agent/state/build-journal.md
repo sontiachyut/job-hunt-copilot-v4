@@ -1505,3 +1505,32 @@ Use this file as an append-only implementation log for the build agent.
 ### Notes
 - The acceptance matrix remains at 191 implemented / 7 partial / 14 gap scenarios; this cycle narrowed the downstream-supervisor blocker boundary but did not close another acceptance scenario yet.
 - The blocker now starts at `email_discovery`; `sending`, `delivery_feedback`, and the contact-rooted general-learning selector path remain explicitly unimplemented in the supervisor action catalog.
+
+### Session
+- Date: 2026-04-08 16:12:43 MST
+- Slice: BA-10-S4 downstream supervisor email-discovery execution
+- Goal: Register the next bounded downstream supervisor action at `email_discovery`, prove durable stage advancement into `sending` without duplicate runs, and checkpoint the narrower remaining blocker honestly.
+
+### Work Done
+- Extended `job_hunt_copilot.supervisor` with `run_role_targeted_email_discovery`, added a small email-finder dependency hook for deterministic stage-level tests, and wired the bounded cycle runner so a durable role-targeted run at `email_discovery` now reuses the current send-set planner plus existing discovery component to inspect one selected contact at a time.
+- Kept the new email-discovery action bounded: it now reuses working-email evidence when possible, persists normal `discovery_result.json` artifacts through the existing discovery module, keeps the durable run at `email_discovery` while more send-set contacts still need usable emails, and advances the same `pipeline_run_id` into `sending` only when the posting truly reaches `ready_for_outreach`.
+- Expanded `tests/test_supervisor_downstream_actions.py` with real email-discovery supervisor coverage for both non-terminal stay-active behavior and `email_discovery -> sending` advancement, narrowed the generic unsupported-stage regressions in `tests/test_supervisor.py` and the focused downstream suite so only `sending` and `delivery_feedback` remain later-stage blocked boundaries, and updated the BA-10 report/validation guard tests plus `job_hunt_copilot.acceptance_traceability` and `job_hunt_copilot.blocker_audit` so the committed traceability surfaces now reflect the narrower remaining gap.
+- Updated `build-agent/state/build-board.yaml` and `build-agent/state/IMPLEMENTATION_PLAN.md` so the persisted project record now states that downstream supervisor coverage reaches bounded email discovery and the `sending` boundary, while keeping BA-10-S4 open honestly for the later `sending`, `delivery_feedback`, and contact-rooted general-learning gaps.
+
+### Validation
+- Ran `python3.11 -m py_compile job_hunt_copilot/supervisor.py tests/test_supervisor.py tests/test_supervisor_downstream_actions.py job_hunt_copilot/acceptance_traceability.py job_hunt_copilot/blocker_audit.py tests/test_acceptance_traceability.py tests/test_blocker_audit.py` and confirmed the changed supervisor, report, and guard modules compile cleanly.
+- Ran `python3.11 -m pytest tests/test_supervisor_downstream_actions.py` and confirmed all 10 focused downstream supervisor regressions passed.
+- Ran `python3.11 -m pytest tests/test_email_discovery.py tests/test_outreach.py tests/test_delivery_feedback.py` and confirmed all 32 discovery, send, and feedback regressions passed after the new supervisor action started reusing those runtime components.
+- Ran `python3.11 scripts/quality/generate_acceptance_trace_matrix.py --project-root /Users/achyutaramsonti/Projects/job-hunt-copilot-v4` and `python3.11 scripts/quality/generate_blocker_audit.py --project-root /Users/achyutaramsonti/Projects/job-hunt-copilot-v4` to refresh the committed BA-10 reports after the supervisor and build-state updates.
+- Ran `python3.11 -m pytest tests/test_supervisor.py tests/test_supervisor_downstream_actions.py tests/test_acceptance_traceability.py tests/test_blocker_audit.py tests/test_quality_validation.py` and confirmed all 45 focused supervisor and BA-10 guard tests passed.
+- Ran `python3.11 scripts/quality/run_ba10_validation_suite.py --project-root /Users/achyutaramsonti/Projects/job-hunt-copilot-v4 --current-focus` and confirmed the focused downstream-supervisor replay passed, refreshing `build-agent/reports/ba-10-validation-suite-latest.{json,md}` with the narrowed `sending`-onward blocker.
+
+### Result
+- `partial`
+
+### Next
+- Keep BA-10-S4 in progress and register the next bounded downstream supervisor action at `sending`, so the durable run can move beyond the newly landed `email_discovery -> sending` boundary without escalating immediately.
+
+### Notes
+- The acceptance matrix still reports 191 implemented / 7 partial / 14 gap scenarios; this cycle narrowed the downstream-supervisor blocker boundary from `email_discovery` to `sending` without changing the aggregate counts.
+- The blocker now starts at `sending`; `delivery_feedback` and the contact-rooted general-learning selector path remain explicitly unimplemented in the supervisor action catalog after this checkpoint.
