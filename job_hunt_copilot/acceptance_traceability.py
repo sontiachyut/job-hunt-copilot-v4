@@ -6,13 +6,17 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
+import yaml
+
 from .supervisor import SUPPORTED_PIPELINE_CHECKPOINT_STAGES
 
 
-TRACE_MATRIX_VERSION = 3
+TRACE_MATRIX_VERSION = 4
 FEATURE_PATH = Path("prd/test-spec.feature")
+BUILD_BOARD_PATH = Path("build-agent/state/build-board.yaml")
 REPORT_JSON_PATH = Path("build-agent/reports/ba-10-acceptance-trace-matrix.json")
 REPORT_MD_PATH = Path("build-agent/reports/ba-10-acceptance-trace-matrix.md")
+IMPLEMENTED_SLICE_STATUSES = {"completed", "in_progress"}
 
 STATUS_IMPLEMENTED = "implemented"
 STATUS_PARTIAL = "partial"
@@ -61,6 +65,74 @@ def _gap_metadata(
     if implementation_snapshot:
         payload["implementation_snapshot"] = implementation_snapshot
     return payload
+
+
+def _load_build_board(project_root: Path) -> dict[str, Any]:
+    payload = yaml.safe_load((project_root / BUILD_BOARD_PATH).read_text(encoding="utf-8"))
+    if not isinstance(payload, dict):
+        raise ValueError(f"Expected mapping in {BUILD_BOARD_PATH}")
+    return payload
+
+
+def _collect_implemented_slice_catalog(
+    board: dict[str, Any],
+) -> tuple[list[dict[str, str]], dict[str, list[str]]]:
+    slice_catalog: list[dict[str, str]] = []
+    slice_ids_by_epic: dict[str, list[str]] = defaultdict(list)
+
+    for epic in board.get("epics", []):
+        if not isinstance(epic, dict):
+            continue
+        epic_id = epic.get("id")
+        if not epic_id:
+            continue
+        for slice_record in epic.get("near_term_slices", []):
+            if not isinstance(slice_record, dict):
+                continue
+            slice_id = slice_record.get("id")
+            status = slice_record.get("status")
+            if not slice_id or status not in IMPLEMENTED_SLICE_STATUSES:
+                continue
+            slice_catalog.append(
+                {
+                    "slice_id": slice_id,
+                    "epic_id": epic_id,
+                    "name": slice_record.get("name", ""),
+                    "owner_role": slice_record.get(
+                        "owner_role", epic.get("owner_role", "")
+                    ),
+                    "status": status,
+                }
+            )
+            slice_ids_by_epic[epic_id].append(slice_id)
+
+    return slice_catalog, slice_ids_by_epic
+
+
+def _resolve_slice_ids(
+    epic_ids: tuple[str, ...] | list[str],
+    slice_ids_by_epic: dict[str, list[str]],
+) -> list[str]:
+    resolved_epic_ids = list(epic_ids)
+    if len(resolved_epic_ids) > 1 and "BA-10" in resolved_epic_ids:
+        resolved_epic_ids = [
+            epic_id for epic_id in resolved_epic_ids if epic_id != "BA-10"
+        ]
+
+    resolved_slice_ids: list[str] = []
+    seen_slice_ids: set[str] = set()
+
+    for epic_id in resolved_epic_ids:
+        epic_slice_ids = slice_ids_by_epic.get(epic_id)
+        if not epic_slice_ids:
+            raise ValueError(f"No implemented slices recorded for epic {epic_id!r}")
+        for slice_id in epic_slice_ids:
+            if slice_id in seen_slice_ids:
+                continue
+            seen_slice_ids.add(slice_id)
+            resolved_slice_ids.append(slice_id)
+
+    return resolved_slice_ids
 
 
 def _supervisor_downstream_implementation_snapshot() -> dict[str, Any]:
@@ -924,6 +996,8 @@ def parse_feature_file(feature_path: Path) -> list[dict[str, Any]]:
 
 def build_acceptance_trace_matrix(project_root: Path | str) -> dict[str, Any]:
     root = Path(project_root)
+    board = _load_build_board(root)
+    implemented_slices, slice_ids_by_epic = _collect_implemented_slice_catalog(board)
     feature_entries = parse_feature_file(root / FEATURE_PATH)
     feature_rules = {entry["rule"] for entry in feature_entries}
     unknown_rules = feature_rules - set(RULE_BLUEPRINTS)
@@ -949,6 +1023,7 @@ def build_acceptance_trace_matrix(project_root: Path | str) -> dict[str, Any]:
         for gap_id in gap_ids:
             if gap_id not in GAP_REGISTRY:
                 raise ValueError(f"Unknown gap id {gap_id!r} for scenario {entry['scenario']!r}")
+        slice_ids = _resolve_slice_ids(blueprint.epic_ids, slice_ids_by_epic)
 
         scenario_record = {
             "name": entry["scenario"],
@@ -956,6 +1031,7 @@ def build_acceptance_trace_matrix(project_root: Path | str) -> dict[str, Any]:
             "status": status,
             "owner_role": blueprint.owner_role,
             "epic_ids": list(blueprint.epic_ids),
+            "slice_ids": slice_ids,
             "code_refs": list(blueprint.code_refs),
             "test_refs": list(blueprint.test_refs),
             "gap_ids": gap_ids,
@@ -980,6 +1056,7 @@ def build_acceptance_trace_matrix(project_root: Path | str) -> dict[str, Any]:
                 "rule_line": rule["rule_line"],
                 "owner_role": blueprint.owner_role,
                 "epic_ids": list(blueprint.epic_ids),
+                "slice_ids": _resolve_slice_ids(blueprint.epic_ids, slice_ids_by_epic),
                 "code_refs": list(blueprint.code_refs),
                 "test_refs": list(blueprint.test_refs),
                 "note": blueprint.note,
@@ -989,13 +1066,20 @@ def build_acceptance_trace_matrix(project_root: Path | str) -> dict[str, Any]:
         )
 
     gap_scenarios: dict[str, list[str]] = defaultdict(list)
+    gap_slice_ids_by_gap_id: dict[str, list[str]] = defaultdict(list)
     for rule in rules:
         for scenario in rule["scenarios"]:
             for gap_id in scenario["gap_ids"]:
                 gap_scenarios[gap_id].append(scenario["name"])
+                for slice_id in scenario["slice_ids"]:
+                    if slice_id not in gap_slice_ids_by_gap_id[gap_id]:
+                        gap_slice_ids_by_gap_id[gap_id].append(slice_id)
 
     gap_registry = []
     for gap_id, metadata in GAP_REGISTRY.items():
+        gap_slice_ids = list(gap_slice_ids_by_gap_id.get(gap_id, []))
+        if metadata["next_slice"] not in gap_slice_ids:
+            gap_slice_ids.append(metadata["next_slice"])
         gap_record = {
             "gap_id": gap_id,
             "title": metadata["title"],
@@ -1004,6 +1088,7 @@ def build_acceptance_trace_matrix(project_root: Path | str) -> dict[str, Any]:
             "evidence_summary": metadata["evidence_summary"],
             "evidence_code_refs": list(metadata["evidence_code_refs"]),
             "evidence_test_refs": list(metadata["evidence_test_refs"]),
+            "slice_ids": gap_slice_ids,
             "scenario_names": gap_scenarios.get(gap_id, []),
         }
         implementation_snapshot = metadata.get("implementation_snapshot")
@@ -1016,9 +1101,16 @@ def build_acceptance_trace_matrix(project_root: Path | str) -> dict[str, Any]:
         "feature_path": str(FEATURE_PATH),
         "scenario_count": len(feature_entries),
         "status_counts": scenario_status_counts,
+        "implemented_slices": implemented_slices,
         "rules": rules,
         "gap_registry": gap_registry,
-        "epic_validation_notes": EPIC_VALIDATION_NOTES,
+        "epic_validation_notes": [
+            {
+                **note,
+                "slice_ids": _resolve_slice_ids([note["epic_id"]], slice_ids_by_epic),
+            }
+            for note in EPIC_VALIDATION_NOTES
+        ],
         "smoke_coverage_targets": [
             {
                 "target_id": target["target_id"],
@@ -1048,6 +1140,22 @@ def render_acceptance_trace_markdown(matrix: dict[str, Any]) -> str:
     lines.extend(
         [
             "",
+            "## Implemented Slice Catalog",
+            "",
+            "| Slice | Epic | Owner | Status |",
+            "| --- | --- | --- | --- |",
+        ]
+    )
+    for slice_record in matrix["implemented_slices"]:
+        lines.append(
+            "| "
+            + f"{slice_record['slice_id']} | {slice_record['epic_id']} | "
+            + f"{slice_record['owner_role']} | {slice_record['status']} |"
+        )
+
+    lines.extend(
+        [
+            "",
             "## Rule Summary",
             "",
             "| Rule | Owner | Implemented | Partial | Gap | Deferred | Excluded |",
@@ -1063,12 +1171,26 @@ def render_acceptance_trace_markdown(matrix: dict[str, Any]) -> str:
             + f"{counts[STATUS_DEFERRED_OPTIONAL]} | {counts[STATUS_EXCLUDED]} |"
         )
 
+    lines.extend(["", "## Rule-To-Slice Mapping", ""])
+    for rule in matrix["rules"]:
+        lines.append(f"### {rule['rule']}")
+        lines.append(
+            "- Supporting slices: "
+            + ", ".join(f"`{slice_id}`" for slice_id in rule["slice_ids"])
+        )
+        lines.append("")
+
     lines.extend(["", "## Explicit Gaps", ""])
     for gap in matrix["gap_registry"]:
         if not gap["scenario_names"]:
             continue
         lines.append(f"### {gap['gap_id']}: {gap['title']}")
         lines.append(f"- Next slice: `{gap['next_slice']}`")
+        if gap["slice_ids"]:
+            lines.append(
+                "- Supporting slices: "
+                + ", ".join(f"`{slice_id}`" for slice_id in gap["slice_ids"])
+            )
         lines.append(f"- Reason: {gap['reason']}")
         lines.append(f"- Evidence summary: {gap['evidence_summary']}")
         lines.append(
@@ -1115,6 +1237,10 @@ def render_acceptance_trace_markdown(matrix: dict[str, Any]) -> str:
     for note in matrix["epic_validation_notes"]:
         lines.append(f"### {note['epic_id']} ({note['owner_role']})")
         lines.append(f"- Focus: {note['focus']}")
+        lines.append(
+            "- Implemented slices: "
+            + ", ".join(f"`{slice_id}`" for slice_id in note["slice_ids"])
+        )
         lines.append("- Primary tests:")
         for test_ref in note["primary_tests"]:
             lines.append(f"  - `{test_ref}`")

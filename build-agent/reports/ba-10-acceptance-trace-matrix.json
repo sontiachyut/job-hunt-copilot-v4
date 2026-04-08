@@ -1,5 +1,5 @@
 {
-  "trace_matrix_version": 3,
+  "trace_matrix_version": 4,
   "feature_path": "prd/test-spec.feature",
   "scenario_count": 214,
   "status_counts": {
@@ -9,6 +9,239 @@
     "deferred_optional": 1,
     "excluded_from_required_acceptance": 1
   },
+  "implemented_slices": [
+    {
+      "slice_id": "BA-01-S1",
+      "epic_id": "BA-01",
+      "name": "Runtime bootstrap and DB init skeleton",
+      "owner_role": "foundation-engineer",
+      "status": "completed"
+    },
+    {
+      "slice_id": "BA-01-S2",
+      "epic_id": "BA-01",
+      "name": "Canonical schema and views",
+      "owner_role": "foundation-engineer",
+      "status": "completed"
+    },
+    {
+      "slice_id": "BA-01-S3",
+      "epic_id": "BA-01",
+      "name": "Artifact contract and registry utilities",
+      "owner_role": "foundation-engineer",
+      "status": "completed"
+    },
+    {
+      "slice_id": "BA-02-S1",
+      "epic_id": "BA-02",
+      "name": "Control-state persistence and run lifecycle helpers",
+      "owner_role": "build-lead",
+      "status": "completed"
+    },
+    {
+      "slice_id": "BA-02-S2",
+      "epic_id": "BA-02",
+      "name": "Bounded cycle executor",
+      "owner_role": "build-lead",
+      "status": "completed"
+    },
+    {
+      "slice_id": "BA-02-S3",
+      "epic_id": "BA-02",
+      "name": "Review packet and override plumbing",
+      "owner_role": "build-lead",
+      "status": "completed"
+    },
+    {
+      "slice_id": "BA-03-S1",
+      "epic_id": "BA-03",
+      "name": "Runtime pack materialization",
+      "owner_role": "build-lead",
+      "status": "completed"
+    },
+    {
+      "slice_id": "BA-03-S2",
+      "epic_id": "BA-03",
+      "name": "launchd and helper entrypoints",
+      "owner_role": "build-lead",
+      "status": "completed"
+    },
+    {
+      "slice_id": "BA-03-S3",
+      "epic_id": "BA-03",
+      "name": "`jhc-chat` operator bootstrap",
+      "owner_role": "build-lead",
+      "status": "completed"
+    },
+    {
+      "slice_id": "BA-04-S1",
+      "epic_id": "BA-04",
+      "name": "Paste inbox and manual capture bundle persistence",
+      "owner_role": "ingestion-engineer",
+      "status": "completed"
+    },
+    {
+      "slice_id": "BA-04-S2",
+      "epic_id": "BA-04",
+      "name": "Rule-based split and review pipeline",
+      "owner_role": "ingestion-engineer",
+      "status": "completed"
+    },
+    {
+      "slice_id": "BA-04-S3",
+      "epic_id": "BA-04",
+      "name": "Manual lead entity materialization",
+      "owner_role": "ingestion-engineer",
+      "status": "completed"
+    },
+    {
+      "slice_id": "BA-04-S4",
+      "epic_id": "BA-04",
+      "name": "Lead refresh history and workspace snapshotting",
+      "owner_role": "ingestion-engineer",
+      "status": "completed"
+    },
+    {
+      "slice_id": "BA-05-S1",
+      "epic_id": "BA-05",
+      "name": "Gmail collection unit and parser",
+      "owner_role": "ingestion-engineer",
+      "status": "completed"
+    },
+    {
+      "slice_id": "BA-05-S2",
+      "epic_id": "BA-05",
+      "name": "Autonomous lead fan-out and JD recovery",
+      "owner_role": "ingestion-engineer",
+      "status": "completed"
+    },
+    {
+      "slice_id": "BA-05-S3",
+      "epic_id": "BA-05",
+      "name": "JD provenance merge and mismatch review",
+      "owner_role": "ingestion-engineer",
+      "status": "completed"
+    },
+    {
+      "slice_id": "BA-06-S1",
+      "epic_id": "BA-06",
+      "name": "Eligibility and tailoring-run lifecycle",
+      "owner_role": "tailoring-engineer",
+      "status": "completed"
+    },
+    {
+      "slice_id": "BA-06-S2",
+      "epic_id": "BA-06",
+      "name": "Workspace bootstrap and step artifact scaffolding",
+      "owner_role": "tailoring-engineer",
+      "status": "completed"
+    },
+    {
+      "slice_id": "BA-06-S3",
+      "epic_id": "BA-06",
+      "name": "Structured edit generation and finalize verification",
+      "owner_role": "tailoring-engineer",
+      "status": "completed"
+    },
+    {
+      "slice_id": "BA-06-S4",
+      "epic_id": "BA-06",
+      "name": "Mandatory agent review and override handling",
+      "owner_role": "tailoring-engineer",
+      "status": "completed"
+    },
+    {
+      "slice_id": "BA-07-S1",
+      "epic_id": "BA-07",
+      "name": "Apollo search and shortlist materialization",
+      "owner_role": "outreach-engineer",
+      "status": "completed"
+    },
+    {
+      "slice_id": "BA-07-S2",
+      "epic_id": "BA-07",
+      "name": "Contact enrichment and recipient profiles",
+      "owner_role": "outreach-engineer",
+      "status": "completed"
+    },
+    {
+      "slice_id": "BA-07-S3",
+      "epic_id": "BA-07",
+      "name": "Email discovery cascade and budget tracking",
+      "owner_role": "outreach-engineer",
+      "status": "completed"
+    },
+    {
+      "slice_id": "BA-08-S1",
+      "epic_id": "BA-08",
+      "name": "Send-set readiness and pacing selection",
+      "owner_role": "outreach-engineer",
+      "status": "completed"
+    },
+    {
+      "slice_id": "BA-08-S2",
+      "epic_id": "BA-08",
+      "name": "Draft generation and artifact persistence",
+      "owner_role": "outreach-engineer",
+      "status": "completed"
+    },
+    {
+      "slice_id": "BA-08-S3",
+      "epic_id": "BA-08",
+      "name": "Send execution and repeat-outreach guardrails",
+      "owner_role": "outreach-engineer",
+      "status": "completed"
+    },
+    {
+      "slice_id": "BA-09-S1",
+      "epic_id": "BA-09",
+      "name": "Feedback event ingestion and observation windows",
+      "owner_role": "outreach-engineer",
+      "status": "completed"
+    },
+    {
+      "slice_id": "BA-09-S2",
+      "epic_id": "BA-09",
+      "name": "Review queries and traceability surfaces",
+      "owner_role": "outreach-engineer",
+      "status": "completed"
+    },
+    {
+      "slice_id": "BA-09-S3",
+      "epic_id": "BA-09",
+      "name": "Feedback reuse and reply-safe handling",
+      "owner_role": "outreach-engineer",
+      "status": "completed"
+    },
+    {
+      "slice_id": "BA-10-S1",
+      "epic_id": "BA-10",
+      "name": "Acceptance trace matrix",
+      "owner_role": "quality-engineer",
+      "status": "completed"
+    },
+    {
+      "slice_id": "BA-10-S2",
+      "epic_id": "BA-10",
+      "name": "Smoke harness and fixtures",
+      "owner_role": "quality-engineer",
+      "status": "completed"
+    },
+    {
+      "slice_id": "BA-10-S3",
+      "epic_id": "BA-10",
+      "name": "Cross-component regression and blocker burn-down",
+      "owner_role": "quality-engineer",
+      "status": "in_progress"
+    },
+    {
+      "slice_id": "BA-10-S4",
+      "epic_id": "BA-10",
+      "name": "Downstream supervisor action-catalog burn-down",
+      "owner_role": "build-lead",
+      "status": "in_progress"
+    }
+  ],
   "rules": [
     {
       "rule": "Build bootstrap and prerequisites",
@@ -18,6 +251,14 @@
         "BA-01",
         "BA-03",
         "BA-10"
+      ],
+      "slice_ids": [
+        "BA-01-S1",
+        "BA-01-S2",
+        "BA-01-S3",
+        "BA-03-S1",
+        "BA-03-S2",
+        "BA-03-S3"
       ],
       "code_refs": [
         "job_hunt_copilot/bootstrap.py",
@@ -56,6 +297,14 @@
             "BA-03",
             "BA-10"
           ],
+          "slice_ids": [
+            "BA-01-S1",
+            "BA-01-S2",
+            "BA-01-S3",
+            "BA-03-S1",
+            "BA-03-S2",
+            "BA-03-S3"
+          ],
           "code_refs": [
             "job_hunt_copilot/bootstrap.py",
             "job_hunt_copilot/db.py",
@@ -86,6 +335,14 @@
             "BA-01",
             "BA-03",
             "BA-10"
+          ],
+          "slice_ids": [
+            "BA-01-S1",
+            "BA-01-S2",
+            "BA-01-S3",
+            "BA-03-S1",
+            "BA-03-S2",
+            "BA-03-S3"
           ],
           "code_refs": [
             "job_hunt_copilot/bootstrap.py",
@@ -118,6 +375,14 @@
             "BA-03",
             "BA-10"
           ],
+          "slice_ids": [
+            "BA-01-S1",
+            "BA-01-S2",
+            "BA-01-S3",
+            "BA-03-S1",
+            "BA-03-S2",
+            "BA-03-S3"
+          ],
           "code_refs": [
             "job_hunt_copilot/bootstrap.py",
             "job_hunt_copilot/db.py",
@@ -148,6 +413,14 @@
             "BA-01",
             "BA-03",
             "BA-10"
+          ],
+          "slice_ids": [
+            "BA-01-S1",
+            "BA-01-S2",
+            "BA-01-S3",
+            "BA-03-S1",
+            "BA-03-S2",
+            "BA-03-S3"
           ],
           "code_refs": [
             "job_hunt_copilot/bootstrap.py",
@@ -180,6 +453,14 @@
             "BA-03",
             "BA-10"
           ],
+          "slice_ids": [
+            "BA-01-S1",
+            "BA-01-S2",
+            "BA-01-S3",
+            "BA-03-S1",
+            "BA-03-S2",
+            "BA-03-S3"
+          ],
           "code_refs": [
             "job_hunt_copilot/bootstrap.py",
             "job_hunt_copilot/db.py",
@@ -211,6 +492,14 @@
             "BA-03",
             "BA-10"
           ],
+          "slice_ids": [
+            "BA-01-S1",
+            "BA-01-S2",
+            "BA-01-S3",
+            "BA-03-S1",
+            "BA-03-S2",
+            "BA-03-S3"
+          ],
           "code_refs": [
             "job_hunt_copilot/bootstrap.py",
             "job_hunt_copilot/db.py",
@@ -241,6 +530,14 @@
             "BA-01",
             "BA-03",
             "BA-10"
+          ],
+          "slice_ids": [
+            "BA-01-S1",
+            "BA-01-S2",
+            "BA-01-S3",
+            "BA-03-S1",
+            "BA-03-S2",
+            "BA-03-S3"
           ],
           "code_refs": [
             "job_hunt_copilot/bootstrap.py",
@@ -277,6 +574,31 @@
         "BA-07",
         "BA-08",
         "BA-09"
+      ],
+      "slice_ids": [
+        "BA-01-S1",
+        "BA-01-S2",
+        "BA-01-S3",
+        "BA-02-S1",
+        "BA-02-S2",
+        "BA-02-S3",
+        "BA-04-S1",
+        "BA-04-S2",
+        "BA-04-S3",
+        "BA-04-S4",
+        "BA-06-S1",
+        "BA-06-S2",
+        "BA-06-S3",
+        "BA-06-S4",
+        "BA-07-S1",
+        "BA-07-S2",
+        "BA-07-S3",
+        "BA-08-S1",
+        "BA-08-S2",
+        "BA-08-S3",
+        "BA-09-S1",
+        "BA-09-S2",
+        "BA-09-S3"
       ],
       "code_refs": [
         "job_hunt_copilot/artifacts.py",
@@ -322,6 +644,31 @@
             "BA-08",
             "BA-09"
           ],
+          "slice_ids": [
+            "BA-01-S1",
+            "BA-01-S2",
+            "BA-01-S3",
+            "BA-02-S1",
+            "BA-02-S2",
+            "BA-02-S3",
+            "BA-04-S1",
+            "BA-04-S2",
+            "BA-04-S3",
+            "BA-04-S4",
+            "BA-06-S1",
+            "BA-06-S2",
+            "BA-06-S3",
+            "BA-06-S4",
+            "BA-07-S1",
+            "BA-07-S2",
+            "BA-07-S3",
+            "BA-08-S1",
+            "BA-08-S2",
+            "BA-08-S3",
+            "BA-09-S1",
+            "BA-09-S2",
+            "BA-09-S3"
+          ],
           "code_refs": [
             "job_hunt_copilot/artifacts.py",
             "job_hunt_copilot/contracts.py",
@@ -359,6 +706,31 @@
             "BA-07",
             "BA-08",
             "BA-09"
+          ],
+          "slice_ids": [
+            "BA-01-S1",
+            "BA-01-S2",
+            "BA-01-S3",
+            "BA-02-S1",
+            "BA-02-S2",
+            "BA-02-S3",
+            "BA-04-S1",
+            "BA-04-S2",
+            "BA-04-S3",
+            "BA-04-S4",
+            "BA-06-S1",
+            "BA-06-S2",
+            "BA-06-S3",
+            "BA-06-S4",
+            "BA-07-S1",
+            "BA-07-S2",
+            "BA-07-S3",
+            "BA-08-S1",
+            "BA-08-S2",
+            "BA-08-S3",
+            "BA-09-S1",
+            "BA-09-S2",
+            "BA-09-S3"
           ],
           "code_refs": [
             "job_hunt_copilot/artifacts.py",
@@ -398,6 +770,31 @@
             "BA-08",
             "BA-09"
           ],
+          "slice_ids": [
+            "BA-01-S1",
+            "BA-01-S2",
+            "BA-01-S3",
+            "BA-02-S1",
+            "BA-02-S2",
+            "BA-02-S3",
+            "BA-04-S1",
+            "BA-04-S2",
+            "BA-04-S3",
+            "BA-04-S4",
+            "BA-06-S1",
+            "BA-06-S2",
+            "BA-06-S3",
+            "BA-06-S4",
+            "BA-07-S1",
+            "BA-07-S2",
+            "BA-07-S3",
+            "BA-08-S1",
+            "BA-08-S2",
+            "BA-08-S3",
+            "BA-09-S1",
+            "BA-09-S2",
+            "BA-09-S3"
+          ],
           "code_refs": [
             "job_hunt_copilot/artifacts.py",
             "job_hunt_copilot/contracts.py",
@@ -435,6 +832,31 @@
             "BA-07",
             "BA-08",
             "BA-09"
+          ],
+          "slice_ids": [
+            "BA-01-S1",
+            "BA-01-S2",
+            "BA-01-S3",
+            "BA-02-S1",
+            "BA-02-S2",
+            "BA-02-S3",
+            "BA-04-S1",
+            "BA-04-S2",
+            "BA-04-S3",
+            "BA-04-S4",
+            "BA-06-S1",
+            "BA-06-S2",
+            "BA-06-S3",
+            "BA-06-S4",
+            "BA-07-S1",
+            "BA-07-S2",
+            "BA-07-S3",
+            "BA-08-S1",
+            "BA-08-S2",
+            "BA-08-S3",
+            "BA-09-S1",
+            "BA-09-S2",
+            "BA-09-S3"
           ],
           "code_refs": [
             "job_hunt_copilot/artifacts.py",
@@ -474,6 +896,31 @@
             "BA-08",
             "BA-09"
           ],
+          "slice_ids": [
+            "BA-01-S1",
+            "BA-01-S2",
+            "BA-01-S3",
+            "BA-02-S1",
+            "BA-02-S2",
+            "BA-02-S3",
+            "BA-04-S1",
+            "BA-04-S2",
+            "BA-04-S3",
+            "BA-04-S4",
+            "BA-06-S1",
+            "BA-06-S2",
+            "BA-06-S3",
+            "BA-06-S4",
+            "BA-07-S1",
+            "BA-07-S2",
+            "BA-07-S3",
+            "BA-08-S1",
+            "BA-08-S2",
+            "BA-08-S3",
+            "BA-09-S1",
+            "BA-09-S2",
+            "BA-09-S3"
+          ],
           "code_refs": [
             "job_hunt_copilot/artifacts.py",
             "job_hunt_copilot/contracts.py",
@@ -511,6 +958,31 @@
             "BA-07",
             "BA-08",
             "BA-09"
+          ],
+          "slice_ids": [
+            "BA-01-S1",
+            "BA-01-S2",
+            "BA-01-S3",
+            "BA-02-S1",
+            "BA-02-S2",
+            "BA-02-S3",
+            "BA-04-S1",
+            "BA-04-S2",
+            "BA-04-S3",
+            "BA-04-S4",
+            "BA-06-S1",
+            "BA-06-S2",
+            "BA-06-S3",
+            "BA-06-S4",
+            "BA-07-S1",
+            "BA-07-S2",
+            "BA-07-S3",
+            "BA-08-S1",
+            "BA-08-S2",
+            "BA-08-S3",
+            "BA-09-S1",
+            "BA-09-S2",
+            "BA-09-S3"
           ],
           "code_refs": [
             "job_hunt_copilot/artifacts.py",
@@ -550,6 +1022,31 @@
             "BA-08",
             "BA-09"
           ],
+          "slice_ids": [
+            "BA-01-S1",
+            "BA-01-S2",
+            "BA-01-S3",
+            "BA-02-S1",
+            "BA-02-S2",
+            "BA-02-S3",
+            "BA-04-S1",
+            "BA-04-S2",
+            "BA-04-S3",
+            "BA-04-S4",
+            "BA-06-S1",
+            "BA-06-S2",
+            "BA-06-S3",
+            "BA-06-S4",
+            "BA-07-S1",
+            "BA-07-S2",
+            "BA-07-S3",
+            "BA-08-S1",
+            "BA-08-S2",
+            "BA-08-S3",
+            "BA-09-S1",
+            "BA-09-S2",
+            "BA-09-S3"
+          ],
           "code_refs": [
             "job_hunt_copilot/artifacts.py",
             "job_hunt_copilot/contracts.py",
@@ -587,6 +1084,31 @@
             "BA-07",
             "BA-08",
             "BA-09"
+          ],
+          "slice_ids": [
+            "BA-01-S1",
+            "BA-01-S2",
+            "BA-01-S3",
+            "BA-02-S1",
+            "BA-02-S2",
+            "BA-02-S3",
+            "BA-04-S1",
+            "BA-04-S2",
+            "BA-04-S3",
+            "BA-04-S4",
+            "BA-06-S1",
+            "BA-06-S2",
+            "BA-06-S3",
+            "BA-06-S4",
+            "BA-07-S1",
+            "BA-07-S2",
+            "BA-07-S3",
+            "BA-08-S1",
+            "BA-08-S2",
+            "BA-08-S3",
+            "BA-09-S1",
+            "BA-09-S2",
+            "BA-09-S3"
           ],
           "code_refs": [
             "job_hunt_copilot/artifacts.py",
@@ -626,6 +1148,31 @@
             "BA-08",
             "BA-09"
           ],
+          "slice_ids": [
+            "BA-01-S1",
+            "BA-01-S2",
+            "BA-01-S3",
+            "BA-02-S1",
+            "BA-02-S2",
+            "BA-02-S3",
+            "BA-04-S1",
+            "BA-04-S2",
+            "BA-04-S3",
+            "BA-04-S4",
+            "BA-06-S1",
+            "BA-06-S2",
+            "BA-06-S3",
+            "BA-06-S4",
+            "BA-07-S1",
+            "BA-07-S2",
+            "BA-07-S3",
+            "BA-08-S1",
+            "BA-08-S2",
+            "BA-08-S3",
+            "BA-09-S1",
+            "BA-09-S2",
+            "BA-09-S3"
+          ],
           "code_refs": [
             "job_hunt_copilot/artifacts.py",
             "job_hunt_copilot/contracts.py",
@@ -663,6 +1210,31 @@
             "BA-07",
             "BA-08",
             "BA-09"
+          ],
+          "slice_ids": [
+            "BA-01-S1",
+            "BA-01-S2",
+            "BA-01-S3",
+            "BA-02-S1",
+            "BA-02-S2",
+            "BA-02-S3",
+            "BA-04-S1",
+            "BA-04-S2",
+            "BA-04-S3",
+            "BA-04-S4",
+            "BA-06-S1",
+            "BA-06-S2",
+            "BA-06-S3",
+            "BA-06-S4",
+            "BA-07-S1",
+            "BA-07-S2",
+            "BA-07-S3",
+            "BA-08-S1",
+            "BA-08-S2",
+            "BA-08-S3",
+            "BA-09-S1",
+            "BA-09-S2",
+            "BA-09-S3"
           ],
           "code_refs": [
             "job_hunt_copilot/artifacts.py",
@@ -702,6 +1274,31 @@
             "BA-08",
             "BA-09"
           ],
+          "slice_ids": [
+            "BA-01-S1",
+            "BA-01-S2",
+            "BA-01-S3",
+            "BA-02-S1",
+            "BA-02-S2",
+            "BA-02-S3",
+            "BA-04-S1",
+            "BA-04-S2",
+            "BA-04-S3",
+            "BA-04-S4",
+            "BA-06-S1",
+            "BA-06-S2",
+            "BA-06-S3",
+            "BA-06-S4",
+            "BA-07-S1",
+            "BA-07-S2",
+            "BA-07-S3",
+            "BA-08-S1",
+            "BA-08-S2",
+            "BA-08-S3",
+            "BA-09-S1",
+            "BA-09-S2",
+            "BA-09-S3"
+          ],
           "code_refs": [
             "job_hunt_copilot/artifacts.py",
             "job_hunt_copilot/contracts.py",
@@ -739,6 +1336,31 @@
             "BA-07",
             "BA-08",
             "BA-09"
+          ],
+          "slice_ids": [
+            "BA-01-S1",
+            "BA-01-S2",
+            "BA-01-S3",
+            "BA-02-S1",
+            "BA-02-S2",
+            "BA-02-S3",
+            "BA-04-S1",
+            "BA-04-S2",
+            "BA-04-S3",
+            "BA-04-S4",
+            "BA-06-S1",
+            "BA-06-S2",
+            "BA-06-S3",
+            "BA-06-S4",
+            "BA-07-S1",
+            "BA-07-S2",
+            "BA-07-S3",
+            "BA-08-S1",
+            "BA-08-S2",
+            "BA-08-S3",
+            "BA-09-S1",
+            "BA-09-S2",
+            "BA-09-S3"
           ],
           "code_refs": [
             "job_hunt_copilot/artifacts.py",
@@ -780,6 +1402,31 @@
             "BA-08",
             "BA-09"
           ],
+          "slice_ids": [
+            "BA-01-S1",
+            "BA-01-S2",
+            "BA-01-S3",
+            "BA-02-S1",
+            "BA-02-S2",
+            "BA-02-S3",
+            "BA-04-S1",
+            "BA-04-S2",
+            "BA-04-S3",
+            "BA-04-S4",
+            "BA-06-S1",
+            "BA-06-S2",
+            "BA-06-S3",
+            "BA-06-S4",
+            "BA-07-S1",
+            "BA-07-S2",
+            "BA-07-S3",
+            "BA-08-S1",
+            "BA-08-S2",
+            "BA-08-S3",
+            "BA-09-S1",
+            "BA-09-S2",
+            "BA-09-S3"
+          ],
           "code_refs": [
             "job_hunt_copilot/artifacts.py",
             "job_hunt_copilot/contracts.py",
@@ -817,6 +1464,31 @@
             "BA-07",
             "BA-08",
             "BA-09"
+          ],
+          "slice_ids": [
+            "BA-01-S1",
+            "BA-01-S2",
+            "BA-01-S3",
+            "BA-02-S1",
+            "BA-02-S2",
+            "BA-02-S3",
+            "BA-04-S1",
+            "BA-04-S2",
+            "BA-04-S3",
+            "BA-04-S4",
+            "BA-06-S1",
+            "BA-06-S2",
+            "BA-06-S3",
+            "BA-06-S4",
+            "BA-07-S1",
+            "BA-07-S2",
+            "BA-07-S3",
+            "BA-08-S1",
+            "BA-08-S2",
+            "BA-08-S3",
+            "BA-09-S1",
+            "BA-09-S2",
+            "BA-09-S3"
           ],
           "code_refs": [
             "job_hunt_copilot/artifacts.py",
@@ -856,6 +1528,31 @@
             "BA-08",
             "BA-09"
           ],
+          "slice_ids": [
+            "BA-01-S1",
+            "BA-01-S2",
+            "BA-01-S3",
+            "BA-02-S1",
+            "BA-02-S2",
+            "BA-02-S3",
+            "BA-04-S1",
+            "BA-04-S2",
+            "BA-04-S3",
+            "BA-04-S4",
+            "BA-06-S1",
+            "BA-06-S2",
+            "BA-06-S3",
+            "BA-06-S4",
+            "BA-07-S1",
+            "BA-07-S2",
+            "BA-07-S3",
+            "BA-08-S1",
+            "BA-08-S2",
+            "BA-08-S3",
+            "BA-09-S1",
+            "BA-09-S2",
+            "BA-09-S3"
+          ],
           "code_refs": [
             "job_hunt_copilot/artifacts.py",
             "job_hunt_copilot/contracts.py",
@@ -893,6 +1590,28 @@
         "BA-07",
         "BA-08",
         "BA-09"
+      ],
+      "slice_ids": [
+        "BA-01-S1",
+        "BA-01-S2",
+        "BA-01-S3",
+        "BA-04-S1",
+        "BA-04-S2",
+        "BA-04-S3",
+        "BA-04-S4",
+        "BA-06-S1",
+        "BA-06-S2",
+        "BA-06-S3",
+        "BA-06-S4",
+        "BA-07-S1",
+        "BA-07-S2",
+        "BA-07-S3",
+        "BA-08-S1",
+        "BA-08-S2",
+        "BA-08-S3",
+        "BA-09-S1",
+        "BA-09-S2",
+        "BA-09-S3"
       ],
       "code_refs": [
         "job_hunt_copilot/db.py",
@@ -932,6 +1651,28 @@
             "BA-08",
             "BA-09"
           ],
+          "slice_ids": [
+            "BA-01-S1",
+            "BA-01-S2",
+            "BA-01-S3",
+            "BA-04-S1",
+            "BA-04-S2",
+            "BA-04-S3",
+            "BA-04-S4",
+            "BA-06-S1",
+            "BA-06-S2",
+            "BA-06-S3",
+            "BA-06-S4",
+            "BA-07-S1",
+            "BA-07-S2",
+            "BA-07-S3",
+            "BA-08-S1",
+            "BA-08-S2",
+            "BA-08-S3",
+            "BA-09-S1",
+            "BA-09-S2",
+            "BA-09-S3"
+          ],
           "code_refs": [
             "job_hunt_copilot/db.py",
             "job_hunt_copilot/linkedin_scraping.py",
@@ -963,6 +1704,28 @@
             "BA-07",
             "BA-08",
             "BA-09"
+          ],
+          "slice_ids": [
+            "BA-01-S1",
+            "BA-01-S2",
+            "BA-01-S3",
+            "BA-04-S1",
+            "BA-04-S2",
+            "BA-04-S3",
+            "BA-04-S4",
+            "BA-06-S1",
+            "BA-06-S2",
+            "BA-06-S3",
+            "BA-06-S4",
+            "BA-07-S1",
+            "BA-07-S2",
+            "BA-07-S3",
+            "BA-08-S1",
+            "BA-08-S2",
+            "BA-08-S3",
+            "BA-09-S1",
+            "BA-09-S2",
+            "BA-09-S3"
           ],
           "code_refs": [
             "job_hunt_copilot/db.py",
@@ -996,6 +1759,28 @@
             "BA-08",
             "BA-09"
           ],
+          "slice_ids": [
+            "BA-01-S1",
+            "BA-01-S2",
+            "BA-01-S3",
+            "BA-04-S1",
+            "BA-04-S2",
+            "BA-04-S3",
+            "BA-04-S4",
+            "BA-06-S1",
+            "BA-06-S2",
+            "BA-06-S3",
+            "BA-06-S4",
+            "BA-07-S1",
+            "BA-07-S2",
+            "BA-07-S3",
+            "BA-08-S1",
+            "BA-08-S2",
+            "BA-08-S3",
+            "BA-09-S1",
+            "BA-09-S2",
+            "BA-09-S3"
+          ],
           "code_refs": [
             "job_hunt_copilot/db.py",
             "job_hunt_copilot/linkedin_scraping.py",
@@ -1027,6 +1812,28 @@
             "BA-07",
             "BA-08",
             "BA-09"
+          ],
+          "slice_ids": [
+            "BA-01-S1",
+            "BA-01-S2",
+            "BA-01-S3",
+            "BA-04-S1",
+            "BA-04-S2",
+            "BA-04-S3",
+            "BA-04-S4",
+            "BA-06-S1",
+            "BA-06-S2",
+            "BA-06-S3",
+            "BA-06-S4",
+            "BA-07-S1",
+            "BA-07-S2",
+            "BA-07-S3",
+            "BA-08-S1",
+            "BA-08-S2",
+            "BA-08-S3",
+            "BA-09-S1",
+            "BA-09-S2",
+            "BA-09-S3"
           ],
           "code_refs": [
             "job_hunt_copilot/db.py",
@@ -1060,6 +1867,28 @@
             "BA-08",
             "BA-09"
           ],
+          "slice_ids": [
+            "BA-01-S1",
+            "BA-01-S2",
+            "BA-01-S3",
+            "BA-04-S1",
+            "BA-04-S2",
+            "BA-04-S3",
+            "BA-04-S4",
+            "BA-06-S1",
+            "BA-06-S2",
+            "BA-06-S3",
+            "BA-06-S4",
+            "BA-07-S1",
+            "BA-07-S2",
+            "BA-07-S3",
+            "BA-08-S1",
+            "BA-08-S2",
+            "BA-08-S3",
+            "BA-09-S1",
+            "BA-09-S2",
+            "BA-09-S3"
+          ],
           "code_refs": [
             "job_hunt_copilot/db.py",
             "job_hunt_copilot/linkedin_scraping.py",
@@ -1091,6 +1920,28 @@
             "BA-07",
             "BA-08",
             "BA-09"
+          ],
+          "slice_ids": [
+            "BA-01-S1",
+            "BA-01-S2",
+            "BA-01-S3",
+            "BA-04-S1",
+            "BA-04-S2",
+            "BA-04-S3",
+            "BA-04-S4",
+            "BA-06-S1",
+            "BA-06-S2",
+            "BA-06-S3",
+            "BA-06-S4",
+            "BA-07-S1",
+            "BA-07-S2",
+            "BA-07-S3",
+            "BA-08-S1",
+            "BA-08-S2",
+            "BA-08-S3",
+            "BA-09-S1",
+            "BA-09-S2",
+            "BA-09-S3"
           ],
           "code_refs": [
             "job_hunt_copilot/db.py",
@@ -1124,6 +1975,28 @@
             "BA-08",
             "BA-09"
           ],
+          "slice_ids": [
+            "BA-01-S1",
+            "BA-01-S2",
+            "BA-01-S3",
+            "BA-04-S1",
+            "BA-04-S2",
+            "BA-04-S3",
+            "BA-04-S4",
+            "BA-06-S1",
+            "BA-06-S2",
+            "BA-06-S3",
+            "BA-06-S4",
+            "BA-07-S1",
+            "BA-07-S2",
+            "BA-07-S3",
+            "BA-08-S1",
+            "BA-08-S2",
+            "BA-08-S3",
+            "BA-09-S1",
+            "BA-09-S2",
+            "BA-09-S3"
+          ],
           "code_refs": [
             "job_hunt_copilot/db.py",
             "job_hunt_copilot/linkedin_scraping.py",
@@ -1155,6 +2028,28 @@
             "BA-07",
             "BA-08",
             "BA-09"
+          ],
+          "slice_ids": [
+            "BA-01-S1",
+            "BA-01-S2",
+            "BA-01-S3",
+            "BA-04-S1",
+            "BA-04-S2",
+            "BA-04-S3",
+            "BA-04-S4",
+            "BA-06-S1",
+            "BA-06-S2",
+            "BA-06-S3",
+            "BA-06-S4",
+            "BA-07-S1",
+            "BA-07-S2",
+            "BA-07-S3",
+            "BA-08-S1",
+            "BA-08-S2",
+            "BA-08-S3",
+            "BA-09-S1",
+            "BA-09-S2",
+            "BA-09-S3"
           ],
           "code_refs": [
             "job_hunt_copilot/db.py",
@@ -1188,6 +2083,28 @@
             "BA-08",
             "BA-09"
           ],
+          "slice_ids": [
+            "BA-01-S1",
+            "BA-01-S2",
+            "BA-01-S3",
+            "BA-04-S1",
+            "BA-04-S2",
+            "BA-04-S3",
+            "BA-04-S4",
+            "BA-06-S1",
+            "BA-06-S2",
+            "BA-06-S3",
+            "BA-06-S4",
+            "BA-07-S1",
+            "BA-07-S2",
+            "BA-07-S3",
+            "BA-08-S1",
+            "BA-08-S2",
+            "BA-08-S3",
+            "BA-09-S1",
+            "BA-09-S2",
+            "BA-09-S3"
+          ],
           "code_refs": [
             "job_hunt_copilot/db.py",
             "job_hunt_copilot/linkedin_scraping.py",
@@ -1219,6 +2136,28 @@
             "BA-07",
             "BA-08",
             "BA-09"
+          ],
+          "slice_ids": [
+            "BA-01-S1",
+            "BA-01-S2",
+            "BA-01-S3",
+            "BA-04-S1",
+            "BA-04-S2",
+            "BA-04-S3",
+            "BA-04-S4",
+            "BA-06-S1",
+            "BA-06-S2",
+            "BA-06-S3",
+            "BA-06-S4",
+            "BA-07-S1",
+            "BA-07-S2",
+            "BA-07-S3",
+            "BA-08-S1",
+            "BA-08-S2",
+            "BA-08-S3",
+            "BA-09-S1",
+            "BA-09-S2",
+            "BA-09-S3"
           ],
           "code_refs": [
             "job_hunt_copilot/db.py",
@@ -1252,6 +2191,28 @@
             "BA-08",
             "BA-09"
           ],
+          "slice_ids": [
+            "BA-01-S1",
+            "BA-01-S2",
+            "BA-01-S3",
+            "BA-04-S1",
+            "BA-04-S2",
+            "BA-04-S3",
+            "BA-04-S4",
+            "BA-06-S1",
+            "BA-06-S2",
+            "BA-06-S3",
+            "BA-06-S4",
+            "BA-07-S1",
+            "BA-07-S2",
+            "BA-07-S3",
+            "BA-08-S1",
+            "BA-08-S2",
+            "BA-08-S3",
+            "BA-09-S1",
+            "BA-09-S2",
+            "BA-09-S3"
+          ],
           "code_refs": [
             "job_hunt_copilot/db.py",
             "job_hunt_copilot/linkedin_scraping.py",
@@ -1284,6 +2245,28 @@
             "BA-08",
             "BA-09"
           ],
+          "slice_ids": [
+            "BA-01-S1",
+            "BA-01-S2",
+            "BA-01-S3",
+            "BA-04-S1",
+            "BA-04-S2",
+            "BA-04-S3",
+            "BA-04-S4",
+            "BA-06-S1",
+            "BA-06-S2",
+            "BA-06-S3",
+            "BA-06-S4",
+            "BA-07-S1",
+            "BA-07-S2",
+            "BA-07-S3",
+            "BA-08-S1",
+            "BA-08-S2",
+            "BA-08-S3",
+            "BA-09-S1",
+            "BA-09-S2",
+            "BA-09-S3"
+          ],
           "code_refs": [
             "job_hunt_copilot/db.py",
             "job_hunt_copilot/linkedin_scraping.py",
@@ -1314,6 +2297,21 @@
         "BA-04",
         "BA-05",
         "BA-07"
+      ],
+      "slice_ids": [
+        "BA-01-S1",
+        "BA-01-S2",
+        "BA-01-S3",
+        "BA-04-S1",
+        "BA-04-S2",
+        "BA-04-S3",
+        "BA-04-S4",
+        "BA-05-S1",
+        "BA-05-S2",
+        "BA-05-S3",
+        "BA-07-S1",
+        "BA-07-S2",
+        "BA-07-S3"
       ],
       "code_refs": [
         "job_hunt_copilot/bootstrap.py",
@@ -1348,6 +2346,21 @@
             "BA-05",
             "BA-07"
           ],
+          "slice_ids": [
+            "BA-01-S1",
+            "BA-01-S2",
+            "BA-01-S3",
+            "BA-04-S1",
+            "BA-04-S2",
+            "BA-04-S3",
+            "BA-04-S4",
+            "BA-05-S1",
+            "BA-05-S2",
+            "BA-05-S3",
+            "BA-07-S1",
+            "BA-07-S2",
+            "BA-07-S3"
+          ],
           "code_refs": [
             "job_hunt_copilot/bootstrap.py",
             "job_hunt_copilot/secrets.py",
@@ -1374,6 +2387,21 @@
             "BA-04",
             "BA-05",
             "BA-07"
+          ],
+          "slice_ids": [
+            "BA-01-S1",
+            "BA-01-S2",
+            "BA-01-S3",
+            "BA-04-S1",
+            "BA-04-S2",
+            "BA-04-S3",
+            "BA-04-S4",
+            "BA-05-S1",
+            "BA-05-S2",
+            "BA-05-S3",
+            "BA-07-S1",
+            "BA-07-S2",
+            "BA-07-S3"
           ],
           "code_refs": [
             "job_hunt_copilot/bootstrap.py",
@@ -1402,6 +2430,21 @@
             "BA-05",
             "BA-07"
           ],
+          "slice_ids": [
+            "BA-01-S1",
+            "BA-01-S2",
+            "BA-01-S3",
+            "BA-04-S1",
+            "BA-04-S2",
+            "BA-04-S3",
+            "BA-04-S4",
+            "BA-05-S1",
+            "BA-05-S2",
+            "BA-05-S3",
+            "BA-07-S1",
+            "BA-07-S2",
+            "BA-07-S3"
+          ],
           "code_refs": [
             "job_hunt_copilot/bootstrap.py",
             "job_hunt_copilot/secrets.py",
@@ -1428,6 +2471,21 @@
             "BA-04",
             "BA-05",
             "BA-07"
+          ],
+          "slice_ids": [
+            "BA-01-S1",
+            "BA-01-S2",
+            "BA-01-S3",
+            "BA-04-S1",
+            "BA-04-S2",
+            "BA-04-S3",
+            "BA-04-S4",
+            "BA-05-S1",
+            "BA-05-S2",
+            "BA-05-S3",
+            "BA-07-S1",
+            "BA-07-S2",
+            "BA-07-S3"
           ],
           "code_refs": [
             "job_hunt_copilot/bootstrap.py",
@@ -1456,6 +2514,21 @@
             "BA-05",
             "BA-07"
           ],
+          "slice_ids": [
+            "BA-01-S1",
+            "BA-01-S2",
+            "BA-01-S3",
+            "BA-04-S1",
+            "BA-04-S2",
+            "BA-04-S3",
+            "BA-04-S4",
+            "BA-05-S1",
+            "BA-05-S2",
+            "BA-05-S3",
+            "BA-07-S1",
+            "BA-07-S2",
+            "BA-07-S3"
+          ],
           "code_refs": [
             "job_hunt_copilot/bootstrap.py",
             "job_hunt_copilot/secrets.py",
@@ -1482,6 +2555,21 @@
             "BA-04",
             "BA-05",
             "BA-07"
+          ],
+          "slice_ids": [
+            "BA-01-S1",
+            "BA-01-S2",
+            "BA-01-S3",
+            "BA-04-S1",
+            "BA-04-S2",
+            "BA-04-S3",
+            "BA-04-S4",
+            "BA-05-S1",
+            "BA-05-S2",
+            "BA-05-S3",
+            "BA-07-S1",
+            "BA-07-S2",
+            "BA-07-S3"
           ],
           "code_refs": [
             "job_hunt_copilot/bootstrap.py",
@@ -1510,6 +2598,21 @@
             "BA-05",
             "BA-07"
           ],
+          "slice_ids": [
+            "BA-01-S1",
+            "BA-01-S2",
+            "BA-01-S3",
+            "BA-04-S1",
+            "BA-04-S2",
+            "BA-04-S3",
+            "BA-04-S4",
+            "BA-05-S1",
+            "BA-05-S2",
+            "BA-05-S3",
+            "BA-07-S1",
+            "BA-07-S2",
+            "BA-07-S3"
+          ],
           "code_refs": [
             "job_hunt_copilot/bootstrap.py",
             "job_hunt_copilot/secrets.py",
@@ -1536,6 +2639,21 @@
             "BA-04",
             "BA-05",
             "BA-07"
+          ],
+          "slice_ids": [
+            "BA-01-S1",
+            "BA-01-S2",
+            "BA-01-S3",
+            "BA-04-S1",
+            "BA-04-S2",
+            "BA-04-S3",
+            "BA-04-S4",
+            "BA-05-S1",
+            "BA-05-S2",
+            "BA-05-S3",
+            "BA-07-S1",
+            "BA-07-S2",
+            "BA-07-S3"
           ],
           "code_refs": [
             "job_hunt_copilot/bootstrap.py",
@@ -1564,6 +2682,21 @@
             "BA-05",
             "BA-07"
           ],
+          "slice_ids": [
+            "BA-01-S1",
+            "BA-01-S2",
+            "BA-01-S3",
+            "BA-04-S1",
+            "BA-04-S2",
+            "BA-04-S3",
+            "BA-04-S4",
+            "BA-05-S1",
+            "BA-05-S2",
+            "BA-05-S3",
+            "BA-07-S1",
+            "BA-07-S2",
+            "BA-07-S3"
+          ],
           "code_refs": [
             "job_hunt_copilot/bootstrap.py",
             "job_hunt_copilot/secrets.py",
@@ -1590,6 +2723,21 @@
             "BA-04",
             "BA-05",
             "BA-07"
+          ],
+          "slice_ids": [
+            "BA-01-S1",
+            "BA-01-S2",
+            "BA-01-S3",
+            "BA-04-S1",
+            "BA-04-S2",
+            "BA-04-S3",
+            "BA-04-S4",
+            "BA-05-S1",
+            "BA-05-S2",
+            "BA-05-S3",
+            "BA-07-S1",
+            "BA-07-S2",
+            "BA-07-S3"
           ],
           "code_refs": [
             "job_hunt_copilot/bootstrap.py",
@@ -1618,6 +2766,21 @@
             "BA-05",
             "BA-07"
           ],
+          "slice_ids": [
+            "BA-01-S1",
+            "BA-01-S2",
+            "BA-01-S3",
+            "BA-04-S1",
+            "BA-04-S2",
+            "BA-04-S3",
+            "BA-04-S4",
+            "BA-05-S1",
+            "BA-05-S2",
+            "BA-05-S3",
+            "BA-07-S1",
+            "BA-07-S2",
+            "BA-07-S3"
+          ],
           "code_refs": [
             "job_hunt_copilot/bootstrap.py",
             "job_hunt_copilot/secrets.py",
@@ -1644,6 +2807,21 @@
             "BA-04",
             "BA-05",
             "BA-07"
+          ],
+          "slice_ids": [
+            "BA-01-S1",
+            "BA-01-S2",
+            "BA-01-S3",
+            "BA-04-S1",
+            "BA-04-S2",
+            "BA-04-S3",
+            "BA-04-S4",
+            "BA-05-S1",
+            "BA-05-S2",
+            "BA-05-S3",
+            "BA-07-S1",
+            "BA-07-S2",
+            "BA-07-S3"
           ],
           "code_refs": [
             "job_hunt_copilot/bootstrap.py",
@@ -1672,6 +2850,21 @@
             "BA-05",
             "BA-07"
           ],
+          "slice_ids": [
+            "BA-01-S1",
+            "BA-01-S2",
+            "BA-01-S3",
+            "BA-04-S1",
+            "BA-04-S2",
+            "BA-04-S3",
+            "BA-04-S4",
+            "BA-05-S1",
+            "BA-05-S2",
+            "BA-05-S3",
+            "BA-07-S1",
+            "BA-07-S2",
+            "BA-07-S3"
+          ],
           "code_refs": [
             "job_hunt_copilot/bootstrap.py",
             "job_hunt_copilot/secrets.py",
@@ -1698,6 +2891,21 @@
             "BA-04",
             "BA-05",
             "BA-07"
+          ],
+          "slice_ids": [
+            "BA-01-S1",
+            "BA-01-S2",
+            "BA-01-S3",
+            "BA-04-S1",
+            "BA-04-S2",
+            "BA-04-S3",
+            "BA-04-S4",
+            "BA-05-S1",
+            "BA-05-S2",
+            "BA-05-S3",
+            "BA-07-S1",
+            "BA-07-S2",
+            "BA-07-S3"
           ],
           "code_refs": [
             "job_hunt_copilot/bootstrap.py",
@@ -1726,6 +2934,21 @@
             "BA-05",
             "BA-07"
           ],
+          "slice_ids": [
+            "BA-01-S1",
+            "BA-01-S2",
+            "BA-01-S3",
+            "BA-04-S1",
+            "BA-04-S2",
+            "BA-04-S3",
+            "BA-04-S4",
+            "BA-05-S1",
+            "BA-05-S2",
+            "BA-05-S3",
+            "BA-07-S1",
+            "BA-07-S2",
+            "BA-07-S3"
+          ],
           "code_refs": [
             "job_hunt_copilot/bootstrap.py",
             "job_hunt_copilot/secrets.py",
@@ -1752,6 +2975,21 @@
             "BA-04",
             "BA-05",
             "BA-07"
+          ],
+          "slice_ids": [
+            "BA-01-S1",
+            "BA-01-S2",
+            "BA-01-S3",
+            "BA-04-S1",
+            "BA-04-S2",
+            "BA-04-S3",
+            "BA-04-S4",
+            "BA-05-S1",
+            "BA-05-S2",
+            "BA-05-S3",
+            "BA-07-S1",
+            "BA-07-S2",
+            "BA-07-S3"
           ],
           "code_refs": [
             "job_hunt_copilot/bootstrap.py",
@@ -1780,6 +3018,21 @@
             "BA-05",
             "BA-07"
           ],
+          "slice_ids": [
+            "BA-01-S1",
+            "BA-01-S2",
+            "BA-01-S3",
+            "BA-04-S1",
+            "BA-04-S2",
+            "BA-04-S3",
+            "BA-04-S4",
+            "BA-05-S1",
+            "BA-05-S2",
+            "BA-05-S3",
+            "BA-07-S1",
+            "BA-07-S2",
+            "BA-07-S3"
+          ],
           "code_refs": [
             "job_hunt_copilot/bootstrap.py",
             "job_hunt_copilot/secrets.py",
@@ -1806,6 +3059,21 @@
             "BA-04",
             "BA-05",
             "BA-07"
+          ],
+          "slice_ids": [
+            "BA-01-S1",
+            "BA-01-S2",
+            "BA-01-S3",
+            "BA-04-S1",
+            "BA-04-S2",
+            "BA-04-S3",
+            "BA-04-S4",
+            "BA-05-S1",
+            "BA-05-S2",
+            "BA-05-S3",
+            "BA-07-S1",
+            "BA-07-S2",
+            "BA-07-S3"
           ],
           "code_refs": [
             "job_hunt_copilot/bootstrap.py",
@@ -1834,6 +3102,21 @@
             "BA-05",
             "BA-07"
           ],
+          "slice_ids": [
+            "BA-01-S1",
+            "BA-01-S2",
+            "BA-01-S3",
+            "BA-04-S1",
+            "BA-04-S2",
+            "BA-04-S3",
+            "BA-04-S4",
+            "BA-05-S1",
+            "BA-05-S2",
+            "BA-05-S3",
+            "BA-07-S1",
+            "BA-07-S2",
+            "BA-07-S3"
+          ],
           "code_refs": [
             "job_hunt_copilot/bootstrap.py",
             "job_hunt_copilot/secrets.py",
@@ -1860,6 +3143,21 @@
             "BA-04",
             "BA-05",
             "BA-07"
+          ],
+          "slice_ids": [
+            "BA-01-S1",
+            "BA-01-S2",
+            "BA-01-S3",
+            "BA-04-S1",
+            "BA-04-S2",
+            "BA-04-S3",
+            "BA-04-S4",
+            "BA-05-S1",
+            "BA-05-S2",
+            "BA-05-S3",
+            "BA-07-S1",
+            "BA-07-S2",
+            "BA-07-S3"
           ],
           "code_refs": [
             "job_hunt_copilot/bootstrap.py",
@@ -1888,6 +3186,21 @@
             "BA-05",
             "BA-07"
           ],
+          "slice_ids": [
+            "BA-01-S1",
+            "BA-01-S2",
+            "BA-01-S3",
+            "BA-04-S1",
+            "BA-04-S2",
+            "BA-04-S3",
+            "BA-04-S4",
+            "BA-05-S1",
+            "BA-05-S2",
+            "BA-05-S3",
+            "BA-07-S1",
+            "BA-07-S2",
+            "BA-07-S3"
+          ],
           "code_refs": [
             "job_hunt_copilot/bootstrap.py",
             "job_hunt_copilot/secrets.py",
@@ -1914,6 +3227,21 @@
             "BA-04",
             "BA-05",
             "BA-07"
+          ],
+          "slice_ids": [
+            "BA-01-S1",
+            "BA-01-S2",
+            "BA-01-S3",
+            "BA-04-S1",
+            "BA-04-S2",
+            "BA-04-S3",
+            "BA-04-S4",
+            "BA-05-S1",
+            "BA-05-S2",
+            "BA-05-S3",
+            "BA-07-S1",
+            "BA-07-S2",
+            "BA-07-S3"
           ],
           "code_refs": [
             "job_hunt_copilot/bootstrap.py",
@@ -1942,6 +3270,21 @@
             "BA-05",
             "BA-07"
           ],
+          "slice_ids": [
+            "BA-01-S1",
+            "BA-01-S2",
+            "BA-01-S3",
+            "BA-04-S1",
+            "BA-04-S2",
+            "BA-04-S3",
+            "BA-04-S4",
+            "BA-05-S1",
+            "BA-05-S2",
+            "BA-05-S3",
+            "BA-07-S1",
+            "BA-07-S2",
+            "BA-07-S3"
+          ],
           "code_refs": [
             "job_hunt_copilot/bootstrap.py",
             "job_hunt_copilot/secrets.py",
@@ -1968,6 +3311,21 @@
             "BA-04",
             "BA-05",
             "BA-07"
+          ],
+          "slice_ids": [
+            "BA-01-S1",
+            "BA-01-S2",
+            "BA-01-S3",
+            "BA-04-S1",
+            "BA-04-S2",
+            "BA-04-S3",
+            "BA-04-S4",
+            "BA-05-S1",
+            "BA-05-S2",
+            "BA-05-S3",
+            "BA-07-S1",
+            "BA-07-S2",
+            "BA-07-S3"
           ],
           "code_refs": [
             "job_hunt_copilot/bootstrap.py",
@@ -1996,6 +3354,21 @@
             "BA-05",
             "BA-07"
           ],
+          "slice_ids": [
+            "BA-01-S1",
+            "BA-01-S2",
+            "BA-01-S3",
+            "BA-04-S1",
+            "BA-04-S2",
+            "BA-04-S3",
+            "BA-04-S4",
+            "BA-05-S1",
+            "BA-05-S2",
+            "BA-05-S3",
+            "BA-07-S1",
+            "BA-07-S2",
+            "BA-07-S3"
+          ],
           "code_refs": [
             "job_hunt_copilot/bootstrap.py",
             "job_hunt_copilot/secrets.py",
@@ -2022,6 +3395,21 @@
             "BA-04",
             "BA-05",
             "BA-07"
+          ],
+          "slice_ids": [
+            "BA-01-S1",
+            "BA-01-S2",
+            "BA-01-S3",
+            "BA-04-S1",
+            "BA-04-S2",
+            "BA-04-S3",
+            "BA-04-S4",
+            "BA-05-S1",
+            "BA-05-S2",
+            "BA-05-S3",
+            "BA-07-S1",
+            "BA-07-S2",
+            "BA-07-S3"
           ],
           "code_refs": [
             "job_hunt_copilot/bootstrap.py",
@@ -2052,6 +3440,27 @@
         "BA-07",
         "BA-08",
         "BA-09"
+      ],
+      "slice_ids": [
+        "BA-02-S1",
+        "BA-02-S2",
+        "BA-02-S3",
+        "BA-04-S1",
+        "BA-04-S2",
+        "BA-04-S3",
+        "BA-04-S4",
+        "BA-05-S1",
+        "BA-05-S2",
+        "BA-05-S3",
+        "BA-07-S1",
+        "BA-07-S2",
+        "BA-07-S3",
+        "BA-08-S1",
+        "BA-08-S2",
+        "BA-08-S3",
+        "BA-09-S1",
+        "BA-09-S2",
+        "BA-09-S3"
       ],
       "code_refs": [
         "job_hunt_copilot/supervisor.py",
@@ -2092,6 +3501,27 @@
             "BA-08",
             "BA-09"
           ],
+          "slice_ids": [
+            "BA-02-S1",
+            "BA-02-S2",
+            "BA-02-S3",
+            "BA-04-S1",
+            "BA-04-S2",
+            "BA-04-S3",
+            "BA-04-S4",
+            "BA-05-S1",
+            "BA-05-S2",
+            "BA-05-S3",
+            "BA-07-S1",
+            "BA-07-S2",
+            "BA-07-S3",
+            "BA-08-S1",
+            "BA-08-S2",
+            "BA-08-S3",
+            "BA-09-S1",
+            "BA-09-S2",
+            "BA-09-S3"
+          ],
           "code_refs": [
             "job_hunt_copilot/supervisor.py",
             "job_hunt_copilot/linkedin_scraping.py",
@@ -2124,6 +3554,27 @@
             "BA-07",
             "BA-08",
             "BA-09"
+          ],
+          "slice_ids": [
+            "BA-02-S1",
+            "BA-02-S2",
+            "BA-02-S3",
+            "BA-04-S1",
+            "BA-04-S2",
+            "BA-04-S3",
+            "BA-04-S4",
+            "BA-05-S1",
+            "BA-05-S2",
+            "BA-05-S3",
+            "BA-07-S1",
+            "BA-07-S2",
+            "BA-07-S3",
+            "BA-08-S1",
+            "BA-08-S2",
+            "BA-08-S3",
+            "BA-09-S1",
+            "BA-09-S2",
+            "BA-09-S3"
           ],
           "code_refs": [
             "job_hunt_copilot/supervisor.py",
@@ -2158,6 +3609,27 @@
             "BA-08",
             "BA-09"
           ],
+          "slice_ids": [
+            "BA-02-S1",
+            "BA-02-S2",
+            "BA-02-S3",
+            "BA-04-S1",
+            "BA-04-S2",
+            "BA-04-S3",
+            "BA-04-S4",
+            "BA-05-S1",
+            "BA-05-S2",
+            "BA-05-S3",
+            "BA-07-S1",
+            "BA-07-S2",
+            "BA-07-S3",
+            "BA-08-S1",
+            "BA-08-S2",
+            "BA-08-S3",
+            "BA-09-S1",
+            "BA-09-S2",
+            "BA-09-S3"
+          ],
           "code_refs": [
             "job_hunt_copilot/supervisor.py",
             "job_hunt_copilot/linkedin_scraping.py",
@@ -2190,6 +3662,27 @@
             "BA-07",
             "BA-08",
             "BA-09"
+          ],
+          "slice_ids": [
+            "BA-02-S1",
+            "BA-02-S2",
+            "BA-02-S3",
+            "BA-04-S1",
+            "BA-04-S2",
+            "BA-04-S3",
+            "BA-04-S4",
+            "BA-05-S1",
+            "BA-05-S2",
+            "BA-05-S3",
+            "BA-07-S1",
+            "BA-07-S2",
+            "BA-07-S3",
+            "BA-08-S1",
+            "BA-08-S2",
+            "BA-08-S3",
+            "BA-09-S1",
+            "BA-09-S2",
+            "BA-09-S3"
           ],
           "code_refs": [
             "job_hunt_copilot/supervisor.py",
@@ -2224,6 +3717,27 @@
             "BA-08",
             "BA-09"
           ],
+          "slice_ids": [
+            "BA-02-S1",
+            "BA-02-S2",
+            "BA-02-S3",
+            "BA-04-S1",
+            "BA-04-S2",
+            "BA-04-S3",
+            "BA-04-S4",
+            "BA-05-S1",
+            "BA-05-S2",
+            "BA-05-S3",
+            "BA-07-S1",
+            "BA-07-S2",
+            "BA-07-S3",
+            "BA-08-S1",
+            "BA-08-S2",
+            "BA-08-S3",
+            "BA-09-S1",
+            "BA-09-S2",
+            "BA-09-S3"
+          ],
           "code_refs": [
             "job_hunt_copilot/supervisor.py",
             "job_hunt_copilot/linkedin_scraping.py",
@@ -2256,6 +3770,27 @@
             "BA-07",
             "BA-08",
             "BA-09"
+          ],
+          "slice_ids": [
+            "BA-02-S1",
+            "BA-02-S2",
+            "BA-02-S3",
+            "BA-04-S1",
+            "BA-04-S2",
+            "BA-04-S3",
+            "BA-04-S4",
+            "BA-05-S1",
+            "BA-05-S2",
+            "BA-05-S3",
+            "BA-07-S1",
+            "BA-07-S2",
+            "BA-07-S3",
+            "BA-08-S1",
+            "BA-08-S2",
+            "BA-08-S3",
+            "BA-09-S1",
+            "BA-09-S2",
+            "BA-09-S3"
           ],
           "code_refs": [
             "job_hunt_copilot/supervisor.py",
@@ -2290,6 +3825,27 @@
             "BA-08",
             "BA-09"
           ],
+          "slice_ids": [
+            "BA-02-S1",
+            "BA-02-S2",
+            "BA-02-S3",
+            "BA-04-S1",
+            "BA-04-S2",
+            "BA-04-S3",
+            "BA-04-S4",
+            "BA-05-S1",
+            "BA-05-S2",
+            "BA-05-S3",
+            "BA-07-S1",
+            "BA-07-S2",
+            "BA-07-S3",
+            "BA-08-S1",
+            "BA-08-S2",
+            "BA-08-S3",
+            "BA-09-S1",
+            "BA-09-S2",
+            "BA-09-S3"
+          ],
           "code_refs": [
             "job_hunt_copilot/supervisor.py",
             "job_hunt_copilot/linkedin_scraping.py",
@@ -2323,6 +3879,27 @@
             "BA-08",
             "BA-09"
           ],
+          "slice_ids": [
+            "BA-02-S1",
+            "BA-02-S2",
+            "BA-02-S3",
+            "BA-04-S1",
+            "BA-04-S2",
+            "BA-04-S3",
+            "BA-04-S4",
+            "BA-05-S1",
+            "BA-05-S2",
+            "BA-05-S3",
+            "BA-07-S1",
+            "BA-07-S2",
+            "BA-07-S3",
+            "BA-08-S1",
+            "BA-08-S2",
+            "BA-08-S3",
+            "BA-09-S1",
+            "BA-09-S2",
+            "BA-09-S3"
+          ],
           "code_refs": [
             "job_hunt_copilot/supervisor.py",
             "job_hunt_copilot/linkedin_scraping.py",
@@ -2352,6 +3929,12 @@
       "epic_ids": [
         "BA-06"
       ],
+      "slice_ids": [
+        "BA-06-S1",
+        "BA-06-S2",
+        "BA-06-S3",
+        "BA-06-S4"
+      ],
       "code_refs": [
         "job_hunt_copilot/resume_tailoring.py",
         "job_hunt_copilot/paths.py"
@@ -2376,6 +3959,12 @@
           "epic_ids": [
             "BA-06"
           ],
+          "slice_ids": [
+            "BA-06-S1",
+            "BA-06-S2",
+            "BA-06-S3",
+            "BA-06-S4"
+          ],
           "code_refs": [
             "job_hunt_copilot/resume_tailoring.py",
             "job_hunt_copilot/paths.py"
@@ -2393,6 +3982,12 @@
           "owner_role": "tailoring-engineer",
           "epic_ids": [
             "BA-06"
+          ],
+          "slice_ids": [
+            "BA-06-S1",
+            "BA-06-S2",
+            "BA-06-S3",
+            "BA-06-S4"
           ],
           "code_refs": [
             "job_hunt_copilot/resume_tailoring.py",
@@ -2412,6 +4007,12 @@
           "epic_ids": [
             "BA-06"
           ],
+          "slice_ids": [
+            "BA-06-S1",
+            "BA-06-S2",
+            "BA-06-S3",
+            "BA-06-S4"
+          ],
           "code_refs": [
             "job_hunt_copilot/resume_tailoring.py",
             "job_hunt_copilot/paths.py"
@@ -2429,6 +4030,12 @@
           "owner_role": "tailoring-engineer",
           "epic_ids": [
             "BA-06"
+          ],
+          "slice_ids": [
+            "BA-06-S1",
+            "BA-06-S2",
+            "BA-06-S3",
+            "BA-06-S4"
           ],
           "code_refs": [
             "job_hunt_copilot/resume_tailoring.py",
@@ -2448,6 +4055,12 @@
           "epic_ids": [
             "BA-06"
           ],
+          "slice_ids": [
+            "BA-06-S1",
+            "BA-06-S2",
+            "BA-06-S3",
+            "BA-06-S4"
+          ],
           "code_refs": [
             "job_hunt_copilot/resume_tailoring.py",
             "job_hunt_copilot/paths.py"
@@ -2465,6 +4078,12 @@
           "owner_role": "tailoring-engineer",
           "epic_ids": [
             "BA-06"
+          ],
+          "slice_ids": [
+            "BA-06-S1",
+            "BA-06-S2",
+            "BA-06-S3",
+            "BA-06-S4"
           ],
           "code_refs": [
             "job_hunt_copilot/resume_tailoring.py",
@@ -2484,6 +4103,12 @@
           "epic_ids": [
             "BA-06"
           ],
+          "slice_ids": [
+            "BA-06-S1",
+            "BA-06-S2",
+            "BA-06-S3",
+            "BA-06-S4"
+          ],
           "code_refs": [
             "job_hunt_copilot/resume_tailoring.py",
             "job_hunt_copilot/paths.py"
@@ -2501,6 +4126,12 @@
           "owner_role": "tailoring-engineer",
           "epic_ids": [
             "BA-06"
+          ],
+          "slice_ids": [
+            "BA-06-S1",
+            "BA-06-S2",
+            "BA-06-S3",
+            "BA-06-S4"
           ],
           "code_refs": [
             "job_hunt_copilot/resume_tailoring.py",
@@ -2520,6 +4151,12 @@
           "epic_ids": [
             "BA-06"
           ],
+          "slice_ids": [
+            "BA-06-S1",
+            "BA-06-S2",
+            "BA-06-S3",
+            "BA-06-S4"
+          ],
           "code_refs": [
             "job_hunt_copilot/resume_tailoring.py",
             "job_hunt_copilot/paths.py"
@@ -2537,6 +4174,12 @@
           "owner_role": "tailoring-engineer",
           "epic_ids": [
             "BA-06"
+          ],
+          "slice_ids": [
+            "BA-06-S1",
+            "BA-06-S2",
+            "BA-06-S3",
+            "BA-06-S4"
           ],
           "code_refs": [
             "job_hunt_copilot/resume_tailoring.py",
@@ -2556,6 +4199,12 @@
           "epic_ids": [
             "BA-06"
           ],
+          "slice_ids": [
+            "BA-06-S1",
+            "BA-06-S2",
+            "BA-06-S3",
+            "BA-06-S4"
+          ],
           "code_refs": [
             "job_hunt_copilot/resume_tailoring.py",
             "job_hunt_copilot/paths.py"
@@ -2573,6 +4222,12 @@
           "owner_role": "tailoring-engineer",
           "epic_ids": [
             "BA-06"
+          ],
+          "slice_ids": [
+            "BA-06-S1",
+            "BA-06-S2",
+            "BA-06-S3",
+            "BA-06-S4"
           ],
           "code_refs": [
             "job_hunt_copilot/resume_tailoring.py",
@@ -2592,6 +4247,12 @@
           "epic_ids": [
             "BA-06"
           ],
+          "slice_ids": [
+            "BA-06-S1",
+            "BA-06-S2",
+            "BA-06-S3",
+            "BA-06-S4"
+          ],
           "code_refs": [
             "job_hunt_copilot/resume_tailoring.py",
             "job_hunt_copilot/paths.py"
@@ -2609,6 +4270,12 @@
           "owner_role": "tailoring-engineer",
           "epic_ids": [
             "BA-06"
+          ],
+          "slice_ids": [
+            "BA-06-S1",
+            "BA-06-S2",
+            "BA-06-S3",
+            "BA-06-S4"
           ],
           "code_refs": [
             "job_hunt_copilot/resume_tailoring.py",
@@ -2628,6 +4295,12 @@
           "epic_ids": [
             "BA-06"
           ],
+          "slice_ids": [
+            "BA-06-S1",
+            "BA-06-S2",
+            "BA-06-S3",
+            "BA-06-S4"
+          ],
           "code_refs": [
             "job_hunt_copilot/resume_tailoring.py",
             "job_hunt_copilot/paths.py"
@@ -2645,6 +4318,12 @@
           "owner_role": "tailoring-engineer",
           "epic_ids": [
             "BA-06"
+          ],
+          "slice_ids": [
+            "BA-06-S1",
+            "BA-06-S2",
+            "BA-06-S3",
+            "BA-06-S4"
           ],
           "code_refs": [
             "job_hunt_copilot/resume_tailoring.py",
@@ -2664,6 +4343,12 @@
           "epic_ids": [
             "BA-06"
           ],
+          "slice_ids": [
+            "BA-06-S1",
+            "BA-06-S2",
+            "BA-06-S3",
+            "BA-06-S4"
+          ],
           "code_refs": [
             "job_hunt_copilot/resume_tailoring.py",
             "job_hunt_copilot/paths.py"
@@ -2681,6 +4366,12 @@
           "owner_role": "tailoring-engineer",
           "epic_ids": [
             "BA-06"
+          ],
+          "slice_ids": [
+            "BA-06-S1",
+            "BA-06-S2",
+            "BA-06-S3",
+            "BA-06-S4"
           ],
           "code_refs": [
             "job_hunt_copilot/resume_tailoring.py",
@@ -2700,6 +4391,12 @@
           "epic_ids": [
             "BA-06"
           ],
+          "slice_ids": [
+            "BA-06-S1",
+            "BA-06-S2",
+            "BA-06-S3",
+            "BA-06-S4"
+          ],
           "code_refs": [
             "job_hunt_copilot/resume_tailoring.py",
             "job_hunt_copilot/paths.py"
@@ -2717,6 +4414,12 @@
           "owner_role": "tailoring-engineer",
           "epic_ids": [
             "BA-06"
+          ],
+          "slice_ids": [
+            "BA-06-S1",
+            "BA-06-S2",
+            "BA-06-S3",
+            "BA-06-S4"
           ],
           "code_refs": [
             "job_hunt_copilot/resume_tailoring.py",
@@ -2736,6 +4439,12 @@
           "epic_ids": [
             "BA-06"
           ],
+          "slice_ids": [
+            "BA-06-S1",
+            "BA-06-S2",
+            "BA-06-S3",
+            "BA-06-S4"
+          ],
           "code_refs": [
             "job_hunt_copilot/resume_tailoring.py",
             "job_hunt_copilot/paths.py"
@@ -2754,6 +4463,12 @@
           "epic_ids": [
             "BA-06"
           ],
+          "slice_ids": [
+            "BA-06-S1",
+            "BA-06-S2",
+            "BA-06-S3",
+            "BA-06-S4"
+          ],
           "code_refs": [
             "job_hunt_copilot/resume_tailoring.py",
             "job_hunt_copilot/paths.py"
@@ -2771,6 +4486,12 @@
           "owner_role": "tailoring-engineer",
           "epic_ids": [
             "BA-06"
+          ],
+          "slice_ids": [
+            "BA-06-S1",
+            "BA-06-S2",
+            "BA-06-S3",
+            "BA-06-S4"
           ],
           "code_refs": [
             "job_hunt_copilot/resume_tailoring.py",
@@ -2791,6 +4512,14 @@
       "epic_ids": [
         "BA-07",
         "BA-09"
+      ],
+      "slice_ids": [
+        "BA-07-S1",
+        "BA-07-S2",
+        "BA-07-S3",
+        "BA-09-S1",
+        "BA-09-S2",
+        "BA-09-S3"
       ],
       "code_refs": [
         "job_hunt_copilot/email_discovery.py",
@@ -2818,6 +4547,14 @@
             "BA-07",
             "BA-09"
           ],
+          "slice_ids": [
+            "BA-07-S1",
+            "BA-07-S2",
+            "BA-07-S3",
+            "BA-09-S1",
+            "BA-09-S2",
+            "BA-09-S3"
+          ],
           "code_refs": [
             "job_hunt_copilot/email_discovery.py",
             "job_hunt_copilot/review_queries.py"
@@ -2837,6 +4574,14 @@
           "epic_ids": [
             "BA-07",
             "BA-09"
+          ],
+          "slice_ids": [
+            "BA-07-S1",
+            "BA-07-S2",
+            "BA-07-S3",
+            "BA-09-S1",
+            "BA-09-S2",
+            "BA-09-S3"
           ],
           "code_refs": [
             "job_hunt_copilot/email_discovery.py",
@@ -2858,6 +4603,14 @@
             "BA-07",
             "BA-09"
           ],
+          "slice_ids": [
+            "BA-07-S1",
+            "BA-07-S2",
+            "BA-07-S3",
+            "BA-09-S1",
+            "BA-09-S2",
+            "BA-09-S3"
+          ],
           "code_refs": [
             "job_hunt_copilot/email_discovery.py",
             "job_hunt_copilot/review_queries.py"
@@ -2877,6 +4630,14 @@
           "epic_ids": [
             "BA-07",
             "BA-09"
+          ],
+          "slice_ids": [
+            "BA-07-S1",
+            "BA-07-S2",
+            "BA-07-S3",
+            "BA-09-S1",
+            "BA-09-S2",
+            "BA-09-S3"
           ],
           "code_refs": [
             "job_hunt_copilot/email_discovery.py",
@@ -2898,6 +4659,14 @@
             "BA-07",
             "BA-09"
           ],
+          "slice_ids": [
+            "BA-07-S1",
+            "BA-07-S2",
+            "BA-07-S3",
+            "BA-09-S1",
+            "BA-09-S2",
+            "BA-09-S3"
+          ],
           "code_refs": [
             "job_hunt_copilot/email_discovery.py",
             "job_hunt_copilot/review_queries.py"
@@ -2917,6 +4686,14 @@
           "epic_ids": [
             "BA-07",
             "BA-09"
+          ],
+          "slice_ids": [
+            "BA-07-S1",
+            "BA-07-S2",
+            "BA-07-S3",
+            "BA-09-S1",
+            "BA-09-S2",
+            "BA-09-S3"
           ],
           "code_refs": [
             "job_hunt_copilot/email_discovery.py",
@@ -2938,6 +4715,14 @@
             "BA-07",
             "BA-09"
           ],
+          "slice_ids": [
+            "BA-07-S1",
+            "BA-07-S2",
+            "BA-07-S3",
+            "BA-09-S1",
+            "BA-09-S2",
+            "BA-09-S3"
+          ],
           "code_refs": [
             "job_hunt_copilot/email_discovery.py",
             "job_hunt_copilot/review_queries.py"
@@ -2957,6 +4742,14 @@
           "epic_ids": [
             "BA-07",
             "BA-09"
+          ],
+          "slice_ids": [
+            "BA-07-S1",
+            "BA-07-S2",
+            "BA-07-S3",
+            "BA-09-S1",
+            "BA-09-S2",
+            "BA-09-S3"
           ],
           "code_refs": [
             "job_hunt_copilot/email_discovery.py",
@@ -2978,6 +4771,14 @@
             "BA-07",
             "BA-09"
           ],
+          "slice_ids": [
+            "BA-07-S1",
+            "BA-07-S2",
+            "BA-07-S3",
+            "BA-09-S1",
+            "BA-09-S2",
+            "BA-09-S3"
+          ],
           "code_refs": [
             "job_hunt_copilot/email_discovery.py",
             "job_hunt_copilot/review_queries.py"
@@ -2997,6 +4798,14 @@
           "epic_ids": [
             "BA-07",
             "BA-09"
+          ],
+          "slice_ids": [
+            "BA-07-S1",
+            "BA-07-S2",
+            "BA-07-S3",
+            "BA-09-S1",
+            "BA-09-S2",
+            "BA-09-S3"
           ],
           "code_refs": [
             "job_hunt_copilot/email_discovery.py",
@@ -3018,6 +4827,14 @@
             "BA-07",
             "BA-09"
           ],
+          "slice_ids": [
+            "BA-07-S1",
+            "BA-07-S2",
+            "BA-07-S3",
+            "BA-09-S1",
+            "BA-09-S2",
+            "BA-09-S3"
+          ],
           "code_refs": [
             "job_hunt_copilot/email_discovery.py",
             "job_hunt_copilot/review_queries.py"
@@ -3037,6 +4854,14 @@
           "epic_ids": [
             "BA-07",
             "BA-09"
+          ],
+          "slice_ids": [
+            "BA-07-S1",
+            "BA-07-S2",
+            "BA-07-S3",
+            "BA-09-S1",
+            "BA-09-S2",
+            "BA-09-S3"
           ],
           "code_refs": [
             "job_hunt_copilot/email_discovery.py",
@@ -3058,6 +4883,14 @@
             "BA-07",
             "BA-09"
           ],
+          "slice_ids": [
+            "BA-07-S1",
+            "BA-07-S2",
+            "BA-07-S3",
+            "BA-09-S1",
+            "BA-09-S2",
+            "BA-09-S3"
+          ],
           "code_refs": [
             "job_hunt_copilot/email_discovery.py",
             "job_hunt_copilot/review_queries.py"
@@ -3077,6 +4910,14 @@
           "epic_ids": [
             "BA-07",
             "BA-09"
+          ],
+          "slice_ids": [
+            "BA-07-S1",
+            "BA-07-S2",
+            "BA-07-S3",
+            "BA-09-S1",
+            "BA-09-S2",
+            "BA-09-S3"
           ],
           "code_refs": [
             "job_hunt_copilot/email_discovery.py",
@@ -3098,6 +4939,14 @@
             "BA-07",
             "BA-09"
           ],
+          "slice_ids": [
+            "BA-07-S1",
+            "BA-07-S2",
+            "BA-07-S3",
+            "BA-09-S1",
+            "BA-09-S2",
+            "BA-09-S3"
+          ],
           "code_refs": [
             "job_hunt_copilot/email_discovery.py",
             "job_hunt_copilot/review_queries.py"
@@ -3117,6 +4966,14 @@
           "epic_ids": [
             "BA-07",
             "BA-09"
+          ],
+          "slice_ids": [
+            "BA-07-S1",
+            "BA-07-S2",
+            "BA-07-S3",
+            "BA-09-S1",
+            "BA-09-S2",
+            "BA-09-S3"
           ],
           "code_refs": [
             "job_hunt_copilot/email_discovery.py",
@@ -3138,6 +4995,14 @@
             "BA-07",
             "BA-09"
           ],
+          "slice_ids": [
+            "BA-07-S1",
+            "BA-07-S2",
+            "BA-07-S3",
+            "BA-09-S1",
+            "BA-09-S2",
+            "BA-09-S3"
+          ],
           "code_refs": [
             "job_hunt_copilot/email_discovery.py",
             "job_hunt_copilot/review_queries.py"
@@ -3157,6 +5022,11 @@
       "owner_role": "outreach-engineer",
       "epic_ids": [
         "BA-08"
+      ],
+      "slice_ids": [
+        "BA-08-S1",
+        "BA-08-S2",
+        "BA-08-S3"
       ],
       "code_refs": [
         "job_hunt_copilot/outreach.py"
@@ -3181,6 +5051,11 @@
           "epic_ids": [
             "BA-08"
           ],
+          "slice_ids": [
+            "BA-08-S1",
+            "BA-08-S2",
+            "BA-08-S3"
+          ],
           "code_refs": [
             "job_hunt_copilot/outreach.py"
           ],
@@ -3197,6 +5072,11 @@
           "owner_role": "outreach-engineer",
           "epic_ids": [
             "BA-08"
+          ],
+          "slice_ids": [
+            "BA-08-S1",
+            "BA-08-S2",
+            "BA-08-S3"
           ],
           "code_refs": [
             "job_hunt_copilot/outreach.py"
@@ -3215,6 +5095,11 @@
           "epic_ids": [
             "BA-08"
           ],
+          "slice_ids": [
+            "BA-08-S1",
+            "BA-08-S2",
+            "BA-08-S3"
+          ],
           "code_refs": [
             "job_hunt_copilot/outreach.py"
           ],
@@ -3231,6 +5116,11 @@
           "owner_role": "outreach-engineer",
           "epic_ids": [
             "BA-08"
+          ],
+          "slice_ids": [
+            "BA-08-S1",
+            "BA-08-S2",
+            "BA-08-S3"
           ],
           "code_refs": [
             "job_hunt_copilot/outreach.py"
@@ -3249,6 +5139,11 @@
           "epic_ids": [
             "BA-08"
           ],
+          "slice_ids": [
+            "BA-08-S1",
+            "BA-08-S2",
+            "BA-08-S3"
+          ],
           "code_refs": [
             "job_hunt_copilot/outreach.py"
           ],
@@ -3265,6 +5160,11 @@
           "owner_role": "outreach-engineer",
           "epic_ids": [
             "BA-08"
+          ],
+          "slice_ids": [
+            "BA-08-S1",
+            "BA-08-S2",
+            "BA-08-S3"
           ],
           "code_refs": [
             "job_hunt_copilot/outreach.py"
@@ -3283,6 +5183,11 @@
           "epic_ids": [
             "BA-08"
           ],
+          "slice_ids": [
+            "BA-08-S1",
+            "BA-08-S2",
+            "BA-08-S3"
+          ],
           "code_refs": [
             "job_hunt_copilot/outreach.py"
           ],
@@ -3299,6 +5204,11 @@
           "owner_role": "outreach-engineer",
           "epic_ids": [
             "BA-08"
+          ],
+          "slice_ids": [
+            "BA-08-S1",
+            "BA-08-S2",
+            "BA-08-S3"
           ],
           "code_refs": [
             "job_hunt_copilot/outreach.py"
@@ -3317,6 +5227,11 @@
           "epic_ids": [
             "BA-08"
           ],
+          "slice_ids": [
+            "BA-08-S1",
+            "BA-08-S2",
+            "BA-08-S3"
+          ],
           "code_refs": [
             "job_hunt_copilot/outreach.py"
           ],
@@ -3333,6 +5248,11 @@
           "owner_role": "outreach-engineer",
           "epic_ids": [
             "BA-08"
+          ],
+          "slice_ids": [
+            "BA-08-S1",
+            "BA-08-S2",
+            "BA-08-S3"
           ],
           "code_refs": [
             "job_hunt_copilot/outreach.py"
@@ -3351,6 +5271,11 @@
           "epic_ids": [
             "BA-08"
           ],
+          "slice_ids": [
+            "BA-08-S1",
+            "BA-08-S2",
+            "BA-08-S3"
+          ],
           "code_refs": [
             "job_hunt_copilot/outreach.py"
           ],
@@ -3367,6 +5292,11 @@
           "owner_role": "outreach-engineer",
           "epic_ids": [
             "BA-08"
+          ],
+          "slice_ids": [
+            "BA-08-S1",
+            "BA-08-S2",
+            "BA-08-S3"
           ],
           "code_refs": [
             "job_hunt_copilot/outreach.py"
@@ -3385,6 +5315,11 @@
           "epic_ids": [
             "BA-08"
           ],
+          "slice_ids": [
+            "BA-08-S1",
+            "BA-08-S2",
+            "BA-08-S3"
+          ],
           "code_refs": [
             "job_hunt_copilot/outreach.py"
           ],
@@ -3401,6 +5336,11 @@
           "owner_role": "outreach-engineer",
           "epic_ids": [
             "BA-08"
+          ],
+          "slice_ids": [
+            "BA-08-S1",
+            "BA-08-S2",
+            "BA-08-S3"
           ],
           "code_refs": [
             "job_hunt_copilot/outreach.py"
@@ -3420,6 +5360,14 @@
       "epic_ids": [
         "BA-03",
         "BA-09"
+      ],
+      "slice_ids": [
+        "BA-03-S1",
+        "BA-03-S2",
+        "BA-03-S3",
+        "BA-09-S1",
+        "BA-09-S2",
+        "BA-09-S3"
       ],
       "code_refs": [
         "job_hunt_copilot/delivery_feedback.py",
@@ -3450,6 +5398,14 @@
             "BA-03",
             "BA-09"
           ],
+          "slice_ids": [
+            "BA-03-S1",
+            "BA-03-S2",
+            "BA-03-S3",
+            "BA-09-S1",
+            "BA-09-S2",
+            "BA-09-S3"
+          ],
           "code_refs": [
             "job_hunt_copilot/delivery_feedback.py",
             "job_hunt_copilot/local_runtime.py",
@@ -3472,6 +5428,14 @@
           "epic_ids": [
             "BA-03",
             "BA-09"
+          ],
+          "slice_ids": [
+            "BA-03-S1",
+            "BA-03-S2",
+            "BA-03-S3",
+            "BA-09-S1",
+            "BA-09-S2",
+            "BA-09-S3"
           ],
           "code_refs": [
             "job_hunt_copilot/delivery_feedback.py",
@@ -3496,6 +5460,14 @@
             "BA-03",
             "BA-09"
           ],
+          "slice_ids": [
+            "BA-03-S1",
+            "BA-03-S2",
+            "BA-03-S3",
+            "BA-09-S1",
+            "BA-09-S2",
+            "BA-09-S3"
+          ],
           "code_refs": [
             "job_hunt_copilot/delivery_feedback.py",
             "job_hunt_copilot/local_runtime.py",
@@ -3518,6 +5490,14 @@
           "epic_ids": [
             "BA-03",
             "BA-09"
+          ],
+          "slice_ids": [
+            "BA-03-S1",
+            "BA-03-S2",
+            "BA-03-S3",
+            "BA-09-S1",
+            "BA-09-S2",
+            "BA-09-S3"
           ],
           "code_refs": [
             "job_hunt_copilot/delivery_feedback.py",
@@ -3542,6 +5522,14 @@
             "BA-03",
             "BA-09"
           ],
+          "slice_ids": [
+            "BA-03-S1",
+            "BA-03-S2",
+            "BA-03-S3",
+            "BA-09-S1",
+            "BA-09-S2",
+            "BA-09-S3"
+          ],
           "code_refs": [
             "job_hunt_copilot/delivery_feedback.py",
             "job_hunt_copilot/local_runtime.py",
@@ -3564,6 +5552,14 @@
           "epic_ids": [
             "BA-03",
             "BA-09"
+          ],
+          "slice_ids": [
+            "BA-03-S1",
+            "BA-03-S2",
+            "BA-03-S3",
+            "BA-09-S1",
+            "BA-09-S2",
+            "BA-09-S3"
           ],
           "code_refs": [
             "job_hunt_copilot/delivery_feedback.py",
@@ -3588,6 +5584,14 @@
             "BA-03",
             "BA-09"
           ],
+          "slice_ids": [
+            "BA-03-S1",
+            "BA-03-S2",
+            "BA-03-S3",
+            "BA-09-S1",
+            "BA-09-S2",
+            "BA-09-S3"
+          ],
           "code_refs": [
             "job_hunt_copilot/delivery_feedback.py",
             "job_hunt_copilot/local_runtime.py",
@@ -3610,6 +5614,14 @@
           "epic_ids": [
             "BA-03",
             "BA-09"
+          ],
+          "slice_ids": [
+            "BA-03-S1",
+            "BA-03-S2",
+            "BA-03-S3",
+            "BA-09-S1",
+            "BA-09-S2",
+            "BA-09-S3"
           ],
           "code_refs": [
             "job_hunt_copilot/delivery_feedback.py",
@@ -3634,6 +5646,14 @@
             "BA-03",
             "BA-09"
           ],
+          "slice_ids": [
+            "BA-03-S1",
+            "BA-03-S2",
+            "BA-03-S3",
+            "BA-09-S1",
+            "BA-09-S2",
+            "BA-09-S3"
+          ],
           "code_refs": [
             "job_hunt_copilot/delivery_feedback.py",
             "job_hunt_copilot/local_runtime.py",
@@ -3656,6 +5676,14 @@
           "epic_ids": [
             "BA-03",
             "BA-09"
+          ],
+          "slice_ids": [
+            "BA-03-S1",
+            "BA-03-S2",
+            "BA-03-S3",
+            "BA-09-S1",
+            "BA-09-S2",
+            "BA-09-S3"
           ],
           "code_refs": [
             "job_hunt_copilot/delivery_feedback.py",
@@ -3680,6 +5708,14 @@
             "BA-03",
             "BA-09"
           ],
+          "slice_ids": [
+            "BA-03-S1",
+            "BA-03-S2",
+            "BA-03-S3",
+            "BA-09-S1",
+            "BA-09-S2",
+            "BA-09-S3"
+          ],
           "code_refs": [
             "job_hunt_copilot/delivery_feedback.py",
             "job_hunt_copilot/local_runtime.py",
@@ -3703,6 +5739,14 @@
       "epic_ids": [
         "BA-02",
         "BA-03"
+      ],
+      "slice_ids": [
+        "BA-02-S1",
+        "BA-02-S2",
+        "BA-02-S3",
+        "BA-03-S1",
+        "BA-03-S2",
+        "BA-03-S3"
       ],
       "code_refs": [
         "job_hunt_copilot/supervisor.py",
@@ -3740,6 +5784,14 @@
             "BA-02",
             "BA-03"
           ],
+          "slice_ids": [
+            "BA-02-S1",
+            "BA-02-S2",
+            "BA-02-S3",
+            "BA-03-S1",
+            "BA-03-S2",
+            "BA-03-S3"
+          ],
           "code_refs": [
             "job_hunt_copilot/supervisor.py",
             "job_hunt_copilot/local_runtime.py",
@@ -3769,6 +5821,14 @@
           "epic_ids": [
             "BA-02",
             "BA-03"
+          ],
+          "slice_ids": [
+            "BA-02-S1",
+            "BA-02-S2",
+            "BA-02-S3",
+            "BA-03-S1",
+            "BA-03-S2",
+            "BA-03-S3"
           ],
           "code_refs": [
             "job_hunt_copilot/supervisor.py",
@@ -3800,6 +5860,14 @@
             "BA-02",
             "BA-03"
           ],
+          "slice_ids": [
+            "BA-02-S1",
+            "BA-02-S2",
+            "BA-02-S3",
+            "BA-03-S1",
+            "BA-03-S2",
+            "BA-03-S3"
+          ],
           "code_refs": [
             "job_hunt_copilot/supervisor.py",
             "job_hunt_copilot/local_runtime.py",
@@ -3829,6 +5897,14 @@
           "epic_ids": [
             "BA-02",
             "BA-03"
+          ],
+          "slice_ids": [
+            "BA-02-S1",
+            "BA-02-S2",
+            "BA-02-S3",
+            "BA-03-S1",
+            "BA-03-S2",
+            "BA-03-S3"
           ],
           "code_refs": [
             "job_hunt_copilot/supervisor.py",
@@ -3860,6 +5936,14 @@
             "BA-02",
             "BA-03"
           ],
+          "slice_ids": [
+            "BA-02-S1",
+            "BA-02-S2",
+            "BA-02-S3",
+            "BA-03-S1",
+            "BA-03-S2",
+            "BA-03-S3"
+          ],
           "code_refs": [
             "job_hunt_copilot/supervisor.py",
             "job_hunt_copilot/local_runtime.py",
@@ -3890,6 +5974,14 @@
             "BA-02",
             "BA-03"
           ],
+          "slice_ids": [
+            "BA-02-S1",
+            "BA-02-S2",
+            "BA-02-S3",
+            "BA-03-S1",
+            "BA-03-S2",
+            "BA-03-S3"
+          ],
           "code_refs": [
             "job_hunt_copilot/supervisor.py",
             "job_hunt_copilot/local_runtime.py",
@@ -3919,6 +6011,14 @@
           "epic_ids": [
             "BA-02",
             "BA-03"
+          ],
+          "slice_ids": [
+            "BA-02-S1",
+            "BA-02-S2",
+            "BA-02-S3",
+            "BA-03-S1",
+            "BA-03-S2",
+            "BA-03-S3"
           ],
           "code_refs": [
             "job_hunt_copilot/supervisor.py",
@@ -3952,6 +6052,14 @@
             "BA-02",
             "BA-03"
           ],
+          "slice_ids": [
+            "BA-02-S1",
+            "BA-02-S2",
+            "BA-02-S3",
+            "BA-03-S1",
+            "BA-03-S2",
+            "BA-03-S3"
+          ],
           "code_refs": [
             "job_hunt_copilot/supervisor.py",
             "job_hunt_copilot/local_runtime.py",
@@ -3981,6 +6089,14 @@
           "epic_ids": [
             "BA-02",
             "BA-03"
+          ],
+          "slice_ids": [
+            "BA-02-S1",
+            "BA-02-S2",
+            "BA-02-S3",
+            "BA-03-S1",
+            "BA-03-S2",
+            "BA-03-S3"
           ],
           "code_refs": [
             "job_hunt_copilot/supervisor.py",
@@ -4012,6 +6128,14 @@
             "BA-02",
             "BA-03"
           ],
+          "slice_ids": [
+            "BA-02-S1",
+            "BA-02-S2",
+            "BA-02-S3",
+            "BA-03-S1",
+            "BA-03-S2",
+            "BA-03-S3"
+          ],
           "code_refs": [
             "job_hunt_copilot/supervisor.py",
             "job_hunt_copilot/local_runtime.py",
@@ -4041,6 +6165,14 @@
           "epic_ids": [
             "BA-02",
             "BA-03"
+          ],
+          "slice_ids": [
+            "BA-02-S1",
+            "BA-02-S2",
+            "BA-02-S3",
+            "BA-03-S1",
+            "BA-03-S2",
+            "BA-03-S3"
           ],
           "code_refs": [
             "job_hunt_copilot/supervisor.py",
@@ -4072,6 +6204,14 @@
             "BA-02",
             "BA-03"
           ],
+          "slice_ids": [
+            "BA-02-S1",
+            "BA-02-S2",
+            "BA-02-S3",
+            "BA-03-S1",
+            "BA-03-S2",
+            "BA-03-S3"
+          ],
           "code_refs": [
             "job_hunt_copilot/supervisor.py",
             "job_hunt_copilot/local_runtime.py",
@@ -4101,6 +6241,14 @@
           "epic_ids": [
             "BA-02",
             "BA-03"
+          ],
+          "slice_ids": [
+            "BA-02-S1",
+            "BA-02-S2",
+            "BA-02-S3",
+            "BA-03-S1",
+            "BA-03-S2",
+            "BA-03-S3"
           ],
           "code_refs": [
             "job_hunt_copilot/supervisor.py",
@@ -4132,6 +6280,14 @@
             "BA-02",
             "BA-03"
           ],
+          "slice_ids": [
+            "BA-02-S1",
+            "BA-02-S2",
+            "BA-02-S3",
+            "BA-03-S1",
+            "BA-03-S2",
+            "BA-03-S3"
+          ],
           "code_refs": [
             "job_hunt_copilot/supervisor.py",
             "job_hunt_copilot/local_runtime.py",
@@ -4161,6 +6317,14 @@
           "epic_ids": [
             "BA-02",
             "BA-03"
+          ],
+          "slice_ids": [
+            "BA-02-S1",
+            "BA-02-S2",
+            "BA-02-S3",
+            "BA-03-S1",
+            "BA-03-S2",
+            "BA-03-S3"
           ],
           "code_refs": [
             "job_hunt_copilot/supervisor.py",
@@ -4192,6 +6356,14 @@
             "BA-02",
             "BA-03"
           ],
+          "slice_ids": [
+            "BA-02-S1",
+            "BA-02-S2",
+            "BA-02-S3",
+            "BA-03-S1",
+            "BA-03-S2",
+            "BA-03-S3"
+          ],
           "code_refs": [
             "job_hunt_copilot/supervisor.py",
             "job_hunt_copilot/local_runtime.py",
@@ -4221,6 +6393,14 @@
           "epic_ids": [
             "BA-02",
             "BA-03"
+          ],
+          "slice_ids": [
+            "BA-02-S1",
+            "BA-02-S2",
+            "BA-02-S3",
+            "BA-03-S1",
+            "BA-03-S2",
+            "BA-03-S3"
           ],
           "code_refs": [
             "job_hunt_copilot/supervisor.py",
@@ -4254,6 +6434,14 @@
             "BA-02",
             "BA-03"
           ],
+          "slice_ids": [
+            "BA-02-S1",
+            "BA-02-S2",
+            "BA-02-S3",
+            "BA-03-S1",
+            "BA-03-S2",
+            "BA-03-S3"
+          ],
           "code_refs": [
             "job_hunt_copilot/supervisor.py",
             "job_hunt_copilot/local_runtime.py",
@@ -4285,6 +6473,14 @@
           "epic_ids": [
             "BA-02",
             "BA-03"
+          ],
+          "slice_ids": [
+            "BA-02-S1",
+            "BA-02-S2",
+            "BA-02-S3",
+            "BA-03-S1",
+            "BA-03-S2",
+            "BA-03-S3"
           ],
           "code_refs": [
             "job_hunt_copilot/supervisor.py",
@@ -4318,6 +6514,14 @@
             "BA-02",
             "BA-03"
           ],
+          "slice_ids": [
+            "BA-02-S1",
+            "BA-02-S2",
+            "BA-02-S3",
+            "BA-03-S1",
+            "BA-03-S2",
+            "BA-03-S3"
+          ],
           "code_refs": [
             "job_hunt_copilot/supervisor.py",
             "job_hunt_copilot/local_runtime.py",
@@ -4347,6 +6551,14 @@
           "epic_ids": [
             "BA-02",
             "BA-03"
+          ],
+          "slice_ids": [
+            "BA-02-S1",
+            "BA-02-S2",
+            "BA-02-S3",
+            "BA-03-S1",
+            "BA-03-S2",
+            "BA-03-S3"
           ],
           "code_refs": [
             "job_hunt_copilot/supervisor.py",
@@ -4380,6 +6592,14 @@
             "BA-02",
             "BA-03"
           ],
+          "slice_ids": [
+            "BA-02-S1",
+            "BA-02-S2",
+            "BA-02-S3",
+            "BA-03-S1",
+            "BA-03-S2",
+            "BA-03-S3"
+          ],
           "code_refs": [
             "job_hunt_copilot/supervisor.py",
             "job_hunt_copilot/local_runtime.py",
@@ -4409,6 +6629,14 @@
           "epic_ids": [
             "BA-02",
             "BA-03"
+          ],
+          "slice_ids": [
+            "BA-02-S1",
+            "BA-02-S2",
+            "BA-02-S3",
+            "BA-03-S1",
+            "BA-03-S2",
+            "BA-03-S3"
           ],
           "code_refs": [
             "job_hunt_copilot/supervisor.py",
@@ -4442,6 +6670,14 @@
             "BA-02",
             "BA-03"
           ],
+          "slice_ids": [
+            "BA-02-S1",
+            "BA-02-S2",
+            "BA-02-S3",
+            "BA-03-S1",
+            "BA-03-S2",
+            "BA-03-S3"
+          ],
           "code_refs": [
             "job_hunt_copilot/supervisor.py",
             "job_hunt_copilot/local_runtime.py",
@@ -4473,6 +6709,14 @@
           "epic_ids": [
             "BA-02",
             "BA-03"
+          ],
+          "slice_ids": [
+            "BA-02-S1",
+            "BA-02-S2",
+            "BA-02-S3",
+            "BA-03-S1",
+            "BA-03-S2",
+            "BA-03-S3"
           ],
           "code_refs": [
             "job_hunt_copilot/supervisor.py",
@@ -4506,6 +6750,14 @@
             "BA-02",
             "BA-03"
           ],
+          "slice_ids": [
+            "BA-02-S1",
+            "BA-02-S2",
+            "BA-02-S3",
+            "BA-03-S1",
+            "BA-03-S2",
+            "BA-03-S3"
+          ],
           "code_refs": [
             "job_hunt_copilot/supervisor.py",
             "job_hunt_copilot/local_runtime.py",
@@ -4535,6 +6787,14 @@
           "epic_ids": [
             "BA-02",
             "BA-03"
+          ],
+          "slice_ids": [
+            "BA-02-S1",
+            "BA-02-S2",
+            "BA-02-S3",
+            "BA-03-S1",
+            "BA-03-S2",
+            "BA-03-S3"
           ],
           "code_refs": [
             "job_hunt_copilot/supervisor.py",
@@ -4568,6 +6828,14 @@
             "BA-02",
             "BA-03"
           ],
+          "slice_ids": [
+            "BA-02-S1",
+            "BA-02-S2",
+            "BA-02-S3",
+            "BA-03-S1",
+            "BA-03-S2",
+            "BA-03-S3"
+          ],
           "code_refs": [
             "job_hunt_copilot/supervisor.py",
             "job_hunt_copilot/local_runtime.py",
@@ -4599,6 +6867,14 @@
           "epic_ids": [
             "BA-02",
             "BA-03"
+          ],
+          "slice_ids": [
+            "BA-02-S1",
+            "BA-02-S2",
+            "BA-02-S3",
+            "BA-03-S1",
+            "BA-03-S2",
+            "BA-03-S3"
           ],
           "code_refs": [
             "job_hunt_copilot/supervisor.py",
@@ -4632,6 +6908,14 @@
             "BA-02",
             "BA-03"
           ],
+          "slice_ids": [
+            "BA-02-S1",
+            "BA-02-S2",
+            "BA-02-S3",
+            "BA-03-S1",
+            "BA-03-S2",
+            "BA-03-S3"
+          ],
           "code_refs": [
             "job_hunt_copilot/supervisor.py",
             "job_hunt_copilot/local_runtime.py",
@@ -4663,6 +6947,14 @@
           "epic_ids": [
             "BA-02",
             "BA-03"
+          ],
+          "slice_ids": [
+            "BA-02-S1",
+            "BA-02-S2",
+            "BA-02-S3",
+            "BA-03-S1",
+            "BA-03-S2",
+            "BA-03-S3"
           ],
           "code_refs": [
             "job_hunt_copilot/supervisor.py",
@@ -4696,6 +6988,14 @@
             "BA-02",
             "BA-03"
           ],
+          "slice_ids": [
+            "BA-02-S1",
+            "BA-02-S2",
+            "BA-02-S3",
+            "BA-03-S1",
+            "BA-03-S2",
+            "BA-03-S3"
+          ],
           "code_refs": [
             "job_hunt_copilot/supervisor.py",
             "job_hunt_copilot/local_runtime.py",
@@ -4727,6 +7027,14 @@
           "epic_ids": [
             "BA-02",
             "BA-03"
+          ],
+          "slice_ids": [
+            "BA-02-S1",
+            "BA-02-S2",
+            "BA-02-S3",
+            "BA-03-S1",
+            "BA-03-S2",
+            "BA-03-S3"
           ],
           "code_refs": [
             "job_hunt_copilot/supervisor.py",
@@ -4761,6 +7069,14 @@
         "BA-03",
         "BA-09"
       ],
+      "slice_ids": [
+        "BA-03-S1",
+        "BA-03-S2",
+        "BA-03-S3",
+        "BA-09-S1",
+        "BA-09-S2",
+        "BA-09-S3"
+      ],
       "code_refs": [
         "job_hunt_copilot/review_queries.py",
         "job_hunt_copilot/local_runtime.py",
@@ -4788,6 +7104,14 @@
             "BA-03",
             "BA-09"
           ],
+          "slice_ids": [
+            "BA-03-S1",
+            "BA-03-S2",
+            "BA-03-S3",
+            "BA-09-S1",
+            "BA-09-S2",
+            "BA-09-S3"
+          ],
           "code_refs": [
             "job_hunt_copilot/review_queries.py",
             "job_hunt_copilot/local_runtime.py",
@@ -4811,6 +7135,14 @@
             "BA-03",
             "BA-09"
           ],
+          "slice_ids": [
+            "BA-03-S1",
+            "BA-03-S2",
+            "BA-03-S3",
+            "BA-09-S1",
+            "BA-09-S2",
+            "BA-09-S3"
+          ],
           "code_refs": [
             "job_hunt_copilot/review_queries.py",
             "job_hunt_copilot/local_runtime.py",
@@ -4831,6 +7163,14 @@
           "epic_ids": [
             "BA-03",
             "BA-09"
+          ],
+          "slice_ids": [
+            "BA-03-S1",
+            "BA-03-S2",
+            "BA-03-S3",
+            "BA-09-S1",
+            "BA-09-S2",
+            "BA-09-S3"
           ],
           "code_refs": [
             "job_hunt_copilot/review_queries.py",
@@ -4853,6 +7193,14 @@
             "BA-03",
             "BA-09"
           ],
+          "slice_ids": [
+            "BA-03-S1",
+            "BA-03-S2",
+            "BA-03-S3",
+            "BA-09-S1",
+            "BA-09-S2",
+            "BA-09-S3"
+          ],
           "code_refs": [
             "job_hunt_copilot/review_queries.py",
             "job_hunt_copilot/local_runtime.py",
@@ -4873,6 +7221,14 @@
           "epic_ids": [
             "BA-03",
             "BA-09"
+          ],
+          "slice_ids": [
+            "BA-03-S1",
+            "BA-03-S2",
+            "BA-03-S3",
+            "BA-09-S1",
+            "BA-09-S2",
+            "BA-09-S3"
           ],
           "code_refs": [
             "job_hunt_copilot/review_queries.py",
@@ -4895,6 +7251,14 @@
             "BA-03",
             "BA-09"
           ],
+          "slice_ids": [
+            "BA-03-S1",
+            "BA-03-S2",
+            "BA-03-S3",
+            "BA-09-S1",
+            "BA-09-S2",
+            "BA-09-S3"
+          ],
           "code_refs": [
             "job_hunt_copilot/review_queries.py",
             "job_hunt_copilot/local_runtime.py",
@@ -4915,6 +7279,14 @@
           "epic_ids": [
             "BA-03",
             "BA-09"
+          ],
+          "slice_ids": [
+            "BA-03-S1",
+            "BA-03-S2",
+            "BA-03-S3",
+            "BA-09-S1",
+            "BA-09-S2",
+            "BA-09-S3"
           ],
           "code_refs": [
             "job_hunt_copilot/review_queries.py",
@@ -4939,6 +7311,21 @@
         "BA-07",
         "BA-08",
         "BA-09"
+      ],
+      "slice_ids": [
+        "BA-06-S1",
+        "BA-06-S2",
+        "BA-06-S3",
+        "BA-06-S4",
+        "BA-07-S1",
+        "BA-07-S2",
+        "BA-07-S3",
+        "BA-08-S1",
+        "BA-08-S2",
+        "BA-08-S3",
+        "BA-09-S1",
+        "BA-09-S2",
+        "BA-09-S3"
       ],
       "code_refs": [
         "job_hunt_copilot/resume_tailoring.py",
@@ -4975,6 +7362,21 @@
             "BA-08",
             "BA-09"
           ],
+          "slice_ids": [
+            "BA-06-S1",
+            "BA-06-S2",
+            "BA-06-S3",
+            "BA-06-S4",
+            "BA-07-S1",
+            "BA-07-S2",
+            "BA-07-S3",
+            "BA-08-S1",
+            "BA-08-S2",
+            "BA-08-S3",
+            "BA-09-S1",
+            "BA-09-S2",
+            "BA-09-S3"
+          ],
           "code_refs": [
             "job_hunt_copilot/resume_tailoring.py",
             "job_hunt_copilot/email_discovery.py",
@@ -5003,6 +7405,21 @@
             "BA-07",
             "BA-08",
             "BA-09"
+          ],
+          "slice_ids": [
+            "BA-06-S1",
+            "BA-06-S2",
+            "BA-06-S3",
+            "BA-06-S4",
+            "BA-07-S1",
+            "BA-07-S2",
+            "BA-07-S3",
+            "BA-08-S1",
+            "BA-08-S2",
+            "BA-08-S3",
+            "BA-09-S1",
+            "BA-09-S2",
+            "BA-09-S3"
           ],
           "code_refs": [
             "job_hunt_copilot/resume_tailoring.py",
@@ -5035,6 +7452,21 @@
             "BA-08",
             "BA-09"
           ],
+          "slice_ids": [
+            "BA-06-S1",
+            "BA-06-S2",
+            "BA-06-S3",
+            "BA-06-S4",
+            "BA-07-S1",
+            "BA-07-S2",
+            "BA-07-S3",
+            "BA-08-S1",
+            "BA-08-S2",
+            "BA-08-S3",
+            "BA-09-S1",
+            "BA-09-S2",
+            "BA-09-S3"
+          ],
           "code_refs": [
             "job_hunt_copilot/resume_tailoring.py",
             "job_hunt_copilot/email_discovery.py",
@@ -5063,6 +7495,21 @@
             "BA-07",
             "BA-08",
             "BA-09"
+          ],
+          "slice_ids": [
+            "BA-06-S1",
+            "BA-06-S2",
+            "BA-06-S3",
+            "BA-06-S4",
+            "BA-07-S1",
+            "BA-07-S2",
+            "BA-07-S3",
+            "BA-08-S1",
+            "BA-08-S2",
+            "BA-08-S3",
+            "BA-09-S1",
+            "BA-09-S2",
+            "BA-09-S3"
           ],
           "code_refs": [
             "job_hunt_copilot/resume_tailoring.py",
@@ -5093,6 +7540,21 @@
             "BA-08",
             "BA-09"
           ],
+          "slice_ids": [
+            "BA-06-S1",
+            "BA-06-S2",
+            "BA-06-S3",
+            "BA-06-S4",
+            "BA-07-S1",
+            "BA-07-S2",
+            "BA-07-S3",
+            "BA-08-S1",
+            "BA-08-S2",
+            "BA-08-S3",
+            "BA-09-S1",
+            "BA-09-S2",
+            "BA-09-S3"
+          ],
           "code_refs": [
             "job_hunt_copilot/resume_tailoring.py",
             "job_hunt_copilot/email_discovery.py",
@@ -5121,6 +7583,21 @@
             "BA-07",
             "BA-08",
             "BA-09"
+          ],
+          "slice_ids": [
+            "BA-06-S1",
+            "BA-06-S2",
+            "BA-06-S3",
+            "BA-06-S4",
+            "BA-07-S1",
+            "BA-07-S2",
+            "BA-07-S3",
+            "BA-08-S1",
+            "BA-08-S2",
+            "BA-08-S3",
+            "BA-09-S1",
+            "BA-09-S2",
+            "BA-09-S3"
           ],
           "code_refs": [
             "job_hunt_copilot/resume_tailoring.py",
@@ -5151,6 +7628,21 @@
             "BA-08",
             "BA-09"
           ],
+          "slice_ids": [
+            "BA-06-S1",
+            "BA-06-S2",
+            "BA-06-S3",
+            "BA-06-S4",
+            "BA-07-S1",
+            "BA-07-S2",
+            "BA-07-S3",
+            "BA-08-S1",
+            "BA-08-S2",
+            "BA-08-S3",
+            "BA-09-S1",
+            "BA-09-S2",
+            "BA-09-S3"
+          ],
           "code_refs": [
             "job_hunt_copilot/resume_tailoring.py",
             "job_hunt_copilot/email_discovery.py",
@@ -5179,6 +7671,21 @@
             "BA-07",
             "BA-08",
             "BA-09"
+          ],
+          "slice_ids": [
+            "BA-06-S1",
+            "BA-06-S2",
+            "BA-06-S3",
+            "BA-06-S4",
+            "BA-07-S1",
+            "BA-07-S2",
+            "BA-07-S3",
+            "BA-08-S1",
+            "BA-08-S2",
+            "BA-08-S3",
+            "BA-09-S1",
+            "BA-09-S2",
+            "BA-09-S3"
           ],
           "code_refs": [
             "job_hunt_copilot/resume_tailoring.py",
@@ -5209,6 +7716,21 @@
             "BA-08",
             "BA-09"
           ],
+          "slice_ids": [
+            "BA-06-S1",
+            "BA-06-S2",
+            "BA-06-S3",
+            "BA-06-S4",
+            "BA-07-S1",
+            "BA-07-S2",
+            "BA-07-S3",
+            "BA-08-S1",
+            "BA-08-S2",
+            "BA-08-S3",
+            "BA-09-S1",
+            "BA-09-S2",
+            "BA-09-S3"
+          ],
           "code_refs": [
             "job_hunt_copilot/resume_tailoring.py",
             "job_hunt_copilot/email_discovery.py",
@@ -5237,6 +7759,21 @@
             "BA-07",
             "BA-08",
             "BA-09"
+          ],
+          "slice_ids": [
+            "BA-06-S1",
+            "BA-06-S2",
+            "BA-06-S3",
+            "BA-06-S4",
+            "BA-07-S1",
+            "BA-07-S2",
+            "BA-07-S3",
+            "BA-08-S1",
+            "BA-08-S2",
+            "BA-08-S3",
+            "BA-09-S1",
+            "BA-09-S2",
+            "BA-09-S3"
           ],
           "code_refs": [
             "job_hunt_copilot/resume_tailoring.py",
@@ -5267,6 +7804,21 @@
             "BA-08",
             "BA-09"
           ],
+          "slice_ids": [
+            "BA-06-S1",
+            "BA-06-S2",
+            "BA-06-S3",
+            "BA-06-S4",
+            "BA-07-S1",
+            "BA-07-S2",
+            "BA-07-S3",
+            "BA-08-S1",
+            "BA-08-S2",
+            "BA-08-S3",
+            "BA-09-S1",
+            "BA-09-S2",
+            "BA-09-S3"
+          ],
           "code_refs": [
             "job_hunt_copilot/resume_tailoring.py",
             "job_hunt_copilot/email_discovery.py",
@@ -5295,6 +7847,21 @@
             "BA-07",
             "BA-08",
             "BA-09"
+          ],
+          "slice_ids": [
+            "BA-06-S1",
+            "BA-06-S2",
+            "BA-06-S3",
+            "BA-06-S4",
+            "BA-07-S1",
+            "BA-07-S2",
+            "BA-07-S3",
+            "BA-08-S1",
+            "BA-08-S2",
+            "BA-08-S3",
+            "BA-09-S1",
+            "BA-09-S2",
+            "BA-09-S3"
           ],
           "code_refs": [
             "job_hunt_copilot/resume_tailoring.py",
@@ -5325,6 +7892,21 @@
             "BA-08",
             "BA-09"
           ],
+          "slice_ids": [
+            "BA-06-S1",
+            "BA-06-S2",
+            "BA-06-S3",
+            "BA-06-S4",
+            "BA-07-S1",
+            "BA-07-S2",
+            "BA-07-S3",
+            "BA-08-S1",
+            "BA-08-S2",
+            "BA-08-S3",
+            "BA-09-S1",
+            "BA-09-S2",
+            "BA-09-S3"
+          ],
           "code_refs": [
             "job_hunt_copilot/resume_tailoring.py",
             "job_hunt_copilot/email_discovery.py",
@@ -5353,6 +7935,21 @@
             "BA-07",
             "BA-08",
             "BA-09"
+          ],
+          "slice_ids": [
+            "BA-06-S1",
+            "BA-06-S2",
+            "BA-06-S3",
+            "BA-06-S4",
+            "BA-07-S1",
+            "BA-07-S2",
+            "BA-07-S3",
+            "BA-08-S1",
+            "BA-08-S2",
+            "BA-08-S3",
+            "BA-09-S1",
+            "BA-09-S2",
+            "BA-09-S3"
           ],
           "code_refs": [
             "job_hunt_copilot/resume_tailoring.py",
@@ -5383,6 +7980,21 @@
             "BA-08",
             "BA-09"
           ],
+          "slice_ids": [
+            "BA-06-S1",
+            "BA-06-S2",
+            "BA-06-S3",
+            "BA-06-S4",
+            "BA-07-S1",
+            "BA-07-S2",
+            "BA-07-S3",
+            "BA-08-S1",
+            "BA-08-S2",
+            "BA-08-S3",
+            "BA-09-S1",
+            "BA-09-S2",
+            "BA-09-S3"
+          ],
           "code_refs": [
             "job_hunt_copilot/resume_tailoring.py",
             "job_hunt_copilot/email_discovery.py",
@@ -5411,6 +8023,21 @@
             "BA-07",
             "BA-08",
             "BA-09"
+          ],
+          "slice_ids": [
+            "BA-06-S1",
+            "BA-06-S2",
+            "BA-06-S3",
+            "BA-06-S4",
+            "BA-07-S1",
+            "BA-07-S2",
+            "BA-07-S3",
+            "BA-08-S1",
+            "BA-08-S2",
+            "BA-08-S3",
+            "BA-09-S1",
+            "BA-09-S2",
+            "BA-09-S3"
           ],
           "code_refs": [
             "job_hunt_copilot/resume_tailoring.py",
@@ -5441,6 +8068,21 @@
             "BA-08",
             "BA-09"
           ],
+          "slice_ids": [
+            "BA-06-S1",
+            "BA-06-S2",
+            "BA-06-S3",
+            "BA-06-S4",
+            "BA-07-S1",
+            "BA-07-S2",
+            "BA-07-S3",
+            "BA-08-S1",
+            "BA-08-S2",
+            "BA-08-S3",
+            "BA-09-S1",
+            "BA-09-S2",
+            "BA-09-S3"
+          ],
           "code_refs": [
             "job_hunt_copilot/resume_tailoring.py",
             "job_hunt_copilot/email_discovery.py",
@@ -5469,6 +8111,21 @@
             "BA-07",
             "BA-08",
             "BA-09"
+          ],
+          "slice_ids": [
+            "BA-06-S1",
+            "BA-06-S2",
+            "BA-06-S3",
+            "BA-06-S4",
+            "BA-07-S1",
+            "BA-07-S2",
+            "BA-07-S3",
+            "BA-08-S1",
+            "BA-08-S2",
+            "BA-08-S3",
+            "BA-09-S1",
+            "BA-09-S2",
+            "BA-09-S3"
           ],
           "code_refs": [
             "job_hunt_copilot/resume_tailoring.py",
@@ -5501,6 +8158,21 @@
             "BA-08",
             "BA-09"
           ],
+          "slice_ids": [
+            "BA-06-S1",
+            "BA-06-S2",
+            "BA-06-S3",
+            "BA-06-S4",
+            "BA-07-S1",
+            "BA-07-S2",
+            "BA-07-S3",
+            "BA-08-S1",
+            "BA-08-S2",
+            "BA-08-S3",
+            "BA-09-S1",
+            "BA-09-S2",
+            "BA-09-S3"
+          ],
           "code_refs": [
             "job_hunt_copilot/resume_tailoring.py",
             "job_hunt_copilot/email_discovery.py",
@@ -5532,6 +8204,21 @@
             "BA-08",
             "BA-09"
           ],
+          "slice_ids": [
+            "BA-06-S1",
+            "BA-06-S2",
+            "BA-06-S3",
+            "BA-06-S4",
+            "BA-07-S1",
+            "BA-07-S2",
+            "BA-07-S3",
+            "BA-08-S1",
+            "BA-08-S2",
+            "BA-08-S3",
+            "BA-09-S1",
+            "BA-09-S2",
+            "BA-09-S3"
+          ],
           "code_refs": [
             "job_hunt_copilot/resume_tailoring.py",
             "job_hunt_copilot/email_discovery.py",
@@ -5560,6 +8247,21 @@
             "BA-07",
             "BA-08",
             "BA-09"
+          ],
+          "slice_ids": [
+            "BA-06-S1",
+            "BA-06-S2",
+            "BA-06-S3",
+            "BA-06-S4",
+            "BA-07-S1",
+            "BA-07-S2",
+            "BA-07-S3",
+            "BA-08-S1",
+            "BA-08-S2",
+            "BA-08-S3",
+            "BA-09-S1",
+            "BA-09-S2",
+            "BA-09-S3"
           ],
           "code_refs": [
             "job_hunt_copilot/resume_tailoring.py",
@@ -5590,6 +8292,21 @@
             "BA-08",
             "BA-09"
           ],
+          "slice_ids": [
+            "BA-06-S1",
+            "BA-06-S2",
+            "BA-06-S3",
+            "BA-06-S4",
+            "BA-07-S1",
+            "BA-07-S2",
+            "BA-07-S3",
+            "BA-08-S1",
+            "BA-08-S2",
+            "BA-08-S3",
+            "BA-09-S1",
+            "BA-09-S2",
+            "BA-09-S3"
+          ],
           "code_refs": [
             "job_hunt_copilot/resume_tailoring.py",
             "job_hunt_copilot/email_discovery.py",
@@ -5617,6 +8334,15 @@
       "epic_ids": [
         "BA-04",
         "BA-05"
+      ],
+      "slice_ids": [
+        "BA-04-S1",
+        "BA-04-S2",
+        "BA-04-S3",
+        "BA-04-S4",
+        "BA-05-S1",
+        "BA-05-S2",
+        "BA-05-S3"
       ],
       "code_refs": [
         "job_hunt_copilot/linkedin_scraping.py",
@@ -5646,6 +8372,15 @@
             "BA-04",
             "BA-05"
           ],
+          "slice_ids": [
+            "BA-04-S1",
+            "BA-04-S2",
+            "BA-04-S3",
+            "BA-04-S4",
+            "BA-05-S1",
+            "BA-05-S2",
+            "BA-05-S3"
+          ],
           "code_refs": [
             "job_hunt_copilot/linkedin_scraping.py",
             "job_hunt_copilot/gmail_alerts.py",
@@ -5667,6 +8402,15 @@
           "epic_ids": [
             "BA-04",
             "BA-05"
+          ],
+          "slice_ids": [
+            "BA-04-S1",
+            "BA-04-S2",
+            "BA-04-S3",
+            "BA-04-S4",
+            "BA-05-S1",
+            "BA-05-S2",
+            "BA-05-S3"
           ],
           "code_refs": [
             "job_hunt_copilot/linkedin_scraping.py",
@@ -5690,6 +8434,15 @@
             "BA-04",
             "BA-05"
           ],
+          "slice_ids": [
+            "BA-04-S1",
+            "BA-04-S2",
+            "BA-04-S3",
+            "BA-04-S4",
+            "BA-05-S1",
+            "BA-05-S2",
+            "BA-05-S3"
+          ],
           "code_refs": [
             "job_hunt_copilot/linkedin_scraping.py",
             "job_hunt_copilot/gmail_alerts.py",
@@ -5711,6 +8464,15 @@
           "epic_ids": [
             "BA-04",
             "BA-05"
+          ],
+          "slice_ids": [
+            "BA-04-S1",
+            "BA-04-S2",
+            "BA-04-S3",
+            "BA-04-S4",
+            "BA-05-S1",
+            "BA-05-S2",
+            "BA-05-S3"
           ],
           "code_refs": [
             "job_hunt_copilot/linkedin_scraping.py",
@@ -5734,6 +8496,15 @@
             "BA-04",
             "BA-05"
           ],
+          "slice_ids": [
+            "BA-04-S1",
+            "BA-04-S2",
+            "BA-04-S3",
+            "BA-04-S4",
+            "BA-05-S1",
+            "BA-05-S2",
+            "BA-05-S3"
+          ],
           "code_refs": [
             "job_hunt_copilot/linkedin_scraping.py",
             "job_hunt_copilot/gmail_alerts.py",
@@ -5755,6 +8526,15 @@
           "epic_ids": [
             "BA-04",
             "BA-05"
+          ],
+          "slice_ids": [
+            "BA-04-S1",
+            "BA-04-S2",
+            "BA-04-S3",
+            "BA-04-S4",
+            "BA-05-S1",
+            "BA-05-S2",
+            "BA-05-S3"
           ],
           "code_refs": [
             "job_hunt_copilot/linkedin_scraping.py",
@@ -5778,6 +8558,15 @@
             "BA-04",
             "BA-05"
           ],
+          "slice_ids": [
+            "BA-04-S1",
+            "BA-04-S2",
+            "BA-04-S3",
+            "BA-04-S4",
+            "BA-05-S1",
+            "BA-05-S2",
+            "BA-05-S3"
+          ],
           "code_refs": [
             "job_hunt_copilot/linkedin_scraping.py",
             "job_hunt_copilot/gmail_alerts.py",
@@ -5799,6 +8588,15 @@
           "epic_ids": [
             "BA-04",
             "BA-05"
+          ],
+          "slice_ids": [
+            "BA-04-S1",
+            "BA-04-S2",
+            "BA-04-S3",
+            "BA-04-S4",
+            "BA-05-S1",
+            "BA-05-S2",
+            "BA-05-S3"
           ],
           "code_refs": [
             "job_hunt_copilot/linkedin_scraping.py",
@@ -5822,6 +8620,15 @@
             "BA-04",
             "BA-05"
           ],
+          "slice_ids": [
+            "BA-04-S1",
+            "BA-04-S2",
+            "BA-04-S3",
+            "BA-04-S4",
+            "BA-05-S1",
+            "BA-05-S2",
+            "BA-05-S3"
+          ],
           "code_refs": [
             "job_hunt_copilot/linkedin_scraping.py",
             "job_hunt_copilot/gmail_alerts.py",
@@ -5843,6 +8650,15 @@
           "epic_ids": [
             "BA-04",
             "BA-05"
+          ],
+          "slice_ids": [
+            "BA-04-S1",
+            "BA-04-S2",
+            "BA-04-S3",
+            "BA-04-S4",
+            "BA-05-S1",
+            "BA-05-S2",
+            "BA-05-S3"
           ],
           "code_refs": [
             "job_hunt_copilot/linkedin_scraping.py",
@@ -5866,6 +8682,15 @@
             "BA-04",
             "BA-05"
           ],
+          "slice_ids": [
+            "BA-04-S1",
+            "BA-04-S2",
+            "BA-04-S3",
+            "BA-04-S4",
+            "BA-05-S1",
+            "BA-05-S2",
+            "BA-05-S3"
+          ],
           "code_refs": [
             "job_hunt_copilot/linkedin_scraping.py",
             "job_hunt_copilot/gmail_alerts.py",
@@ -5887,6 +8712,15 @@
           "epic_ids": [
             "BA-04",
             "BA-05"
+          ],
+          "slice_ids": [
+            "BA-04-S1",
+            "BA-04-S2",
+            "BA-04-S3",
+            "BA-04-S4",
+            "BA-05-S1",
+            "BA-05-S2",
+            "BA-05-S3"
           ],
           "code_refs": [
             "job_hunt_copilot/linkedin_scraping.py",
@@ -5913,6 +8747,21 @@
         "BA-08",
         "BA-09",
         "BA-10"
+      ],
+      "slice_ids": [
+        "BA-06-S1",
+        "BA-06-S2",
+        "BA-06-S3",
+        "BA-06-S4",
+        "BA-07-S1",
+        "BA-07-S2",
+        "BA-07-S3",
+        "BA-08-S1",
+        "BA-08-S2",
+        "BA-08-S3",
+        "BA-09-S1",
+        "BA-09-S2",
+        "BA-09-S3"
       ],
       "code_refs": [
         "job_hunt_copilot/resume_tailoring.py",
@@ -5951,6 +8800,21 @@
             "BA-09",
             "BA-10"
           ],
+          "slice_ids": [
+            "BA-06-S1",
+            "BA-06-S2",
+            "BA-06-S3",
+            "BA-06-S4",
+            "BA-07-S1",
+            "BA-07-S2",
+            "BA-07-S3",
+            "BA-08-S1",
+            "BA-08-S2",
+            "BA-08-S3",
+            "BA-09-S1",
+            "BA-09-S2",
+            "BA-09-S3"
+          ],
           "code_refs": [
             "job_hunt_copilot/resume_tailoring.py",
             "job_hunt_copilot/email_discovery.py",
@@ -5984,6 +8848,21 @@
             "BA-09",
             "BA-10"
           ],
+          "slice_ids": [
+            "BA-06-S1",
+            "BA-06-S2",
+            "BA-06-S3",
+            "BA-06-S4",
+            "BA-07-S1",
+            "BA-07-S2",
+            "BA-07-S3",
+            "BA-08-S1",
+            "BA-08-S2",
+            "BA-08-S3",
+            "BA-09-S1",
+            "BA-09-S2",
+            "BA-09-S3"
+          ],
           "code_refs": [
             "job_hunt_copilot/resume_tailoring.py",
             "job_hunt_copilot/email_discovery.py",
@@ -6014,6 +8893,21 @@
             "BA-08",
             "BA-09",
             "BA-10"
+          ],
+          "slice_ids": [
+            "BA-06-S1",
+            "BA-06-S2",
+            "BA-06-S3",
+            "BA-06-S4",
+            "BA-07-S1",
+            "BA-07-S2",
+            "BA-07-S3",
+            "BA-08-S1",
+            "BA-08-S2",
+            "BA-08-S3",
+            "BA-09-S1",
+            "BA-09-S2",
+            "BA-09-S3"
           ],
           "code_refs": [
             "job_hunt_copilot/resume_tailoring.py",
@@ -6048,6 +8942,21 @@
             "BA-09",
             "BA-10"
           ],
+          "slice_ids": [
+            "BA-06-S1",
+            "BA-06-S2",
+            "BA-06-S3",
+            "BA-06-S4",
+            "BA-07-S1",
+            "BA-07-S2",
+            "BA-07-S3",
+            "BA-08-S1",
+            "BA-08-S2",
+            "BA-08-S3",
+            "BA-09-S1",
+            "BA-09-S2",
+            "BA-09-S3"
+          ],
           "code_refs": [
             "job_hunt_copilot/resume_tailoring.py",
             "job_hunt_copilot/email_discovery.py",
@@ -6078,6 +8987,18 @@
         "BA-08",
         "BA-09",
         "BA-10"
+      ],
+      "slice_ids": [
+        "BA-06-S1",
+        "BA-06-S2",
+        "BA-06-S3",
+        "BA-06-S4",
+        "BA-08-S1",
+        "BA-08-S2",
+        "BA-08-S3",
+        "BA-09-S1",
+        "BA-09-S2",
+        "BA-09-S3"
       ],
       "code_refs": [
         "job_hunt_copilot/resume_tailoring.py",
@@ -6114,6 +9035,18 @@
             "BA-09",
             "BA-10"
           ],
+          "slice_ids": [
+            "BA-06-S1",
+            "BA-06-S2",
+            "BA-06-S3",
+            "BA-06-S4",
+            "BA-08-S1",
+            "BA-08-S2",
+            "BA-08-S3",
+            "BA-09-S1",
+            "BA-09-S2",
+            "BA-09-S3"
+          ],
           "code_refs": [
             "job_hunt_copilot/resume_tailoring.py",
             "job_hunt_copilot/outreach.py",
@@ -6143,6 +9076,18 @@
             "BA-09",
             "BA-10"
           ],
+          "slice_ids": [
+            "BA-06-S1",
+            "BA-06-S2",
+            "BA-06-S3",
+            "BA-06-S4",
+            "BA-08-S1",
+            "BA-08-S2",
+            "BA-08-S3",
+            "BA-09-S1",
+            "BA-09-S2",
+            "BA-09-S3"
+          ],
           "code_refs": [
             "job_hunt_copilot/resume_tailoring.py",
             "job_hunt_copilot/outreach.py",
@@ -6171,6 +9116,18 @@
             "BA-08",
             "BA-09",
             "BA-10"
+          ],
+          "slice_ids": [
+            "BA-06-S1",
+            "BA-06-S2",
+            "BA-06-S3",
+            "BA-06-S4",
+            "BA-08-S1",
+            "BA-08-S2",
+            "BA-08-S3",
+            "BA-09-S1",
+            "BA-09-S2",
+            "BA-09-S3"
           ],
           "code_refs": [
             "job_hunt_copilot/resume_tailoring.py",
@@ -6210,6 +9167,9 @@
         "tests/test_smoke_harness.py",
         "tests/test_acceptance_traceability.py"
       ],
+      "slice_ids": [
+        "BA-10-S2"
+      ],
       "scenario_names": []
     },
     {
@@ -6227,6 +9187,28 @@
         "tests/test_supervisor_downstream_actions.py",
         "tests/test_blocker_audit.py",
         "tests/test_acceptance_traceability.py"
+      ],
+      "slice_ids": [
+        "BA-02-S1",
+        "BA-02-S2",
+        "BA-02-S3",
+        "BA-03-S1",
+        "BA-03-S2",
+        "BA-03-S3",
+        "BA-06-S1",
+        "BA-06-S2",
+        "BA-06-S3",
+        "BA-06-S4",
+        "BA-07-S1",
+        "BA-07-S2",
+        "BA-07-S3",
+        "BA-08-S1",
+        "BA-08-S2",
+        "BA-08-S3",
+        "BA-09-S1",
+        "BA-09-S2",
+        "BA-09-S3",
+        "BA-10-S4"
       ],
       "scenario_names": [
         "Supervisor work selection follows the current default priority order",
@@ -6267,6 +9249,35 @@
         "tests/test_runtime_pack.py",
         "tests/test_acceptance_traceability.py"
       ],
+      "slice_ids": [
+        "BA-01-S1",
+        "BA-01-S2",
+        "BA-01-S3",
+        "BA-02-S1",
+        "BA-02-S2",
+        "BA-02-S3",
+        "BA-04-S1",
+        "BA-04-S2",
+        "BA-04-S3",
+        "BA-04-S4",
+        "BA-06-S1",
+        "BA-06-S2",
+        "BA-06-S3",
+        "BA-06-S4",
+        "BA-07-S1",
+        "BA-07-S2",
+        "BA-07-S3",
+        "BA-08-S1",
+        "BA-08-S2",
+        "BA-08-S3",
+        "BA-09-S1",
+        "BA-09-S2",
+        "BA-09-S3",
+        "BA-03-S1",
+        "BA-03-S2",
+        "BA-03-S3",
+        "BA-10-S3"
+      ],
       "scenario_names": [
         "Maintenance change artifacts exist for every autonomous maintenance batch",
         "Daily maintenance is mandatory, bounded, and run-boundary aware",
@@ -6292,6 +9303,18 @@
         "tests/test_review_queries.py",
         "tests/test_runtime_pack.py",
         "tests/test_acceptance_traceability.py"
+      ],
+      "slice_ids": [
+        "BA-02-S1",
+        "BA-02-S2",
+        "BA-02-S3",
+        "BA-03-S1",
+        "BA-03-S2",
+        "BA-03-S3",
+        "BA-09-S1",
+        "BA-09-S2",
+        "BA-09-S3",
+        "BA-10-S3"
       ],
       "scenario_names": [
         "jhc-chat startup dashboard is detailed, bounded, and clean-first",
@@ -6321,6 +9344,15 @@
         "tests/test_runtime_pack.py",
         "tests/test_acceptance_traceability.py"
       ],
+      "slice_ids": [
+        "BA-02-S1",
+        "BA-02-S2",
+        "BA-02-S3",
+        "BA-03-S1",
+        "BA-03-S2",
+        "BA-03-S3",
+        "BA-10-S3"
+      ],
       "scenario_names": [
         "Expert-interaction resume follows explicit close, explicit resume, or safe idle timeout"
       ]
@@ -6342,6 +9374,9 @@
         "tests/test_smoke_harness.py",
         "tests/test_acceptance_traceability.py"
       ],
+      "slice_ids": [
+        "BA-10-S3"
+      ],
       "scenario_names": []
     },
     {
@@ -6356,6 +9391,9 @@
       "evidence_test_refs": [
         "tests/test_local_runtime.py",
         "tests/test_acceptance_traceability.py"
+      ],
+      "slice_ids": [
+        "BA-10-S3"
       ],
       "scenario_names": []
     },
@@ -6373,6 +9411,22 @@
       "evidence_test_refs": [
         "tests/test_local_runtime.py",
         "tests/test_acceptance_traceability.py"
+      ],
+      "slice_ids": [
+        "BA-06-S1",
+        "BA-06-S2",
+        "BA-06-S3",
+        "BA-06-S4",
+        "BA-07-S1",
+        "BA-07-S2",
+        "BA-07-S3",
+        "BA-08-S1",
+        "BA-08-S2",
+        "BA-08-S3",
+        "BA-09-S1",
+        "BA-09-S2",
+        "BA-09-S3",
+        "BA-10-S3"
       ],
       "scenario_names": [
         "The user may explicitly abandon a posting from any active orchestration state"
@@ -6393,6 +9447,11 @@
         "bootstrap prerequisites",
         "DB init and migration",
         "required assets and secret materialization"
+      ],
+      "slice_ids": [
+        "BA-01-S1",
+        "BA-01-S2",
+        "BA-01-S3"
       ]
     },
     {
@@ -6406,6 +9465,11 @@
         "single-cycle heartbeat execution",
         "lease safety",
         "review-packet persistence for escalations"
+      ],
+      "slice_ids": [
+        "BA-02-S1",
+        "BA-02-S2",
+        "BA-02-S3"
       ]
     },
     {
@@ -6420,6 +9484,11 @@
         "runtime-pack materialization",
         "repo-local wrapper wiring",
         "chat begin/end pause semantics"
+      ],
+      "slice_ids": [
+        "BA-03-S1",
+        "BA-03-S2",
+        "BA-03-S3"
       ]
     },
     {
@@ -6433,6 +9502,12 @@
         "paste inbox ingestion",
         "capture-bundle persistence",
         "posting/contact handoff creation"
+      ],
+      "slice_ids": [
+        "BA-04-S1",
+        "BA-04-S2",
+        "BA-04-S3",
+        "BA-04-S4"
       ]
     },
     {
@@ -6446,6 +9521,11 @@
         "plain-text-first Gmail parsing",
         "JD recovery merge",
         "lead dedupe and blocked-no-jd handling"
+      ],
+      "slice_ids": [
+        "BA-05-S1",
+        "BA-05-S2",
+        "BA-05-S3"
       ]
     },
     {
@@ -6459,6 +9539,12 @@
         "sample posting tailoring bootstrap",
         "finalize plus compile check",
         "review approval handoff into outreach readiness"
+      ],
+      "slice_ids": [
+        "BA-06-S1",
+        "BA-06-S2",
+        "BA-06-S3",
+        "BA-06-S4"
       ]
     },
     {
@@ -6472,6 +9558,11 @@
         "Apollo shortlist bootstrap",
         "provider cascade outcome",
         "machine-valid discovery artifact"
+      ],
+      "slice_ids": [
+        "BA-07-S1",
+        "BA-07-S2",
+        "BA-07-S3"
       ]
     },
     {
@@ -6485,6 +9576,11 @@
         "role-targeted draft batch",
         "general-learning draft path",
         "machine-valid send artifact"
+      ],
+      "slice_ids": [
+        "BA-08-S1",
+        "BA-08-S2",
+        "BA-08-S3"
       ]
     },
     {
@@ -6500,6 +9596,11 @@
         "one delayed feedback sync run",
         "delivery_outcome artifact generation",
         "review-surface queryability"
+      ],
+      "slice_ids": [
+        "BA-09-S1",
+        "BA-09-S2",
+        "BA-09-S3"
       ]
     },
     {
@@ -6516,6 +9617,12 @@
         "feature-to-code coverage honesty",
         "committed smoke fixture coverage",
         "explicit blocker confirmation"
+      ],
+      "slice_ids": [
+        "BA-10-S1",
+        "BA-10-S2",
+        "BA-10-S3",
+        "BA-10-S4"
       ]
     }
   ],

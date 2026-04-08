@@ -23,6 +23,10 @@ def test_ba10_blocker_audit_reports_are_current_and_reference_real_repo_paths():
 
     assert committed_json == audit
     assert committed_markdown == generated_markdown
+    implemented_slice_ids = {
+        slice_record["slice_id"] for slice_record in audit["implemented_slices"]
+    }
+    assert implemented_slice_ids
 
     summary = audit["summary"]
     assert summary["open_acceptance_scenario_count"] == (
@@ -36,6 +40,8 @@ def test_ba10_blocker_audit_reports_are_current_and_reference_real_repo_paths():
         assert cluster["owner_roles"]
         assert cluster["rules"]
         assert cluster["epic_ids"]
+        assert cluster["slice_ids"]
+        assert all(slice_id in implemented_slice_ids for slice_id in cluster["slice_ids"])
         assert cluster["validation_commands"]
         for path_text in cluster["evidence_code_refs"] + cluster["evidence_test_refs"]:
             assert (REPO_ROOT / path_text).exists(), path_text
@@ -63,6 +69,7 @@ def test_ba10_blocker_audit_reports_are_current_and_reference_real_repo_paths():
             "contact_rooted_general_learning",
         ],
     }
+    assert "BA-10-S4" in supervisor_cluster["slice_ids"]
 
     for blocker in audit["build_board_blockers"]:
         assert blocker["blocker_id"]

@@ -1,5 +1,5 @@
 {
-  "blocker_audit_version": 2,
+  "blocker_audit_version": 3,
   "sources": {
     "acceptance_trace_report_json": "build-agent/reports/ba-10-acceptance-trace-matrix.json",
     "acceptance_trace_report_markdown": "build-agent/reports/ba-10-acceptance-trace-matrix.md",
@@ -25,6 +25,239 @@
     "open_build_board_blocker_count": 3,
     "build_board_blockers_with_missing_evidence": 0
   },
+  "implemented_slices": [
+    {
+      "slice_id": "BA-01-S1",
+      "epic_id": "BA-01",
+      "name": "Runtime bootstrap and DB init skeleton",
+      "owner_role": "foundation-engineer",
+      "status": "completed"
+    },
+    {
+      "slice_id": "BA-01-S2",
+      "epic_id": "BA-01",
+      "name": "Canonical schema and views",
+      "owner_role": "foundation-engineer",
+      "status": "completed"
+    },
+    {
+      "slice_id": "BA-01-S3",
+      "epic_id": "BA-01",
+      "name": "Artifact contract and registry utilities",
+      "owner_role": "foundation-engineer",
+      "status": "completed"
+    },
+    {
+      "slice_id": "BA-02-S1",
+      "epic_id": "BA-02",
+      "name": "Control-state persistence and run lifecycle helpers",
+      "owner_role": "build-lead",
+      "status": "completed"
+    },
+    {
+      "slice_id": "BA-02-S2",
+      "epic_id": "BA-02",
+      "name": "Bounded cycle executor",
+      "owner_role": "build-lead",
+      "status": "completed"
+    },
+    {
+      "slice_id": "BA-02-S3",
+      "epic_id": "BA-02",
+      "name": "Review packet and override plumbing",
+      "owner_role": "build-lead",
+      "status": "completed"
+    },
+    {
+      "slice_id": "BA-03-S1",
+      "epic_id": "BA-03",
+      "name": "Runtime pack materialization",
+      "owner_role": "build-lead",
+      "status": "completed"
+    },
+    {
+      "slice_id": "BA-03-S2",
+      "epic_id": "BA-03",
+      "name": "launchd and helper entrypoints",
+      "owner_role": "build-lead",
+      "status": "completed"
+    },
+    {
+      "slice_id": "BA-03-S3",
+      "epic_id": "BA-03",
+      "name": "`jhc-chat` operator bootstrap",
+      "owner_role": "build-lead",
+      "status": "completed"
+    },
+    {
+      "slice_id": "BA-04-S1",
+      "epic_id": "BA-04",
+      "name": "Paste inbox and manual capture bundle persistence",
+      "owner_role": "ingestion-engineer",
+      "status": "completed"
+    },
+    {
+      "slice_id": "BA-04-S2",
+      "epic_id": "BA-04",
+      "name": "Rule-based split and review pipeline",
+      "owner_role": "ingestion-engineer",
+      "status": "completed"
+    },
+    {
+      "slice_id": "BA-04-S3",
+      "epic_id": "BA-04",
+      "name": "Manual lead entity materialization",
+      "owner_role": "ingestion-engineer",
+      "status": "completed"
+    },
+    {
+      "slice_id": "BA-04-S4",
+      "epic_id": "BA-04",
+      "name": "Lead refresh history and workspace snapshotting",
+      "owner_role": "ingestion-engineer",
+      "status": "completed"
+    },
+    {
+      "slice_id": "BA-05-S1",
+      "epic_id": "BA-05",
+      "name": "Gmail collection unit and parser",
+      "owner_role": "ingestion-engineer",
+      "status": "completed"
+    },
+    {
+      "slice_id": "BA-05-S2",
+      "epic_id": "BA-05",
+      "name": "Autonomous lead fan-out and JD recovery",
+      "owner_role": "ingestion-engineer",
+      "status": "completed"
+    },
+    {
+      "slice_id": "BA-05-S3",
+      "epic_id": "BA-05",
+      "name": "JD provenance merge and mismatch review",
+      "owner_role": "ingestion-engineer",
+      "status": "completed"
+    },
+    {
+      "slice_id": "BA-06-S1",
+      "epic_id": "BA-06",
+      "name": "Eligibility and tailoring-run lifecycle",
+      "owner_role": "tailoring-engineer",
+      "status": "completed"
+    },
+    {
+      "slice_id": "BA-06-S2",
+      "epic_id": "BA-06",
+      "name": "Workspace bootstrap and step artifact scaffolding",
+      "owner_role": "tailoring-engineer",
+      "status": "completed"
+    },
+    {
+      "slice_id": "BA-06-S3",
+      "epic_id": "BA-06",
+      "name": "Structured edit generation and finalize verification",
+      "owner_role": "tailoring-engineer",
+      "status": "completed"
+    },
+    {
+      "slice_id": "BA-06-S4",
+      "epic_id": "BA-06",
+      "name": "Mandatory agent review and override handling",
+      "owner_role": "tailoring-engineer",
+      "status": "completed"
+    },
+    {
+      "slice_id": "BA-07-S1",
+      "epic_id": "BA-07",
+      "name": "Apollo search and shortlist materialization",
+      "owner_role": "outreach-engineer",
+      "status": "completed"
+    },
+    {
+      "slice_id": "BA-07-S2",
+      "epic_id": "BA-07",
+      "name": "Contact enrichment and recipient profiles",
+      "owner_role": "outreach-engineer",
+      "status": "completed"
+    },
+    {
+      "slice_id": "BA-07-S3",
+      "epic_id": "BA-07",
+      "name": "Email discovery cascade and budget tracking",
+      "owner_role": "outreach-engineer",
+      "status": "completed"
+    },
+    {
+      "slice_id": "BA-08-S1",
+      "epic_id": "BA-08",
+      "name": "Send-set readiness and pacing selection",
+      "owner_role": "outreach-engineer",
+      "status": "completed"
+    },
+    {
+      "slice_id": "BA-08-S2",
+      "epic_id": "BA-08",
+      "name": "Draft generation and artifact persistence",
+      "owner_role": "outreach-engineer",
+      "status": "completed"
+    },
+    {
+      "slice_id": "BA-08-S3",
+      "epic_id": "BA-08",
+      "name": "Send execution and repeat-outreach guardrails",
+      "owner_role": "outreach-engineer",
+      "status": "completed"
+    },
+    {
+      "slice_id": "BA-09-S1",
+      "epic_id": "BA-09",
+      "name": "Feedback event ingestion and observation windows",
+      "owner_role": "outreach-engineer",
+      "status": "completed"
+    },
+    {
+      "slice_id": "BA-09-S2",
+      "epic_id": "BA-09",
+      "name": "Review queries and traceability surfaces",
+      "owner_role": "outreach-engineer",
+      "status": "completed"
+    },
+    {
+      "slice_id": "BA-09-S3",
+      "epic_id": "BA-09",
+      "name": "Feedback reuse and reply-safe handling",
+      "owner_role": "outreach-engineer",
+      "status": "completed"
+    },
+    {
+      "slice_id": "BA-10-S1",
+      "epic_id": "BA-10",
+      "name": "Acceptance trace matrix",
+      "owner_role": "quality-engineer",
+      "status": "completed"
+    },
+    {
+      "slice_id": "BA-10-S2",
+      "epic_id": "BA-10",
+      "name": "Smoke harness and fixtures",
+      "owner_role": "quality-engineer",
+      "status": "completed"
+    },
+    {
+      "slice_id": "BA-10-S3",
+      "epic_id": "BA-10",
+      "name": "Cross-component regression and blocker burn-down",
+      "owner_role": "quality-engineer",
+      "status": "in_progress"
+    },
+    {
+      "slice_id": "BA-10-S4",
+      "epic_id": "BA-10",
+      "name": "Downstream supervisor action-catalog burn-down",
+      "owner_role": "build-lead",
+      "status": "in_progress"
+    }
+  ],
   "acceptance_gap_clusters": [
     {
       "gap_id": "BA10_SUPERVISOR_DOWNSTREAM_ACTION_CATALOG",
@@ -48,6 +281,28 @@
         "BA-08",
         "BA-09",
         "BA-10"
+      ],
+      "slice_ids": [
+        "BA-02-S1",
+        "BA-02-S2",
+        "BA-02-S3",
+        "BA-03-S1",
+        "BA-03-S2",
+        "BA-03-S3",
+        "BA-06-S1",
+        "BA-06-S2",
+        "BA-06-S3",
+        "BA-06-S4",
+        "BA-07-S1",
+        "BA-07-S2",
+        "BA-07-S3",
+        "BA-08-S1",
+        "BA-08-S2",
+        "BA-08-S3",
+        "BA-09-S1",
+        "BA-09-S2",
+        "BA-09-S3",
+        "BA-10-S4"
       ],
       "open_scenario_count": 5,
       "status_counts": {
@@ -176,6 +431,35 @@
         "BA-08",
         "BA-09"
       ],
+      "slice_ids": [
+        "BA-01-S1",
+        "BA-01-S2",
+        "BA-01-S3",
+        "BA-02-S1",
+        "BA-02-S2",
+        "BA-02-S3",
+        "BA-04-S1",
+        "BA-04-S2",
+        "BA-04-S3",
+        "BA-04-S4",
+        "BA-06-S1",
+        "BA-06-S2",
+        "BA-06-S3",
+        "BA-06-S4",
+        "BA-07-S1",
+        "BA-07-S2",
+        "BA-07-S3",
+        "BA-08-S1",
+        "BA-08-S2",
+        "BA-08-S3",
+        "BA-09-S1",
+        "BA-09-S2",
+        "BA-09-S3",
+        "BA-03-S1",
+        "BA-03-S2",
+        "BA-03-S3",
+        "BA-10-S3"
+      ],
       "open_scenario_count": 5,
       "status_counts": {
         "partial": 0,
@@ -278,6 +562,18 @@
         "BA-02",
         "BA-03",
         "BA-09"
+      ],
+      "slice_ids": [
+        "BA-02-S1",
+        "BA-02-S2",
+        "BA-02-S3",
+        "BA-03-S1",
+        "BA-03-S2",
+        "BA-03-S3",
+        "BA-09-S1",
+        "BA-09-S2",
+        "BA-09-S3",
+        "BA-10-S3"
       ],
       "open_scenario_count": 10,
       "status_counts": {
@@ -435,6 +731,15 @@
         "BA-02",
         "BA-03"
       ],
+      "slice_ids": [
+        "BA-02-S1",
+        "BA-02-S2",
+        "BA-02-S3",
+        "BA-03-S1",
+        "BA-03-S2",
+        "BA-03-S3",
+        "BA-10-S3"
+      ],
       "open_scenario_count": 1,
       "status_counts": {
         "partial": 1,
@@ -502,6 +807,22 @@
         "BA-08",
         "BA-09"
       ],
+      "slice_ids": [
+        "BA-06-S1",
+        "BA-06-S2",
+        "BA-06-S3",
+        "BA-06-S4",
+        "BA-07-S1",
+        "BA-07-S2",
+        "BA-07-S3",
+        "BA-08-S1",
+        "BA-08-S2",
+        "BA-08-S3",
+        "BA-09-S1",
+        "BA-09-S2",
+        "BA-09-S3",
+        "BA-10-S3"
+      ],
       "open_scenario_count": 1,
       "status_counts": {
         "partial": 0,
@@ -554,7 +875,7 @@
       "status": "open",
       "severity": "high",
       "owner_role": "quality-engineer",
-      "summary": "The regenerated BA-10 trace matrix now reports 190 implemented / 8 partial / 14 gap scenarios; explicit smoke-coverage targets and reproducible validation-command mappings now cover bootstrap, tailoring, discovery, send, feedback, and review-query flows, but the remaining downstream-supervisor, chat, maintenance, and posting-abandon behaviors themselves remain open.",
+      "summary": "The regenerated BA-10 trace matrix now reports 190 implemented / 8 partial / 14 gap scenarios; explicit smoke-coverage targets, implemented-slice traceability, and reproducible validation-command mappings now cover bootstrap, tailoring, discovery, send, feedback, and review-query flows, but the remaining downstream-supervisor, chat, maintenance, and posting-abandon behaviors themselves remain open.",
       "impact": "Acceptance signoff is more credible now that committed smoke coverage, blocker-specific evidence refs, and explicit negative regressions exist, but BA-10 still cannot close until the remaining gap clusters are actually burned down or deliberately left open.",
       "next_action": "Hand the next functional slice to the build-lead: downstream action-catalog burn-down beyond `lead_handoff` or a posting-abandon control implementation. Maintenance automation remains an explicit follow-up gap after those runtime-control surfaces.",
       "evidence_refs": [

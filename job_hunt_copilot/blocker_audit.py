@@ -16,7 +16,7 @@ from .acceptance_traceability import (
 )
 
 
-BLOCKER_AUDIT_VERSION = 2
+BLOCKER_AUDIT_VERSION = 3
 BUILD_BOARD_PATH = Path("build-agent/state/build-board.yaml")
 REPORT_JSON_PATH = Path("build-agent/reports/ba-10-blocker-audit.json")
 REPORT_MD_PATH = Path("build-agent/reports/ba-10-blocker-audit.md")
@@ -180,6 +180,7 @@ def _build_acceptance_gap_clusters(matrix: dict[str, Any]) -> list[dict[str, Any
     epic_ids_by_gap_id: dict[str, set[str]] = defaultdict(set)
     rules_by_gap_id: dict[str, set[str]] = defaultdict(set)
     status_counts_by_gap_id: dict[str, Counter[str]] = defaultdict(Counter)
+    slice_ids_by_gap_id: dict[str, list[str]] = defaultdict(list)
 
     for rule in matrix["rules"]:
         for scenario in rule["scenarios"]:
@@ -198,6 +199,9 @@ def _build_acceptance_gap_clusters(matrix: dict[str, Any]) -> list[dict[str, Any
                 epic_ids_by_gap_id[gap_id].update(scenario["epic_ids"])
                 rules_by_gap_id[gap_id].add(rule["rule"])
                 status_counts_by_gap_id[gap_id][scenario["status"]] += 1
+                for slice_id in scenario["slice_ids"]:
+                    if slice_id not in slice_ids_by_gap_id[gap_id]:
+                        slice_ids_by_gap_id[gap_id].append(slice_id)
 
     clusters: list[dict[str, Any]] = []
     for gap in matrix["gap_registry"]:
@@ -216,6 +220,11 @@ def _build_acceptance_gap_clusters(matrix: dict[str, Any]) -> list[dict[str, Any
             "rules": sorted(rules_by_gap_id[gap["gap_id"]]),
             "owner_roles": sorted(owner_roles_by_gap_id[gap["gap_id"]]),
             "epic_ids": sorted(epic_ids_by_gap_id[gap["gap_id"]]),
+            "slice_ids": list(
+                dict.fromkeys(
+                    list(gap.get("slice_ids", [])) + list(slice_ids_by_gap_id[gap["gap_id"]])
+                )
+            ),
             "open_scenario_count": len(scenario_rows),
             "status_counts": status_counts,
             "evidence_summary": gap["evidence_summary"],
@@ -304,6 +313,7 @@ def build_ba10_blocker_audit(project_root: Path | str) -> dict[str, Any]:
             ),
             "build_board_blockers_with_missing_evidence": missing_evidence_refs,
         },
+        "implemented_slices": list(matrix["implemented_slices"]),
         "acceptance_gap_clusters": acceptance_gap_clusters,
         "build_board_blockers": board_blockers,
     }
@@ -339,6 +349,10 @@ def render_ba10_blocker_audit_markdown(audit: dict[str, Any]) -> str:
         lines.append(f"- Owner roles: {', '.join(f'`{role}`' for role in cluster['owner_roles'])}")
         lines.append(f"- Rules: {', '.join(f'`{rule}`' for rule in cluster['rules'])}")
         lines.append(f"- Epics: {', '.join(f'`{epic_id}`' for epic_id in cluster['epic_ids'])}")
+        lines.append(
+            "- Supporting slices: "
+            + ", ".join(f"`{slice_id}`" for slice_id in cluster["slice_ids"])
+        )
         lines.append(
             f"- Open scenarios: `{cluster['open_scenario_count']}` "
             f"(`partial`: `{status_counts[STATUS_PARTIAL]}`, `gap`: `{status_counts[STATUS_GAP]}`)"

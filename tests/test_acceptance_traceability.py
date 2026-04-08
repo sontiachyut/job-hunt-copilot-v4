@@ -23,21 +23,37 @@ def test_acceptance_trace_matrix_reports_are_current_and_reference_real_repo_pat
 
     assert committed_json == matrix
     assert committed_markdown == generated_markdown
+    implemented_slice_catalog = {
+        slice_record["slice_id"]: slice_record for slice_record in matrix["implemented_slices"]
+    }
+    assert implemented_slice_catalog
+    assert all(
+        slice_record["status"] in {"completed", "in_progress"}
+        for slice_record in implemented_slice_catalog.values()
+    )
 
     for rule in matrix["rules"]:
+        assert rule["slice_ids"]
+        assert all(slice_id in implemented_slice_catalog for slice_id in rule["slice_ids"])
         for path_text in rule["code_refs"] + rule["test_refs"]:
             assert (REPO_ROOT / path_text).exists(), path_text
         for scenario in rule["scenarios"]:
             assert scenario["owner_role"]
             assert scenario["epic_ids"]
+            assert scenario["slice_ids"]
             assert scenario["code_refs"], scenario["name"]
             assert scenario["test_refs"], scenario["name"]
+            assert all(
+                slice_id in implemented_slice_catalog for slice_id in scenario["slice_ids"]
+            ), scenario["name"]
             for path_text in scenario["code_refs"] + scenario["test_refs"]:
                 assert (REPO_ROOT / path_text).exists(), path_text
 
     for note in matrix["epic_validation_notes"]:
         assert note["owner_role"]
         assert note["focus"]
+        assert note["slice_ids"]
+        assert all(slice_id in implemented_slice_catalog for slice_id in note["slice_ids"])
         assert note["ba10_smoke_targets"]
         for test_ref in note["primary_tests"]:
             assert (REPO_ROOT / test_ref).exists(), test_ref
@@ -66,6 +82,9 @@ def test_acceptance_trace_matrix_reports_are_current_and_reference_real_repo_pat
         assert gap["evidence_summary"]
         assert gap["evidence_code_refs"]
         assert gap["evidence_test_refs"]
+        if gap["scenario_names"]:
+            assert gap["slice_ids"]
+            assert all(slice_id in implemented_slice_catalog for slice_id in gap["slice_ids"])
         for path_text in gap["evidence_code_refs"] + gap["evidence_test_refs"]:
             assert (REPO_ROOT / path_text).exists(), path_text
 
@@ -87,3 +106,9 @@ def test_acceptance_trace_matrix_reports_are_current_and_reference_real_repo_pat
             "contact_rooted_general_learning",
         ],
     }
+    assert "BA-10-S4" in supervisor_gap["slice_ids"]
+
+    bootstrap_rule = next(
+        rule for rule in matrix["rules"] if rule["rule"] == "Build bootstrap and prerequisites"
+    )
+    assert "BA-01-S1" in bootstrap_rule["slice_ids"]

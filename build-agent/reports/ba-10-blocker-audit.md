@@ -20,6 +20,7 @@
 - Owner roles: `build-lead`, `quality-engineer`
 - Rules: `Current-build orchestration remains sequential`, `End-to-end acceptance`, `Supervisor Agent behavior`
 - Epics: `BA-02`, `BA-03`, `BA-06`, `BA-07`, `BA-08`, `BA-09`, `BA-10`
+- Supporting slices: `BA-02-S1`, `BA-02-S2`, `BA-02-S3`, `BA-03-S1`, `BA-03-S2`, `BA-03-S3`, `BA-06-S1`, `BA-06-S2`, `BA-06-S3`, `BA-06-S4`, `BA-07-S1`, `BA-07-S2`, `BA-07-S3`, `BA-08-S1`, `BA-08-S2`, `BA-08-S3`, `BA-09-S1`, `BA-09-S2`, `BA-09-S3`, `BA-10-S4`
 - Open scenarios: `5` (`partial`: `5`, `gap`: `0`)
 - Reason: The durable heartbeat, selector ordering, and retry-safe run persistence exist, but the registered action catalog still only advances autonomous work through `lead_handoff`; later stages reselect the same durable run and escalate instead of executing.
 - Evidence summary: Focused downstream-stage regressions prove `lead_handoff` is the only registered checkpoint, later stages escalate with durable run and review-packet retention, and retries reuse the same run instead of restarting.
@@ -44,6 +45,7 @@
 - Owner roles: `build-lead`
 - Rules: `Machine handoff contracts and canonical state`, `Supervisor Agent behavior`
 - Epics: `BA-01`, `BA-02`, `BA-03`, `BA-04`, `BA-06`, `BA-07`, `BA-08`, `BA-09`
+- Supporting slices: `BA-01-S1`, `BA-01-S2`, `BA-01-S3`, `BA-02-S1`, `BA-02-S2`, `BA-02-S3`, `BA-04-S1`, `BA-04-S2`, `BA-04-S3`, `BA-04-S4`, `BA-06-S1`, `BA-06-S2`, `BA-06-S3`, `BA-06-S4`, `BA-07-S1`, `BA-07-S2`, `BA-07-S3`, `BA-08-S1`, `BA-08-S2`, `BA-08-S3`, `BA-09-S1`, `BA-09-S2`, `BA-09-S3`, `BA-03-S1`, `BA-03-S2`, `BA-03-S3`, `BA-10-S3`
 - Open scenarios: `5` (`partial`: `0`, `gap`: `5`)
 - Reason: The schema and runtime pack reserve maintenance surfaces, but there is no autonomous maintenance batch workflow, no maintenance artifacts, and no maintenance review flow yet.
 - Evidence summary: Schema and runtime scaffolding reserve maintenance surfaces, but there is still no maintenance module, runner, or review-artifact workflow.
@@ -64,6 +66,7 @@
 - Owner roles: `build-lead`, `quality-engineer`
 - Rules: `Review surfaces and chat-based control`, `Supervisor Agent behavior`
 - Epics: `BA-02`, `BA-03`, `BA-09`
+- Supporting slices: `BA-02-S1`, `BA-02-S2`, `BA-02-S3`, `BA-03-S1`, `BA-03-S2`, `BA-03-S3`, `BA-09-S1`, `BA-09-S2`, `BA-09-S3`, `BA-10-S3`
 - Open scenarios: `10` (`partial`: `2`, `gap`: `8`)
 - Reason: The direct `jhc-chat` entrypoint manages chat session lifecycle, but richer review retrieval, control routing, and expert-guidance behaviors are not yet implemented in the chat surface.
 - Evidence summary: Chat lifecycle, review-query reads, and bootstrap scaffolding exist, but chat itself still does not retrieve grouped reviews or route control decisions.
@@ -91,6 +94,7 @@
 - Owner roles: `build-lead`
 - Rules: `Supervisor Agent behavior`
 - Epics: `BA-02`, `BA-03`
+- Supporting slices: `BA-02-S1`, `BA-02-S2`, `BA-02-S3`, `BA-03-S1`, `BA-03-S2`, `BA-03-S3`, `BA-10-S3`
 - Open scenarios: `1` (`partial`: `1`, `gap`: `0`)
 - Reason: Explicit-close and explicit-resume paths exist, but unexpected `jhc-chat` exits still require a later explicit resume because automatic idle-timeout recovery is not implemented.
 - Evidence summary: Unexpected chat exit is recorded and a later explicit resume works, but no automatic idle-timeout resume helper exists.
@@ -108,6 +112,7 @@
 - Owner roles: `build-lead`
 - Rules: `Current-build orchestration remains sequential`
 - Epics: `BA-06`, `BA-07`, `BA-08`, `BA-09`
+- Supporting slices: `BA-06-S1`, `BA-06-S2`, `BA-06-S3`, `BA-06-S4`, `BA-07-S1`, `BA-07-S2`, `BA-07-S3`, `BA-08-S1`, `BA-08-S2`, `BA-08-S3`, `BA-09-S1`, `BA-09-S2`, `BA-09-S3`, `BA-10-S3`
 - Open scenarios: `1` (`partial`: `0`, `gap`: `1`)
 - Reason: There is no explicit user-facing or runtime control path that abandons a posting from arbitrary active orchestration states while preserving canonical history.
 - Evidence summary: Agent-level start/stop/pause/resume/replan controls exist, but there is still no posting-scoped abandon command or runtime mutation path.
@@ -125,7 +130,7 @@
 - Status: `open`
 - Severity: `high`
 - Owner role: `quality-engineer`
-- Summary: The regenerated BA-10 trace matrix now reports 190 implemented / 8 partial / 14 gap scenarios; explicit smoke-coverage targets and reproducible validation-command mappings now cover bootstrap, tailoring, discovery, send, feedback, and review-query flows, but the remaining downstream-supervisor, chat, maintenance, and posting-abandon behaviors themselves remain open.
+- Summary: The regenerated BA-10 trace matrix now reports 190 implemented / 8 partial / 14 gap scenarios; explicit smoke-coverage targets, implemented-slice traceability, and reproducible validation-command mappings now cover bootstrap, tailoring, discovery, send, feedback, and review-query flows, but the remaining downstream-supervisor, chat, maintenance, and posting-abandon behaviors themselves remain open.
 - Impact: Acceptance signoff is more credible now that committed smoke coverage, blocker-specific evidence refs, and explicit negative regressions exist, but BA-10 still cannot close until the remaining gap clusters are actually burned down or deliberately left open.
 - Next action: Hand the next functional slice to the build-lead: downstream action-catalog burn-down beyond `lead_handoff` or a posting-abandon control implementation. Maintenance automation remains an explicit follow-up gap after those runtime-control surfaces.
 - Evidence refs: `build-agent/reports/ba-10-acceptance-trace-matrix.json`, `build-agent/reports/ba-10-acceptance-trace-matrix.md`, `build-agent/reports/ba-10-blocker-audit.json`, `build-agent/reports/ba-10-blocker-audit.md`, `job_hunt_copilot/acceptance_traceability.py`, `job_hunt_copilot/blocker_audit.py`, `job_hunt_copilot/quality_validation.py`, `scripts/quality/generate_blocker_audit.py`, `scripts/quality/run_ba10_validation_suite.py`, `scripts/ops/control_agent.py`, `tests/test_acceptance_traceability.py`, `tests/test_blocker_audit.py`, `tests/test_local_runtime.py`, `tests/test_quality_validation.py`, `tests/test_supervisor_downstream_actions.py`, `tests/test_delivery_feedback.py`, `tests/test_schema.py`, `tests/test_smoke_harness.py`, `tests/test_supervisor.py`, `tests/test_runtime_pack.py`, `tests/test_resume_tailoring.py`, `tests/test_outreach.py`, `tests/test_review_queries.py`
