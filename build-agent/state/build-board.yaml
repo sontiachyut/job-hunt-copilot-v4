@@ -965,6 +965,7 @@ epics:
         progress_notes:
           - Quality-engineer support work added `tests/test_supervisor_downstream_actions.py`, which isolates the current `lead_handoff` checkpoint boundary, later-stage unsupported-action escalation, and retry-safe reuse of the same durable run plus pending review packet.
           - "`job_hunt_copilot.blocker_audit` now routes `qa_supervisor_regressions` to that focused downstream file, and the regenerated BA-10 acceptance-trace plus blocker-audit reports cite the dedicated evidence explicitly instead of pointing only at the broad supervisor suite."
+          - "The downstream-supervisor gap reports now carry a machine-readable implementation snapshot listing the only registered role-targeted checkpoint stage (`lead_handoff`), the validated blocked downstream stages (`agent_review`, `people_search`, `email_discovery`, `sending`, `delivery_feedback`), and the still-missing contact-rooted general-learning path."
           - The blocker remains open honestly: no downstream supervisor action beyond `lead_handoff` has been registered yet, so the next slice is still a build-lead implementation pass rather than another reporting-only refresh.
         validation:
           - "`python3.11 scripts/quality/run_ba10_validation_suite.py --project-root /Users/achyutaramsonti/Projects/job-hunt-copilot-v4 --command-id qa_supervisor_regressions --command-id qa_acceptance_reports`"

@@ -1,5 +1,5 @@
 {
-  "trace_matrix_version": 2,
+  "trace_matrix_version": 3,
   "feature_path": "prd/test-spec.feature",
   "scenario_count": 214,
   "status_counts": {
@@ -6234,7 +6234,22 @@
         "General learning outreach bypasses the role-targeted agent-review requirement",
         "Role-targeted flow completes from LinkedIn Scraping through delivery feedback",
         "End-to-end retry resumes from the last successful stage boundary"
-      ]
+      ],
+      "implementation_snapshot": {
+        "registered_role_targeted_checkpoint_stages": [
+          "lead_handoff"
+        ],
+        "validated_blocked_role_targeted_stages": [
+          "agent_review",
+          "people_search",
+          "email_discovery",
+          "sending",
+          "delivery_feedback"
+        ],
+        "unsupported_autonomous_scope_paths": [
+          "contact_rooted_general_learning"
+        ]
+      }
     },
     {
       "gap_id": "BA10_MAINTENANCE_AUTOMATION",

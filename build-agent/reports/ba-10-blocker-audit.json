@@ -1,5 +1,5 @@
 {
-  "blocker_audit_version": 1,
+  "blocker_audit_version": 2,
   "sources": {
     "acceptance_trace_report_json": "build-agent/reports/ba-10-acceptance-trace-matrix.json",
     "acceptance_trace_report_markdown": "build-agent/reports/ba-10-acceptance-trace-matrix.md",
@@ -137,7 +137,22 @@
             "BA-10"
           ]
         }
-      ]
+      ],
+      "implementation_snapshot": {
+        "registered_role_targeted_checkpoint_stages": [
+          "lead_handoff"
+        ],
+        "validated_blocked_role_targeted_stages": [
+          "agent_review",
+          "people_search",
+          "email_discovery",
+          "sending",
+          "delivery_feedback"
+        ],
+        "unsupported_autonomous_scope_paths": [
+          "contact_rooted_general_learning"
+        ]
+      }
     },
     {
       "gap_id": "BA10_MAINTENANCE_AUTOMATION",

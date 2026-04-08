@@ -16,7 +16,7 @@ from .acceptance_traceability import (
 )
 
 
-BLOCKER_AUDIT_VERSION = 1
+BLOCKER_AUDIT_VERSION = 2
 BUILD_BOARD_PATH = Path("build-agent/state/build-board.yaml")
 REPORT_JSON_PATH = Path("build-agent/reports/ba-10-blocker-audit.json")
 REPORT_MD_PATH = Path("build-agent/reports/ba-10-blocker-audit.md")
@@ -208,26 +208,28 @@ def _build_acceptance_gap_clusters(matrix: dict[str, Any]) -> list[dict[str, Any
             STATUS_PARTIAL: status_counts_by_gap_id[gap["gap_id"]][STATUS_PARTIAL],
             STATUS_GAP: status_counts_by_gap_id[gap["gap_id"]][STATUS_GAP],
         }
-        clusters.append(
-            {
-                "gap_id": gap["gap_id"],
-                "title": gap["title"],
-                "reason": gap["reason"],
-                "next_slice": gap["next_slice"],
-                "rules": sorted(rules_by_gap_id[gap["gap_id"]]),
-                "owner_roles": sorted(owner_roles_by_gap_id[gap["gap_id"]]),
-                "epic_ids": sorted(epic_ids_by_gap_id[gap["gap_id"]]),
-                "open_scenario_count": len(scenario_rows),
-                "status_counts": status_counts,
-                "evidence_summary": gap["evidence_summary"],
-                "evidence_code_refs": list(gap["evidence_code_refs"]),
-                "evidence_test_refs": list(gap["evidence_test_refs"]),
-                "validation_commands": _resolve_validation_commands(
-                    GAP_VALIDATION_COMMAND_IDS.get(gap["gap_id"], ("qa_acceptance_reports",))
-                ),
-                "scenarios": scenario_rows,
-            }
-        )
+        cluster_record = {
+            "gap_id": gap["gap_id"],
+            "title": gap["title"],
+            "reason": gap["reason"],
+            "next_slice": gap["next_slice"],
+            "rules": sorted(rules_by_gap_id[gap["gap_id"]]),
+            "owner_roles": sorted(owner_roles_by_gap_id[gap["gap_id"]]),
+            "epic_ids": sorted(epic_ids_by_gap_id[gap["gap_id"]]),
+            "open_scenario_count": len(scenario_rows),
+            "status_counts": status_counts,
+            "evidence_summary": gap["evidence_summary"],
+            "evidence_code_refs": list(gap["evidence_code_refs"]),
+            "evidence_test_refs": list(gap["evidence_test_refs"]),
+            "validation_commands": _resolve_validation_commands(
+                GAP_VALIDATION_COMMAND_IDS.get(gap["gap_id"], ("qa_acceptance_reports",))
+            ),
+            "scenarios": scenario_rows,
+        }
+        implementation_snapshot = gap.get("implementation_snapshot")
+        if implementation_snapshot:
+            cluster_record["implementation_snapshot"] = dict(implementation_snapshot)
+        clusters.append(cluster_record)
     return clusters
 
 
@@ -351,6 +353,33 @@ def render_ba10_blocker_audit_markdown(audit: dict[str, Any]) -> str:
             "- Evidence test refs: "
             + ", ".join(f"`{path}`" for path in cluster["evidence_test_refs"])
         )
+        implementation_snapshot = cluster.get("implementation_snapshot") or {}
+        if implementation_snapshot:
+            lines.append("- Implementation snapshot:")
+            registered_stages = implementation_snapshot.get(
+                "registered_role_targeted_checkpoint_stages", []
+            )
+            if registered_stages:
+                lines.append(
+                    "  - Registered role-targeted checkpoint stages: "
+                    + ", ".join(f"`{stage}`" for stage in registered_stages)
+                )
+            blocked_stages = implementation_snapshot.get(
+                "validated_blocked_role_targeted_stages", []
+            )
+            if blocked_stages:
+                lines.append(
+                    "  - Validated blocked role-targeted stages: "
+                    + ", ".join(f"`{stage}`" for stage in blocked_stages)
+                )
+            unsupported_paths = implementation_snapshot.get(
+                "unsupported_autonomous_scope_paths", []
+            )
+            if unsupported_paths:
+                lines.append(
+                    "  - Unsupported autonomous scope paths: "
+                    + ", ".join(f"`{path}`" for path in unsupported_paths)
+                )
         lines.append("- Confirmation commands:")
         for command in cluster["validation_commands"]:
             lines.append(

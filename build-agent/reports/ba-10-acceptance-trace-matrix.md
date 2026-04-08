@@ -37,6 +37,10 @@
 - Evidence summary: Focused downstream-stage regressions prove `lead_handoff` is the only registered checkpoint, later stages escalate with durable run and review-packet retention, and retries reuse the same run instead of restarting.
 - Evidence code refs: `job_hunt_copilot/supervisor.py`, `job_hunt_copilot/local_runtime.py`, `job_hunt_copilot/runtime_pack.py`
 - Evidence test refs: `tests/test_supervisor_downstream_actions.py`, `tests/test_blocker_audit.py`, `tests/test_acceptance_traceability.py`
+- Implementation snapshot:
+  - Registered role-targeted checkpoint stages: `lead_handoff`
+  - Validated blocked role-targeted stages: `agent_review`, `people_search`, `email_discovery`, `sending`, `delivery_feedback`
+  - Unsupported autonomous scope paths: `contact_rooted_general_learning`
 - Scenarios: `5`
   - Supervisor work selection follows the current default priority order
   - Role-targeted orchestration follows the current dependency order

@@ -45,6 +45,25 @@ def test_ba10_blocker_audit_reports_are_current_and_reference_real_repo_paths():
             assert command["kind"]
             assert command["description"]
 
+    supervisor_cluster = next(
+        cluster
+        for cluster in audit["acceptance_gap_clusters"]
+        if cluster["gap_id"] == "BA10_SUPERVISOR_DOWNSTREAM_ACTION_CATALOG"
+    )
+    assert supervisor_cluster["implementation_snapshot"] == {
+        "registered_role_targeted_checkpoint_stages": ["lead_handoff"],
+        "validated_blocked_role_targeted_stages": [
+            "agent_review",
+            "people_search",
+            "email_discovery",
+            "sending",
+            "delivery_feedback",
+        ],
+        "unsupported_autonomous_scope_paths": [
+            "contact_rooted_general_learning",
+        ],
+    }
+
     for blocker in audit["build_board_blockers"]:
         assert blocker["blocker_id"]
         assert blocker["status"]

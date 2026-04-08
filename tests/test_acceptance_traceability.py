@@ -68,3 +68,22 @@ def test_acceptance_trace_matrix_reports_are_current_and_reference_real_repo_pat
         assert gap["evidence_test_refs"]
         for path_text in gap["evidence_code_refs"] + gap["evidence_test_refs"]:
             assert (REPO_ROOT / path_text).exists(), path_text
+
+    supervisor_gap = next(
+        gap
+        for gap in matrix["gap_registry"]
+        if gap["gap_id"] == "BA10_SUPERVISOR_DOWNSTREAM_ACTION_CATALOG"
+    )
+    assert supervisor_gap["implementation_snapshot"] == {
+        "registered_role_targeted_checkpoint_stages": ["lead_handoff"],
+        "validated_blocked_role_targeted_stages": [
+            "agent_review",
+            "people_search",
+            "email_discovery",
+            "sending",
+            "delivery_feedback",
+        ],
+        "unsupported_autonomous_scope_paths": [
+            "contact_rooted_general_learning",
+        ],
+    }

@@ -1209,3 +1209,29 @@ Use this file as an append-only implementation log for the build agent.
 ### Notes
 - This slice strengthened smoke traceability and validation routing only; it did not claim new product behavior in the downstream supervisor, chat, maintenance, or posting-abandon gaps.
 - The acceptance matrix remains at 190 implemented, 8 partial, 14 gap, 1 deferred-optional, and 1 excluded-from-required-acceptance scenarios after this report refresh.
+
+### Session
+- Date: 2026-04-08 12:45:05 MST
+- Slice: BA-10-S4 downstream supervisor implementation-snapshot traceability
+- Goal: Make the remaining downstream-supervisor blocker more explicit by publishing a machine-readable implementation snapshot in the BA-10 trace and blocker reports without claiming new autonomous behavior.
+
+### Work Done
+- Extended `job_hunt_copilot.acceptance_traceability` so the downstream-supervisor gap can carry structured implementation-snapshot metadata, then populated that gap with the only registered role-targeted checkpoint stage (`lead_handoff`), the validated blocked downstream stages (`agent_review`, `people_search`, `email_discovery`, `sending`, `delivery_feedback`), and the still-missing contact-rooted general-learning path.
+- Extended `job_hunt_copilot.blocker_audit` so the downstream-supervisor acceptance-gap cluster preserves and renders that snapshot in both JSON and Markdown output, while leaving other gap clusters unchanged.
+- Added focused guards in `tests/test_acceptance_traceability.py` and `tests/test_blocker_audit.py` so the committed reports fail fast if the downstream-supervisor snapshot drifts away from the current implementation evidence.
+- Regenerated the committed `build-agent/reports/ba-10-acceptance-trace-matrix.json` plus `.md` and `build-agent/reports/ba-10-blocker-audit.json` plus `.md` outputs, then updated `build-agent/state/build-board.yaml`, `build-agent/state/IMPLEMENTATION_PLAN.md`, `build-agent/state/build-journal.md`, and `build-agent/state/codex-progress.txt` so the persisted state records this as another quality-owned BA-10-S4 support checkpoint rather than a new supervisor action.
+
+### Validation
+- Ran `python3.11 scripts/quality/run_ba10_validation_suite.py --project-root /Users/achyutaramsonti/Projects/job-hunt-copilot-v4 --command-id qa_acceptance_reports --command-id qa_supervisor_regressions` and confirmed the refreshed acceptance-report guards plus focused downstream-supervisor regressions both passed.
+- Ran `python3.11 -m py_compile job_hunt_copilot/acceptance_traceability.py job_hunt_copilot/blocker_audit.py tests/test_acceptance_traceability.py tests/test_blocker_audit.py` and confirmed the updated traceability surfaces compile cleanly.
+- Ran `python3.11 -m pytest tests/test_quality_validation.py` and confirmed all 8 validation-runner tests still pass after the report-schema refinement.
+
+### Result
+- `done`
+
+### Next
+- Keep the next functional burn-down on `BA-10-S4`: a build-lead slice that registers at least one downstream supervisor action beyond `lead_handoff`, then reruns the BA-10 reports to reduce the largest remaining partial acceptance cluster.
+
+### Notes
+- This slice intentionally refined blocker evidence only; the acceptance matrix remains at 190 implemented, 8 partial, 14 gap, 1 deferred-optional, and 1 excluded-from-required-acceptance scenarios.
+- The downstream-supervisor gap is now easier to audit from the committed reports because the open action-catalog boundary is represented structurally instead of only through prose.

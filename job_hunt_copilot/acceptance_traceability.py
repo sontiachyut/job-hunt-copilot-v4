@@ -6,8 +6,10 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
+from .supervisor import SUPPORTED_PIPELINE_CHECKPOINT_STAGES
 
-TRACE_MATRIX_VERSION = 2
+
+TRACE_MATRIX_VERSION = 3
 FEATURE_PATH = Path("prd/test-spec.feature")
 REPORT_JSON_PATH = Path("build-agent/reports/ba-10-acceptance-trace-matrix.json")
 REPORT_MD_PATH = Path("build-agent/reports/ba-10-acceptance-trace-matrix.md")
@@ -46,14 +48,36 @@ def _gap_metadata(
     evidence_summary: str,
     evidence_code_refs: tuple[str, ...],
     evidence_test_refs: tuple[str, ...],
+    implementation_snapshot: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
-    return {
+    payload = {
         "title": title,
         "reason": reason,
         "next_slice": next_slice,
         "evidence_summary": evidence_summary,
         "evidence_code_refs": evidence_code_refs,
         "evidence_test_refs": evidence_test_refs,
+    }
+    if implementation_snapshot:
+        payload["implementation_snapshot"] = implementation_snapshot
+    return payload
+
+
+def _supervisor_downstream_implementation_snapshot() -> dict[str, Any]:
+    return {
+        "registered_role_targeted_checkpoint_stages": sorted(
+            SUPPORTED_PIPELINE_CHECKPOINT_STAGES
+        ),
+        "validated_blocked_role_targeted_stages": [
+            "agent_review",
+            "people_search",
+            "email_discovery",
+            "sending",
+            "delivery_feedback",
+        ],
+        "unsupported_autonomous_scope_paths": [
+            "contact_rooted_general_learning",
+        ],
     }
 
 
@@ -89,6 +113,7 @@ GAP_REGISTRY: dict[str, dict[str, Any]] = {
             "tests/test_blocker_audit.py",
             "tests/test_acceptance_traceability.py",
         ),
+        implementation_snapshot=_supervisor_downstream_implementation_snapshot(),
     ),
     "BA10_MAINTENANCE_AUTOMATION": _gap_metadata(
         title="Maintenance workflow and artifacts are not implemented",
@@ -971,18 +996,20 @@ def build_acceptance_trace_matrix(project_root: Path | str) -> dict[str, Any]:
 
     gap_registry = []
     for gap_id, metadata in GAP_REGISTRY.items():
-        gap_registry.append(
-            {
-                "gap_id": gap_id,
-                "title": metadata["title"],
-                "reason": metadata["reason"],
-                "next_slice": metadata["next_slice"],
-                "evidence_summary": metadata["evidence_summary"],
-                "evidence_code_refs": list(metadata["evidence_code_refs"]),
-                "evidence_test_refs": list(metadata["evidence_test_refs"]),
-                "scenario_names": gap_scenarios.get(gap_id, []),
-            }
-        )
+        gap_record = {
+            "gap_id": gap_id,
+            "title": metadata["title"],
+            "reason": metadata["reason"],
+            "next_slice": metadata["next_slice"],
+            "evidence_summary": metadata["evidence_summary"],
+            "evidence_code_refs": list(metadata["evidence_code_refs"]),
+            "evidence_test_refs": list(metadata["evidence_test_refs"]),
+            "scenario_names": gap_scenarios.get(gap_id, []),
+        }
+        implementation_snapshot = metadata.get("implementation_snapshot")
+        if implementation_snapshot:
+            gap_record["implementation_snapshot"] = dict(implementation_snapshot)
+        gap_registry.append(gap_record)
 
     return {
         "trace_matrix_version": TRACE_MATRIX_VERSION,
@@ -1052,6 +1079,33 @@ def render_acceptance_trace_markdown(matrix: dict[str, Any]) -> str:
             "- Evidence test refs: "
             + ", ".join(f"`{path}`" for path in gap["evidence_test_refs"])
         )
+        implementation_snapshot = gap.get("implementation_snapshot") or {}
+        if implementation_snapshot:
+            lines.append("- Implementation snapshot:")
+            registered_stages = implementation_snapshot.get(
+                "registered_role_targeted_checkpoint_stages", []
+            )
+            if registered_stages:
+                lines.append(
+                    "  - Registered role-targeted checkpoint stages: "
+                    + ", ".join(f"`{stage}`" for stage in registered_stages)
+                )
+            blocked_stages = implementation_snapshot.get(
+                "validated_blocked_role_targeted_stages", []
+            )
+            if blocked_stages:
+                lines.append(
+                    "  - Validated blocked role-targeted stages: "
+                    + ", ".join(f"`{stage}`" for stage in blocked_stages)
+                )
+            unsupported_paths = implementation_snapshot.get(
+                "unsupported_autonomous_scope_paths", []
+            )
+            if unsupported_paths:
+                lines.append(
+                    "  - Unsupported autonomous scope paths: "
+                    + ", ".join(f"`{path}`" for path in unsupported_paths)
+                )
         lines.append(f"- Scenarios: `{len(gap['scenario_names'])}`")
         for scenario_name in gap["scenario_names"]:
             lines.append(f"  - {scenario_name}")
