@@ -10,11 +10,16 @@ import pytest
 from job_hunt_copilot.blocker_audit import VALIDATION_COMMANDS
 from job_hunt_copilot.quality_validation import (
     AUTOMATED_VALIDATION_KIND,
+    VALIDATION_SUITE_REPORT_JSON_PATH,
+    VALIDATION_SUITE_REPORT_MD_PATH,
     build_smoke_validation_plan,
+    build_ba10_validation_suite_report,
     build_quality_validation_plan,
     list_smoke_validation_targets,
+    render_ba10_validation_suite_markdown,
     resolve_acceptance_gap_validation_command_ids,
     resolve_current_focus_validation_command_ids,
+    write_ba10_validation_suite_reports,
 )
 
 
@@ -256,3 +261,120 @@ def test_quality_validation_suite_script_dry_run_expands_smoke_targets():
         "qa_bootstrap_regressions",
         "qa_feedback_regressions",
     ]
+
+
+def test_build_ba10_validation_suite_report_summarizes_results():
+    report = build_ba10_validation_suite_report(
+        {
+            "project_root": str(REPO_ROOT),
+            "refreshed_reports": False,
+            "requested_command_ids": ["qa_smoke_flow"],
+            "requested_gap_ids": ["BA10_SUPERVISOR_DOWNSTREAM_ACTION_CATALOG"],
+            "requested_blocker_ids": [],
+            "requested_current_focus": True,
+            "requested_smoke_targets": ["bootstrap"],
+            "include_manual": True,
+            "skip_report_refresh": False,
+            "commands": [
+                {
+                    "command_id": "qa_smoke_flow",
+                    "title": "Smoke harness flow",
+                    "kind": "automated",
+                    "command": "python3.11 -m pytest tests/test_smoke_harness.py",
+                    "description": "Replays the smoke path.",
+                    "status": "passed",
+                    "returncode": 0,
+                    "duration_seconds": 1.25,
+                },
+                {
+                    "command_id": "qa_host_launchd_validation",
+                    "title": "Host launchd validation",
+                    "kind": "manual_host",
+                    "command": "bin/jhc-agent-start && launchctl print gui/$UID/com.jobhuntcopilot.supervisor",
+                    "description": "Checks launchd on the host.",
+                    "status": "failed",
+                    "returncode": 1,
+                    "duration_seconds": 0.5,
+                },
+            ],
+            "failed_command_ids": ["qa_host_launchd_validation"],
+            "passed": False,
+        },
+        generated_at="2026-04-08T21:00:00Z",
+    )
+
+    assert report["validation_suite_report_version"] == 1
+    assert report["generated_at"] == "2026-04-08T21:00:00Z"
+    assert report["summary"] == {
+        "command_count": 2,
+        "command_kind_counts": {
+            "automated": 1,
+            "manual_host": 1,
+        },
+        "passed_command_count": 1,
+        "failed_command_count": 1,
+        "total_duration_seconds": 1.75,
+    }
+
+    markdown = render_ba10_validation_suite_markdown(report)
+    assert "# BA-10 Validation Suite Report" in markdown
+    assert "- Command ids: `qa_smoke_flow`" in markdown
+    assert "- Acceptance gaps: `BA10_SUPERVISOR_DOWNSTREAM_ACTION_CATALOG`" in markdown
+    assert "- Failed command ids: `qa_host_launchd_validation`" in markdown
+    assert "| qa_smoke_flow | automated | passed | 0 | 1.250 |" in markdown
+    assert "### qa_host_launchd_validation: Host launchd validation" in markdown
+
+
+def test_write_ba10_validation_suite_reports_persists_json_and_markdown(tmp_path: Path):
+    report = write_ba10_validation_suite_reports(
+        tmp_path,
+        {
+            "project_root": str(tmp_path),
+            "refreshed_reports": {
+                "acceptance_trace_reports": {
+                    "json_path": "/tmp/acceptance.json",
+                    "markdown_path": "/tmp/acceptance.md",
+                },
+                "blocker_audit_reports": {
+                    "json_path": "/tmp/blocker.json",
+                    "markdown_path": "/tmp/blocker.md",
+                },
+            },
+            "requested_command_ids": [],
+            "requested_gap_ids": [],
+            "requested_blocker_ids": ["OPS-LAUNCHD-001"],
+            "requested_current_focus": False,
+            "requested_smoke_targets": ["feedback"],
+            "include_manual": False,
+            "skip_report_refresh": False,
+            "commands": [
+                {
+                    "command_id": "qa_feedback_regressions",
+                    "title": "Delivery feedback regressions",
+                    "kind": "automated",
+                    "command": "python3.11 -m pytest tests/test_delivery_feedback.py",
+                    "description": "Confirms delayed-feedback persistence.",
+                    "status": "passed",
+                    "returncode": 0,
+                    "duration_seconds": 2.0,
+                }
+            ],
+            "failed_command_ids": [],
+            "passed": True,
+        },
+    )
+
+    json_path = tmp_path / VALIDATION_SUITE_REPORT_JSON_PATH
+    md_path = tmp_path / VALIDATION_SUITE_REPORT_MD_PATH
+
+    assert report["report_paths"] == {
+        "json_path": str(json_path),
+        "markdown_path": str(md_path),
+    }
+    assert json.loads(json_path.read_text(encoding="utf-8")) == report
+
+    markdown = md_path.read_text(encoding="utf-8")
+    assert "## Refreshed Reports" in markdown
+    assert "- Build-board blockers: `OPS-LAUNCHD-001`" in markdown
+    assert "- Smoke targets: `feedback`" in markdown
+    assert "### qa_feedback_regressions: Delivery feedback regressions" in markdown

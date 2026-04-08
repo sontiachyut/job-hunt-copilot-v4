@@ -931,6 +931,8 @@ epics:
           - Refined `job_hunt_copilot.acceptance_traceability` plus the regenerated BA-10 reports so the downstream-supervisor gap now points at the active build-lead slice `BA-10-S4`, and added a `tests/test_blocker_audit.py` guard that fails if the current BA-10 focus slice disappears from the open gap-cluster ledger.
           - Refined `job_hunt_copilot.acceptance_traceability` plus `job_hunt_copilot.blocker_audit` so the committed BA-10 reports now publish a machine-checked implemented-slice catalog from `build-agent/state/build-board.yaml`, and each rule, scenario, gap cluster, and epic validation note carries supporting slice ids instead of stopping at epic-level traceability.
           - Refined `job_hunt_copilot.blocker_audit`, `job_hunt_copilot.quality_validation`, and `scripts/quality/run_ba10_validation_suite.py` so each open acceptance-gap cluster, build-board blocker, and current focus slice now exposes one canonical validation-suite invocation, and the runner can resolve `--gap-id`, `--blocker-id`, and `--current-focus` plans directly instead of rebuilding those command sets by hand.
+          - Extended `job_hunt_copilot.quality_validation` plus `scripts/quality/run_ba10_validation_suite.py` so each non-dry-run BA-10 validation pass now writes durable `build-agent/reports/ba-10-validation-suite-latest.json` and `.md` evidence artifacts instead of leaving results only in terminal output.
+          - Updated the repo-facing BA-10 report surfaces so `README.md`, `docs/ARCHITECTURE.md`, and `build-agent/reports/README.md` now point reviewers at the latest validation-suite snapshot alongside the acceptance trace matrix and blocker audit.
         validation:
           - "`python3.11 -m py_compile job_hunt_copilot/local_runtime.py job_hunt_copilot/acceptance_traceability.py job_hunt_copilot/runtime_pack.py job_hunt_copilot/paths.py scripts/ops/materialize_feedback_sync_plist.py scripts/ops/run_feedback_sync.py tests/test_local_runtime.py`"
           - "`zsh -n bin/jhc-agent-start bin/jhc-agent-stop bin/jhc-agent-cycle bin/jhc-feedback-sync-cycle bin/jhc-chat`"
@@ -956,6 +958,9 @@ epics:
           - "`python3.11 -m pytest tests/test_blocker_audit.py tests/test_quality_validation.py`"
           - "`python3.11 scripts/quality/run_ba10_validation_suite.py --project-root /Users/achyutaramsonti/Projects/job-hunt-copilot-v4 --dry-run --current-focus`"
           - "`python3.11 scripts/quality/run_ba10_validation_suite.py --project-root /Users/achyutaramsonti/Projects/job-hunt-copilot-v4 --dry-run --blocker-id OPS-LAUNCHD-001 --include-manual`"
+          - "`python3.11 -m py_compile job_hunt_copilot/quality_validation.py scripts/quality/run_ba10_validation_suite.py tests/test_quality_validation.py`"
+          - "`python3.11 -m pytest tests/test_quality_validation.py tests/test_blocker_audit.py tests/test_acceptance_traceability.py`"
+          - "`python3.11 scripts/quality/run_ba10_validation_suite.py --project-root /Users/achyutaramsonti/Projects/job-hunt-copilot-v4`"
         remaining_scope:
           - downstream supervisor action-catalog orchestration beyond `lead_handoff`
           - chat review/control behavior and idle-timeout resume
@@ -1004,12 +1009,14 @@ known_blockers:
     status: open
     severity: high
     owner_role: quality-engineer
-    summary: "The regenerated BA-10 trace matrix now reports 190 implemented / 8 partial / 14 gap scenarios; explicit smoke-coverage targets, implemented-slice traceability, and reproducible validation-command mappings now cover bootstrap, tailoring, discovery, send, feedback, and review-query flows, but the remaining downstream-supervisor, chat, maintenance, and posting-abandon behaviors themselves remain open."
+    summary: "The regenerated BA-10 trace matrix now reports 190 implemented / 8 partial / 14 gap scenarios; explicit smoke-coverage targets, implemented-slice traceability, reproducible validation-command mappings, and a durable latest validation-suite report snapshot now cover bootstrap, tailoring, discovery, send, feedback, and review-query flows, but the remaining downstream-supervisor, chat, maintenance, and posting-abandon behaviors themselves remain open."
     evidence:
       - build-agent/reports/ba-10-acceptance-trace-matrix.json
       - build-agent/reports/ba-10-acceptance-trace-matrix.md
       - build-agent/reports/ba-10-blocker-audit.json
       - build-agent/reports/ba-10-blocker-audit.md
+      - build-agent/reports/ba-10-validation-suite-latest.json
+      - build-agent/reports/ba-10-validation-suite-latest.md
       - job_hunt_copilot/acceptance_traceability.py
       - job_hunt_copilot/blocker_audit.py
       - job_hunt_copilot/quality_validation.py

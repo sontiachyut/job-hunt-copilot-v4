@@ -1,6 +1,8 @@
 from __future__ import annotations
 
+import json
 from dataclasses import dataclass
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Sequence
 
@@ -14,6 +16,13 @@ from .blocker_audit import (
 
 
 AUTOMATED_VALIDATION_KIND = "automated"
+VALIDATION_SUITE_REPORT_VERSION = 1
+VALIDATION_SUITE_REPORT_JSON_PATH = Path(
+    "build-agent/reports/ba-10-validation-suite-latest.json"
+)
+VALIDATION_SUITE_REPORT_MD_PATH = Path(
+    "build-agent/reports/ba-10-validation-suite-latest.md"
+)
 
 
 @dataclass(frozen=True)
@@ -220,3 +229,169 @@ def refresh_ba10_validation_reports(project_root: Path | str) -> dict[str, Any]:
         "acceptance_trace_reports": write_acceptance_trace_reports(root),
         "blocker_audit_reports": write_ba10_blocker_audit_reports(root),
     }
+
+
+def _utc_timestamp() -> str:
+    return (
+        datetime.now(timezone.utc)
+        .replace(microsecond=0)
+        .isoformat()
+        .replace("+00:00", "Z")
+    )
+
+
+def build_ba10_validation_suite_report(
+    payload: dict[str, Any],
+    *,
+    generated_at: str | None = None,
+) -> dict[str, Any]:
+    commands = [dict(command) for command in payload.get("commands", [])]
+    command_kind_counts: dict[str, int] = {}
+    passed_command_count = 0
+    failed_command_count = 0
+    total_duration_seconds = 0.0
+
+    for command in commands:
+        kind = str(command.get("kind", "unknown"))
+        command_kind_counts[kind] = command_kind_counts.get(kind, 0) + 1
+
+        if command.get("status") == "passed":
+            passed_command_count += 1
+        elif command.get("status") == "failed":
+            failed_command_count += 1
+
+        duration_seconds = command.get("duration_seconds")
+        if isinstance(duration_seconds, (int, float)):
+            total_duration_seconds += float(duration_seconds)
+
+    report = dict(payload)
+    report["validation_suite_report_version"] = VALIDATION_SUITE_REPORT_VERSION
+    report["generated_at"] = generated_at or _utc_timestamp()
+    report["summary"] = {
+        "command_count": len(commands),
+        "command_kind_counts": command_kind_counts,
+        "passed_command_count": passed_command_count,
+        "failed_command_count": failed_command_count,
+        "total_duration_seconds": round(total_duration_seconds, 3),
+    }
+    return report
+
+
+def _selector_value_text(values: Sequence[str] | None) -> str:
+    if not values:
+        return "none"
+    return ", ".join(f"`{value}`" for value in values)
+
+
+def render_ba10_validation_suite_markdown(report: dict[str, Any]) -> str:
+    summary = report["summary"]
+    refreshed_reports = report.get("refreshed_reports") or {}
+    lines = [
+        "# BA-10 Validation Suite Report",
+        "",
+        f"- Generated at: `{report['generated_at']}`",
+        f"- Project root: `{report['project_root']}`",
+        f"- Passed: `{report.get('passed', False)}`",
+        f"- Command count: `{summary['command_count']}`",
+        f"- Passed commands: `{summary['passed_command_count']}`",
+        f"- Failed commands: `{summary['failed_command_count']}`",
+        f"- Total duration seconds: `{summary['total_duration_seconds']}`",
+        f"- Command ids: {_selector_value_text(report.get('requested_command_ids'))}",
+        f"- Smoke targets: {_selector_value_text(report.get('requested_smoke_targets'))}",
+        f"- Acceptance gaps: {_selector_value_text(report.get('requested_gap_ids'))}",
+        f"- Build-board blockers: {_selector_value_text(report.get('requested_blocker_ids'))}",
+        f"- Current focus requested: `{report.get('requested_current_focus', False)}`",
+        f"- Include manual commands: `{report.get('include_manual', False)}`",
+        f"- Refresh reports before run: `{not report.get('skip_report_refresh', False)}`",
+    ]
+
+    if report.get("failed_command_ids"):
+        lines.append(
+            "- Failed command ids: "
+            + _selector_value_text(report.get("failed_command_ids"))
+        )
+
+    lines.extend(["", "## Command Kind Counts", ""])
+    for kind, count in summary["command_kind_counts"].items():
+        lines.append(f"- `{kind}`: `{count}`")
+
+    if refreshed_reports:
+        lines.extend(["", "## Refreshed Reports", ""])
+        acceptance_trace_reports = refreshed_reports.get("acceptance_trace_reports") or {}
+        blocker_audit_reports = refreshed_reports.get("blocker_audit_reports") or {}
+        if acceptance_trace_reports:
+            lines.append(
+                "- Acceptance trace JSON: "
+                f"`{acceptance_trace_reports.get('json_path', '')}`"
+            )
+            lines.append(
+                "- Acceptance trace markdown: "
+                f"`{acceptance_trace_reports.get('markdown_path', '')}`"
+            )
+        if blocker_audit_reports:
+            lines.append(
+                "- Blocker audit JSON: "
+                f"`{blocker_audit_reports.get('json_path', '')}`"
+            )
+            lines.append(
+                "- Blocker audit markdown: "
+                f"`{blocker_audit_reports.get('markdown_path', '')}`"
+            )
+
+    lines.extend(
+        [
+            "",
+            "## Command Results",
+            "",
+            "| Command | Kind | Status | Returncode | Duration (s) |",
+            "| --- | --- | --- | ---: | ---: |",
+        ]
+    )
+    for command in report.get("commands", []):
+        returncode = command.get("returncode")
+        duration_seconds = command.get("duration_seconds")
+        duration_text = (
+            f"{duration_seconds:.3f}"
+            if isinstance(duration_seconds, (int, float))
+            else ""
+        )
+        lines.append(
+            "| "
+            + f"{command['command_id']} | {command.get('kind', '')} | "
+            + f"{command.get('status', 'planned')} | "
+            + f"{'' if returncode is None else returncode} | {duration_text} |"
+        )
+
+    lines.extend(["", "## Command Details", ""])
+    for command in report.get("commands", []):
+        lines.append(f"### {command['command_id']}: {command['title']}")
+        lines.append(f"- Kind: `{command.get('kind', '')}`")
+        if command.get("status"):
+            lines.append(f"- Status: `{command['status']}`")
+        if "returncode" in command:
+            lines.append(f"- Returncode: `{command['returncode']}`")
+        if "duration_seconds" in command:
+            lines.append(f"- Duration seconds: `{command['duration_seconds']}`")
+        lines.append(f"- Command: `{command['command']}`")
+        lines.append(f"- Description: {command['description']}")
+        lines.append("")
+
+    return "\n".join(lines).rstrip() + "\n"
+
+
+def write_ba10_validation_suite_reports(
+    project_root: Path | str,
+    payload: dict[str, Any],
+) -> dict[str, Any]:
+    root = Path(project_root)
+    report = build_ba10_validation_suite_report(payload)
+    json_path = root / VALIDATION_SUITE_REPORT_JSON_PATH
+    md_path = root / VALIDATION_SUITE_REPORT_MD_PATH
+    json_path.parent.mkdir(parents=True, exist_ok=True)
+    report["report_paths"] = {
+        "json_path": str(json_path),
+        "markdown_path": str(md_path),
+    }
+    json_path.write_text(json.dumps(report, indent=2) + "\n", encoding="utf-8")
+    md_path.write_text(render_ba10_validation_suite_markdown(report), encoding="utf-8")
+    return report

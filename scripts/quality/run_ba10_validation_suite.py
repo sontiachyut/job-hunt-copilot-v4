@@ -22,6 +22,7 @@ from job_hunt_copilot.quality_validation import (
     resolve_acceptance_gap_validation_command_ids,
     resolve_build_board_blocker_validation_command_ids,
     resolve_current_focus_validation_command_ids,
+    write_ba10_validation_suite_reports,
 )
 
 
@@ -113,10 +114,13 @@ def main() -> int:
         payload = {
             "project_root": str(project_root),
             "refreshed_reports": False,
+            "requested_command_ids": list(args.command_ids),
             "requested_gap_ids": list(args.gap_ids),
             "requested_blocker_ids": list(args.blocker_ids),
             "requested_current_focus": args.current_focus,
             "requested_smoke_targets": list(args.smoke_target_ids),
+            "include_manual": args.include_manual,
+            "skip_report_refresh": args.skip_report_refresh,
             "commands": [command.as_dict() for command in plan],
         }
         print(json.dumps(payload, indent=2))
@@ -154,14 +158,18 @@ def main() -> int:
     payload = {
         "project_root": str(project_root),
         "refreshed_reports": refreshed_reports,
+        "requested_command_ids": list(args.command_ids),
         "requested_gap_ids": list(args.gap_ids),
         "requested_blocker_ids": list(args.blocker_ids),
         "requested_current_focus": args.current_focus,
         "requested_smoke_targets": list(args.smoke_target_ids),
+        "include_manual": args.include_manual,
+        "skip_report_refresh": args.skip_report_refresh,
         "commands": results,
         "failed_command_ids": failed_command_ids,
         "passed": not failed_command_ids,
     }
+    payload = write_ba10_validation_suite_reports(project_root, payload)
     print(json.dumps(payload, indent=2))
     return 0 if not failed_command_ids else 1
 

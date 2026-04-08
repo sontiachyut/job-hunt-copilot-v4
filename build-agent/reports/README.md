@@ -6,9 +6,10 @@ Suggested file shapes:
 - `YYYY-MM-DD-build-summary.md`
 - `blocker-<id>.md`
 - `milestone-<epic-id>.md`
+- `ba-10-validation-suite-latest.md`
+- `ba-10-validation-suite-latest.json`
 
 These reports are for human review.
 The canonical implementation-progress state still lives in:
 - `build-agent/state/build-board.yaml`
 - `build-agent/state/build-journal.md`
-
