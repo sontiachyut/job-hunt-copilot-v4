@@ -94,6 +94,30 @@ def test_ba10_blocker_audit_reports_are_current_and_reference_real_repo_paths():
     }
     assert "BA-10-S4" in supervisor_cluster["slice_ids"]
 
+    build_cli_blocker = next(
+        blocker
+        for blocker in audit["build_board_blockers"]
+        if blocker["blocker_id"] == "BUILD-CLI-001"
+    )
+    assert [command["command_id"] for command in build_cli_blocker["validation_commands"]] == [
+        "qa_build_agent_cycle_regressions",
+        "qa_codex_cli_compatibility",
+    ]
+    assert build_cli_blocker["validation_suite"] == {
+        "args": [
+            "--project-root",
+            "<repo_root>",
+            "--blocker-id",
+            "BUILD-CLI-001",
+            "--include-manual",
+        ],
+        "command": (
+            "python3.11 scripts/quality/run_ba10_validation_suite.py "
+            "--project-root <repo_root> --blocker-id BUILD-CLI-001 --include-manual"
+        ),
+        "requires_include_manual": True,
+    }
+
     for blocker in audit["build_board_blockers"]:
         assert blocker["blocker_id"]
         assert blocker["status"]

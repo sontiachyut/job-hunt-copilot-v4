@@ -269,6 +269,26 @@ Cycle rules:
 """
 
 
+def build_codex_exec_command(
+    *,
+    codex_bin: str,
+    project_root: Path,
+    last_message_path: Path,
+) -> list[str]:
+    return [
+        codex_bin,
+        "exec",
+        "--ephemeral",
+        "--sandbox",
+        "workspace-write",
+        "-C",
+        str(project_root),
+        "-o",
+        str(last_message_path),
+        "-",
+    ]
+
+
 def record_cycle(project_root: Path, payload: dict) -> None:
     append_jsonl(build_cycles_path(project_root), payload)
 
@@ -367,18 +387,11 @@ def main() -> int:
 
         cycle_log_path = cycles_log_dir(project_root) / f"{cycle_id}.log"
         last_message_path = cycles_log_dir(project_root) / f"{cycle_id}.last-message.md"
-        command = [
-            codex_bin,
-            "exec",
-            "--ephemeral",
-            "--sandbox",
-            "workspace-write",
-            "-C",
-            str(project_root),
-            "-o",
-            str(last_message_path),
-            "-",
-        ]
+        command = build_codex_exec_command(
+            codex_bin=codex_bin,
+            project_root=project_root,
+            last_message_path=last_message_path,
+        )
 
         with cycle_log_path.open("w", encoding="utf-8") as log_handle:
             log_handle.write(f"# {cycle_id}\n")

@@ -1422,3 +1422,29 @@ Use this file as an append-only implementation log for the build agent.
 ### Notes
 - This slice changes reporting honesty only; it does not change acceptance counts or close any open BA-10 blocker.
 - The latest validation-suite snapshot now makes it explicit that `--current-focus` replays still coexist with 5 open acceptance-gap clusters and 3 open build-board blockers.
+
+### Session
+- Date: 2026-04-08 15:00:24 MST
+- Slice: BA-10-S3 BUILD-CLI-001 automated regression coverage
+- Goal: Add automated blocker evidence for the unattended build-lead `codex exec` wrapper so `BUILD-CLI-001` is no longer backed only by manual CLI checks and historical logs.
+
+### Work Done
+- Added `build-agent/scripts/run_build_lead_cycle.build_codex_exec_command` so the unattended wrapper's `codex exec` invocation is exposed as one stable, testable helper instead of an inline list literal.
+- Added `tests/test_build_agent_cycle.py` to assert the wrapper still uses `--ephemeral`, `--sandbox workspace-write`, stdin prompt input, and no unsupported approval flags.
+- Updated `job_hunt_copilot.blocker_audit` so `BUILD-CLI-001` now maps to both `qa_build_agent_cycle_regressions` and the existing manual `qa_codex_cli_compatibility` check, then regenerated the committed blocker-audit report plus the latest BA-10 validation-suite snapshot.
+- Updated `build-agent/state/build-board.yaml`, `build-agent/state/IMPLEMENTATION_PLAN.md`, `build-agent/state/build-journal.md`, and `build-agent/state/codex-progress.txt` so the persisted project record captures the stronger `BUILD-CLI-001` evidence while keeping the blocker open for missing host-side cycle confirmation.
+
+### Validation
+- Ran `python3.11 -m py_compile build-agent/scripts/run_build_lead_cycle.py job_hunt_copilot/blocker_audit.py tests/test_build_agent_cycle.py tests/test_blocker_audit.py tests/test_quality_validation.py` and confirmed the new helper, blocker-audit wiring, and focused tests compile cleanly.
+- Ran `python3.11 -m pytest tests/test_build_agent_cycle.py tests/test_acceptance_traceability.py tests/test_blocker_audit.py tests/test_quality_validation.py` and confirmed all 21 focused build-agent and BA-10 report-guard tests passed.
+- Ran `python3.11 scripts/quality/run_ba10_validation_suite.py --project-root /Users/achyutaramsonti/Projects/job-hunt-copilot-v4 --blocker-id BUILD-CLI-001 --include-manual` and confirmed both the automated wrapper regression and manual-local `codex exec --help && codex --help` compatibility check passed while refreshing the committed BA-10 reports and writing a blocker-specific latest validation-suite snapshot.
+
+### Result
+- `done`
+
+### Next
+- Keep the next functional burn-down on `BA-10-S4`: a build-lead slice that registers at least one downstream supervisor action beyond `lead_handoff`, then reruns the BA-10 reports to reduce the largest remaining partial acceptance cluster.
+
+### Notes
+- `BUILD-CLI-001` remains open honestly because the host-side unattended build-cycle replay has still not been executed outside this sandbox.
+- The latest `build-agent/reports/ba-10-validation-suite-latest.*` snapshot now includes a blocker-specific replay for `BUILD-CLI-001` instead of only downstream-supervisor-focused BA-10 evidence.

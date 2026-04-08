@@ -91,6 +91,12 @@ VALIDATION_COMMANDS: dict[str, dict[str, str]] = {
         "command": "python3.11 -m pytest tests/test_runtime_pack.py",
         "description": "Confirms generated runtime scaffolding stays honest about current action-catalog and maintenance placeholder status.",
     },
+    "qa_build_agent_cycle_regressions": {
+        "title": "Build-agent cycle regressions",
+        "kind": "automated",
+        "command": "python3.11 -m pytest tests/test_build_agent_cycle.py",
+        "description": "Guards the unattended build-lead `codex exec` invocation shape so unsupported approval flags do not return.",
+    },
     "qa_codex_cli_compatibility": {
         "title": "Codex CLI compatibility check",
         "kind": "manual_local",
@@ -145,7 +151,10 @@ BOARD_BLOCKER_VALIDATION_COMMAND_IDS: dict[str, tuple[str, ...]] = {
         "qa_review_surface_regressions",
         "qa_runtime_pack_regressions",
     ),
-    "BUILD-CLI-001": ("qa_codex_cli_compatibility",),
+    "BUILD-CLI-001": (
+        "qa_build_agent_cycle_regressions",
+        "qa_codex_cli_compatibility",
+    ),
     "OPS-LAUNCHD-001": (
         "qa_runtime_control_regressions",
         "qa_host_launchd_validation",

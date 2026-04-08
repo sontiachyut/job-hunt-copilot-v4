@@ -160,12 +160,13 @@
 - Status: `open`
 - Severity: `medium`
 - Owner role: `build-lead`
-- Summary: `codex exec` no longer accepts `--ask-for-approval`, and unattended build-cycle logs show BA-00 sessions failing before work starts when that flag is present.
-- Impact: Unattended build sessions can fail before any implementation work starts if the CLI compatibility fix regresses.
-- Next action: Re-run the unattended build-lead wrapper on the host and confirm it starts a real cycle without passing unsupported approval flags.
-- Evidence refs: `build-agent/scripts/run_build_lead_cycle.py`, `build-agent/logs/cycles/build-cycle-20260406T034335Z-66be05af.log`
+- Summary: The unattended build wrapper now has automated regression coverage for its `codex exec` command shape, but real host-side cycle execution still needs confirmation after the `--ask-for-approval` incompatibility.
+- Impact: The wrapper command shape is now guarded in automated tests, but unattended build sessions can still fail before work starts if the real host environment or Codex CLI invocation diverges from that validated shape.
+- Next action: Re-run the unattended build-lead wrapper on the host and confirm it starts a real cycle with the supported `codex exec` flags.
+- Evidence refs: `build-agent/scripts/run_build_lead_cycle.py`, `tests/test_build_agent_cycle.py`, `build-agent/logs/cycles/build-cycle-20260406T034335Z-66be05af.log`
 - Validation suite: `python3.11 scripts/quality/run_ba10_validation_suite.py --project-root <repo_root> --blocker-id BUILD-CLI-001 --include-manual`
 - Confirmation commands:
+  - `python3.11 -m pytest tests/test_build_agent_cycle.py` (automated: Guards the unattended build-lead `codex exec` invocation shape so unsupported approval flags do not return.)
   - `codex exec --help && codex --help` (manual_local: Reconfirms the current CLI shape so unattended build wrappers do not reintroduce unsupported approval flags.)
 
 ### OPS-LAUNCHD-001

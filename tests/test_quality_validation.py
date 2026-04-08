@@ -300,6 +300,54 @@ def test_quality_validation_suite_script_rejects_manual_blocker_without_flag():
     assert "requires `include_manual=True`" in result.stderr
 
 
+def test_quality_validation_suite_script_dry_run_expands_build_cli_blocker_with_automated_and_manual_checks():
+    result = subprocess.run(
+        [
+            sys.executable,
+            "scripts/quality/run_ba10_validation_suite.py",
+            "--project-root",
+            str(REPO_ROOT),
+            "--dry-run",
+            "--blocker-id",
+            "BUILD-CLI-001",
+            "--include-manual",
+        ],
+        cwd=REPO_ROOT,
+        check=False,
+        capture_output=True,
+        text=True,
+    )
+
+    assert result.returncode == 0
+    payload = json.loads(result.stdout)
+    assert payload["requested_blocker_ids"] == ["BUILD-CLI-001"]
+    assert [command["command_id"] for command in payload["commands"]] == [
+        "qa_build_agent_cycle_regressions",
+        "qa_codex_cli_compatibility",
+    ]
+    assert payload["selector_details"]["build_board_blockers"] == [
+        {
+            "blocker_id": "BUILD-CLI-001",
+            "status": "open",
+            "owner_role": "build-lead",
+            "summary": (
+                "The unattended build wrapper now has automated regression "
+                "coverage for its `codex exec` command shape, but real host-side "
+                "cycle execution still needs confirmation after the "
+                "`--ask-for-approval` incompatibility."
+            ),
+            "validation_command_ids": [
+                "qa_build_agent_cycle_regressions",
+                "qa_codex_cli_compatibility",
+            ],
+            "validation_suite_command": (
+                "python3.11 scripts/quality/run_ba10_validation_suite.py "
+                "--project-root <repo_root> --blocker-id BUILD-CLI-001 --include-manual"
+            ),
+        }
+    ]
+
+
 def test_quality_validation_suite_script_dry_run_expands_current_focus():
     result = subprocess.run(
         [
