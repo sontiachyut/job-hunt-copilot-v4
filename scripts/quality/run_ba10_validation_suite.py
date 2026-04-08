@@ -19,6 +19,9 @@ from job_hunt_copilot.quality_validation import (
     list_quality_validation_commands,
     list_smoke_validation_targets,
     refresh_ba10_validation_reports,
+    resolve_acceptance_gap_validation_command_ids,
+    resolve_build_board_blocker_validation_command_ids,
+    resolve_current_focus_validation_command_ids,
 )
 
 
@@ -27,6 +30,13 @@ def main() -> int:
     parser.add_argument("--project-root", default=str(PROJECT_ROOT))
     parser.add_argument("--command-id", action="append", dest="command_ids", default=[])
     parser.add_argument("--smoke-target", action="append", dest="smoke_target_ids", default=[])
+    parser.add_argument("--gap-id", action="append", dest="gap_ids", default=[])
+    parser.add_argument("--blocker-id", action="append", dest="blocker_ids", default=[])
+    parser.add_argument(
+        "--current-focus",
+        action="store_true",
+        help="Resolve the validation plan for the active BA-10 focus slice from the blocker audit.",
+    )
     parser.add_argument(
         "--include-manual",
         action="store_true",
@@ -69,6 +79,20 @@ def main() -> int:
 
     try:
         resolved_command_ids: list[str] = []
+        if args.current_focus:
+            resolved_command_ids.extend(
+                resolve_current_focus_validation_command_ids(project_root)
+            )
+        if args.gap_ids:
+            resolved_command_ids.extend(
+                resolve_acceptance_gap_validation_command_ids(project_root, args.gap_ids)
+            )
+        if args.blocker_ids:
+            resolved_command_ids.extend(
+                resolve_build_board_blocker_validation_command_ids(
+                    project_root, args.blocker_ids
+                )
+            )
         if args.smoke_target_ids:
             resolved_command_ids.extend(
                 command.command_id
@@ -89,6 +113,9 @@ def main() -> int:
         payload = {
             "project_root": str(project_root),
             "refreshed_reports": False,
+            "requested_gap_ids": list(args.gap_ids),
+            "requested_blocker_ids": list(args.blocker_ids),
+            "requested_current_focus": args.current_focus,
             "requested_smoke_targets": list(args.smoke_target_ids),
             "commands": [command.as_dict() for command in plan],
         }
@@ -127,6 +154,9 @@ def main() -> int:
     payload = {
         "project_root": str(project_root),
         "refreshed_reports": refreshed_reports,
+        "requested_gap_ids": list(args.gap_ids),
+        "requested_blocker_ids": list(args.blocker_ids),
+        "requested_current_focus": args.current_focus,
         "requested_smoke_targets": list(args.smoke_target_ids),
         "commands": results,
         "failed_command_ids": failed_command_ids,

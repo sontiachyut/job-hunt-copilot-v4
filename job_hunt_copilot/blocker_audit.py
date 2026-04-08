@@ -16,11 +16,13 @@ from .acceptance_traceability import (
 )
 
 
-BLOCKER_AUDIT_VERSION = 3
+BLOCKER_AUDIT_VERSION = 4
 BUILD_BOARD_PATH = Path("build-agent/state/build-board.yaml")
 REPORT_JSON_PATH = Path("build-agent/reports/ba-10-blocker-audit.json")
 REPORT_MD_PATH = Path("build-agent/reports/ba-10-blocker-audit.md")
 OPEN_ACCEPTANCE_STATUSES = (STATUS_PARTIAL, STATUS_GAP)
+VALIDATION_SUITE_SCRIPT = "python3.11 scripts/quality/run_ba10_validation_suite.py"
+VALIDATION_SUITE_PROJECT_ROOT_PLACEHOLDER = "<repo_root>"
 
 VALIDATION_COMMANDS: dict[str, dict[str, str]] = {
     "qa_acceptance_reports": {
@@ -174,6 +176,28 @@ def _resolve_validation_commands(command_ids: tuple[str, ...]) -> list[dict[str,
     return commands
 
 
+def _build_validation_suite_entry(
+    *,
+    selector_args: tuple[str, ...],
+    validation_commands: list[dict[str, str]],
+) -> dict[str, Any]:
+    requires_include_manual = any(
+        command["kind"] != "automated" for command in validation_commands
+    )
+    args = [
+        "--project-root",
+        VALIDATION_SUITE_PROJECT_ROOT_PLACEHOLDER,
+        *selector_args,
+    ]
+    if requires_include_manual:
+        args.append("--include-manual")
+    return {
+        "args": list(args),
+        "command": " ".join([VALIDATION_SUITE_SCRIPT, *args]),
+        "requires_include_manual": requires_include_manual,
+    }
+
+
 def _build_acceptance_gap_clusters(matrix: dict[str, Any]) -> list[dict[str, Any]]:
     scenario_rows_by_gap_id: dict[str, list[dict[str, Any]]] = defaultdict(list)
     owner_roles_by_gap_id: dict[str, set[str]] = defaultdict(set)
@@ -208,6 +232,9 @@ def _build_acceptance_gap_clusters(matrix: dict[str, Any]) -> list[dict[str, Any
         scenario_rows = scenario_rows_by_gap_id.get(gap["gap_id"], [])
         if not scenario_rows:
             continue
+        validation_commands = _resolve_validation_commands(
+            GAP_VALIDATION_COMMAND_IDS.get(gap["gap_id"], ("qa_acceptance_reports",))
+        )
         status_counts = {
             STATUS_PARTIAL: status_counts_by_gap_id[gap["gap_id"]][STATUS_PARTIAL],
             STATUS_GAP: status_counts_by_gap_id[gap["gap_id"]][STATUS_GAP],
@@ -230,8 +257,10 @@ def _build_acceptance_gap_clusters(matrix: dict[str, Any]) -> list[dict[str, Any
             "evidence_summary": gap["evidence_summary"],
             "evidence_code_refs": list(gap["evidence_code_refs"]),
             "evidence_test_refs": list(gap["evidence_test_refs"]),
-            "validation_commands": _resolve_validation_commands(
-                GAP_VALIDATION_COMMAND_IDS.get(gap["gap_id"], ("qa_acceptance_reports",))
+            "validation_commands": validation_commands,
+            "validation_suite": _build_validation_suite_entry(
+                selector_args=("--gap-id", gap["gap_id"]),
+                validation_commands=validation_commands,
             ),
             "scenarios": scenario_rows,
         }
@@ -258,6 +287,11 @@ def _build_board_blockers(
             for path_text in evidence_refs
             if path_text not in self_generated_report_refs and not (project_root / path_text).exists()
         ]
+        validation_commands = _resolve_validation_commands(
+            BOARD_BLOCKER_VALIDATION_COMMAND_IDS.get(
+                blocker["blocker_id"], ("qa_acceptance_reports",)
+            )
+        )
         blockers.append(
             {
                 "blocker_id": blocker["blocker_id"],
@@ -269,14 +303,53 @@ def _build_board_blockers(
                 "next_action": blocker.get("next_action"),
                 "evidence_refs": evidence_refs,
                 "missing_evidence_refs": missing_evidence_refs,
-                "validation_commands": _resolve_validation_commands(
-                    BOARD_BLOCKER_VALIDATION_COMMAND_IDS.get(
-                        blocker["blocker_id"], ("qa_acceptance_reports",)
-                    )
+                "validation_commands": validation_commands,
+                "validation_suite": _build_validation_suite_entry(
+                    selector_args=("--blocker-id", blocker["blocker_id"]),
+                    validation_commands=validation_commands,
                 ),
             }
         )
     return blockers
+
+
+def _build_current_focus(
+    board: dict[str, Any],
+    *,
+    acceptance_gap_clusters: list[dict[str, Any]],
+) -> dict[str, Any]:
+    focus = {
+        "epic_id": board.get("current_focus", {}).get("epic_id"),
+        "slice_id": board.get("current_focus", {}).get("slice_id"),
+        "owner_role": board.get("current_focus", {}).get("owner_role"),
+        "reason": board.get("current_focus", {}).get("reason"),
+    }
+    slice_id = focus.get("slice_id")
+    matching_clusters = [
+        cluster
+        for cluster in acceptance_gap_clusters
+        if cluster["open_scenario_count"] and cluster["next_slice"] == slice_id
+    ]
+    if not matching_clusters:
+        return focus
+
+    seen_command_ids: set[str] = set()
+    validation_commands: list[dict[str, str]] = []
+    for cluster in matching_clusters:
+        for command in cluster["validation_commands"]:
+            command_id = command["command_id"]
+            if command_id in seen_command_ids:
+                continue
+            seen_command_ids.add(command_id)
+            validation_commands.append(command)
+
+    focus["gap_ids"] = [cluster["gap_id"] for cluster in matching_clusters]
+    focus["validation_commands"] = validation_commands
+    focus["validation_suite"] = _build_validation_suite_entry(
+        selector_args=("--current-focus",),
+        validation_commands=validation_commands,
+    )
+    return focus
 
 
 def build_ba10_blocker_audit(project_root: Path | str) -> dict[str, Any]:
@@ -285,6 +358,10 @@ def build_ba10_blocker_audit(project_root: Path | str) -> dict[str, Any]:
     board = _load_build_board(root)
     acceptance_gap_clusters = _build_acceptance_gap_clusters(matrix)
     board_blockers = _build_board_blockers(board, project_root=root)
+    current_focus = _build_current_focus(
+        board,
+        acceptance_gap_clusters=acceptance_gap_clusters,
+    )
     missing_evidence_refs = sum(
         len(blocker["missing_evidence_refs"]) for blocker in board_blockers
     )
@@ -296,12 +373,7 @@ def build_ba10_blocker_audit(project_root: Path | str) -> dict[str, Any]:
             "acceptance_trace_report_markdown": str(TRACE_REPORT_MD_PATH),
             "build_board": str(BUILD_BOARD_PATH),
         },
-        "current_focus": {
-            "epic_id": board.get("current_focus", {}).get("epic_id"),
-            "slice_id": board.get("current_focus", {}).get("slice_id"),
-            "owner_role": board.get("current_focus", {}).get("owner_role"),
-            "reason": board.get("current_focus", {}).get("reason"),
-        },
+        "current_focus": current_focus,
         "summary": {
             "acceptance_scenario_count": matrix["scenario_count"],
             "acceptance_status_counts": dict(matrix["status_counts"]),
@@ -337,10 +409,23 @@ def render_ba10_blocker_audit_markdown(audit: dict[str, Any]) -> str:
         f"- Slice: `{current_focus['slice_id']}`",
         f"- Owner role: `{current_focus['owner_role']}`",
         f"- Reason: {current_focus['reason']}",
+    ]
+    if current_focus.get("gap_ids"):
+        lines.append(
+            "- Matching gap ids: "
+            + ", ".join(f"`{gap_id}`" for gap_id in current_focus["gap_ids"])
+        )
+    if current_focus.get("validation_suite"):
+        lines.append(
+            f"- Validation suite: `{current_focus['validation_suite']['command']}`"
+        )
+    lines.extend(
+        [
         "",
         "## Acceptance Gap Clusters",
         "",
-    ]
+        ]
+    )
 
     for cluster in audit["acceptance_gap_clusters"]:
         status_counts = cluster["status_counts"]
@@ -367,6 +452,7 @@ def render_ba10_blocker_audit_markdown(audit: dict[str, Any]) -> str:
             "- Evidence test refs: "
             + ", ".join(f"`{path}`" for path in cluster["evidence_test_refs"])
         )
+        lines.append(f"- Validation suite: `{cluster['validation_suite']['command']}`")
         implementation_snapshot = cluster.get("implementation_snapshot") or {}
         if implementation_snapshot:
             lines.append("- Implementation snapshot:")
@@ -426,6 +512,7 @@ def render_ba10_blocker_audit_markdown(audit: dict[str, Any]) -> str:
                 "- Missing evidence refs: "
                 + ", ".join(f"`{path}`" for path in blocker["missing_evidence_refs"])
             )
+        lines.append(f"- Validation suite: `{blocker['validation_suite']['command']}`")
         lines.append("- Confirmation commands:")
         for command in blocker["validation_commands"]:
             lines.append(

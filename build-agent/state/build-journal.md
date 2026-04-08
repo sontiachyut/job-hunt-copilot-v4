@@ -1262,3 +1262,32 @@ Use this file as an append-only implementation log for the build agent.
 ### Notes
 - This slice improved traceability fidelity only; it did not change the acceptance counts or claim new autonomous behavior.
 - The committed reports now answer the epic done-when more directly by linking feature rules and open gap clusters back to bounded implemented slices rather than stopping at epic ids.
+
+### Session
+- Date: 2026-04-08 13:16:41 MST
+- Slice: BA-10-S3 blocker-driven validation suite selectors
+- Goal: Make the remaining BA-10 gaps and open build-board blockers directly runnable from the shared validation entrypoint instead of forcing manual command-by-command reconstruction.
+
+### Work Done
+- Extended `job_hunt_copilot.blocker_audit` so each open acceptance-gap cluster, each open build-board blocker, and the current focus slice now carry one canonical `scripts/quality/run_ba10_validation_suite.py` invocation alongside their resolved confirmation commands.
+- Extended `job_hunt_copilot.quality_validation` with selector resolution helpers for acceptance-gap ids, build-board blocker ids, and the active current-focus slice, reusing the blocker-audit data as the source of truth for command expansion.
+- Extended `scripts/quality/run_ba10_validation_suite.py` to accept `--gap-id`, `--blocker-id`, and `--current-focus`, and to echo those selector inputs in dry-run or execution payloads for reproducible audit trails.
+- Added focused guards in `tests/test_blocker_audit.py` and `tests/test_quality_validation.py`, then regenerated the committed `build-agent/reports/ba-10-blocker-audit.json` plus `.md` outputs so the report schema and runner behavior stay synchronized.
+- Updated `build-agent/state/build-board.yaml`, `build-agent/state/IMPLEMENTATION_PLAN.md`, `build-agent/state/build-journal.md`, and `build-agent/state/codex-progress.txt` so this remains a quality-owned BA-10-S3 support checkpoint while the next functional slice stays on build-lead downstream-supervisor implementation.
+
+### Validation
+- Ran `python3.11 -m py_compile job_hunt_copilot/blocker_audit.py job_hunt_copilot/quality_validation.py scripts/quality/run_ba10_validation_suite.py tests/test_blocker_audit.py tests/test_quality_validation.py` and confirmed the updated QA surfaces compile cleanly.
+- Ran `python3.11 scripts/quality/generate_acceptance_trace_matrix.py --project-root /Users/achyutaramsonti/Projects/job-hunt-copilot-v4` and `python3.11 scripts/quality/generate_blocker_audit.py --project-root /Users/achyutaramsonti/Projects/job-hunt-copilot-v4` to refresh the committed BA-10 reports after the blocker-audit schema change.
+- Ran `python3.11 -m pytest tests/test_blocker_audit.py tests/test_quality_validation.py` and confirmed all 15 focused blocker-audit and validation-runner tests passed.
+- Ran `python3.11 scripts/quality/run_ba10_validation_suite.py --project-root /Users/achyutaramsonti/Projects/job-hunt-copilot-v4 --dry-run --current-focus` and confirmed the runner resolves `qa_supervisor_regressions` plus `qa_acceptance_reports` for the active `BA-10-S4` focus.
+- Ran `python3.11 scripts/quality/run_ba10_validation_suite.py --project-root /Users/achyutaramsonti/Projects/job-hunt-copilot-v4 --dry-run --blocker-id OPS-LAUNCHD-001 --include-manual` and confirmed the runner resolves the expected automated runtime-control regression plus manual host-launchd validation pair.
+
+### Result
+- `done`
+
+### Next
+- Keep the next functional burn-down on `BA-10-S4`: a build-lead slice that registers at least one downstream supervisor action beyond `lead_handoff`, then reruns the BA-10 reports to reduce the largest remaining partial acceptance cluster.
+
+### Notes
+- This slice improved blocker reproducibility and auditability only; it did not claim new product behavior in the downstream supervisor, chat, maintenance, or posting-abandon gaps.
+- The downstream-supervisor focus is still the highest-value open burn-down, but it can now be revalidated from one stable `--current-focus` entrypoint instead of an ad hoc command list.

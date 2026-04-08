@@ -13,6 +13,8 @@ from job_hunt_copilot.quality_validation import (
     build_smoke_validation_plan,
     build_quality_validation_plan,
     list_smoke_validation_targets,
+    resolve_acceptance_gap_validation_command_ids,
+    resolve_current_focus_validation_command_ids,
 )
 
 
@@ -77,6 +79,26 @@ def test_smoke_validation_plan_dedupes_shared_smoke_command_and_preserves_regist
     ]
 
 
+def test_gap_validation_command_resolution_follows_open_gap_command_mapping():
+    command_ids = resolve_acceptance_gap_validation_command_ids(
+        REPO_ROOT, ["BA10_SUPERVISOR_DOWNSTREAM_ACTION_CATALOG"]
+    )
+
+    assert command_ids == [
+        "qa_supervisor_regressions",
+        "qa_acceptance_reports",
+    ]
+
+
+def test_current_focus_validation_command_resolution_follows_active_slice():
+    command_ids = resolve_current_focus_validation_command_ids(REPO_ROOT)
+
+    assert command_ids == [
+        "qa_supervisor_regressions",
+        "qa_acceptance_reports",
+    ]
+
+
 def test_quality_validation_suite_script_dry_run_reports_selected_commands():
     result = subprocess.run(
         [
@@ -100,6 +122,9 @@ def test_quality_validation_suite_script_dry_run_reports_selected_commands():
     payload = json.loads(result.stdout)
     assert payload["project_root"] == str(REPO_ROOT)
     assert payload["refreshed_reports"] is False
+    assert payload["requested_gap_ids"] == []
+    assert payload["requested_blocker_ids"] == []
+    assert payload["requested_current_focus"] is False
     assert [command["command_id"] for command in payload["commands"]] == [
         "qa_smoke_flow",
         "qa_runtime_pack_regressions",
@@ -126,6 +151,82 @@ def test_quality_validation_suite_script_rejects_manual_commands_without_flag():
 
     assert result.returncode == 2
     assert "requires `include_manual=True`" in result.stderr
+
+
+def test_quality_validation_suite_script_dry_run_expands_gap_ids():
+    result = subprocess.run(
+        [
+            sys.executable,
+            "scripts/quality/run_ba10_validation_suite.py",
+            "--project-root",
+            str(REPO_ROOT),
+            "--dry-run",
+            "--gap-id",
+            "BA10_SUPERVISOR_DOWNSTREAM_ACTION_CATALOG",
+        ],
+        cwd=REPO_ROOT,
+        check=False,
+        capture_output=True,
+        text=True,
+    )
+
+    assert result.returncode == 0
+    payload = json.loads(result.stdout)
+    assert payload["requested_gap_ids"] == ["BA10_SUPERVISOR_DOWNSTREAM_ACTION_CATALOG"]
+    assert payload["requested_blocker_ids"] == []
+    assert payload["requested_current_focus"] is False
+    assert [command["command_id"] for command in payload["commands"]] == [
+        "qa_supervisor_regressions",
+        "qa_acceptance_reports",
+    ]
+
+
+def test_quality_validation_suite_script_rejects_manual_blocker_without_flag():
+    result = subprocess.run(
+        [
+            sys.executable,
+            "scripts/quality/run_ba10_validation_suite.py",
+            "--project-root",
+            str(REPO_ROOT),
+            "--dry-run",
+            "--blocker-id",
+            "BUILD-CLI-001",
+        ],
+        cwd=REPO_ROOT,
+        check=False,
+        capture_output=True,
+        text=True,
+    )
+
+    assert result.returncode == 2
+    assert "requires `include_manual=True`" in result.stderr
+
+
+def test_quality_validation_suite_script_dry_run_expands_current_focus():
+    result = subprocess.run(
+        [
+            sys.executable,
+            "scripts/quality/run_ba10_validation_suite.py",
+            "--project-root",
+            str(REPO_ROOT),
+            "--dry-run",
+            "--current-focus",
+        ],
+        cwd=REPO_ROOT,
+        check=False,
+        capture_output=True,
+        text=True,
+    )
+
+    assert result.returncode == 0
+    payload = json.loads(result.stdout)
+    assert payload["requested_gap_ids"] == []
+    assert payload["requested_blocker_ids"] == []
+    assert payload["requested_current_focus"] is True
+    assert [command["command_id"] for command in payload["commands"]] == [
+        "qa_supervisor_regressions",
+        "qa_acceptance_reports",
+    ]
 
 
 def test_quality_validation_suite_script_dry_run_expands_smoke_targets():

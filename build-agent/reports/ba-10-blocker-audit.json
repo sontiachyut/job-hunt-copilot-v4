@@ -1,5 +1,5 @@
 {
-  "blocker_audit_version": 3,
+  "blocker_audit_version": 4,
   "sources": {
     "acceptance_trace_report_json": "build-agent/reports/ba-10-acceptance-trace-matrix.json",
     "acceptance_trace_report_markdown": "build-agent/reports/ba-10-acceptance-trace-matrix.md",
@@ -9,7 +9,35 @@
     "epic_id": "BA-10",
     "slice_id": "BA-10-S4",
     "owner_role": "build-lead",
-    "reason": "BA-10-S4 now has a dedicated downstream-stage regression target plus refreshed traceability and blocker reports, while the matrix still sits at 190 implemented / 8 partial / 14 gap scenarios; the next highest-value slice remains a build-lead implementation pass on downstream supervisor action-catalog steps beyond `lead_handoff`, because that single cluster still accounts for the largest remaining acceptance partial set and blocks the strongest end-to-end closure."
+    "reason": "BA-10-S4 now has a dedicated downstream-stage regression target plus refreshed traceability and blocker reports, while the matrix still sits at 190 implemented / 8 partial / 14 gap scenarios; the next highest-value slice remains a build-lead implementation pass on downstream supervisor action-catalog steps beyond `lead_handoff`, because that single cluster still accounts for the largest remaining acceptance partial set and blocks the strongest end-to-end closure.",
+    "gap_ids": [
+      "BA10_SUPERVISOR_DOWNSTREAM_ACTION_CATALOG"
+    ],
+    "validation_commands": [
+      {
+        "command_id": "qa_supervisor_regressions",
+        "title": "Supervisor downstream hardening regressions",
+        "kind": "automated",
+        "command": "python3.11 -m pytest tests/test_supervisor_downstream_actions.py",
+        "description": "Confirms `lead_handoff` remains the only registered checkpoint, later stages escalate explicitly, and retries preserve the same durable run plus pending review packet."
+      },
+      {
+        "command_id": "qa_acceptance_reports",
+        "title": "Acceptance report guards",
+        "kind": "automated",
+        "command": "python3.11 -m pytest tests/test_acceptance_traceability.py tests/test_blocker_audit.py",
+        "description": "Keeps the committed BA-10 acceptance and blocker reports synchronized with repo code, tests, and state references."
+      }
+    ],
+    "validation_suite": {
+      "args": [
+        "--project-root",
+        "<repo_root>",
+        "--current-focus"
+      ],
+      "command": "python3.11 scripts/quality/run_ba10_validation_suite.py --project-root <repo_root> --current-focus",
+      "requires_include_manual": false
+    }
   },
   "summary": {
     "acceptance_scenario_count": 214,
@@ -336,6 +364,16 @@
           "description": "Keeps the committed BA-10 acceptance and blocker reports synchronized with repo code, tests, and state references."
         }
       ],
+      "validation_suite": {
+        "args": [
+          "--project-root",
+          "<repo_root>",
+          "--gap-id",
+          "BA10_SUPERVISOR_DOWNSTREAM_ACTION_CATALOG"
+        ],
+        "command": "python3.11 scripts/quality/run_ba10_validation_suite.py --project-root <repo_root> --gap-id BA10_SUPERVISOR_DOWNSTREAM_ACTION_CATALOG",
+        "requires_include_manual": false
+      },
       "scenarios": [
         {
           "name": "Supervisor work selection follows the current default priority order",
@@ -492,6 +530,16 @@
           "description": "Keeps the committed BA-10 acceptance and blocker reports synchronized with repo code, tests, and state references."
         }
       ],
+      "validation_suite": {
+        "args": [
+          "--project-root",
+          "<repo_root>",
+          "--gap-id",
+          "BA10_MAINTENANCE_AUTOMATION"
+        ],
+        "command": "python3.11 scripts/quality/run_ba10_validation_suite.py --project-root <repo_root> --gap-id BA10_MAINTENANCE_AUTOMATION",
+        "requires_include_manual": false
+      },
       "scenarios": [
         {
           "name": "Maintenance change artifacts exist for every autonomous maintenance batch",
@@ -623,6 +671,16 @@
           "description": "Keeps the committed BA-10 acceptance and blocker reports synchronized with repo code, tests, and state references."
         }
       ],
+      "validation_suite": {
+        "args": [
+          "--project-root",
+          "<repo_root>",
+          "--gap-id",
+          "BA10_CHAT_REVIEW_AND_CONTROL"
+        ],
+        "command": "python3.11 scripts/quality/run_ba10_validation_suite.py --project-root <repo_root> --gap-id BA10_CHAT_REVIEW_AND_CONTROL",
+        "requires_include_manual": false
+      },
       "scenarios": [
         {
           "name": "jhc-chat startup dashboard is detailed, bounded, and clean-first",
@@ -778,6 +836,16 @@
           "description": "Keeps the committed BA-10 acceptance and blocker reports synchronized with repo code, tests, and state references."
         }
       ],
+      "validation_suite": {
+        "args": [
+          "--project-root",
+          "<repo_root>",
+          "--gap-id",
+          "BA10_CHAT_IDLE_TIMEOUT_RESUME"
+        ],
+        "command": "python3.11 scripts/quality/run_ba10_validation_suite.py --project-root <repo_root> --gap-id BA10_CHAT_IDLE_TIMEOUT_RESUME",
+        "requires_include_manual": false
+      },
       "scenarios": [
         {
           "name": "Expert-interaction resume follows explicit close, explicit resume, or safe idle timeout",
@@ -854,6 +922,16 @@
           "description": "Keeps the committed BA-10 acceptance and blocker reports synchronized with repo code, tests, and state references."
         }
       ],
+      "validation_suite": {
+        "args": [
+          "--project-root",
+          "<repo_root>",
+          "--gap-id",
+          "BA10_POSTING_ABANDON_CONTROL"
+        ],
+        "command": "python3.11 scripts/quality/run_ba10_validation_suite.py --project-root <repo_root> --gap-id BA10_POSTING_ABANDON_CONTROL",
+        "requires_include_manual": false
+      },
       "scenarios": [
         {
           "name": "The user may explicitly abandon a posting from any active orchestration state",
@@ -982,7 +1060,17 @@
           "command": "python3.11 -m pytest tests/test_runtime_pack.py",
           "description": "Confirms generated runtime scaffolding stays honest about current action-catalog and maintenance placeholder status."
         }
-      ]
+      ],
+      "validation_suite": {
+        "args": [
+          "--project-root",
+          "<repo_root>",
+          "--blocker-id",
+          "BA10-TRACE-001"
+        ],
+        "command": "python3.11 scripts/quality/run_ba10_validation_suite.py --project-root <repo_root> --blocker-id BA10-TRACE-001",
+        "requires_include_manual": false
+      }
     },
     {
       "blocker_id": "BUILD-CLI-001",
@@ -1005,7 +1093,18 @@
           "command": "codex exec --help && codex --help",
           "description": "Reconfirms the current CLI shape so unattended build wrappers do not reintroduce unsupported approval flags."
         }
-      ]
+      ],
+      "validation_suite": {
+        "args": [
+          "--project-root",
+          "<repo_root>",
+          "--blocker-id",
+          "BUILD-CLI-001",
+          "--include-manual"
+        ],
+        "command": "python3.11 scripts/quality/run_ba10_validation_suite.py --project-root <repo_root> --blocker-id BUILD-CLI-001 --include-manual",
+        "requires_include_manual": true
+      }
     },
     {
       "blocker_id": "OPS-LAUNCHD-001",
@@ -1039,7 +1138,18 @@
           "command": "bin/jhc-agent-start && launchctl print gui/$UID/com.jobhuntcopilot.supervisor",
           "description": "Must run outside the sandbox to validate real host launchd bootstrap behavior and collect diagnostic output."
         }
-      ]
+      ],
+      "validation_suite": {
+        "args": [
+          "--project-root",
+          "<repo_root>",
+          "--blocker-id",
+          "OPS-LAUNCHD-001",
+          "--include-manual"
+        ],
+        "command": "python3.11 scripts/quality/run_ba10_validation_suite.py --project-root <repo_root> --blocker-id OPS-LAUNCHD-001 --include-manual",
+        "requires_include_manual": true
+      }
     }
   ]
 }

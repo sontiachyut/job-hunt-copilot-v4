@@ -6,7 +6,11 @@ from typing import Any, Sequence
 
 from .acceptance_traceability import SMOKE_COVERAGE_TARGETS
 from .acceptance_traceability import write_acceptance_trace_reports
-from .blocker_audit import VALIDATION_COMMANDS, write_ba10_blocker_audit_reports
+from .blocker_audit import (
+    VALIDATION_COMMANDS,
+    build_ba10_blocker_audit,
+    write_ba10_blocker_audit_reports,
+)
 
 
 AUTOMATED_VALIDATION_KIND = "automated"
@@ -79,6 +83,78 @@ def list_smoke_validation_targets() -> list[SmokeValidationTarget]:
         )
         for target in SMOKE_COVERAGE_TARGETS
     ]
+
+
+def _dedupe_command_ids(command_ids: Sequence[str]) -> list[str]:
+    resolved: list[str] = []
+    seen_command_ids: set[str] = set()
+    for command_id in command_ids:
+        if command_id in seen_command_ids:
+            continue
+        seen_command_ids.add(command_id)
+        resolved.append(command_id)
+    return resolved
+
+
+def _resolve_audit_validation_command_ids(
+    entries: Sequence[dict[str, Any]],
+    *,
+    entry_key: str,
+    requested_ids: Sequence[str],
+    entry_label: str,
+) -> list[str]:
+    entries_by_id = {
+        entry[entry_key]: entry for entry in entries if entry.get(entry_key)
+    }
+    resolved_command_ids: list[str] = []
+    for requested_id in requested_ids:
+        entry = entries_by_id.get(requested_id)
+        if entry is None:
+            raise ValueError(f"Unknown BA-10 {entry_label}: {requested_id}")
+        resolved_command_ids.extend(
+            command["command_id"] for command in entry["validation_commands"]
+        )
+    return _dedupe_command_ids(resolved_command_ids)
+
+
+def resolve_acceptance_gap_validation_command_ids(
+    project_root: Path | str,
+    gap_ids: Sequence[str],
+) -> list[str]:
+    audit = build_ba10_blocker_audit(project_root)
+    return _resolve_audit_validation_command_ids(
+        audit["acceptance_gap_clusters"],
+        entry_key="gap_id",
+        requested_ids=gap_ids,
+        entry_label="acceptance gap",
+    )
+
+
+def resolve_build_board_blocker_validation_command_ids(
+    project_root: Path | str,
+    blocker_ids: Sequence[str],
+) -> list[str]:
+    audit = build_ba10_blocker_audit(project_root)
+    return _resolve_audit_validation_command_ids(
+        audit["build_board_blockers"],
+        entry_key="blocker_id",
+        requested_ids=blocker_ids,
+        entry_label="build-board blocker",
+    )
+
+
+def resolve_current_focus_validation_command_ids(project_root: Path | str) -> list[str]:
+    audit = build_ba10_blocker_audit(project_root)
+    current_focus = audit["current_focus"]
+    validation_commands = current_focus.get("validation_commands") or []
+    if not validation_commands:
+        slice_id = current_focus.get("slice_id") or "<unknown>"
+        raise ValueError(
+            f"Current focus slice `{slice_id}` has no recorded BA-10 validation commands."
+        )
+    return _dedupe_command_ids(
+        [command["command_id"] for command in validation_commands]
+    )
 
 
 def build_smoke_validation_plan(

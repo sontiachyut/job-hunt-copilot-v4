@@ -12,6 +12,8 @@
 - Slice: `BA-10-S4`
 - Owner role: `build-lead`
 - Reason: BA-10-S4 now has a dedicated downstream-stage regression target plus refreshed traceability and blocker reports, while the matrix still sits at 190 implemented / 8 partial / 14 gap scenarios; the next highest-value slice remains a build-lead implementation pass on downstream supervisor action-catalog steps beyond `lead_handoff`, because that single cluster still accounts for the largest remaining acceptance partial set and blocks the strongest end-to-end closure.
+- Matching gap ids: `BA10_SUPERVISOR_DOWNSTREAM_ACTION_CATALOG`
+- Validation suite: `python3.11 scripts/quality/run_ba10_validation_suite.py --project-root <repo_root> --current-focus`
 
 ## Acceptance Gap Clusters
 
@@ -26,6 +28,7 @@
 - Evidence summary: Focused downstream-stage regressions prove `lead_handoff` is the only registered checkpoint, later stages escalate with durable run and review-packet retention, and retries reuse the same run instead of restarting.
 - Evidence code refs: `job_hunt_copilot/supervisor.py`, `job_hunt_copilot/local_runtime.py`, `job_hunt_copilot/runtime_pack.py`
 - Evidence test refs: `tests/test_supervisor_downstream_actions.py`, `tests/test_blocker_audit.py`, `tests/test_acceptance_traceability.py`
+- Validation suite: `python3.11 scripts/quality/run_ba10_validation_suite.py --project-root <repo_root> --gap-id BA10_SUPERVISOR_DOWNSTREAM_ACTION_CATALOG`
 - Implementation snapshot:
   - Registered role-targeted checkpoint stages: `lead_handoff`
   - Validated blocked role-targeted stages: `agent_review`, `people_search`, `email_discovery`, `sending`, `delivery_feedback`
@@ -51,6 +54,7 @@
 - Evidence summary: Schema and runtime scaffolding reserve maintenance surfaces, but there is still no maintenance module, runner, or review-artifact workflow.
 - Evidence code refs: `job_hunt_copilot/migrations/0002_canonical_schema.sql`, `job_hunt_copilot/paths.py`, `job_hunt_copilot/runtime_pack.py`
 - Evidence test refs: `tests/test_schema.py`, `tests/test_runtime_pack.py`, `tests/test_acceptance_traceability.py`
+- Validation suite: `python3.11 scripts/quality/run_ba10_validation_suite.py --project-root <repo_root> --gap-id BA10_MAINTENANCE_AUTOMATION`
 - Confirmation commands:
   - `python3.11 -m pytest tests/test_runtime_pack.py` (automated: Confirms generated runtime scaffolding stays honest about current action-catalog and maintenance placeholder status.)
   - `python3.11 -m pytest tests/test_acceptance_traceability.py tests/test_blocker_audit.py` (automated: Keeps the committed BA-10 acceptance and blocker reports synchronized with repo code, tests, and state references.)
@@ -72,6 +76,7 @@
 - Evidence summary: Chat lifecycle, review-query reads, and bootstrap scaffolding exist, but chat itself still does not retrieve grouped reviews or route control decisions.
 - Evidence code refs: `scripts/ops/chat_session.py`, `job_hunt_copilot/local_runtime.py`, `job_hunt_copilot/review_queries.py`, `job_hunt_copilot/runtime_pack.py`
 - Evidence test refs: `tests/test_local_runtime.py`, `tests/test_review_queries.py`, `tests/test_runtime_pack.py`, `tests/test_acceptance_traceability.py`
+- Validation suite: `python3.11 scripts/quality/run_ba10_validation_suite.py --project-root <repo_root> --gap-id BA10_CHAT_REVIEW_AND_CONTROL`
 - Confirmation commands:
   - `python3.11 -m pytest tests/test_local_runtime.py` (automated: Covers launchd plist wiring, control commands, chat lifecycle state, delayed feedback runners, and explicit negative control cases.)
   - `python3.11 -m pytest tests/test_review_queries.py` (automated: Verifies persisted grouped review surfaces and traceability reads that back the chat/review boundary.)
@@ -100,6 +105,7 @@
 - Evidence summary: Unexpected chat exit is recorded and a later explicit resume works, but no automatic idle-timeout resume helper exists.
 - Evidence code refs: `job_hunt_copilot/local_runtime.py`, `job_hunt_copilot/runtime_pack.py`
 - Evidence test refs: `tests/test_local_runtime.py`, `tests/test_runtime_pack.py`, `tests/test_acceptance_traceability.py`
+- Validation suite: `python3.11 scripts/quality/run_ba10_validation_suite.py --project-root <repo_root> --gap-id BA10_CHAT_IDLE_TIMEOUT_RESUME`
 - Confirmation commands:
   - `python3.11 -m pytest tests/test_local_runtime.py` (automated: Covers launchd plist wiring, control commands, chat lifecycle state, delayed feedback runners, and explicit negative control cases.)
   - `python3.11 -m pytest tests/test_runtime_pack.py` (automated: Confirms generated runtime scaffolding stays honest about current action-catalog and maintenance placeholder status.)
@@ -118,6 +124,7 @@
 - Evidence summary: Agent-level start/stop/pause/resume/replan controls exist, but there is still no posting-scoped abandon command or runtime mutation path.
 - Evidence code refs: `scripts/ops/control_agent.py`, `job_hunt_copilot/local_runtime.py`, `job_hunt_copilot/supervisor.py`
 - Evidence test refs: `tests/test_local_runtime.py`, `tests/test_acceptance_traceability.py`
+- Validation suite: `python3.11 scripts/quality/run_ba10_validation_suite.py --project-root <repo_root> --gap-id BA10_POSTING_ABANDON_CONTROL`
 - Confirmation commands:
   - `python3.11 -m pytest tests/test_local_runtime.py` (automated: Covers launchd plist wiring, control commands, chat lifecycle state, delayed feedback runners, and explicit negative control cases.)
   - `python3.11 -m pytest tests/test_acceptance_traceability.py tests/test_blocker_audit.py` (automated: Keeps the committed BA-10 acceptance and blocker reports synchronized with repo code, tests, and state references.)
@@ -134,6 +141,7 @@
 - Impact: Acceptance signoff is more credible now that committed smoke coverage, blocker-specific evidence refs, and explicit negative regressions exist, but BA-10 still cannot close until the remaining gap clusters are actually burned down or deliberately left open.
 - Next action: Hand the next functional slice to the build-lead: downstream action-catalog burn-down beyond `lead_handoff` or a posting-abandon control implementation. Maintenance automation remains an explicit follow-up gap after those runtime-control surfaces.
 - Evidence refs: `build-agent/reports/ba-10-acceptance-trace-matrix.json`, `build-agent/reports/ba-10-acceptance-trace-matrix.md`, `build-agent/reports/ba-10-blocker-audit.json`, `build-agent/reports/ba-10-blocker-audit.md`, `job_hunt_copilot/acceptance_traceability.py`, `job_hunt_copilot/blocker_audit.py`, `job_hunt_copilot/quality_validation.py`, `scripts/quality/generate_blocker_audit.py`, `scripts/quality/run_ba10_validation_suite.py`, `scripts/ops/control_agent.py`, `tests/test_acceptance_traceability.py`, `tests/test_blocker_audit.py`, `tests/test_local_runtime.py`, `tests/test_quality_validation.py`, `tests/test_supervisor_downstream_actions.py`, `tests/test_delivery_feedback.py`, `tests/test_schema.py`, `tests/test_smoke_harness.py`, `tests/test_supervisor.py`, `tests/test_runtime_pack.py`, `tests/test_resume_tailoring.py`, `tests/test_outreach.py`, `tests/test_review_queries.py`
+- Validation suite: `python3.11 scripts/quality/run_ba10_validation_suite.py --project-root <repo_root> --blocker-id BA10-TRACE-001`
 - Confirmation commands:
   - `python3.11 -m pytest tests/test_acceptance_traceability.py tests/test_blocker_audit.py` (automated: Keeps the committed BA-10 acceptance and blocker reports synchronized with repo code, tests, and state references.)
   - `python3.11 -m pytest tests/test_smoke_harness.py` (automated: Replays the committed bootstrap -> tailoring -> discovery -> send -> feedback -> review-query smoke path.)
@@ -155,6 +163,7 @@
 - Impact: Unattended build sessions can fail before any implementation work starts if the CLI compatibility fix regresses.
 - Next action: Re-run the unattended build-lead wrapper on the host and confirm it starts a real cycle without passing unsupported approval flags.
 - Evidence refs: `build-agent/scripts/run_build_lead_cycle.py`, `build-agent/logs/cycles/build-cycle-20260406T034335Z-66be05af.log`
+- Validation suite: `python3.11 scripts/quality/run_ba10_validation_suite.py --project-root <repo_root> --blocker-id BUILD-CLI-001 --include-manual`
 - Confirmation commands:
   - `codex exec --help && codex --help` (manual_local: Reconfirms the current CLI shape so unattended build wrappers do not reintroduce unsupported approval flags.)
 
@@ -166,6 +175,7 @@
 - Impact: Product-side background launchd startup is not yet verified outside the sandbox even though the repo-local helper code and rollback behavior are working.
 - Next action: Run `bin/jhc-agent-start` on the host outside the sandbox, then inspect `launchctl print gui/$UID/com.jobhuntcopilot.supervisor` and system launchd logs to capture the real bootstrap outcome.
 - Evidence refs: `build-agent/logs/cycles/build-cycle-20260407T213533Z-5b2c1d98.log`, `bin/jhc-agent-start`, `bin/jhc-feedback-sync-cycle`, `scripts/ops/materialize_supervisor_plist.py`, `scripts/ops/materialize_feedback_sync_plist.py`, `tests/test_local_runtime.py`
+- Validation suite: `python3.11 scripts/quality/run_ba10_validation_suite.py --project-root <repo_root> --blocker-id OPS-LAUNCHD-001 --include-manual`
 - Confirmation commands:
   - `python3.11 -m pytest tests/test_local_runtime.py` (automated: Covers launchd plist wiring, control commands, chat lifecycle state, delayed feedback runners, and explicit negative control cases.)
   - `bin/jhc-agent-start && launchctl print gui/$UID/com.jobhuntcopilot.supervisor` (manual_host: Must run outside the sandbox to validate real host launchd bootstrap behavior and collect diagnostic output.)
