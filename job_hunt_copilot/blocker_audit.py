@@ -35,6 +35,36 @@ VALIDATION_COMMANDS: dict[str, dict[str, str]] = {
         "command": "python3.11 -m pytest tests/test_smoke_harness.py",
         "description": "Replays the committed bootstrap -> tailoring -> discovery -> send -> feedback -> review-query smoke path.",
     },
+    "qa_bootstrap_regressions": {
+        "title": "Bootstrap regressions",
+        "kind": "automated",
+        "command": "python3.11 -m pytest tests/test_bootstrap.py tests/test_schema.py tests/test_artifacts.py",
+        "description": "Confirms bootstrap prerequisites, canonical schema migration, and shared artifact contracts stay valid.",
+    },
+    "qa_tailoring_regressions": {
+        "title": "Tailoring regressions",
+        "kind": "automated",
+        "command": "python3.11 -m pytest tests/test_resume_tailoring.py",
+        "description": "Confirms tailoring bootstrap, deterministic artifact generation, compile verification, and mandatory review gates stay intact.",
+    },
+    "qa_discovery_regressions": {
+        "title": "Discovery regressions",
+        "kind": "automated",
+        "command": "python3.11 -m pytest tests/test_email_discovery.py",
+        "description": "Confirms people search, shortlist materialization, enrichment, discovery artifacts, and provider-budget behavior stay intact.",
+    },
+    "qa_outreach_regressions": {
+        "title": "Outreach regressions",
+        "kind": "automated",
+        "command": "python3.11 -m pytest tests/test_outreach.py",
+        "description": "Confirms send-set readiness, draft persistence, safe send execution, and repeat-outreach guardrails stay intact.",
+    },
+    "qa_feedback_regressions": {
+        "title": "Delivery feedback regressions",
+        "kind": "automated",
+        "command": "python3.11 -m pytest tests/test_delivery_feedback.py",
+        "description": "Confirms immediate or delayed feedback ingestion, normalized event persistence, and delivery outcome artifacts stay intact.",
+    },
     "qa_supervisor_regressions": {
         "title": "Supervisor downstream hardening regressions",
         "kind": "automated",
@@ -103,6 +133,11 @@ BOARD_BLOCKER_VALIDATION_COMMAND_IDS: dict[str, tuple[str, ...]] = {
     "BA10-TRACE-001": (
         "qa_acceptance_reports",
         "qa_smoke_flow",
+        "qa_bootstrap_regressions",
+        "qa_tailoring_regressions",
+        "qa_discovery_regressions",
+        "qa_outreach_regressions",
+        "qa_feedback_regressions",
         "qa_supervisor_regressions",
         "qa_runtime_control_regressions",
         "qa_review_surface_regressions",

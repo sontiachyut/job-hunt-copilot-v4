@@ -927,6 +927,7 @@ epics:
           - Added focused blocker regressions proving `scripts/ops/control_agent.py` still rejects the missing `abandon` command and the generated `ops/agent/ops-plan.yaml` keeps maintenance in backlog-only placeholder state instead of implying an implemented workflow.
           - Added `job_hunt_copilot.blocker_audit`, `scripts/quality/generate_blocker_audit.py`, committed `build-agent/reports/ba-10-blocker-audit.json` plus `.md`, and `tests/test_blocker_audit.py` so the remaining acceptance-gap clusters and open build-board blockers are summarized in one durable report with explicit confirmation commands and evidence-hygiene checks.
           - Added `job_hunt_copilot.quality_validation`, `scripts/quality/run_ba10_validation_suite.py`, and `tests/test_quality_validation.py` so the automated BA-10 blocker-audit commands can now be resolved, dry-run inspected, and executed from one reproducible entrypoint after refreshing the committed acceptance-trace and blocker-audit reports.
+          - Refined `job_hunt_copilot.acceptance_traceability`, `job_hunt_copilot.quality_validation`, and `job_hunt_copilot.blocker_audit` so BA-10 now carries explicit smoke-coverage targets for bootstrap, tailoring, discovery, send, feedback, and review-query flows, and `scripts/quality/run_ba10_validation_suite.py --smoke-target ...` resolves the matching targeted command plan instead of relying on one undifferentiated smoke note.
           - Refined `job_hunt_copilot.acceptance_traceability` plus the regenerated BA-10 reports so the downstream-supervisor gap now points at the active build-lead slice `BA-10-S4`, and added a `tests/test_blocker_audit.py` guard that fails if the current BA-10 focus slice disappears from the open gap-cluster ledger.
         validation:
           - "`python3.11 -m py_compile job_hunt_copilot/local_runtime.py job_hunt_copilot/acceptance_traceability.py job_hunt_copilot/runtime_pack.py job_hunt_copilot/paths.py scripts/ops/materialize_feedback_sync_plist.py scripts/ops/run_feedback_sync.py tests/test_local_runtime.py`"
@@ -938,6 +939,9 @@ epics:
           - "`python3.11 -m pytest tests/test_acceptance_traceability.py tests/test_blocker_audit.py tests/test_smoke_harness.py tests/test_local_runtime.py tests/test_supervisor.py tests/test_review_queries.py tests/test_runtime_pack.py`"
           - "`python3.11 -m py_compile job_hunt_copilot/quality_validation.py scripts/quality/run_ba10_validation_suite.py tests/test_quality_validation.py`"
           - "`python3.11 -m pytest tests/test_quality_validation.py`"
+          - "`python3.11 -m py_compile job_hunt_copilot/acceptance_traceability.py job_hunt_copilot/blocker_audit.py job_hunt_copilot/quality_validation.py scripts/quality/run_ba10_validation_suite.py tests/test_acceptance_traceability.py tests/test_quality_validation.py`"
+          - "`python3.11 -m pytest tests/test_acceptance_traceability.py tests/test_blocker_audit.py tests/test_quality_validation.py tests/test_smoke_harness.py`"
+          - "`python3.11 scripts/quality/run_ba10_validation_suite.py --project-root /Users/achyutaramsonti/Projects/job-hunt-copilot-v4 --dry-run --smoke-target bootstrap --smoke-target feedback`"
           - "`python3.11 scripts/quality/run_ba10_validation_suite.py --project-root /Users/achyutaramsonti/Projects/job-hunt-copilot-v4`"
           - "`python3.11 -m pytest`"
           - "`python3.11 -m py_compile job_hunt_copilot/acceptance_traceability.py tests/test_supervisor.py tests/test_acceptance_traceability.py`"
@@ -989,12 +993,14 @@ known_blockers:
     status: open
     severity: high
     owner_role: quality-engineer
-    summary: "The regenerated BA-10 trace matrix now reports 190 implemented / 8 partial / 14 gap scenarios; the remaining downstream-supervisor, chat, maintenance, and posting-abandon gaps now each carry explicit evidence refs and reproducible blocker notes, but the missing current-build behaviors themselves remain open."
+    summary: "The regenerated BA-10 trace matrix now reports 190 implemented / 8 partial / 14 gap scenarios; explicit smoke-coverage targets and reproducible validation-command mappings now cover bootstrap, tailoring, discovery, send, feedback, and review-query flows, but the remaining downstream-supervisor, chat, maintenance, and posting-abandon behaviors themselves remain open."
     evidence:
       - build-agent/reports/ba-10-acceptance-trace-matrix.json
       - build-agent/reports/ba-10-acceptance-trace-matrix.md
       - build-agent/reports/ba-10-blocker-audit.json
       - build-agent/reports/ba-10-blocker-audit.md
+      - job_hunt_copilot/acceptance_traceability.py
+      - job_hunt_copilot/blocker_audit.py
       - job_hunt_copilot/quality_validation.py
       - scripts/quality/generate_blocker_audit.py
       - scripts/quality/run_ba10_validation_suite.py

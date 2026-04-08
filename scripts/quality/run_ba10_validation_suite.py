@@ -14,8 +14,10 @@ if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
 
 from job_hunt_copilot.quality_validation import (
+    build_smoke_validation_plan,
     build_quality_validation_plan,
     list_quality_validation_commands,
+    list_smoke_validation_targets,
     refresh_ba10_validation_reports,
 )
 
@@ -24,6 +26,7 @@ def main() -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument("--project-root", default=str(PROJECT_ROOT))
     parser.add_argument("--command-id", action="append", dest="command_ids", default=[])
+    parser.add_argument("--smoke-target", action="append", dest="smoke_target_ids", default=[])
     parser.add_argument(
         "--include-manual",
         action="store_true",
@@ -57,13 +60,25 @@ def main() -> int:
                     include_manual=args.include_manual
                 )
             ],
+            "smoke_targets": [
+                target.as_dict() for target in list_smoke_validation_targets()
+            ],
         }
         print(json.dumps(payload, indent=2))
         return 0
 
     try:
+        resolved_command_ids: list[str] = []
+        if args.smoke_target_ids:
+            resolved_command_ids.extend(
+                command.command_id
+                for command in build_smoke_validation_plan(args.smoke_target_ids)
+            )
+        if args.command_ids:
+            resolved_command_ids.extend(args.command_ids)
+
         plan = build_quality_validation_plan(
-            args.command_ids or None,
+            resolved_command_ids or None,
             include_manual=args.include_manual,
         )
     except ValueError as exc:
@@ -74,6 +89,7 @@ def main() -> int:
         payload = {
             "project_root": str(project_root),
             "refreshed_reports": False,
+            "requested_smoke_targets": list(args.smoke_target_ids),
             "commands": [command.as_dict() for command in plan],
         }
         print(json.dumps(payload, indent=2))
@@ -111,6 +127,7 @@ def main() -> int:
     payload = {
         "project_root": str(project_root),
         "refreshed_reports": refreshed_reports,
+        "requested_smoke_targets": list(args.smoke_target_ids),
         "commands": results,
         "failed_command_ids": failed_command_ids,
         "passed": not failed_command_ids,

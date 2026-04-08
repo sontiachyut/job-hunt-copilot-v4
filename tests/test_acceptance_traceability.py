@@ -42,6 +42,23 @@ def test_acceptance_trace_matrix_reports_are_current_and_reference_real_repo_pat
         for test_ref in note["primary_tests"]:
             assert (REPO_ROOT / test_ref).exists(), test_ref
 
+    smoke_targets = {target["target_id"]: target for target in matrix["smoke_coverage_targets"]}
+    assert set(smoke_targets) == {
+        "bootstrap",
+        "tailoring",
+        "discovery",
+        "send",
+        "feedback",
+        "review_query",
+    }
+    for target in smoke_targets.values():
+        assert target["acceptance_scenario"] == "Build smoke test passes"
+        assert target["acceptance_checks"]
+        assert target["validation_command_ids"]
+        assert "tests/test_smoke_harness.py" in target["test_refs"]
+        for path_text in target["code_refs"] + target["test_refs"]:
+            assert (REPO_ROOT / path_text).exists(), path_text
+
     for gap in matrix["gap_registry"]:
         assert gap["title"]
         assert gap["reason"]

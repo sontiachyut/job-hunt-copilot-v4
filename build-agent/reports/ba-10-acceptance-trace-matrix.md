@@ -192,3 +192,57 @@
   - feature-to-code coverage honesty
   - committed smoke fixture coverage
   - explicit blocker confirmation
+
+## Smoke Coverage Targets
+
+### bootstrap: Bootstrap and prerequisites
+- Acceptance scenario: `Build smoke test passes`
+- Acceptance checks:
+  - the system initializes or migrates `job_hunt_copilot.db`
+  - the system loads runtime secrets successfully
+  - the system reads the required files from `assets/`
+- Evidence code refs: `job_hunt_copilot/bootstrap.py`, `job_hunt_copilot/secrets.py`, `job_hunt_copilot/db.py`
+- Evidence test refs: `tests/test_smoke_harness.py`, `tests/test_bootstrap.py`, `tests/test_schema.py`
+- Validation command ids: `qa_smoke_flow`, `qa_bootstrap_regressions`
+
+### tailoring: Resume tailoring
+- Acceptance scenario: `Build smoke test passes`
+- Acceptance checks:
+  - the system can create a Resume Tailoring workspace for a sample posting
+  - the system can compile the base or tailored resume successfully
+- Evidence code refs: `job_hunt_copilot/resume_tailoring.py`, `job_hunt_copilot/paths.py`
+- Evidence test refs: `tests/test_smoke_harness.py`, `tests/test_resume_tailoring.py`
+- Validation command ids: `qa_smoke_flow`, `qa_tailoring_regressions`
+
+### discovery: Discovery path
+- Acceptance scenario: `Build smoke test passes`
+- Acceptance checks:
+  - the system can run a discovery-path check with normalized output
+  - the system can generate a machine-valid `discovery_result.json`
+- Evidence code refs: `job_hunt_copilot/email_discovery.py`, `job_hunt_copilot/review_queries.py`
+- Evidence test refs: `tests/test_smoke_harness.py`, `tests/test_email_discovery.py`
+- Validation command ids: `qa_smoke_flow`, `qa_discovery_regressions`
+
+### send: Drafting and sending
+- Acceptance scenario: `Build smoke test passes`
+- Acceptance checks:
+  - the system can generate a machine-valid `send_result.json`
+- Evidence code refs: `job_hunt_copilot/outreach.py`, `job_hunt_copilot/paths.py`
+- Evidence test refs: `tests/test_smoke_harness.py`, `tests/test_outreach.py`
+- Validation command ids: `qa_smoke_flow`, `qa_outreach_regressions`
+
+### feedback: Delayed feedback sync
+- Acceptance scenario: `Build smoke test passes`
+- Acceptance checks:
+  - the delayed feedback sync logic can run once without crashing
+- Evidence code refs: `job_hunt_copilot/delivery_feedback.py`, `job_hunt_copilot/local_runtime.py`
+- Evidence test refs: `tests/test_smoke_harness.py`, `tests/test_delivery_feedback.py`, `tests/test_local_runtime.py`
+- Validation command ids: `qa_smoke_flow`, `qa_feedback_regressions`
+
+### review_query: Review-query surfaces
+- Acceptance scenario: `Build smoke test passes`
+- Acceptance checks:
+  - at least one review surface can be queried from canonical state
+- Evidence code refs: `job_hunt_copilot/review_queries.py`, `job_hunt_copilot/delivery_feedback.py`
+- Evidence test refs: `tests/test_smoke_harness.py`, `tests/test_review_queries.py`
+- Validation command ids: `qa_smoke_flow`, `qa_review_surface_regressions`

@@ -581,6 +581,136 @@ EPIC_VALIDATION_NOTES: list[dict[str, Any]] = [
     },
 ]
 
+SMOKE_COVERAGE_TARGETS: tuple[dict[str, Any], ...] = (
+    {
+        "target_id": "bootstrap",
+        "title": "Bootstrap and prerequisites",
+        "acceptance_scenario": "Build smoke test passes",
+        "acceptance_checks": (
+            "the system initializes or migrates `job_hunt_copilot.db`",
+            "the system loads runtime secrets successfully",
+            "the system reads the required files from `assets/`",
+        ),
+        "code_refs": (
+            "job_hunt_copilot/bootstrap.py",
+            "job_hunt_copilot/secrets.py",
+            "job_hunt_copilot/db.py",
+        ),
+        "test_refs": (
+            "tests/test_smoke_harness.py",
+            "tests/test_bootstrap.py",
+            "tests/test_schema.py",
+        ),
+        "validation_command_ids": (
+            "qa_smoke_flow",
+            "qa_bootstrap_regressions",
+        ),
+    },
+    {
+        "target_id": "tailoring",
+        "title": "Resume tailoring",
+        "acceptance_scenario": "Build smoke test passes",
+        "acceptance_checks": (
+            "the system can create a Resume Tailoring workspace for a sample posting",
+            "the system can compile the base or tailored resume successfully",
+        ),
+        "code_refs": (
+            "job_hunt_copilot/resume_tailoring.py",
+            "job_hunt_copilot/paths.py",
+        ),
+        "test_refs": (
+            "tests/test_smoke_harness.py",
+            "tests/test_resume_tailoring.py",
+        ),
+        "validation_command_ids": (
+            "qa_smoke_flow",
+            "qa_tailoring_regressions",
+        ),
+    },
+    {
+        "target_id": "discovery",
+        "title": "Discovery path",
+        "acceptance_scenario": "Build smoke test passes",
+        "acceptance_checks": (
+            "the system can run a discovery-path check with normalized output",
+            "the system can generate a machine-valid `discovery_result.json`",
+        ),
+        "code_refs": (
+            "job_hunt_copilot/email_discovery.py",
+            "job_hunt_copilot/review_queries.py",
+        ),
+        "test_refs": (
+            "tests/test_smoke_harness.py",
+            "tests/test_email_discovery.py",
+        ),
+        "validation_command_ids": (
+            "qa_smoke_flow",
+            "qa_discovery_regressions",
+        ),
+    },
+    {
+        "target_id": "send",
+        "title": "Drafting and sending",
+        "acceptance_scenario": "Build smoke test passes",
+        "acceptance_checks": (
+            "the system can generate a machine-valid `send_result.json`",
+        ),
+        "code_refs": (
+            "job_hunt_copilot/outreach.py",
+            "job_hunt_copilot/paths.py",
+        ),
+        "test_refs": (
+            "tests/test_smoke_harness.py",
+            "tests/test_outreach.py",
+        ),
+        "validation_command_ids": (
+            "qa_smoke_flow",
+            "qa_outreach_regressions",
+        ),
+    },
+    {
+        "target_id": "feedback",
+        "title": "Delayed feedback sync",
+        "acceptance_scenario": "Build smoke test passes",
+        "acceptance_checks": (
+            "the delayed feedback sync logic can run once without crashing",
+        ),
+        "code_refs": (
+            "job_hunt_copilot/delivery_feedback.py",
+            "job_hunt_copilot/local_runtime.py",
+        ),
+        "test_refs": (
+            "tests/test_smoke_harness.py",
+            "tests/test_delivery_feedback.py",
+            "tests/test_local_runtime.py",
+        ),
+        "validation_command_ids": (
+            "qa_smoke_flow",
+            "qa_feedback_regressions",
+        ),
+    },
+    {
+        "target_id": "review_query",
+        "title": "Review-query surfaces",
+        "acceptance_scenario": "Build smoke test passes",
+        "acceptance_checks": (
+            "at least one review surface can be queried from canonical state",
+        ),
+        "code_refs": (
+            "job_hunt_copilot/review_queries.py",
+            "job_hunt_copilot/delivery_feedback.py",
+        ),
+        "test_refs": (
+            "tests/test_smoke_harness.py",
+            "tests/test_review_queries.py",
+        ),
+        "validation_command_ids": (
+            "qa_smoke_flow",
+            "qa_review_surface_regressions",
+        ),
+    },
+)
+
 SCENARIO_OVERRIDES: dict[str, dict[str, Any]] = {}
 
 
@@ -862,6 +992,18 @@ def build_acceptance_trace_matrix(project_root: Path | str) -> dict[str, Any]:
         "rules": rules,
         "gap_registry": gap_registry,
         "epic_validation_notes": EPIC_VALIDATION_NOTES,
+        "smoke_coverage_targets": [
+            {
+                "target_id": target["target_id"],
+                "title": target["title"],
+                "acceptance_scenario": target["acceptance_scenario"],
+                "acceptance_checks": list(target["acceptance_checks"]),
+                "code_refs": list(target["code_refs"]),
+                "test_refs": list(target["test_refs"]),
+                "validation_command_ids": list(target["validation_command_ids"]),
+            }
+            for target in SMOKE_COVERAGE_TARGETS
+        ],
     }
 
 
@@ -925,6 +1067,27 @@ def render_acceptance_trace_markdown(matrix: dict[str, Any]) -> str:
         lines.append("- BA-10 smoke targets:")
         for target in note["ba10_smoke_targets"]:
             lines.append(f"  - {target}")
+        lines.append("")
+
+    lines.extend(["## Smoke Coverage Targets", ""])
+    for target in matrix["smoke_coverage_targets"]:
+        lines.append(f"### {target['target_id']}: {target['title']}")
+        lines.append(f"- Acceptance scenario: `{target['acceptance_scenario']}`")
+        lines.append("- Acceptance checks:")
+        for check in target["acceptance_checks"]:
+            lines.append(f"  - {check}")
+        lines.append(
+            "- Evidence code refs: "
+            + ", ".join(f"`{path}`" for path in target["code_refs"])
+        )
+        lines.append(
+            "- Evidence test refs: "
+            + ", ".join(f"`{path}`" for path in target["test_refs"])
+        )
+        lines.append(
+            "- Validation command ids: "
+            + ", ".join(f"`{command_id}`" for command_id in target["validation_command_ids"])
+        )
         lines.append("")
 
     return "\n".join(lines).rstrip() + "\n"

@@ -10,7 +10,9 @@ import pytest
 from job_hunt_copilot.blocker_audit import VALIDATION_COMMANDS
 from job_hunt_copilot.quality_validation import (
     AUTOMATED_VALIDATION_KIND,
+    build_smoke_validation_plan,
     build_quality_validation_plan,
+    list_smoke_validation_targets,
 )
 
 
@@ -47,6 +49,34 @@ def test_quality_validation_plan_accepts_manual_commands_when_enabled():
     ]
 
 
+def test_smoke_validation_targets_cover_required_flow_boundaries():
+    targets = list_smoke_validation_targets()
+
+    assert [target.target_id for target in targets] == [
+        "bootstrap",
+        "tailoring",
+        "discovery",
+        "send",
+        "feedback",
+        "review_query",
+    ]
+    for target in targets:
+        assert target.acceptance_scenario == "Build smoke test passes"
+        assert target.acceptance_checks
+        assert target.validation_command_ids
+        assert "tests/test_smoke_harness.py" in target.test_refs
+
+
+def test_smoke_validation_plan_dedupes_shared_smoke_command_and_preserves_registry_order():
+    plan = build_smoke_validation_plan(["feedback", "review_query"])
+
+    assert [command.command_id for command in plan] == [
+        "qa_smoke_flow",
+        "qa_feedback_regressions",
+        "qa_review_surface_regressions",
+    ]
+
+
 def test_quality_validation_suite_script_dry_run_reports_selected_commands():
     result = subprocess.run(
         [
@@ -74,6 +104,7 @@ def test_quality_validation_suite_script_dry_run_reports_selected_commands():
         "qa_smoke_flow",
         "qa_runtime_pack_regressions",
     ]
+    assert payload["requested_smoke_targets"] == []
 
 
 def test_quality_validation_suite_script_rejects_manual_commands_without_flag():
@@ -95,3 +126,32 @@ def test_quality_validation_suite_script_rejects_manual_commands_without_flag():
 
     assert result.returncode == 2
     assert "requires `include_manual=True`" in result.stderr
+
+
+def test_quality_validation_suite_script_dry_run_expands_smoke_targets():
+    result = subprocess.run(
+        [
+            sys.executable,
+            "scripts/quality/run_ba10_validation_suite.py",
+            "--project-root",
+            str(REPO_ROOT),
+            "--dry-run",
+            "--smoke-target",
+            "bootstrap",
+            "--smoke-target",
+            "feedback",
+        ],
+        cwd=REPO_ROOT,
+        check=False,
+        capture_output=True,
+        text=True,
+    )
+
+    assert result.returncode == 0
+    payload = json.loads(result.stdout)
+    assert payload["requested_smoke_targets"] == ["bootstrap", "feedback"]
+    assert [command["command_id"] for command in payload["commands"]] == [
+        "qa_smoke_flow",
+        "qa_bootstrap_regressions",
+        "qa_feedback_regressions",
+    ]

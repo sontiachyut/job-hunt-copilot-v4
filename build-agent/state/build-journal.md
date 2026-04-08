@@ -1180,3 +1180,32 @@ Use this file as an append-only implementation log for the build agent.
 ### Notes
 - This slice intentionally did not claim new autonomous behavior beyond `lead_handoff`; it made the remaining downstream-supervisor blocker easier to reproduce, validate, and review.
 - The acceptance matrix remains at 190 implemented, 8 partial, 14 gap, 1 deferred-optional, and 1 excluded-from-required-acceptance scenarios after the evidence refresh.
+
+### Session
+- Date: 2026-04-08 12:31:51 MST
+- Slice: BA-10-S3 smoke coverage mapping and validation-target routing
+- Goal: Make BA-10 smoke coverage explicit and machine-checkable for bootstrap, tailoring, discovery, send, feedback, and review-query flows, and let the validation runner resolve those flow-specific checks directly.
+
+### Work Done
+- Extended `job_hunt_copilot.acceptance_traceability` with explicit smoke-coverage targets tied to the `Build smoke test passes` acceptance scenario, including per-flow acceptance checks, code refs, test refs, and validation command ids.
+- Expanded `job_hunt_copilot.blocker_audit` with dedicated automated validation commands for bootstrap, tailoring, discovery, outreach, and delivery-feedback regressions, and wired the BA10-TRACE blocker to those commands so the blocker report now points at concrete flow checks instead of only generic smoke coverage.
+- Extended `job_hunt_copilot.quality_validation` plus `scripts/quality/run_ba10_validation_suite.py` so the BA-10 runner can list smoke targets, accept `--smoke-target ...`, and resolve the matching targeted command plan with shared-command dedupe.
+- Added or updated focused guards in `tests/test_acceptance_traceability.py` and `tests/test_quality_validation.py`, then regenerated the committed BA-10 acceptance-trace and blocker-audit reports to include the new smoke coverage surface.
+- Updated `build-agent/state/build-board.yaml`, `build-agent/state/IMPLEMENTATION_PLAN.md`, `build-agent/state/build-journal.md`, and `build-agent/state/codex-progress.txt` so the checkpoint records this quality-owned BA-10 support slice while leaving the next functional slice on build-lead downstream supervisor implementation.
+
+### Validation
+- Ran `python3.11 -m py_compile job_hunt_copilot/acceptance_traceability.py job_hunt_copilot/blocker_audit.py job_hunt_copilot/quality_validation.py scripts/quality/run_ba10_validation_suite.py tests/test_acceptance_traceability.py tests/test_quality_validation.py` and confirmed the quality surfaces compile cleanly.
+- Ran `python3.11 scripts/quality/generate_acceptance_trace_matrix.py --project-root /Users/achyutaramsonti/Projects/job-hunt-copilot-v4` and regenerated the committed acceptance trace reports successfully.
+- Ran `python3.11 scripts/quality/generate_blocker_audit.py --project-root /Users/achyutaramsonti/Projects/job-hunt-copilot-v4` and regenerated the committed blocker audit reports successfully.
+- Ran `python3.11 -m pytest tests/test_acceptance_traceability.py tests/test_blocker_audit.py tests/test_quality_validation.py tests/test_smoke_harness.py` and confirmed all 13 focused BA-10 traceability, validation-runner, blocker-audit, and smoke-harness tests passed.
+- Ran `python3.11 scripts/quality/run_ba10_validation_suite.py --project-root /Users/achyutaramsonti/Projects/job-hunt-copilot-v4 --dry-run --smoke-target bootstrap --smoke-target feedback` and confirmed the runner resolves the expected `qa_smoke_flow`, `qa_bootstrap_regressions`, and `qa_feedback_regressions` command plan.
+
+### Result
+- `done`
+
+### Next
+- Keep the next functional burn-down on `BA-10-S4`: a build-lead slice that registers at least one downstream supervisor action beyond `lead_handoff`, then reruns the BA-10 reports to reduce the largest remaining partial acceptance cluster.
+
+### Notes
+- This slice strengthened smoke traceability and validation routing only; it did not claim new product behavior in the downstream supervisor, chat, maintenance, or posting-abandon gaps.
+- The acceptance matrix remains at 190 implemented, 8 partial, 14 gap, 1 deferred-optional, and 1 excluded-from-required-acceptance scenarios after this report refresh.

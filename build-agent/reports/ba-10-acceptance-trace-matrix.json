@@ -6503,5 +6503,134 @@
         "explicit blocker confirmation"
       ]
     }
+  ],
+  "smoke_coverage_targets": [
+    {
+      "target_id": "bootstrap",
+      "title": "Bootstrap and prerequisites",
+      "acceptance_scenario": "Build smoke test passes",
+      "acceptance_checks": [
+        "the system initializes or migrates `job_hunt_copilot.db`",
+        "the system loads runtime secrets successfully",
+        "the system reads the required files from `assets/`"
+      ],
+      "code_refs": [
+        "job_hunt_copilot/bootstrap.py",
+        "job_hunt_copilot/secrets.py",
+        "job_hunt_copilot/db.py"
+      ],
+      "test_refs": [
+        "tests/test_smoke_harness.py",
+        "tests/test_bootstrap.py",
+        "tests/test_schema.py"
+      ],
+      "validation_command_ids": [
+        "qa_smoke_flow",
+        "qa_bootstrap_regressions"
+      ]
+    },
+    {
+      "target_id": "tailoring",
+      "title": "Resume tailoring",
+      "acceptance_scenario": "Build smoke test passes",
+      "acceptance_checks": [
+        "the system can create a Resume Tailoring workspace for a sample posting",
+        "the system can compile the base or tailored resume successfully"
+      ],
+      "code_refs": [
+        "job_hunt_copilot/resume_tailoring.py",
+        "job_hunt_copilot/paths.py"
+      ],
+      "test_refs": [
+        "tests/test_smoke_harness.py",
+        "tests/test_resume_tailoring.py"
+      ],
+      "validation_command_ids": [
+        "qa_smoke_flow",
+        "qa_tailoring_regressions"
+      ]
+    },
+    {
+      "target_id": "discovery",
+      "title": "Discovery path",
+      "acceptance_scenario": "Build smoke test passes",
+      "acceptance_checks": [
+        "the system can run a discovery-path check with normalized output",
+        "the system can generate a machine-valid `discovery_result.json`"
+      ],
+      "code_refs": [
+        "job_hunt_copilot/email_discovery.py",
+        "job_hunt_copilot/review_queries.py"
+      ],
+      "test_refs": [
+        "tests/test_smoke_harness.py",
+        "tests/test_email_discovery.py"
+      ],
+      "validation_command_ids": [
+        "qa_smoke_flow",
+        "qa_discovery_regressions"
+      ]
+    },
+    {
+      "target_id": "send",
+      "title": "Drafting and sending",
+      "acceptance_scenario": "Build smoke test passes",
+      "acceptance_checks": [
+        "the system can generate a machine-valid `send_result.json`"
+      ],
+      "code_refs": [
+        "job_hunt_copilot/outreach.py",
+        "job_hunt_copilot/paths.py"
+      ],
+      "test_refs": [
+        "tests/test_smoke_harness.py",
+        "tests/test_outreach.py"
+      ],
+      "validation_command_ids": [
+        "qa_smoke_flow",
+        "qa_outreach_regressions"
+      ]
+    },
+    {
+      "target_id": "feedback",
+      "title": "Delayed feedback sync",
+      "acceptance_scenario": "Build smoke test passes",
+      "acceptance_checks": [
+        "the delayed feedback sync logic can run once without crashing"
+      ],
+      "code_refs": [
+        "job_hunt_copilot/delivery_feedback.py",
+        "job_hunt_copilot/local_runtime.py"
+      ],
+      "test_refs": [
+        "tests/test_smoke_harness.py",
+        "tests/test_delivery_feedback.py",
+        "tests/test_local_runtime.py"
+      ],
+      "validation_command_ids": [
+        "qa_smoke_flow",
+        "qa_feedback_regressions"
+      ]
+    },
+    {
+      "target_id": "review_query",
+      "title": "Review-query surfaces",
+      "acceptance_scenario": "Build smoke test passes",
+      "acceptance_checks": [
+        "at least one review surface can be queried from canonical state"
+      ],
+      "code_refs": [
+        "job_hunt_copilot/review_queries.py",
+        "job_hunt_copilot/delivery_feedback.py"
+      ],
+      "test_refs": [
+        "tests/test_smoke_harness.py",
+        "tests/test_review_queries.py"
+      ],
+      "validation_command_ids": [
+        "qa_smoke_flow",
+        "qa_review_surface_regressions"
+      ]
+    }
   ]
 }

@@ -539,7 +539,7 @@
       "status": "open",
       "severity": "high",
       "owner_role": "quality-engineer",
-      "summary": "The regenerated BA-10 trace matrix now reports 190 implemented / 8 partial / 14 gap scenarios; the remaining downstream-supervisor, chat, maintenance, and posting-abandon gaps now each carry explicit evidence refs and reproducible blocker notes, but the missing current-build behaviors themselves remain open.",
+      "summary": "The regenerated BA-10 trace matrix now reports 190 implemented / 8 partial / 14 gap scenarios; explicit smoke-coverage targets and reproducible validation-command mappings now cover bootstrap, tailoring, discovery, send, feedback, and review-query flows, but the remaining downstream-supervisor, chat, maintenance, and posting-abandon behaviors themselves remain open.",
       "impact": "Acceptance signoff is more credible now that committed smoke coverage, blocker-specific evidence refs, and explicit negative regressions exist, but BA-10 still cannot close until the remaining gap clusters are actually burned down or deliberately left open.",
       "next_action": "Hand the next functional slice to the build-lead: downstream action-catalog burn-down beyond `lead_handoff` or a posting-abandon control implementation. Maintenance automation remains an explicit follow-up gap after those runtime-control surfaces.",
       "evidence_refs": [
@@ -547,6 +547,8 @@
         "build-agent/reports/ba-10-acceptance-trace-matrix.md",
         "build-agent/reports/ba-10-blocker-audit.json",
         "build-agent/reports/ba-10-blocker-audit.md",
+        "job_hunt_copilot/acceptance_traceability.py",
+        "job_hunt_copilot/blocker_audit.py",
         "job_hunt_copilot/quality_validation.py",
         "scripts/quality/generate_blocker_audit.py",
         "scripts/quality/run_ba10_validation_suite.py",
@@ -580,6 +582,41 @@
           "kind": "automated",
           "command": "python3.11 -m pytest tests/test_smoke_harness.py",
           "description": "Replays the committed bootstrap -> tailoring -> discovery -> send -> feedback -> review-query smoke path."
+        },
+        {
+          "command_id": "qa_bootstrap_regressions",
+          "title": "Bootstrap regressions",
+          "kind": "automated",
+          "command": "python3.11 -m pytest tests/test_bootstrap.py tests/test_schema.py tests/test_artifacts.py",
+          "description": "Confirms bootstrap prerequisites, canonical schema migration, and shared artifact contracts stay valid."
+        },
+        {
+          "command_id": "qa_tailoring_regressions",
+          "title": "Tailoring regressions",
+          "kind": "automated",
+          "command": "python3.11 -m pytest tests/test_resume_tailoring.py",
+          "description": "Confirms tailoring bootstrap, deterministic artifact generation, compile verification, and mandatory review gates stay intact."
+        },
+        {
+          "command_id": "qa_discovery_regressions",
+          "title": "Discovery regressions",
+          "kind": "automated",
+          "command": "python3.11 -m pytest tests/test_email_discovery.py",
+          "description": "Confirms people search, shortlist materialization, enrichment, discovery artifacts, and provider-budget behavior stay intact."
+        },
+        {
+          "command_id": "qa_outreach_regressions",
+          "title": "Outreach regressions",
+          "kind": "automated",
+          "command": "python3.11 -m pytest tests/test_outreach.py",
+          "description": "Confirms send-set readiness, draft persistence, safe send execution, and repeat-outreach guardrails stay intact."
+        },
+        {
+          "command_id": "qa_feedback_regressions",
+          "title": "Delivery feedback regressions",
+          "kind": "automated",
+          "command": "python3.11 -m pytest tests/test_delivery_feedback.py",
+          "description": "Confirms immediate or delayed feedback ingestion, normalized event persistence, and delivery outcome artifacts stay intact."
         },
         {
           "command_id": "qa_supervisor_regressions",
