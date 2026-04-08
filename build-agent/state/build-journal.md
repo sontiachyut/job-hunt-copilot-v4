@@ -1477,3 +1477,31 @@ Use this file as an append-only implementation log for the build agent.
 ### Notes
 - The acceptance matrix now reports 191 implemented / 7 partial / 14 gap scenarios; this cycle reduced the downstream-supervisor partial cluster by moving the end-to-end retry scenario to implemented.
 - The blocker remains explicit: `people_search`, `email_discovery`, `sending`, `delivery_feedback`, and the contact-rooted general-learning selector path are still outside the registered supervisor action catalog.
+
+### Session
+- Date: 2026-04-08 15:53:07 MST
+- Slice: BA-10-S4 downstream supervisor people-search execution
+- Goal: Register one real downstream supervisor action beyond bounded mandatory review, prove durable stage advancement through `people_search`, and checkpoint the narrower remaining blocker honestly.
+
+### Work Done
+- Extended `job_hunt_copilot.supervisor` with `run_role_targeted_people_search`, added a small action-dependency binding for deterministic supervisor-stage fakes, and wired the bounded cycle runner so a durable role-targeted run at `people_search` now reuses the existing discovery component before advancing the same `pipeline_run_id` into `email_discovery` or `sending`.
+- Expanded `tests/test_supervisor_downstream_actions.py` with real people-search execution coverage, updated the retry regression to resume from `email_discovery` instead of `people_search`, and narrowed the generic unsupported-stage regressions in both supervisor test files so only `email_discovery`, `sending`, and `delivery_feedback` remain explicit downstream gaps.
+- Refreshed `job_hunt_copilot.acceptance_traceability`, `job_hunt_copilot.blocker_audit`, their report-guard tests, and the committed BA-10 reports so the downstream-supervisor gap now starts at `email_discovery`, the implementation snapshot lists `people_search` as a registered role-targeted action stage, and the current-focus validation suite description matches the new bounded progression.
+- Updated `build-agent/state/build-board.yaml` and `build-agent/state/IMPLEMENTATION_PLAN.md` so the persisted project record keeps BA-10-S4 open honestly, points the next functional burn-down at `email_discovery`, and records that the acceptance counts stayed flat while the blocker boundary still narrowed.
+
+### Validation
+- Ran `python3.11 -m pytest tests/test_supervisor_downstream_actions.py` and confirmed all 9 focused downstream-supervisor regressions passed.
+- Ran `python3.11 -m pytest tests/test_supervisor.py` and confirmed all 16 broader supervisor regressions passed after narrowing the unsupported-stage set.
+- Ran `python3.11 scripts/quality/generate_acceptance_trace_matrix.py --project-root /Users/achyutaramsonti/Projects/job-hunt-copilot-v4` and `python3.11 scripts/quality/generate_blocker_audit.py --project-root /Users/achyutaramsonti/Projects/job-hunt-copilot-v4` to refresh the committed BA-10 reports after the supervisor change.
+- Ran `python3.11 -m pytest tests/test_acceptance_traceability.py tests/test_blocker_audit.py` and confirmed all 3 BA-10 report-guard tests passed.
+- Ran `python3.11 scripts/quality/run_ba10_validation_suite.py --project-root /Users/achyutaramsonti/Projects/job-hunt-copilot-v4 --current-focus` and confirmed the focused downstream-supervisor replay passed while refreshing `build-agent/reports/ba-10-validation-suite-latest.{json,md}`.
+
+### Result
+- `partial`
+
+### Next
+- Keep BA-10-S4 in progress and register the next bounded downstream supervisor action at `email_discovery`, so the durable run can move beyond the newly landed people-search boundary without escalating immediately.
+
+### Notes
+- The acceptance matrix remains at 191 implemented / 7 partial / 14 gap scenarios; this cycle narrowed the downstream-supervisor blocker boundary but did not close another acceptance scenario yet.
+- The blocker now starts at `email_discovery`; `sending`, `delivery_feedback`, and the contact-rooted general-learning selector path remain explicitly unimplemented in the supervisor action catalog.

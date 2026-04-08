@@ -8,10 +8,13 @@ from typing import Any
 
 import yaml
 
-from .supervisor import SUPPORTED_PIPELINE_CHECKPOINT_STAGES
+from .supervisor import (
+    ROLE_TARGETED_PIPELINE_STAGE_ACTIONS,
+    SUPPORTED_PIPELINE_CHECKPOINT_STAGES,
+)
 
 
-TRACE_MATRIX_VERSION = 4
+TRACE_MATRIX_VERSION = 5
 FEATURE_PATH = Path("prd/test-spec.feature")
 BUILD_BOARD_PATH = Path("build-agent/state/build-board.yaml")
 REPORT_JSON_PATH = Path("build-agent/reports/ba-10-acceptance-trace-matrix.json")
@@ -145,8 +148,10 @@ def _supervisor_downstream_implementation_snapshot() -> dict[str, Any]:
         "registered_role_targeted_checkpoint_stages": sorted(
             SUPPORTED_PIPELINE_CHECKPOINT_STAGES
         ),
+        "registered_role_targeted_action_stages": sorted(
+            ROLE_TARGETED_PIPELINE_STAGE_ACTIONS
+        ),
         "validated_blocked_role_targeted_stages": [
-            "people_search",
             "email_discovery",
             "sending",
             "delivery_feedback",
@@ -175,10 +180,10 @@ GAP_REGISTRY: dict[str, dict[str, Any]] = {
         ),
     ),
     "BA10_SUPERVISOR_DOWNSTREAM_ACTION_CATALOG": _gap_metadata(
-        title="Supervisor orchestration still stops before autonomous people search",
-        reason="The durable heartbeat, selector ordering, retry-safe run persistence, and bounded mandatory agent review now exist, but later stages from `people_search` onward still reselect the same durable run and escalate instead of executing.",
+        title="Supervisor orchestration still stops before autonomous email discovery",
+        reason="The durable heartbeat, selector ordering, retry-safe run persistence, bounded mandatory agent review, and bounded people-search execution now exist, but later stages from `email_discovery` onward still reselect the same durable run and escalate instead of executing.",
         next_slice="BA-10-S4",
-        evidence_summary="Focused downstream-stage regressions prove active incidents still outrank ordinary progression, existing durable runs are selected before bootstrapping new eligible postings, `lead_handoff` now advances into `agent_review`, bounded mandatory agent review advances the same run into `people_search`, later stages from `people_search` onward still escalate with durable run and review-packet retention, retries reuse the same run at the blocked downstream boundary, and a ready contact-rooted general-learning candidate still yields no selected supervisor work.",
+        evidence_summary="Focused downstream-stage regressions prove active incidents still outrank ordinary progression, existing durable runs are selected before bootstrapping new eligible postings, `lead_handoff` now advances into `agent_review`, bounded mandatory agent review advances the same run into `people_search`, bounded people search now materializes shortlist artifacts and advances the same run into `email_discovery`, later stages from `email_discovery` onward still escalate with durable run and review-packet retention, retries reuse the same run at that later blocked boundary, and a ready contact-rooted general-learning candidate still yields no selected supervisor work.",
         evidence_code_refs=(
             "job_hunt_copilot/supervisor.py",
             "job_hunt_copilot/local_runtime.py",
@@ -529,7 +534,7 @@ RULE_BLUEPRINTS: dict[str, RuleBlueprint] = {
         ),
         default_status=STATUS_PARTIAL,
         default_gap_ids=("BA10_SUPERVISOR_DOWNSTREAM_ACTION_CATALOG",),
-        note="The components exist and now have committed smoke coverage across tailoring, discovery, send, delayed feedback, and review-query boundaries, but the autonomous supervisor still does not orchestrate the full downstream pipeline past lead handoff.",
+        note="The components exist and now have committed smoke coverage across tailoring, discovery, send, delayed feedback, and review-query boundaries, but the autonomous supervisor still does not orchestrate the full downstream pipeline past the newly landed people-search boundary.",
     ),
     "Current-build safety, privacy, and evidence-grounding boundaries": RuleBlueprint(
         owner_role="quality-engineer",
@@ -882,7 +887,7 @@ _register_override(
     ),
     status=STATUS_PARTIAL,
     gap_ids=("BA10_SUPERVISOR_DOWNSTREAM_ACTION_CATALOG",),
-    note="Current supervisor regressions prove open incidents outrank ordinary pipeline advancement and existing runs outrank new posting bootstrap, but due sends, delayed feedback, general-learning work, and maintenance still have no registered selector or action path.",
+    note="Current supervisor regressions prove open incidents outrank ordinary pipeline advancement and existing runs outrank new posting bootstrap, but `email_discovery`, due sends, delayed feedback, general-learning work, and maintenance still have no registered selector or action path.",
 )
 _register_override(
     scenarios=(
@@ -891,12 +896,12 @@ _register_override(
     ),
     status=STATUS_PARTIAL,
     gap_ids=("BA10_SUPERVISOR_DOWNSTREAM_ACTION_CATALOG",),
-    note="The downstream components and stage-boundary artifacts exist, and `tests/test_supervisor_downstream_actions.py` now proves the current heartbeat advances through `lead_handoff` and bounded mandatory agent review into `people_search`, but later stages still escalate instead of executing the full dependency chain.",
+    note="The downstream components and stage-boundary artifacts exist, and `tests/test_supervisor_downstream_actions.py` now proves the current heartbeat advances through `lead_handoff`, bounded mandatory agent review, and bounded people search into `email_discovery`, but later stages still escalate instead of executing the full dependency chain.",
 )
 _register_override(
     scenarios=("End-to-end retry resumes from the last successful stage boundary",),
     status=STATUS_IMPLEMENTED,
-    note="`tests/test_supervisor_downstream_actions.py` now proves the durable run advances from `lead_handoff` through bounded mandatory agent review into `people_search`, and retries resume from that later blocked stage without restarting from LinkedIn Scraping.",
+    note="`tests/test_supervisor_downstream_actions.py` now proves the durable run advances from `lead_handoff` through bounded mandatory agent review and bounded people search into `email_discovery`, and retries resume from that later blocked stage without restarting from LinkedIn Scraping.",
 )
 _register_override(
     scenarios=("General learning outreach bypasses the role-targeted agent-review requirement",),

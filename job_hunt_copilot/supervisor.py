@@ -144,6 +144,7 @@ WORK_TYPE_PIPELINE_RUN: Final = "pipeline_run"
 ACTION_BOOTSTRAP_ROLE_TARGETED_RUN: Final = "bootstrap_role_targeted_run"
 ACTION_CHECKPOINT_PIPELINE_RUN: Final = "checkpoint_pipeline_run"
 ACTION_PERFORM_MANDATORY_AGENT_REVIEW: Final = "perform_mandatory_agent_review"
+ACTION_RUN_ROLE_TARGETED_PEOPLE_SEARCH: Final = "run_role_targeted_people_search"
 ACTION_ESCALATE_OPEN_INCIDENT: Final = "escalate_open_incident"
 
 ELIGIBLE_POSTING_STATUSES_FOR_NEW_RUN = frozenset({"resume_review_pending"})
@@ -152,6 +153,7 @@ ROLE_TARGETED_PIPELINE_STAGE_ACTIONS = MappingProxyType(
     {
         "lead_handoff": ACTION_CHECKPOINT_PIPELINE_RUN,
         "agent_review": ACTION_PERFORM_MANDATORY_AGENT_REVIEW,
+        "people_search": ACTION_RUN_ROLE_TARGETED_PEOPLE_SEARCH,
     }
 )
 
@@ -500,6 +502,13 @@ class SupervisorCycleExecution:
 
 
 @dataclass(frozen=True)
+class SupervisorActionDependencies:
+    apollo_people_search_provider: object | None = None
+    apollo_contact_enrichment_provider: object | None = None
+    recipient_profile_extractor: object | None = None
+
+
+@dataclass(frozen=True)
 class AutoPauseDecision:
     reason: str
     selected_work_type: str
@@ -566,6 +575,26 @@ SUPERVISOR_ACTION_CATALOG = MappingProxyType(
             validation_references=(
                 "prd/spec.md FR-SYS-17I, FR-SYS-17J, FR-SYS-38, and FR-OPS-03",
                 "prd/test-spec.feature mandatory agent review and dependency-order scenarios",
+            ),
+        ),
+        ACTION_RUN_ROLE_TARGETED_PEOPLE_SEARCH: SupervisorActionCatalogEntry(
+            action_id=ACTION_RUN_ROLE_TARGETED_PEOPLE_SEARCH,
+            work_type=WORK_TYPE_PIPELINE_RUN,
+            description="Run the bounded role-targeted people-search boundary and advance the durable run into email discovery or sending.",
+            prerequisites=(
+                "pipeline_run exists and is non-terminal",
+                "pipeline_run.current_stage is `people_search`",
+                "job_posting.posting_status is `requires_contacts` unless canonical discovery state already reached `ready_for_outreach`",
+                "the selected posting remains linked to an approved tailoring decision",
+            ),
+            expected_outputs=(
+                "the existing pipeline_run is reused instead of creating a duplicate run",
+                "people_search_result.json and shortlist state are refreshed when search is still due",
+                "the durable run advances to `email_discovery` or `sending` based on canonical readiness",
+            ),
+            validation_references=(
+                "prd/spec.md §1.2 current-build required path items 6 through 9",
+                "prd/test-spec.feature role-targeted orchestration and dependency-order scenarios",
             ),
         ),
         ACTION_ESCALATE_OPEN_INCIDENT: SupervisorActionCatalogEntry(
@@ -1864,8 +1893,10 @@ def run_supervisor_cycle(
     sleep_wake_event_ref: str | None = None,
     started_at: str | None = None,
     lease_ttl_seconds: int = 300,
+    action_dependencies: SupervisorActionDependencies | None = None,
 ) -> SupervisorCycleExecution:
     cycle_started_at = started_at or now_utc_iso()
+    resolved_action_dependencies = action_dependencies or SupervisorActionDependencies()
     cycle = start_supervisor_cycle(
         connection,
         trigger_type=trigger_type,
@@ -1993,6 +2024,7 @@ def run_supervisor_cycle(
                                 selected_work,
                                 catalog_entry=catalog_entry,
                                 timestamp=cycle_started_at,
+                                action_dependencies=resolved_action_dependencies,
                             )
                             execution_error = _validate_selected_work_result(
                                 connection,
@@ -2416,6 +2448,58 @@ def _validate_selected_work(
             )
         return None
 
+    if catalog_entry.action_id == ACTION_RUN_ROLE_TARGETED_PEOPLE_SEARCH:
+        pipeline_run = get_pipeline_run(connection, selected_work.work_id)
+        if pipeline_run is None:
+            return f"pipeline_run {selected_work.work_id!r} no longer exists."
+        if pipeline_run.run_status not in {RUN_STATUS_IN_PROGRESS, RUN_STATUS_PAUSED}:
+            return (
+                f"pipeline_run {selected_work.work_id!r} is not non-terminal; "
+                f"found {pipeline_run.run_status!r}."
+            )
+        if pipeline_run.current_stage != "people_search":
+            return (
+                f"pipeline_run {selected_work.work_id!r} is at unsupported people-search "
+                f"stage {pipeline_run.current_stage!r}."
+            )
+        job_posting_id = _optional_text(pipeline_run.job_posting_id)
+        if job_posting_id is None:
+            return f"pipeline_run {selected_work.work_id!r} is missing job_posting_id."
+        posting_row = connection.execute(
+            """
+            SELECT posting_status
+            FROM job_postings
+            WHERE job_posting_id = ?
+            """,
+            (job_posting_id,),
+        ).fetchone()
+        if posting_row is None:
+            return f"job_posting {job_posting_id!r} no longer exists."
+        if posting_row[0] == "ready_for_outreach":
+            return None
+        if posting_row[0] != "requires_contacts":
+            return (
+                f"job_posting {job_posting_id!r} is not at the people-search boundary; "
+                f"found posting_status={posting_row[0]!r}."
+            )
+        latest_run = connection.execute(
+            """
+            SELECT resume_review_status
+            FROM resume_tailoring_runs
+            WHERE job_posting_id = ?
+            ORDER BY COALESCE(completed_at, updated_at, created_at, started_at) DESC,
+                     resume_tailoring_run_id DESC
+            LIMIT 1
+            """,
+            (job_posting_id,),
+        ).fetchone()
+        if latest_run is None or latest_run[0] != "approved":
+            return (
+                f"job_posting {job_posting_id!r} is not backed by an approved tailoring "
+                "review for people search."
+            )
+        return None
+
     if catalog_entry.action_id == ACTION_ESCALATE_OPEN_INCIDENT:
         incident = get_agent_incident(connection, selected_work.work_id)
         if incident is None:
@@ -2437,6 +2521,7 @@ def _execute_selected_work_unit(
     *,
     catalog_entry: SupervisorActionCatalogEntry,
     timestamp: str,
+    action_dependencies: SupervisorActionDependencies,
 ) -> tuple[PipelineRunRecord | None, AgentIncidentRecord | None]:
     if catalog_entry.action_id == ACTION_BOOTSTRAP_ROLE_TARGETED_RUN:
         pipeline_run, _ = ensure_role_targeted_pipeline_run(
@@ -2502,6 +2587,91 @@ def _execute_selected_work_unit(
                 "Supervisor completed the bounded mandatory agent review and "
                 f"advanced the durable pipeline run to {next_stage}."
             ),
+            timestamp=timestamp,
+        )
+        return pipeline_run, None
+
+    if catalog_entry.action_id == ACTION_RUN_ROLE_TARGETED_PEOPLE_SEARCH:
+        from .email_discovery import (
+            JOB_POSTING_STATUS_READY_FOR_OUTREACH,
+            JOB_POSTING_STATUS_REQUIRES_CONTACTS,
+            run_apollo_contact_enrichment,
+            run_apollo_people_search,
+        )
+
+        job_posting_id = _require_text(selected_work.job_posting_id, "job_posting_id")
+        posting_row = connection.execute(
+            """
+            SELECT posting_status
+            FROM job_postings
+            WHERE job_posting_id = ?
+            """,
+            (job_posting_id,),
+        ).fetchone()
+        if posting_row is None:  # pragma: no cover - validated earlier
+            raise SupervisorStateError(f"job_posting {job_posting_id!r} no longer exists.")
+
+        current_posting_status = _require_text(
+            _optional_text(posting_row[0]),
+            "posting_status",
+        )
+        next_stage: str
+        run_summary: str
+        if current_posting_status == JOB_POSTING_STATUS_READY_FOR_OUTREACH:
+            next_stage = "sending"
+            run_summary = (
+                "Supervisor detected that canonical discovery state was already "
+                "ready_for_outreach and advanced the durable pipeline run directly to sending."
+            )
+        elif current_posting_status == JOB_POSTING_STATUS_REQUIRES_CONTACTS:
+            search_result = run_apollo_people_search(
+                project_root=paths.project_root,
+                job_posting_id=job_posting_id,
+                provider=action_dependencies.apollo_people_search_provider,
+                current_time=timestamp,
+            )
+            enrichment_result = run_apollo_contact_enrichment(
+                project_root=paths.project_root,
+                job_posting_id=job_posting_id,
+                provider=action_dependencies.apollo_contact_enrichment_provider,
+                recipient_profile_extractor=action_dependencies.recipient_profile_extractor,
+                current_time=timestamp,
+            )
+            if enrichment_result.posting_status == JOB_POSTING_STATUS_READY_FOR_OUTREACH:
+                next_stage = "sending"
+            elif enrichment_result.posting_status == JOB_POSTING_STATUS_REQUIRES_CONTACTS:
+                shortlisted_count = _count_posting_contacts_with_link_status(
+                    connection,
+                    job_posting_id=job_posting_id,
+                    link_level_status="shortlisted",
+                )
+                if shortlisted_count <= 0:
+                    raise SupervisorStateError(
+                        "Bounded people search completed without leaving any shortlisted "
+                        f"contacts for job_posting {job_posting_id!r}."
+                    )
+                next_stage = "email_discovery"
+            else:  # pragma: no cover - defensive invariant
+                raise SupervisorStateError(
+                    "People search advanced the posting to an unsupported status "
+                    f"{enrichment_result.posting_status!r}."
+                )
+            run_summary = (
+                "Supervisor ran bounded people search across "
+                f"{search_result.candidate_count} candidates, refreshed the shortlisted "
+                f"contact boundary, and advanced the durable pipeline run to {next_stage}."
+            )
+        else:  # pragma: no cover - validated earlier
+            raise SupervisorStateError(
+                f"job_posting {job_posting_id!r} is at unsupported people-search "
+                f"posting_status={current_posting_status!r}."
+            )
+
+        pipeline_run = advance_pipeline_run(
+            connection,
+            selected_work.work_id,
+            current_stage=next_stage,
+            run_summary=run_summary,
             timestamp=timestamp,
         )
         return pipeline_run, None
@@ -2622,6 +2792,67 @@ def _validate_selected_work_result(
                 "Mandatory review persisted an unexpected posting status "
                 f"{posting_row[0]!r}."
             )
+        return None
+
+    if catalog_entry.action_id == ACTION_RUN_ROLE_TARGETED_PEOPLE_SEARCH:
+        if pipeline_run is None:
+            return "Supervisor failed to load the selected pipeline_run after people search."
+        if pipeline_run.pipeline_run_id != selected_work.work_id:
+            return "People search changed the selected pipeline_run identity."
+        if pipeline_run.run_status != RUN_STATUS_IN_PROGRESS:
+            return (
+                "People search left the pipeline_run outside in-progress state; found "
+                f"{pipeline_run.run_status!r}."
+            )
+        if pipeline_run.current_stage not in {"email_discovery", "sending"}:
+            return (
+                "People search did not advance the durable pipeline run to the next "
+                f"downstream stage; found {pipeline_run.current_stage!r}."
+            )
+        if pipeline_run.job_posting_id is None:
+            return "People search completed without a linked job_posting_id."
+        posting_row = connection.execute(
+            """
+            SELECT posting_status
+            FROM job_postings
+            WHERE job_posting_id = ?
+            """,
+            (pipeline_run.job_posting_id,),
+        ).fetchone()
+        if posting_row is None:
+            return "People search completed without a persisted job_posting row."
+        shortlisted_count = _count_posting_contacts_with_link_status(
+            connection,
+            job_posting_id=pipeline_run.job_posting_id,
+            link_level_status="shortlisted",
+        )
+        people_search_artifact_count = connection.execute(
+            """
+            SELECT COUNT(*)
+            FROM artifact_records
+            WHERE artifact_type = 'people_search_result'
+              AND job_posting_id = ?
+            """,
+            (pipeline_run.job_posting_id,),
+        ).fetchone()[0]
+        if posting_row[0] == "requires_contacts":
+            if pipeline_run.current_stage != "email_discovery":
+                return (
+                    "People search should advance to email_discovery when "
+                    f"posting_status=requires_contacts, but found {pipeline_run.current_stage!r}."
+                )
+            if shortlisted_count <= 0:
+                return "People search advanced to email_discovery without any shortlisted contacts."
+            if people_search_artifact_count <= 0:
+                return "People search advanced to email_discovery without a people_search_result artifact."
+            return None
+        if posting_row[0] == "ready_for_outreach" and pipeline_run.current_stage != "sending":
+            return (
+                "People search should advance to sending when "
+                f"posting_status=ready_for_outreach, but found {pipeline_run.current_stage!r}."
+            )
+        if posting_row[0] not in {"requires_contacts", "ready_for_outreach"}:
+            return f"People search persisted an unexpected posting status {posting_row[0]!r}."
         return None
 
     if catalog_entry.action_id == ACTION_ESCALATE_OPEN_INCIDENT:
@@ -2977,6 +3208,26 @@ def _catalog_entry_snapshot(
         "expected_outputs": list(catalog_entry.expected_outputs),
         "validation_references": list(catalog_entry.validation_references),
     }
+
+
+def _count_posting_contacts_with_link_status(
+    connection: sqlite3.Connection,
+    *,
+    job_posting_id: str,
+    link_level_status: str,
+) -> int:
+    return int(
+        connection.execute(
+            """
+            SELECT COUNT(*)
+            FROM job_posting_contacts
+            WHERE job_posting_id = ?
+              AND link_level_status = ?
+            """,
+            (job_posting_id, link_level_status),
+        ).fetchone()[0]
+        or 0
+    )
 
 
 def _unsupported_work_summary(selected_work: SupervisorWorkUnit) -> str:

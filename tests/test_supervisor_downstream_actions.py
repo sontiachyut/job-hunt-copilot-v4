@@ -10,9 +10,11 @@ from job_hunt_copilot.bootstrap import run_bootstrap
 from job_hunt_copilot.paths import ProjectPaths
 from job_hunt_copilot.supervisor import (
     ACTION_PERFORM_MANDATORY_AGENT_REVIEW,
+    ACTION_RUN_ROLE_TARGETED_PEOPLE_SEARCH,
     REVIEW_PACKET_STATUS_PENDING,
     RUN_STATUS_ESCALATED,
     RUN_STATUS_IN_PROGRESS,
+    SupervisorActionDependencies,
     SUPERVISOR_CYCLE_RESULT_FAILED,
     SUPERVISOR_CYCLE_RESULT_NO_WORK,
     SUPERVISOR_CYCLE_RESULT_SUCCESS,
@@ -51,6 +53,7 @@ def seed_role_targeted_posting(
     posting_identity_key: str = "acme|platform-engineer|remote",
     company_name: str = "Acme",
     role_title: str = "Platform Engineer",
+    posting_status: str = "resume_review_pending",
     timestamp: str = "2026-04-08T00:00:00Z",
 ) -> tuple[str, str]:
     connection.execute(
@@ -89,13 +92,40 @@ def seed_role_targeted_posting(
             posting_identity_key,
             company_name,
             role_title,
-            "resume_review_pending",
+            posting_status,
             timestamp,
             timestamp,
         ),
     )
     connection.commit()
     return lead_id, job_posting_id
+
+
+def seed_approved_tailoring_run(
+    connection: sqlite3.Connection,
+    *,
+    job_posting_id: str,
+    timestamp: str = "2026-04-08T00:00:00Z",
+) -> None:
+    connection.execute(
+        """
+        INSERT INTO resume_tailoring_runs (
+          resume_tailoring_run_id, job_posting_id, base_used, tailoring_status,
+          resume_review_status, workspace_path, created_at, updated_at
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+        """,
+        (
+            f"rtr_{job_posting_id}",
+            job_posting_id,
+            "generalist",
+            "tailored",
+            "approved",
+            "resume-tailoring/output/tailored/acme/platform-engineer",
+            timestamp,
+            timestamp,
+        ),
+    )
+    connection.commit()
 
 
 def seed_general_learning_contact(
@@ -128,6 +158,94 @@ def seed_general_learning_contact(
     )
     connection.commit()
     return "ct_general_learning"
+
+
+def build_candidate(
+    *,
+    provider_person_id: str,
+    display_name: str,
+    title: str,
+    has_email: bool = False,
+    email: str | None = None,
+    linkedin_url: str | None = None,
+    last_refreshed_at: str = "2026-04-08T00:00:00Z",
+) -> dict[str, object]:
+    return {
+        "provider_person_id": provider_person_id,
+        "display_name": display_name,
+        "title": title,
+        "has_email": has_email,
+        "email": email,
+        "linkedin_url": linkedin_url,
+        "has_direct_phone": False,
+        "last_refreshed_at": last_refreshed_at,
+    }
+
+
+class FakeApolloSearchProvider:
+    def __init__(self, *, candidates: list[dict[str, object]]) -> None:
+        self.candidates = candidates
+        self.resolve_calls: list[dict[str, object | None]] = []
+        self.search_calls: list[dict[str, object | None]] = []
+
+    def resolve_company(
+        self,
+        *,
+        company_name: str,
+        company_domain: str | None,
+        company_website: str | None,
+    ) -> None:
+        self.resolve_calls.append(
+            {
+                "company_name": company_name,
+                "company_domain": company_domain,
+                "company_website": company_website,
+            }
+        )
+        return None
+
+    def search_people(
+        self,
+        *,
+        company_name: str,
+        resolved_company: object | None,
+        search_filters: dict[str, object],
+    ) -> list[dict[str, object]]:
+        self.search_calls.append(
+            {
+                "company_name": company_name,
+                "resolved_company": resolved_company,
+                "search_filters": search_filters,
+            }
+        )
+        return list(self.candidates)
+
+
+class FakeApolloEnrichmentProvider:
+    def __init__(self, responses: dict[str, dict[str, object] | None]) -> None:
+        self.responses = responses
+        self.calls: list[dict[str, str | None]] = []
+
+    def enrich_person(
+        self,
+        *,
+        provider_person_id: str | None,
+        linkedin_url: str | None,
+        person_name: str | None,
+        company_domain: str | None,
+        company_name: str | None,
+    ) -> dict[str, object] | None:
+        self.calls.append(
+            {
+                "provider_person_id": provider_person_id,
+                "linkedin_url": linkedin_url,
+                "person_name": person_name,
+                "company_domain": company_domain,
+                "company_name": company_name,
+            }
+        )
+        lookup_key = provider_person_id or linkedin_url or person_name or "unknown"
+        return self.responses.get(lookup_key)
 
 
 def test_lead_handoff_advances_the_durable_run_into_agent_review(tmp_path: Path) -> None:
@@ -256,6 +374,110 @@ def test_agent_review_stage_advances_to_people_search_after_approval(tmp_path: P
     assert review_artifact_count == 1
 
 
+def test_people_search_stage_executes_and_advances_to_email_discovery(tmp_path: Path) -> None:
+    project_root = bootstrap_project(tmp_path)
+    paths = ProjectPaths.from_root(project_root)
+    connection = connect_database(project_root / "job_hunt_copilot.db")
+    lead_id, job_posting_id = seed_role_targeted_posting(
+        connection,
+        posting_status="requires_contacts",
+    )
+    seed_approved_tailoring_run(connection, job_posting_id=job_posting_id)
+    resume_agent(
+        connection,
+        manual_command="jhc-agent-start",
+        timestamp="2026-04-08T00:10:00Z",
+    )
+    pipeline_run, _ = ensure_role_targeted_pipeline_run(
+        connection,
+        lead_id=lead_id,
+        job_posting_id=job_posting_id,
+        current_stage="people_search",
+        started_at="2026-04-08T00:11:00Z",
+    )
+    search_provider = FakeApolloSearchProvider(
+        candidates=[
+            build_candidate(
+                provider_person_id="pp_r1",
+                display_name="Priya Recruiter",
+                title="Technical Recruiter",
+            ),
+            build_candidate(
+                provider_person_id="pp_m1",
+                display_name="Morgan Manager",
+                title="Engineering Manager",
+            ),
+            build_candidate(
+                provider_person_id="pp_e1",
+                display_name="Jamie Engineer",
+                title="Staff Software Engineer",
+            ),
+        ]
+    )
+    enrichment_provider = FakeApolloEnrichmentProvider(
+        {"pp_r1": None, "pp_m1": None, "pp_e1": None}
+    )
+
+    execution = run_supervisor_cycle(
+        connection,
+        paths,
+        trigger_type="launchd_heartbeat",
+        scheduler_name="launchd",
+        started_at="2026-04-08T00:12:00Z",
+        action_dependencies=SupervisorActionDependencies(
+            apollo_people_search_provider=search_provider,
+            apollo_contact_enrichment_provider=enrichment_provider,
+        ),
+    )
+    updated_run = get_pipeline_run(connection, pipeline_run.pipeline_run_id)
+    posting_status = connection.execute(
+        """
+        SELECT posting_status
+        FROM job_postings
+        WHERE job_posting_id = ?
+        """,
+        (job_posting_id,),
+    ).fetchone()[0]
+    shortlist_rows = connection.execute(
+        """
+        SELECT contact_id, recipient_type, link_level_status
+        FROM job_posting_contacts
+        WHERE job_posting_id = ?
+        ORDER BY recipient_type, contact_id
+        """,
+        (job_posting_id,),
+    ).fetchall()
+    people_search_artifact_path = connection.execute(
+        """
+        SELECT file_path
+        FROM artifact_records
+        WHERE job_posting_id = ?
+          AND artifact_type = 'people_search_result'
+        """,
+        (job_posting_id,),
+    ).fetchone()[0]
+    connection.close()
+
+    assert execution.cycle.result == SUPERVISOR_CYCLE_RESULT_SUCCESS
+    assert execution.selected_work is not None
+    assert execution.selected_work.work_id == pipeline_run.pipeline_run_id
+    assert execution.selected_work.action_id == ACTION_RUN_ROLE_TARGETED_PEOPLE_SEARCH
+    assert execution.incident is None
+    assert execution.review_packet is None
+    assert updated_run is not None
+    assert updated_run.run_status == RUN_STATUS_IN_PROGRESS
+    assert updated_run.current_stage == "email_discovery"
+    assert posting_status == "requires_contacts"
+    assert len(shortlist_rows) == 3
+    assert {row["recipient_type"] for row in shortlist_rows} == {
+        "recruiter",
+        "hiring_manager",
+        "engineer",
+    }
+    assert all(row["link_level_status"] == "shortlisted" for row in shortlist_rows)
+    assert (project_root / people_search_artifact_path).exists()
+
+
 def test_existing_pipeline_run_is_selected_before_bootstrapping_another_eligible_posting(
     tmp_path: Path,
 ) -> None:
@@ -374,7 +596,6 @@ def test_contact_rooted_general_learning_work_is_not_selected_yet(tmp_path: Path
 @pytest.mark.parametrize(
     "blocked_stage",
     [
-        "people_search",
         "email_discovery",
         "sending",
         "delivery_feedback",
@@ -442,14 +663,11 @@ def test_retry_after_downstream_stage_blocker_reuses_same_run_and_review_packet(
     project_root = bootstrap_project(tmp_path)
     paths = ProjectPaths.from_root(project_root)
     connection = connect_database(project_root / "job_hunt_copilot.db")
-    lead_id, job_posting_id = seed_role_targeted_posting(connection)
-    seed_pending_review_tailoring_run(
+    lead_id, job_posting_id = seed_role_targeted_posting(
         connection,
-        paths,
-        job_posting_id=job_posting_id,
-        company_name="Acme",
-        role_title="Platform Engineer",
+        posting_status="requires_contacts",
     )
+    seed_approved_tailoring_run(connection, job_posting_id=job_posting_id)
     resume_agent(
         connection,
         manual_command="jhc-agent-start",
@@ -459,8 +677,30 @@ def test_retry_after_downstream_stage_blocker_reuses_same_run_and_review_packet(
         connection,
         lead_id=lead_id,
         job_posting_id=job_posting_id,
-        current_stage="agent_review",
+        current_stage="people_search",
         started_at="2026-04-08T00:21:00Z",
+    )
+    search_provider = FakeApolloSearchProvider(
+        candidates=[
+            build_candidate(
+                provider_person_id="pp_r1",
+                display_name="Priya Recruiter",
+                title="Technical Recruiter",
+            ),
+            build_candidate(
+                provider_person_id="pp_m1",
+                display_name="Morgan Manager",
+                title="Engineering Manager",
+            ),
+            build_candidate(
+                provider_person_id="pp_e1",
+                display_name="Jamie Engineer",
+                title="Staff Software Engineer",
+            ),
+        ]
+    )
+    enrichment_provider = FakeApolloEnrichmentProvider(
+        {"pp_r1": None, "pp_m1": None, "pp_e1": None}
     )
 
     first_execution = run_supervisor_cycle(
@@ -469,10 +709,14 @@ def test_retry_after_downstream_stage_blocker_reuses_same_run_and_review_packet(
         trigger_type="launchd_heartbeat",
         scheduler_name="launchd",
         started_at="2026-04-08T00:22:00Z",
+        action_dependencies=SupervisorActionDependencies(
+            apollo_people_search_provider=search_provider,
+            apollo_contact_enrichment_provider=enrichment_provider,
+        ),
     )
     assert first_execution.cycle.result == SUPERVISOR_CYCLE_RESULT_SUCCESS
     assert first_execution.pipeline_run is not None
-    assert first_execution.pipeline_run.current_stage == "people_search"
+    assert first_execution.pipeline_run.current_stage == "email_discovery"
 
     second_execution = run_supervisor_cycle(
         connection,
@@ -496,7 +740,7 @@ def test_retry_after_downstream_stage_blocker_reuses_same_run_and_review_packet(
     retried_run = advance_pipeline_run(
         connection,
         pipeline_run.pipeline_run_id,
-        current_stage="people_search",
+        current_stage="email_discovery",
         run_summary="Retry the same downstream boundary without restarting the run.",
         timestamp="2026-04-08T00:25:00Z",
     )
@@ -523,14 +767,14 @@ def test_retry_after_downstream_stage_blocker_reuses_same_run_and_review_packet(
     assert escalated_incident.status == "escalated"
     assert retried_run.pipeline_run_id == pipeline_run.pipeline_run_id
     assert retried_run.run_status == RUN_STATUS_IN_PROGRESS
-    assert retried_run.current_stage == "people_search"
+    assert retried_run.current_stage == "email_discovery"
     assert created is False
     assert reused_run.pipeline_run_id == pipeline_run.pipeline_run_id
-    assert reused_run.current_stage == "people_search"
+    assert reused_run.current_stage == "email_discovery"
     assert third_execution.cycle.result == SUPERVISOR_CYCLE_RESULT_FAILED
     assert third_execution.selected_work is not None
     assert third_execution.selected_work.work_id == pipeline_run.pipeline_run_id
-    assert third_execution.selected_work.current_stage == "people_search"
+    assert third_execution.selected_work.current_stage == "email_discovery"
     assert third_execution.review_packet is not None
     assert third_execution.review_packet.expert_review_packet_id == (
         second_execution.review_packet.expert_review_packet_id

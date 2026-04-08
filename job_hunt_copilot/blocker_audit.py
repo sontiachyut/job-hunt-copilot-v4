@@ -16,7 +16,7 @@ from .acceptance_traceability import (
 )
 
 
-BLOCKER_AUDIT_VERSION = 4
+BLOCKER_AUDIT_VERSION = 5
 BUILD_BOARD_PATH = Path("build-agent/state/build-board.yaml")
 REPORT_JSON_PATH = Path("build-agent/reports/ba-10-blocker-audit.json")
 REPORT_MD_PATH = Path("build-agent/reports/ba-10-blocker-audit.md")
@@ -71,7 +71,7 @@ VALIDATION_COMMANDS: dict[str, dict[str, str]] = {
         "title": "Supervisor downstream hardening regressions",
         "kind": "automated",
         "command": "python3.11 -m pytest tests/test_supervisor_downstream_actions.py",
-        "description": "Confirms `lead_handoff` advances into `agent_review`, bounded mandatory review advances into `people_search`, later stages still escalate explicitly, and retries preserve the same durable run plus pending review packet.",
+        "description": "Confirms `lead_handoff` advances into `agent_review`, bounded mandatory review advances into `people_search`, bounded people search advances into `email_discovery`, later stages still escalate explicitly, and retries preserve the same durable run plus pending review packet.",
     },
     "qa_runtime_control_regressions": {
         "title": "Runtime control regressions",

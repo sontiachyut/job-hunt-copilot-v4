@@ -81,8 +81,12 @@ def test_ba10_blocker_audit_reports_are_current_and_reference_real_repo_paths():
             "new_role_targeted_posting",
         ],
         "registered_role_targeted_checkpoint_stages": ["agent_review", "lead_handoff"],
-        "validated_blocked_role_targeted_stages": [
+        "registered_role_targeted_action_stages": [
+            "agent_review",
+            "lead_handoff",
             "people_search",
+        ],
+        "validated_blocked_role_targeted_stages": [
             "email_discovery",
             "sending",
             "delivery_feedback",

@@ -930,7 +930,6 @@ def test_run_supervisor_cycle_auto_pauses_on_critical_unresolved_incident(tmp_pa
 @pytest.mark.parametrize(
     "blocked_stage",
     [
-        "people_search",
         "email_discovery",
         "sending",
         "delivery_feedback",
