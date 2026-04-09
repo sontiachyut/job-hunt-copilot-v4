@@ -97,7 +97,30 @@ def test_select_work_target_prefers_current_focus_slice_owner_role() -> None:
     assert slice_item["owner_role"] == "build-lead"
 
 
-def test_build_prompt_uses_selected_slice_and_slice_owner_role() -> None:
+def test_resolve_selected_owner_role_honors_current_focus_override_for_same_slice() -> None:
+    module = load_run_build_lead_cycle_module()
+    board = {
+        "current_focus": {
+            "epic_id": "BA-10",
+            "slice_id": "BA-10-S3",
+            "owner_role": "build-lead",
+        }
+    }
+    epic = {
+        "id": "BA-10",
+        "owner_role": "quality-engineer",
+    }
+    slice_item = {
+        "id": "BA-10-S3",
+        "owner_role": "quality-engineer",
+    }
+
+    owner_role = module.resolve_selected_owner_role(board, epic, slice_item)
+
+    assert owner_role == "build-lead"
+
+
+def test_build_prompt_uses_selected_slice_and_effective_owner_role() -> None:
     module = load_run_build_lead_cycle_module()
     epic = {
         "id": "BA-10",
@@ -120,6 +143,7 @@ def test_build_prompt_uses_selected_slice_and_slice_owner_role() -> None:
         "build-cycle-example",
         epic,
         slice_item,
+        "build-lead",
         snapshot_path,
         snapshot,
     )

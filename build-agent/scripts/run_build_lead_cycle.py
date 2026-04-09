@@ -174,6 +174,18 @@ def select_work_target(board: dict) -> tuple[dict | None, dict | None]:
     return epic, select_slice(epic, preferred_slice_id)
 
 
+def resolve_selected_owner_role(board: dict, epic: dict, slice_item: dict | None) -> str:
+    focus = board.get("current_focus", {})
+    if (
+        slice_item
+        and focus.get("epic_id") == epic.get("id")
+        and focus.get("slice_id") == slice_item.get("id")
+        and focus.get("owner_role")
+    ):
+        return focus["owner_role"]
+    return (slice_item or {}).get("owner_role") or epic.get("owner_role", "build-lead")
+
+
 def git_status_excerpt(project_root: Path, limit: int = 50) -> list[str]:
     result = subprocess.run(
         ["git", "status", "--short"],
@@ -208,6 +220,7 @@ def build_snapshot(
     board: dict,
     epic: dict,
     slice_item: dict | None,
+    selected_owner_role: str,
     control_state: dict,
 ) -> tuple[Path, dict]:
     status_excerpt = git_status_excerpt(project_root)
@@ -234,7 +247,8 @@ def build_snapshot(
             "slice_id": slice_item.get("id") if slice_item else None,
             "name": slice_item.get("name") if slice_item else None,
             "status": slice_item.get("status") if slice_item else None,
-            "owner_role": slice_item.get("owner_role") if slice_item else None,
+            "owner_role": selected_owner_role if slice_item else None,
+            "declared_owner_role": slice_item.get("owner_role") if slice_item else None,
             "deliverables": slice_item.get("deliverables", []) if slice_item else [],
             "dependencies": slice_item.get("dependencies", []) if slice_item else [],
         },
@@ -264,13 +278,13 @@ def build_prompt(
     cycle_id: str,
     epic: dict,
     slice_item: dict | None,
+    selected_owner_role: str,
     snapshot_path: Path,
     snapshot: dict,
 ) -> str:
     build_root = build_agent_root(project_root)
     bootstrap = (build_root / "builder-bootstrap.md").read_text(encoding="utf-8").strip()
-    owner_role = (slice_item or {}).get("owner_role") or epic.get("owner_role", "build-lead")
-    role_brief_path = build_root / "team" / f"{owner_role}.md"
+    role_brief_path = build_root / "team" / f"{selected_owner_role}.md"
     role_brief = role_brief_path.read_text(encoding="utf-8").strip() if role_brief_path.exists() else ""
 
     done_when = epic.get("done_when", [])
@@ -295,7 +309,7 @@ Current unattended build cycle:
 - selected_epic_name: {epic.get('name')}
 - selected_slice_id: {(slice_item or {}).get('id') or 'unspecified'}
 - selected_slice_name: {(slice_item or {}).get('name') or 'unspecified'}
-- owner_role: {owner_role}
+- owner_role: {selected_owner_role}
 - objective: {epic.get('objective')}
 - context_snapshot: {snapshot_path.relative_to(project_root)}
 
@@ -446,6 +460,7 @@ def main() -> int:
             )
             return 0
 
+        selected_owner_role = resolve_selected_owner_role(board, epic, slice_item)
         state_mtimes_before = tracked_state_file_mtimes(project_root)
         snapshot_path, snapshot = build_snapshot(
             project_root,
@@ -453,9 +468,18 @@ def main() -> int:
             board,
             epic,
             slice_item,
+            selected_owner_role,
             load_control_state(project_root),
         )
-        prompt = build_prompt(project_root, cycle_id, epic, slice_item, snapshot_path, snapshot)
+        prompt = build_prompt(
+            project_root,
+            cycle_id,
+            epic,
+            slice_item,
+            selected_owner_role,
+            snapshot_path,
+            snapshot,
+        )
 
         cycle_log_path = cycles_log_dir(project_root) / f"{cycle_id}.log"
         last_message_path = cycles_log_dir(project_root) / f"{cycle_id}.last-message.md"
@@ -471,6 +495,7 @@ def main() -> int:
             log_handle.write(f"selected_epic: {epic.get('id')} {epic.get('name')}\n\n")
             if slice_item:
                 log_handle.write(f"selected_slice: {slice_item.get('id')} {slice_item.get('name')}\n\n")
+            log_handle.write(f"selected_owner_role: {selected_owner_role}\n\n")
             completed = subprocess.run(
                 command,
                 input=prompt,
@@ -536,7 +561,7 @@ def main() -> int:
                 "result": result,
                 "selected_epic_id": epic.get("id"),
                 "selected_slice_id": slice_item.get("id") if slice_item else None,
-                "owner_role": (slice_item or {}).get("owner_role") or epic.get("owner_role"),
+                "owner_role": selected_owner_role,
                 "context_snapshot": str(snapshot_path.relative_to(project_root)),
                 "cycle_log": str(cycle_log_path.relative_to(project_root)),
                 "last_message_path": str(last_message_path.relative_to(project_root)),

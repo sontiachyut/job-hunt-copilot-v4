@@ -8,8 +8,8 @@
   "current_focus": {
     "epic_id": "BA-10",
     "slice_id": "BA-10-S3",
-    "owner_role": "quality-engineer",
-    "reason": "BA-10-S4 closed the downstream supervisor action-catalog gap, the latest BA-10-S3 hardening passes burned down the `jhc-chat` startup dashboard plus active-runtime-metrics scenarios, posting-abandon control, idle-timeout auto-resume, and the explicit persisted-state review-queue or default change-summary chat reads, so the acceptance matrix now holds at 201 implemented / 2 partial / 9 gap scenarios with maintenance automation and deeper chat guidance or override workflows still open BA-10-S3 work.",
+    "owner_role": "build-lead",
+    "reason": "BA-10-S4 closed the downstream supervisor action-catalog gap, the latest BA-10-S3 hardening passes already burned down the explicit persisted-state review-queue or default change-summary chat reads, and the latest current-focus replay reconfirmed that BA-10-S3 still resolves only the maintenance-automation and deeper chat-guidance or override gap clusters at 201 implemented / 2 partial / 9 gap scenarios, so the active same-slice handoff now belongs to build-lead for runtime-owned `jhc-chat` control or guidance work before maintenance automation rather than more quality-only hardening.",
     "gap_ids": [
       "BA10_MAINTENANCE_AUTOMATION",
       "BA10_CHAT_REVIEW_AND_CONTROL"

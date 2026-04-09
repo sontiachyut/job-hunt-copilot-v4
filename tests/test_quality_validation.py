@@ -182,7 +182,7 @@ def test_validation_selector_details_include_requested_smoke_gap_blocker_and_cur
     ]
     assert details["current_focus"]["epic_id"] == "BA-10"
     assert details["current_focus"]["slice_id"] == "BA-10-S3"
-    assert details["current_focus"]["owner_role"] == "quality-engineer"
+    assert details["current_focus"]["owner_role"] == "build-lead"
     assert details["current_focus"]["gap_ids"] == [
         "BA10_MAINTENANCE_AUTOMATION",
         "BA10_CHAT_REVIEW_AND_CONTROL",
@@ -597,7 +597,7 @@ def test_quality_validation_suite_script_dry_run_expands_current_focus():
     current_focus = payload["selector_details"]["current_focus"]
     assert current_focus["epic_id"] == "BA-10"
     assert current_focus["slice_id"] == "BA-10-S3"
-    assert current_focus["owner_role"] == "quality-engineer"
+    assert current_focus["owner_role"] == "build-lead"
     assert current_focus["gap_ids"] == [
         "BA10_MAINTENANCE_AUTOMATION",
         "BA10_CHAT_REVIEW_AND_CONTROL",

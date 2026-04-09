@@ -10,8 +10,8 @@
 
 - Epic: `BA-10`
 - Slice: `BA-10-S3`
-- Owner role: `quality-engineer`
-- Reason: BA-10-S4 closed the downstream supervisor action-catalog gap, the latest BA-10-S3 hardening passes burned down the `jhc-chat` startup dashboard plus active-runtime-metrics scenarios, posting-abandon control, idle-timeout auto-resume, and the explicit persisted-state review-queue or default change-summary chat reads, so the acceptance matrix now holds at 201 implemented / 2 partial / 9 gap scenarios with maintenance automation and deeper chat guidance or override workflows still open BA-10-S3 work.
+- Owner role: `build-lead`
+- Reason: BA-10-S4 closed the downstream supervisor action-catalog gap, the latest BA-10-S3 hardening passes already burned down the explicit persisted-state review-queue or default change-summary chat reads, and the latest current-focus replay reconfirmed that BA-10-S3 still resolves only the maintenance-automation and deeper chat-guidance or override gap clusters at 201 implemented / 2 partial / 9 gap scenarios, so the active same-slice handoff now belongs to build-lead for runtime-owned `jhc-chat` control or guidance work before maintenance automation rather than more quality-only hardening.
 - Matching gap ids: `BA10_MAINTENANCE_AUTOMATION`, `BA10_CHAT_REVIEW_AND_CONTROL`
 - Validation suite: `python3.11 scripts/quality/run_ba10_validation_suite.py --project-root <repo_root> --current-focus`
 

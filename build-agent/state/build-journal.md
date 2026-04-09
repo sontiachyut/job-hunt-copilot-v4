@@ -2184,3 +2184,27 @@ Use this file as an append-only implementation log for the build agent.
 ### Notes
 - The acceptance matrix still reports `201 implemented / 2 partial / 9 gap` scenarios, and the open BA-10-S3 gap clusters remain `BA10_MAINTENANCE_AUTOMATION` and `BA10_CHAT_REVIEW_AND_CONTROL`.
 - This checkpoint stayed inside quality ownership: it refreshed blocker evidence and made the runtime-owned handoff explicit, but it did not claim any new chat-control or maintenance implementation.
+
+### Session
+- Date: 2026-04-09 13:27:43 MST
+- Slice: BA-10-S3 blocked replay checkpoint
+- Goal: Reconfirm the blocker boundary after rehydrating the selected cycle in a clean repo, refresh the selector-aligned evidence, and keep the next runtime-owned slice explicit.
+
+### Work Done
+- Re-read the selected BA-10-S3 state, blocker audit, latest validation snapshot, repo-readiness summary, and clean git status before taking any new action.
+- Re-ran the BA-10 current-focus validation suite so the committed `build-agent/reports/ba-10-validation-suite-latest.{json,md}` and `build-agent/reports/repo-readiness-summary.{json,md}` snapshots now reflect a fresh 5-command replay generated at `2026-04-09T20:27:43Z`.
+- Confirmed again that the only open BA-10-S3 acceptance-gap clusters remain `BA10_MAINTENANCE_AUTOMATION` and `BA10_CHAT_REVIEW_AND_CONTROL`, and that no new quality-owned closure path appeared after the clean rehydrate.
+- Updated `build-agent/state/build-board.yaml`, `build-agent/state/IMPLEMENTATION_PLAN.md`, `build-agent/state/build-journal.md`, and `build-agent/state/codex-progress.txt` so the persisted build memory keeps BA-10-S3 explicitly blocked on the next build-lead/local-runtime slice.
+
+### Validation
+- Ran `python3.11 scripts/quality/run_ba10_validation_suite.py --project-root /Users/achyutaramsonti/Projects/job-hunt-copilot-v4 --current-focus` and confirmed all 5 automated checks passed while refreshing `build-agent/reports/ba-10-validation-suite-latest.{json,md}` plus `build-agent/reports/repo-readiness-summary.{json,md}` at `2026-04-09T20:27:43Z`.
+
+### Result
+- `blocked`
+
+### Next
+- Hand the next BA-10-S3 slice to the build lead and local-runtime owner for the remaining `jhc-chat` control-routing and expert-guidance burn-down, starting with generic object-specific override routing or conflict handling before maintenance automation.
+
+### Notes
+- The acceptance matrix still reports `201 implemented / 2 partial / 9 gap` scenarios, and the open BA-10-S3 gap clusters remain `BA10_MAINTENANCE_AUTOMATION` and `BA10_CHAT_REVIEW_AND_CONTROL`.
+- This checkpoint stayed inside quality ownership: it refreshed blocker evidence after a clean rehydrate, but it did not claim any new functional chat-control or maintenance implementation.
