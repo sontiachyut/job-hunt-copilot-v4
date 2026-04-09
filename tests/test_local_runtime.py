@@ -1141,6 +1141,66 @@ def test_control_agent_script_abandon_is_idempotent_for_existing_abandoned_posti
     assert override_count == 0
 
 
+def test_control_agent_script_abandon_rejects_terminal_posting_status_without_side_effects(tmp_path):
+    project_root = tmp_path / "repo"
+    project_root.mkdir()
+    create_minimal_project(project_root)
+    run_script(
+        "scripts/ops/control_agent.py",
+        "status",
+        "--project-root",
+        str(project_root),
+    )
+    connection = connect_database(project_root / "job_hunt_copilot.db")
+    seed_posting_for_abandon(connection, posting_status="completed")
+    connection.close()
+
+    result = subprocess.run(
+        [
+            sys.executable,
+            str(REPO_ROOT / "scripts/ops/control_agent.py"),
+            "abandon",
+            "--project-root",
+            str(project_root),
+            "--job-posting-id",
+            "jp_abandon",
+        ],
+        check=False,
+        capture_output=True,
+        text=True,
+    )
+
+    assert result.returncode == 2
+    assert result.stdout == ""
+    assert result.stderr.strip() == (
+        "Only non-terminal active postings may be abandoned; "
+        "job_posting 'jp_abandon' is at posting_status='completed'."
+    )
+
+    connection = connect_database(project_root / "job_hunt_copilot.db")
+    posting_row = connection.execute(
+        """
+        SELECT posting_status
+        FROM job_postings
+        WHERE job_posting_id = ?
+        """,
+        ("jp_abandon",),
+    ).fetchone()
+    transition_count = connection.execute(
+        "SELECT COUNT(*) FROM state_transition_events WHERE object_id = ?",
+        ("jp_abandon",),
+    ).fetchone()[0]
+    override_count = connection.execute(
+        "SELECT COUNT(*) FROM override_events WHERE object_id = ?",
+        ("jp_abandon",),
+    ).fetchone()[0]
+    connection.close()
+
+    assert dict(posting_row) == {"posting_status": "completed"}
+    assert transition_count == 0
+    assert override_count == 0
+
+
 def test_run_supervisor_cycle_script_records_no_work_launchd_cycle(tmp_path):
     project_root = tmp_path / "repo"
     project_root.mkdir()
@@ -1556,6 +1616,80 @@ def test_chat_session_script_pauses_running_agent_and_explicit_close_resumes_it(
     assert json.loads(log_lines[1])["event"] == "end"
 
 
+def test_chat_session_script_rejects_second_active_session_without_mutating_active_session(
+    tmp_path,
+):
+    project_root = tmp_path / "repo"
+    project_root.mkdir()
+    create_minimal_project(project_root)
+
+    run_script(
+        "scripts/ops/control_agent.py",
+        "start",
+        "--project-root",
+        str(project_root),
+        "--manual-command",
+        "jhc-agent-start",
+    )
+    first_begin = json.loads(
+        run_script(
+            "scripts/ops/chat_session.py",
+            "begin",
+            "--project-root",
+            str(project_root),
+        ).stdout
+    )
+
+    second_begin = subprocess.run(
+        [
+            sys.executable,
+            str(REPO_ROOT / "scripts/ops/chat_session.py"),
+            "begin",
+            "--project-root",
+            str(project_root),
+        ],
+        check=False,
+        capture_output=True,
+        text=True,
+    )
+
+    connection = connect_database(project_root / "job_hunt_copilot.db")
+    control_rows = connection.execute(
+        """
+        SELECT control_key, control_value
+        FROM agent_control_state
+        WHERE control_key IN (
+            'active_chat_session_id',
+            'agent_enabled',
+            'agent_mode',
+            'chat_resume_on_close',
+            'pause_reason'
+        )
+        ORDER BY control_key
+        """
+    ).fetchall()
+    connection.close()
+    log_lines = (project_root / "ops" / "logs" / "chat-sessions.jsonl").read_text(
+        encoding="utf-8"
+    ).splitlines()
+
+    assert second_begin.returncode == 2
+    assert second_begin.stdout == ""
+    assert second_begin.stderr.strip() == (
+        "Another jhc-chat session is already active: "
+        f"{first_begin['session_id']}"
+    )
+    assert dict(control_rows) == {
+        "active_chat_session_id": first_begin["session_id"],
+        "agent_enabled": "true",
+        "agent_mode": "paused",
+        "chat_resume_on_close": "true",
+        "pause_reason": "expert_interaction",
+    }
+    assert len(log_lines) == 1
+    assert json.loads(log_lines[0])["event"] == "begin"
+
+
 def test_chat_session_unexpected_exit_keeps_expert_interaction_pause_active(tmp_path):
     project_root = tmp_path / "repo"
     project_root.mkdir()
@@ -1620,6 +1754,86 @@ def test_chat_session_unexpected_exit_keeps_expert_interaction_pause_active(tmp_
         "last_chat_exit_mode": "unexpected_exit",
         "pause_reason": "expert_interaction",
     }
+
+
+def test_chat_session_script_ignores_mismatched_end_session_and_preserves_active_session(
+    tmp_path,
+):
+    project_root = tmp_path / "repo"
+    project_root.mkdir()
+    create_minimal_project(project_root)
+
+    run_script(
+        "scripts/ops/control_agent.py",
+        "start",
+        "--project-root",
+        str(project_root),
+        "--manual-command",
+        "jhc-agent-start",
+    )
+    begin_report = json.loads(
+        run_script(
+            "scripts/ops/chat_session.py",
+            "begin",
+            "--project-root",
+            str(project_root),
+        ).stdout
+    )
+
+    end_report = json.loads(
+        run_script(
+            "scripts/ops/chat_session.py",
+            "end",
+            "--project-root",
+            str(project_root),
+            "--session-id",
+            "jhc-chat-mismatched",
+            "--exit-mode",
+            "explicit_close",
+        ).stdout
+    )
+
+    connection = connect_database(project_root / "job_hunt_copilot.db")
+    control_rows = connection.execute(
+        """
+        SELECT control_key, control_value
+        FROM agent_control_state
+        WHERE control_key IN (
+            'active_chat_session_id',
+            'agent_enabled',
+            'agent_mode',
+            'chat_resume_on_close',
+            'last_chat_ended_at',
+            'last_chat_exit_mode',
+            'pause_reason'
+        )
+        ORDER BY control_key
+        """
+    ).fetchall()
+    connection.close()
+    log_lines = (project_root / "ops" / "logs" / "chat-sessions.jsonl").read_text(
+        encoding="utf-8"
+    ).splitlines()
+
+    assert end_report["status"] == "ignored_session_mismatch"
+    assert end_report["session_id"] == "jhc-chat-mismatched"
+    assert end_report["active_session_id"] == begin_report["session_id"]
+    assert end_report["control_state"]["active_chat_session_id"] == begin_report["session_id"]
+    assert end_report["control_state"]["agent_mode"] == "paused"
+    assert end_report["control_state"]["pause_reason"] == "expert_interaction"
+    assert end_report["runtime_pack"]["agent_mode"] == "paused"
+    assert dict(control_rows) == {
+        "active_chat_session_id": begin_report["session_id"],
+        "agent_enabled": "true",
+        "agent_mode": "paused",
+        "chat_resume_on_close": "true",
+        "last_chat_ended_at": "",
+        "last_chat_exit_mode": "",
+        "pause_reason": "expert_interaction",
+    }
+    assert len(log_lines) == 2
+    assert json.loads(log_lines[0])["event"] == "begin"
+    assert json.loads(log_lines[1])["event"] == "end_ignored"
 
 
 def test_chat_session_explicit_resume_clears_unexpected_exit_pause(tmp_path):

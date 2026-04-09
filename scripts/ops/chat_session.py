@@ -34,18 +34,22 @@ def main() -> int:
     args = parser.parse_args()
 
     project_root = Path(args.project_root)
-    if args.command == "begin":
-        report = begin_chat_operator_session(project_root=project_root)
-    else:
-        if not args.session_id:
-            raise SystemExit("--session-id is required for end")
-        if not args.exit_mode:
-            raise SystemExit("--exit-mode is required for end")
-        report = end_chat_operator_session(
-            project_root=project_root,
-            session_id=args.session_id,
-            exit_mode=args.exit_mode,
-        )
+    try:
+        if args.command == "begin":
+            report = begin_chat_operator_session(project_root=project_root)
+        else:
+            if not args.session_id:
+                raise SystemExit("--session-id is required for end")
+            if not args.exit_mode:
+                raise SystemExit("--exit-mode is required for end")
+            report = end_chat_operator_session(
+                project_root=project_root,
+                session_id=args.session_id,
+                exit_mode=args.exit_mode,
+            )
+    except ValueError as exc:
+        print(str(exc), file=sys.stderr)
+        return 2
     print(json.dumps(report, indent=2))
     return 0
 

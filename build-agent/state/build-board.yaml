@@ -945,6 +945,8 @@ epics:
           - Re-ran `python3.11 scripts/quality/run_ba10_validation_suite.py --project-root /Users/achyutaramsonti/Projects/job-hunt-copilot-v4 --current-focus` on 2026-04-09T02:38:39Z, refreshing `build-agent/reports/ba-10-validation-suite-latest.{json,md}` with another passing 5-command replay while keeping the same four open BA-10-S3 gap clusters explicit.
           - Added `scripts/ops/chat_state.py` plus `job_hunt_copilot.chat_runtime` helper functions for explicit persisted-state `dashboard`, `review-queue`, and `change-summary` reads, then updated the generated `ops/agent/chat-bootstrap.md` guidance so `jhc-chat` can reread canonical review or change surfaces instead of relying on startup memory alone.
           - Added focused local-runtime and runtime-pack regressions proving the new persisted chat helper commands surface grouped review items and default change summaries since the last completed expert review, and narrowed the remaining chat hardening gap to generic object-specific override routing plus broader expert-guidance workflows.
+          - Hardened `scripts/ops/chat_session.py` so duplicate `jhc-chat` begin failures now exit cleanly with a concise error instead of a traceback, and extended `tests/test_local_runtime.py` with explicit safety regressions for duplicate active-session begin, mismatched session-end ignore behavior, and terminal-posting abandon refusal without side effects.
+          - Re-ran `python3.11 scripts/quality/run_ba10_validation_suite.py --project-root /Users/achyutaramsonti/Projects/job-hunt-copilot-v4 --current-focus` on 2026-04-09T03:58:26Z, refreshing `build-agent/reports/ba-10-validation-suite-latest.{json,md}` with another passing 5-command replay while keeping the blocker surface unchanged at `201 implemented / 2 partial / 9 gap` across maintenance automation and deeper chat guidance or override workflows.
         validation:
           - "`python3.11 -m py_compile job_hunt_copilot/local_runtime.py job_hunt_copilot/acceptance_traceability.py job_hunt_copilot/runtime_pack.py job_hunt_copilot/paths.py scripts/ops/materialize_feedback_sync_plist.py scripts/ops/run_feedback_sync.py tests/test_local_runtime.py`"
           - "`zsh -n bin/jhc-agent-start bin/jhc-agent-stop bin/jhc-agent-cycle bin/jhc-feedback-sync-cycle bin/jhc-chat`"
@@ -977,6 +979,9 @@ epics:
           - "`python3.11 scripts/quality/run_ba10_validation_suite.py --project-root /Users/achyutaramsonti/Projects/job-hunt-copilot-v4`"
           - "`python3.11 scripts/quality/run_ba10_validation_suite.py --project-root /Users/achyutaramsonti/Projects/job-hunt-copilot-v4 --dry-run --current-focus --smoke-target bootstrap`"
           - "`python3.11 scripts/quality/run_ba10_validation_suite.py --project-root /Users/achyutaramsonti/Projects/job-hunt-copilot-v4 --current-focus --smoke-target bootstrap`"
+          - "`python3.11 -m py_compile scripts/ops/chat_session.py tests/test_local_runtime.py`"
+          - "`python3.11 -m pytest tests/test_local_runtime.py`"
+          - "`python3.11 scripts/quality/run_ba10_validation_suite.py --project-root /Users/achyutaramsonti/Projects/job-hunt-copilot-v4 --current-focus`"
         remaining_scope:
           - chat review/control behavior
           - maintenance automation
