@@ -3,8 +3,8 @@
   "feature_path": "prd/test-spec.feature",
   "scenario_count": 214,
   "status_counts": {
-    "implemented": 191,
-    "partial": 7,
+    "implemented": 193,
+    "partial": 5,
     "gap": 14,
     "deferred_optional": 1,
     "excluded_from_required_acceptance": 1
@@ -6041,7 +6041,7 @@
           "gap_ids": [
             "BA10_SUPERVISOR_DOWNSTREAM_ACTION_CATALOG"
           ],
-          "note": "Current supervisor regressions prove open incidents outrank ordinary pipeline advancement, existing runs outrank new posting bootstrap, and open pipeline runs now cover due sending work, but delayed feedback, general-learning work, and maintenance still have no dedicated selector or action path."
+          "note": "Current supervisor regressions prove open incidents outrank ordinary pipeline advancement, existing runs outrank new posting bootstrap, and open pipeline runs now cover due delivery-feedback completion, but general-learning work and maintenance still have no dedicated selector or action path."
         },
         {
           "name": "Supervisor chooses only registered catalog actions and escalates unknown needs",
@@ -7342,10 +7342,10 @@
         "tests/test_supervisor_downstream_actions.py",
         "tests/test_supervisor.py"
       ],
-      "note": "Component-level state gates and sequencing exist, but the autonomous heartbeat still stops short of the later send and feedback stages.",
+      "note": "Component-level state gates and sequencing exist, and the autonomous heartbeat now covers the role-targeted flow through bounded delivery feedback, while the contact-rooted general-learning supervisor path remains incomplete.",
       "status_counts": {
-        "implemented": 19,
-        "partial": 2,
+        "implemented": 20,
+        "partial": 1,
         "gap": 1,
         "deferred_optional": 0,
         "excluded_from_required_acceptance": 0
@@ -7393,12 +7393,12 @@
             "tests/test_supervisor.py"
           ],
           "gap_ids": [],
-          "note": "Component-level state gates and sequencing exist, but the autonomous heartbeat still stops short of the later send and feedback stages."
+          "note": "Component-level state gates and sequencing exist, and the autonomous heartbeat now covers the role-targeted flow through bounded delivery feedback, while the contact-rooted general-learning supervisor path remains incomplete."
         },
         {
           "name": "Role-targeted orchestration follows the current dependency order",
           "scenario_line": 1423,
-          "status": "partial",
+          "status": "implemented",
           "owner_role": "build-lead",
           "epic_ids": [
             "BA-06",
@@ -7436,10 +7436,8 @@
             "tests/test_supervisor_downstream_actions.py",
             "tests/test_supervisor.py"
           ],
-          "gap_ids": [
-            "BA10_SUPERVISOR_DOWNSTREAM_ACTION_CATALOG"
-          ],
-          "note": "The downstream components and stage-boundary artifacts exist, and `tests/test_supervisor_downstream_actions.py` now proves the current heartbeat advances through `lead_handoff`, bounded mandatory agent review, bounded people search, bounded email discovery, and bounded sending into `delivery_feedback` or a review-worthy no-send terminal outcome, but delayed feedback and general-learning orchestration still do not execute the full dependency chain."
+          "gap_ids": [],
+          "note": "`tests/test_supervisor_downstream_actions.py` now proves the current heartbeat advances through `lead_handoff`, bounded mandatory agent review, bounded people search, bounded email discovery, bounded sending, and bounded delivery feedback, while preserving the same durable run through completion."
         },
         {
           "name": "Posting remains requires-contacts until minimum outreach prerequisites exist",
@@ -7483,7 +7481,7 @@
             "tests/test_supervisor.py"
           ],
           "gap_ids": [],
-          "note": "Component-level state gates and sequencing exist, but the autonomous heartbeat still stops short of the later send and feedback stages."
+          "note": "Component-level state gates and sequencing exist, and the autonomous heartbeat now covers the role-targeted flow through bounded delivery feedback, while the contact-rooted general-learning supervisor path remains incomplete."
         },
         {
           "name": "Posting can move directly from agent review to ready-for-outreach when prerequisites already exist",
@@ -7527,7 +7525,7 @@
             "tests/test_supervisor.py"
           ],
           "gap_ids": [],
-          "note": "Component-level state gates and sequencing exist, but the autonomous heartbeat still stops short of the later send and feedback stages."
+          "note": "Component-level state gates and sequencing exist, and the autonomous heartbeat now covers the role-targeted flow through bounded delivery feedback, while the contact-rooted general-learning supervisor path remains incomplete."
         },
         {
           "name": "Posting becomes ready-for-outreach only when all minimum current prerequisites are satisfied",
@@ -7571,7 +7569,7 @@
             "tests/test_supervisor.py"
           ],
           "gap_ids": [],
-          "note": "Component-level state gates and sequencing exist, but the autonomous heartbeat still stops short of the later send and feedback stages."
+          "note": "Component-level state gates and sequencing exist, and the autonomous heartbeat now covers the role-targeted flow through bounded delivery feedback, while the contact-rooted general-learning supervisor path remains incomplete."
         },
         {
           "name": "Role-targeted outreach uses the current recipient priority order with pacing-aware progression",
@@ -7615,7 +7613,7 @@
             "tests/test_supervisor.py"
           ],
           "gap_ids": [],
-          "note": "Component-level state gates and sequencing exist, but the autonomous heartbeat still stops short of the later send and feedback stages."
+          "note": "Component-level state gates and sequencing exist, and the autonomous heartbeat now covers the role-targeted flow through bounded delivery feedback, while the contact-rooted general-learning supervisor path remains incomplete."
         },
         {
           "name": "Posting-contact linking is created before per-contact discovery or outreach begins",
@@ -7659,7 +7657,7 @@
             "tests/test_supervisor.py"
           ],
           "gap_ids": [],
-          "note": "Component-level state gates and sequencing exist, but the autonomous heartbeat still stops short of the later send and feedback stages."
+          "note": "Component-level state gates and sequencing exist, and the autonomous heartbeat now covers the role-targeted flow through bounded delivery feedback, while the contact-rooted general-learning supervisor path remains incomplete."
         },
         {
           "name": "Link records become shortlisted when contacts enter the intended outreach set",
@@ -7703,7 +7701,7 @@
             "tests/test_supervisor.py"
           ],
           "gap_ids": [],
-          "note": "Component-level state gates and sequencing exist, but the autonomous heartbeat still stops short of the later send and feedback stages."
+          "note": "Component-level state gates and sequencing exist, and the autonomous heartbeat now covers the role-targeted flow through bounded delivery feedback, while the contact-rooted general-learning supervisor path remains incomplete."
         },
         {
           "name": "Known working email allows a contact to skip fresh discovery in orchestration",
@@ -7747,7 +7745,7 @@
             "tests/test_supervisor.py"
           ],
           "gap_ids": [],
-          "note": "Component-level state gates and sequencing exist, but the autonomous heartbeat still stops short of the later send and feedback stages."
+          "note": "Component-level state gates and sequencing exist, and the autonomous heartbeat now covers the role-targeted flow through bounded delivery feedback, while the contact-rooted general-learning supervisor path remains incomplete."
         },
         {
           "name": "Prior outreach history blocks automatic repeat send during orchestration",
@@ -7791,7 +7789,7 @@
             "tests/test_supervisor.py"
           ],
           "gap_ids": [],
-          "note": "Component-level state gates and sequencing exist, but the autonomous heartbeat still stops short of the later send and feedback stages."
+          "note": "Component-level state gates and sequencing exist, and the autonomous heartbeat now covers the role-targeted flow through bounded delivery feedback, while the contact-rooted general-learning supervisor path remains incomplete."
         },
         {
           "name": "Posting enters outreach-in-progress when the first intended contact starts drafting or sending",
@@ -7835,7 +7833,7 @@
             "tests/test_supervisor.py"
           ],
           "gap_ids": [],
-          "note": "Component-level state gates and sequencing exist, but the autonomous heartbeat still stops short of the later send and feedback stages."
+          "note": "Component-level state gates and sequencing exist, and the autonomous heartbeat now covers the role-targeted flow through bounded delivery feedback, while the contact-rooted general-learning supervisor path remains incomplete."
         },
         {
           "name": "Contact and link records advance together once drafting or sending begins",
@@ -7879,7 +7877,7 @@
             "tests/test_supervisor.py"
           ],
           "gap_ids": [],
-          "note": "Component-level state gates and sequencing exist, but the autonomous heartbeat still stops short of the later send and feedback stages."
+          "note": "Component-level state gates and sequencing exist, and the autonomous heartbeat now covers the role-targeted flow through bounded delivery feedback, while the contact-rooted general-learning supervisor path remains incomplete."
         },
         {
           "name": "Posting reaches completed when the intended outreach set has been sent",
@@ -7923,7 +7921,7 @@
             "tests/test_supervisor.py"
           ],
           "gap_ids": [],
-          "note": "Component-level state gates and sequencing exist, but the autonomous heartbeat still stops short of the later send and feedback stages."
+          "note": "Component-level state gates and sequencing exist, and the autonomous heartbeat now covers the role-targeted flow through bounded delivery feedback, while the contact-rooted general-learning supervisor path remains incomplete."
         },
         {
           "name": "Reply from one contact does not retroactively cancel the active outreach wave",
@@ -7967,7 +7965,7 @@
             "tests/test_supervisor.py"
           ],
           "gap_ids": [],
-          "note": "Component-level state gates and sequencing exist, but the autonomous heartbeat still stops short of the later send and feedback stages."
+          "note": "Component-level state gates and sequencing exist, and the autonomous heartbeat now covers the role-targeted flow through bounded delivery feedback, while the contact-rooted general-learning supervisor path remains incomplete."
         },
         {
           "name": "Discovery, drafting, and feedback stages require both state persistence and handoff publication before downstream progression",
@@ -8011,7 +8009,7 @@
             "tests/test_supervisor.py"
           ],
           "gap_ids": [],
-          "note": "Component-level state gates and sequencing exist, but the autonomous heartbeat still stops short of the later send and feedback stages."
+          "note": "Component-level state gates and sequencing exist, and the autonomous heartbeat now covers the role-targeted flow through bounded delivery feedback, while the contact-rooted general-learning supervisor path remains incomplete."
         },
         {
           "name": "Stage failure or blocked state prevents dependent downstream progression",
@@ -8055,7 +8053,7 @@
             "tests/test_supervisor.py"
           ],
           "gap_ids": [],
-          "note": "Component-level state gates and sequencing exist, but the autonomous heartbeat still stops short of the later send and feedback stages."
+          "note": "Component-level state gates and sequencing exist, and the autonomous heartbeat now covers the role-targeted flow through bounded delivery feedback, while the contact-rooted general-learning supervisor path remains incomplete."
         },
         {
           "name": "Contact exhaustion is local to that contact rather than a global posting stop",
@@ -8099,7 +8097,7 @@
             "tests/test_supervisor.py"
           ],
           "gap_ids": [],
-          "note": "Component-level state gates and sequencing exist, but the autonomous heartbeat still stops short of the later send and feedback stages."
+          "note": "Component-level state gates and sequencing exist, and the autonomous heartbeat now covers the role-targeted flow through bounded delivery feedback, while the contact-rooted general-learning supervisor path remains incomplete."
         },
         {
           "name": "The user may explicitly abandon a posting from any active orchestration state",
@@ -8235,7 +8233,7 @@
             "tests/test_supervisor.py"
           ],
           "gap_ids": [],
-          "note": "Component-level state gates and sequencing exist, but the autonomous heartbeat still stops short of the later send and feedback stages."
+          "note": "Component-level state gates and sequencing exist, and the autonomous heartbeat now covers the role-targeted flow through bounded delivery feedback, while the contact-rooted general-learning supervisor path remains incomplete."
         },
         {
           "name": "One contact failure does not stop unrelated contacts in the same posting flow",
@@ -8279,7 +8277,7 @@
             "tests/test_supervisor.py"
           ],
           "gap_ids": [],
-          "note": "Component-level state gates and sequencing exist, but the autonomous heartbeat still stops short of the later send and feedback stages."
+          "note": "Component-level state gates and sequencing exist, and the autonomous heartbeat now covers the role-targeted flow through bounded delivery feedback, while the contact-rooted general-learning supervisor path remains incomplete."
         },
         {
           "name": "Current build does not automatically expand contact search after the selected set is sent",
@@ -8323,7 +8321,7 @@
             "tests/test_supervisor.py"
           ],
           "gap_ids": [],
-          "note": "Component-level state gates and sequencing exist, but the autonomous heartbeat still stops short of the later send and feedback stages."
+          "note": "Component-level state gates and sequencing exist, and the autonomous heartbeat now covers the role-targeted flow through bounded delivery feedback, while the contact-rooted general-learning supervisor path remains incomplete."
         }
       ]
     },
@@ -8779,10 +8777,10 @@
         "tests/test_supervisor.py",
         "tests/test_smoke_harness.py"
       ],
-      "note": "The components exist and now have committed smoke coverage across tailoring, discovery, send, delayed feedback, and review-query boundaries, but the autonomous supervisor still does not orchestrate the full downstream pipeline past the newly landed email-discovery boundary.",
+      "note": "The components exist and now have committed smoke coverage across tailoring, discovery, send, delayed feedback, and review-query boundaries, and the autonomous supervisor covers the full role-targeted chain through bounded delivery feedback, while the contact-rooted general-learning selector path remains open.",
       "status_counts": {
-        "implemented": 2,
-        "partial": 1,
+        "implemented": 3,
+        "partial": 0,
         "gap": 0,
         "deferred_optional": 0,
         "excluded_from_required_acceptance": 1
@@ -8791,7 +8789,7 @@
         {
           "name": "Role-targeted flow completes from LinkedIn Scraping through delivery feedback",
           "scenario_line": 1657,
-          "status": "partial",
+          "status": "implemented",
           "owner_role": "quality-engineer",
           "epic_ids": [
             "BA-06",
@@ -8831,10 +8829,8 @@
             "tests/test_supervisor.py",
             "tests/test_smoke_harness.py"
           ],
-          "gap_ids": [
-            "BA10_SUPERVISOR_DOWNSTREAM_ACTION_CATALOG"
-          ],
-          "note": "The downstream components and stage-boundary artifacts exist, and `tests/test_supervisor_downstream_actions.py` now proves the current heartbeat advances through `lead_handoff`, bounded mandatory agent review, bounded people search, bounded email discovery, and bounded sending into `delivery_feedback` or a review-worthy no-send terminal outcome, but delayed feedback and general-learning orchestration still do not execute the full dependency chain."
+          "gap_ids": [],
+          "note": "`tests/test_supervisor_downstream_actions.py` now proves the current heartbeat advances through `lead_handoff`, bounded mandatory agent review, bounded people search, bounded email discovery, bounded sending, and bounded delivery feedback, while preserving the same durable run through completion."
         },
         {
           "name": "Delayed bounce after the send session still gets captured",
@@ -8926,7 +8922,7 @@
             "tests/test_smoke_harness.py"
           ],
           "gap_ids": [],
-          "note": "`tests/test_supervisor_downstream_actions.py` now proves the durable run advances from `lead_handoff` through bounded mandatory agent review, bounded people search, bounded email discovery, and bounded sending into `delivery_feedback`, and retries resume from that later blocked stage without restarting from LinkedIn Scraping."
+          "note": "`tests/test_supervisor_downstream_actions.py` now proves the durable run advances from `lead_handoff` through bounded mandatory agent review, bounded people search, bounded email discovery, bounded sending, and bounded delivery feedback, and retries resume from that later active stage without restarting from LinkedIn Scraping."
         },
         {
           "name": "Two-step outreach is excluded from required acceptance",
@@ -9172,14 +9168,15 @@
     },
     {
       "gap_id": "BA10_SUPERVISOR_DOWNSTREAM_ACTION_CATALOG",
-      "title": "Supervisor orchestration still stops before autonomous delivery feedback completes",
-      "reason": "The durable heartbeat, selector ordering, retry-safe run persistence, bounded mandatory agent review, bounded people-search execution, bounded email-discovery execution, and bounded sending execution now exist, but later stages from `delivery_feedback` onward still reselect the same durable run and escalate instead of executing.",
+      "title": "Supervisor orchestration still lacks contact-rooted general-learning selection",
+      "reason": "The durable heartbeat now covers the role-targeted flow through bounded delivery-feedback completion, but contact-rooted general-learning work still yields no selected supervisor action and remains outside the registered autonomous catalog.",
       "next_slice": "BA-10-S4",
-      "evidence_summary": "Focused downstream-stage regressions prove active incidents still outrank ordinary progression, existing durable runs are selected before bootstrapping new eligible postings, `lead_handoff` now advances into `agent_review`, bounded mandatory agent review advances the same run into `people_search`, bounded people search materializes shortlist artifacts and advances the same run into `email_discovery`, bounded email discovery advances the same durable run into `sending` when readiness is satisfied, bounded sending now drafts the ready send set, executes one safe send, stays at `sending` while later-wave contacts remain paced, advances the same durable run into `delivery_feedback` after terminal sent waves, completes review-worthy no-send blocked outcomes with a persisted review packet, later stages from `delivery_feedback` onward still escalate with durable run and review-packet retention, and a ready contact-rooted general-learning candidate still yields no selected supervisor work.",
+      "evidence_summary": "Focused downstream-stage regressions prove active incidents still outrank ordinary progression, existing durable runs are selected before bootstrapping new eligible postings, `lead_handoff` now advances into `agent_review`, bounded mandatory agent review advances the same run into `people_search`, bounded people search materializes shortlist artifacts and advances the same run into `email_discovery`, bounded email discovery advances the same durable run into `sending` when readiness is satisfied, bounded sending now drafts the ready send set, executes one safe send, stays at `sending` while later-wave contacts remain paced, advances the same durable run into `delivery_feedback` after terminal sent waves, bounded delivery feedback now runs the shared delayed-sync logic, keeps the durable run active while high-level outcomes remain pending, completes the same durable run with a review packet once all sent messages reach bounced, not_bounced, or replied state, and a ready contact-rooted general-learning candidate still yields no selected supervisor work.",
       "evidence_code_refs": [
         "job_hunt_copilot/supervisor.py",
         "job_hunt_copilot/email_discovery.py",
         "job_hunt_copilot/outreach.py",
+        "job_hunt_copilot/delivery_feedback.py",
         "job_hunt_copilot/local_runtime.py",
         "job_hunt_copilot/runtime_pack.py"
       ],
@@ -9212,9 +9209,7 @@
       ],
       "scenario_names": [
         "Supervisor work selection follows the current default priority order",
-        "Role-targeted orchestration follows the current dependency order",
-        "General learning outreach bypasses the role-targeted agent-review requirement",
-        "Role-targeted flow completes from LinkedIn Scraping through delivery feedback"
+        "General learning outreach bypasses the role-targeted agent-review requirement"
       ],
       "implementation_snapshot": {
         "current_selector_priority_order": [
@@ -9228,14 +9223,13 @@
         ],
         "registered_role_targeted_action_stages": [
           "agent_review",
+          "delivery_feedback",
           "email_discovery",
           "lead_handoff",
           "people_search",
           "sending"
         ],
-        "validated_blocked_role_targeted_stages": [
-          "delivery_feedback"
-        ],
+        "validated_blocked_role_targeted_stages": [],
         "unsupported_autonomous_scope_paths": [
           "contact_rooted_general_learning"
         ]

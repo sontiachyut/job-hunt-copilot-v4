@@ -930,7 +930,7 @@ def test_run_supervisor_cycle_auto_pauses_on_critical_unresolved_incident(tmp_pa
 @pytest.mark.parametrize(
     "blocked_stage",
     [
-        "delivery_feedback",
+        "unsupported_future_stage",
     ],
 )
 def test_run_supervisor_cycle_emits_incident_when_selected_stage_has_no_registered_action(
@@ -1025,7 +1025,7 @@ def test_retry_after_downstream_stage_blocker_reuses_same_run_and_pending_review
         connection,
         lead_id=lead_id,
         job_posting_id=job_posting_id,
-        current_stage="delivery_feedback",
+        current_stage="unsupported_future_stage",
         started_at="2026-04-06T00:41:00Z",
     )
 
@@ -1051,7 +1051,7 @@ def test_retry_after_downstream_stage_blocker_reuses_same_run_and_pending_review
     retried_run = advance_pipeline_run(
         connection,
         pipeline_run.pipeline_run_id,
-        current_stage="delivery_feedback",
+        current_stage="unsupported_future_stage",
         run_summary="Retry the same downstream boundary without restarting the run.",
         timestamp="2026-04-06T00:44:00Z",
     )
@@ -1084,18 +1084,18 @@ def test_retry_after_downstream_stage_blocker_reuses_same_run_and_pending_review
     assert first_execution.cycle.result == SUPERVISOR_CYCLE_RESULT_FAILED
     assert first_execution.pipeline_run is not None
     assert first_execution.pipeline_run.pipeline_run_id == pipeline_run.pipeline_run_id
-    assert first_execution.pipeline_run.current_stage == "delivery_feedback"
+    assert first_execution.pipeline_run.current_stage == "unsupported_future_stage"
     assert escalated_incident.status == INCIDENT_STATUS_ESCALATED
     assert retried_run.pipeline_run_id == pipeline_run.pipeline_run_id
     assert retried_run.run_status == RUN_STATUS_IN_PROGRESS
-    assert retried_run.current_stage == "delivery_feedback"
+    assert retried_run.current_stage == "unsupported_future_stage"
     assert created is False
     assert reused_run.pipeline_run_id == pipeline_run.pipeline_run_id
-    assert reused_run.current_stage == "delivery_feedback"
+    assert reused_run.current_stage == "unsupported_future_stage"
     assert second_execution.cycle.result == SUPERVISOR_CYCLE_RESULT_FAILED
     assert second_execution.selected_work is not None
     assert second_execution.selected_work.work_id == pipeline_run.pipeline_run_id
-    assert second_execution.selected_work.current_stage == "delivery_feedback"
+    assert second_execution.selected_work.current_stage == "unsupported_future_stage"
     assert second_execution.review_packet is not None
     assert second_execution.review_packet.expert_review_packet_id == (
         first_execution.review_packet.expert_review_packet_id
@@ -1104,7 +1104,7 @@ def test_retry_after_downstream_stage_blocker_reuses_same_run_and_pending_review
         {
             "pipeline_run_id": pipeline_run.pipeline_run_id,
             "run_status": "escalated",
-            "current_stage": "delivery_feedback",
+            "current_stage": "unsupported_future_stage",
         }
     ]
     assert len(stored_packets) == 1

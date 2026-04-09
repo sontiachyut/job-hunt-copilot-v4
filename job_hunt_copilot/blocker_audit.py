@@ -71,7 +71,7 @@ VALIDATION_COMMANDS: dict[str, dict[str, str]] = {
         "title": "Supervisor downstream hardening regressions",
         "kind": "automated",
         "command": "python3.11 -m pytest tests/test_supervisor_downstream_actions.py",
-        "description": "Confirms `lead_handoff` advances into `agent_review`, bounded mandatory review advances into `people_search`, bounded people search advances into `email_discovery`, bounded email discovery advances into `sending`, bounded sending advances into `delivery_feedback` or a review-worthy no-send terminal outcome, the remaining `delivery_feedback` blocker still escalates explicitly, and retries preserve the same durable run plus pending review packet.",
+        "description": "Confirms `lead_handoff` advances into `agent_review`, bounded mandatory review advances into `people_search`, bounded people search advances into `email_discovery`, bounded email discovery advances into `sending`, bounded sending advances into `delivery_feedback`, bounded delivery feedback either stays active until high-level outcomes are due or completes the same durable run with a review packet, and the remaining contact-rooted general-learning selector gap still yields no selected supervisor work.",
     },
     "qa_runtime_control_regressions": {
         "title": "Runtime control regressions",

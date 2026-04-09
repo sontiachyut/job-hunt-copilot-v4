@@ -9,7 +9,7 @@
     "epic_id": "BA-10",
     "slice_id": "BA-10-S4",
     "owner_role": "build-lead",
-    "reason": "BA-10-S4 now has working `lead_handoff -> agent_review -> people_search -> email_discovery -> sending -> delivery_feedback` supervisor progression for sent terminal waves plus review-worthy no-send sending outcomes, while the matrix still sits at 191 implemented / 7 partial / 14 gap scenarios; the next highest-value slice remains a build-lead implementation pass on downstream supervisor action-catalog steps beyond `sending`, because that same cluster still blocks autonomous delivery-feedback handling and contact-rooted general-learning selection.",
+    "reason": "BA-10-S4 now covers the full role-targeted supervisor chain through bounded `delivery_feedback` completion and moved the acceptance matrix to 193 implemented / 5 partial / 14 gap scenarios; the highest-value remaining work in this slice is the still-missing contact-rooted general-learning selector or action path.",
     "gap_ids": [
       "BA10_SUPERVISOR_DOWNSTREAM_ACTION_CATALOG"
     ],
@@ -19,7 +19,7 @@
         "title": "Supervisor downstream hardening regressions",
         "kind": "automated",
         "command": "python3.11 -m pytest tests/test_supervisor_downstream_actions.py",
-        "description": "Confirms `lead_handoff` advances into `agent_review`, bounded mandatory review advances into `people_search`, bounded people search advances into `email_discovery`, bounded email discovery advances into `sending`, bounded sending advances into `delivery_feedback` or a review-worthy no-send terminal outcome, the remaining `delivery_feedback` blocker still escalates explicitly, and retries preserve the same durable run plus pending review packet."
+        "description": "Confirms `lead_handoff` advances into `agent_review`, bounded mandatory review advances into `people_search`, bounded people search advances into `email_discovery`, bounded email discovery advances into `sending`, bounded sending advances into `delivery_feedback`, bounded delivery feedback either stays active until high-level outcomes are due or completes the same durable run with a review packet, and the remaining contact-rooted general-learning selector gap still yields no selected supervisor work."
       },
       {
         "command_id": "qa_acceptance_reports",
@@ -42,13 +42,13 @@
   "summary": {
     "acceptance_scenario_count": 214,
     "acceptance_status_counts": {
-      "implemented": 191,
-      "partial": 7,
+      "implemented": 193,
+      "partial": 5,
       "gap": 14,
       "deferred_optional": 1,
       "excluded_from_required_acceptance": 1
     },
-    "open_acceptance_scenario_count": 21,
+    "open_acceptance_scenario_count": 19,
     "open_acceptance_gap_cluster_count": 5,
     "open_build_board_blocker_count": 3,
     "build_board_blockers_with_missing_evidence": 0
@@ -289,17 +289,15 @@
   "acceptance_gap_clusters": [
     {
       "gap_id": "BA10_SUPERVISOR_DOWNSTREAM_ACTION_CATALOG",
-      "title": "Supervisor orchestration still stops before autonomous delivery feedback completes",
-      "reason": "The durable heartbeat, selector ordering, retry-safe run persistence, bounded mandatory agent review, bounded people-search execution, bounded email-discovery execution, and bounded sending execution now exist, but later stages from `delivery_feedback` onward still reselect the same durable run and escalate instead of executing.",
+      "title": "Supervisor orchestration still lacks contact-rooted general-learning selection",
+      "reason": "The durable heartbeat now covers the role-targeted flow through bounded delivery-feedback completion, but contact-rooted general-learning work still yields no selected supervisor action and remains outside the registered autonomous catalog.",
       "next_slice": "BA-10-S4",
       "rules": [
         "Current-build orchestration remains sequential",
-        "End-to-end acceptance",
         "Supervisor Agent behavior"
       ],
       "owner_roles": [
-        "build-lead",
-        "quality-engineer"
+        "build-lead"
       ],
       "epic_ids": [
         "BA-02",
@@ -307,8 +305,7 @@
         "BA-06",
         "BA-07",
         "BA-08",
-        "BA-09",
-        "BA-10"
+        "BA-09"
       ],
       "slice_ids": [
         "BA-02-S1",
@@ -332,16 +329,17 @@
         "BA-09-S3",
         "BA-10-S4"
       ],
-      "open_scenario_count": 4,
+      "open_scenario_count": 2,
       "status_counts": {
-        "partial": 4,
+        "partial": 2,
         "gap": 0
       },
-      "evidence_summary": "Focused downstream-stage regressions prove active incidents still outrank ordinary progression, existing durable runs are selected before bootstrapping new eligible postings, `lead_handoff` now advances into `agent_review`, bounded mandatory agent review advances the same run into `people_search`, bounded people search materializes shortlist artifacts and advances the same run into `email_discovery`, bounded email discovery advances the same durable run into `sending` when readiness is satisfied, bounded sending now drafts the ready send set, executes one safe send, stays at `sending` while later-wave contacts remain paced, advances the same durable run into `delivery_feedback` after terminal sent waves, completes review-worthy no-send blocked outcomes with a persisted review packet, later stages from `delivery_feedback` onward still escalate with durable run and review-packet retention, and a ready contact-rooted general-learning candidate still yields no selected supervisor work.",
+      "evidence_summary": "Focused downstream-stage regressions prove active incidents still outrank ordinary progression, existing durable runs are selected before bootstrapping new eligible postings, `lead_handoff` now advances into `agent_review`, bounded mandatory agent review advances the same run into `people_search`, bounded people search materializes shortlist artifacts and advances the same run into `email_discovery`, bounded email discovery advances the same durable run into `sending` when readiness is satisfied, bounded sending now drafts the ready send set, executes one safe send, stays at `sending` while later-wave contacts remain paced, advances the same durable run into `delivery_feedback` after terminal sent waves, bounded delivery feedback now runs the shared delayed-sync logic, keeps the durable run active while high-level outcomes remain pending, completes the same durable run with a review packet once all sent messages reach bounced, not_bounced, or replied state, and a ready contact-rooted general-learning candidate still yields no selected supervisor work.",
       "evidence_code_refs": [
         "job_hunt_copilot/supervisor.py",
         "job_hunt_copilot/email_discovery.py",
         "job_hunt_copilot/outreach.py",
+        "job_hunt_copilot/delivery_feedback.py",
         "job_hunt_copilot/local_runtime.py",
         "job_hunt_copilot/runtime_pack.py"
       ],
@@ -356,7 +354,7 @@
           "title": "Supervisor downstream hardening regressions",
           "kind": "automated",
           "command": "python3.11 -m pytest tests/test_supervisor_downstream_actions.py",
-          "description": "Confirms `lead_handoff` advances into `agent_review`, bounded mandatory review advances into `people_search`, bounded people search advances into `email_discovery`, bounded email discovery advances into `sending`, bounded sending advances into `delivery_feedback` or a review-worthy no-send terminal outcome, the remaining `delivery_feedback` blocker still escalates explicitly, and retries preserve the same durable run plus pending review packet."
+          "description": "Confirms `lead_handoff` advances into `agent_review`, bounded mandatory review advances into `people_search`, bounded people search advances into `email_discovery`, bounded email discovery advances into `sending`, bounded sending advances into `delivery_feedback`, bounded delivery feedback either stays active until high-level outcomes are due or completes the same durable run with a review packet, and the remaining contact-rooted general-learning selector gap still yields no selected supervisor work."
         },
         {
           "command_id": "qa_acceptance_reports",
@@ -387,17 +385,6 @@
           ]
         },
         {
-          "name": "Role-targeted orchestration follows the current dependency order",
-          "status": "partial",
-          "owner_role": "build-lead",
-          "epic_ids": [
-            "BA-06",
-            "BA-07",
-            "BA-08",
-            "BA-09"
-          ]
-        },
-        {
           "name": "General learning outreach bypasses the role-targeted agent-review requirement",
           "status": "partial",
           "owner_role": "build-lead",
@@ -406,18 +393,6 @@
             "BA-07",
             "BA-08",
             "BA-09"
-          ]
-        },
-        {
-          "name": "Role-targeted flow completes from LinkedIn Scraping through delivery feedback",
-          "status": "partial",
-          "owner_role": "quality-engineer",
-          "epic_ids": [
-            "BA-06",
-            "BA-07",
-            "BA-08",
-            "BA-09",
-            "BA-10"
           ]
         }
       ],
@@ -433,14 +408,13 @@
         ],
         "registered_role_targeted_action_stages": [
           "agent_review",
+          "delivery_feedback",
           "email_discovery",
           "lead_handoff",
           "people_search",
           "sending"
         ],
-        "validated_blocked_role_targeted_stages": [
-          "delivery_feedback"
-        ],
+        "validated_blocked_role_targeted_stages": [],
         "unsupported_autonomous_scope_paths": [
           "contact_rooted_general_learning"
         ]
@@ -1038,7 +1012,7 @@
           "title": "Supervisor downstream hardening regressions",
           "kind": "automated",
           "command": "python3.11 -m pytest tests/test_supervisor_downstream_actions.py",
-          "description": "Confirms `lead_handoff` advances into `agent_review`, bounded mandatory review advances into `people_search`, bounded people search advances into `email_discovery`, bounded email discovery advances into `sending`, bounded sending advances into `delivery_feedback` or a review-worthy no-send terminal outcome, the remaining `delivery_feedback` blocker still escalates explicitly, and retries preserve the same durable run plus pending review packet."
+          "description": "Confirms `lead_handoff` advances into `agent_review`, bounded mandatory review advances into `people_search`, bounded people search advances into `email_discovery`, bounded email discovery advances into `sending`, bounded sending advances into `delivery_feedback`, bounded delivery feedback either stays active until high-level outcomes are due or completes the same durable run with a review packet, and the remaining contact-rooted general-learning selector gap still yields no selected supervisor work."
         },
         {
           "command_id": "qa_runtime_control_regressions",

@@ -1562,3 +1562,31 @@ Use this file as an append-only implementation log for the build agent.
 - The acceptance matrix still reports 191 implemented / 7 partial / 14 gap scenarios; this cycle narrowed the downstream-supervisor blocker boundary from `sending` to `delivery_feedback` without changing the aggregate counts.
 - The remaining downstream-supervisor blocker now starts at `delivery_feedback`; the contact-rooted general-learning selector path is still explicitly unimplemented.
 - The new sending action is intentionally dependency-injected through `SupervisorActionDependencies` for safe deterministic validation; wiring a concrete live sender into the repo-local heartbeat remains a later runtime integration concern rather than an implicit claim in this slice.
+
+### Session
+- Date: 2026-04-08 17:06:03 MST
+- Slice: BA-10-S4 downstream supervisor delivery-feedback execution
+- Goal: Register the next bounded downstream supervisor action at `delivery_feedback`, prove durable run completion through the role-targeted flow, and checkpoint the remaining general-learning gap honestly.
+
+### Work Done
+- Extended `job_hunt_copilot.supervisor` with `run_role_targeted_delivery_feedback`, wired `delivery_feedback` into the registered role-targeted action map, and reused `job_hunt_copilot.delivery_feedback.sync_delivery_feedback` so the selected posting's sent messages run through one bounded delayed-feedback step per cycle.
+- Kept the new action bounded and durable-run-safe: it now keeps the same `pipeline_run_id` at `delivery_feedback` while high-level feedback outcomes are still pending, and completes that same run with a pending expert review packet once every sent message has a bounced, `not_bounced`, or replied outcome.
+- Replaced the old `delivery_feedback` blocker regressions with real stage-advancement coverage in `tests/test_supervisor_downstream_actions.py`, while narrowing the generic unsupported-stage regressions in `tests/test_supervisor.py` to a synthetic unknown future stage.
+- Refreshed `job_hunt_copilot.acceptance_traceability`, `job_hunt_copilot.blocker_audit`, the report-guard tests, and the committed BA-10 reports so the downstream-supervisor gap now records `delivery_feedback` as a registered role-targeted action stage, clears the blocked role-targeted-stage list, and leaves only the contact-rooted general-learning selector path open.
+- Updated `build-agent/state/build-board.yaml`, `build-agent/state/IMPLEMENTATION_PLAN.md`, `build-agent/state/build-journal.md`, and `build-agent/state/codex-progress.txt` so the persisted project record now points the next BA-10-S4 burn-down at the general-learning selector path instead of the old role-targeted `delivery_feedback` blocker.
+
+### Validation
+- Ran `python3.11 -m py_compile job_hunt_copilot/supervisor.py tests/test_supervisor.py tests/test_supervisor_downstream_actions.py` and confirmed the changed supervisor and focused regressions compile cleanly.
+- Ran `python3.11 -m pytest tests/test_supervisor_downstream_actions.py tests/test_supervisor.py` and confirmed all 26 focused supervisor regressions passed.
+- Ran `python3.11 -m pytest tests/test_delivery_feedback.py` and confirmed all 3 direct delivery-feedback regressions passed.
+- Ran `python3.11 scripts/quality/run_ba10_validation_suite.py --project-root /Users/achyutaramsonti/Projects/job-hunt-copilot-v4 --current-focus` and confirmed the refreshed BA-10 current-focus replay passed, regenerating the committed acceptance-trace and blocker-audit reports plus the latest validation-suite snapshot.
+
+### Result
+- `partial`
+
+### Next
+- Keep BA-10-S4 in progress and implement the contact-rooted general-learning supervisor selector/action path so the remaining downstream-supervisor acceptance gap is no longer role-targeted-only evidence.
+
+### Notes
+- The acceptance matrix now reports 193 implemented / 5 partial / 14 gap scenarios; this cycle closed the role-targeted flow and dependency-order partials while keeping the remaining supervisor gap explicit.
+- The remaining downstream-supervisor blocker is no longer the role-targeted `delivery_feedback` boundary; it is now the contact-rooted general-learning selector path.

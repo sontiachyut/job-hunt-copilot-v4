@@ -1,13 +1,22 @@
 {
   "project_root": "/Users/achyutaramsonti/Projects/job-hunt-copilot-v4",
-  "refreshed_reports": null,
+  "refreshed_reports": {
+    "acceptance_trace_reports": {
+      "json_path": "/Users/achyutaramsonti/Projects/job-hunt-copilot-v4/build-agent/reports/ba-10-acceptance-trace-matrix.json",
+      "markdown_path": "/Users/achyutaramsonti/Projects/job-hunt-copilot-v4/build-agent/reports/ba-10-acceptance-trace-matrix.md"
+    },
+    "blocker_audit_reports": {
+      "json_path": "/Users/achyutaramsonti/Projects/job-hunt-copilot-v4/build-agent/reports/ba-10-blocker-audit.json",
+      "markdown_path": "/Users/achyutaramsonti/Projects/job-hunt-copilot-v4/build-agent/reports/ba-10-blocker-audit.md"
+    }
+  },
   "requested_command_ids": [],
   "requested_gap_ids": [],
   "requested_blocker_ids": [],
   "requested_current_focus": true,
   "requested_smoke_targets": [],
   "include_manual": false,
-  "skip_report_refresh": true,
+  "skip_report_refresh": false,
   "selector_details": {
     "smoke_targets": [],
     "acceptance_gaps": [],
@@ -16,7 +25,7 @@
       "epic_id": "BA-10",
       "slice_id": "BA-10-S4",
       "owner_role": "build-lead",
-      "reason": "BA-10-S4 now has working `lead_handoff -> agent_review -> people_search -> email_discovery -> sending -> delivery_feedback` supervisor progression for sent terminal waves plus review-worthy no-send sending outcomes, while the matrix still sits at 191 implemented / 7 partial / 14 gap scenarios; the next highest-value slice remains a build-lead implementation pass on downstream supervisor action-catalog steps beyond `sending`, because that same cluster still blocks autonomous delivery-feedback handling and contact-rooted general-learning selection.",
+      "reason": "BA-10-S4 now covers the full role-targeted supervisor chain through bounded `delivery_feedback` completion and moved the acceptance matrix to 193 implemented / 5 partial / 14 gap scenarios; the highest-value remaining work in this slice is the still-missing contact-rooted general-learning selector or action path.",
       "gap_ids": [
         "BA10_SUPERVISOR_DOWNSTREAM_ACTION_CATALOG"
       ],
@@ -33,10 +42,10 @@
       "title": "Supervisor downstream hardening regressions",
       "kind": "automated",
       "command": "python3.11 -m pytest tests/test_supervisor_downstream_actions.py",
-      "description": "Confirms `lead_handoff` advances into `agent_review`, bounded mandatory review advances into `people_search`, bounded people search advances into `email_discovery`, bounded email discovery advances into `sending`, bounded sending advances into `delivery_feedback` or a review-worthy no-send terminal outcome, the remaining `delivery_feedback` blocker still escalates explicitly, and retries preserve the same durable run plus pending review packet.",
+      "description": "Confirms `lead_handoff` advances into `agent_review`, bounded mandatory review advances into `people_search`, bounded people search advances into `email_discovery`, bounded email discovery advances into `sending`, bounded sending advances into `delivery_feedback`, bounded delivery feedback either stays active until high-level outcomes are due or completes the same durable run with a review packet, and the remaining contact-rooted general-learning selector gap still yields no selected supervisor work.",
       "status": "passed",
       "returncode": 0,
-      "duration_seconds": 0.917
+      "duration_seconds": 0.859
     },
     {
       "command_id": "qa_acceptance_reports",
@@ -46,13 +55,13 @@
       "description": "Keeps the committed BA-10 acceptance and blocker reports synchronized with repo code, tests, and state references.",
       "status": "passed",
       "returncode": 0,
-      "duration_seconds": 0.336
+      "duration_seconds": 0.318
     }
   ],
   "failed_command_ids": [],
   "passed": true,
   "validation_suite_report_version": 2,
-  "generated_at": "2026-04-08T23:44:03Z",
+  "generated_at": "2026-04-09T00:10:51Z",
   "summary": {
     "command_count": 2,
     "command_kind_counts": {
@@ -60,18 +69,18 @@
     },
     "passed_command_count": 2,
     "failed_command_count": 0,
-    "total_duration_seconds": 1.253
+    "total_duration_seconds": 1.177
   },
   "repo_status": {
     "acceptance_scenario_count": 214,
     "acceptance_status_counts": {
-      "implemented": 191,
-      "partial": 7,
+      "implemented": 193,
+      "partial": 5,
       "gap": 14,
       "deferred_optional": 1,
       "excluded_from_required_acceptance": 1
     },
-    "open_acceptance_scenario_count": 21,
+    "open_acceptance_scenario_count": 19,
     "open_acceptance_gap_cluster_count": 5,
     "open_acceptance_gap_ids": [
       "BA10_SUPERVISOR_DOWNSTREAM_ACTION_CATALOG",
