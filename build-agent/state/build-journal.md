@@ -1982,3 +1982,28 @@ Use this file as an append-only implementation log for the build agent.
 ### Notes
 - The acceptance matrix still reports `201 implemented / 2 partial / 9 gap` scenarios, and the open BA-10-S3 gap clusters remain `BA10_MAINTENANCE_AUTOMATION` and `BA10_CHAT_REVIEW_AND_CONTROL`.
 - This slice stayed inside quality ownership: it strengthened persisted dashboard evidence and refreshed the latest readiness snapshot, but it did not claim any new functional chat-control or maintenance behavior.
+
+### Session
+- Date: 2026-04-09 11:55:34 MST
+- Slice: BA-10-S3 exact-gap-title repo-surface hardening
+- Goal: Keep recruiter- and manager-facing repo surfaces fail-closed against stale BA-10 wording by requiring them to name the exact currently open gap titles from the blocker audit, then refresh the current-focus evidence without overstating the still-open maintenance or deeper chat-control gaps.
+
+### Work Done
+- Tightened `job_hunt_copilot.repo_readiness` so `README.md` and `docs/ARCHITECTURE.md` are now marked stale unless they mention the exact currently open BA-10 gap titles published by the blocker audit, instead of only matching generic readiness phrases.
+- Extended `tests/test_repo_readiness.py` to pin the new dynamic readiness contract and verify the repo overview plus architecture surfaces carry the exact current open-gap titles while the report index remains exempt from that title-specific requirement.
+- Updated `README.md` and `docs/ARCHITECTURE.md` to name `BA10_MAINTENANCE_AUTOMATION` and `BA10_CHAT_REVIEW_AND_CONTROL` verbatim, then refreshed the committed repo-readiness and latest validation-suite snapshots so the tracked BA-10 evidence matches the stricter repo-surface contract.
+- Updated `build-agent/state/build-board.yaml`, `build-agent/state/IMPLEMENTATION_PLAN.md`, `build-agent/state/build-journal.md`, and `build-agent/state/codex-progress.txt` so the persisted build record captures this repo-surface honesty hardening pass explicitly.
+
+### Validation
+- Ran `python3.11 -m pytest tests/test_repo_readiness.py tests/test_quality_validation.py tests/test_blocker_audit.py tests/test_acceptance_traceability.py`; the first pass failed only because the committed repo-readiness report was stale against the new exact-gap-title contract, which confirmed the new guard was active.
+- Ran `python3.11 scripts/quality/run_ba10_validation_suite.py --project-root /Users/achyutaramsonti/Projects/job-hunt-copilot-v4 --current-focus` and confirmed all 5 automated checks passed while refreshing `build-agent/reports/ba-10-validation-suite-latest.{json,md}` plus `build-agent/reports/repo-readiness-summary.{json,md}` at `2026-04-09T18:53:24Z`.
+
+### Result
+- `partial`
+
+### Next
+- Keep BA-10-S3 open for a real remaining functional blocker. The next best slice is build-lead ownership for the remaining `jhc-chat` control-routing and expert-guidance gap, starting with generic object-specific override routing or conflict handling before maintenance automation.
+
+### Notes
+- The acceptance matrix still reports `201 implemented / 2 partial / 9 gap` scenarios, and the open BA-10-S3 gap clusters remain `BA10_MAINTENANCE_AUTOMATION` and `BA10_CHAT_REVIEW_AND_CONTROL`.
+- This slice stayed inside quality ownership: it strengthened repo-surface honesty and evidence durability, but it did not claim any new functional chat-control or maintenance behavior.

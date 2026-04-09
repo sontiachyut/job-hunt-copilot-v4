@@ -1,12 +1,12 @@
 # BA-10 Validation Suite Report
 
-- Generated at: `2026-04-09T04:48:30Z`
+- Generated at: `2026-04-09T18:53:24Z`
 - Project root: `/Users/achyutaramsonti/Projects/job-hunt-copilot-v4`
 - Passed: `True`
 - Command count: `5`
 - Passed commands: `5`
 - Failed commands: `0`
-- Total duration seconds: `14.546`
+- Total duration seconds: `15.474`
 - Requested command ids: none
 - Requested smoke targets: none
 - Requested acceptance gaps: none
@@ -63,11 +63,11 @@
 
 | Command | Kind | Status | Returncode | Duration (s) |
 | --- | --- | --- | ---: | ---: |
-| qa_runtime_pack_regressions | automated | passed | 0 | 0.227 |
-| qa_acceptance_reports | automated | passed | 0 | 1.516 |
-| qa_supervisor_regressions | automated | passed | 0 | 1.038 |
-| qa_runtime_control_regressions | automated | passed | 0 | 11.311 |
-| qa_review_surface_regressions | automated | passed | 0 | 0.454 |
+| qa_runtime_pack_regressions | automated | passed | 0 | 0.289 |
+| qa_acceptance_reports | automated | passed | 0 | 1.574 |
+| qa_supervisor_regressions | automated | passed | 0 | 1.076 |
+| qa_runtime_control_regressions | automated | passed | 0 | 12.073 |
+| qa_review_surface_regressions | automated | passed | 0 | 0.462 |
 
 ## Command Details
 
@@ -75,7 +75,7 @@
 - Kind: `automated`
 - Status: `passed`
 - Returncode: `0`
-- Duration seconds: `0.227`
+- Duration seconds: `0.289`
 - Command: `python3.11 -m pytest tests/test_runtime_pack.py`
 - Description: Confirms generated runtime scaffolding stays honest about current action-catalog and maintenance placeholder status.
 
@@ -83,7 +83,7 @@
 - Kind: `automated`
 - Status: `passed`
 - Returncode: `0`
-- Duration seconds: `1.516`
+- Duration seconds: `1.574`
 - Command: `python3.11 -m pytest tests/test_acceptance_traceability.py tests/test_blocker_audit.py tests/test_quality_validation.py tests/test_repo_readiness.py`
 - Description: Keeps the committed BA-10 acceptance, blocker, readiness, and validation-suite reports synchronized with repo code, tests, and state references.
 
@@ -91,7 +91,7 @@
 - Kind: `automated`
 - Status: `passed`
 - Returncode: `0`
-- Duration seconds: `1.038`
+- Duration seconds: `1.076`
 - Command: `python3.11 -m pytest tests/test_supervisor_downstream_actions.py`
 - Description: Confirms incident-first selector ordering, existing-run reuse, bounded role-targeted progression through `delivery_feedback`, and contact-rooted general-learning follow-through while keeping the remaining maintenance-selector gap explicit.
 
@@ -99,7 +99,7 @@
 - Kind: `automated`
 - Status: `passed`
 - Returncode: `0`
-- Duration seconds: `11.311`
+- Duration seconds: `12.073`
 - Command: `python3.11 -m pytest tests/test_local_runtime.py`
 - Description: Covers launchd plist wiring, control commands, chat lifecycle state, delayed feedback runners, and explicit negative control cases.
 
@@ -107,6 +107,6 @@
 - Kind: `automated`
 - Status: `passed`
 - Returncode: `0`
-- Duration seconds: `0.454`
+- Duration seconds: `0.462`
 - Command: `python3.11 -m pytest tests/test_review_queries.py`
 - Description: Verifies persisted grouped review surfaces and traceability reads that back the chat/review boundary.

@@ -1,6 +1,6 @@
 {
   "repo_readiness_report_version": 1,
-  "generated_at": "2026-04-09T04:48:30Z",
+  "generated_at": "2026-04-09T18:53:24Z",
   "project_root": "/Users/achyutaramsonti/Projects/job-hunt-copilot-v4",
   "sources": {
     "build_board": "build-agent/state/build-board.yaml",
@@ -34,7 +34,7 @@
   },
   "latest_validation": {
     "available": true,
-    "generated_at": "2026-04-09T04:48:30Z",
+    "generated_at": "2026-04-09T18:53:24Z",
     "passed": true,
     "command_count": 5,
     "failed_command_count": 0,
@@ -120,11 +120,15 @@
       "audience": "recruiters, hiring managers, and first-pass reviewers",
       "note": "The repo overview should acknowledge the remaining open BA-10 gap themes and point readers at the committed readiness evidence.",
       "required_snippets": [
-        "repo-readiness-summary.md",
-        "maintenance workflow or artifacts",
-        "`jhc-chat` guidance or override workflows"
+        "repo-readiness-summary.md"
       ],
       "missing_snippets": [],
+      "requires_open_gap_titles": true,
+      "required_gap_titles": [
+        "Maintenance workflow and artifacts are not implemented",
+        "Chat review and control are still missing deeper expert-guidance workflows"
+      ],
+      "missing_gap_titles": [],
       "status": "current"
     },
     {
@@ -133,11 +137,15 @@
       "audience": "engineering managers and technical reviewers",
       "note": "The architecture guide should stay honest about the remaining open BA-10 gap themes and link to the current readiness snapshot.",
       "required_snippets": [
-        "repo-readiness-summary.md",
-        "maintenance workflow or artifacts",
-        "`jhc-chat` expert-guidance or object-override behaviors"
+        "repo-readiness-summary.md"
       ],
       "missing_snippets": [],
+      "requires_open_gap_titles": true,
+      "required_gap_titles": [
+        "Maintenance workflow and artifacts are not implemented",
+        "Chat review and control are still missing deeper expert-guidance workflows"
+      ],
+      "missing_gap_titles": [],
       "status": "current"
     },
     {
@@ -152,6 +160,9 @@
         "ba-10-validation-suite-latest.md"
       ],
       "missing_snippets": [],
+      "requires_open_gap_titles": false,
+      "required_gap_titles": [],
+      "missing_gap_titles": [],
       "status": "current"
     }
   ]

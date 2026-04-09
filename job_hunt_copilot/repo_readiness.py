@@ -28,6 +28,7 @@ class RepoSurfaceExpectation:
     audience: str
     note: str
     required_snippets: tuple[str, ...]
+    requires_open_gap_titles: bool = False
 
 
 REPO_SURFACE_EXPECTATIONS: tuple[RepoSurfaceExpectation, ...] = (
@@ -41,9 +42,8 @@ REPO_SURFACE_EXPECTATIONS: tuple[RepoSurfaceExpectation, ...] = (
         ),
         required_snippets=(
             "repo-readiness-summary.md",
-            "maintenance workflow or artifacts",
-            "`jhc-chat` guidance or override workflows",
         ),
+        requires_open_gap_titles=True,
     ),
     RepoSurfaceExpectation(
         path=Path("docs/ARCHITECTURE.md"),
@@ -55,9 +55,8 @@ REPO_SURFACE_EXPECTATIONS: tuple[RepoSurfaceExpectation, ...] = (
         ),
         required_snippets=(
             "repo-readiness-summary.md",
-            "maintenance workflow or artifacts",
-            "`jhc-chat` expert-guidance or object-override behaviors",
         ),
+        requires_open_gap_titles=True,
     ),
     RepoSurfaceExpectation(
         path=Path("build-agent/reports/README.md"),
@@ -107,10 +106,20 @@ def _load_validation_suite_report(project_root: Path) -> dict[str, Any] | None:
 def _build_surface_status(
     project_root: Path,
     expectation: RepoSurfaceExpectation,
+    *,
+    open_gap_clusters: list[dict[str, Any]],
 ) -> dict[str, Any]:
     text = (project_root / expectation.path).read_text(encoding="utf-8")
     missing_snippets = [
         snippet for snippet in expectation.required_snippets if snippet not in text
+    ]
+    required_gap_titles = (
+        [cluster["title"] for cluster in open_gap_clusters if cluster.get("title")]
+        if expectation.requires_open_gap_titles
+        else []
+    )
+    missing_gap_titles = [
+        title for title in required_gap_titles if title not in text
     ]
     return {
         "path": str(expectation.path),
@@ -119,7 +128,14 @@ def _build_surface_status(
         "note": expectation.note,
         "required_snippets": list(expectation.required_snippets),
         "missing_snippets": missing_snippets,
-        "status": "current" if not missing_snippets else "stale",
+        "requires_open_gap_titles": expectation.requires_open_gap_titles,
+        "required_gap_titles": required_gap_titles,
+        "missing_gap_titles": missing_gap_titles,
+        "status": (
+            "current"
+            if not missing_snippets and not missing_gap_titles
+            else "stale"
+        ),
     }
 
 
@@ -178,13 +194,6 @@ def build_repo_readiness_report(
         epic["id"] for epic in epics if epic.get("status") == "in_progress"
     ]
 
-    repo_surfaces = [
-        _build_surface_status(root, expectation) for expectation in REPO_SURFACE_EXPECTATIONS
-    ]
-    surface_status = "current" if all(
-        surface["status"] == "current" for surface in repo_surfaces
-    ) else "stale"
-
     open_gap_clusters = [
         {
             "gap_id": cluster["gap_id"],
@@ -197,6 +206,17 @@ def build_repo_readiness_report(
         for cluster in audit["acceptance_gap_clusters"]
         if cluster.get("open_scenario_count")
     ]
+    repo_surfaces = [
+        _build_surface_status(
+            root,
+            expectation,
+            open_gap_clusters=open_gap_clusters,
+        )
+        for expectation in REPO_SURFACE_EXPECTATIONS
+    ]
+    surface_status = "current" if all(
+        surface["status"] == "current" for surface in repo_surfaces
+    ) else "stale"
     open_blockers = [
         {
             "blocker_id": blocker["blocker_id"],
@@ -342,6 +362,13 @@ def render_repo_readiness_markdown(report: dict[str, Any]) -> str:
             lines.append(
                 "  Missing snippets: "
                 + ", ".join(f"`{snippet}`" for snippet in surface["missing_snippets"])
+            )
+        if surface["missing_gap_titles"]:
+            lines.append(
+                "  Missing open gap titles: "
+                + ", ".join(
+                    f"`{title}`" for title in surface["missing_gap_titles"]
+                )
             )
 
     return "\n".join(lines).rstrip() + "\n"

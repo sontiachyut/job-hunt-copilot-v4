@@ -46,7 +46,8 @@ What already exists:
 - the current BA-10 quality layer under `build-agent/reports/` and `scripts/quality/`, including the committed acceptance trace matrix, blocker audit, latest validation-suite report snapshot, smoke harness, and a reproducible `run_ba10_validation_suite.py` entrypoint for the automated hardening checks
 
 What is still in progress:
-- BA-10 hardening is not fully closed yet: the remaining explicit acceptance gaps are autonomous maintenance workflow or artifacts and the deeper `jhc-chat` guidance or override workflows that still sit beyond the new persisted read-only review helpers
+- `BA10_MAINTENANCE_AUTOMATION`: Maintenance workflow and artifacts are not implemented.
+- `BA10_CHAT_REVIEW_AND_CONTROL`: Chat review and control are still missing deeper expert-guidance workflows beyond the new persisted read-only review helpers.
 - the quickest current build snapshot lives in [build-agent/reports/repo-readiness-summary.md](./build-agent/reports/repo-readiness-summary.md)
 - those open gaps are tracked explicitly in [build-agent/reports/repo-readiness-summary.md](./build-agent/reports/repo-readiness-summary.md), [build-agent/reports/ba-10-acceptance-trace-matrix.md](./build-agent/reports/ba-10-acceptance-trace-matrix.md), [build-agent/reports/ba-10-blocker-audit.md](./build-agent/reports/ba-10-blocker-audit.md), and [build-agent/reports/ba-10-validation-suite-latest.md](./build-agent/reports/ba-10-validation-suite-latest.md) rather than being hidden behind a generic "in progress" label
 

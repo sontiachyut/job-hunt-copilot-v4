@@ -44,6 +44,35 @@ def test_repo_readiness_reports_are_current_and_repo_surfaces_are_honest():
         assert (REPO_ROOT / surface["path"]).exists(), surface["path"]
         assert surface["status"] == "current"
         assert surface["missing_snippets"] == []
+        assert surface["missing_gap_titles"] == []
+
+    readme_surface = next(
+        surface for surface in report["repo_surfaces"] if surface["path"] == "README.md"
+    )
+    assert readme_surface["requires_open_gap_titles"] is True
+    assert readme_surface["required_gap_titles"] == [
+        "Maintenance workflow and artifacts are not implemented",
+        "Chat review and control are still missing deeper expert-guidance workflows",
+    ]
+
+    architecture_surface = next(
+        surface
+        for surface in report["repo_surfaces"]
+        if surface["path"] == "docs/ARCHITECTURE.md"
+    )
+    assert architecture_surface["requires_open_gap_titles"] is True
+    assert architecture_surface["required_gap_titles"] == [
+        "Maintenance workflow and artifacts are not implemented",
+        "Chat review and control are still missing deeper expert-guidance workflows",
+    ]
+
+    reports_index_surface = next(
+        surface
+        for surface in report["repo_surfaces"]
+        if surface["path"] == "build-agent/reports/README.md"
+    )
+    assert reports_index_surface["requires_open_gap_titles"] is False
+    assert reports_index_surface["required_gap_titles"] == []
 
     assert (
         "tests/test_repo_readiness.py"
