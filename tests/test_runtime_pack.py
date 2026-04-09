@@ -67,10 +67,17 @@ def test_runtime_pack_chat_bootstrap_scaffolds_review_and_control_surfaces(tmp_p
         "summary and compact review-queue snapshot"
     ) in chat_bootstrap
     assert (
-        "4. inspect canonical control state, open incidents, pending expert review packets, "
-        "and the relevant DB-backed status snapshot"
+        "4. for explicit review asks or `what changed`, reread canonical state through the "
+        "persisted chat helper commands instead of relying on startup memory alone"
+    ) in chat_bootstrap
+    assert (
+        "5. route global pause, resume, stop, replan, and abandon requests through the canonical "
+        "control helper scripts"
     ) in chat_bootstrap
     assert "- persist pause, resume, stop, replanning, and override intents into canonical state instead of relying on chat memory" in chat_bootstrap
+    assert f"python3.11 scripts/ops/chat_state.py review-queue --project-root {project_root}" in chat_bootstrap
+    assert f"python3.11 scripts/ops/chat_state.py change-summary --project-root {project_root}" in chat_bootstrap
+    assert f"python3.11 scripts/ops/control_agent.py status|pause|resume|stop|replan --project-root {project_root}" in chat_bootstrap
     assert "- agent_mode: stopped" in chat_bootstrap
     assert "- open_incident_count: 0" in chat_bootstrap
     assert "- pending_review_count: 0" in chat_bootstrap
@@ -92,7 +99,7 @@ def test_runtime_pack_reflects_idle_timeout_resume_closure_and_remaining_chat_ba
         },
         {
             "area": "chat_review_control_depth",
-            "note": "The runtime now auto-resumes after unexpected chat exit idles safely, but richer in-chat review retrieval, change summaries, and control routing are still backlog.",
+            "note": "The runtime now has persisted-state chat helpers for review retrieval and default change summaries, but generic object-specific override routing and broader expert-guidance workflows are still backlog.",
         },
     ]
     assert all(

@@ -196,13 +196,14 @@ GAP_REGISTRY: dict[str, dict[str, Any]] = {
         ),
     ),
     "BA10_CHAT_REVIEW_AND_CONTROL": _gap_metadata(
-        title="Chat review and control remain wrapper-only",
-        reason="The direct `jhc-chat` entrypoint manages chat session lifecycle, but richer review retrieval, control routing, and expert-guidance behaviors are not yet implemented in the chat surface.",
+        title="Chat review and control are still missing deeper expert-guidance workflows",
+        reason="The direct `jhc-chat` entrypoint now has persisted-state read helpers and global control routing guidance, but generic object-specific override routing and deeper expert-guidance workflows are not yet implemented in the chat surface.",
         next_slice="BA-10-S3",
-        evidence_summary="Chat lifecycle, a persisted startup dashboard, and a grouped review-queue snapshot now exist, but chat itself still does not route control decisions, default change summaries, or expert-guidance workflows.",
+        evidence_summary="Chat lifecycle, persisted startup/dashboard reads, explicit review-queue retrieval, and default change summaries now exist through committed chat helper commands, but generic object-specific override routing and expert-guidance workflows are still incomplete.",
         evidence_code_refs=(
             "job_hunt_copilot/chat_runtime.py",
             "scripts/ops/chat_session.py",
+            "scripts/ops/chat_state.py",
             "job_hunt_copilot/local_runtime.py",
             "job_hunt_copilot/review_queries.py",
             "job_hunt_copilot/runtime_pack.py",
@@ -900,15 +901,27 @@ _register_override(
     scenarios=(
         "Review retrieval is grouped, compact-first, and newest-first within each group",
     ),
+    status=STATUS_IMPLEMENTED,
+    note="`job_hunt_copilot.chat_runtime`, `scripts/ops/chat_state.py review-queue`, the generated `ops/agent/chat-bootstrap.md`, and `tests/test_local_runtime.py` now give `jhc-chat` an explicit persisted-state review-queue read that stays grouped, compact-first, and newest-first within each group.",
+)
+_register_override(
+    scenarios=(
+        "jhc-chat uses persisted state for answers and control routing",
+    ),
     status=STATUS_PARTIAL,
     gap_ids=("BA10_CHAT_REVIEW_AND_CONTROL",),
-    note="The generated chat startup briefing now includes a grouped compact review-queue snapshot ordered by pending expert review packets, failed expert-requested background tasks, maintenance batches, and open incidents, but explicit chat-time retrieval and deeper control routing are still incomplete.",
+    note="`scripts/ops/chat_state.py` now rereads persisted dashboard, review-queue, and change-summary state, and `scripts/ops/control_agent.py` remains the canonical global-control route, but generic object-specific override routing and broader chat-native control workflows are still incomplete.",
 )
 _register_override(
     scenarios=(
         "AI agent surfaces the current review queue in chat",
-        "jhc-chat uses persisted state for answers and control routing",
         "Default change summaries cover activity since the last completed expert review",
+    ),
+    status=STATUS_IMPLEMENTED,
+    note="`scripts/ops/chat_state.py` now gives `jhc-chat` explicit persisted-state review-queue and default change-summary reads, and the generated chat bootstrap directs the operator to use those helpers instead of relying on startup memory alone.",
+)
+_register_override(
+    scenarios=(
         "Expert guidance becomes live immediately but conflicting or uncertain reuse asks first",
         "Conflicting expert guidance pauses the whole autonomous system",
         "Expert-requested background tasks require explicit handoff summary and exclusive focus",
@@ -916,7 +929,7 @@ _register_override(
     ),
     status=STATUS_GAP,
     gap_ids=("BA10_CHAT_REVIEW_AND_CONTROL",),
-    note="The direct `jhc-chat` wrapper now prints a persisted startup dashboard plus grouped review snapshot, but explicit chat-side review retrieval, control routing, change summaries, and expert-guidance behaviors are still missing.",
+    note="The direct `jhc-chat` wrapper now has persisted review-queue and default change-summary helper reads, but expert-guidance reuse decisions, conflict-wide pausing, and background-task handoff or return workflows are still missing.",
 )
 _register_override(
     scenarios=("Expert-interaction resume follows explicit close, explicit resume, or safe idle timeout",),

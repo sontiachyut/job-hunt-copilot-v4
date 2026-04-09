@@ -1852,3 +1852,30 @@ Use this file as an append-only implementation log for the build agent.
 ### Notes
 - The acceptance matrix now reports `198 implemented / 2 partial / 12 gap` scenarios, and the open BA-10-S3 gap clusters are now `BA10_MAINTENANCE_AUTOMATION` and `BA10_CHAT_REVIEW_AND_CONTROL`.
 - This slice intentionally stayed bounded to idle-timeout recovery, BA-10 evidence refresh, and repo-surface honesty. It did not claim maintenance automation or broader in-chat control routing.
+
+### Session
+- Date: 2026-04-08 20:46:55 MST
+- Slice: BA-10-S3 persisted chat-state review retrieval and change-summary hardening
+- Goal: Close the read-only `jhc-chat` acceptance gaps around explicit review retrieval and default change summaries, refresh BA-10 evidence, and keep repo-facing status honest about the narrower remaining chat blocker surface.
+
+### Work Done
+- Added `scripts/ops/chat_state.py` plus new `job_hunt_copilot.chat_runtime` helpers so `jhc-chat` now has explicit persisted-state `dashboard`, `review-queue`, and `change-summary` reads instead of relying only on the startup snapshot.
+- Updated `job_hunt_copilot.runtime_pack` so the generated `ops/agent/chat-bootstrap.md` now points the operator at those read-only helper commands and at the canonical global control routes in `scripts/ops/control_agent.py`.
+- Added focused runtime regressions proving the explicit review-queue read stays grouped, compact-first, and newest-first, and that the default change summary scopes itself to activity since the last completed expert review while still surfacing maintenance outcomes.
+- Narrowed `job_hunt_copilot.acceptance_traceability` so the explicit review-retrieval, review-queue-in-chat, and default change-summary scenarios now close honestly, while the remaining chat gap stays limited to generic object-specific override routing plus broader expert-guidance workflows.
+- Refreshed `README.md`, `docs/ARCHITECTURE.md`, `build-agent/state/build-board.yaml`, `build-agent/state/IMPLEMENTATION_PLAN.md`, and the committed BA-10 report set so reviewer-facing repo surfaces and persisted build state all agree on the new blocker surface.
+
+### Validation
+- Ran `python3.11 -m py_compile job_hunt_copilot/chat_runtime.py job_hunt_copilot/runtime_pack.py job_hunt_copilot/acceptance_traceability.py scripts/ops/chat_state.py tests/test_local_runtime.py tests/test_runtime_pack.py`.
+- Ran `python3.11 -m pytest tests/test_local_runtime.py tests/test_runtime_pack.py tests/test_acceptance_traceability.py tests/test_blocker_audit.py tests/test_quality_validation.py` and confirmed all 44 tests passed.
+- Ran `python3.11 scripts/quality/run_ba10_validation_suite.py --project-root /Users/achyutaramsonti/Projects/job-hunt-copilot-v4 --current-focus` and confirmed all 5 automated checks passed while refreshing `build-agent/reports/ba-10-validation-suite-latest.{json,md}` at `2026-04-09T03:44:45Z`.
+
+### Result
+- `done`
+
+### Next
+- Keep BA-10-S3 open for the next remaining runtime/control burn-down slice. The best next slice is the remaining `jhc-chat` control gap, starting with generic object-specific override routing or expert-guidance conflict handling, with maintenance automation after that.
+
+### Notes
+- The acceptance matrix now reports `201 implemented / 2 partial / 9 gap` scenarios, and the open BA-10-S3 gap clusters remain `BA10_MAINTENANCE_AUTOMATION` and `BA10_CHAT_REVIEW_AND_CONTROL`.
+- The remaining chat cluster is now down to 5 open scenarios: 1 partial (`jhc-chat` persisted-state answers/control routing) and 4 gap scenarios (expert-guidance reuse, conflict-wide pause, and background-task handoff/return behavior).

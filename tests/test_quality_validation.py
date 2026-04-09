@@ -213,7 +213,7 @@ def test_validation_selector_details_include_requested_smoke_gap_blocker_and_cur
         in details["current_focus"]["reason"]
     )
     assert (
-        "this cycle closed idle-timeout auto-resume after unexpected chat exit"
+        "explicit persisted-state review-queue or default change-summary chat reads"
         in details["current_focus"]["reason"]
     )
 
@@ -521,7 +521,7 @@ def test_quality_validation_suite_script_dry_run_expands_current_focus():
         in current_focus["reason"]
     )
     assert (
-        "this cycle closed idle-timeout auto-resume after unexpected chat exit"
+        "explicit persisted-state review-queue or default change-summary chat reads"
         in current_focus["reason"]
     )
 

@@ -3,9 +3,9 @@
   "feature_path": "prd/test-spec.feature",
   "scenario_count": 214,
   "status_counts": {
-    "implemented": 198,
+    "implemented": 201,
     "partial": 2,
-    "gap": 12,
+    "gap": 9,
     "deferred_optional": 1,
     "excluded_from_required_acceptance": 1
   },
@@ -5769,9 +5769,9 @@
       ],
       "note": "The durable supervisor core is real and tested, and the autonomous catalog now covers both the full role-targeted chain and contact-rooted general-learning discovery, sending, and bounded delayed-feedback follow-through, while richer chat, maintenance, and posting-abandon runtime behavior remain incomplete.",
       "status_counts": {
-        "implemented": 21,
+        "implemented": 23,
         "partial": 2,
-        "gap": 10,
+        "gap": 8,
         "deferred_optional": 0,
         "excluded_from_required_acceptance": 0
       },
@@ -6483,7 +6483,7 @@
         {
           "name": "Review retrieval is grouped, compact-first, and newest-first within each group",
           "scenario_line": 1233,
-          "status": "partial",
+          "status": "implemented",
           "owner_role": "build-lead",
           "epic_ids": [
             "BA-02",
@@ -6516,10 +6516,8 @@
             "tests/test_local_runtime.py",
             "tests/test_runtime_pack.py"
           ],
-          "gap_ids": [
-            "BA10_CHAT_REVIEW_AND_CONTROL"
-          ],
-          "note": "The generated chat startup briefing now includes a grouped compact review-queue snapshot ordered by pending expert review packets, failed expert-requested background tasks, maintenance batches, and open incidents, but explicit chat-time retrieval and deeper control routing are still incomplete."
+          "gap_ids": [],
+          "note": "`job_hunt_copilot.chat_runtime`, `scripts/ops/chat_state.py review-queue`, the generated `ops/agent/chat-bootstrap.md`, and `tests/test_local_runtime.py` now give `jhc-chat` an explicit persisted-state review-queue read that stays grouped, compact-first, and newest-first within each group."
         },
         {
           "name": "Progress log, ops plan, and context snapshot use the current exact file shapes",
@@ -6563,7 +6561,7 @@
         {
           "name": "jhc-chat uses persisted state for answers and control routing",
           "scenario_line": 1249,
-          "status": "gap",
+          "status": "partial",
           "owner_role": "build-lead",
           "epic_ids": [
             "BA-02",
@@ -6599,7 +6597,7 @@
           "gap_ids": [
             "BA10_CHAT_REVIEW_AND_CONTROL"
           ],
-          "note": "The direct `jhc-chat` wrapper now prints a persisted startup dashboard plus grouped review snapshot, but explicit chat-side review retrieval, control routing, change summaries, and expert-guidance behaviors are still missing."
+          "note": "`scripts/ops/chat_state.py` now rereads persisted dashboard, review-queue, and change-summary state, and `scripts/ops/control_agent.py` remains the canonical global-control route, but generic object-specific override routing and broader chat-native control workflows are still incomplete."
         },
         {
           "name": "Current macOS sleep or wake detection uses pmset logs first and conservative fallback second",
@@ -6643,7 +6641,7 @@
         {
           "name": "Default change summaries cover activity since the last completed expert review",
           "scenario_line": 1267,
-          "status": "gap",
+          "status": "implemented",
           "owner_role": "build-lead",
           "epic_ids": [
             "BA-02",
@@ -6676,10 +6674,8 @@
             "tests/test_local_runtime.py",
             "tests/test_runtime_pack.py"
           ],
-          "gap_ids": [
-            "BA10_CHAT_REVIEW_AND_CONTROL"
-          ],
-          "note": "The direct `jhc-chat` wrapper now prints a persisted startup dashboard plus grouped review snapshot, but explicit chat-side review retrieval, control routing, change summaries, and expert-guidance behaviors are still missing."
+          "gap_ids": [],
+          "note": "`scripts/ops/chat_state.py` now gives `jhc-chat` explicit persisted-state review-queue and default change-summary reads, and the generated chat bootstrap directs the operator to use those helpers instead of relying on startup memory alone."
         },
         {
           "name": "Expert guidance becomes live immediately but conflicting or uncertain reuse asks first",
@@ -6720,7 +6716,7 @@
           "gap_ids": [
             "BA10_CHAT_REVIEW_AND_CONTROL"
           ],
-          "note": "The direct `jhc-chat` wrapper now prints a persisted startup dashboard plus grouped review snapshot, but explicit chat-side review retrieval, control routing, change summaries, and expert-guidance behaviors are still missing."
+          "note": "The direct `jhc-chat` wrapper now has persisted review-queue and default change-summary helper reads, but expert-guidance reuse decisions, conflict-wide pausing, and background-task handoff or return workflows are still missing."
         },
         {
           "name": "Conflicting expert guidance pauses the whole autonomous system",
@@ -6761,7 +6757,7 @@
           "gap_ids": [
             "BA10_CHAT_REVIEW_AND_CONTROL"
           ],
-          "note": "The direct `jhc-chat` wrapper now prints a persisted startup dashboard plus grouped review snapshot, but explicit chat-side review retrieval, control routing, change summaries, and expert-guidance behaviors are still missing."
+          "note": "The direct `jhc-chat` wrapper now has persisted review-queue and default change-summary helper reads, but expert-guidance reuse decisions, conflict-wide pausing, and background-task handoff or return workflows are still missing."
         },
         {
           "name": "Opening jhc-chat immediately pauses autonomous work and safe checkpointing is strict",
@@ -6880,7 +6876,7 @@
           "gap_ids": [
             "BA10_CHAT_REVIEW_AND_CONTROL"
           ],
-          "note": "The direct `jhc-chat` wrapper now prints a persisted startup dashboard plus grouped review snapshot, but explicit chat-side review retrieval, control routing, change summaries, and expert-guidance behaviors are still missing."
+          "note": "The direct `jhc-chat` wrapper now has persisted review-queue and default change-summary helper reads, but expert-guidance reuse decisions, conflict-wide pausing, and background-task handoff or return workflows are still missing."
         },
         {
           "name": "Expert-requested background task outcomes return to review appropriately",
@@ -6921,7 +6917,7 @@
           "gap_ids": [
             "BA10_CHAT_REVIEW_AND_CONTROL"
           ],
-          "note": "The direct `jhc-chat` wrapper now prints a persisted startup dashboard plus grouped review snapshot, but explicit chat-side review retrieval, control routing, change summaries, and expert-guidance behaviors are still missing."
+          "note": "The direct `jhc-chat` wrapper now has persisted review-queue and default change-summary helper reads, but expert-guidance reuse decisions, conflict-wide pausing, and background-task handoff or return workflows are still missing."
         },
         {
           "name": "Daily maintenance is mandatory, bounded, and run-boundary aware",
@@ -7117,9 +7113,9 @@
       ],
       "note": null,
       "status_counts": {
-        "implemented": 6,
+        "implemented": 7,
         "partial": 0,
-        "gap": 1,
+        "gap": 0,
         "deferred_optional": 0,
         "excluded_from_required_acceptance": 0
       },
@@ -7127,7 +7123,7 @@
         {
           "name": "AI agent surfaces the current review queue in chat",
           "scenario_line": 1360,
-          "status": "gap",
+          "status": "implemented",
           "owner_role": "quality-engineer",
           "epic_ids": [
             "BA-03",
@@ -7151,10 +7147,8 @@
             "tests/test_review_queries.py",
             "tests/test_local_runtime.py"
           ],
-          "gap_ids": [
-            "BA10_CHAT_REVIEW_AND_CONTROL"
-          ],
-          "note": "The direct `jhc-chat` wrapper now prints a persisted startup dashboard plus grouped review snapshot, but explicit chat-side review retrieval, control routing, change summaries, and expert-guidance behaviors are still missing."
+          "gap_ids": [],
+          "note": "`scripts/ops/chat_state.py` now gives `jhc-chat` explicit persisted-state review-queue and default change-summary reads, and the generated chat bootstrap directs the operator to use those helpers instead of relying on startup memory alone."
         },
         {
           "name": "Review surfaces are queryable from canonical state",
@@ -9254,13 +9248,14 @@
     },
     {
       "gap_id": "BA10_CHAT_REVIEW_AND_CONTROL",
-      "title": "Chat review and control remain wrapper-only",
-      "reason": "The direct `jhc-chat` entrypoint manages chat session lifecycle, but richer review retrieval, control routing, and expert-guidance behaviors are not yet implemented in the chat surface.",
+      "title": "Chat review and control are still missing deeper expert-guidance workflows",
+      "reason": "The direct `jhc-chat` entrypoint now has persisted-state read helpers and global control routing guidance, but generic object-specific override routing and deeper expert-guidance workflows are not yet implemented in the chat surface.",
       "next_slice": "BA-10-S3",
-      "evidence_summary": "Chat lifecycle, a persisted startup dashboard, and a grouped review-queue snapshot now exist, but chat itself still does not route control decisions, default change summaries, or expert-guidance workflows.",
+      "evidence_summary": "Chat lifecycle, persisted startup/dashboard reads, explicit review-queue retrieval, and default change summaries now exist through committed chat helper commands, but generic object-specific override routing and expert-guidance workflows are still incomplete.",
       "evidence_code_refs": [
         "job_hunt_copilot/chat_runtime.py",
         "scripts/ops/chat_session.py",
+        "scripts/ops/chat_state.py",
         "job_hunt_copilot/local_runtime.py",
         "job_hunt_copilot/review_queries.py",
         "job_hunt_copilot/runtime_pack.py"
@@ -9278,20 +9273,14 @@
         "BA-03-S1",
         "BA-03-S2",
         "BA-03-S3",
-        "BA-09-S1",
-        "BA-09-S2",
-        "BA-09-S3",
         "BA-10-S3"
       ],
       "scenario_names": [
-        "Review retrieval is grouped, compact-first, and newest-first within each group",
         "jhc-chat uses persisted state for answers and control routing",
-        "Default change summaries cover activity since the last completed expert review",
         "Expert guidance becomes live immediately but conflicting or uncertain reuse asks first",
         "Conflicting expert guidance pauses the whole autonomous system",
         "Expert-requested background tasks require explicit handoff summary and exclusive focus",
-        "Expert-requested background task outcomes return to review appropriately",
-        "AI agent surfaces the current review queue in chat"
+        "Expert-requested background task outcomes return to review appropriately"
       ]
     },
     {

@@ -756,6 +756,112 @@ def seed_chat_review_queue_state(connection: sqlite3.Connection) -> None:
     connection.commit()
 
 
+def seed_chat_change_summary_state(connection: sqlite3.Connection) -> None:
+    seed_chat_dashboard_state(connection)
+    connection.execute(
+        """
+        INSERT INTO pipeline_runs (
+          pipeline_run_id, run_scope_type, run_status, current_stage, lead_id,
+          job_posting_id, review_packet_status, run_summary, started_at, completed_at,
+          created_at, updated_at
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        """,
+        (
+            "pr_chat_reviewed",
+            "job_posting",
+            "completed",
+            "agent_review",
+            "ld_chat",
+            "jp_chat",
+            "reviewed",
+            "An earlier review decision was completed.",
+            "2026-04-08T13:40:00Z",
+            "2026-04-08T13:59:00Z",
+            "2026-04-08T13:40:00Z",
+            "2026-04-08T13:59:00Z",
+        ),
+    )
+    connection.execute(
+        """
+        INSERT INTO expert_review_packets (
+          expert_review_packet_id, pipeline_run_id, packet_status, packet_path,
+          job_posting_id, reviewed_at, summary_excerpt, created_at
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+        """,
+        (
+            "erp_chat_reviewed",
+            "pr_chat_reviewed",
+            "reviewed",
+            "ops/review-packets/pr_chat_reviewed/review_packet.md",
+            "jp_chat",
+            "2026-04-08T14:00:00Z",
+            "Earlier review was resolved.",
+            "2026-04-08T13:58:00Z",
+        ),
+    )
+    connection.execute(
+        """
+        INSERT INTO expert_review_decisions (
+          expert_review_decision_id, expert_review_packet_id, decision_type,
+          decision_notes, override_event_id, decided_at, applied_at
+        ) VALUES (?, ?, ?, ?, ?, ?, ?)
+        """,
+        (
+            "erd_chat_reviewed",
+            "erp_chat_reviewed",
+            "approve_existing_plan",
+            "Owner confirmed the earlier review packet.",
+            None,
+            "2026-04-08T14:00:00Z",
+            "2026-04-08T14:00:00Z",
+        ),
+    )
+    connection.execute(
+        """
+        INSERT INTO maintenance_change_batches (
+          maintenance_change_batch_id, branch_name, scope_slug, status, approval_outcome,
+          summary_path, json_path, validation_summary, failed_at, created_at
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        """,
+        (
+            "mcb_chat_post_review",
+            "maintenance/20260408-mcb-chat-post-review-followup",
+            "chat-post-review-followup",
+            "failed_validation",
+            "needs_review",
+            "ops/maintenance/mcb_chat_post_review/summary.md",
+            "ops/maintenance/mcb_chat_post_review/summary.json",
+            "Full-project validation still failed after the post-review patch.",
+            "2026-04-08T14:50:00Z",
+            "2026-04-08T14:20:00Z",
+        ),
+    )
+    connection.execute(
+        """
+        INSERT INTO override_events (
+          override_event_id, object_type, object_id, component_stage, previous_value,
+          new_value, override_reason, override_timestamp, override_by, lead_id,
+          job_posting_id, contact_id
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        """,
+        (
+            "ovr_chat_post_review",
+            "job_postings",
+            "jp_chat",
+            "posting_status",
+            '{"posting_status":"requires_contacts"}',
+            '{"posting_status":"ready_for_outreach"}',
+            "Owner cleared the posting for outreach after reviewing the packet.",
+            "2026-04-08T14:40:00Z",
+            "owner",
+            "ld_chat",
+            "jp_chat",
+            None,
+        ),
+    )
+    connection.commit()
+
+
 def test_materialize_supervisor_plist_script_renders_required_launchd_shape(tmp_path):
     project_root = tmp_path / "repo"
     project_root.mkdir()
@@ -1880,6 +1986,97 @@ def test_chat_review_queue_is_compact_first_and_newest_first_within_each_group(t
     assert groups["open_incidents"]["items"][0]["summary"] == (
         "medium: Contact enrichment stalled without a verified working email."
     )
+
+
+def test_chat_state_script_returns_grouped_review_queue_from_persisted_state(tmp_path):
+    project_root = tmp_path / "repo"
+    project_root.mkdir()
+    create_minimal_project(project_root)
+    run_script(
+        "scripts/ops/control_agent.py",
+        "status",
+        "--project-root",
+        str(project_root),
+    )
+
+    connection = connect_database(project_root / "job_hunt_copilot.db")
+    seed_chat_review_queue_state(connection)
+    connection.close()
+
+    report = json.loads(
+        run_script(
+            "scripts/ops/chat_state.py",
+            "review-queue",
+            "--project-root",
+            str(project_root),
+            "--max-items-per-group",
+            "1",
+        ).stdout
+    )
+
+    payload = report["payload"]
+    assert report["command"] == "review-queue"
+    assert payload["group_order"] == [
+        "pending_expert_review_packets",
+        "failed_expert_requested_background_tasks",
+        "maintenance_change_batches",
+        "open_incidents",
+    ]
+    assert payload["groups"][0]["items"][0]["headline"] == "Beta Labs / ML Platform Engineer"
+    assert payload["groups"][1]["items"][0]["headline"] == (
+        "Reconcile launchctl bootstrap failure evidence."
+    )
+    assert payload["groups"][2]["items"][0]["headline"] == "feedback-retry-hardening"
+    assert payload["groups"][3]["items"][0]["headline"] == "Beta Labs / ML Platform Engineer"
+    assert "## Review Queue" in report["rendered_markdown"]
+    assert "Pending expert review packets: 2" in report["rendered_markdown"]
+    assert "Autonomous maintenance change batches: 2" in report["rendered_markdown"]
+
+
+def test_chat_state_script_change_summary_defaults_to_last_completed_expert_review(tmp_path):
+    project_root = tmp_path / "repo"
+    project_root.mkdir()
+    create_minimal_project(project_root)
+    run_script(
+        "scripts/ops/control_agent.py",
+        "status",
+        "--project-root",
+        str(project_root),
+    )
+
+    connection = connect_database(project_root / "job_hunt_copilot.db")
+    seed_chat_change_summary_state(connection)
+    connection.close()
+
+    report = json.loads(
+        run_script(
+            "scripts/ops/chat_state.py",
+            "change-summary",
+            "--project-root",
+            str(project_root),
+            "--current-time",
+            "2026-04-08T15:30:00Z",
+            "--max-items-per-group",
+            "2",
+        ).stdout
+    )
+
+    payload = report["payload"]
+    assert report["command"] == "change-summary"
+    assert payload["window_kind"] == "since_last_completed_expert_review"
+    assert payload["window_start_at"] == "2026-04-08T14:00:00Z"
+    assert payload["activity_counts"]["pending_expert_review_packets"] == 1
+    assert payload["activity_counts"]["maintenance_change_batches"] == 1
+    assert payload["activity_counts"]["override_events"] == 1
+    maintenance_group = next(
+        group
+        for group in payload["review_queue"]["groups"]
+        if group["group_id"] == "maintenance_change_batches"
+    )
+    assert maintenance_group["items"][0]["headline"] == "chat-post-review-followup"
+    assert "Window: since the last completed expert review" in report["rendered_markdown"]
+    assert "chat-post-review-followup" in report["rendered_markdown"]
+    assert "Reviewable deltas:" in report["rendered_markdown"]
 
 
 def test_repo_agent_wrappers_use_expected_repo_local_wiring():

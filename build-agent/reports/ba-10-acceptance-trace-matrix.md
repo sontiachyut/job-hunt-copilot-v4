@@ -3,9 +3,9 @@
 - Feature file: `prd/test-spec.feature`
 - Scenario count: `214`
 - Status counts:
-  - `implemented`: `198`
+  - `implemented`: `201`
   - `partial`: `2`
-  - `gap`: `12`
+  - `gap`: `9`
   - `deferred_optional`: `1`
   - `excluded_from_required_acceptance`: `1`
 
@@ -60,8 +60,8 @@
 | Email Discovery behavior | outreach-engineer | 17 | 0 | 0 | 0 | 0 |
 | Email Drafting and Sending behavior | outreach-engineer | 14 | 0 | 0 | 0 | 0 |
 | Delivery Feedback behavior | outreach-engineer | 11 | 0 | 0 | 0 | 0 |
-| Supervisor Agent behavior | build-lead | 21 | 2 | 10 | 0 | 0 |
-| Review surfaces and chat-based control | quality-engineer | 6 | 0 | 1 | 0 | 0 |
+| Supervisor Agent behavior | build-lead | 23 | 2 | 8 | 0 | 0 |
+| Review surfaces and chat-based control | quality-engineer | 7 | 0 | 0 | 0 | 0 |
 | Current-build orchestration remains sequential | build-lead | 22 | 0 | 0 | 0 | 0 |
 | LinkedIn Scraping acceptance | ingestion-engineer | 12 | 0 | 0 | 0 | 0 |
 | End-to-end acceptance | quality-engineer | 3 | 0 | 0 | 0 | 1 |
@@ -132,22 +132,19 @@
   - Proper maintenance validation requires both change-scoped and full-project testing
   - Failed or unapproved maintenance batches remain reviewable
 
-### BA10_CHAT_REVIEW_AND_CONTROL: Chat review and control remain wrapper-only
+### BA10_CHAT_REVIEW_AND_CONTROL: Chat review and control are still missing deeper expert-guidance workflows
 - Next slice: `BA-10-S3`
-- Supporting slices: `BA-02-S1`, `BA-02-S2`, `BA-02-S3`, `BA-03-S1`, `BA-03-S2`, `BA-03-S3`, `BA-09-S1`, `BA-09-S2`, `BA-09-S3`, `BA-10-S3`
-- Reason: The direct `jhc-chat` entrypoint manages chat session lifecycle, but richer review retrieval, control routing, and expert-guidance behaviors are not yet implemented in the chat surface.
-- Evidence summary: Chat lifecycle, a persisted startup dashboard, and a grouped review-queue snapshot now exist, but chat itself still does not route control decisions, default change summaries, or expert-guidance workflows.
-- Evidence code refs: `job_hunt_copilot/chat_runtime.py`, `scripts/ops/chat_session.py`, `job_hunt_copilot/local_runtime.py`, `job_hunt_copilot/review_queries.py`, `job_hunt_copilot/runtime_pack.py`
+- Supporting slices: `BA-02-S1`, `BA-02-S2`, `BA-02-S3`, `BA-03-S1`, `BA-03-S2`, `BA-03-S3`, `BA-10-S3`
+- Reason: The direct `jhc-chat` entrypoint now has persisted-state read helpers and global control routing guidance, but generic object-specific override routing and deeper expert-guidance workflows are not yet implemented in the chat surface.
+- Evidence summary: Chat lifecycle, persisted startup/dashboard reads, explicit review-queue retrieval, and default change summaries now exist through committed chat helper commands, but generic object-specific override routing and expert-guidance workflows are still incomplete.
+- Evidence code refs: `job_hunt_copilot/chat_runtime.py`, `scripts/ops/chat_session.py`, `scripts/ops/chat_state.py`, `job_hunt_copilot/local_runtime.py`, `job_hunt_copilot/review_queries.py`, `job_hunt_copilot/runtime_pack.py`
 - Evidence test refs: `tests/test_local_runtime.py`, `tests/test_review_queries.py`, `tests/test_runtime_pack.py`, `tests/test_acceptance_traceability.py`
-- Scenarios: `8`
-  - Review retrieval is grouped, compact-first, and newest-first within each group
+- Scenarios: `5`
   - jhc-chat uses persisted state for answers and control routing
-  - Default change summaries cover activity since the last completed expert review
   - Expert guidance becomes live immediately but conflicting or uncertain reuse asks first
   - Conflicting expert guidance pauses the whole autonomous system
   - Expert-requested background tasks require explicit handoff summary and exclusive focus
   - Expert-requested background task outcomes return to review appropriately
-  - AI agent surfaces the current review queue in chat
 
 ## Epic Validation Ownership
 

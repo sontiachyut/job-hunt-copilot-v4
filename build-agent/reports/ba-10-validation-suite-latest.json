@@ -25,7 +25,7 @@
       "epic_id": "BA-10",
       "slice_id": "BA-10-S3",
       "owner_role": "quality-engineer",
-      "reason": "BA-10-S4 closed the downstream supervisor action-catalog gap, the latest BA-10-S3 hardening passes burned down the `jhc-chat` startup dashboard plus active-runtime-metrics scenarios and posting-abandon control, and this cycle closed idle-timeout auto-resume after unexpected chat exit, so the acceptance matrix now holds at 198 implemented / 2 partial / 12 gap scenarios with maintenance automation and richer chat review/control still open BA-10-S3 work.",
+      "reason": "BA-10-S4 closed the downstream supervisor action-catalog gap, the latest BA-10-S3 hardening passes burned down the `jhc-chat` startup dashboard plus active-runtime-metrics scenarios, posting-abandon control, idle-timeout auto-resume, and the explicit persisted-state review-queue or default change-summary chat reads, so the acceptance matrix now holds at 201 implemented / 2 partial / 9 gap scenarios with maintenance automation and deeper chat guidance or override workflows still open BA-10-S3 work.",
       "gap_ids": [
         "BA10_MAINTENANCE_AUTOMATION",
         "BA10_CHAT_REVIEW_AND_CONTROL"
@@ -93,12 +93,12 @@
         },
         {
           "gap_id": "BA10_CHAT_REVIEW_AND_CONTROL",
-          "title": "Chat review and control remain wrapper-only",
+          "title": "Chat review and control are still missing deeper expert-guidance workflows",
           "next_slice": "BA-10-S3",
-          "open_scenario_count": 8,
+          "open_scenario_count": 5,
           "status_counts": {
             "partial": 1,
-            "gap": 7
+            "gap": 4
           },
           "validation_command_ids": [
             "qa_runtime_control_regressions",
@@ -109,60 +109,39 @@
           "validation_suite_command": "python3.11 scripts/quality/run_ba10_validation_suite.py --project-root <repo_root> --gap-id BA10_CHAT_REVIEW_AND_CONTROL",
           "open_scenarios": [
             {
-              "name": "Review retrieval is grouped, compact-first, and newest-first within each group",
+              "name": "jhc-chat uses persisted state for answers and control routing",
               "status": "partial",
               "rule": "Supervisor Agent behavior",
-              "scenario_line": 1233,
-              "note": "The generated chat startup briefing now includes a grouped compact review-queue snapshot ordered by pending expert review packets, failed expert-requested background tasks, maintenance batches, and open incidents, but explicit chat-time retrieval and deeper control routing are still incomplete."
-            },
-            {
-              "name": "jhc-chat uses persisted state for answers and control routing",
-              "status": "gap",
-              "rule": "Supervisor Agent behavior",
               "scenario_line": 1249,
-              "note": "The direct `jhc-chat` wrapper now prints a persisted startup dashboard plus grouped review snapshot, but explicit chat-side review retrieval, control routing, change summaries, and expert-guidance behaviors are still missing."
-            },
-            {
-              "name": "Default change summaries cover activity since the last completed expert review",
-              "status": "gap",
-              "rule": "Supervisor Agent behavior",
-              "scenario_line": 1267,
-              "note": "The direct `jhc-chat` wrapper now prints a persisted startup dashboard plus grouped review snapshot, but explicit chat-side review retrieval, control routing, change summaries, and expert-guidance behaviors are still missing."
+              "note": "`scripts/ops/chat_state.py` now rereads persisted dashboard, review-queue, and change-summary state, and `scripts/ops/control_agent.py` remains the canonical global-control route, but generic object-specific override routing and broader chat-native control workflows are still incomplete."
             },
             {
               "name": "Expert guidance becomes live immediately but conflicting or uncertain reuse asks first",
               "status": "gap",
               "rule": "Supervisor Agent behavior",
               "scenario_line": 1273,
-              "note": "The direct `jhc-chat` wrapper now prints a persisted startup dashboard plus grouped review snapshot, but explicit chat-side review retrieval, control routing, change summaries, and expert-guidance behaviors are still missing."
+              "note": "The direct `jhc-chat` wrapper now has persisted review-queue and default change-summary helper reads, but expert-guidance reuse decisions, conflict-wide pausing, and background-task handoff or return workflows are still missing."
             },
             {
               "name": "Conflicting expert guidance pauses the whole autonomous system",
               "status": "gap",
               "rule": "Supervisor Agent behavior",
               "scenario_line": 1281,
-              "note": "The direct `jhc-chat` wrapper now prints a persisted startup dashboard plus grouped review snapshot, but explicit chat-side review retrieval, control routing, change summaries, and expert-guidance behaviors are still missing."
+              "note": "The direct `jhc-chat` wrapper now has persisted review-queue and default change-summary helper reads, but expert-guidance reuse decisions, conflict-wide pausing, and background-task handoff or return workflows are still missing."
             },
             {
               "name": "Expert-requested background tasks require explicit handoff summary and exclusive focus",
               "status": "gap",
               "rule": "Supervisor Agent behavior",
               "scenario_line": 1307,
-              "note": "The direct `jhc-chat` wrapper now prints a persisted startup dashboard plus grouped review snapshot, but explicit chat-side review retrieval, control routing, change summaries, and expert-guidance behaviors are still missing."
+              "note": "The direct `jhc-chat` wrapper now has persisted review-queue and default change-summary helper reads, but expert-guidance reuse decisions, conflict-wide pausing, and background-task handoff or return workflows are still missing."
             },
             {
               "name": "Expert-requested background task outcomes return to review appropriately",
               "status": "gap",
               "rule": "Supervisor Agent behavior",
               "scenario_line": 1314,
-              "note": "The direct `jhc-chat` wrapper now prints a persisted startup dashboard plus grouped review snapshot, but explicit chat-side review retrieval, control routing, change summaries, and expert-guidance behaviors are still missing."
-            },
-            {
-              "name": "AI agent surfaces the current review queue in chat",
-              "status": "gap",
-              "rule": "Review surfaces and chat-based control",
-              "scenario_line": 1360,
-              "note": "The direct `jhc-chat` wrapper now prints a persisted startup dashboard plus grouped review snapshot, but explicit chat-side review retrieval, control routing, change summaries, and expert-guidance behaviors are still missing."
+              "note": "The direct `jhc-chat` wrapper now has persisted review-queue and default change-summary helper reads, but expert-guidance reuse decisions, conflict-wide pausing, and background-task handoff or return workflows are still missing."
             }
           ]
         }
@@ -186,7 +165,7 @@
       "description": "Confirms generated runtime scaffolding stays honest about current action-catalog and maintenance placeholder status.",
       "status": "passed",
       "returncode": 0,
-      "duration_seconds": 0.27
+      "duration_seconds": 0.256
     },
     {
       "command_id": "qa_acceptance_reports",
@@ -196,7 +175,7 @@
       "description": "Keeps the committed BA-10 acceptance and blocker reports synchronized with repo code, tests, and state references.",
       "status": "passed",
       "returncode": 0,
-      "duration_seconds": 0.323
+      "duration_seconds": 0.315
     },
     {
       "command_id": "qa_supervisor_regressions",
@@ -206,7 +185,7 @@
       "description": "Confirms incident-first selector ordering, existing-run reuse, bounded role-targeted progression through `delivery_feedback`, and contact-rooted general-learning follow-through while keeping the remaining maintenance-selector gap explicit.",
       "status": "passed",
       "returncode": 0,
-      "duration_seconds": 1.013
+      "duration_seconds": 1.083
     },
     {
       "command_id": "qa_runtime_control_regressions",
@@ -216,7 +195,7 @@
       "description": "Covers launchd plist wiring, control commands, chat lifecycle state, delayed feedback runners, and explicit negative control cases.",
       "status": "passed",
       "returncode": 0,
-      "duration_seconds": 10.805
+      "duration_seconds": 10.326
     },
     {
       "command_id": "qa_review_surface_regressions",
@@ -226,13 +205,13 @@
       "description": "Verifies persisted grouped review surfaces and traceability reads that back the chat/review boundary.",
       "status": "passed",
       "returncode": 0,
-      "duration_seconds": 0.44
+      "duration_seconds": 0.416
     }
   ],
   "failed_command_ids": [],
   "passed": true,
   "validation_suite_report_version": 2,
-  "generated_at": "2026-04-09T03:24:34Z",
+  "generated_at": "2026-04-09T03:44:45Z",
   "summary": {
     "command_count": 5,
     "command_kind_counts": {
@@ -240,18 +219,18 @@
     },
     "passed_command_count": 5,
     "failed_command_count": 0,
-    "total_duration_seconds": 12.851
+    "total_duration_seconds": 12.396
   },
   "repo_status": {
     "acceptance_scenario_count": 214,
     "acceptance_status_counts": {
-      "implemented": 198,
+      "implemented": 201,
       "partial": 2,
-      "gap": 12,
+      "gap": 9,
       "deferred_optional": 1,
       "excluded_from_required_acceptance": 1
     },
-    "open_acceptance_scenario_count": 14,
+    "open_acceptance_scenario_count": 11,
     "open_acceptance_gap_cluster_count": 2,
     "open_acceptance_gap_ids": [
       "BA10_MAINTENANCE_AUTOMATION",
@@ -265,8 +244,8 @@
       },
       {
         "gap_id": "BA10_CHAT_REVIEW_AND_CONTROL",
-        "title": "Chat review and control remain wrapper-only",
-        "open_scenario_count": 8
+        "title": "Chat review and control are still missing deeper expert-guidance workflows",
+        "open_scenario_count": 5
       }
     ],
     "open_build_board_blocker_count": 3,

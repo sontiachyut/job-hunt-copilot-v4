@@ -15,6 +15,8 @@ CHAT_REVIEW_GROUP_ORDER = (
     "maintenance_change_batches",
     "open_incidents",
 )
+CHAT_CHANGE_SUMMARY_WINDOW_KIND_LAST_REVIEW = "since_last_completed_expert_review"
+CHAT_CHANGE_SUMMARY_WINDOW_KIND_ALL_ACTIVITY = "all_recorded_activity"
 
 
 def _parse_timestamp(timestamp: str) -> datetime:
@@ -99,6 +101,37 @@ def _query_single_timestamp_column(
         for row in connection.execute(sql, params).fetchall()
         if row[0]
     ]
+
+
+def _timestamp_is_after(timestamp: str | None, since_timestamp: str | None) -> bool:
+    if not timestamp or not since_timestamp:
+        return True
+    return _parse_timestamp(timestamp) > _parse_timestamp(since_timestamp)
+
+
+def _filter_timestamped_items_since(
+    items: list[dict[str, Any]],
+    *,
+    since_timestamp: str | None,
+) -> list[dict[str, Any]]:
+    if not since_timestamp:
+        return items
+    return [
+        item
+        for item in items
+        if _timestamp_is_after(str(item.get("timestamp") or ""), since_timestamp)
+    ]
+
+
+def _query_count(
+    connection: sqlite3.Connection,
+    sql: str,
+    params: tuple[Any, ...] = (),
+) -> int:
+    row = connection.execute(sql, params).fetchone()
+    if row is None:
+        return 0
+    return int(row[0] or 0)
 
 
 def build_chat_runtime_metrics(
@@ -326,6 +359,7 @@ def build_chat_review_queue(
     project_root: str | Any,
     local_timezone: tzinfo | None = None,
     max_items_per_group: int = 3,
+    since_timestamp: str | None = None,
 ) -> dict[str, Any]:
     current_dt = datetime.now(timezone.utc)
     resolved_timezone = _resolve_local_timezone(
@@ -367,18 +401,148 @@ def build_chat_review_queue(
     ordered_groups: list[dict[str, Any]] = []
     for group_id in CHAT_REVIEW_GROUP_ORDER:
         group = all_groups[group_id]
+        filtered_items = _filter_timestamped_items_since(
+            group["items"],
+            since_timestamp=since_timestamp,
+        )
         ordered_groups.append(
             {
                 "group_id": group_id,
                 "title": group["title"],
-                "total_count": len(group["items"]),
-                "items": group["items"][:max_items_per_group],
+                "total_count": len(filtered_items),
+                "items": filtered_items[:max_items_per_group],
             }
         )
 
     return {
         "group_order": list(CHAT_REVIEW_GROUP_ORDER),
         "groups": ordered_groups,
+    }
+
+
+def _latest_completed_expert_review_at(connection: sqlite3.Connection) -> str | None:
+    row = connection.execute(
+        """
+        SELECT MAX(decided_at)
+        FROM expert_review_decisions
+        """
+    ).fetchone()
+    if row is None:
+        return None
+    return str(row[0]) if row[0] else None
+
+
+def _count_activity_since(
+    connection: sqlite3.Connection,
+    *,
+    column_name: str,
+    table_name: str,
+    since_timestamp: str | None,
+    extra_where: str = "",
+    params: tuple[Any, ...] = (),
+) -> int:
+    filters: list[str] = [f"{column_name} IS NOT NULL"]
+    if since_timestamp:
+        filters.append(f"{column_name} > ?")
+        params = (since_timestamp, *params)
+    if extra_where:
+        filters.append(extra_where)
+    where_clause = " AND ".join(filters)
+    return _query_count(
+        connection,
+        f"SELECT COUNT(*) FROM {table_name} WHERE {where_clause}",
+        params,
+    )
+
+
+def build_chat_change_summary(
+    connection: sqlite3.Connection,
+    *,
+    project_root: str | Any,
+    current_time: str,
+    local_timezone: tzinfo | None = None,
+    max_items_per_group: int = 3,
+) -> dict[str, Any]:
+    current_dt = _parse_timestamp(current_time)
+    resolved_timezone = _resolve_local_timezone(
+        current_time=current_dt,
+        local_timezone=local_timezone,
+    )
+    last_completed_expert_review_at = _latest_completed_expert_review_at(connection)
+    window_kind = (
+        CHAT_CHANGE_SUMMARY_WINDOW_KIND_LAST_REVIEW
+        if last_completed_expert_review_at
+        else CHAT_CHANGE_SUMMARY_WINDOW_KIND_ALL_ACTIVITY
+    )
+    review_queue = build_chat_review_queue(
+        connection,
+        project_root=project_root,
+        local_timezone=resolved_timezone,
+        max_items_per_group=max_items_per_group,
+        since_timestamp=last_completed_expert_review_at,
+    )
+    group_index = {group["group_id"]: group for group in review_queue["groups"]}
+    activity_counts = {
+        "completed_pipeline_runs": _count_activity_since(
+            connection,
+            column_name="completed_at",
+            table_name="pipeline_runs",
+            since_timestamp=last_completed_expert_review_at,
+            extra_where="run_status = 'completed'",
+        ),
+        "sent_messages": _count_activity_since(
+            connection,
+            column_name="sent_at",
+            table_name="outreach_messages",
+            since_timestamp=last_completed_expert_review_at,
+        ),
+        "bounced_feedback_events": _count_activity_since(
+            connection,
+            column_name="event_timestamp",
+            table_name="delivery_feedback_events",
+            since_timestamp=last_completed_expert_review_at,
+            extra_where="event_state = 'bounced'",
+        ),
+        "reply_feedback_events": _count_activity_since(
+            connection,
+            column_name="event_timestamp",
+            table_name="delivery_feedback_events",
+            since_timestamp=last_completed_expert_review_at,
+            extra_where="event_state = 'replied'",
+        ),
+        "override_events": _count_activity_since(
+            connection,
+            column_name="override_timestamp",
+            table_name="override_events",
+            since_timestamp=last_completed_expert_review_at,
+        ),
+        "pending_expert_review_packets": group_index["pending_expert_review_packets"][
+            "total_count"
+        ],
+        "failed_expert_requested_background_tasks": group_index[
+            "failed_expert_requested_background_tasks"
+        ]["total_count"],
+        "maintenance_change_batches": group_index["maintenance_change_batches"][
+            "total_count"
+        ],
+        "open_incidents": group_index["open_incidents"]["total_count"],
+    }
+
+    return {
+        "generated_at": current_time,
+        "window_kind": window_kind,
+        "window_start_at": last_completed_expert_review_at,
+        "window_start_display": _format_timestamp_for_display(
+            last_completed_expert_review_at,
+            resolved_timezone,
+        ),
+        "window_end_at": current_time,
+        "window_end_display": _format_timestamp_for_display(
+            current_time,
+            resolved_timezone,
+        ),
+        "activity_counts": activity_counts,
+        "review_queue": review_queue,
     }
 
 
@@ -488,4 +652,59 @@ def render_chat_startup_dashboard(dashboard: dict[str, Any]) -> str:
             detail_parts.append(item["summary"])
             lines.append(f"  - {' | '.join(detail_parts)}")
     lines.append("")
+    return "\n".join(lines)
+
+
+def render_chat_review_queue(review_queue: dict[str, Any]) -> str:
+    lines = ["## Review Queue"]
+    for group in review_queue["groups"]:
+        lines.append(f"- {group['title']}: {group['total_count']}")
+        if not group["items"]:
+            lines.append("  - none")
+            continue
+        for item in group["items"]:
+            detail_parts = []
+            if item["timestamp_display"]:
+                detail_parts.append(item["timestamp_display"])
+            detail_parts.append(item["headline"])
+            detail_parts.append(item["summary"])
+            lines.append(f"  - {' | '.join(detail_parts)}")
+    lines.append("")
+    return "\n".join(lines)
+
+
+def render_chat_change_summary(change_summary: dict[str, Any]) -> str:
+    counts = change_summary["activity_counts"]
+    if change_summary["window_kind"] == CHAT_CHANGE_SUMMARY_WINDOW_KIND_LAST_REVIEW:
+        window_line = (
+            "since the last completed expert review "
+            f"({change_summary['window_start_display']})"
+        )
+    else:
+        window_line = "across all recorded activity (no completed expert review yet)"
+
+    lines = [
+        "# Job Hunt Copilot Change Summary",
+        "",
+        f"- Window: {window_line}",
+        f"- Generated at: {change_summary['window_end_display']}",
+        (
+            "- Autonomous work: "
+            f"{counts['completed_pipeline_runs']} completed runs, "
+            f"{counts['sent_messages']} sent messages, "
+            f"{counts['bounced_feedback_events']} bounces, "
+            f"{counts['reply_feedback_events']} replies"
+        ),
+        (
+            "- Reviewable deltas: "
+            f"{counts['pending_expert_review_packets']} pending review packets, "
+            f"{counts['failed_expert_requested_background_tasks']} failed background tasks, "
+            f"{counts['maintenance_change_batches']} maintenance batches, "
+            f"{counts['open_incidents']} open incidents, "
+            f"{counts['override_events']} overrides"
+        ),
+        "",
+        render_chat_review_queue(change_summary["review_queue"]).rstrip(),
+        "",
+    ]
     return "\n".join(lines)
