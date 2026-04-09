@@ -61,7 +61,7 @@ def test_repo_readiness_reports_are_current_and_repo_surfaces_are_honest():
     assert readme_surface["requires_open_gap_titles"] is True
     assert readme_surface["required_gap_titles"] == [
         "Maintenance workflow and artifacts are not implemented",
-        "Chat review and control are still missing deeper expert-guidance workflows",
+        "Chat review and control are still missing expert-requested background-task workflows",
     ]
 
     architecture_surface = next(
@@ -72,7 +72,7 @@ def test_repo_readiness_reports_are_current_and_repo_surfaces_are_honest():
     assert architecture_surface["requires_open_gap_titles"] is True
     assert architecture_surface["required_gap_titles"] == [
         "Maintenance workflow and artifacts are not implemented",
-        "Chat review and control are still missing deeper expert-guidance workflows",
+        "Chat review and control are still missing expert-requested background-task workflows",
     ]
 
     reports_index_surface = next(

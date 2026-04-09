@@ -453,14 +453,14 @@ def render_chat_bootstrap(
             "2. read the current progress log, ops plan, and chat-startup dashboard before answering substantive runtime questions",
             "3. use the persisted chat-startup dashboard as the clean first-response summary and compact review-queue snapshot",
             "4. for explicit review asks or `what changed`, reread canonical state through the persisted chat helper commands instead of relying on startup memory alone",
-            "5. route global pause, resume, stop, replan, and supported object-specific overrides through the canonical control helper scripts",
+            "5. route global pause, resume, stop, replan, live expert guidance, clarification asks, and supported object-specific overrides through the canonical control helper scripts",
             "6. inspect only the artifacts needed for the expert's current question or requested action",
             "",
             "Rules:",
             "- prioritize inspection, explanation, and control-intent persistence",
             "- treat job_hunt_copilot.db as canonical truth over filesystem artifacts",
             "- opening chat counts as expert presence; background autonomous work should remain paused by policy while the expert is actively interacting",
-            "- persist pause, resume, stop, replanning, and override intents into canonical state instead of relying on chat memory",
+            "- persist pause, resume, stop, replanning, guidance, clarification, and override intents into canonical state instead of relying on chat memory",
             "- expose pending review packets and open incidents clearly before diving into lower-level detail",
             "- do not expose secrets or tokens in summaries, incidents, or review surfaces",
             "",
@@ -469,6 +469,22 @@ def render_chat_bootstrap(
             f"- Read-only review queue: python3.11 scripts/ops/chat_state.py review-queue --project-root {paths.project_root}",
             f"- Default change summary: python3.11 scripts/ops/chat_state.py change-summary --project-root {paths.project_root}",
             f"- Global control routing: python3.11 scripts/ops/control_agent.py status|pause|resume|stop|replan --project-root {paths.project_root}",
+            (
+                "- Live expert guidance: "
+                f"python3.11 scripts/ops/control_agent.py guidance --project-root {paths.project_root} "
+                "--object-type job_posting|contact|resume_tailoring_run --object-id <object_id> "
+                "--component-stage <stage> --directive-key <key> --directive-value <value> "
+                "--reason \"<reason>\" [--scope current_only|current_and_similar_future] "
+                "[--source-override-event-id <override_event_id>]"
+            ),
+            (
+                "- Clarification before uncertain or conflicting reuse: "
+                f"python3.11 scripts/ops/control_agent.py clarify-guidance --project-root {paths.project_root} "
+                "--object-type job_posting|contact|resume_tailoring_run --object-id <object_id> "
+                "--component-stage <stage> --directive-key <key> --directive-value <value> "
+                "--reason \"<reason>\" [--request-kind uncertainty|conflict] "
+                "[--source-override-event-id <override_event_id>]"
+            ),
             (
                 "- Object override routing: "
                 f"python3.11 scripts/ops/control_agent.py override --project-root {paths.project_root} "
@@ -549,7 +565,7 @@ def render_initial_progress_log(
     local_day = datetime.now().astimezone().date().isoformat()
     blockers = [
         "The current registered action catalog is intentionally narrow; unsupported downstream stages escalate instead of improvising behavior.",
-        "Richer `jhc-chat` review retrieval, control routing, and expert-guidance workflows are still narrower than the acceptance target.",
+        "Expert-requested background-task handoff and return workflows are still narrower than the acceptance target.",
     ]
     return "\n".join(
         [
@@ -656,7 +672,7 @@ def build_initial_ops_plan(runtime_snapshot: dict[str, Any], generated_at: str) 
             },
             {
                 "area": "chat_review_control_depth",
-                "note": "The runtime now has persisted-state chat helpers plus supported object-specific override routing for posting abandon and tailoring-review overrides, but broader expert-guidance workflows are still backlog.",
+                "note": "The runtime now has persisted-state chat helpers, supported object-specific override routing, and live expert-guidance clarification controls, but expert-requested background-task handoff and return workflows are still backlog.",
             },
         ],
         "replan": {

@@ -35,6 +35,8 @@ from .supervisor import (
     NON_TERMINAL_RUN_STATUSES,
     begin_replanning,
     complete_pipeline_run,
+    create_agent_incident,
+    get_agent_incident,
     pause_agent,
     read_agent_control_state,
     record_override_event,
@@ -100,6 +102,25 @@ SUPPORTED_TAILORING_REVIEW_OVERRIDE_DECISIONS = frozenset(
         RESUME_REVIEW_STATUS_REJECTED,
     }
 )
+GUIDANCE_SCOPE_CURRENT_ONLY = "current_only"
+GUIDANCE_SCOPE_CURRENT_AND_SIMILAR_FUTURE = "current_and_similar_future"
+GUIDANCE_SCOPES = frozenset(
+    {
+        GUIDANCE_SCOPE_CURRENT_ONLY,
+        GUIDANCE_SCOPE_CURRENT_AND_SIMILAR_FUTURE,
+    }
+)
+GUIDANCE_REQUEST_KIND_CONFLICT = "conflict"
+GUIDANCE_REQUEST_KIND_UNCERTAINTY = "uncertainty"
+GUIDANCE_REQUEST_KINDS = frozenset(
+    {
+        GUIDANCE_REQUEST_KIND_CONFLICT,
+        GUIDANCE_REQUEST_KIND_UNCERTAINTY,
+    }
+)
+GUIDANCE_CONFLICT_INCIDENT_TYPE = "expert_guidance_conflict"
+GUIDANCE_CLARIFICATION_INCIDENT_TYPE = "expert_guidance_clarification"
+GUIDANCE_CLARIFICATION_PAUSE_REASON = "expert_guidance_clarification"
 PMSET_EVENT_LINE_PATTERN = re.compile(
     r"^(?P<timestamp>\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2} [+-]\d{4})\s+(?P<body>.+)$"
 )
@@ -337,6 +358,244 @@ def _record_state_transition(
         ),
     )
     return state_transition_event_id
+
+
+def _normalize_guidance_object_type(object_type: str) -> str:
+    normalized = object_type.strip()
+    if not normalized:
+        raise ValueError("object_type is required for expert guidance commands.")
+    return {
+        "job_posting": "job_postings",
+        "job_postings": "job_postings",
+        "contact": "contacts",
+        "contacts": "contacts",
+        "resume_tailoring_run": "resume_tailoring_runs",
+        "resume_tailoring_runs": "resume_tailoring_runs",
+        "tailoring_review": "resume_tailoring_runs",
+    }.get(normalized, normalized)
+
+
+def _guidance_pause_reason(directive_key: str) -> str:
+    sanitized_key = re.sub(r"[^a-z0-9_]+", "_", directive_key.strip().lower()).strip("_")
+    suffix = sanitized_key or "general"
+    return f"{GUIDANCE_CONFLICT_INCIDENT_TYPE}:{suffix}"
+
+
+def _parse_override_json_payload(raw_value: str | None) -> dict[str, Any]:
+    if not raw_value:
+        return {}
+    try:
+        parsed = json.loads(raw_value)
+    except json.JSONDecodeError:
+        return {}
+    return parsed if isinstance(parsed, dict) else {}
+
+
+def _resolve_guidance_linkage(
+    connection: sqlite3.Connection,
+    *,
+    object_type: str,
+    object_id: str,
+) -> tuple[str | None, str | None, str | None]:
+    if object_type == "job_postings":
+        row = connection.execute(
+            """
+            SELECT lead_id
+            FROM job_postings
+            WHERE job_posting_id = ?
+            """,
+            (object_id,),
+        ).fetchone()
+        if row is None:
+            raise ValueError(f"job_posting {object_id!r} does not exist.")
+        return (str(row["lead_id"]) if row["lead_id"] else None, object_id, None)
+
+    if object_type == "contacts":
+        row = connection.execute(
+            """
+            SELECT contact_id
+            FROM contacts
+            WHERE contact_id = ?
+            """,
+            (object_id,),
+        ).fetchone()
+        if row is None:
+            raise ValueError(f"contact {object_id!r} does not exist.")
+        return (None, None, object_id)
+
+    if object_type == "resume_tailoring_runs":
+        row = connection.execute(
+            """
+            SELECT rtr.job_posting_id, jp.lead_id
+            FROM resume_tailoring_runs rtr
+            LEFT JOIN job_postings jp
+              ON jp.job_posting_id = rtr.job_posting_id
+            WHERE rtr.resume_tailoring_run_id = ?
+            """,
+            (object_id,),
+        ).fetchone()
+        if row is None:
+            raise ValueError(f"resume_tailoring_run {object_id!r} does not exist.")
+        return (
+            str(row["lead_id"]) if row["lead_id"] else None,
+            str(row["job_posting_id"]) if row["job_posting_id"] else None,
+            None,
+        )
+
+    return (None, None, None)
+
+
+def _list_guidance_override_rows(
+    connection: sqlite3.Connection,
+    *,
+    object_type: str,
+    component_stage: str,
+) -> list[sqlite3.Row]:
+    return connection.execute(
+        """
+        SELECT override_event_id, object_type, object_id, component_stage, previous_value,
+               new_value, override_reason, override_timestamp
+        FROM override_events
+        WHERE object_type = ?
+          AND component_stage = ?
+        ORDER BY override_timestamp DESC, override_event_id DESC
+        """,
+        (object_type, component_stage),
+    ).fetchall()
+
+
+def _find_latest_guidance_override(
+    connection: sqlite3.Connection,
+    *,
+    object_type: str,
+    object_id: str,
+    component_stage: str,
+    directive_key: str,
+) -> tuple[sqlite3.Row, dict[str, Any]] | None:
+    rows = connection.execute(
+        """
+        SELECT override_event_id, object_type, object_id, component_stage, previous_value,
+               new_value, override_reason, override_timestamp
+        FROM override_events
+        WHERE object_type = ?
+          AND object_id = ?
+          AND component_stage = ?
+        ORDER BY override_timestamp DESC, override_event_id DESC
+        """,
+        (object_type, object_id, component_stage),
+    ).fetchall()
+    for row in rows:
+        payload = _parse_override_json_payload(str(row["new_value"] or ""))
+        if payload.get("directive_key") == directive_key:
+            return row, payload
+    return None
+
+
+def _list_conflicting_guidance_overrides(
+    connection: sqlite3.Connection,
+    *,
+    object_type: str,
+    component_stage: str,
+    directive_key: str,
+    directive_value: str,
+) -> list[dict[str, Any]]:
+    conflicts: list[dict[str, Any]] = []
+    for row in _list_guidance_override_rows(
+        connection,
+        object_type=object_type,
+        component_stage=component_stage,
+    ):
+        payload = _parse_override_json_payload(str(row["new_value"] or ""))
+        if payload.get("directive_key") != directive_key:
+            continue
+        if payload.get("guidance_scope") != GUIDANCE_SCOPE_CURRENT_AND_SIMILAR_FUTURE:
+            continue
+        if payload.get("directive_value") == directive_value:
+            continue
+        conflicts.append(
+            {
+                "override_event_id": str(row["override_event_id"]),
+                "object_id": str(row["object_id"]),
+                "override_timestamp": str(row["override_timestamp"]),
+                "directive_value": str(payload.get("directive_value") or ""),
+                "guidance_scope": str(payload.get("guidance_scope") or ""),
+                "source_guidance_override_event_id": payload.get(
+                    "source_guidance_override_event_id"
+                ),
+            }
+        )
+    return conflicts
+
+
+def _find_existing_guidance_incident(
+    connection: sqlite3.Connection,
+    *,
+    incident_type: str,
+    escalation_reason: str,
+    lead_id: str | None,
+    job_posting_id: str | None,
+    contact_id: str | None,
+) -> Any | None:
+    row = connection.execute(
+        """
+        SELECT agent_incident_id
+        FROM agent_incidents
+        WHERE incident_type = ?
+          AND status IN ('open', 'in_repair', 'escalated')
+          AND COALESCE(lead_id, '') = COALESCE(?, '')
+          AND COALESCE(job_posting_id, '') = COALESCE(?, '')
+          AND COALESCE(contact_id, '') = COALESCE(?, '')
+          AND COALESCE(escalation_reason, '') = ?
+        ORDER BY updated_at DESC, created_at DESC, agent_incident_id DESC
+        LIMIT 1
+        """,
+        (
+            incident_type,
+            lead_id,
+            job_posting_id,
+            contact_id,
+            escalation_reason,
+        ),
+    ).fetchone()
+    if row is None:
+        return None
+    return get_agent_incident(connection, str(row["agent_incident_id"]))
+
+
+def _ensure_guidance_incident(
+    connection: sqlite3.Connection,
+    *,
+    incident_type: str,
+    severity: str,
+    summary: str,
+    escalation_reason_payload: dict[str, Any],
+    lead_id: str | None,
+    job_posting_id: str | None,
+    contact_id: str | None,
+    created_at: str,
+) -> Any:
+    escalation_reason = json.dumps(escalation_reason_payload, sort_keys=True)
+    existing = _find_existing_guidance_incident(
+        connection,
+        incident_type=incident_type,
+        escalation_reason=escalation_reason,
+        lead_id=lead_id,
+        job_posting_id=job_posting_id,
+        contact_id=contact_id,
+    )
+    if existing is not None:
+        return existing
+    return create_agent_incident(
+        connection,
+        incident_type=incident_type,
+        severity=severity,
+        summary=summary,
+        lead_id=lead_id,
+        job_posting_id=job_posting_id,
+        contact_id=contact_id,
+        escalation_reason=escalation_reason,
+        created_at=created_at,
+    )
 
 
 def render_supervisor_launchd_plist_payload(paths: ProjectPaths) -> dict[str, Any]:
@@ -773,6 +1032,411 @@ def apply_object_override(
             if result.override_event is None
             else result.override_event.override_event_id
         ),
+        "manual_command": manual_command,
+        "control_state": dict(control_state.values),
+    }
+
+
+def persist_expert_guidance(
+    object_type: str,
+    object_id: str,
+    *,
+    component_stage: str,
+    directive_key: str,
+    directive_value: str,
+    reason: str,
+    guidance_scope: str = GUIDANCE_SCOPE_CURRENT_AND_SIMILAR_FUTURE,
+    source_override_event_id: str | None = None,
+    project_root: Path | str | None = None,
+    manual_command: str | None = None,
+    timestamp: str | None = None,
+) -> dict[str, Any]:
+    normalized_object_type = _normalize_guidance_object_type(object_type)
+    normalized_object_id = object_id.strip()
+    normalized_component_stage = component_stage.strip()
+    normalized_directive_key = directive_key.strip()
+    normalized_directive_value = directive_value.strip()
+    normalized_reason = reason.strip()
+    normalized_source_override_event_id = (
+        source_override_event_id.strip() if source_override_event_id else None
+    )
+
+    if not normalized_object_id:
+        raise ValueError("object_id is required for the guidance command.")
+    if not normalized_component_stage:
+        raise ValueError("component_stage is required for the guidance command.")
+    if not normalized_directive_key:
+        raise ValueError("directive_key is required for the guidance command.")
+    if not normalized_directive_value:
+        raise ValueError("directive_value is required for the guidance command.")
+    if not normalized_reason:
+        raise ValueError("reason is required for the guidance command.")
+    if guidance_scope not in GUIDANCE_SCOPES:
+        supported_scopes = ", ".join(sorted(GUIDANCE_SCOPES))
+        raise ValueError(
+            f"Unsupported guidance scope={guidance_scope!r}. Supported values: {supported_scopes}."
+        )
+
+    paths = ProjectPaths.from_root(project_root)
+    migration = initialize_database(paths.db_path)
+    current_timestamp = timestamp or now_utc_iso()
+
+    with connect_canonical_database(paths) as connection:
+        lead_id, job_posting_id, contact_id = _resolve_guidance_linkage(
+            connection,
+            object_type=normalized_object_type,
+            object_id=normalized_object_id,
+        )
+
+        if normalized_source_override_event_id is not None:
+            source_row = connection.execute(
+                """
+                SELECT override_event_id
+                FROM override_events
+                WHERE override_event_id = ?
+                """,
+                (normalized_source_override_event_id,),
+            ).fetchone()
+            if source_row is None:
+                raise ValueError(
+                    "source_override_event_id "
+                    f"{normalized_source_override_event_id!r} does not exist."
+                )
+
+        latest_guidance = _find_latest_guidance_override(
+            connection,
+            object_type=normalized_object_type,
+            object_id=normalized_object_id,
+            component_stage=normalized_component_stage,
+            directive_key=normalized_directive_key,
+        )
+        latest_row = latest_guidance[0] if latest_guidance is not None else None
+        latest_payload = latest_guidance[1] if latest_guidance is not None else {}
+        latest_source_override_event_id = (
+            str(latest_payload.get("source_guidance_override_event_id") or "")
+            if latest_payload
+            else ""
+        )
+
+        requested_source_override_event_id = (
+            normalized_source_override_event_id
+            or latest_source_override_event_id
+            or None
+        )
+        if (
+            latest_row is not None
+            and latest_payload.get("directive_value") == normalized_directive_value
+            and latest_payload.get("guidance_scope") == guidance_scope
+            and (
+                normalized_source_override_event_id is None
+                or latest_source_override_event_id == normalized_source_override_event_id
+            )
+        ):
+            control_state = read_agent_control_state(connection, timestamp=current_timestamp)
+            return {
+                "contract_version": CONTRACT_VERSION,
+                "produced_at": now_utc_iso(),
+                "project_root": str(paths.project_root),
+                "database": {
+                    "db_path": str(migration.db_path),
+                    "applied_migrations": migration.applied_migrations,
+                    "user_version": migration.user_version,
+                },
+                "command": "guidance",
+                "status": "already_live",
+                "guidance": {
+                    "object_type": normalized_object_type,
+                    "object_id": normalized_object_id,
+                    "component_stage": normalized_component_stage,
+                    "directive_key": normalized_directive_key,
+                    "directive_value": normalized_directive_value,
+                    "guidance_scope": guidance_scope,
+                    "applies_to_similar_future_cases": (
+                        guidance_scope == GUIDANCE_SCOPE_CURRENT_AND_SIMILAR_FUTURE
+                    ),
+                    "source_guidance_override_event_id": (
+                        latest_payload.get("source_guidance_override_event_id")
+                        or str(latest_row["override_event_id"])
+                    ),
+                    "override_event_id": str(latest_row["override_event_id"]),
+                    "override_timestamp": str(latest_row["override_timestamp"]),
+                },
+                "conflict": None,
+                "manual_command": manual_command,
+                "control_state": dict(control_state.values),
+            }
+
+        conflicts = _list_conflicting_guidance_overrides(
+            connection,
+            object_type=normalized_object_type,
+            component_stage=normalized_component_stage,
+            directive_key=normalized_directive_key,
+            directive_value=normalized_directive_value,
+        )
+
+        requested_source_override_event_id = (
+            requested_source_override_event_id or "__self__"
+        )
+        guidance_payload = {
+            "directive_key": normalized_directive_key,
+            "directive_value": normalized_directive_value,
+            "guidance_scope": guidance_scope,
+            "applies_to_similar_future_cases": (
+                guidance_scope == GUIDANCE_SCOPE_CURRENT_AND_SIMILAR_FUTURE
+            ),
+            "source_guidance_override_event_id": requested_source_override_event_id,
+            "recorded_at": current_timestamp,
+            "recorded_via": manual_command or "guidance",
+        }
+        previous_payload = latest_payload if latest_payload else {}
+        override_event = record_override_event(
+            connection,
+            object_type=normalized_object_type,
+            object_id=normalized_object_id,
+            component_stage=normalized_component_stage,
+            previous_value=json.dumps(previous_payload, sort_keys=True),
+            new_value=json.dumps(guidance_payload, sort_keys=True),
+            override_reason=normalized_reason,
+            override_by="owner",
+            lead_id=lead_id,
+            job_posting_id=job_posting_id,
+            contact_id=contact_id,
+            override_timestamp=current_timestamp,
+        )
+        if requested_source_override_event_id == "__self__":
+            guidance_payload["source_guidance_override_event_id"] = (
+                override_event.override_event_id
+            )
+            with connection:
+                connection.execute(
+                    """
+                    UPDATE override_events
+                    SET new_value = ?
+                    WHERE override_event_id = ?
+                    """,
+                    (
+                        json.dumps(guidance_payload, sort_keys=True),
+                        override_event.override_event_id,
+                    ),
+                )
+
+        control_state = read_agent_control_state(connection, timestamp=current_timestamp)
+        conflict_report = None
+        status = "guidance_persisted"
+        if conflicts:
+            conflict_summary = (
+                "Conflicting standing expert guidance requires clarification before "
+                "autonomous progression resumes."
+            )
+            conflict_incident = _ensure_guidance_incident(
+                connection,
+                incident_type=GUIDANCE_CONFLICT_INCIDENT_TYPE,
+                severity="high",
+                summary=conflict_summary,
+                escalation_reason_payload={
+                    "kind": GUIDANCE_REQUEST_KIND_CONFLICT,
+                    "object_type": normalized_object_type,
+                    "object_id": normalized_object_id,
+                    "component_stage": normalized_component_stage,
+                    "directive_key": normalized_directive_key,
+                    "directive_value": normalized_directive_value,
+                    "source_guidance_override_event_id": guidance_payload[
+                        "source_guidance_override_event_id"
+                    ],
+                    "conflicting_override_event_ids": [
+                        conflict["override_event_id"] for conflict in conflicts
+                    ],
+                },
+                lead_id=lead_id,
+                job_posting_id=job_posting_id,
+                contact_id=contact_id,
+                created_at=current_timestamp,
+            )
+            if control_state.agent_enabled or control_state.agent_mode != AGENT_MODE_STOPPED:
+                control_state = pause_agent(
+                    connection,
+                    reason=_guidance_pause_reason(normalized_directive_key),
+                    manual_command=manual_command or "guidance",
+                    timestamp=current_timestamp,
+                )
+            conflict_report = {
+                "clarification_required": True,
+                "incident_id": conflict_incident.agent_incident_id,
+                "summary": conflict_summary,
+                "conflicting_override_event_ids": [
+                    conflict["override_event_id"] for conflict in conflicts
+                ],
+                "pause_reason": control_state.pause_reason,
+            }
+            status = "clarification_required"
+
+    return {
+        "contract_version": CONTRACT_VERSION,
+        "produced_at": now_utc_iso(),
+        "project_root": str(paths.project_root),
+        "database": {
+            "db_path": str(migration.db_path),
+            "applied_migrations": migration.applied_migrations,
+            "user_version": migration.user_version,
+        },
+        "command": "guidance",
+        "status": status,
+        "guidance": {
+            "object_type": normalized_object_type,
+            "object_id": normalized_object_id,
+            "component_stage": normalized_component_stage,
+            "directive_key": normalized_directive_key,
+            "directive_value": normalized_directive_value,
+            "guidance_scope": guidance_scope,
+            "applies_to_similar_future_cases": (
+                guidance_scope == GUIDANCE_SCOPE_CURRENT_AND_SIMILAR_FUTURE
+            ),
+            "source_guidance_override_event_id": guidance_payload[
+                "source_guidance_override_event_id"
+            ],
+            "override_event_id": override_event.override_event_id,
+            "override_timestamp": current_timestamp,
+        },
+        "conflict": conflict_report,
+        "manual_command": manual_command,
+        "control_state": dict(control_state.values),
+    }
+
+
+def request_guidance_clarification(
+    object_type: str,
+    object_id: str,
+    *,
+    component_stage: str,
+    directive_key: str,
+    directive_value: str,
+    reason: str,
+    request_kind: str = GUIDANCE_REQUEST_KIND_UNCERTAINTY,
+    source_override_event_id: str | None = None,
+    project_root: Path | str | None = None,
+    manual_command: str | None = None,
+    timestamp: str | None = None,
+) -> dict[str, Any]:
+    normalized_object_type = _normalize_guidance_object_type(object_type)
+    normalized_object_id = object_id.strip()
+    normalized_component_stage = component_stage.strip()
+    normalized_directive_key = directive_key.strip()
+    normalized_directive_value = directive_value.strip()
+    normalized_reason = reason.strip()
+    normalized_source_override_event_id = (
+        source_override_event_id.strip() if source_override_event_id else None
+    )
+
+    if not normalized_object_id:
+        raise ValueError("object_id is required for the clarify-guidance command.")
+    if not normalized_component_stage:
+        raise ValueError("component_stage is required for the clarify-guidance command.")
+    if not normalized_directive_key:
+        raise ValueError("directive_key is required for the clarify-guidance command.")
+    if not normalized_directive_value:
+        raise ValueError("directive_value is required for the clarify-guidance command.")
+    if not normalized_reason:
+        raise ValueError("reason is required for the clarify-guidance command.")
+    if request_kind not in GUIDANCE_REQUEST_KINDS:
+        supported_kinds = ", ".join(sorted(GUIDANCE_REQUEST_KINDS))
+        raise ValueError(
+            f"Unsupported request_kind={request_kind!r}. Supported values: {supported_kinds}."
+        )
+
+    paths = ProjectPaths.from_root(project_root)
+    migration = initialize_database(paths.db_path)
+    current_timestamp = timestamp or now_utc_iso()
+
+    with connect_canonical_database(paths) as connection:
+        lead_id, job_posting_id, contact_id = _resolve_guidance_linkage(
+            connection,
+            object_type=normalized_object_type,
+            object_id=normalized_object_id,
+        )
+        if normalized_source_override_event_id is not None:
+            source_row = connection.execute(
+                """
+                SELECT override_event_id
+                FROM override_events
+                WHERE override_event_id = ?
+                """,
+                (normalized_source_override_event_id,),
+            ).fetchone()
+            if source_row is None:
+                raise ValueError(
+                    "source_override_event_id "
+                    f"{normalized_source_override_event_id!r} does not exist."
+                )
+
+        incident_type = (
+            GUIDANCE_CONFLICT_INCIDENT_TYPE
+            if request_kind == GUIDANCE_REQUEST_KIND_CONFLICT
+            else GUIDANCE_CLARIFICATION_INCIDENT_TYPE
+        )
+        summary = (
+            "Expert clarification is required before this standing guidance can be "
+            "reused safely."
+            if request_kind == GUIDANCE_REQUEST_KIND_UNCERTAINTY
+            else (
+                "A materially conflicting expert-guidance request requires "
+                "clarification before autonomous progression resumes."
+            )
+        )
+        incident = _ensure_guidance_incident(
+            connection,
+            incident_type=incident_type,
+            severity="high",
+            summary=summary,
+            escalation_reason_payload={
+                "kind": request_kind,
+                "object_type": normalized_object_type,
+                "object_id": normalized_object_id,
+                "component_stage": normalized_component_stage,
+                "directive_key": normalized_directive_key,
+                "directive_value": normalized_directive_value,
+                "source_guidance_override_event_id": normalized_source_override_event_id,
+            },
+            lead_id=lead_id,
+            job_posting_id=job_posting_id,
+            contact_id=contact_id,
+            created_at=current_timestamp,
+        )
+        control_state = read_agent_control_state(connection, timestamp=current_timestamp)
+        pause_reason = (
+            _guidance_pause_reason(normalized_directive_key)
+            if request_kind == GUIDANCE_REQUEST_KIND_CONFLICT
+            else GUIDANCE_CLARIFICATION_PAUSE_REASON
+        )
+        if control_state.agent_enabled or control_state.agent_mode != AGENT_MODE_STOPPED:
+            control_state = pause_agent(
+                connection,
+                reason=pause_reason,
+                manual_command=manual_command or "clarify-guidance",
+                timestamp=current_timestamp,
+            )
+
+    return {
+        "contract_version": CONTRACT_VERSION,
+        "produced_at": now_utc_iso(),
+        "project_root": str(paths.project_root),
+        "database": {
+            "db_path": str(migration.db_path),
+            "applied_migrations": migration.applied_migrations,
+            "user_version": migration.user_version,
+        },
+        "command": "clarify-guidance",
+        "status": "clarification_required",
+        "clarification_request": {
+            "request_kind": request_kind,
+            "object_type": normalized_object_type,
+            "object_id": normalized_object_id,
+            "component_stage": normalized_component_stage,
+            "directive_key": normalized_directive_key,
+            "directive_value": normalized_directive_value,
+            "source_guidance_override_event_id": normalized_source_override_event_id,
+            "incident_id": incident.agent_incident_id,
+            "summary": incident.summary,
+        },
         "manual_command": manual_command,
         "control_state": dict(control_state.values),
     }

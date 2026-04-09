@@ -316,6 +316,62 @@ def seed_posting_for_tailoring_override(
     connection.commit()
 
 
+def seed_posting_for_guidance(
+    connection: sqlite3.Connection,
+    *,
+    lead_id: str,
+    job_posting_id: str,
+    company_name: str,
+    role_title: str,
+    posting_status: str = "requires_contacts",
+    timestamp: str = "2026-04-08T09:00:00Z",
+) -> None:
+    identity_key = f"{company_name.lower().replace(' ', '-')}|{role_title.lower().replace(' ', '-')}"
+    connection.execute(
+        """
+        INSERT INTO linkedin_leads (
+          lead_id, lead_identity_key, lead_status, lead_shape, split_review_status,
+          source_type, source_reference, source_mode, source_url, company_name, role_title,
+          created_at, updated_at
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        """,
+        (
+            lead_id,
+            identity_key,
+            "handed_off",
+            "posting_only",
+            "not_applicable",
+            "manual_capture",
+            f"paste/{lead_id}",
+            "manual_capture",
+            f"https://careers.example/jobs/{job_posting_id}",
+            company_name,
+            role_title,
+            timestamp,
+            timestamp,
+        ),
+    )
+    connection.execute(
+        """
+        INSERT INTO job_postings (
+          job_posting_id, lead_id, posting_identity_key, company_name, role_title,
+          posting_status, created_at, updated_at
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+        """,
+        (
+            job_posting_id,
+            lead_id,
+            identity_key,
+            company_name,
+            role_title,
+            posting_status,
+            timestamp,
+            timestamp,
+        ),
+    )
+    connection.commit()
+
+
 def seed_chat_dashboard_state(connection: sqlite3.Connection) -> None:
     connection.execute(
         """
@@ -1493,6 +1549,365 @@ def test_control_agent_script_abandon_rejects_terminal_posting_status_without_si
     assert dict(posting_row) == {"posting_status": "completed"}
     assert transition_count == 0
     assert override_count == 0
+
+
+def test_control_agent_script_guidance_defaults_to_live_future_scope_and_persists_lineage(tmp_path):
+    project_root = tmp_path / "repo"
+    project_root.mkdir()
+    create_minimal_project(project_root)
+    run_script(
+        "scripts/ops/control_agent.py",
+        "status",
+        "--project-root",
+        str(project_root),
+    )
+    connection = connect_database(project_root / "job_hunt_copilot.db")
+    seed_posting_for_guidance(
+        connection,
+        lead_id="ld_guidance_primary",
+        job_posting_id="jp_guidance_primary",
+        company_name="Acme Robotics",
+        role_title="Staff Platform Engineer",
+    )
+    seed_posting_for_guidance(
+        connection,
+        lead_id="ld_guidance_reuse",
+        job_posting_id="jp_guidance_reuse",
+        company_name="Beta Labs",
+        role_title="ML Platform Engineer",
+        timestamp="2026-04-08T09:30:00Z",
+    )
+    connection.close()
+
+    primary_report = json.loads(
+        run_script(
+            "scripts/ops/control_agent.py",
+            "guidance",
+            "--project-root",
+            str(project_root),
+            "--object-type",
+            "job_posting",
+            "--object-id",
+            "jp_guidance_primary",
+            "--component-stage",
+            "sending_policy",
+            "--directive-key",
+            "duplicate_send_handling",
+            "--directive-value",
+            "escalate_before_repeat_send",
+            "--reason",
+            "Treat repeat-send ambiguity as expert-review-only.",
+        ).stdout
+    )
+    duplicate_report = json.loads(
+        run_script(
+            "scripts/ops/control_agent.py",
+            "guidance",
+            "--project-root",
+            str(project_root),
+            "--object-type",
+            "job_posting",
+            "--object-id",
+            "jp_guidance_primary",
+            "--component-stage",
+            "sending_policy",
+            "--directive-key",
+            "duplicate_send_handling",
+            "--directive-value",
+            "escalate_before_repeat_send",
+            "--reason",
+            "Treat repeat-send ambiguity as expert-review-only.",
+        ).stdout
+    )
+    reuse_report = json.loads(
+        run_script(
+            "scripts/ops/control_agent.py",
+            "guidance",
+            "--project-root",
+            str(project_root),
+            "--object-type",
+            "job_posting",
+            "--object-id",
+            "jp_guidance_reuse",
+            "--component-stage",
+            "sending_policy",
+            "--directive-key",
+            "duplicate_send_handling",
+            "--directive-value",
+            "escalate_before_repeat_send",
+            "--reason",
+            "Reuse the existing repeat-send safety policy for similar postings.",
+            "--source-override-event-id",
+            primary_report["guidance"]["override_event_id"],
+        ).stdout
+    )
+
+    assert primary_report["status"] == "guidance_persisted"
+    assert primary_report["guidance"]["object_type"] == "job_postings"
+    assert primary_report["guidance"]["guidance_scope"] == "current_and_similar_future"
+    assert primary_report["guidance"]["applies_to_similar_future_cases"] is True
+    assert (
+        primary_report["guidance"]["source_guidance_override_event_id"]
+        == primary_report["guidance"]["override_event_id"]
+    )
+    assert primary_report["conflict"] is None
+
+    assert duplicate_report["status"] == "already_live"
+    assert (
+        duplicate_report["guidance"]["override_event_id"]
+        == primary_report["guidance"]["override_event_id"]
+    )
+
+    assert reuse_report["status"] == "guidance_persisted"
+    assert reuse_report["guidance"]["object_id"] == "jp_guidance_reuse"
+    assert (
+        reuse_report["guidance"]["source_guidance_override_event_id"]
+        == primary_report["guidance"]["override_event_id"]
+    )
+
+    connection = connect_database(project_root / "job_hunt_copilot.db")
+    rows = connection.execute(
+        """
+        SELECT object_id, new_value
+        FROM override_events
+        WHERE component_stage = 'sending_policy'
+        ORDER BY override_timestamp ASC, override_event_id ASC
+        """
+    ).fetchall()
+    connection.close()
+
+    assert len(rows) == 2
+    primary_payload = json.loads(rows[0]["new_value"])
+    reuse_payload = json.loads(rows[1]["new_value"])
+    assert primary_payload["directive_key"] == "duplicate_send_handling"
+    assert primary_payload["directive_value"] == "escalate_before_repeat_send"
+    assert primary_payload["guidance_scope"] == "current_and_similar_future"
+    assert primary_payload["source_guidance_override_event_id"] == primary_report["guidance"]["override_event_id"]
+    assert reuse_payload["source_guidance_override_event_id"] == primary_report["guidance"]["override_event_id"]
+
+
+def test_control_agent_script_guidance_conflict_pauses_agent_and_creates_reviewable_incident(tmp_path):
+    project_root = tmp_path / "repo"
+    project_root.mkdir()
+    create_minimal_project(project_root)
+    run_script(
+        "scripts/ops/control_agent.py",
+        "start",
+        "--project-root",
+        str(project_root),
+        "--manual-command",
+        "jhc-agent-start",
+    )
+    connection = connect_database(project_root / "job_hunt_copilot.db")
+    seed_posting_for_guidance(
+        connection,
+        lead_id="ld_guidance_conflict_a",
+        job_posting_id="jp_guidance_conflict_a",
+        company_name="Acme Robotics",
+        role_title="Staff Platform Engineer",
+    )
+    seed_posting_for_guidance(
+        connection,
+        lead_id="ld_guidance_conflict_b",
+        job_posting_id="jp_guidance_conflict_b",
+        company_name="Acme Robotics",
+        role_title="Senior Reliability Engineer",
+        timestamp="2026-04-08T09:35:00Z",
+    )
+    connection.close()
+
+    run_script(
+        "scripts/ops/control_agent.py",
+        "guidance",
+        "--project-root",
+        str(project_root),
+        "--object-type",
+        "job_posting",
+        "--object-id",
+        "jp_guidance_conflict_a",
+        "--component-stage",
+        "sending_policy",
+        "--directive-key",
+        "duplicate_send_handling",
+        "--directive-value",
+        "escalate_before_repeat_send",
+        "--reason",
+        "Keep repeat-send ambiguity review-only.",
+    )
+    report = json.loads(
+        run_script(
+            "scripts/ops/control_agent.py",
+            "guidance",
+            "--project-root",
+            str(project_root),
+            "--object-type",
+            "job_posting",
+            "--object-id",
+            "jp_guidance_conflict_b",
+            "--component-stage",
+            "sending_policy",
+            "--directive-key",
+            "duplicate_send_handling",
+            "--directive-value",
+            "allow_single_retry_after_owner_confirmation",
+            "--reason",
+            "Use a narrower resend policy for similar future cases.",
+        ).stdout
+    )
+
+    assert report["status"] == "clarification_required"
+    assert report["guidance"]["override_event_id"]
+    assert report["conflict"] is not None
+    assert report["conflict"]["clarification_required"] is True
+    assert report["conflict"]["incident_id"]
+    assert report["conflict"]["conflicting_override_event_ids"]
+    assert report["control_state"]["agent_mode"] == "paused"
+    assert report["control_state"]["pause_reason"] == "expert_guidance_conflict:duplicate_send_handling"
+
+    connection = connect_database(project_root / "job_hunt_copilot.db")
+    incident_row = connection.execute(
+        """
+        SELECT incident_type, severity, status, summary, job_posting_id
+        FROM agent_incidents
+        WHERE agent_incident_id = ?
+        """,
+        (report["conflict"]["incident_id"],),
+    ).fetchone()
+    guidance_row = connection.execute(
+        """
+        SELECT new_value
+        FROM override_events
+        WHERE override_event_id = ?
+        """,
+        (report["guidance"]["override_event_id"],),
+    ).fetchone()
+    review_queue = build_chat_review_queue(
+        connection,
+        project_root=project_root,
+        max_items_per_group=5,
+    )
+    connection.close()
+
+    assert dict(incident_row) == {
+        "incident_type": "expert_guidance_conflict",
+        "severity": "high",
+        "status": "open",
+        "summary": "Conflicting standing expert guidance requires clarification before autonomous progression resumes.",
+        "job_posting_id": "jp_guidance_conflict_b",
+    }
+    assert json.loads(guidance_row["new_value"])["directive_value"] == (
+        "allow_single_retry_after_owner_confirmation"
+    )
+    incident_group = next(
+        group for group in review_queue["groups"] if group["group_id"] == "open_incidents"
+    )
+    assert incident_group["total_count"] == 1
+    assert incident_group["items"][0]["headline"] == (
+        "Acme Robotics / Senior Reliability Engineer"
+    )
+    assert incident_group["items"][0]["summary"] == (
+        "high: Conflicting standing expert guidance requires clarification before autonomous progression resumes."
+    )
+
+
+def test_control_agent_script_clarify_guidance_is_idempotent_and_preserves_reviewable_pause(tmp_path):
+    project_root = tmp_path / "repo"
+    project_root.mkdir()
+    create_minimal_project(project_root)
+    run_script(
+        "scripts/ops/control_agent.py",
+        "start",
+        "--project-root",
+        str(project_root),
+        "--manual-command",
+        "jhc-agent-start",
+    )
+    connection = connect_database(project_root / "job_hunt_copilot.db")
+    seed_posting_for_guidance(
+        connection,
+        lead_id="ld_guidance_uncertain",
+        job_posting_id="jp_guidance_uncertain",
+        company_name="Gamma Systems",
+        role_title="Principal Data Engineer",
+    )
+    connection.close()
+
+    first_report = json.loads(
+        run_script(
+            "scripts/ops/control_agent.py",
+            "clarify-guidance",
+            "--project-root",
+            str(project_root),
+            "--object-type",
+            "job_posting",
+            "--object-id",
+            "jp_guidance_uncertain",
+            "--component-stage",
+            "people_search_policy",
+            "--directive-key",
+            "contact_reuse",
+            "--directive-value",
+            "reuse_only_if_same_hiring_manager_chain",
+            "--reason",
+            "The agent is not confident this future posting is similar enough to reuse the standing contact policy.",
+        ).stdout
+    )
+    second_report = json.loads(
+        run_script(
+            "scripts/ops/control_agent.py",
+            "clarify-guidance",
+            "--project-root",
+            str(project_root),
+            "--object-type",
+            "job_posting",
+            "--object-id",
+            "jp_guidance_uncertain",
+            "--component-stage",
+            "people_search_policy",
+            "--directive-key",
+            "contact_reuse",
+            "--directive-value",
+            "reuse_only_if_same_hiring_manager_chain",
+            "--reason",
+            "The agent is not confident this future posting is similar enough to reuse the standing contact policy.",
+        ).stdout
+    )
+
+    assert first_report["status"] == "clarification_required"
+    assert first_report["clarification_request"]["request_kind"] == "uncertainty"
+    assert first_report["control_state"]["agent_mode"] == "paused"
+    assert first_report["control_state"]["pause_reason"] == "expert_guidance_clarification"
+    assert (
+        second_report["clarification_request"]["incident_id"]
+        == first_report["clarification_request"]["incident_id"]
+    )
+
+    connection = connect_database(project_root / "job_hunt_copilot.db")
+    incident_count = connection.execute(
+        """
+        SELECT COUNT(*)
+        FROM agent_incidents
+        WHERE incident_type = 'expert_guidance_clarification'
+        """
+    ).fetchone()[0]
+    review_queue = build_chat_review_queue(
+        connection,
+        project_root=project_root,
+        max_items_per_group=5,
+    )
+    connection.close()
+
+    assert incident_count == 1
+    incident_group = next(
+        group for group in review_queue["groups"] if group["group_id"] == "open_incidents"
+    )
+    assert incident_group["total_count"] == 1
+    assert incident_group["items"][0]["headline"] == (
+        "Gamma Systems / Principal Data Engineer"
+    )
+    assert incident_group["items"][0]["summary"] == (
+        "high: Expert clarification is required before this standing guidance can be reused safely."
+    )
 
 
 def test_run_supervisor_cycle_script_records_no_work_launchd_cycle(tmp_path):

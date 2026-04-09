@@ -116,7 +116,7 @@ def test_ba10_blocker_audit_reports_are_current_and_reference_real_repo_paths():
         if cluster["gap_id"] == "BA10_CHAT_REVIEW_AND_CONTROL"
     )
     assert chat_cluster["next_slice"] == "BA-10-S3"
-    assert chat_cluster["status_counts"] == {"partial": 0, "gap": 4}
+    assert chat_cluster["status_counts"] == {"partial": 0, "gap": 2}
     assert "BA-10-S3" in chat_cluster["slice_ids"]
     assert [command["command_id"] for command in chat_cluster["validation_commands"]] == [
         "qa_runtime_control_regressions",
@@ -129,6 +129,10 @@ def test_ba10_blocker_audit_reports_are_current_and_reference_real_repo_paths():
     assert "tests/test_local_runtime.py" in chat_cluster["evidence_test_refs"]
     assert "tests/test_review_queries.py" in chat_cluster["evidence_test_refs"]
     assert all(scenario["status"] == "gap" for scenario in chat_cluster["scenarios"])
+    assert [scenario["name"] for scenario in chat_cluster["scenarios"]] == [
+        "Expert-requested background tasks require explicit handoff summary and exclusive focus",
+        "Expert-requested background task outcomes return to review appropriately",
+    ]
     assert all(
         scenario["name"] != "jhc-chat uses persisted state for answers and control routing"
         for scenario in chat_cluster["scenarios"]
@@ -144,7 +148,7 @@ def test_ba10_blocker_audit_reports_are_current_and_reference_real_repo_paths():
     assert chat_background_gap["scenario_line"] == 1314
     assert (
         chat_background_gap["note"]
-        == "The direct `jhc-chat` wrapper now has persisted review-queue and default change-summary helper reads, but expert-guidance reuse decisions, conflict-wide pausing, and background-task handoff or return workflows are still missing."
+        == "The direct `jhc-chat` wrapper now has persisted review-queue and default change-summary helper reads plus live expert-guidance clarification controls, but background-task handoff or return workflows are still missing."
     )
 
     build_cli_blocker = next(

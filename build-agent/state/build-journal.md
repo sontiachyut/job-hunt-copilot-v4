@@ -2236,3 +2236,28 @@ Use this file as an append-only implementation log for the build agent.
 ### Notes
 - The acceptance matrix now reports `202 implemented / 1 partial / 9 gap` scenarios, and the open BA-10-S3 gap clusters remain `BA10_MAINTENANCE_AUTOMATION` and `BA10_CHAT_REVIEW_AND_CONTROL`.
 - `BA10_CHAT_REVIEW_AND_CONTROL` no longer includes the control-routing partial; the remaining open scenarios are now all deeper expert-guidance or expert-task workflow gaps.
+
+### Session
+- Date: 2026-04-09 14:19:31 MST
+- Slice: BA-10-S3 live expert-guidance clarification burn-down
+- Goal: Close the remaining guidance-conflict acceptance scenarios by persisting live expert guidance immediately, pausing on conflicting or uncertain reuse through canonical incidents, and refreshing the BA-10 evidence surface honestly.
+
+### Work Done
+- Added `job_hunt_copilot.local_runtime.persist_expert_guidance` and `job_hunt_copilot.local_runtime.request_guidance_clarification`, with new `scripts/ops/control_agent.py guidance` and `clarify-guidance` commands that persist live expert guidance with current-object or future-similar scope, preserve lineage to the source override when present, and keep repeated requests idempotent.
+- Routed conflicting standing guidance and explicit uncertainty requests into reusable canonical incidents, pausing the autonomous system with reviewable guidance-specific pause reasons without falsely re-enabling an already stopped agent.
+- Updated `job_hunt_copilot.runtime_pack`, `job_hunt_copilot.acceptance_traceability`, `README.md`, and `docs/ARCHITECTURE.md` so the repo surfaces now advertise the implemented live-guidance controls honestly while leaving only expert-requested background-task workflows as the remaining chat gap.
+- Added focused regressions in `tests/test_local_runtime.py`, `tests/test_runtime_pack.py`, `tests/test_blocker_audit.py`, `tests/test_quality_validation.py`, and `tests/test_repo_readiness.py` that prove guidance defaults to current-plus-similar-future scope, conflict and clarification incidents are idempotent and reviewable, and the BA-10 report surfaces now publish the narrowed 204 implemented / 1 partial / 7 gap blocker surface.
+- Updated `build-agent/state/build-board.yaml`, `build-agent/state/IMPLEMENTATION_PLAN.md`, `build-agent/state/build-journal.md`, and `build-agent/state/codex-progress.txt` so the persisted build memory records this slice and the refreshed current-focus replay.
+
+### Validation
+- Ran `python3.11 scripts/quality/run_ba10_validation_suite.py --project-root /Users/achyutaramsonti/Projects/job-hunt-copilot-v4 --current-focus` and confirmed all 5 automated checks passed while refreshing `build-agent/reports/ba-10-validation-suite-latest.{json,md}` plus the acceptance trace, blocker audit, and repo-readiness reports at `2026-04-09T21:19:31Z`.
+
+### Result
+- `partial`
+
+### Next
+- Keep BA-10-S3 open for the next real functional blocker. The best next slice is build-lead ownership for expert-requested background-task handoff and return workflows before maintenance automation.
+
+### Notes
+- The acceptance matrix now reports `204 implemented / 1 partial / 7 gap` scenarios, and the open BA-10-S3 gap clusters remain `BA10_MAINTENANCE_AUTOMATION` and `BA10_CHAT_REVIEW_AND_CONTROL`.
+- `BA10_CHAT_REVIEW_AND_CONTROL` is now down to only 2 gap scenarios, both covering expert-requested background-task handoff or return behavior.

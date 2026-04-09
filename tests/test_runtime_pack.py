@@ -71,13 +71,29 @@ def test_runtime_pack_chat_bootstrap_scaffolds_review_and_control_surfaces(tmp_p
         "persisted chat helper commands instead of relying on startup memory alone"
     ) in chat_bootstrap
     assert (
-        "5. route global pause, resume, stop, replan, and supported object-specific overrides "
+        "5. route global pause, resume, stop, replan, live expert guidance, clarification asks, and supported object-specific overrides "
         "through the canonical control helper scripts"
     ) in chat_bootstrap
-    assert "- persist pause, resume, stop, replanning, and override intents into canonical state instead of relying on chat memory" in chat_bootstrap
+    assert "- persist pause, resume, stop, replanning, guidance, clarification, and override intents into canonical state instead of relying on chat memory" in chat_bootstrap
     assert f"python3.11 scripts/ops/chat_state.py review-queue --project-root {project_root}" in chat_bootstrap
     assert f"python3.11 scripts/ops/chat_state.py change-summary --project-root {project_root}" in chat_bootstrap
     assert f"python3.11 scripts/ops/control_agent.py status|pause|resume|stop|replan --project-root {project_root}" in chat_bootstrap
+    assert (
+        "python3.11 scripts/ops/control_agent.py guidance "
+        f"--project-root {project_root} --object-type job_posting|contact|resume_tailoring_run "
+        "--object-id <object_id> --component-stage <stage> --directive-key <key> "
+        "--directive-value <value> --reason \"<reason>\" "
+        "[--scope current_only|current_and_similar_future] "
+        "[--source-override-event-id <override_event_id>]"
+    ) in chat_bootstrap
+    assert (
+        "python3.11 scripts/ops/control_agent.py clarify-guidance "
+        f"--project-root {project_root} --object-type job_posting|contact|resume_tailoring_run "
+        "--object-id <object_id> --component-stage <stage> --directive-key <key> "
+        "--directive-value <value> --reason \"<reason>\" "
+        "[--request-kind uncertainty|conflict] "
+        "[--source-override-event-id <override_event_id>]"
+    ) in chat_bootstrap
     assert (
         "python3.11 scripts/ops/control_agent.py override "
         f"--project-root {project_root} --object-type job_posting|tailoring_review "
@@ -104,7 +120,7 @@ def test_runtime_pack_reflects_idle_timeout_resume_closure_and_remaining_chat_ba
         },
         {
             "area": "chat_review_control_depth",
-            "note": "The runtime now has persisted-state chat helpers plus supported object-specific override routing for posting abandon and tailoring-review overrides, but broader expert-guidance workflows are still backlog.",
+            "note": "The runtime now has persisted-state chat helpers, supported object-specific override routing, and live expert-guidance clarification controls, but expert-requested background-task handoff and return workflows are still backlog.",
         },
     ]
     assert all(

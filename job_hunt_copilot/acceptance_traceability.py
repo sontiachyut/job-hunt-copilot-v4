@@ -196,10 +196,10 @@ GAP_REGISTRY: dict[str, dict[str, Any]] = {
         ),
     ),
     "BA10_CHAT_REVIEW_AND_CONTROL": _gap_metadata(
-        title="Chat review and control are still missing deeper expert-guidance workflows",
-        reason="The direct `jhc-chat` entrypoint now has persisted-state read helpers plus supported object-specific override routing, but deeper expert-guidance workflows are not yet implemented in the chat surface.",
+        title="Chat review and control are still missing expert-requested background-task workflows",
+        reason="The direct `jhc-chat` entrypoint now has persisted-state read helpers, supported object-specific override routing, and live guidance clarification controls, but expert-requested background-task handoff and return workflows are not yet implemented in the chat surface.",
         next_slice="BA-10-S3",
-        evidence_summary="Chat lifecycle, persisted startup/dashboard reads, explicit review-queue retrieval, default change summaries, and supported object-specific override routing now exist through committed chat helper commands, but deeper expert-guidance workflows are still incomplete.",
+        evidence_summary="Chat lifecycle, persisted startup/dashboard reads, explicit review-queue retrieval, default change summaries, supported object-specific override routing, and live guidance conflict or clarification controls now exist through committed chat helper commands, but expert-requested background-task workflows are still incomplete.",
         evidence_code_refs=(
             "job_hunt_copilot/chat_runtime.py",
             "scripts/ops/chat_session.py",
@@ -923,12 +923,18 @@ _register_override(
     scenarios=(
         "Expert guidance becomes live immediately but conflicting or uncertain reuse asks first",
         "Conflicting expert guidance pauses the whole autonomous system",
+    ),
+    status=STATUS_IMPLEMENTED,
+    note="`job_hunt_copilot.local_runtime` plus `scripts/ops/control_agent.py guidance` and `clarify-guidance` now persist live expert guidance into canonical `override_events`, default that guidance to the current object plus similar future cases unless narrowed, preserve lineage to the source expert decision for generalized reuse, and pause autonomous execution through canonical incidents whenever reuse is uncertain or new standing guidance conflicts materially.",
+)
+_register_override(
+    scenarios=(
         "Expert-requested background tasks require explicit handoff summary and exclusive focus",
         "Expert-requested background task outcomes return to review appropriately",
     ),
     status=STATUS_GAP,
     gap_ids=("BA10_CHAT_REVIEW_AND_CONTROL",),
-    note="The direct `jhc-chat` wrapper now has persisted review-queue and default change-summary helper reads, but expert-guidance reuse decisions, conflict-wide pausing, and background-task handoff or return workflows are still missing.",
+    note="The direct `jhc-chat` wrapper now has persisted review-queue and default change-summary helper reads plus live expert-guidance clarification controls, but background-task handoff or return workflows are still missing.",
 )
 _register_override(
     scenarios=("Expert-interaction resume follows explicit close, explicit resume, or safe idle timeout",),

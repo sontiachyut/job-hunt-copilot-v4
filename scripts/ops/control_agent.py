@@ -15,6 +15,8 @@ from job_hunt_copilot.local_runtime import (
     abandon_job_posting,
     apply_object_override,
     mutate_agent_control_state,
+    persist_expert_guidance,
+    request_guidance_clarification,
 )
 
 
@@ -22,7 +24,18 @@ def main() -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument(
         "command",
-        choices=["start", "stop", "pause", "resume", "replan", "status", "abandon", "override"],
+        choices=[
+            "start",
+            "stop",
+            "pause",
+            "resume",
+            "replan",
+            "status",
+            "abandon",
+            "override",
+            "guidance",
+            "clarify-guidance",
+        ],
     )
     parser.add_argument("--project-root", default=str(PROJECT_ROOT))
     parser.add_argument("--reason")
@@ -31,6 +44,20 @@ def main() -> int:
     parser.add_argument("--object-type")
     parser.add_argument("--object-id")
     parser.add_argument("--new-value")
+    parser.add_argument("--component-stage")
+    parser.add_argument("--directive-key")
+    parser.add_argument("--directive-value")
+    parser.add_argument(
+        "--scope",
+        default="current_and_similar_future",
+        choices=["current_only", "current_and_similar_future"],
+    )
+    parser.add_argument(
+        "--request-kind",
+        default="uncertainty",
+        choices=["conflict", "uncertainty"],
+    )
+    parser.add_argument("--source-override-event-id")
     args = parser.parse_args()
 
     try:
@@ -59,6 +86,56 @@ def main() -> int:
                 new_value=args.new_value,
                 reason=args.reason,
                 manual_command=args.manual_command or "override",
+            )
+        elif args.command == "guidance":
+            if not args.object_type:
+                parser.error("--object-type is required for the guidance command.")
+            if not args.object_id:
+                parser.error("--object-id is required for the guidance command.")
+            if not args.component_stage:
+                parser.error("--component-stage is required for the guidance command.")
+            if not args.directive_key:
+                parser.error("--directive-key is required for the guidance command.")
+            if not args.directive_value:
+                parser.error("--directive-value is required for the guidance command.")
+            if not args.reason:
+                parser.error("--reason is required for the guidance command.")
+            report = persist_expert_guidance(
+                args.object_type,
+                args.object_id,
+                project_root=Path(args.project_root),
+                component_stage=args.component_stage,
+                directive_key=args.directive_key,
+                directive_value=args.directive_value,
+                reason=args.reason,
+                guidance_scope=args.scope,
+                source_override_event_id=args.source_override_event_id,
+                manual_command=args.manual_command or "guidance",
+            )
+        elif args.command == "clarify-guidance":
+            if not args.object_type:
+                parser.error("--object-type is required for the clarify-guidance command.")
+            if not args.object_id:
+                parser.error("--object-id is required for the clarify-guidance command.")
+            if not args.component_stage:
+                parser.error("--component-stage is required for the clarify-guidance command.")
+            if not args.directive_key:
+                parser.error("--directive-key is required for the clarify-guidance command.")
+            if not args.directive_value:
+                parser.error("--directive-value is required for the clarify-guidance command.")
+            if not args.reason:
+                parser.error("--reason is required for the clarify-guidance command.")
+            report = request_guidance_clarification(
+                args.object_type,
+                args.object_id,
+                project_root=Path(args.project_root),
+                component_stage=args.component_stage,
+                directive_key=args.directive_key,
+                directive_value=args.directive_value,
+                reason=args.reason,
+                request_kind=args.request_kind,
+                source_override_event_id=args.source_override_event_id,
+                manual_command=args.manual_command or "clarify-guidance",
             )
         else:
             report = mutate_agent_control_state(

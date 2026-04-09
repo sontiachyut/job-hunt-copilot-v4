@@ -214,7 +214,7 @@ def test_validation_selector_details_include_requested_smoke_gap_blocker_and_cur
         in details["current_focus"]["reason"]
     )
     assert (
-        "explicit persisted-state review-queue or default change-summary chat reads"
+        "persisted chat read surfaces plus object-specific override routing"
         in details["current_focus"]["reason"]
     )
 
@@ -439,12 +439,12 @@ def test_quality_validation_suite_script_dry_run_expands_chat_review_gap_ids():
     assert payload["selector_details"]["acceptance_gaps"] == [
         {
             "gap_id": "BA10_CHAT_REVIEW_AND_CONTROL",
-            "title": "Chat review and control are still missing deeper expert-guidance workflows",
+            "title": "Chat review and control are still missing expert-requested background-task workflows",
             "next_slice": "BA-10-S3",
-            "open_scenario_count": 4,
+            "open_scenario_count": 2,
             "status_counts": {
                 "partial": 0,
-                "gap": 4,
+                "gap": 2,
             },
             "validation_command_ids": [
                 "qa_runtime_control_regressions",
@@ -458,32 +458,18 @@ def test_quality_validation_suite_script_dry_run_expands_chat_review_gap_ids():
             ),
             "open_scenarios": [
                 {
-                    "name": "Expert guidance becomes live immediately but conflicting or uncertain reuse asks first",
-                    "status": "gap",
-                    "rule": "Supervisor Agent behavior",
-                    "scenario_line": 1273,
-                    "note": "The direct `jhc-chat` wrapper now has persisted review-queue and default change-summary helper reads, but expert-guidance reuse decisions, conflict-wide pausing, and background-task handoff or return workflows are still missing.",
-                },
-                {
-                    "name": "Conflicting expert guidance pauses the whole autonomous system",
-                    "status": "gap",
-                    "rule": "Supervisor Agent behavior",
-                    "scenario_line": 1281,
-                    "note": "The direct `jhc-chat` wrapper now has persisted review-queue and default change-summary helper reads, but expert-guidance reuse decisions, conflict-wide pausing, and background-task handoff or return workflows are still missing.",
-                },
-                {
                     "name": "Expert-requested background tasks require explicit handoff summary and exclusive focus",
                     "status": "gap",
                     "rule": "Supervisor Agent behavior",
                     "scenario_line": 1307,
-                    "note": "The direct `jhc-chat` wrapper now has persisted review-queue and default change-summary helper reads, but expert-guidance reuse decisions, conflict-wide pausing, and background-task handoff or return workflows are still missing.",
+                    "note": "The direct `jhc-chat` wrapper now has persisted review-queue and default change-summary helper reads plus live expert-guidance clarification controls, but background-task handoff or return workflows are still missing.",
                 },
                 {
                     "name": "Expert-requested background task outcomes return to review appropriately",
                     "status": "gap",
                     "rule": "Supervisor Agent behavior",
                     "scenario_line": 1314,
-                    "note": "The direct `jhc-chat` wrapper now has persisted review-queue and default change-summary helper reads, but expert-guidance reuse decisions, conflict-wide pausing, and background-task handoff or return workflows are still missing.",
+                    "note": "The direct `jhc-chat` wrapper now has persisted review-queue and default change-summary helper reads plus live expert-guidance clarification controls, but background-task handoff or return workflows are still missing.",
                 },
             ],
         }
@@ -615,7 +601,7 @@ def test_quality_validation_suite_script_dry_run_expands_current_focus():
         in current_focus["reason"]
     )
     assert (
-        "explicit persisted-state review-queue or default change-summary chat reads"
+        "persisted chat read surfaces plus object-specific override routing"
         in current_focus["reason"]
     )
 
