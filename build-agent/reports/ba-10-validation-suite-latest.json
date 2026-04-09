@@ -29,10 +29,9 @@
       "epic_id": "BA-10",
       "slice_id": "BA-10-S3",
       "owner_role": "build-lead",
-      "reason": "BA-10-S4 closed the downstream supervisor action-catalog gap, the latest BA-10-S3 hardening passes already burned down the persisted chat read surfaces plus object-specific override routing, and the new live expert-guidance clarification controls closed the remaining conflict-handling gap, so BA-10-S3 now resolves only the maintenance-automation and expert-requested background-task gap clusters at 204 implemented / 1 partial / 7 gap scenarios; the active same-slice handoff stays with build-lead for the remaining background-task workflow work before maintenance automation rather than more quality-only hardening.",
+      "reason": "BA-10-S4 closed the downstream supervisor action-catalog gap, the latest BA-10-S3 hardening passes already burned down the persisted chat read surfaces, object-specific override routing, live expert-guidance clarification controls, and the remaining expert-requested background-task workflow gap, so BA-10-S3 now resolves only the maintenance-automation cluster at 206 implemented / 1 partial / 5 gap scenarios; the active same-slice handoff stays with build-lead for the remaining maintenance workflow and approval-automation work rather than more chat/runtime control burn-down.",
       "gap_ids": [
-        "BA10_MAINTENANCE_AUTOMATION",
-        "BA10_CHAT_REVIEW_AND_CONTROL"
+        "BA10_MAINTENANCE_AUTOMATION"
       ],
       "gap_summaries": [
         {
@@ -94,47 +93,12 @@
               "note": "Only maintenance placeholders exist today; the maintenance workflow itself is still missing."
             }
           ]
-        },
-        {
-          "gap_id": "BA10_CHAT_REVIEW_AND_CONTROL",
-          "title": "Chat review and control are still missing expert-requested background-task workflows",
-          "next_slice": "BA-10-S3",
-          "open_scenario_count": 2,
-          "status_counts": {
-            "partial": 0,
-            "gap": 2
-          },
-          "validation_command_ids": [
-            "qa_runtime_control_regressions",
-            "qa_review_surface_regressions",
-            "qa_runtime_pack_regressions",
-            "qa_acceptance_reports"
-          ],
-          "validation_suite_command": "python3.11 scripts/quality/run_ba10_validation_suite.py --project-root <repo_root> --gap-id BA10_CHAT_REVIEW_AND_CONTROL",
-          "open_scenarios": [
-            {
-              "name": "Expert-requested background tasks require explicit handoff summary and exclusive focus",
-              "status": "gap",
-              "rule": "Supervisor Agent behavior",
-              "scenario_line": 1307,
-              "note": "The direct `jhc-chat` wrapper now has persisted review-queue and default change-summary helper reads plus live expert-guidance clarification controls, but background-task handoff or return workflows are still missing."
-            },
-            {
-              "name": "Expert-requested background task outcomes return to review appropriately",
-              "status": "gap",
-              "rule": "Supervisor Agent behavior",
-              "scenario_line": 1314,
-              "note": "The direct `jhc-chat` wrapper now has persisted review-queue and default change-summary helper reads plus live expert-guidance clarification controls, but background-task handoff or return workflows are still missing."
-            }
-          ]
         }
       ],
       "validation_command_ids": [
         "qa_runtime_pack_regressions",
         "qa_acceptance_reports",
-        "qa_supervisor_regressions",
-        "qa_runtime_control_regressions",
-        "qa_review_surface_regressions"
+        "qa_supervisor_regressions"
       ],
       "validation_suite_command": "python3.11 scripts/quality/run_ba10_validation_suite.py --project-root <repo_root> --current-focus"
     }
@@ -148,7 +112,7 @@
       "description": "Confirms generated runtime scaffolding stays honest about current action-catalog and maintenance placeholder status.",
       "status": "passed",
       "returncode": 0,
-      "duration_seconds": 0.297
+      "duration_seconds": 0.325
     },
     {
       "command_id": "qa_acceptance_reports",
@@ -158,7 +122,7 @@
       "description": "Keeps the committed BA-10 acceptance, blocker, readiness, and validation-suite reports synchronized with repo code, tests, and state references.",
       "status": "passed",
       "returncode": 0,
-      "duration_seconds": 2.314
+      "duration_seconds": 2.234
     },
     {
       "command_id": "qa_supervisor_regressions",
@@ -168,67 +132,41 @@
       "description": "Confirms incident-first selector ordering, existing-run reuse, bounded role-targeted progression through `delivery_feedback`, and contact-rooted general-learning follow-through while keeping the remaining maintenance-selector gap explicit.",
       "status": "passed",
       "returncode": 0,
-      "duration_seconds": 1.018
-    },
-    {
-      "command_id": "qa_runtime_control_regressions",
-      "title": "Runtime control regressions",
-      "kind": "automated",
-      "command": "python3.11 -m pytest tests/test_local_runtime.py",
-      "description": "Covers launchd plist wiring, control commands, chat lifecycle state, delayed feedback runners, and explicit negative control cases.",
-      "status": "passed",
-      "returncode": 0,
-      "duration_seconds": 13.534
-    },
-    {
-      "command_id": "qa_review_surface_regressions",
-      "title": "Review surface regressions",
-      "kind": "automated",
-      "command": "python3.11 -m pytest tests/test_review_queries.py",
-      "description": "Verifies persisted grouped review surfaces and traceability reads that back the chat/review boundary.",
-      "status": "passed",
-      "returncode": 0,
-      "duration_seconds": 0.464
+      "duration_seconds": 1.123
     }
   ],
   "failed_command_ids": [],
   "passed": true,
   "validation_suite_report_version": 2,
-  "generated_at": "2026-04-09T21:19:31Z",
+  "generated_at": "2026-04-09T21:54:46Z",
   "summary": {
-    "command_count": 5,
+    "command_count": 3,
     "command_kind_counts": {
-      "automated": 5
+      "automated": 3
     },
-    "passed_command_count": 5,
+    "passed_command_count": 3,
     "failed_command_count": 0,
-    "total_duration_seconds": 17.627
+    "total_duration_seconds": 3.682
   },
   "repo_status": {
     "acceptance_scenario_count": 214,
     "acceptance_status_counts": {
-      "implemented": 204,
+      "implemented": 206,
       "partial": 1,
-      "gap": 7,
+      "gap": 5,
       "deferred_optional": 1,
       "excluded_from_required_acceptance": 1
     },
-    "open_acceptance_scenario_count": 8,
-    "open_acceptance_gap_cluster_count": 2,
+    "open_acceptance_scenario_count": 6,
+    "open_acceptance_gap_cluster_count": 1,
     "open_acceptance_gap_ids": [
-      "BA10_MAINTENANCE_AUTOMATION",
-      "BA10_CHAT_REVIEW_AND_CONTROL"
+      "BA10_MAINTENANCE_AUTOMATION"
     ],
     "open_acceptance_gap_summaries": [
       {
         "gap_id": "BA10_MAINTENANCE_AUTOMATION",
         "title": "Maintenance workflow and artifacts are not implemented",
         "open_scenario_count": 6
-      },
-      {
-        "gap_id": "BA10_CHAT_REVIEW_AND_CONTROL",
-        "title": "Chat review and control are still missing expert-requested background-task workflows",
-        "open_scenario_count": 2
       }
     ],
     "open_build_board_blocker_count": 3,

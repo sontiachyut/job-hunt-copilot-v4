@@ -28,7 +28,6 @@ def test_repo_readiness_reports_are_current_and_repo_surfaces_are_honest():
     assert report["current_focus"]["slice_id"] == "BA-10-S3"
     assert report["acceptance_status"]["open_gap_ids"] == [
         "BA10_MAINTENANCE_AUTOMATION",
-        "BA10_CHAT_REVIEW_AND_CONTROL",
     ]
 
     latest_validation = report["latest_validation"]
@@ -61,7 +60,6 @@ def test_repo_readiness_reports_are_current_and_repo_surfaces_are_honest():
     assert readme_surface["requires_open_gap_titles"] is True
     assert readme_surface["required_gap_titles"] == [
         "Maintenance workflow and artifacts are not implemented",
-        "Chat review and control are still missing expert-requested background-task workflows",
     ]
 
     architecture_surface = next(
@@ -72,7 +70,6 @@ def test_repo_readiness_reports_are_current_and_repo_surfaces_are_honest():
     assert architecture_surface["requires_open_gap_titles"] is True
     assert architecture_surface["required_gap_titles"] == [
         "Maintenance workflow and artifacts are not implemented",
-        "Chat review and control are still missing expert-requested background-task workflows",
     ]
 
     reports_index_surface = next(

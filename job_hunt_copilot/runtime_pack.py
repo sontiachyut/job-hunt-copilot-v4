@@ -109,6 +109,7 @@ def load_runtime_snapshot(paths: ProjectPaths) -> dict[str, Any]:
         "agent_enabled": False,
         "agent_mode": AGENT_MODE_STOPPED,
         "pause_reason": None,
+        "active_background_task_run_id": None,
         "latest_cycle_id": None,
         "latest_cycle_result": "not_started",
         "latest_cycle_completed_at": None,
@@ -174,6 +175,7 @@ def load_runtime_snapshot(paths: ProjectPaths) -> dict[str, Any]:
             "agent_enabled": control_state.agent_enabled,
             "agent_mode": control_state.agent_mode,
             "pause_reason": control_state.pause_reason,
+            "active_background_task_run_id": control_state.active_background_task_run_id,
             "latest_cycle_id": latest_cycle_id,
             "latest_cycle_result": latest_cycle_result,
             "latest_cycle_completed_at": latest_cycle_completed_at,
@@ -190,6 +192,11 @@ def load_runtime_snapshot(paths: ProjectPaths) -> dict[str, Any]:
 def compute_top_focus(snapshot: dict[str, Any]) -> str:
     if snapshot["agent_mode"] == AGENT_MODE_STOPPED:
         return "Autonomous execution is stopped until the operator enables the local supervisor."
+    if snapshot["active_background_task_run_id"]:
+        return (
+            "An expert-requested background task currently owns exclusive focus until it is "
+            f"returned to review or explicitly released: {snapshot['active_background_task_run_id']}."
+        )
     if snapshot["agent_mode"] == AGENT_MODE_PAUSED:
         reason = snapshot["pause_reason"] or "an unresolved safety or control-state condition"
         return f"Resolve the active pause reason before ordinary pipeline progression resumes: {reason}."
@@ -209,6 +216,11 @@ def compute_top_focus(snapshot: dict[str, Any]) -> str:
 def compute_next_likely_action(snapshot: dict[str, Any]) -> str:
     if snapshot["agent_mode"] == AGENT_MODE_STOPPED:
         return "Use `jhc-agent-start` or an explicit resume command to enable the local supervisor."
+    if snapshot["active_background_task_run_id"]:
+        return (
+            "Return the active expert-requested background task to review through the persisted "
+            f"runtime control surface: {snapshot['active_background_task_run_id']}."
+        )
     if snapshot["agent_mode"] == AGENT_MODE_PAUSED:
         return "Inspect the blocking incidents or pause reason, then persist a clear resume or stop decision."
     if snapshot["open_incident_count"]:
@@ -453,14 +465,14 @@ def render_chat_bootstrap(
             "2. read the current progress log, ops plan, and chat-startup dashboard before answering substantive runtime questions",
             "3. use the persisted chat-startup dashboard as the clean first-response summary and compact review-queue snapshot",
             "4. for explicit review asks or `what changed`, reread canonical state through the persisted chat helper commands instead of relying on startup memory alone",
-            "5. route global pause, resume, stop, replan, live expert guidance, clarification asks, and supported object-specific overrides through the canonical control helper scripts",
+            "5. route global pause, resume, stop, replan, explicit background-task handoff/return, live expert guidance, clarification asks, and supported object-specific overrides through the canonical control helper scripts",
             "6. inspect only the artifacts needed for the expert's current question or requested action",
             "",
             "Rules:",
             "- prioritize inspection, explanation, and control-intent persistence",
             "- treat job_hunt_copilot.db as canonical truth over filesystem artifacts",
             "- opening chat counts as expert presence; background autonomous work should remain paused by policy while the expert is actively interacting",
-            "- persist pause, resume, stop, replanning, guidance, clarification, and override intents into canonical state instead of relying on chat memory",
+            "- persist pause, resume, stop, replanning, background-task handoff/return, guidance, clarification, and override intents into canonical state instead of relying on chat memory",
             "- expose pending review packets and open incidents clearly before diving into lower-level detail",
             "- do not expose secrets or tokens in summaries, incidents, or review surfaces",
             "",
@@ -469,6 +481,20 @@ def render_chat_bootstrap(
             f"- Read-only review queue: python3.11 scripts/ops/chat_state.py review-queue --project-root {paths.project_root}",
             f"- Default change summary: python3.11 scripts/ops/chat_state.py change-summary --project-root {paths.project_root}",
             f"- Global control routing: python3.11 scripts/ops/control_agent.py status|pause|resume|stop|replan --project-root {paths.project_root}",
+            (
+                "- Background-task handoff: "
+                f"python3.11 scripts/ops/control_agent.py handoff-background-task --project-root {paths.project_root} "
+                "--task-title \"<title>\" --scope-summary \"<scope>\" "
+                "--expected-outputs \"<outputs>\" --risks-assumptions \"<risks>\" "
+                "--will-change \"<changes>\" --will-not-change \"<non_changes>\" "
+                "--completion-condition \"<done_when>\""
+            ),
+            (
+                "- Background-task return: "
+                f"python3.11 scripts/ops/control_agent.py return-background-task --project-root {paths.project_root} "
+                "--pipeline-run-id <pipeline_run_id> --outcome completed|failed|stalled|released "
+                "--summary \"<summary>\" [--outputs-summary \"<outputs>\"] [--evidence-notes \"<notes>\"]"
+            ),
             (
                 "- Live expert guidance: "
                 f"python3.11 scripts/ops/control_agent.py guidance --project-root {paths.project_root} "
@@ -564,8 +590,7 @@ def render_initial_progress_log(
 ) -> str:
     local_day = datetime.now().astimezone().date().isoformat()
     blockers = [
-        "The current registered action catalog is intentionally narrow; unsupported downstream stages escalate instead of improvising behavior.",
-        "Expert-requested background-task handoff and return workflows are still narrower than the acceptance target.",
+        "Autonomous maintenance workflow and maintenance artifacts are still backlog in the current build.",
     ]
     return "\n".join(
         [
@@ -664,15 +689,20 @@ def build_initial_ops_plan(runtime_snapshot: dict[str, Any], generated_at: str) 
                 "trigger_condition": "critical_incident in auto_pause_critical_types remains unresolved",
             },
         ],
-        "maintenance_backlog": [],
+        "maintenance_backlog": [
+            {
+                "title": "Implement bounded daily maintenance automation",
+                "note": "The current build still lacks autonomous maintenance batches, validation replay, approval persistence, and retained maintenance review artifacts.",
+            }
+        ],
         "weak_areas": [
             {
                 "area": "action_catalog_coverage",
-                "note": "Later pipeline stages beyond lead_handoff are not yet registered; unsupported needs escalate.",
+                "note": "Core role-targeted and general-learning actions are registered, but autonomous maintenance work is still uncataloged.",
             },
             {
-                "area": "chat_review_control_depth",
-                "note": "The runtime now has persisted-state chat helpers, supported object-specific override routing, and live expert-guidance clarification controls, but expert-requested background-task handoff and return workflows are still backlog.",
+                "area": "maintenance_automation",
+                "note": "The runtime reserves maintenance state and review surfaces, but no autonomous maintenance batch workflow has been implemented yet.",
             },
         ],
         "replan": {

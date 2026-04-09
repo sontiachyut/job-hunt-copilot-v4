@@ -34,16 +34,11 @@ def test_ba10_blocker_audit_reports_are_current_and_reference_real_repo_paths():
     )
 
     current_focus = audit["current_focus"]
-    assert current_focus["gap_ids"] == [
-        "BA10_MAINTENANCE_AUTOMATION",
-        "BA10_CHAT_REVIEW_AND_CONTROL",
-    ]
+    assert current_focus["gap_ids"] == ["BA10_MAINTENANCE_AUTOMATION"]
     assert [command["command_id"] for command in current_focus["validation_commands"]] == [
         "qa_runtime_pack_regressions",
         "qa_acceptance_reports",
         "qa_supervisor_regressions",
-        "qa_runtime_control_regressions",
-        "qa_review_surface_regressions",
     ]
     assert current_focus["validation_suite"] == {
         "args": ["--project-root", "<repo_root>", "--current-focus"],
@@ -110,45 +105,9 @@ def test_ba10_blocker_audit_reports_are_current_and_reference_real_repo_paths():
         == "Maintenance artifacts are specified in the schema and PRD, but no maintenance batch workflow writes them yet."
     )
 
-    chat_cluster = next(
-        cluster
-        for cluster in audit["acceptance_gap_clusters"]
-        if cluster["gap_id"] == "BA10_CHAT_REVIEW_AND_CONTROL"
-    )
-    assert chat_cluster["next_slice"] == "BA-10-S3"
-    assert chat_cluster["status_counts"] == {"partial": 0, "gap": 2}
-    assert "BA-10-S3" in chat_cluster["slice_ids"]
-    assert [command["command_id"] for command in chat_cluster["validation_commands"]] == [
-        "qa_runtime_control_regressions",
-        "qa_review_surface_regressions",
-        "qa_runtime_pack_regressions",
-        "qa_acceptance_reports",
-    ]
-    assert "job_hunt_copilot/chat_runtime.py" in chat_cluster["evidence_code_refs"]
-    assert "scripts/ops/chat_state.py" in chat_cluster["evidence_code_refs"]
-    assert "tests/test_local_runtime.py" in chat_cluster["evidence_test_refs"]
-    assert "tests/test_review_queries.py" in chat_cluster["evidence_test_refs"]
-    assert all(scenario["status"] == "gap" for scenario in chat_cluster["scenarios"])
-    assert [scenario["name"] for scenario in chat_cluster["scenarios"]] == [
-        "Expert-requested background tasks require explicit handoff summary and exclusive focus",
-        "Expert-requested background task outcomes return to review appropriately",
-    ]
     assert all(
-        scenario["name"] != "jhc-chat uses persisted state for answers and control routing"
-        for scenario in chat_cluster["scenarios"]
-    )
-
-    chat_background_gap = next(
-        scenario
-        for scenario in chat_cluster["scenarios"]
-        if scenario["name"]
-        == "Expert-requested background task outcomes return to review appropriately"
-    )
-    assert chat_background_gap["status"] == "gap"
-    assert chat_background_gap["scenario_line"] == 1314
-    assert (
-        chat_background_gap["note"]
-        == "The direct `jhc-chat` wrapper now has persisted review-queue and default change-summary helper reads plus live expert-guidance clarification controls, but background-task handoff or return workflows are still missing."
+        cluster["gap_id"] != "BA10_CHAT_REVIEW_AND_CONTROL"
+        for cluster in audit["acceptance_gap_clusters"]
     )
 
     build_cli_blocker = next(

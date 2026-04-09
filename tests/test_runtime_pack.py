@@ -71,10 +71,23 @@ def test_runtime_pack_chat_bootstrap_scaffolds_review_and_control_surfaces(tmp_p
         "persisted chat helper commands instead of relying on startup memory alone"
     ) in chat_bootstrap
     assert (
-        "5. route global pause, resume, stop, replan, live expert guidance, clarification asks, and supported object-specific overrides "
+        "5. route global pause, resume, stop, replan, explicit background-task handoff/return, live expert guidance, clarification asks, and supported object-specific overrides "
         "through the canonical control helper scripts"
     ) in chat_bootstrap
-    assert "- persist pause, resume, stop, replanning, guidance, clarification, and override intents into canonical state instead of relying on chat memory" in chat_bootstrap
+    assert "- persist pause, resume, stop, replanning, background-task handoff/return, guidance, clarification, and override intents into canonical state instead of relying on chat memory" in chat_bootstrap
+    assert (
+        "python3.11 scripts/ops/control_agent.py handoff-background-task "
+        f"--project-root {project_root} --task-title \"<title>\" --scope-summary \"<scope>\" "
+        "--expected-outputs \"<outputs>\" --risks-assumptions \"<risks>\" "
+        "--will-change \"<changes>\" --will-not-change \"<non_changes>\" "
+        "--completion-condition \"<done_when>\""
+    ) in chat_bootstrap
+    assert (
+        "python3.11 scripts/ops/control_agent.py return-background-task "
+        f"--project-root {project_root} --pipeline-run-id <pipeline_run_id> "
+        "--outcome completed|failed|stalled|released --summary \"<summary>\" "
+        "[--outputs-summary \"<outputs>\"] [--evidence-notes \"<notes>\"]"
+    ) in chat_bootstrap
     assert f"python3.11 scripts/ops/chat_state.py review-queue --project-root {project_root}" in chat_bootstrap
     assert f"python3.11 scripts/ops/chat_state.py change-summary --project-root {project_root}" in chat_bootstrap
     assert f"python3.11 scripts/ops/control_agent.py status|pause|resume|stop|replan --project-root {project_root}" in chat_bootstrap
@@ -104,7 +117,9 @@ def test_runtime_pack_chat_bootstrap_scaffolds_review_and_control_surfaces(tmp_p
     assert "- pending_review_count: 0" in chat_bootstrap
 
 
-def test_runtime_pack_reflects_idle_timeout_resume_closure_and_remaining_chat_backlog(tmp_path):
+def test_runtime_pack_reflects_background_task_closure_and_remaining_maintenance_backlog(
+    tmp_path,
+):
     project_root = tmp_path / "repo"
     project_root.mkdir()
     create_minimal_project(project_root)
@@ -112,15 +127,20 @@ def test_runtime_pack_reflects_idle_timeout_resume_closure_and_remaining_chat_ba
     materialize_runtime_pack(project_root=project_root)
     ops_plan = yaml.safe_load((project_root / "ops" / "agent" / "ops-plan.yaml").read_text(encoding="utf-8"))
 
-    assert ops_plan["maintenance_backlog"] == []
+    assert ops_plan["maintenance_backlog"] == [
+        {
+            "title": "Implement bounded daily maintenance automation",
+            "note": "The current build still lacks autonomous maintenance batches, validation replay, approval persistence, and retained maintenance review artifacts.",
+        }
+    ]
     assert ops_plan["weak_areas"] == [
         {
             "area": "action_catalog_coverage",
-            "note": "Later pipeline stages beyond lead_handoff are not yet registered; unsupported needs escalate.",
+            "note": "Core role-targeted and general-learning actions are registered, but autonomous maintenance work is still uncataloged.",
         },
         {
-            "area": "chat_review_control_depth",
-            "note": "The runtime now has persisted-state chat helpers, supported object-specific override routing, and live expert-guidance clarification controls, but expert-requested background-task handoff and return workflows are still backlog.",
+            "area": "maintenance_automation",
+            "note": "The runtime reserves maintenance state and review surfaces, but no autonomous maintenance batch workflow has been implemented yet.",
         },
     ]
     assert all(

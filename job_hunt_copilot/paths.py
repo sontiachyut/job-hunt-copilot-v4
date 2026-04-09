@@ -118,6 +118,10 @@ class ProjectPaths:
         return self.ops_dir / "review-packets"
 
     @property
+    def ops_background_tasks_dir(self) -> Path:
+        return self.ops_dir / "background-tasks"
+
+    @property
     def ops_maintenance_dir(self) -> Path:
         return self.ops_dir / "maintenance"
 
@@ -642,6 +646,21 @@ class ProjectPaths:
     def review_packet_markdown_path(self, pipeline_run_id: str) -> Path:
         return self.review_packet_dir(pipeline_run_id) / "review_packet.md"
 
+    def background_task_dir(self, pipeline_run_id: str) -> Path:
+        return self.ops_background_tasks_dir / pipeline_run_id
+
+    def background_task_handoff_json_path(self, pipeline_run_id: str) -> Path:
+        return self.background_task_dir(pipeline_run_id) / "background_task_handoff.json"
+
+    def background_task_handoff_markdown_path(self, pipeline_run_id: str) -> Path:
+        return self.background_task_dir(pipeline_run_id) / "background_task_handoff.md"
+
+    def background_task_result_json_path(self, pipeline_run_id: str) -> Path:
+        return self.background_task_dir(pipeline_run_id) / "background_task_result.json"
+
+    def background_task_result_markdown_path(self, pipeline_run_id: str) -> Path:
+        return self.background_task_dir(pipeline_run_id) / "background_task_result.md"
+
     def base_resume_sources(self) -> list[Path]:
         return sorted((self.assets_dir / "resume-tailoring" / "base").rglob("base-resume.tex"))
 
@@ -666,6 +685,7 @@ class ProjectPaths:
             self.project_root / "outreach" / "output",
             self.ops_agent_context_snapshots_dir,
             self.ops_review_packets_dir,
+            self.ops_background_tasks_dir,
             self.ops_maintenance_dir,
             self.ops_incidents_dir,
             self.ops_logs_dir,

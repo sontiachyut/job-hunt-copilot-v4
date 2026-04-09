@@ -1,6 +1,6 @@
 # Repo Readiness Summary
 
-- Generated at: `2026-04-09T21:19:31Z`
+- Generated at: `2026-04-09T21:54:46Z`
 - Project root: `/Users/achyutaramsonti/Projects/job-hunt-copilot-v4`
 - Repo surface status: `current`
 - Current build focus: `BA-10` / `BA-10-S3` / `build-lead`
@@ -10,9 +10,9 @@
 
 ## Latest Validation
 
-- Generated at: `2026-04-09T21:19:31Z`
+- Generated at: `2026-04-09T21:54:46Z`
 - Passed: `True`
-- Command count: `5`
+- Command count: `3`
 - Failed command count: `0`
 - Validation selector: `current_focus`
 - Tracks active focus: `True`
@@ -21,19 +21,18 @@
 ## Acceptance Snapshot
 
 - Acceptance scenarios: `214`
-- Open acceptance scenarios: `8`
-- Acceptance status counts: `implemented`=204, `partial`=1, `gap`=7, `deferred_optional`=1, `excluded_from_required_acceptance`=1
-- Open gap ids: `BA10_MAINTENANCE_AUTOMATION`, `BA10_CHAT_REVIEW_AND_CONTROL`
+- Open acceptance scenarios: `6`
+- Acceptance status counts: `implemented`=206, `partial`=1, `gap`=5, `deferred_optional`=1, `excluded_from_required_acceptance`=1
+- Open gap ids: `BA10_MAINTENANCE_AUTOMATION`
 
 ## Remaining Gaps
 
 - `BA10_MAINTENANCE_AUTOMATION`: Maintenance workflow and artifacts are not implemented (`6` scenarios; next slice `BA-10-S3`)
-- `BA10_CHAT_REVIEW_AND_CONTROL`: Chat review and control are still missing expert-requested background-task workflows (`2` scenarios; next slice `BA-10-S3`)
 
 ## Open Blockers
 
-- `BA10-TRACE-001` (`high`, `quality-engineer`): The regenerated BA-10 trace matrix now reports 204 implemented / 1 partial / 7 gap scenarios; explicit smoke-coverage targets, implemented-slice traceability, reproducible validation-command mappings, a guarded repo-readiness summary, and a durable latest validation-suite report snapshot cover bootstrap, tailoring, discovery, send, feedback, review-query, downstream supervisor follow-through, the persisted `jhc-chat` startup dashboard surface, explicit review-queue or change-summary reads, read-only idempotency for repeated chat-state helper queries, supported job-posting and tailoring-review override routing, live expert-guidance clarification controls, and idle-timeout auto-resume after unexpected chat exit, but maintenance automation and expert-requested background-task workflows still remain open.
-  Next action: Hand the next functional slice to the build lead and the relevant runtime owner for the remaining background-task handoff and return workflows, then tackle maintenance automation and refresh the BA-10 reports plus validation-suite evidence afterward.
+- `BA10-TRACE-001` (`high`, `quality-engineer`): The regenerated BA-10 trace matrix now reports 206 implemented / 1 partial / 5 gap scenarios; explicit smoke-coverage targets, implemented-slice traceability, reproducible validation-command mappings, a guarded repo-readiness summary, and a durable latest validation-suite report snapshot cover bootstrap, tailoring, discovery, send, feedback, review-query, downstream supervisor follow-through, the persisted `jhc-chat` startup dashboard surface, explicit review-queue or change-summary reads, read-only idempotency for repeated chat-state helper queries, supported job-posting and tailoring-review override routing, live expert-guidance clarification controls, idle-timeout auto-resume after unexpected chat exit, and explicit expert-requested background-task handoff/return workflows, but maintenance automation still remains open.
+  Next action: Keep the current BA-10-S3 focus with the build lead for maintenance automation, then refresh the BA-10 reports plus validation-suite evidence afterward.
 - `BUILD-CLI-001` (`medium`, `build-lead`): The unattended build wrapper now has automated regression coverage for its `codex exec` command shape, but real host-side cycle execution still needs confirmation after the `--ask-for-approval` incompatibility.
   Next action: Re-run the unattended build-lead wrapper on the host and confirm it starts a real cycle with the supported `codex exec` flags.
 - `OPS-LAUNCHD-001` (`medium`, `build-lead`): Live `launchctl bootstrap gui/$UID /Users/achyutaramsonti/Projects/job-hunt-copilot-v4/ops/launchd/job-hunt-copilot-supervisor.plist` still returns `Input/output error` in the current sandboxed session, so successful host-side launchd load validation remains pending for both the supervisor and delayed-feedback jobs even though their plists, wrappers, runners, and failed-start rollback validate locally.

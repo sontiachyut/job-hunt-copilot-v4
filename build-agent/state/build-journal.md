@@ -2261,3 +2261,28 @@ Use this file as an append-only implementation log for the build agent.
 ### Notes
 - The acceptance matrix now reports `204 implemented / 1 partial / 7 gap` scenarios, and the open BA-10-S3 gap clusters remain `BA10_MAINTENANCE_AUTOMATION` and `BA10_CHAT_REVIEW_AND_CONTROL`.
 - `BA10_CHAT_REVIEW_AND_CONTROL` is now down to only 2 gap scenarios, both covering expert-requested background-task handoff or return behavior.
+
+### Session
+- Date: 2026-04-09 14:52:34 MST
+- Slice: BA-10-S3 expert-requested background-task handoff/return burn-down and maintenance-only checkpoint
+- Goal: Close the remaining chat-control gap through persisted expert-requested background-task handoff/return workflows, then refresh the BA-10 evidence and build memory against the maintenance-only remaining blocker surface.
+
+### Work Done
+- Added persisted background-task handoff/return state, artifacts, review-packet return plumbing, and exclusive-focus safeguards across `job_hunt_copilot/paths.py`, `job_hunt_copilot/supervisor.py`, `job_hunt_copilot/local_runtime.py`, `job_hunt_copilot/chat_runtime.py`, `job_hunt_copilot/review_queries.py`, `job_hunt_copilot/runtime_pack.py`, and `scripts/ops/control_agent.py`.
+- Added focused runtime/runtime-pack regressions for exclusive-focus handoff, successful return into pending review, and unresolved return behavior, then aligned `tests/test_blocker_audit.py`, `tests/test_quality_validation.py`, and `tests/test_repo_readiness.py` to the maintenance-only current-focus selector after the chat gap closed.
+- Re-ran the selector-aligned BA-10 replay so the committed acceptance trace, blocker audit, repo-readiness summary, and latest validation-suite snapshot now agree that `BA10_MAINTENANCE_AUTOMATION` is the only remaining open acceptance-gap cluster.
+- Updated `build-agent/state/build-board.yaml`, `build-agent/state/build-journal.md`, `build-agent/state/codex-progress.txt`, and `build-agent/state/IMPLEMENTATION_PLAN.md` so the persisted build memory records the maintenance-only follow-up slice instead of the retired chat-control gap.
+
+### Validation
+- Ran `python3.11 -m pytest tests/test_local_runtime.py tests/test_runtime_pack.py tests/test_acceptance_traceability.py tests/test_blocker_audit.py tests/test_quality_validation.py tests/test_repo_readiness.py -q` and confirmed `63 passed in 17.28s`.
+- Ran `python3.11 scripts/quality/run_ba10_validation_suite.py --project-root /Users/achyutaramsonti/Projects/job-hunt-copilot-v4 --current-focus` and confirmed all 3 automated checks passed while refreshing the committed BA-10 reports at `2026-04-09T21:54:46Z`.
+
+### Result
+- `partial`
+
+### Next
+- Keep BA-10-S3 open for the remaining maintenance-automation burn-down: bounded maintenance selection, git/approval workflow handling, validation discipline, and retained maintenance review artifacts.
+
+### Notes
+- The acceptance matrix now reports `206 implemented / 1 partial / 5 gap` scenarios, and the only open BA-10-S3 acceptance-gap cluster is `BA10_MAINTENANCE_AUTOMATION`.
+- The retired `BA10_CHAT_REVIEW_AND_CONTROL` cluster is now guarded as closed across the blocker audit, current-focus validation selector, repo-readiness summary, and committed latest validation-suite snapshot.

@@ -52,7 +52,8 @@ def query_review_surfaces(
             connection.execute(
                 """
                 SELECT expert_review_packet_id, pipeline_run_id, job_posting_id, packet_status,
-                       packet_path, run_status, current_stage, run_summary, company_name,
+                       packet_path, run_status, current_stage, run_summary, summary_excerpt,
+                       company_name,
                        role_title, incident_ids, incident_summaries, created_at
                 FROM expert_review_queue
                 ORDER BY created_at DESC, expert_review_packet_id DESC

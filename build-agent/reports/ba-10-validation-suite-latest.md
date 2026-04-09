@@ -1,12 +1,12 @@
 # BA-10 Validation Suite Report
 
-- Generated at: `2026-04-09T21:19:31Z`
+- Generated at: `2026-04-09T21:54:46Z`
 - Project root: `/Users/achyutaramsonti/Projects/job-hunt-copilot-v4`
 - Passed: `True`
-- Command count: `5`
-- Passed commands: `5`
+- Command count: `3`
+- Passed commands: `3`
 - Failed commands: `0`
-- Total duration seconds: `17.627`
+- Total duration seconds: `3.682`
 - Requested command ids: none
 - Requested smoke targets: none
 - Requested acceptance gaps: none
@@ -17,7 +17,7 @@
 
 ## Command Kind Counts
 
-- `automated`: `5`
+- `automated`: `3`
 
 ## Refreshed Reports
 
@@ -31,13 +31,12 @@
 ## Open BA-10 Status
 
 - Acceptance scenarios: `214`
-- Open acceptance scenarios: `8`
-- Acceptance status counts: `implemented`=204, `partial`=1, `gap`=7, `deferred_optional`=1, `excluded_from_required_acceptance`=1
-- Open acceptance gap clusters: `2`
-- Open acceptance gap ids: `BA10_MAINTENANCE_AUTOMATION`, `BA10_CHAT_REVIEW_AND_CONTROL`
+- Open acceptance scenarios: `6`
+- Acceptance status counts: `implemented`=206, `partial`=1, `gap`=5, `deferred_optional`=1, `excluded_from_required_acceptance`=1
+- Open acceptance gap clusters: `1`
+- Open acceptance gap ids: `BA10_MAINTENANCE_AUTOMATION`
 - Open acceptance gap summaries:
   - `BA10_MAINTENANCE_AUTOMATION`: Maintenance workflow and artifacts are not implemented (`6` scenarios)
-  - `BA10_CHAT_REVIEW_AND_CONTROL`: Chat review and control are still missing expert-requested background-task workflows (`2` scenarios)
 - Open build-board blockers: `3`
 - Open build-board blocker ids: `BA10-TRACE-001`, `BUILD-CLI-001`, `OPS-LAUNCHD-001`
 - Current build focus: `BA-10` / `BA-10-S3` / `build-lead`
@@ -49,9 +48,9 @@
 - Epic: `BA-10`
 - Slice: `BA-10-S3`
 - Owner role: `build-lead`
-- Reason: BA-10-S4 closed the downstream supervisor action-catalog gap, the latest BA-10-S3 hardening passes already burned down the persisted chat read surfaces plus object-specific override routing, and the new live expert-guidance clarification controls closed the remaining conflict-handling gap, so BA-10-S3 now resolves only the maintenance-automation and expert-requested background-task gap clusters at 204 implemented / 1 partial / 7 gap scenarios; the active same-slice handoff stays with build-lead for the remaining background-task workflow work before maintenance automation rather than more quality-only hardening.
-- Gap ids: `BA10_MAINTENANCE_AUTOMATION`, `BA10_CHAT_REVIEW_AND_CONTROL`
-- Validation command ids: `qa_runtime_pack_regressions`, `qa_acceptance_reports`, `qa_supervisor_regressions`, `qa_runtime_control_regressions`, `qa_review_surface_regressions`
+- Reason: BA-10-S4 closed the downstream supervisor action-catalog gap, the latest BA-10-S3 hardening passes already burned down the persisted chat read surfaces, object-specific override routing, live expert-guidance clarification controls, and the remaining expert-requested background-task workflow gap, so BA-10-S3 now resolves only the maintenance-automation cluster at 206 implemented / 1 partial / 5 gap scenarios; the active same-slice handoff stays with build-lead for the remaining maintenance workflow and approval-automation work rather than more chat/runtime control burn-down.
+- Gap ids: `BA10_MAINTENANCE_AUTOMATION`
+- Validation command ids: `qa_runtime_pack_regressions`, `qa_acceptance_reports`, `qa_supervisor_regressions`
 - Validation suite: `python3.11 scripts/quality/run_ba10_validation_suite.py --project-root <repo_root> --current-focus`
 - Gap summaries:
   - `BA10_MAINTENANCE_AUTOMATION`: Maintenance workflow and artifacts are not implemented (`6` scenarios)
@@ -68,22 +67,14 @@
         Note: Only maintenance placeholders exist today; the maintenance workflow itself is still missing.
       - `[gap]` Failed or unapproved maintenance batches remain reviewable (rule: `Supervisor Agent behavior`, line: `1349`)
         Note: Only maintenance placeholders exist today; the maintenance workflow itself is still missing.
-  - `BA10_CHAT_REVIEW_AND_CONTROL`: Chat review and control are still missing expert-requested background-task workflows (`2` scenarios)
-    - Open scenarios:
-      - `[gap]` Expert-requested background tasks require explicit handoff summary and exclusive focus (rule: `Supervisor Agent behavior`, line: `1307`)
-        Note: The direct `jhc-chat` wrapper now has persisted review-queue and default change-summary helper reads plus live expert-guidance clarification controls, but background-task handoff or return workflows are still missing.
-      - `[gap]` Expert-requested background task outcomes return to review appropriately (rule: `Supervisor Agent behavior`, line: `1314`)
-        Note: The direct `jhc-chat` wrapper now has persisted review-queue and default change-summary helper reads plus live expert-guidance clarification controls, but background-task handoff or return workflows are still missing.
 
 ## Command Results
 
 | Command | Kind | Status | Returncode | Duration (s) |
 | --- | --- | --- | ---: | ---: |
-| qa_runtime_pack_regressions | automated | passed | 0 | 0.297 |
-| qa_acceptance_reports | automated | passed | 0 | 2.314 |
-| qa_supervisor_regressions | automated | passed | 0 | 1.018 |
-| qa_runtime_control_regressions | automated | passed | 0 | 13.534 |
-| qa_review_surface_regressions | automated | passed | 0 | 0.464 |
+| qa_runtime_pack_regressions | automated | passed | 0 | 0.325 |
+| qa_acceptance_reports | automated | passed | 0 | 2.234 |
+| qa_supervisor_regressions | automated | passed | 0 | 1.123 |
 
 ## Command Details
 
@@ -91,7 +82,7 @@
 - Kind: `automated`
 - Status: `passed`
 - Returncode: `0`
-- Duration seconds: `0.297`
+- Duration seconds: `0.325`
 - Command: `python3.11 -m pytest tests/test_runtime_pack.py`
 - Description: Confirms generated runtime scaffolding stays honest about current action-catalog and maintenance placeholder status.
 
@@ -99,7 +90,7 @@
 - Kind: `automated`
 - Status: `passed`
 - Returncode: `0`
-- Duration seconds: `2.314`
+- Duration seconds: `2.234`
 - Command: `python3.11 -m pytest tests/test_acceptance_traceability.py tests/test_blocker_audit.py tests/test_quality_validation.py tests/test_repo_readiness.py`
 - Description: Keeps the committed BA-10 acceptance, blocker, readiness, and validation-suite reports synchronized with repo code, tests, and state references.
 
@@ -107,22 +98,6 @@
 - Kind: `automated`
 - Status: `passed`
 - Returncode: `0`
-- Duration seconds: `1.018`
+- Duration seconds: `1.123`
 - Command: `python3.11 -m pytest tests/test_supervisor_downstream_actions.py`
 - Description: Confirms incident-first selector ordering, existing-run reuse, bounded role-targeted progression through `delivery_feedback`, and contact-rooted general-learning follow-through while keeping the remaining maintenance-selector gap explicit.
-
-### qa_runtime_control_regressions: Runtime control regressions
-- Kind: `automated`
-- Status: `passed`
-- Returncode: `0`
-- Duration seconds: `13.534`
-- Command: `python3.11 -m pytest tests/test_local_runtime.py`
-- Description: Covers launchd plist wiring, control commands, chat lifecycle state, delayed feedback runners, and explicit negative control cases.
-
-### qa_review_surface_regressions: Review surface regressions
-- Kind: `automated`
-- Status: `passed`
-- Returncode: `0`
-- Duration seconds: `0.464`
-- Command: `python3.11 -m pytest tests/test_review_queries.py`
-- Description: Verifies persisted grouped review surfaces and traceability reads that back the chat/review boundary.

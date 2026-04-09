@@ -600,6 +600,7 @@ SELECT
   pr.run_status,
   pr.current_stage,
   pr.run_summary,
+  erp.summary_excerpt,
   jp.company_name,
   jp.role_title,
   GROUP_CONCAT(ai.agent_incident_id) AS incident_ids,
@@ -623,6 +624,7 @@ GROUP BY
   pr.run_status,
   pr.current_stage,
   pr.run_summary,
+  erp.summary_excerpt,
   jp.company_name,
   jp.role_title,
   erp.created_at;

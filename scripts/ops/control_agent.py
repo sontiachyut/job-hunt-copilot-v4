@@ -14,9 +14,11 @@ if str(PROJECT_ROOT) not in sys.path:
 from job_hunt_copilot.local_runtime import (
     abandon_job_posting,
     apply_object_override,
+    handoff_background_task,
     mutate_agent_control_state,
     persist_expert_guidance,
     request_guidance_clarification,
+    return_background_task,
 )
 
 
@@ -35,6 +37,8 @@ def main() -> int:
             "override",
             "guidance",
             "clarify-guidance",
+            "handoff-background-task",
+            "return-background-task",
         ],
     )
     parser.add_argument("--project-root", default=str(PROJECT_ROOT))
@@ -47,6 +51,21 @@ def main() -> int:
     parser.add_argument("--component-stage")
     parser.add_argument("--directive-key")
     parser.add_argument("--directive-value")
+    parser.add_argument("--task-title")
+    parser.add_argument("--scope-summary")
+    parser.add_argument("--expected-outputs")
+    parser.add_argument("--risks-assumptions")
+    parser.add_argument("--will-change")
+    parser.add_argument("--will-not-change")
+    parser.add_argument("--completion-condition")
+    parser.add_argument("--pipeline-run-id")
+    parser.add_argument(
+        "--outcome",
+        choices=["completed", "failed", "stalled", "released"],
+    )
+    parser.add_argument("--summary")
+    parser.add_argument("--outputs-summary")
+    parser.add_argument("--evidence-notes")
     parser.add_argument(
         "--scope",
         default="current_and_similar_future",
@@ -136,6 +155,48 @@ def main() -> int:
                 request_kind=args.request_kind,
                 source_override_event_id=args.source_override_event_id,
                 manual_command=args.manual_command or "clarify-guidance",
+            )
+        elif args.command == "handoff-background-task":
+            if not args.task_title:
+                parser.error("--task-title is required for the handoff-background-task command.")
+            if not args.scope_summary:
+                parser.error("--scope-summary is required for the handoff-background-task command.")
+            if not args.expected_outputs:
+                parser.error("--expected-outputs is required for the handoff-background-task command.")
+            if not args.risks_assumptions:
+                parser.error("--risks-assumptions is required for the handoff-background-task command.")
+            if not args.will_change:
+                parser.error("--will-change is required for the handoff-background-task command.")
+            if not args.will_not_change:
+                parser.error("--will-not-change is required for the handoff-background-task command.")
+            if not args.completion_condition:
+                parser.error("--completion-condition is required for the handoff-background-task command.")
+            report = handoff_background_task(
+                project_root=Path(args.project_root),
+                task_title=args.task_title,
+                scope=args.scope_summary,
+                expected_outputs=args.expected_outputs,
+                risks_assumptions=args.risks_assumptions,
+                will_change=args.will_change,
+                will_not_change=args.will_not_change,
+                completion_condition=args.completion_condition,
+                manual_command=args.manual_command or "handoff-background-task",
+            )
+        elif args.command == "return-background-task":
+            if not args.pipeline_run_id:
+                parser.error("--pipeline-run-id is required for the return-background-task command.")
+            if not args.outcome:
+                parser.error("--outcome is required for the return-background-task command.")
+            if not args.summary:
+                parser.error("--summary is required for the return-background-task command.")
+            report = return_background_task(
+                args.pipeline_run_id,
+                project_root=Path(args.project_root),
+                outcome=args.outcome,
+                summary=args.summary,
+                outputs_summary=args.outputs_summary,
+                evidence_notes=args.evidence_notes,
+                manual_command=args.manual_command or "return-background-task",
             )
         else:
             report = mutate_agent_control_state(

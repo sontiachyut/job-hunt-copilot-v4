@@ -183,20 +183,14 @@ def test_validation_selector_details_include_requested_smoke_gap_blocker_and_cur
     assert details["current_focus"]["epic_id"] == "BA-10"
     assert details["current_focus"]["slice_id"] == "BA-10-S3"
     assert details["current_focus"]["owner_role"] == "build-lead"
-    assert details["current_focus"]["gap_ids"] == [
-        "BA10_MAINTENANCE_AUTOMATION",
-        "BA10_CHAT_REVIEW_AND_CONTROL",
-    ]
+    assert details["current_focus"]["gap_ids"] == ["BA10_MAINTENANCE_AUTOMATION"]
     assert details["current_focus"]["validation_command_ids"] == [
         "qa_runtime_pack_regressions",
         "qa_acceptance_reports",
         "qa_supervisor_regressions",
-        "qa_runtime_control_regressions",
-        "qa_review_surface_regressions",
     ]
     assert [gap["gap_id"] for gap in details["current_focus"]["gap_summaries"]] == [
         "BA10_MAINTENANCE_AUTOMATION",
-        "BA10_CHAT_REVIEW_AND_CONTROL",
     ]
     assert details["current_focus"]["gap_summaries"][0]["open_scenarios"][0] == {
         "name": "Maintenance change artifacts exist for every autonomous maintenance batch",
@@ -214,7 +208,7 @@ def test_validation_selector_details_include_requested_smoke_gap_blocker_and_cur
         in details["current_focus"]["reason"]
     )
     assert (
-        "persisted chat read surfaces plus object-specific override routing"
+        "only the maintenance-automation cluster"
         in details["current_focus"]["reason"]
     )
 
@@ -231,17 +225,11 @@ def test_gap_validation_command_resolution_follows_open_gap_command_mapping():
     ]
 
 
-def test_chat_review_gap_validation_command_resolution_follows_open_gap_command_mapping():
-    command_ids = resolve_acceptance_gap_validation_command_ids(
-        REPO_ROOT, ["BA10_CHAT_REVIEW_AND_CONTROL"]
-    )
-
-    assert command_ids == [
-        "qa_runtime_control_regressions",
-        "qa_review_surface_regressions",
-        "qa_runtime_pack_regressions",
-        "qa_acceptance_reports",
-    ]
+def test_chat_review_gap_validation_command_resolution_rejects_closed_gap_id():
+    with pytest.raises(ValueError, match="Unknown BA-10 acceptance gap"):
+        resolve_acceptance_gap_validation_command_ids(
+            REPO_ROOT, ["BA10_CHAT_REVIEW_AND_CONTROL"]
+        )
 
 
 def test_current_focus_validation_command_resolution_follows_active_slice():
@@ -251,8 +239,6 @@ def test_current_focus_validation_command_resolution_follows_active_slice():
         "qa_runtime_pack_regressions",
         "qa_acceptance_reports",
         "qa_supervisor_regressions",
-        "qa_runtime_control_regressions",
-        "qa_review_surface_regressions",
     ]
 
 
@@ -410,7 +396,7 @@ def test_quality_validation_suite_script_dry_run_expands_gap_ids():
     ]
 
 
-def test_quality_validation_suite_script_dry_run_expands_chat_review_gap_ids():
+def test_quality_validation_suite_script_dry_run_rejects_closed_chat_review_gap_id():
     result = subprocess.run(
         [
             sys.executable,
@@ -427,53 +413,8 @@ def test_quality_validation_suite_script_dry_run_expands_chat_review_gap_ids():
         text=True,
     )
 
-    assert result.returncode == 0
-    payload = json.loads(result.stdout)
-    assert payload["requested_gap_ids"] == ["BA10_CHAT_REVIEW_AND_CONTROL"]
-    assert [command["command_id"] for command in payload["commands"]] == [
-        "qa_runtime_control_regressions",
-        "qa_review_surface_regressions",
-        "qa_runtime_pack_regressions",
-        "qa_acceptance_reports",
-    ]
-    assert payload["selector_details"]["acceptance_gaps"] == [
-        {
-            "gap_id": "BA10_CHAT_REVIEW_AND_CONTROL",
-            "title": "Chat review and control are still missing expert-requested background-task workflows",
-            "next_slice": "BA-10-S3",
-            "open_scenario_count": 2,
-            "status_counts": {
-                "partial": 0,
-                "gap": 2,
-            },
-            "validation_command_ids": [
-                "qa_runtime_control_regressions",
-                "qa_review_surface_regressions",
-                "qa_runtime_pack_regressions",
-                "qa_acceptance_reports",
-            ],
-            "validation_suite_command": (
-                "python3.11 scripts/quality/run_ba10_validation_suite.py "
-                "--project-root <repo_root> --gap-id BA10_CHAT_REVIEW_AND_CONTROL"
-            ),
-            "open_scenarios": [
-                {
-                    "name": "Expert-requested background tasks require explicit handoff summary and exclusive focus",
-                    "status": "gap",
-                    "rule": "Supervisor Agent behavior",
-                    "scenario_line": 1307,
-                    "note": "The direct `jhc-chat` wrapper now has persisted review-queue and default change-summary helper reads plus live expert-guidance clarification controls, but background-task handoff or return workflows are still missing.",
-                },
-                {
-                    "name": "Expert-requested background task outcomes return to review appropriately",
-                    "status": "gap",
-                    "rule": "Supervisor Agent behavior",
-                    "scenario_line": 1314,
-                    "note": "The direct `jhc-chat` wrapper now has persisted review-queue and default change-summary helper reads plus live expert-guidance clarification controls, but background-task handoff or return workflows are still missing.",
-                },
-            ],
-        }
-    ]
+    assert result.returncode == 2
+    assert "Unknown BA-10 acceptance gap: BA10_CHAT_REVIEW_AND_CONTROL" in result.stderr
 
 
 def test_quality_validation_suite_script_rejects_manual_blocker_without_flag():
@@ -570,27 +511,19 @@ def test_quality_validation_suite_script_dry_run_expands_current_focus():
         "qa_runtime_pack_regressions",
         "qa_acceptance_reports",
         "qa_supervisor_regressions",
-        "qa_runtime_control_regressions",
-        "qa_review_surface_regressions",
     ]
     current_focus = payload["selector_details"]["current_focus"]
     assert current_focus["epic_id"] == "BA-10"
     assert current_focus["slice_id"] == "BA-10-S3"
     assert current_focus["owner_role"] == "build-lead"
-    assert current_focus["gap_ids"] == [
-        "BA10_MAINTENANCE_AUTOMATION",
-        "BA10_CHAT_REVIEW_AND_CONTROL",
-    ]
+    assert current_focus["gap_ids"] == ["BA10_MAINTENANCE_AUTOMATION"]
     assert current_focus["validation_command_ids"] == [
         "qa_runtime_pack_regressions",
         "qa_acceptance_reports",
         "qa_supervisor_regressions",
-        "qa_runtime_control_regressions",
-        "qa_review_surface_regressions",
     ]
     assert [gap["gap_id"] for gap in current_focus["gap_summaries"]] == [
         "BA10_MAINTENANCE_AUTOMATION",
-        "BA10_CHAT_REVIEW_AND_CONTROL",
     ]
     assert current_focus["validation_suite_command"] == (
         "python3.11 scripts/quality/run_ba10_validation_suite.py "
@@ -601,7 +534,7 @@ def test_quality_validation_suite_script_dry_run_expands_current_focus():
         in current_focus["reason"]
     )
     assert (
-        "persisted chat read surfaces plus object-specific override routing"
+        "only the maintenance-automation cluster"
         in current_focus["reason"]
     )
 

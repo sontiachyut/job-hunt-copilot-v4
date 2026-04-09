@@ -252,8 +252,14 @@ def _build_pending_review_packet_items(
     items: list[dict[str, Any]] = []
     for packet in review_surfaces["pending_expert_review_packets"]:
         title_parts = [packet.get("company_name"), packet.get("role_title")]
-        title = " / ".join(part for part in title_parts if part) or "Pending expert review packet"
-        summary = packet.get("run_summary") or packet.get("packet_status") or "pending expert review"
+        title = " / ".join(part for part in title_parts if part)
+        if not title:
+            title = str(packet.get("run_summary") or "Pending expert review packet")
+        summary = (
+            packet.get("run_summary")
+            if title_parts[0] or title_parts[1]
+            else packet.get("summary_excerpt") or packet.get("run_summary")
+        ) or packet.get("packet_status") or "pending expert review"
         created_at = str(packet.get("created_at") or "")
         items.append(
             {
@@ -267,14 +273,33 @@ def _build_pending_review_packet_items(
     return items
 
 
+def _background_task_artifact_refs(
+    paths: ProjectPaths,
+    pipeline_run_id: str,
+) -> list[str]:
+    artifact_paths = [
+        paths.background_task_result_markdown_path(pipeline_run_id),
+        paths.background_task_result_json_path(pipeline_run_id),
+        paths.background_task_handoff_markdown_path(pipeline_run_id),
+        paths.background_task_handoff_json_path(pipeline_run_id),
+    ]
+    refs: list[str] = []
+    for artifact_path in artifact_paths:
+        if artifact_path.exists():
+            refs.append(paths.relative_to_root(artifact_path).as_posix())
+    return refs
+
+
 def _build_failed_background_task_items(
     connection: sqlite3.Connection,
     *,
+    paths: ProjectPaths,
     local_timezone: tzinfo,
 ) -> list[dict[str, Any]]:
     rows = connection.execute(
         """
-        SELECT run_status, current_stage, run_summary, started_at, completed_at, updated_at
+        SELECT pipeline_run_id, run_status, current_stage, run_summary, last_error_summary,
+               started_at, completed_at, updated_at
         FROM pipeline_runs
         WHERE run_scope_type = 'expert_requested_background_task'
           AND run_status IN ('failed', 'escalated', 'paused')
@@ -286,14 +311,20 @@ def _build_failed_background_task_items(
         timestamp = str(
             row["updated_at"] or row["completed_at"] or row["started_at"] or ""
         )
-        summary = row["run_summary"] or f"{row['run_status']} during {row['current_stage']}"
+        title = row["run_summary"] or f"Background task {row['pipeline_run_id']}"
+        detail = (
+            row["last_error_summary"]
+            or f"{row['run_status']} during {row['current_stage']}"
+        )
         items.append(
             {
-                "headline": str(summary),
-                "summary": f"status={row['run_status']} stage={row['current_stage']}",
+                "headline": str(title),
+                "summary": str(detail),
                 "timestamp": timestamp,
                 "timestamp_display": _format_timestamp_for_display(timestamp, local_timezone),
-                "artifact_refs": [],
+                "artifact_refs": _background_task_artifact_refs(
+                    paths, str(row["pipeline_run_id"])
+                ),
             }
         )
     return items
@@ -366,6 +397,7 @@ def build_chat_review_queue(
         current_time=current_dt,
         local_timezone=local_timezone,
     )
+    paths = ProjectPaths.from_root(project_root)
     review_surfaces = query_review_surfaces(connection, project_root=project_root)
     all_groups = {
         "pending_expert_review_packets": {
@@ -379,6 +411,7 @@ def build_chat_review_queue(
             "title": "Failed or unresolved expert-requested background tasks",
             "items": _build_failed_background_task_items(
                 connection,
+                paths=paths,
                 local_timezone=resolved_timezone,
             ),
         },

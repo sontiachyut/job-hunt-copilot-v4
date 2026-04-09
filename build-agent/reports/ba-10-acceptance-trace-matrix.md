@@ -3,9 +3,9 @@
 - Feature file: `prd/test-spec.feature`
 - Scenario count: `214`
 - Status counts:
-  - `implemented`: `204`
+  - `implemented`: `206`
   - `partial`: `1`
-  - `gap`: `7`
+  - `gap`: `5`
   - `deferred_optional`: `1`
   - `excluded_from_required_acceptance`: `1`
 
@@ -60,7 +60,7 @@
 | Email Discovery behavior | outreach-engineer | 17 | 0 | 0 | 0 | 0 |
 | Email Drafting and Sending behavior | outreach-engineer | 14 | 0 | 0 | 0 | 0 |
 | Delivery Feedback behavior | outreach-engineer | 11 | 0 | 0 | 0 | 0 |
-| Supervisor Agent behavior | build-lead | 26 | 1 | 6 | 0 | 0 |
+| Supervisor Agent behavior | build-lead | 28 | 1 | 4 | 0 | 0 |
 | Review surfaces and chat-based control | quality-engineer | 7 | 0 | 0 | 0 | 0 |
 | Current-build orchestration remains sequential | build-lead | 22 | 0 | 0 | 0 | 0 |
 | LinkedIn Scraping acceptance | ingestion-engineer | 12 | 0 | 0 | 0 | 0 |
@@ -131,17 +131,6 @@
   - Maintenance changes follow the current git and approval workflow
   - Proper maintenance validation requires both change-scoped and full-project testing
   - Failed or unapproved maintenance batches remain reviewable
-
-### BA10_CHAT_REVIEW_AND_CONTROL: Chat review and control are still missing expert-requested background-task workflows
-- Next slice: `BA-10-S3`
-- Supporting slices: `BA-02-S1`, `BA-02-S2`, `BA-02-S3`, `BA-03-S1`, `BA-03-S2`, `BA-03-S3`, `BA-10-S3`
-- Reason: The direct `jhc-chat` entrypoint now has persisted-state read helpers, supported object-specific override routing, and live guidance clarification controls, but expert-requested background-task handoff and return workflows are not yet implemented in the chat surface.
-- Evidence summary: Chat lifecycle, persisted startup/dashboard reads, explicit review-queue retrieval, default change summaries, supported object-specific override routing, and live guidance conflict or clarification controls now exist through committed chat helper commands, but expert-requested background-task workflows are still incomplete.
-- Evidence code refs: `job_hunt_copilot/chat_runtime.py`, `scripts/ops/chat_session.py`, `scripts/ops/chat_state.py`, `job_hunt_copilot/local_runtime.py`, `job_hunt_copilot/review_queries.py`, `job_hunt_copilot/runtime_pack.py`
-- Evidence test refs: `tests/test_local_runtime.py`, `tests/test_review_queries.py`, `tests/test_runtime_pack.py`, `tests/test_acceptance_traceability.py`
-- Scenarios: `2`
-  - Expert-requested background tasks require explicit handoff summary and exclusive focus
-  - Expert-requested background task outcomes return to review appropriately
 
 ## Epic Validation Ownership
 

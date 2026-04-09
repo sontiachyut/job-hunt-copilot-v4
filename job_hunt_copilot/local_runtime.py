@@ -10,6 +10,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
+from .artifacts import write_json_contract
 from .chat_runtime import build_chat_startup_dashboard, render_chat_startup_dashboard
 from .contracts import CONTRACT_VERSION
 from .db import initialize_database
@@ -36,12 +37,19 @@ from .supervisor import (
     begin_replanning,
     complete_pipeline_run,
     create_agent_incident,
+    fail_pipeline_run,
+    get_expert_review_packet,
+    get_pipeline_run,
     get_agent_incident,
     pause_agent,
+    pause_pipeline_run,
     read_agent_control_state,
     record_override_event,
+    REVIEW_PACKET_STATUS_NOT_READY,
+    REVIEW_PACKET_STATUS_PENDING,
     resume_agent,
     run_supervisor_cycle,
+    set_pipeline_run_review_packet_status,
     stop_agent,
     upsert_control_values,
 )
@@ -88,6 +96,23 @@ CHAT_SESSION_EXIT_MODES = frozenset(
 CHAT_INTERACTION_PAUSE_REASON = "expert_interaction"
 CHAT_IDLE_TIMEOUT_MINUTES = 15
 CHAT_IDLE_TIMEOUT_SECONDS = CHAT_IDLE_TIMEOUT_MINUTES * 60
+BACKGROUND_TASK_SCOPE_TYPE = "expert_requested_background_task"
+BACKGROUND_TASK_STAGE_BACKGROUND_EXECUTION = "background_execution"
+BACKGROUND_TASK_STAGE_REVIEW_PENDING = "review_pending"
+BACKGROUND_TASK_OUTCOME_COMPLETED = "completed"
+BACKGROUND_TASK_OUTCOME_FAILED = "failed"
+BACKGROUND_TASK_OUTCOME_STALLED = "stalled"
+BACKGROUND_TASK_OUTCOME_RELEASED = "released"
+BACKGROUND_TASK_OUTCOMES = frozenset(
+    {
+        BACKGROUND_TASK_OUTCOME_COMPLETED,
+        BACKGROUND_TASK_OUTCOME_FAILED,
+        BACKGROUND_TASK_OUTCOME_STALLED,
+        BACKGROUND_TASK_OUTCOME_RELEASED,
+    }
+)
+BACKGROUND_TASK_PAUSE_REASON_PREFIX = "expert_requested_background_task:"
+BACKGROUND_TASK_COMPONENT = "chat_background_task"
 OBJECT_OVERRIDE_TYPE_JOB_POSTING = "job_posting"
 OBJECT_OVERRIDE_TYPE_TAILORING_REVIEW = "tailoring_review"
 SUPPORTED_OBJECT_OVERRIDE_TYPES = frozenset(
@@ -318,6 +343,425 @@ def append_jsonl_record(path: Path, payload: dict[str, Any]) -> None:
     with path.open("a", encoding="utf-8") as handle:
         handle.write(json.dumps(payload, sort_keys=False))
         handle.write("\n")
+
+
+def _require_non_blank(value: str | None, field_name: str) -> str:
+    normalized = (value or "").strip()
+    if not normalized:
+        raise ValueError(f"{field_name} is required.")
+    return normalized
+
+
+def _background_task_pause_reason(pipeline_run_id: str) -> str:
+    return f"{BACKGROUND_TASK_PAUSE_REASON_PREFIX}{pipeline_run_id}"
+
+
+def _create_background_task_pipeline_run(
+    connection: sqlite3.Connection,
+    *,
+    task_title: str,
+    created_at: str,
+) -> Any:
+    pipeline_run_id = new_canonical_id("pipeline_runs")
+    connection.execute(
+        """
+        INSERT INTO pipeline_runs (
+          pipeline_run_id, run_scope_type, run_status, current_stage, lead_id,
+          job_posting_id, completed_at, last_error_summary, review_packet_status,
+          run_summary, started_at, created_at, updated_at
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        """,
+        (
+            pipeline_run_id,
+            BACKGROUND_TASK_SCOPE_TYPE,
+            "in_progress",
+            BACKGROUND_TASK_STAGE_BACKGROUND_EXECUTION,
+            None,
+            None,
+            None,
+            None,
+            REVIEW_PACKET_STATUS_NOT_READY,
+            task_title,
+            created_at,
+            created_at,
+            created_at,
+        ),
+    )
+    pipeline_run = get_pipeline_run(connection, pipeline_run_id)
+    if pipeline_run is None:  # pragma: no cover - defensive invariant
+        raise ValueError(f"Failed to load background-task pipeline_run {pipeline_run_id}.")
+    return pipeline_run
+
+
+def _load_json_payload(path: Path) -> dict[str, Any] | None:
+    if not path.exists():
+        return None
+    payload = json.loads(path.read_text(encoding="utf-8"))
+    return payload if isinstance(payload, dict) else None
+
+
+def _render_background_task_handoff_markdown(contract: dict[str, Any]) -> str:
+    lines = [
+        "# Background Task Handoff",
+        "",
+        f"- Pipeline run: `{contract['pipeline_run_id']}`",
+        f"- Task title: {contract['task_title']}",
+        f"- Produced at: `{contract['produced_at']}`",
+        f"- Exclusive focus: `{contract['exclusive_focus']}`",
+        "",
+        "## Scope",
+        "",
+        contract["scope"],
+        "",
+        "## Expected Outputs",
+        "",
+        contract["expected_outputs"],
+        "",
+        "## Risks Or Assumptions",
+        "",
+        contract["risks_assumptions"],
+        "",
+        "## Will Change",
+        "",
+        contract["will_change"],
+        "",
+        "## Will Not Change",
+        "",
+        contract["will_not_change"],
+        "",
+        "## Completion Condition",
+        "",
+        contract["completion_condition"],
+        "",
+    ]
+    return "\n".join(lines)
+
+
+def _write_background_task_handoff_artifacts(
+    paths: ProjectPaths,
+    *,
+    pipeline_run_id: str,
+    task_title: str,
+    scope: str,
+    expected_outputs: str,
+    risks_assumptions: str,
+    will_change: str,
+    will_not_change: str,
+    completion_condition: str,
+    produced_at: str,
+) -> dict[str, Any]:
+    handoff_json_path = paths.background_task_handoff_json_path(pipeline_run_id)
+    handoff_markdown_path = paths.background_task_handoff_markdown_path(pipeline_run_id)
+    contract = write_json_contract(
+        handoff_json_path,
+        producer_component=BACKGROUND_TASK_COMPONENT,
+        result="handoff_ready",
+        produced_at=produced_at,
+        payload={
+            "pipeline_run_id": pipeline_run_id,
+            "task_title": task_title,
+            "scope": scope,
+            "expected_outputs": expected_outputs,
+            "risks_assumptions": risks_assumptions,
+            "will_change": will_change,
+            "will_not_change": will_not_change,
+            "completion_condition": completion_condition,
+            "exclusive_focus": True,
+            "active_autonomous_priority": True,
+        },
+    )
+    write_text_atomic(handoff_markdown_path, _render_background_task_handoff_markdown(contract))
+    return {
+        "json_path": str(handoff_json_path),
+        "markdown_path": str(handoff_markdown_path),
+        "contract": contract,
+    }
+
+
+def _render_background_task_result_markdown(contract: dict[str, Any]) -> str:
+    lines = [
+        "# Background Task Result",
+        "",
+        f"- Pipeline run: `{contract['pipeline_run_id']}`",
+        f"- Task title: {contract['task_title']}",
+        f"- Outcome: `{contract['background_task_outcome']}`",
+        f"- Produced at: `{contract['produced_at']}`",
+        f"- Summary: {contract['summary']}",
+    ]
+    outputs_summary = contract.get("outputs_summary")
+    if outputs_summary:
+        lines.extend(["", "## Outputs Summary", "", str(outputs_summary)])
+    evidence_notes = contract.get("evidence_notes")
+    if evidence_notes:
+        lines.extend(["", "## Evidence Notes", "", str(evidence_notes)])
+    review_surface = contract.get("review_surface")
+    if review_surface:
+        lines.extend(["", "## Review Surface", "", str(review_surface)])
+    lines.append("")
+    return "\n".join(lines)
+
+
+def _write_background_task_result_artifacts(
+    paths: ProjectPaths,
+    *,
+    pipeline_run_id: str,
+    task_title: str,
+    outcome: str,
+    summary: str,
+    outputs_summary: str | None,
+    evidence_notes: str | None,
+    review_surface: str | None,
+    produced_at: str,
+) -> dict[str, Any]:
+    result_json_path = paths.background_task_result_json_path(pipeline_run_id)
+    result_markdown_path = paths.background_task_result_markdown_path(pipeline_run_id)
+    if outcome == BACKGROUND_TASK_OUTCOME_COMPLETED:
+        result = "completed"
+        reason_code = None
+        message = None
+    elif outcome == BACKGROUND_TASK_OUTCOME_FAILED:
+        result = "failed"
+        reason_code = "background_task_failed"
+        message = summary
+    else:
+        result = "blocked"
+        reason_code = f"background_task_{outcome}"
+        message = summary
+    contract = write_json_contract(
+        result_json_path,
+        producer_component=BACKGROUND_TASK_COMPONENT,
+        result=result,
+        produced_at=produced_at,
+        reason_code=reason_code,
+        message=message,
+        payload={
+            "pipeline_run_id": pipeline_run_id,
+            "task_title": task_title,
+            "background_task_outcome": outcome,
+            "summary": summary,
+            "outputs_summary": outputs_summary,
+            "evidence_notes": evidence_notes,
+            "review_surface": review_surface,
+        },
+    )
+    write_text_atomic(result_markdown_path, _render_background_task_result_markdown(contract))
+    return {
+        "json_path": str(result_json_path),
+        "markdown_path": str(result_markdown_path),
+        "contract": contract,
+    }
+
+
+def _background_task_review_packet_summary(
+    result_contract: dict[str, Any] | None,
+    pipeline_run: Any,
+) -> str:
+    if result_contract and result_contract.get("summary"):
+        return str(result_contract["summary"])
+    if pipeline_run.last_error_summary:
+        return str(pipeline_run.last_error_summary)
+    return str(pipeline_run.run_summary or "Background task result ready for expert review.")
+
+
+def _render_background_task_review_packet_markdown(packet_payload: dict[str, Any]) -> str:
+    handoff = packet_payload.get("handoff") or {}
+    result_summary = packet_payload.get("result_summary")
+    outputs_summary = packet_payload.get("outputs_summary")
+    evidence_notes = packet_payload.get("evidence_notes")
+    recommended_actions = packet_payload.get("recommended_expert_actions") or []
+
+    lines = [
+        "# Expert Review Packet",
+        "",
+        f"- Pipeline run: `{packet_payload['pipeline_run_id']}`",
+        f"- Outcome: `{packet_payload['run_outcome']}`",
+        f"- Current stage: `{packet_payload['current_stage']}`",
+        f"- Generated at: `{packet_payload['generated_at']}`",
+        f"- Task title: {packet_payload['task_title']}",
+    ]
+    if result_summary:
+        lines.append(f"- Result summary: {result_summary}")
+
+    lines.extend(
+        [
+            "",
+            "## Handoff Summary",
+            "",
+            f"- Scope: {handoff.get('scope', 'n/a')}",
+            f"- Expected outputs: {handoff.get('expected_outputs', 'n/a')}",
+            f"- Risks or assumptions: {handoff.get('risks_assumptions', 'n/a')}",
+            f"- Will change: {handoff.get('will_change', 'n/a')}",
+            f"- Will not change: {handoff.get('will_not_change', 'n/a')}",
+            f"- Completion condition: {handoff.get('completion_condition', 'n/a')}",
+        ]
+    )
+
+    if outputs_summary:
+        lines.extend(["", "## Outputs Summary", "", str(outputs_summary)])
+    if evidence_notes:
+        lines.extend(["", "## Evidence Notes", "", str(evidence_notes)])
+
+    lines.extend(["", "## Recommended Expert Actions", ""])
+    if recommended_actions:
+        lines.extend(f"- {action}" for action in recommended_actions)
+    else:
+        lines.append("- Review the background-task result and decide whether any follow-up or correction is required.")
+    lines.append("")
+    return "\n".join(lines)
+
+
+def _create_background_task_review_packet(
+    connection: sqlite3.Connection,
+    paths: ProjectPaths,
+    *,
+    pipeline_run_id: str,
+    created_at: str,
+    task_title: str,
+    result_contract: dict[str, Any] | None,
+) -> Any:
+    existing_row = connection.execute(
+        """
+        SELECT expert_review_packet_id
+        FROM expert_review_packets
+        WHERE pipeline_run_id = ?
+          AND packet_status = ?
+        ORDER BY created_at DESC, expert_review_packet_id DESC
+        LIMIT 1
+        """,
+        (
+            pipeline_run_id,
+            REVIEW_PACKET_STATUS_PENDING,
+        ),
+    ).fetchone()
+    if existing_row is not None:
+        packet = get_expert_review_packet(connection, str(existing_row["expert_review_packet_id"]))
+        if packet is not None:
+            return packet
+
+    pipeline_run = get_pipeline_run(connection, pipeline_run_id)
+    if pipeline_run is None:  # pragma: no cover - defensive invariant
+        raise ValueError(f"pipeline_run {pipeline_run_id!r} does not exist.")
+
+    handoff_contract = _load_json_payload(paths.background_task_handoff_json_path(pipeline_run_id)) or {}
+    packet_payload = {
+        "pipeline_run_id": pipeline_run.pipeline_run_id,
+        "generated_at": created_at,
+        "run_outcome": pipeline_run.run_status,
+        "run_status": pipeline_run.run_status,
+        "current_stage": pipeline_run.current_stage,
+        "task_title": task_title,
+        "run_summary": pipeline_run.run_summary,
+        "last_error_summary": pipeline_run.last_error_summary,
+        "result_summary": result_contract.get("summary") if result_contract else None,
+        "outputs_summary": result_contract.get("outputs_summary") if result_contract else None,
+        "evidence_notes": result_contract.get("evidence_notes") if result_contract else None,
+        "handoff": {
+            "scope": handoff_contract.get("scope"),
+            "expected_outputs": handoff_contract.get("expected_outputs"),
+            "risks_assumptions": handoff_contract.get("risks_assumptions"),
+            "will_change": handoff_contract.get("will_change"),
+            "will_not_change": handoff_contract.get("will_not_change"),
+            "completion_condition": handoff_contract.get("completion_condition"),
+        },
+        "handoff_artifact_path": paths.relative_to_root(
+            paths.background_task_handoff_json_path(pipeline_run_id)
+        ).as_posix(),
+        "result_artifact_path": paths.relative_to_root(
+            paths.background_task_result_json_path(pipeline_run_id)
+        ).as_posix(),
+        "recommended_expert_actions": [
+            "Review the returned background-task evidence and confirm whether the result is acceptable.",
+            "Decide whether any follow-up implementation, repair, or policy guidance is needed before routine autonomous work continues.",
+        ],
+    }
+
+    review_packet_json_path = paths.review_packet_json_path(pipeline_run_id)
+    review_packet_markdown_path = paths.review_packet_markdown_path(pipeline_run_id)
+    review_packet_json_path.parent.mkdir(parents=True, exist_ok=True)
+    review_packet_json_path.write_text(
+        json.dumps(packet_payload, indent=2, sort_keys=False) + "\n",
+        encoding="utf-8",
+    )
+    write_text_atomic(
+        review_packet_markdown_path,
+        _render_background_task_review_packet_markdown(packet_payload),
+    )
+
+    expert_review_packet_id = new_canonical_id("expert_review_packets")
+    packet_path = paths.relative_to_root(review_packet_json_path).as_posix()
+    summary_excerpt = _background_task_review_packet_summary(result_contract, pipeline_run)
+    connection.execute(
+        """
+        INSERT INTO expert_review_packets (
+          expert_review_packet_id, pipeline_run_id, packet_status, packet_path,
+          job_posting_id, reviewed_at, summary_excerpt, created_at
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+        """,
+        (
+            expert_review_packet_id,
+            pipeline_run.pipeline_run_id,
+            REVIEW_PACKET_STATUS_PENDING,
+            packet_path,
+            None,
+            None,
+            summary_excerpt,
+            created_at,
+        ),
+    )
+    set_pipeline_run_review_packet_status(
+        connection,
+        pipeline_run.pipeline_run_id,
+        REVIEW_PACKET_STATUS_PENDING,
+        timestamp=created_at,
+    )
+    packet = get_expert_review_packet(connection, expert_review_packet_id)
+    if packet is None:  # pragma: no cover - defensive invariant
+        raise ValueError(f"Failed to load expert_review_packet {expert_review_packet_id}.")
+    return packet
+
+
+def _restore_control_state_after_background_task_return(
+    connection: sqlite3.Connection,
+    *,
+    pipeline_run_id: str,
+    current_timestamp: str,
+    manual_command: str,
+) -> Any:
+    control_state = read_agent_control_state(connection, timestamp=current_timestamp)
+    if control_state.active_background_task_run_id != pipeline_run_id:
+        raise ValueError(
+            f"background task {pipeline_run_id!r} is not the active exclusive-focus task."
+        )
+
+    cleared_updates: dict[str, str | bool | None] = {
+        "active_background_task_run_id": None,
+        "background_task_resume_on_finish": False,
+        "last_manual_command": manual_command,
+    }
+    if control_state.active_chat_session_id:
+        cleared_updates.update(
+            {
+                "agent_enabled": True,
+                "agent_mode": AGENT_MODE_PAUSED,
+                "pause_reason": CHAT_INTERACTION_PAUSE_REASON,
+                "paused_at": current_timestamp,
+                "chat_resume_on_close": control_state.background_task_resume_on_finish,
+            }
+        )
+        return upsert_control_values(connection, cleared_updates, timestamp=current_timestamp)
+
+    cleared_snapshot = upsert_control_values(
+        connection,
+        cleared_updates,
+        timestamp=current_timestamp,
+    )
+    if control_state.background_task_resume_on_finish and cleared_snapshot.agent_enabled:
+        return resume_agent(
+            connection,
+            manual_command=manual_command,
+            timestamp=current_timestamp,
+        )
+    return cleared_snapshot
 
 
 def _record_state_transition(
@@ -698,8 +1142,18 @@ def mutate_agent_control_state(
     migration = initialize_database(paths.db_path)
 
     with connect_canonical_database(paths) as connection:
+        pre_command_snapshot = read_agent_control_state(connection, timestamp=timestamp)
+        if (
+            command in {"start", "resume", "replan"}
+            and pre_command_snapshot.active_background_task_run_id
+        ):
+            raise ValueError(
+                "An expert-requested background task still owns exclusive focus: "
+                f"{pre_command_snapshot.active_background_task_run_id}. "
+                "Return or release that task before resuming routine autonomous work."
+            )
         if command == "status":
-            snapshot = read_agent_control_state(connection, timestamp=timestamp)
+            snapshot = pre_command_snapshot
         elif command == "start":
             snapshot = resume_agent(
                 connection,
@@ -750,6 +1204,271 @@ def mutate_agent_control_state(
         },
         "command": command,
         "control_state": dict(snapshot.values),
+    }
+
+
+def handoff_background_task(
+    *,
+    project_root: Path | str | None = None,
+    task_title: str,
+    scope: str,
+    expected_outputs: str,
+    risks_assumptions: str,
+    will_change: str,
+    will_not_change: str,
+    completion_condition: str,
+    manual_command: str | None = None,
+    timestamp: str | None = None,
+) -> dict[str, Any]:
+    normalized_task_title = _require_non_blank(task_title, "task_title")
+    normalized_scope = _require_non_blank(scope, "scope")
+    normalized_expected_outputs = _require_non_blank(
+        expected_outputs, "expected_outputs"
+    )
+    normalized_risks_assumptions = _require_non_blank(
+        risks_assumptions, "risks_assumptions"
+    )
+    normalized_will_change = _require_non_blank(will_change, "will_change")
+    normalized_will_not_change = _require_non_blank(
+        will_not_change, "will_not_change"
+    )
+    normalized_completion_condition = _require_non_blank(
+        completion_condition, "completion_condition"
+    )
+
+    paths = ProjectPaths.from_root(project_root)
+    migration = initialize_database(paths.db_path)
+    current_timestamp = timestamp or now_utc_iso()
+
+    with connect_canonical_database(paths) as connection:
+        control_state = read_agent_control_state(connection, timestamp=current_timestamp)
+        if not control_state.active_chat_session_id:
+            raise ValueError(
+                "Background-task handoff requires an active jhc-chat session."
+            )
+        if not control_state.agent_enabled or control_state.agent_mode != AGENT_MODE_PAUSED:
+            raise ValueError(
+                "Background-task handoff requires autonomous work to be running and paused by active chat."
+            )
+        if control_state.pause_reason != CHAT_INTERACTION_PAUSE_REASON:
+            raise ValueError(
+                "Background-task handoff requires the current pause reason to be expert_interaction."
+            )
+        if control_state.active_background_task_run_id:
+            raise ValueError(
+                "Another expert-requested background task already owns exclusive focus: "
+                f"{control_state.active_background_task_run_id}"
+            )
+
+        pipeline_run = _create_background_task_pipeline_run(
+            connection,
+            task_title=normalized_task_title,
+            created_at=current_timestamp,
+        )
+        handoff_artifacts = _write_background_task_handoff_artifacts(
+            paths,
+            pipeline_run_id=pipeline_run.pipeline_run_id,
+            task_title=normalized_task_title,
+            scope=normalized_scope,
+            expected_outputs=normalized_expected_outputs,
+            risks_assumptions=normalized_risks_assumptions,
+            will_change=normalized_will_change,
+            will_not_change=normalized_will_not_change,
+            completion_condition=normalized_completion_condition,
+            produced_at=current_timestamp,
+        )
+        snapshot = upsert_control_values(
+            connection,
+            {
+                "agent_enabled": True,
+                "agent_mode": AGENT_MODE_PAUSED,
+                "pause_reason": _background_task_pause_reason(
+                    pipeline_run.pipeline_run_id
+                ),
+                "paused_at": current_timestamp,
+                "chat_resume_on_close": False,
+                "active_background_task_run_id": pipeline_run.pipeline_run_id,
+                "background_task_resume_on_finish": True,
+                "last_manual_command": manual_command or "handoff-background-task",
+            },
+            timestamp=current_timestamp,
+        )
+
+    runtime_pack = materialize_runtime_pack(paths.project_root)
+    return {
+        "contract_version": CONTRACT_VERSION,
+        "produced_at": now_utc_iso(),
+        "project_root": str(paths.project_root),
+        "database": {
+            "db_path": str(migration.db_path),
+            "applied_migrations": migration.applied_migrations,
+            "user_version": migration.user_version,
+        },
+        "command": "handoff-background-task",
+        "status": "handoff_recorded",
+        "pipeline_run": {
+            "pipeline_run_id": pipeline_run.pipeline_run_id,
+            "run_scope_type": pipeline_run.run_scope_type,
+            "run_status": pipeline_run.run_status,
+            "current_stage": pipeline_run.current_stage,
+            "run_summary": pipeline_run.run_summary,
+        },
+        "handoff_summary": handoff_artifacts["contract"],
+        "artifacts": {
+            "handoff_json_path": handoff_artifacts["json_path"],
+            "handoff_markdown_path": handoff_artifacts["markdown_path"],
+        },
+        "control_state": dict(snapshot.values),
+        "runtime_pack": runtime_pack,
+    }
+
+
+def return_background_task(
+    pipeline_run_id: str,
+    *,
+    project_root: Path | str | None = None,
+    outcome: str,
+    summary: str,
+    outputs_summary: str | None = None,
+    evidence_notes: str | None = None,
+    manual_command: str | None = None,
+    timestamp: str | None = None,
+) -> dict[str, Any]:
+    normalized_pipeline_run_id = _require_non_blank(
+        pipeline_run_id, "pipeline_run_id"
+    )
+    normalized_outcome = _require_non_blank(outcome, "outcome")
+    if normalized_outcome not in BACKGROUND_TASK_OUTCOMES:
+        raise ValueError(
+            f"Unsupported background-task outcome: {normalized_outcome}"
+        )
+    normalized_summary = _require_non_blank(summary, "summary")
+
+    paths = ProjectPaths.from_root(project_root)
+    migration = initialize_database(paths.db_path)
+    current_timestamp = timestamp or now_utc_iso()
+
+    with connect_canonical_database(paths) as connection:
+        pipeline_run = get_pipeline_run(connection, normalized_pipeline_run_id)
+        if pipeline_run is None:
+            raise ValueError(
+                f"pipeline_run {normalized_pipeline_run_id!r} does not exist."
+            )
+        if pipeline_run.run_scope_type != BACKGROUND_TASK_SCOPE_TYPE:
+            raise ValueError(
+                f"pipeline_run {normalized_pipeline_run_id!r} is not an expert-requested background task."
+            )
+
+        control_state = read_agent_control_state(connection, timestamp=current_timestamp)
+        if control_state.active_background_task_run_id != normalized_pipeline_run_id:
+            raise ValueError(
+                "Only the active exclusive-focus background task may be returned to review."
+            )
+
+        task_title = str(pipeline_run.run_summary or normalized_pipeline_run_id)
+        review_surface: str | None = None
+        review_packet = None
+        if normalized_outcome == BACKGROUND_TASK_OUTCOME_COMPLETED:
+            pipeline_run = complete_pipeline_run(
+                connection,
+                normalized_pipeline_run_id,
+                current_stage=BACKGROUND_TASK_STAGE_REVIEW_PENDING,
+                run_summary=task_title,
+                timestamp=current_timestamp,
+            )
+            review_surface = "pending_expert_review_packets"
+        elif normalized_outcome == BACKGROUND_TASK_OUTCOME_FAILED:
+            pipeline_run = fail_pipeline_run(
+                connection,
+                normalized_pipeline_run_id,
+                current_stage=BACKGROUND_TASK_STAGE_REVIEW_PENDING,
+                error_summary=normalized_summary,
+                run_summary=task_title,
+                timestamp=current_timestamp,
+            )
+            review_surface = "failed_expert_requested_background_tasks"
+        else:
+            pipeline_run = pause_pipeline_run(
+                connection,
+                normalized_pipeline_run_id,
+                current_stage=BACKGROUND_TASK_STAGE_REVIEW_PENDING,
+                error_summary=normalized_summary,
+                run_summary=task_title,
+                timestamp=current_timestamp,
+            )
+            review_surface = "failed_expert_requested_background_tasks"
+
+        result_artifacts = _write_background_task_result_artifacts(
+            paths,
+            pipeline_run_id=normalized_pipeline_run_id,
+            task_title=task_title,
+            outcome=normalized_outcome,
+            summary=normalized_summary,
+            outputs_summary=outputs_summary.strip() if outputs_summary else None,
+            evidence_notes=evidence_notes.strip() if evidence_notes else None,
+            review_surface=review_surface,
+            produced_at=current_timestamp,
+        )
+        if normalized_outcome == BACKGROUND_TASK_OUTCOME_COMPLETED:
+            review_packet = _create_background_task_review_packet(
+                connection,
+                paths,
+                pipeline_run_id=normalized_pipeline_run_id,
+                created_at=current_timestamp,
+                task_title=task_title,
+                result_contract=result_artifacts["contract"],
+            )
+
+        snapshot = _restore_control_state_after_background_task_return(
+            connection,
+            pipeline_run_id=normalized_pipeline_run_id,
+            current_timestamp=current_timestamp,
+            manual_command=manual_command or "return-background-task",
+        )
+
+    runtime_pack = materialize_runtime_pack(paths.project_root)
+    return {
+        "contract_version": CONTRACT_VERSION,
+        "produced_at": now_utc_iso(),
+        "project_root": str(paths.project_root),
+        "database": {
+            "db_path": str(migration.db_path),
+            "applied_migrations": migration.applied_migrations,
+            "user_version": migration.user_version,
+        },
+        "command": "return-background-task",
+        "status": "review_returned",
+        "background_task_outcome": normalized_outcome,
+        "pipeline_run": {
+            "pipeline_run_id": pipeline_run.pipeline_run_id,
+            "run_scope_type": pipeline_run.run_scope_type,
+            "run_status": pipeline_run.run_status,
+            "current_stage": pipeline_run.current_stage,
+            "run_summary": pipeline_run.run_summary,
+            "last_error_summary": pipeline_run.last_error_summary,
+            "review_packet_status": pipeline_run.review_packet_status,
+        },
+        "artifacts": {
+            "result_json_path": result_artifacts["json_path"],
+            "result_markdown_path": result_artifacts["markdown_path"],
+            "review_packet_json_path": (
+                str(paths.review_packet_json_path(normalized_pipeline_run_id))
+                if review_packet is not None
+                else None
+            ),
+            "review_packet_markdown_path": (
+                str(paths.review_packet_markdown_path(normalized_pipeline_run_id))
+                if review_packet is not None
+                else None
+            ),
+        },
+        "result_summary": result_artifacts["contract"],
+        "review_surface": review_surface,
+        "expert_review_packet_id": (
+            review_packet.expert_review_packet_id if review_packet is not None else None
+        ),
+        "control_state": dict(snapshot.values),
+        "runtime_pack": runtime_pack,
     }
 
 

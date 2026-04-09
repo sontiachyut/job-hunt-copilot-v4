@@ -2741,6 +2741,394 @@ def test_chat_session_explicit_close_preserves_preexisting_non_chat_pause(tmp_pa
     assert end_report["control_state"]["pause_reason"] == "manual_triage"
 
 
+def test_control_agent_background_task_handoff_records_explicit_summary_and_exclusive_focus(
+    tmp_path,
+):
+    project_root = tmp_path / "repo"
+    project_root.mkdir()
+    create_minimal_project(project_root)
+
+    run_script(
+        "scripts/ops/control_agent.py",
+        "start",
+        "--project-root",
+        str(project_root),
+        "--manual-command",
+        "jhc-agent-start",
+    )
+    begin_report = json.loads(
+        run_script(
+            "scripts/ops/chat_session.py",
+            "begin",
+            "--project-root",
+            str(project_root),
+        ).stdout
+    )
+
+    handoff_report = json.loads(
+        run_script(
+            "scripts/ops/control_agent.py",
+            "handoff-background-task",
+            "--project-root",
+            str(project_root),
+            "--task-title",
+            "Investigate launchctl bootstrap drift",
+            "--scope-summary",
+            "Inspect the current launchctl bootstrap failure path and capture the exact local blocker.",
+            "--expected-outputs",
+            "A bounded failure summary plus the exact commands, files, and runtime surfaces inspected.",
+            "--risks-assumptions",
+            "The sandbox may still block host launchctl diagnostics, so host-only confirmation might remain open.",
+            "--will-change",
+            "Only bounded runtime-control evidence artifacts and any strictly necessary review notes.",
+            "--will-not-change",
+            "No destructive git history and no tailoring, discovery, or outreach lifecycle state.",
+            "--completion-condition",
+            "The runtime blocker is either explained with persisted evidence or explicitly returned for expert review.",
+        ).stdout
+    )
+    end_report = json.loads(
+        run_script(
+            "scripts/ops/chat_session.py",
+            "end",
+            "--project-root",
+            str(project_root),
+            "--session-id",
+            begin_report["session_id"],
+            "--exit-mode",
+            "explicit_close",
+        ).stdout
+    )
+
+    pipeline_run_id = handoff_report["pipeline_run"]["pipeline_run_id"]
+    handoff_json_path = Path(handoff_report["artifacts"]["handoff_json_path"])
+    handoff_markdown_path = Path(handoff_report["artifacts"]["handoff_markdown_path"])
+
+    connection = connect_database(project_root / "job_hunt_copilot.db")
+    control_rows = connection.execute(
+        """
+        SELECT control_key, control_value
+        FROM agent_control_state
+        WHERE control_key IN (
+            'active_background_task_run_id',
+            'active_chat_session_id',
+            'agent_mode',
+            'background_task_resume_on_finish',
+            'chat_resume_on_close',
+            'pause_reason'
+        )
+        ORDER BY control_key
+        """
+    ).fetchall()
+    pipeline_row = connection.execute(
+        """
+        SELECT run_scope_type, run_status, current_stage, review_packet_status, run_summary
+        FROM pipeline_runs
+        WHERE pipeline_run_id = ?
+        """,
+        (pipeline_run_id,),
+    ).fetchone()
+    connection.close()
+
+    assert handoff_report["status"] == "handoff_recorded"
+    assert handoff_report["handoff_summary"]["task_title"] == "Investigate launchctl bootstrap drift"
+    assert handoff_report["handoff_summary"]["exclusive_focus"] is True
+    assert handoff_report["control_state"]["active_background_task_run_id"] == pipeline_run_id
+    assert handoff_report["control_state"]["background_task_resume_on_finish"] == "true"
+    assert end_report["resumed_agent"] is False
+    assert end_report["control_state"]["agent_mode"] == "paused"
+    assert end_report["control_state"]["pause_reason"] == (
+        f"expert_requested_background_task:{pipeline_run_id}"
+    )
+    assert dict(control_rows) == {
+        "active_background_task_run_id": pipeline_run_id,
+        "active_chat_session_id": "",
+        "agent_mode": "paused",
+        "background_task_resume_on_finish": "true",
+        "chat_resume_on_close": "false",
+        "pause_reason": f"expert_requested_background_task:{pipeline_run_id}",
+    }
+    assert dict(pipeline_row) == {
+        "run_scope_type": "expert_requested_background_task",
+        "run_status": "in_progress",
+        "current_stage": "background_execution",
+        "review_packet_status": "not_ready",
+        "run_summary": "Investigate launchctl bootstrap drift",
+    }
+    assert handoff_json_path.exists()
+    assert handoff_markdown_path.exists()
+    assert "## Scope" in handoff_markdown_path.read_text(encoding="utf-8")
+    assert "## Completion Condition" in handoff_markdown_path.read_text(encoding="utf-8")
+
+
+def test_control_agent_background_task_success_returns_result_to_pending_review_queue(
+    tmp_path,
+):
+    project_root = tmp_path / "repo"
+    project_root.mkdir()
+    create_minimal_project(project_root)
+
+    run_script(
+        "scripts/ops/control_agent.py",
+        "start",
+        "--project-root",
+        str(project_root),
+        "--manual-command",
+        "jhc-agent-start",
+    )
+    begin_report = json.loads(
+        run_script(
+            "scripts/ops/chat_session.py",
+            "begin",
+            "--project-root",
+            str(project_root),
+        ).stdout
+    )
+    handoff_report = json.loads(
+        run_script(
+            "scripts/ops/control_agent.py",
+            "handoff-background-task",
+            "--project-root",
+            str(project_root),
+            "--task-title",
+            "Investigate launchctl bootstrap drift",
+            "--scope-summary",
+            "Inspect the current launchctl bootstrap failure path and capture the exact local blocker.",
+            "--expected-outputs",
+            "A bounded failure summary plus the exact commands, files, and runtime surfaces inspected.",
+            "--risks-assumptions",
+            "The sandbox may still block host launchctl diagnostics, so host-only confirmation might remain open.",
+            "--will-change",
+            "Only bounded runtime-control evidence artifacts and any strictly necessary review notes.",
+            "--will-not-change",
+            "No destructive git history and no tailoring, discovery, or outreach lifecycle state.",
+            "--completion-condition",
+            "The runtime blocker is either explained with persisted evidence or explicitly returned for expert review.",
+        ).stdout
+    )
+    run_script(
+        "scripts/ops/chat_session.py",
+        "end",
+        "--project-root",
+        str(project_root),
+        "--session-id",
+        begin_report["session_id"],
+        "--exit-mode",
+        "explicit_close",
+    )
+
+    pipeline_run_id = handoff_report["pipeline_run"]["pipeline_run_id"]
+    return_report = json.loads(
+        run_script(
+            "scripts/ops/control_agent.py",
+            "return-background-task",
+            "--project-root",
+            str(project_root),
+            "--pipeline-run-id",
+            pipeline_run_id,
+            "--outcome",
+            "completed",
+            "--summary",
+            "Captured the sandbox-only launchctl bootstrap blocker and the remaining host validation follow-up.",
+            "--outputs-summary",
+            "Recorded the exact failure mode, touched runtime-control evidence only, and prepared a review packet.",
+            "--evidence-notes",
+            "Host launchctl validation still requires a non-sandbox session.",
+        ).stdout
+    )
+
+    connection = connect_database(project_root / "job_hunt_copilot.db")
+    pipeline_row = connection.execute(
+        """
+        SELECT run_status, current_stage, review_packet_status, run_summary, last_error_summary
+        FROM pipeline_runs
+        WHERE pipeline_run_id = ?
+        """,
+        (pipeline_run_id,),
+    ).fetchone()
+    packet_row = connection.execute(
+        """
+        SELECT packet_status, packet_path, summary_excerpt
+        FROM expert_review_packets
+        WHERE pipeline_run_id = ?
+        """,
+        (pipeline_run_id,),
+    ).fetchone()
+    review_queue = build_chat_review_queue(connection, project_root=project_root)
+    control_rows = connection.execute(
+        """
+        SELECT control_key, control_value
+        FROM agent_control_state
+        WHERE control_key IN (
+            'active_background_task_run_id',
+            'agent_mode',
+            'background_task_resume_on_finish',
+            'pause_reason'
+        )
+        ORDER BY control_key
+        """
+    ).fetchall()
+    connection.close()
+
+    pending_group = next(
+        group
+        for group in review_queue["groups"]
+        if group["group_id"] == "pending_expert_review_packets"
+    )
+
+    assert return_report["status"] == "review_returned"
+    assert return_report["background_task_outcome"] == "completed"
+    assert return_report["expert_review_packet_id"]
+    assert return_report["control_state"]["agent_mode"] == "running"
+    assert dict(pipeline_row) == {
+        "run_status": "completed",
+        "current_stage": "review_pending",
+        "review_packet_status": "pending_expert_review",
+        "run_summary": "Investigate launchctl bootstrap drift",
+        "last_error_summary": None,
+    }
+    assert dict(packet_row) == {
+        "packet_status": "pending_expert_review",
+        "packet_path": f"ops/review-packets/{pipeline_run_id}/review_packet.json",
+        "summary_excerpt": "Captured the sandbox-only launchctl bootstrap blocker and the remaining host validation follow-up.",
+    }
+    assert pending_group["items"][0]["headline"] == "Investigate launchctl bootstrap drift"
+    assert (
+        pending_group["items"][0]["summary"]
+        == "Captured the sandbox-only launchctl bootstrap blocker and the remaining host validation follow-up."
+    )
+    assert dict(control_rows) == {
+        "active_background_task_run_id": "",
+        "agent_mode": "running",
+        "background_task_resume_on_finish": "false",
+        "pause_reason": "",
+    }
+    assert Path(return_report["artifacts"]["review_packet_json_path"]).exists()
+    assert Path(return_report["artifacts"]["review_packet_markdown_path"]).exists()
+
+
+def test_control_agent_background_task_stalled_return_restores_chat_pause_and_review_item(
+    tmp_path,
+):
+    project_root = tmp_path / "repo"
+    project_root.mkdir()
+    create_minimal_project(project_root)
+
+    run_script(
+        "scripts/ops/control_agent.py",
+        "start",
+        "--project-root",
+        str(project_root),
+        "--manual-command",
+        "jhc-agent-start",
+    )
+    begin_report = json.loads(
+        run_script(
+            "scripts/ops/chat_session.py",
+            "begin",
+            "--project-root",
+            str(project_root),
+        ).stdout
+    )
+    handoff_report = json.loads(
+        run_script(
+            "scripts/ops/control_agent.py",
+            "handoff-background-task",
+            "--project-root",
+            str(project_root),
+            "--task-title",
+            "Investigate launchctl bootstrap drift",
+            "--scope-summary",
+            "Inspect the current launchctl bootstrap failure path and capture the exact local blocker.",
+            "--expected-outputs",
+            "A bounded failure summary plus the exact commands, files, and runtime surfaces inspected.",
+            "--risks-assumptions",
+            "The sandbox may still block host launchctl diagnostics, so host-only confirmation might remain open.",
+            "--will-change",
+            "Only bounded runtime-control evidence artifacts and any strictly necessary review notes.",
+            "--will-not-change",
+            "No destructive git history and no tailoring, discovery, or outreach lifecycle state.",
+            "--completion-condition",
+            "The runtime blocker is either explained with persisted evidence or explicitly returned for expert review.",
+        ).stdout
+    )
+
+    pipeline_run_id = handoff_report["pipeline_run"]["pipeline_run_id"]
+    return_report = json.loads(
+        run_script(
+            "scripts/ops/control_agent.py",
+            "return-background-task",
+            "--project-root",
+            str(project_root),
+            "--pipeline-run-id",
+            pipeline_run_id,
+            "--outcome",
+            "stalled",
+            "--summary",
+            "Sandbox launchctl access is still blocked, so the host-only check needs expert review.",
+            "--evidence-notes",
+            "Captured the failing bootstrap command and the current sandbox restriction.",
+        ).stdout
+    )
+    end_report = json.loads(
+        run_script(
+            "scripts/ops/chat_session.py",
+            "end",
+            "--project-root",
+            str(project_root),
+            "--session-id",
+            begin_report["session_id"],
+            "--exit-mode",
+            "explicit_close",
+        ).stdout
+    )
+
+    connection = connect_database(project_root / "job_hunt_copilot.db")
+    pipeline_row = connection.execute(
+        """
+        SELECT run_status, current_stage, review_packet_status, run_summary, last_error_summary
+        FROM pipeline_runs
+        WHERE pipeline_run_id = ?
+        """,
+        (pipeline_run_id,),
+    ).fetchone()
+    review_queue = build_chat_review_queue(connection, project_root=project_root)
+    connection.close()
+
+    failed_group = next(
+        group
+        for group in review_queue["groups"]
+        if group["group_id"] == "failed_expert_requested_background_tasks"
+    )
+
+    assert return_report["status"] == "review_returned"
+    assert return_report["background_task_outcome"] == "stalled"
+    assert return_report["expert_review_packet_id"] is None
+    assert return_report["control_state"]["agent_mode"] == "paused"
+    assert return_report["control_state"]["pause_reason"] == "expert_interaction"
+    assert return_report["control_state"]["chat_resume_on_close"] == "true"
+    assert end_report["resumed_agent"] is True
+    assert end_report["control_state"]["agent_mode"] == "running"
+    assert dict(pipeline_row) == {
+        "run_status": "paused",
+        "current_stage": "review_pending",
+        "review_packet_status": "not_ready",
+        "run_summary": "Investigate launchctl bootstrap drift",
+        "last_error_summary": "Sandbox launchctl access is still blocked, so the host-only check needs expert review.",
+    }
+    assert failed_group["items"][0]["headline"] == "Investigate launchctl bootstrap drift"
+    assert (
+        failed_group["items"][0]["summary"]
+        == "Sandbox launchctl access is still blocked, so the host-only check needs expert review."
+    )
+    assert failed_group["items"][0]["artifact_refs"] == [
+        f"ops/background-tasks/{pipeline_run_id}/background_task_result.md",
+        f"ops/background-tasks/{pipeline_run_id}/background_task_result.json",
+        f"ops/background-tasks/{pipeline_run_id}/background_task_handoff.md",
+        f"ops/background-tasks/{pipeline_run_id}/background_task_handoff.json",
+    ]
+
+
 def test_chat_startup_dashboard_uses_persisted_state_for_clean_metrics_and_grouped_review_items(tmp_path):
     project_root = tmp_path / "repo"
     project_root.mkdir()

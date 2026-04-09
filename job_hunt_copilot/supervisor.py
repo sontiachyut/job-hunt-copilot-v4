@@ -197,6 +197,8 @@ CONTROL_DEFAULTS = MappingProxyType(
         "last_chat_started_at": "",
         "last_chat_ended_at": "",
         "last_chat_exit_mode": "",
+        "active_background_task_run_id": "",
+        "background_task_resume_on_finish": "false",
     }
 )
 
@@ -407,6 +409,14 @@ class ControlStateSnapshot:
     @property
     def last_chat_exit_mode(self) -> str | None:
         return _optional_text(self.values["last_chat_exit_mode"])
+
+    @property
+    def active_background_task_run_id(self) -> str | None:
+        return _optional_text(self.values["active_background_task_run_id"])
+
+    @property
+    def background_task_resume_on_finish(self) -> bool:
+        return self.values["background_task_resume_on_finish"] == "true"
 
     @property
     def allows_new_pipeline_progression(self) -> bool:
@@ -1808,28 +1818,29 @@ def generate_expert_review_packet(
         encoding="utf-8",
     )
 
-    linkage = ArtifactLinkage(
-        lead_id=pipeline_run.lead_id,
-        job_posting_id=pipeline_run.job_posting_id,
-    )
-    register_artifact_record(
-        connection,
-        paths,
-        artifact_type="expert_review_packet_json",
-        artifact_path=json_path,
-        producer_component=SUPERVISOR_COMPONENT,
-        linkage=linkage,
-        created_at=current_timestamp,
-    )
-    register_artifact_record(
-        connection,
-        paths,
-        artifact_type="expert_review_packet_markdown",
-        artifact_path=markdown_path,
-        producer_component=SUPERVISOR_COMPONENT,
-        linkage=linkage,
-        created_at=current_timestamp,
-    )
+    if pipeline_run.lead_id or pipeline_run.job_posting_id:
+        linkage = ArtifactLinkage(
+            lead_id=pipeline_run.lead_id,
+            job_posting_id=pipeline_run.job_posting_id,
+        )
+        register_artifact_record(
+            connection,
+            paths,
+            artifact_type="expert_review_packet_json",
+            artifact_path=json_path,
+            producer_component=SUPERVISOR_COMPONENT,
+            linkage=linkage,
+            created_at=current_timestamp,
+        )
+        register_artifact_record(
+            connection,
+            paths,
+            artifact_type="expert_review_packet_markdown",
+            artifact_path=markdown_path,
+            producer_component=SUPERVISOR_COMPONENT,
+            linkage=linkage,
+            created_at=current_timestamp,
+        )
 
     expert_review_packet_id = expert_review_packet_id or new_canonical_id("expert_review_packets")
     packet_path = paths.relative_to_root(json_path).as_posix()

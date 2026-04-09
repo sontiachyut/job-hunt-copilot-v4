@@ -932,9 +932,8 @@ _register_override(
         "Expert-requested background tasks require explicit handoff summary and exclusive focus",
         "Expert-requested background task outcomes return to review appropriately",
     ),
-    status=STATUS_GAP,
-    gap_ids=("BA10_CHAT_REVIEW_AND_CONTROL",),
-    note="The direct `jhc-chat` wrapper now has persisted review-queue and default change-summary helper reads plus live expert-guidance clarification controls, but background-task handoff or return workflows are still missing.",
+    status=STATUS_IMPLEMENTED,
+    note="`scripts/ops/control_agent.py handoff-background-task|return-background-task`, `job_hunt_copilot.local_runtime`, `job_hunt_copilot.chat_runtime`, and `tests/test_local_runtime.py` now persist explicit handoff summaries, enforce exclusive background-task focus over routine supervisor work, and return successful or unresolved outcomes into the expert review queue with persisted evidence.",
 )
 _register_override(
     scenarios=("Expert-interaction resume follows explicit close, explicit resume, or safe idle timeout",),

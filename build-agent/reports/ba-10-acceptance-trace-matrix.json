@@ -3,9 +3,9 @@
   "feature_path": "prd/test-spec.feature",
   "scenario_count": 214,
   "status_counts": {
-    "implemented": 204,
+    "implemented": 206,
     "partial": 1,
-    "gap": 7,
+    "gap": 5,
     "deferred_optional": 1,
     "excluded_from_required_acceptance": 1
   },
@@ -5769,9 +5769,9 @@
       ],
       "note": "The durable supervisor core is real and tested, and the autonomous catalog now covers both the full role-targeted chain and contact-rooted general-learning discovery, sending, and bounded delayed-feedback follow-through, while richer chat, maintenance, and posting-abandon runtime behavior remain incomplete.",
       "status_counts": {
-        "implemented": 26,
+        "implemented": 28,
         "partial": 1,
-        "gap": 6,
+        "gap": 4,
         "deferred_optional": 0,
         "excluded_from_required_acceptance": 0
       },
@@ -6834,7 +6834,7 @@
         {
           "name": "Expert-requested background tasks require explicit handoff summary and exclusive focus",
           "scenario_line": 1307,
-          "status": "gap",
+          "status": "implemented",
           "owner_role": "build-lead",
           "epic_ids": [
             "BA-02",
@@ -6867,15 +6867,13 @@
             "tests/test_local_runtime.py",
             "tests/test_runtime_pack.py"
           ],
-          "gap_ids": [
-            "BA10_CHAT_REVIEW_AND_CONTROL"
-          ],
-          "note": "The direct `jhc-chat` wrapper now has persisted review-queue and default change-summary helper reads plus live expert-guidance clarification controls, but background-task handoff or return workflows are still missing."
+          "gap_ids": [],
+          "note": "`scripts/ops/control_agent.py handoff-background-task|return-background-task`, `job_hunt_copilot.local_runtime`, `job_hunt_copilot.chat_runtime`, and `tests/test_local_runtime.py` now persist explicit handoff summaries, enforce exclusive background-task focus over routine supervisor work, and return successful or unresolved outcomes into the expert review queue with persisted evidence."
         },
         {
           "name": "Expert-requested background task outcomes return to review appropriately",
           "scenario_line": 1314,
-          "status": "gap",
+          "status": "implemented",
           "owner_role": "build-lead",
           "epic_ids": [
             "BA-02",
@@ -6908,10 +6906,8 @@
             "tests/test_local_runtime.py",
             "tests/test_runtime_pack.py"
           ],
-          "gap_ids": [
-            "BA10_CHAT_REVIEW_AND_CONTROL"
-          ],
-          "note": "The direct `jhc-chat` wrapper now has persisted review-queue and default change-summary helper reads plus live expert-guidance clarification controls, but background-task handoff or return workflows are still missing."
+          "gap_ids": [],
+          "note": "`scripts/ops/control_agent.py handoff-background-task|return-background-task`, `job_hunt_copilot.local_runtime`, `job_hunt_copilot.chat_runtime`, and `tests/test_local_runtime.py` now persist explicit handoff summaries, enforce exclusive background-task focus over routine supervisor work, and return successful or unresolved outcomes into the expert review queue with persisted evidence."
         },
         {
           "name": "Daily maintenance is mandatory, bounded, and run-boundary aware",
@@ -9261,18 +9257,9 @@
         "tests/test_acceptance_traceability.py"
       ],
       "slice_ids": [
-        "BA-02-S1",
-        "BA-02-S2",
-        "BA-02-S3",
-        "BA-03-S1",
-        "BA-03-S2",
-        "BA-03-S3",
         "BA-10-S3"
       ],
-      "scenario_names": [
-        "Expert-requested background tasks require explicit handoff summary and exclusive focus",
-        "Expert-requested background task outcomes return to review appropriately"
-      ]
+      "scenario_names": []
     },
     {
       "gap_id": "BA10_CHAT_IDLE_TIMEOUT_RESUME",
