@@ -89,7 +89,7 @@ def test_validation_selector_details_include_requested_smoke_gap_blocker_and_cur
     details = resolve_validation_selector_details(
         REPO_ROOT,
         smoke_target_ids=["bootstrap", "feedback"],
-        gap_ids=["BA10_SUPERVISOR_DOWNSTREAM_ACTION_CATALOG"],
+        gap_ids=["BA10_MAINTENANCE_AUTOMATION"],
         blocker_ids=["BA10-TRACE-001"],
         include_current_focus=True,
     )
@@ -103,17 +103,17 @@ def test_validation_selector_details_include_requested_smoke_gap_blocker_and_cur
         "qa_bootstrap_regressions",
     ]
     assert details["acceptance_gaps"][0] == {
-        "gap_id": "BA10_SUPERVISOR_DOWNSTREAM_ACTION_CATALOG",
-        "title": "Supervisor general-learning orchestration remains partial beyond bounded contact-rooted send completion",
-        "next_slice": "BA-10-S4",
-        "open_scenario_count": 1,
+        "gap_id": "BA10_MAINTENANCE_AUTOMATION",
+        "title": "Maintenance workflow and artifacts are not implemented",
+        "next_slice": "BA-10-S3",
+        "open_scenario_count": 6,
         "validation_command_ids": [
-            "qa_supervisor_regressions",
+            "qa_runtime_pack_regressions",
             "qa_acceptance_reports",
         ],
         "validation_suite_command": (
             "python3.11 scripts/quality/run_ba10_validation_suite.py "
-            "--project-root <repo_root> --gap-id BA10_SUPERVISOR_DOWNSTREAM_ACTION_CATALOG"
+            "--project-root <repo_root> --gap-id BA10_MAINTENANCE_AUTOMATION"
         ),
     }
     assert details["build_board_blockers"][0]["blocker_id"] == "BA10-TRACE-001"
@@ -131,35 +131,42 @@ def test_validation_selector_details_include_requested_smoke_gap_blocker_and_cur
         "qa_runtime_pack_regressions",
     ]
     assert details["current_focus"]["epic_id"] == "BA-10"
-    assert details["current_focus"]["slice_id"] == "BA-10-S4"
-    assert details["current_focus"]["owner_role"] == "build-lead"
-    assert details["current_focus"]["gap_ids"] == ["BA10_SUPERVISOR_DOWNSTREAM_ACTION_CATALOG"]
+    assert details["current_focus"]["slice_id"] == "BA-10-S3"
+    assert details["current_focus"]["owner_role"] == "quality-engineer"
+    assert details["current_focus"]["gap_ids"] == [
+        "BA10_MAINTENANCE_AUTOMATION",
+        "BA10_CHAT_REVIEW_AND_CONTROL",
+        "BA10_CHAT_IDLE_TIMEOUT_RESUME",
+        "BA10_POSTING_ABANDON_CONTROL",
+    ]
     assert details["current_focus"]["validation_command_ids"] == [
-        "qa_supervisor_regressions",
+        "qa_runtime_pack_regressions",
         "qa_acceptance_reports",
+        "qa_runtime_control_regressions",
+        "qa_review_surface_regressions",
     ]
     assert details["current_focus"]["validation_suite_command"] == (
         "python3.11 scripts/quality/run_ba10_validation_suite.py "
         "--project-root <repo_root> --current-focus"
     )
     assert (
-        "bounded `delivery_feedback` completion plus contact-rooted "
-        "general-learning discovery into send-ready dispatch"
+        "BA-10-S4 closed the downstream supervisor action-catalog gap"
         in details["current_focus"]["reason"]
     )
     assert (
-        "delayed-feedback follow-through for sent contact-rooted outreach"
+        "maintenance automation, chat review/control, idle-timeout resume, "
+        "and posting-abandon behavior remain open BA-10-S3 hardening work"
         in details["current_focus"]["reason"]
     )
 
 
 def test_gap_validation_command_resolution_follows_open_gap_command_mapping():
     command_ids = resolve_acceptance_gap_validation_command_ids(
-        REPO_ROOT, ["BA10_SUPERVISOR_DOWNSTREAM_ACTION_CATALOG"]
+        REPO_ROOT, ["BA10_MAINTENANCE_AUTOMATION"]
     )
 
     assert command_ids == [
-        "qa_supervisor_regressions",
+        "qa_runtime_pack_regressions",
         "qa_acceptance_reports",
     ]
 
@@ -168,8 +175,10 @@ def test_current_focus_validation_command_resolution_follows_active_slice():
     command_ids = resolve_current_focus_validation_command_ids(REPO_ROOT)
 
     assert command_ids == [
-        "qa_supervisor_regressions",
+        "qa_runtime_pack_regressions",
         "qa_acceptance_reports",
+        "qa_runtime_control_regressions",
+        "qa_review_surface_regressions",
     ]
 
 
@@ -242,7 +251,7 @@ def test_quality_validation_suite_script_dry_run_expands_gap_ids():
             str(REPO_ROOT),
             "--dry-run",
             "--gap-id",
-            "BA10_SUPERVISOR_DOWNSTREAM_ACTION_CATALOG",
+            "BA10_MAINTENANCE_AUTOMATION",
         ],
         cwd=REPO_ROOT,
         check=False,
@@ -252,26 +261,26 @@ def test_quality_validation_suite_script_dry_run_expands_gap_ids():
 
     assert result.returncode == 0
     payload = json.loads(result.stdout)
-    assert payload["requested_gap_ids"] == ["BA10_SUPERVISOR_DOWNSTREAM_ACTION_CATALOG"]
+    assert payload["requested_gap_ids"] == ["BA10_MAINTENANCE_AUTOMATION"]
     assert payload["requested_blocker_ids"] == []
     assert payload["requested_current_focus"] is False
     assert [command["command_id"] for command in payload["commands"]] == [
-        "qa_supervisor_regressions",
+        "qa_runtime_pack_regressions",
         "qa_acceptance_reports",
     ]
     assert payload["selector_details"]["acceptance_gaps"] == [
         {
-            "gap_id": "BA10_SUPERVISOR_DOWNSTREAM_ACTION_CATALOG",
-            "title": "Supervisor general-learning orchestration remains partial beyond bounded contact-rooted send completion",
-            "next_slice": "BA-10-S4",
-            "open_scenario_count": 1,
+            "gap_id": "BA10_MAINTENANCE_AUTOMATION",
+            "title": "Maintenance workflow and artifacts are not implemented",
+            "next_slice": "BA-10-S3",
+            "open_scenario_count": 6,
             "validation_command_ids": [
-                "qa_supervisor_regressions",
+                "qa_runtime_pack_regressions",
                 "qa_acceptance_reports",
             ],
             "validation_suite_command": (
                 "python3.11 scripts/quality/run_ba10_validation_suite.py "
-                "--project-root <repo_root> --gap-id BA10_SUPERVISOR_DOWNSTREAM_ACTION_CATALOG"
+                "--project-root <repo_root> --gap-id BA10_MAINTENANCE_AUTOMATION"
             ),
         }
     ]
@@ -368,29 +377,38 @@ def test_quality_validation_suite_script_dry_run_expands_current_focus():
     assert payload["requested_blocker_ids"] == []
     assert payload["requested_current_focus"] is True
     assert [command["command_id"] for command in payload["commands"]] == [
-        "qa_supervisor_regressions",
+        "qa_runtime_pack_regressions",
         "qa_acceptance_reports",
+        "qa_runtime_control_regressions",
+        "qa_review_surface_regressions",
     ]
     current_focus = payload["selector_details"]["current_focus"]
     assert current_focus["epic_id"] == "BA-10"
-    assert current_focus["slice_id"] == "BA-10-S4"
-    assert current_focus["owner_role"] == "build-lead"
-    assert current_focus["gap_ids"] == ["BA10_SUPERVISOR_DOWNSTREAM_ACTION_CATALOG"]
+    assert current_focus["slice_id"] == "BA-10-S3"
+    assert current_focus["owner_role"] == "quality-engineer"
+    assert current_focus["gap_ids"] == [
+        "BA10_MAINTENANCE_AUTOMATION",
+        "BA10_CHAT_REVIEW_AND_CONTROL",
+        "BA10_CHAT_IDLE_TIMEOUT_RESUME",
+        "BA10_POSTING_ABANDON_CONTROL",
+    ]
     assert current_focus["validation_command_ids"] == [
-        "qa_supervisor_regressions",
+        "qa_runtime_pack_regressions",
         "qa_acceptance_reports",
+        "qa_runtime_control_regressions",
+        "qa_review_surface_regressions",
     ]
     assert current_focus["validation_suite_command"] == (
         "python3.11 scripts/quality/run_ba10_validation_suite.py "
         "--project-root <repo_root> --current-focus"
     )
     assert (
-        "bounded `delivery_feedback` completion plus contact-rooted "
-        "general-learning discovery into send-ready dispatch"
+        "BA-10-S4 closed the downstream supervisor action-catalog gap"
         in current_focus["reason"]
     )
     assert (
-        "delayed-feedback follow-through for sent contact-rooted outreach"
+        "maintenance automation, chat review/control, idle-timeout resume, "
+        "and posting-abandon behavior remain open BA-10-S3 hardening work"
         in current_focus["reason"]
     )
 
@@ -470,16 +488,15 @@ def test_build_ba10_validation_suite_report_summarizes_results():
             "repo_status": {
                 "acceptance_scenario_count": 214,
                 "acceptance_status_counts": {
-                    "implemented": 190,
-                    "partial": 8,
+                    "implemented": 194,
+                    "partial": 4,
                     "gap": 14,
                     "deferred_optional": 1,
                     "excluded_from_required_acceptance": 1,
                 },
-                "open_acceptance_scenario_count": 22,
-                "open_acceptance_gap_cluster_count": 5,
+                "open_acceptance_scenario_count": 18,
+                "open_acceptance_gap_cluster_count": 4,
                 "open_acceptance_gap_ids": [
-                    "BA10_SUPERVISOR_DOWNSTREAM_ACTION_CATALOG",
                     "BA10_MAINTENANCE_AUTOMATION",
                     "BA10_CHAT_REVIEW_AND_CONTROL",
                     "BA10_CHAT_IDLE_TIMEOUT_RESUME",
@@ -493,12 +510,12 @@ def test_build_ba10_validation_suite_report_summarizes_results():
                 ],
                 "current_focus": {
                     "epic_id": "BA-10",
-                    "slice_id": "BA-10-S4",
-                    "owner_role": "build-lead",
+                    "slice_id": "BA-10-S3",
+                    "owner_role": "quality-engineer",
                 },
             },
             "requested_command_ids": ["qa_smoke_flow"],
-            "requested_gap_ids": ["BA10_SUPERVISOR_DOWNSTREAM_ACTION_CATALOG"],
+            "requested_gap_ids": ["BA10_MAINTENANCE_AUTOMATION"],
             "requested_blocker_ids": [],
             "requested_current_focus": True,
             "requested_smoke_targets": ["bootstrap"],
@@ -528,30 +545,37 @@ def test_build_ba10_validation_suite_report_summarizes_results():
                 ],
                 "acceptance_gaps": [
                     {
-                        "gap_id": "BA10_SUPERVISOR_DOWNSTREAM_ACTION_CATALOG",
-                        "title": "Supervisor orchestration still stops before autonomous delivery feedback completes",
-                        "next_slice": "BA-10-S4",
-                        "open_scenario_count": 5,
+                        "gap_id": "BA10_MAINTENANCE_AUTOMATION",
+                        "title": "Maintenance workflow and artifacts are not implemented",
+                        "next_slice": "BA-10-S3",
+                        "open_scenario_count": 6,
                         "validation_command_ids": [
-                            "qa_supervisor_regressions",
+                            "qa_runtime_pack_regressions",
                             "qa_acceptance_reports",
                         ],
                         "validation_suite_command": (
                             "python3.11 scripts/quality/run_ba10_validation_suite.py "
-                            "--project-root <repo_root> --gap-id BA10_SUPERVISOR_DOWNSTREAM_ACTION_CATALOG"
+                            "--project-root <repo_root> --gap-id BA10_MAINTENANCE_AUTOMATION"
                         ),
                     }
                 ],
                 "build_board_blockers": [],
                 "current_focus": {
                     "epic_id": "BA-10",
-                    "slice_id": "BA-10-S4",
-                    "owner_role": "build-lead",
-                    "reason": "Focused downstream-supervisor verification remains active.",
-                    "gap_ids": ["BA10_SUPERVISOR_DOWNSTREAM_ACTION_CATALOG"],
+                    "slice_id": "BA-10-S3",
+                    "owner_role": "quality-engineer",
+                    "reason": "BA-10-S4 closed the downstream supervisor action-catalog gap.",
+                    "gap_ids": [
+                        "BA10_MAINTENANCE_AUTOMATION",
+                        "BA10_CHAT_REVIEW_AND_CONTROL",
+                        "BA10_CHAT_IDLE_TIMEOUT_RESUME",
+                        "BA10_POSTING_ABANDON_CONTROL",
+                    ],
                     "validation_command_ids": [
-                        "qa_supervisor_regressions",
+                        "qa_runtime_pack_regressions",
                         "qa_acceptance_reports",
+                        "qa_runtime_control_regressions",
+                        "qa_review_surface_regressions",
                     ],
                     "validation_suite_command": (
                         "python3.11 scripts/quality/run_ba10_validation_suite.py "
@@ -602,16 +626,15 @@ def test_build_ba10_validation_suite_report_summarizes_results():
     assert report["repo_status"] == {
         "acceptance_scenario_count": 214,
         "acceptance_status_counts": {
-            "implemented": 190,
-            "partial": 8,
+            "implemented": 194,
+            "partial": 4,
             "gap": 14,
             "deferred_optional": 1,
             "excluded_from_required_acceptance": 1,
         },
-        "open_acceptance_scenario_count": 22,
-        "open_acceptance_gap_cluster_count": 5,
+        "open_acceptance_scenario_count": 18,
+        "open_acceptance_gap_cluster_count": 4,
         "open_acceptance_gap_ids": [
-            "BA10_SUPERVISOR_DOWNSTREAM_ACTION_CATALOG",
             "BA10_MAINTENANCE_AUTOMATION",
             "BA10_CHAT_REVIEW_AND_CONTROL",
             "BA10_CHAT_IDLE_TIMEOUT_RESUME",
@@ -625,8 +648,8 @@ def test_build_ba10_validation_suite_report_summarizes_results():
         ],
         "current_focus": {
             "epic_id": "BA-10",
-            "slice_id": "BA-10-S4",
-            "owner_role": "build-lead",
+            "slice_id": "BA-10-S3",
+            "owner_role": "quality-engineer",
         },
     }
 
@@ -634,12 +657,12 @@ def test_build_ba10_validation_suite_report_summarizes_results():
     assert "# BA-10 Validation Suite Report" in markdown
     assert "- Requested command ids: `qa_smoke_flow`" in markdown
     assert (
-        "- Requested acceptance gaps: `BA10_SUPERVISOR_DOWNSTREAM_ACTION_CATALOG`"
+        "- Requested acceptance gaps: `BA10_MAINTENANCE_AUTOMATION`"
         in markdown
     )
     assert "- Failed command ids: `qa_host_launchd_validation`" in markdown
     assert "## Open BA-10 Status" in markdown
-    assert "- Open acceptance gap clusters: `5`" in markdown
+    assert "- Open acceptance gap clusters: `4`" in markdown
     assert "- Open build-board blocker ids: `BA10-TRACE-001`, `BUILD-CLI-001`, `OPS-LAUNCHD-001`" in markdown
     assert "## Selector Details" in markdown
     assert "### Smoke Targets" in markdown
@@ -647,8 +670,7 @@ def test_build_ba10_validation_suite_report_summarizes_results():
     assert "### Current Focus" in markdown
     assert "- `bootstrap`: Bootstrap and prerequisites" in markdown
     assert (
-        "- `BA10_SUPERVISOR_DOWNSTREAM_ACTION_CATALOG`: Supervisor orchestration "
-        "still stops before autonomous delivery feedback completes"
+        "- `BA10_MAINTENANCE_AUTOMATION`: Maintenance workflow and artifacts are not implemented"
     ) in markdown
     assert "| qa_smoke_flow | automated | passed | 0 | 1.250 |" in markdown
     assert "### qa_host_launchd_validation: Host launchd validation" in markdown
@@ -672,21 +694,21 @@ def test_write_ba10_validation_suite_reports_persists_json_and_markdown(tmp_path
             "repo_status": {
                 "acceptance_scenario_count": 214,
                 "acceptance_status_counts": {
-                    "implemented": 190,
-                    "partial": 8,
+                    "implemented": 194,
+                    "partial": 4,
                     "gap": 14,
                 },
-                "open_acceptance_scenario_count": 22,
-                "open_acceptance_gap_cluster_count": 5,
+                "open_acceptance_scenario_count": 18,
+                "open_acceptance_gap_cluster_count": 4,
                 "open_acceptance_gap_ids": [
-                    "BA10_SUPERVISOR_DOWNSTREAM_ACTION_CATALOG",
+                    "BA10_MAINTENANCE_AUTOMATION",
                 ],
                 "open_build_board_blocker_count": 1,
                 "open_build_board_blocker_ids": ["OPS-LAUNCHD-001"],
                 "current_focus": {
                     "epic_id": "BA-10",
-                    "slice_id": "BA-10-S4",
-                    "owner_role": "build-lead",
+                    "slice_id": "BA-10-S3",
+                    "owner_role": "quality-engineer",
                 },
             },
             "requested_command_ids": [],

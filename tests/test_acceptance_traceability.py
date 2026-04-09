@@ -88,37 +88,21 @@ def test_acceptance_trace_matrix_reports_are_current_and_reference_real_repo_pat
         for path_text in gap["evidence_code_refs"] + gap["evidence_test_refs"]:
             assert (REPO_ROOT / path_text).exists(), path_text
 
-    supervisor_gap = next(
-        gap
+    assert all(
+        gap["gap_id"] != "BA10_SUPERVISOR_DOWNSTREAM_ACTION_CATALOG"
         for gap in matrix["gap_registry"]
-        if gap["gap_id"] == "BA10_SUPERVISOR_DOWNSTREAM_ACTION_CATALOG"
     )
-    assert supervisor_gap["implementation_snapshot"] == {
-        "current_selector_priority_order": [
-            "active_incident",
-            "open_pipeline_run",
-            "new_role_targeted_posting",
-            "general_learning_contact",
-        ],
-        "registered_role_targeted_checkpoint_stages": ["agent_review", "lead_handoff"],
-        "registered_role_targeted_action_stages": [
-            "agent_review",
-            "delivery_feedback",
-            "email_discovery",
-            "lead_handoff",
-            "people_search",
-            "sending",
-        ],
-        "registered_contact_rooted_action_ids": [
-            "general_learning_email_discovery",
-            "general_learning_outreach",
-        ],
-        "validated_blocked_role_targeted_stages": [],
-        "unsupported_autonomous_scope_paths": [
-            "contact_rooted_general_learning_delayed_feedback_followthrough",
-        ],
-    }
-    assert "BA-10-S4" in supervisor_gap["slice_ids"]
+
+    priority_order_scenario = next(
+        scenario
+        for rule in matrix["rules"]
+        if rule["rule"] == "Supervisor Agent behavior"
+        for scenario in rule["scenarios"]
+        if scenario["name"] == "Supervisor work selection follows the current default priority order"
+    )
+    assert priority_order_scenario["status"] == "partial"
+    assert priority_order_scenario["gap_ids"] == ["BA10_MAINTENANCE_AUTOMATION"]
+    assert "BA-03-S3" in priority_order_scenario["slice_ids"]
 
     bootstrap_rule = next(
         rule for rule in matrix["rules"] if rule["rule"] == "Build bootstrap and prerequisites"

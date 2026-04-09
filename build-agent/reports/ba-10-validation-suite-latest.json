@@ -23,29 +23,34 @@
     "build_board_blockers": [],
     "current_focus": {
       "epic_id": "BA-10",
-      "slice_id": "BA-10-S4",
-      "owner_role": "build-lead",
-      "reason": "BA-10-S4 now covers the full role-targeted supervisor chain through bounded `delivery_feedback` completion plus contact-rooted general-learning discovery into send-ready dispatch and still holds the acceptance matrix at 194 implemented / 4 partial / 14 gap scenarios; the highest-value remaining work in this slice is delayed-feedback follow-through for sent contact-rooted outreach.",
+      "slice_id": "BA-10-S3",
+      "owner_role": "quality-engineer",
+      "reason": "BA-10-S4 closed the downstream supervisor action-catalog gap by adding contact-rooted delayed-feedback follow-through, but the acceptance matrix still holds at 194 implemented / 4 partial / 14 gap scenarios because maintenance automation, chat review/control, idle-timeout resume, and posting-abandon behavior remain open BA-10-S3 hardening work.",
       "gap_ids": [
-        "BA10_SUPERVISOR_DOWNSTREAM_ACTION_CATALOG"
+        "BA10_MAINTENANCE_AUTOMATION",
+        "BA10_CHAT_REVIEW_AND_CONTROL",
+        "BA10_CHAT_IDLE_TIMEOUT_RESUME",
+        "BA10_POSTING_ABANDON_CONTROL"
       ],
       "validation_command_ids": [
-        "qa_supervisor_regressions",
-        "qa_acceptance_reports"
+        "qa_runtime_pack_regressions",
+        "qa_acceptance_reports",
+        "qa_runtime_control_regressions",
+        "qa_review_surface_regressions"
       ],
       "validation_suite_command": "python3.11 scripts/quality/run_ba10_validation_suite.py --project-root <repo_root> --current-focus"
     }
   },
   "commands": [
     {
-      "command_id": "qa_supervisor_regressions",
-      "title": "Supervisor downstream hardening regressions",
+      "command_id": "qa_runtime_pack_regressions",
+      "title": "Runtime pack regressions",
       "kind": "automated",
-      "command": "python3.11 -m pytest tests/test_supervisor_downstream_actions.py",
-      "description": "Confirms `lead_handoff` advances into `agent_review`, bounded mandatory review advances into `people_search`, bounded people search advances into `email_discovery`, bounded email discovery advances into `sending`, bounded sending advances into `delivery_feedback`, bounded delivery feedback either stays active until high-level outcomes are due or completes the same durable run with a review packet, contact-rooted general-learning work now advances from bounded email discovery into send-ready dispatch without posting review state, and the remaining contact-rooted general-learning gap is limited to delayed-feedback follow-through.",
+      "command": "python3.11 -m pytest tests/test_runtime_pack.py",
+      "description": "Confirms generated runtime scaffolding stays honest about current action-catalog and maintenance placeholder status.",
       "status": "passed",
       "returncode": 0,
-      "duration_seconds": 1.037
+      "duration_seconds": 0.233
     },
     {
       "command_id": "qa_acceptance_reports",
@@ -55,21 +60,41 @@
       "description": "Keeps the committed BA-10 acceptance and blocker reports synchronized with repo code, tests, and state references.",
       "status": "passed",
       "returncode": 0,
-      "duration_seconds": 0.321
+      "duration_seconds": 0.319
+    },
+    {
+      "command_id": "qa_runtime_control_regressions",
+      "title": "Runtime control regressions",
+      "kind": "automated",
+      "command": "python3.11 -m pytest tests/test_local_runtime.py",
+      "description": "Covers launchd plist wiring, control commands, chat lifecycle state, delayed feedback runners, and explicit negative control cases.",
+      "status": "passed",
+      "returncode": 0,
+      "duration_seconds": 4.454
+    },
+    {
+      "command_id": "qa_review_surface_regressions",
+      "title": "Review surface regressions",
+      "kind": "automated",
+      "command": "python3.11 -m pytest tests/test_review_queries.py",
+      "description": "Verifies persisted grouped review surfaces and traceability reads that back the chat/review boundary.",
+      "status": "passed",
+      "returncode": 0,
+      "duration_seconds": 0.463
     }
   ],
   "failed_command_ids": [],
   "passed": true,
   "validation_suite_report_version": 2,
-  "generated_at": "2026-04-09T01:01:54Z",
+  "generated_at": "2026-04-09T01:24:28Z",
   "summary": {
-    "command_count": 2,
+    "command_count": 4,
     "command_kind_counts": {
-      "automated": 2
+      "automated": 4
     },
-    "passed_command_count": 2,
+    "passed_command_count": 4,
     "failed_command_count": 0,
-    "total_duration_seconds": 1.358
+    "total_duration_seconds": 5.469
   },
   "repo_status": {
     "acceptance_scenario_count": 214,
@@ -81,9 +106,8 @@
       "excluded_from_required_acceptance": 1
     },
     "open_acceptance_scenario_count": 18,
-    "open_acceptance_gap_cluster_count": 5,
+    "open_acceptance_gap_cluster_count": 4,
     "open_acceptance_gap_ids": [
-      "BA10_SUPERVISOR_DOWNSTREAM_ACTION_CATALOG",
       "BA10_MAINTENANCE_AUTOMATION",
       "BA10_CHAT_REVIEW_AND_CONTROL",
       "BA10_CHAT_IDLE_TIMEOUT_RESUME",
@@ -97,8 +121,8 @@
     ],
     "current_focus": {
       "epic_id": "BA-10",
-      "slice_id": "BA-10-S4",
-      "owner_role": "build-lead"
+      "slice_id": "BA-10-S3",
+      "owner_role": "quality-engineer"
     }
   },
   "report_paths": {

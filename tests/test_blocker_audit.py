@@ -34,10 +34,17 @@ def test_ba10_blocker_audit_reports_are_current_and_reference_real_repo_paths():
     )
 
     current_focus = audit["current_focus"]
-    assert current_focus["gap_ids"] == ["BA10_SUPERVISOR_DOWNSTREAM_ACTION_CATALOG"]
+    assert current_focus["gap_ids"] == [
+        "BA10_MAINTENANCE_AUTOMATION",
+        "BA10_CHAT_REVIEW_AND_CONTROL",
+        "BA10_CHAT_IDLE_TIMEOUT_RESUME",
+        "BA10_POSTING_ABANDON_CONTROL",
+    ]
     assert [command["command_id"] for command in current_focus["validation_commands"]] == [
-        "qa_supervisor_regressions",
+        "qa_runtime_pack_regressions",
         "qa_acceptance_reports",
+        "qa_runtime_control_regressions",
+        "qa_review_surface_regressions",
     ]
     assert current_focus["validation_suite"] == {
         "args": ["--project-root", "<repo_root>", "--current-focus"],
@@ -69,37 +76,14 @@ def test_ba10_blocker_audit_reports_are_current_and_reference_real_repo_paths():
             assert command["kind"]
             assert command["description"]
 
-    supervisor_cluster = next(
+    maintenance_cluster = next(
         cluster
         for cluster in audit["acceptance_gap_clusters"]
-        if cluster["gap_id"] == "BA10_SUPERVISOR_DOWNSTREAM_ACTION_CATALOG"
+        if cluster["gap_id"] == "BA10_MAINTENANCE_AUTOMATION"
     )
-    assert supervisor_cluster["implementation_snapshot"] == {
-        "current_selector_priority_order": [
-            "active_incident",
-            "open_pipeline_run",
-            "new_role_targeted_posting",
-            "general_learning_contact",
-        ],
-        "registered_role_targeted_checkpoint_stages": ["agent_review", "lead_handoff"],
-        "registered_role_targeted_action_stages": [
-            "agent_review",
-            "delivery_feedback",
-            "email_discovery",
-            "lead_handoff",
-            "people_search",
-            "sending",
-        ],
-        "registered_contact_rooted_action_ids": [
-            "general_learning_email_discovery",
-            "general_learning_outreach",
-        ],
-        "validated_blocked_role_targeted_stages": [],
-        "unsupported_autonomous_scope_paths": [
-            "contact_rooted_general_learning_delayed_feedback_followthrough",
-        ],
-    }
-    assert "BA-10-S4" in supervisor_cluster["slice_ids"]
+    assert maintenance_cluster["next_slice"] == "BA-10-S3"
+    assert maintenance_cluster["status_counts"] == {"partial": 1, "gap": 5}
+    assert "BA-10-S3" in maintenance_cluster["slice_ids"]
 
     build_cli_blocker = next(
         blocker

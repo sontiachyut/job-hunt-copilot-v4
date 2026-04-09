@@ -155,6 +155,9 @@ ACTION_RUN_GENERAL_LEARNING_EMAIL_DISCOVERY: Final = (
     "run_general_learning_email_discovery"
 )
 ACTION_RUN_GENERAL_LEARNING_OUTREACH: Final = "run_general_learning_outreach"
+ACTION_RUN_GENERAL_LEARNING_DELIVERY_FEEDBACK: Final = (
+    "run_general_learning_delivery_feedback"
+)
 ACTION_ESCALATE_OPEN_INCIDENT: Final = "escalate_open_incident"
 
 SUPERVISOR_DELIVERY_FEEDBACK_SCHEDULER_NAME: Final = "supervisor_delivery_feedback"
@@ -723,6 +726,25 @@ SUPERVISOR_ACTION_CATALOG = MappingProxyType(
             validation_references=(
                 "prd/spec.md FR-SYS-38A, FR-EM-12E1, and FR-OPS-17K",
                 "prd/test-spec.feature general-learning drafting and orchestration scenarios",
+            ),
+        ),
+        ACTION_RUN_GENERAL_LEARNING_DELIVERY_FEEDBACK: SupervisorActionCatalogEntry(
+            action_id=ACTION_RUN_GENERAL_LEARNING_DELIVERY_FEEDBACK,
+            work_type=WORK_TYPE_CONTACT,
+            description="Run one bounded delayed feedback-sync step for a sent contact-rooted general-learning outreach and keep that contact rooted in canonical feedback history.",
+            prerequisites=(
+                "contact exists in canonical state",
+                "the selected contact is not tied to a current job_posting contact link",
+                "at least one sent contact-rooted general-learning outreach_message still lacks a terminal feedback outcome",
+            ),
+            expected_outputs=(
+                "the supervisor reuses the shared delayed feedback sync logic for the selected contact's sent general-learning messages",
+                "feedback_sync_runs and delivery_feedback_events refresh without introducing pipeline-run or posting linkage",
+                "the contact-rooted feedback follow-through stops only once each sent general-learning message has a bounced, not_bounced, or replied outcome",
+            ),
+            validation_references=(
+                "prd/spec.md FR-SYS-38A, FR-SYS-38D2, FR-EF-01J through FR-EF-01P, and FR-OPS-17K",
+                "prd/test-spec.feature general-learning orchestration, delayed feedback timing, and delayed-bounce scenarios",
             ),
         ),
         ACTION_ESCALATE_OPEN_INCIDENT: SupervisorActionCatalogEntry(
@@ -2473,6 +2495,46 @@ def _select_new_posting_work_unit(
 def _select_general_learning_contact_work_unit(
     connection: sqlite3.Connection,
 ) -> SupervisorWorkUnit | None:
+    delayed_feedback_row = connection.execute(
+        f"""
+        SELECT c.contact_id, c.display_name, c.company_name
+        FROM contacts c
+        WHERE NOT EXISTS (
+                SELECT 1
+                FROM job_posting_contacts jpc
+                WHERE jpc.contact_id = c.contact_id
+              )
+          AND EXISTS (
+                SELECT 1
+                FROM outreach_messages om
+                WHERE om.contact_id = c.contact_id
+                  AND om.outreach_mode = 'general_learning'
+                  AND om.message_status = 'sent'
+                  AND NOT EXISTS (
+                    SELECT 1
+                    FROM delivery_feedback_events dfe
+                    WHERE dfe.outreach_message_id = om.outreach_message_id
+                      AND dfe.event_state IN ({", ".join("?" for _ in TERMINAL_DELIVERY_FEEDBACK_EVENT_STATES)})
+                  )
+              )
+        ORDER BY c.created_at ASC, c.contact_id ASC
+        LIMIT 1
+        """,
+        tuple(sorted(TERMINAL_DELIVERY_FEEDBACK_EVENT_STATES)),
+    ).fetchone()
+    if delayed_feedback_row is not None:
+        display_name = _optional_text(delayed_feedback_row[1]) or delayed_feedback_row[0]
+        company_name = _optional_text(delayed_feedback_row[2]) or "unknown-company"
+        return SupervisorWorkUnit(
+            work_type=WORK_TYPE_CONTACT,
+            work_id=delayed_feedback_row[0],
+            action_id=ACTION_RUN_GENERAL_LEARNING_DELIVERY_FEEDBACK,
+            summary=(
+                "Run one bounded contact-rooted delayed feedback sync for "
+                f"{display_name} at {company_name}."
+            ),
+        )
+
     send_ready_row = connection.execute(
         """
         SELECT c.contact_id, c.display_name, c.company_name,
@@ -3070,6 +3132,41 @@ def _validate_selected_work(
             )
         return None
 
+    if catalog_entry.action_id == ACTION_RUN_GENERAL_LEARNING_DELIVERY_FEEDBACK:
+        row = connection.execute(
+            """
+            SELECT c.contact_id,
+                   (
+                     SELECT COUNT(*)
+                     FROM job_posting_contacts jpc
+                     WHERE jpc.contact_id = c.contact_id
+                   ) AS posting_link_count
+            FROM contacts c
+            WHERE c.contact_id = ?
+            """,
+            (selected_work.work_id,),
+        ).fetchone()
+        if row is None:
+            return f"contact {selected_work.work_id!r} no longer exists."
+        if int(row[1] or 0) > 0:
+            return (
+                f"contact {selected_work.work_id!r} is still tied to posting-linked "
+                "outreach state and is not eligible for the contact-rooted "
+                "general-learning delayed-feedback boundary."
+            )
+        pending_feedback_message_ids = (
+            _list_contact_rooted_general_learning_sent_outreach_message_ids_without_terminal_feedback(
+                connection,
+                contact_id=selected_work.work_id,
+            )
+        )
+        if not pending_feedback_message_ids:
+            return (
+                f"contact {selected_work.work_id!r} has no sent general-learning "
+                "messages that still require delayed feedback follow-through."
+            )
+        return None
+
     if catalog_entry.action_id == ACTION_ESCALATE_OPEN_INCIDENT:
         incident = get_agent_incident(connection, selected_work.work_id)
         if incident is None:
@@ -3562,6 +3659,35 @@ def _execute_selected_work_unit(
             "General-learning outreach completed with an unsupported message status "
             f"{general_learning_result.message_status_after_execution!r}."
         )
+
+    if catalog_entry.action_id == ACTION_RUN_GENERAL_LEARNING_DELIVERY_FEEDBACK:
+        from .delivery_feedback import (
+            OBSERVATION_SCOPE_DELAYED,
+            sync_delivery_feedback,
+        )
+
+        pending_feedback_message_ids = (
+            _list_contact_rooted_general_learning_sent_outreach_message_ids_without_terminal_feedback(
+                connection,
+                contact_id=selected_work.work_id,
+            )
+        )
+        if not pending_feedback_message_ids:
+            raise SupervisorStateError(
+                f"contact {selected_work.work_id!r} has no sent general-learning "
+                "messages that still require delayed feedback follow-through."
+            )
+        sync_delivery_feedback(
+            connection,
+            project_root=paths.project_root,
+            current_time=timestamp,
+            scheduler_name=SUPERVISOR_DELIVERY_FEEDBACK_SCHEDULER_NAME,
+            scheduler_type=SUPERVISOR_DELIVERY_FEEDBACK_SCHEDULER_TYPE,
+            observation_scope=OBSERVATION_SCOPE_DELAYED,
+            observer=action_dependencies.feedback_observer,
+            target_outreach_message_ids=pending_feedback_message_ids,
+        )
+        return None, None
 
     if catalog_entry.action_id == ACTION_ESCALATE_OPEN_INCIDENT:
         incident = escalate_agent_incident(
@@ -4106,6 +4232,56 @@ def _validate_selected_work_result(
                 )
         return None
 
+    if catalog_entry.action_id == ACTION_RUN_GENERAL_LEARNING_DELIVERY_FEEDBACK:
+        message_ids = _list_contact_rooted_general_learning_sent_outreach_message_ids(
+            connection,
+            contact_id=selected_work.work_id,
+        )
+        if not message_ids:
+            return (
+                "General-learning delayed feedback completed without any sent "
+                "general-learning outreach messages for the selected contact."
+            )
+        feedback_sync_row = connection.execute(
+            """
+            SELECT scheduler_name, scheduler_type, observation_scope, result
+            FROM feedback_sync_runs
+            ORDER BY started_at DESC, feedback_sync_run_id DESC
+            LIMIT 1
+            """
+        ).fetchone()
+        if feedback_sync_row is None:
+            return (
+                "General-learning delayed feedback completed without a persisted "
+                "feedback_sync_run."
+            )
+        if dict(feedback_sync_row) != {
+            "scheduler_name": SUPERVISOR_DELIVERY_FEEDBACK_SCHEDULER_NAME,
+            "scheduler_type": SUPERVISOR_DELIVERY_FEEDBACK_SCHEDULER_TYPE,
+            "observation_scope": "delayed_feedback_sync",
+            "result": "success",
+        }:
+            return (
+                "General-learning delayed feedback did not persist the expected "
+                f"supervisor-owned sync metadata; found {dict(feedback_sync_row)!r}."
+            )
+        message_row = connection.execute(
+            """
+            SELECT DISTINCT job_posting_id
+            FROM outreach_messages
+            WHERE contact_id = ?
+              AND outreach_mode = 'general_learning'
+              AND message_status = 'sent'
+            """,
+            (selected_work.work_id,),
+        ).fetchone()
+        if message_row is not None and message_row[0] is not None:
+            return (
+                "General-learning delayed feedback should remain contact-rooted "
+                "without introducing job_posting linkage."
+            )
+        return None
+
     if catalog_entry.action_id == ACTION_ESCALATE_OPEN_INCIDENT:
         if incident is None:
             return "Supervisor failed to load the escalated incident result."
@@ -4543,6 +4719,58 @@ def _list_posting_sent_outreach_message_ids_without_terminal_feedback(
         """,
         (
             job_posting_id,
+            *sorted(TERMINAL_DELIVERY_FEEDBACK_EVENT_STATES),
+        ),
+    ).fetchall()
+    return [str(row[0]) for row in rows]
+
+
+def _list_contact_rooted_general_learning_sent_outreach_message_ids(
+    connection: sqlite3.Connection,
+    *,
+    contact_id: str,
+) -> list[str]:
+    rows = connection.execute(
+        """
+        SELECT outreach_message_id
+        FROM outreach_messages
+        WHERE contact_id = ?
+          AND outreach_mode = 'general_learning'
+          AND job_posting_id IS NULL
+          AND message_status = 'sent'
+        ORDER BY sent_at ASC, outreach_message_id ASC
+        """,
+        (contact_id,),
+    ).fetchall()
+    return [str(row[0]) for row in rows]
+
+
+def _list_contact_rooted_general_learning_sent_outreach_message_ids_without_terminal_feedback(
+    connection: sqlite3.Connection,
+    *,
+    contact_id: str,
+) -> list[str]:
+    terminal_placeholders = ", ".join(
+        "?" for _ in TERMINAL_DELIVERY_FEEDBACK_EVENT_STATES
+    )
+    rows = connection.execute(
+        f"""
+        SELECT om.outreach_message_id
+        FROM outreach_messages om
+        WHERE om.contact_id = ?
+          AND om.outreach_mode = 'general_learning'
+          AND om.job_posting_id IS NULL
+          AND om.message_status = 'sent'
+          AND NOT EXISTS (
+            SELECT 1
+            FROM delivery_feedback_events dfe
+            WHERE dfe.outreach_message_id = om.outreach_message_id
+              AND dfe.event_state IN ({terminal_placeholders})
+          )
+        ORDER BY om.sent_at ASC, om.outreach_message_id ASC
+        """,
+        (
+            contact_id,
             *sorted(TERMINAL_DELIVERY_FEEDBACK_EVENT_STATES),
         ),
     ).fetchall()

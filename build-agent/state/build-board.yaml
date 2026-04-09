@@ -28,8 +28,8 @@ global_status:
     - "BA-09 is now complete in code: delivery feedback now dedupes repeated mailbox signals at the logical-event level, exposes queryable feedback-reuse candidates for bounced and `not_bounced` discovery reads, keeps replied outcomes review-only, and lets discovery consume those feedback signals without auto-clearing contact email state."
     - "BA-10-S1 is now complete: `build-agent/reports/ba-10-acceptance-trace-matrix.json` and `.md` now map all 214 acceptance scenarios to owning epics, code, tests, and explicit hardening gaps, with a guard test that keeps the matrix aligned to `prd/test-spec.feature`."
     - "BA-10-S2 is now complete: `tests/test_smoke_harness.py` now drives a committed bootstrap -> tailoring -> discovery -> send -> delayed-feedback -> review-query smoke flow with deterministic fakes, and the regenerated acceptance trace matrix now closes the explicit smoke-harness gap while leaving the remaining blocker clusters honest."
-    - "BA-10-S3 is in progress: targeted hardening regressions now prove unsupported tailoring asks stay explicit gaps, automatic outreach still requires approved review and blocks repeat ambiguity, outreach-message traceability omits raw reply excerpts, runtime secret values stay out of canonical state/handoff artifacts/review outputs, delayed feedback now has dedicated launchd scheduler wiring, supervisor heartbeats now use pmset-first sleep/wake detection with a conservative cycle-gap fallback, focused supervisor regressions now confirm downstream retries keep the same durable run and pending review packet while the narrow action catalog still blocks later-stage execution, the acceptance matrix now carries blocker-specific evidence refs for the remaining maintenance, chat, downstream-supervisor, and posting-abandon gaps, and the new `scripts/quality/run_ba10_validation_suite.py` entrypoint can replay the committed automated BA-10 report/smoke/runtime regression suite from one place; the regenerated matrix still reports 190 implemented, 8 partial, and 14 gap scenarios, and the new committed BA-10 blocker audit summarizes those open gaps plus build-board blockers with reproducible confirmation commands."
-    - "BA-10-S4 is still in progress in code: `job_hunt_copilot.supervisor` now advances durable role-targeted runs through `lead_handoff`, bounded mandatory review, bounded `people_search`, bounded `email_discovery`, bounded `sending`, and bounded `delivery_feedback`, and it now also advances contact-rooted general-learning work from bounded email discovery into send-ready dispatch without posting linkage or review-gate prerequisites; the regenerated BA-10 reports still show 194 implemented, 4 partial, and 14 gap scenarios, with the remaining downstream-supervisor gap narrowed to delayed-feedback follow-through for sent contact-rooted outreach."
+    - "BA-10-S3 remains in progress: targeted hardening regressions now prove unsupported tailoring asks stay explicit gaps, automatic outreach still requires approved review and blocks repeat ambiguity, outreach-message traceability omits raw reply excerpts, runtime secret values stay out of canonical state or review outputs, delayed feedback has dedicated launchd scheduler wiring, and the BA-10 reporting layer now keeps the remaining maintenance, chat, idle-timeout-resume, and posting-abandon gaps explicit at 194 implemented, 4 partial, and 14 gap scenarios."
+    - "BA-10-S4 is now complete in code: `job_hunt_copilot.supervisor` now advances durable role-targeted runs through `lead_handoff`, bounded mandatory review, bounded `people_search`, bounded `email_discovery`, bounded `sending`, and bounded `delivery_feedback`, and it now also advances contact-rooted general-learning work through bounded email discovery, send-ready dispatch, and delayed-feedback follow-through without posting linkage or role-targeted review prerequisites."
     - "`jhc-chat` now records canonical begin/end state, pauses autonomous work on open, resumes on clean explicit close when chat caused the pause, leaves unexpected-exit pauses intact until a later explicit resume or future idle-timeout handling, and now has focused regressions for the explicit-resume path plus generated chat-bootstrap scaffolding."
     - Host-side `launchctl bootstrap` success still needs follow-up validation outside the current sandboxed session even though the plist, wrapper wiring, and failed-start rollback all validate locally.
   execution_principles:
@@ -967,14 +967,13 @@ epics:
           - "`python3.11 scripts/quality/run_ba10_validation_suite.py --project-root /Users/achyutaramsonti/Projects/job-hunt-copilot-v4 --dry-run --current-focus --smoke-target bootstrap`"
           - "`python3.11 scripts/quality/run_ba10_validation_suite.py --project-root /Users/achyutaramsonti/Projects/job-hunt-copilot-v4 --current-focus --smoke-target bootstrap`"
         remaining_scope:
-          - downstream supervisor action-catalog closure for contact-rooted general-learning email discovery plus delayed-feedback follow-through
           - chat review/control behavior and idle-timeout resume
           - maintenance automation
           - posting-abandon control
       - id: BA-10-S4
         name: Downstream supervisor action-catalog burn-down
         owner_role: build-lead
-        status: in_progress
+        status: completed
         dependencies:
           - BA-10-S3
         deliverables:
@@ -1007,8 +1006,9 @@ epics:
           - "Focused downstream regressions now also prove two new bounded general-learning behaviors: a send-ready contact-rooted case is selected and sent without any pipeline run or role-targeted review prerequisites, and an eligible new role-targeted posting still outranks that opportunistic contact-rooted work in the selector order."
           - "Build-lead implementation now also registers `run_general_learning_email_discovery`, which selects contact-rooted general-learning cases that still lack a working email, reuses the existing discovery component to run one bounded provider-backed discovery step without posting linkage, persists a contact-rooted `discovery_result.json`, and updates canonical contact state to `working_email_found` or `exhausted` without inventing a pipeline run."
           - "Focused downstream regressions now also prove two new contact-rooted progression behaviors: a no-email general-learning contact is selected for bounded discovery and becomes send-ready in canonical contact state, and the next heartbeat then reuses the existing general-learning send action for that same contact without creating a pipeline run."
-          - "The downstream-supervisor gap reports still hold at 194 implemented / 4 partial / 14 gap scenarios, add `general_learning_email_discovery` alongside `general_learning_outreach` in the registered contact-rooted action snapshot, and narrow the remaining contact-rooted gap from discovery plus delayed-feedback follow-through to delayed-feedback follow-through alone."
-          - The blocker remains open honestly: bounded downstream supervisor actions now cover the full role-targeted chain through `delivery_feedback` plus contact-rooted general-learning discovery into send-ready dispatch; delayed-feedback follow-through for sent contact-rooted outreach is still missing from the supervisor action catalog.
+          - "Build-lead implementation now also registers `run_general_learning_delivery_feedback`, which selects sent contact-rooted general-learning outreach after the send boundary, reuses the shared delayed-feedback sync logic for that contact's sent messages, and keeps the flow contact-rooted without inventing a pipeline run."
+          - "Focused downstream regressions now also prove two new delayed-feedback follow-through behaviors: a sent general-learning contact is selected for bounded delayed feedback on the next heartbeat without creating a pipeline run, and a later delayed sync persists `not_bounced` feedback and clears the remaining follow-up work for that contact."
+          - "The downstream-supervisor gap cluster is now closed honestly: the acceptance matrix still reports 194 implemented / 4 partial / 14 gap scenarios, but the remaining open BA-10 clusters are now limited to maintenance, chat review/control, idle-timeout resume, and posting-abandon behavior."
         validation:
           - "`python3.11 -m py_compile job_hunt_copilot/supervisor.py tests/test_supervisor.py tests/test_supervisor_downstream_actions.py tests/support.py`"
           - "`python3.11 -m pytest tests/test_supervisor.py tests/test_supervisor_downstream_actions.py`"
@@ -1022,13 +1022,13 @@ epics:
 
 current_focus:
   epic_id: BA-10
-  slice_id: BA-10-S4
-  owner_role: build-lead
-  reason: BA-10-S4 now covers the full role-targeted supervisor chain through bounded `delivery_feedback` completion plus contact-rooted general-learning discovery into send-ready dispatch and still holds the acceptance matrix at 194 implemented / 4 partial / 14 gap scenarios; the highest-value remaining work in this slice is delayed-feedback follow-through for sent contact-rooted outreach.
+  slice_id: BA-10-S3
+  owner_role: quality-engineer
+  reason: BA-10-S4 closed the downstream supervisor action-catalog gap by adding contact-rooted delayed-feedback follow-through, but the acceptance matrix still holds at 194 implemented / 4 partial / 14 gap scenarios because maintenance automation, chat review/control, idle-timeout resume, and posting-abandon behavior remain open BA-10-S3 hardening work.
   exit_criteria:
-    - supervisor action-catalog coverage closes or explicitly re-bounds the remaining delayed-feedback follow-through gap for sent contact-rooted outreach without regressing the role-targeted flow
-    - targeted supervisor and smoke regressions prove the new stage advancement or honestly retain the remaining contact-rooted follow-through blocker with fresh evidence
-    - the acceptance trace matrix, blocker audit, and state notes all agree on the updated downstream-supervisor status
+    - targeted regressions and report refresh either close or keep explicit the remaining maintenance, chat, idle-timeout-resume, and posting-abandon gaps with fresh evidence
+    - blocker-audit current-focus validation resolves the BA-10-S3 command set directly from the remaining open gap clusters
+    - the acceptance trace matrix, blocker audit, and state notes all agree on the remaining BA-10 blocker surface
 
 focus_order:
   - epic_id: BA-10
@@ -1043,7 +1043,7 @@ known_blockers:
     status: open
     severity: high
     owner_role: quality-engineer
-    summary: "The regenerated BA-10 trace matrix now reports 194 implemented / 4 partial / 14 gap scenarios; explicit smoke-coverage targets, implemented-slice traceability, reproducible validation-command mappings, and a durable latest validation-suite report snapshot now cover bootstrap, tailoring, discovery, send, feedback, and review-query flows, while downstream supervisor progression now reaches bounded `delivery_feedback` completion plus contact-rooted general-learning discovery into send-ready dispatch, but delayed-feedback follow-through for sent contact-rooted outreach, chat, maintenance, and posting-abandon behaviors themselves remain open."
+    summary: "The regenerated BA-10 trace matrix still reports 194 implemented / 4 partial / 14 gap scenarios; explicit smoke-coverage targets, implemented-slice traceability, reproducible validation-command mappings, and a durable latest validation-suite report snapshot cover bootstrap, tailoring, discovery, send, feedback, review-query, and downstream supervisor follow-through, but chat review/control, idle-timeout resume, maintenance automation, and posting-abandon behavior themselves remain open."
     evidence:
       - build-agent/reports/ba-10-acceptance-trace-matrix.json
       - build-agent/reports/ba-10-acceptance-trace-matrix.md
@@ -1071,7 +1071,7 @@ known_blockers:
       - tests/test_outreach.py
       - tests/test_review_queries.py
     impact: Acceptance signoff is more credible now that committed smoke coverage, blocker-specific evidence refs, and explicit negative regressions exist, but BA-10 still cannot close until the remaining gap clusters are actually burned down or deliberately left open.
-    next_action: "Hand the next functional slice to the build-lead: downstream action-catalog burn-down beyond `sending`, starting with a bounded `delivery_feedback` action or the contact-rooted general-learning selector path, or switch to posting-abandon control if runtime-control coverage becomes more urgent. Maintenance automation remains an explicit follow-up gap after those surfaces."
+    next_action: "Hand the next functional slice to the quality-engineer: cross-component regression and blocker burn-down across maintenance automation, chat review/control, idle-timeout resume, and posting-abandon behavior, then refresh the BA-10 reports and validation-suite evidence."
   - blocker_id: BUILD-CLI-001
     status: open
     severity: medium

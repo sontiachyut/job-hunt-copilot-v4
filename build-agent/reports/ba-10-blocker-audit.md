@@ -2,42 +2,20 @@
 
 - Acceptance scenarios: `214`
 - Open acceptance scenarios: `18`
-- Open acceptance gap clusters: `5`
+- Open acceptance gap clusters: `4`
 - Open build-board blockers: `3`
 - Blockers with missing evidence refs: `0`
 
 ## Current Focus
 
 - Epic: `BA-10`
-- Slice: `BA-10-S4`
-- Owner role: `build-lead`
-- Reason: BA-10-S4 now covers the full role-targeted supervisor chain through bounded `delivery_feedback` completion plus contact-rooted general-learning discovery into send-ready dispatch and still holds the acceptance matrix at 194 implemented / 4 partial / 14 gap scenarios; the highest-value remaining work in this slice is delayed-feedback follow-through for sent contact-rooted outreach.
-- Matching gap ids: `BA10_SUPERVISOR_DOWNSTREAM_ACTION_CATALOG`
+- Slice: `BA-10-S3`
+- Owner role: `quality-engineer`
+- Reason: BA-10-S4 closed the downstream supervisor action-catalog gap by adding contact-rooted delayed-feedback follow-through, but the acceptance matrix still holds at 194 implemented / 4 partial / 14 gap scenarios because maintenance automation, chat review/control, idle-timeout resume, and posting-abandon behavior remain open BA-10-S3 hardening work.
+- Matching gap ids: `BA10_MAINTENANCE_AUTOMATION`, `BA10_CHAT_REVIEW_AND_CONTROL`, `BA10_CHAT_IDLE_TIMEOUT_RESUME`, `BA10_POSTING_ABANDON_CONTROL`
 - Validation suite: `python3.11 scripts/quality/run_ba10_validation_suite.py --project-root <repo_root> --current-focus`
 
 ## Acceptance Gap Clusters
-
-### BA10_SUPERVISOR_DOWNSTREAM_ACTION_CATALOG: Supervisor general-learning orchestration remains partial beyond bounded contact-rooted send completion
-- Next slice: `BA-10-S4`
-- Owner roles: `build-lead`
-- Rules: `Supervisor Agent behavior`
-- Epics: `BA-02`, `BA-03`
-- Supporting slices: `BA-02-S1`, `BA-02-S2`, `BA-02-S3`, `BA-03-S1`, `BA-03-S2`, `BA-03-S3`, `BA-10-S4`
-- Open scenarios: `1` (`partial`: `1`, `gap`: `0`)
-- Reason: The durable heartbeat now covers the full role-targeted flow through bounded delivery-feedback completion and can advance contact-rooted general-learning work from email discovery into send-ready dispatch, but delayed feedback follow-through for sent contact-rooted outreach still remains outside the registered autonomous catalog.
-- Evidence summary: Focused downstream-stage regressions prove active incidents still outrank ordinary progression, existing durable runs are selected before bootstrapping new eligible postings, `lead_handoff` now advances into `agent_review`, bounded mandatory agent review advances the same run into `people_search`, bounded people search materializes shortlist artifacts and advances the same run into `email_discovery`, bounded email discovery advances the same durable run into `sending` when readiness is satisfied, bounded sending now drafts the ready send set, executes one safe send, stays at `sending` while later-wave contacts remain paced, advances the same durable run into `delivery_feedback` after terminal sent waves, bounded delivery feedback now runs the shared delayed-sync logic, keeps the durable run active while high-level outcomes remain pending, completes the same durable run with a review packet once all sent messages reach bounced, not_bounced, or replied state, a contact-rooted general-learning candidate without a working email now runs bounded email discovery, becomes send-ready in canonical contact state, and is then selected for the existing contact-rooted send path on the next heartbeat without posting linkage or review-gate prerequisites, and the remaining contact-rooted gap is narrowed to delayed-feedback follow-through after sent general-learning outreach.
-- Evidence code refs: `job_hunt_copilot/supervisor.py`, `job_hunt_copilot/email_discovery.py`, `job_hunt_copilot/outreach.py`, `job_hunt_copilot/delivery_feedback.py`, `job_hunt_copilot/local_runtime.py`, `job_hunt_copilot/runtime_pack.py`
-- Evidence test refs: `tests/test_supervisor_downstream_actions.py`, `tests/test_blocker_audit.py`, `tests/test_acceptance_traceability.py`
-- Validation suite: `python3.11 scripts/quality/run_ba10_validation_suite.py --project-root <repo_root> --gap-id BA10_SUPERVISOR_DOWNSTREAM_ACTION_CATALOG`
-- Implementation snapshot:
-  - Current selector priority order: `active_incident`, `open_pipeline_run`, `new_role_targeted_posting`, `general_learning_contact`
-  - Registered role-targeted checkpoint stages: `agent_review`, `lead_handoff`
-  - Unsupported autonomous scope paths: `contact_rooted_general_learning_delayed_feedback_followthrough`
-- Confirmation commands:
-  - `python3.11 -m pytest tests/test_supervisor_downstream_actions.py` (automated: Confirms `lead_handoff` advances into `agent_review`, bounded mandatory review advances into `people_search`, bounded people search advances into `email_discovery`, bounded email discovery advances into `sending`, bounded sending advances into `delivery_feedback`, bounded delivery feedback either stays active until high-level outcomes are due or completes the same durable run with a review packet, contact-rooted general-learning work now advances from bounded email discovery into send-ready dispatch without posting review state, and the remaining contact-rooted general-learning gap is limited to delayed-feedback follow-through.)
-  - `python3.11 -m pytest tests/test_acceptance_traceability.py tests/test_blocker_audit.py` (automated: Keeps the committed BA-10 acceptance and blocker reports synchronized with repo code, tests, and state references.)
-- Open scenarios:
-  - `[partial]` Supervisor work selection follows the current default priority order
 
 ### BA10_MAINTENANCE_AUTOMATION: Maintenance workflow and artifacts are not implemented
 - Next slice: `BA-10-S3`
@@ -45,7 +23,7 @@
 - Rules: `Machine handoff contracts and canonical state`, `Supervisor Agent behavior`
 - Epics: `BA-01`, `BA-02`, `BA-03`, `BA-04`, `BA-06`, `BA-07`, `BA-08`, `BA-09`
 - Supporting slices: `BA-01-S1`, `BA-01-S2`, `BA-01-S3`, `BA-02-S1`, `BA-02-S2`, `BA-02-S3`, `BA-04-S1`, `BA-04-S2`, `BA-04-S3`, `BA-04-S4`, `BA-06-S1`, `BA-06-S2`, `BA-06-S3`, `BA-06-S4`, `BA-07-S1`, `BA-07-S2`, `BA-07-S3`, `BA-08-S1`, `BA-08-S2`, `BA-08-S3`, `BA-09-S1`, `BA-09-S2`, `BA-09-S3`, `BA-03-S1`, `BA-03-S2`, `BA-03-S3`, `BA-10-S3`
-- Open scenarios: `5` (`partial`: `0`, `gap`: `5`)
+- Open scenarios: `6` (`partial`: `1`, `gap`: `5`)
 - Reason: The schema and runtime pack reserve maintenance surfaces, but there is no autonomous maintenance batch workflow, no maintenance artifacts, and no maintenance review flow yet.
 - Evidence summary: Schema and runtime scaffolding reserve maintenance surfaces, but there is still no maintenance module, runner, or review-artifact workflow.
 - Evidence code refs: `job_hunt_copilot/migrations/0002_canonical_schema.sql`, `job_hunt_copilot/paths.py`, `job_hunt_copilot/runtime_pack.py`
@@ -56,6 +34,7 @@
   - `python3.11 -m pytest tests/test_acceptance_traceability.py tests/test_blocker_audit.py` (automated: Keeps the committed BA-10 acceptance and blocker reports synchronized with repo code, tests, and state references.)
 - Open scenarios:
   - `[gap]` Maintenance change artifacts exist for every autonomous maintenance batch
+  - `[partial]` Supervisor work selection follows the current default priority order
   - `[gap]` Daily maintenance is mandatory, bounded, and run-boundary aware
   - `[gap]` Maintenance changes follow the current git and approval workflow
   - `[gap]` Proper maintenance validation requires both change-scoped and full-project testing
@@ -133,9 +112,9 @@
 - Status: `open`
 - Severity: `high`
 - Owner role: `quality-engineer`
-- Summary: The regenerated BA-10 trace matrix now reports 194 implemented / 4 partial / 14 gap scenarios; explicit smoke-coverage targets, implemented-slice traceability, reproducible validation-command mappings, and a durable latest validation-suite report snapshot now cover bootstrap, tailoring, discovery, send, feedback, and review-query flows, while downstream supervisor progression now reaches bounded `delivery_feedback` completion plus contact-rooted general-learning discovery into send-ready dispatch, but delayed-feedback follow-through for sent contact-rooted outreach, chat, maintenance, and posting-abandon behaviors themselves remain open.
+- Summary: The regenerated BA-10 trace matrix still reports 194 implemented / 4 partial / 14 gap scenarios; explicit smoke-coverage targets, implemented-slice traceability, reproducible validation-command mappings, and a durable latest validation-suite report snapshot cover bootstrap, tailoring, discovery, send, feedback, review-query, and downstream supervisor follow-through, but chat review/control, idle-timeout resume, maintenance automation, and posting-abandon behavior themselves remain open.
 - Impact: Acceptance signoff is more credible now that committed smoke coverage, blocker-specific evidence refs, and explicit negative regressions exist, but BA-10 still cannot close until the remaining gap clusters are actually burned down or deliberately left open.
-- Next action: Hand the next functional slice to the build-lead: downstream action-catalog burn-down beyond `sending`, starting with a bounded `delivery_feedback` action or the contact-rooted general-learning selector path, or switch to posting-abandon control if runtime-control coverage becomes more urgent. Maintenance automation remains an explicit follow-up gap after those surfaces.
+- Next action: Hand the next functional slice to the quality-engineer: cross-component regression and blocker burn-down across maintenance automation, chat review/control, idle-timeout resume, and posting-abandon behavior, then refresh the BA-10 reports and validation-suite evidence.
 - Evidence refs: `build-agent/reports/ba-10-acceptance-trace-matrix.json`, `build-agent/reports/ba-10-acceptance-trace-matrix.md`, `build-agent/reports/ba-10-blocker-audit.json`, `build-agent/reports/ba-10-blocker-audit.md`, `build-agent/reports/ba-10-validation-suite-latest.json`, `build-agent/reports/ba-10-validation-suite-latest.md`, `job_hunt_copilot/acceptance_traceability.py`, `job_hunt_copilot/blocker_audit.py`, `job_hunt_copilot/quality_validation.py`, `scripts/quality/generate_blocker_audit.py`, `scripts/quality/run_ba10_validation_suite.py`, `scripts/ops/control_agent.py`, `tests/test_acceptance_traceability.py`, `tests/test_blocker_audit.py`, `tests/test_local_runtime.py`, `tests/test_quality_validation.py`, `tests/test_supervisor_downstream_actions.py`, `tests/test_delivery_feedback.py`, `tests/test_schema.py`, `tests/test_smoke_harness.py`, `tests/test_supervisor.py`, `tests/test_runtime_pack.py`, `tests/test_resume_tailoring.py`, `tests/test_outreach.py`, `tests/test_review_queries.py`
 - Validation suite: `python3.11 scripts/quality/run_ba10_validation_suite.py --project-root <repo_root> --blocker-id BA10-TRACE-001`
 - Confirmation commands:
@@ -146,7 +125,7 @@
   - `python3.11 -m pytest tests/test_email_discovery.py` (automated: Confirms people search, shortlist materialization, enrichment, discovery artifacts, and provider-budget behavior stay intact.)
   - `python3.11 -m pytest tests/test_outreach.py` (automated: Confirms send-set readiness, draft persistence, safe send execution, and repeat-outreach guardrails stay intact.)
   - `python3.11 -m pytest tests/test_delivery_feedback.py` (automated: Confirms immediate or delayed feedback ingestion, normalized event persistence, and delivery outcome artifacts stay intact.)
-  - `python3.11 -m pytest tests/test_supervisor_downstream_actions.py` (automated: Confirms `lead_handoff` advances into `agent_review`, bounded mandatory review advances into `people_search`, bounded people search advances into `email_discovery`, bounded email discovery advances into `sending`, bounded sending advances into `delivery_feedback`, bounded delivery feedback either stays active until high-level outcomes are due or completes the same durable run with a review packet, contact-rooted general-learning work now advances from bounded email discovery into send-ready dispatch without posting review state, and the remaining contact-rooted general-learning gap is limited to delayed-feedback follow-through.)
+  - `python3.11 -m pytest tests/test_supervisor_downstream_actions.py` (automated: Confirms `lead_handoff` advances into `agent_review`, bounded mandatory review advances into `people_search`, bounded people search advances into `email_discovery`, bounded email discovery advances into `sending`, bounded sending advances into `delivery_feedback`, bounded delivery feedback either stays active until high-level outcomes are due or completes the same durable run with a review packet, and contact-rooted general-learning work now advances through bounded email discovery, sending, and delayed-feedback follow-through without posting review state.)
   - `python3.11 -m pytest tests/test_local_runtime.py` (automated: Covers launchd plist wiring, control commands, chat lifecycle state, delayed feedback runners, and explicit negative control cases.)
   - `python3.11 -m pytest tests/test_review_queries.py` (automated: Verifies persisted grouped review surfaces and traceability reads that back the chat/review boundary.)
   - `python3.11 -m pytest tests/test_runtime_pack.py` (automated: Confirms generated runtime scaffolding stays honest about current action-catalog and maintenance placeholder status.)

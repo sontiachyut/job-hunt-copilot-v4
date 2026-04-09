@@ -4,6 +4,7 @@ import sqlite3
 from pathlib import Path
 
 from job_hunt_copilot.bootstrap import run_bootstrap
+from job_hunt_copilot.delivery_feedback import EVENT_STATE_NOT_BOUNCED
 from job_hunt_copilot.outreach import (
     execute_role_targeted_send_set,
     generate_role_targeted_send_set_drafts,
@@ -11,6 +12,7 @@ from job_hunt_copilot.outreach import (
 from job_hunt_copilot.paths import ProjectPaths
 from job_hunt_copilot.supervisor import (
     ACTION_RUN_GENERAL_LEARNING_EMAIL_DISCOVERY,
+    ACTION_RUN_GENERAL_LEARNING_DELIVERY_FEEDBACK,
     ACTION_RUN_GENERAL_LEARNING_OUTREACH,
     ACTION_PERFORM_MANDATORY_AGENT_REVIEW,
     ACTION_RUN_ROLE_TARGETED_EMAIL_DISCOVERY,
@@ -1423,6 +1425,184 @@ def test_contact_rooted_general_learning_email_discovery_advances_to_send_ready_
     }
     assert observer.poll_calls[0]["message_ids"] == [message_row["outreach_message_id"]]
     assert observer.poll_calls[0]["observation_scope"] == "immediate_post_send"
+
+
+def test_contact_rooted_general_learning_delayed_feedback_is_selected_after_send(
+    tmp_path: Path,
+) -> None:
+    project_root = bootstrap_project(tmp_path)
+    paths = ProjectPaths.from_root(project_root)
+    write_sender_profile(paths)
+    connection = connect_database(project_root / "job_hunt_copilot.db")
+    contact_id = seed_general_learning_contact(connection)
+    sender = OutreachRecordingSender()
+    resume_agent(
+        connection,
+        manual_command="jhc-agent-start",
+        timestamp="2026-04-08T00:05:00Z",
+    )
+
+    first_execution = run_supervisor_cycle(
+        connection,
+        paths,
+        trigger_type="launchd_heartbeat",
+        scheduler_name="launchd",
+        started_at="2026-04-08T00:06:00Z",
+        action_dependencies=SupervisorActionDependencies(
+            outreach_sender=sender,
+        ),
+    )
+    message_row = connection.execute(
+        """
+        SELECT outreach_message_id, message_status, sent_at
+        FROM outreach_messages
+        WHERE contact_id = ?
+          AND outreach_mode = 'general_learning'
+        ORDER BY created_at DESC, outreach_message_id DESC
+        LIMIT 1
+        """,
+        (contact_id,),
+    ).fetchone()
+
+    second_execution = run_supervisor_cycle(
+        connection,
+        paths,
+        trigger_type="launchd_heartbeat",
+        scheduler_name="launchd",
+        started_at="2026-04-08T00:10:00Z",
+    )
+    pipeline_run_count = connection.execute(
+        "SELECT COUNT(*) FROM pipeline_runs"
+    ).fetchone()[0]
+    feedback_event_count = connection.execute(
+        """
+        SELECT COUNT(*)
+        FROM delivery_feedback_events
+        WHERE outreach_message_id = ?
+        """,
+        (message_row["outreach_message_id"],),
+    ).fetchone()[0]
+    feedback_sync_row = connection.execute(
+        """
+        SELECT scheduler_name, scheduler_type, observation_scope, result, messages_examined
+        FROM feedback_sync_runs
+        ORDER BY started_at DESC, feedback_sync_run_id DESC
+        LIMIT 1
+        """
+    ).fetchone()
+    connection.close()
+
+    assert first_execution.cycle.result == SUPERVISOR_CYCLE_RESULT_SUCCESS
+    assert first_execution.selected_work is not None
+    assert first_execution.selected_work.action_id == ACTION_RUN_GENERAL_LEARNING_OUTREACH
+    assert second_execution.cycle.result == SUPERVISOR_CYCLE_RESULT_SUCCESS
+    assert second_execution.selected_work is not None
+    assert (
+        second_execution.selected_work.action_id
+        == ACTION_RUN_GENERAL_LEARNING_DELIVERY_FEEDBACK
+    )
+    assert second_execution.pipeline_run is None
+    assert second_execution.incident is None
+    assert second_execution.review_packet is None
+    assert pipeline_run_count == 0
+    assert feedback_event_count == 0
+    assert dict(message_row) == {
+        "outreach_message_id": message_row["outreach_message_id"],
+        "message_status": "sent",
+        "sent_at": "2026-04-08T00:06:00Z",
+    }
+    assert dict(feedback_sync_row) == {
+        "scheduler_name": "supervisor_delivery_feedback",
+        "scheduler_type": "supervisor",
+        "observation_scope": "delayed_feedback_sync",
+        "result": "success",
+        "messages_examined": 1,
+    }
+
+
+def test_contact_rooted_general_learning_delayed_feedback_records_not_bounced_and_clears_follow_up(
+    tmp_path: Path,
+) -> None:
+    project_root = bootstrap_project(tmp_path)
+    paths = ProjectPaths.from_root(project_root)
+    write_sender_profile(paths)
+    connection = connect_database(project_root / "job_hunt_copilot.db")
+    contact_id = seed_general_learning_contact(connection)
+    sender = OutreachRecordingSender()
+    resume_agent(
+        connection,
+        manual_command="jhc-agent-start",
+        timestamp="2026-04-08T00:05:00Z",
+    )
+
+    first_execution = run_supervisor_cycle(
+        connection,
+        paths,
+        trigger_type="launchd_heartbeat",
+        scheduler_name="launchd",
+        started_at="2026-04-08T00:06:00Z",
+        action_dependencies=SupervisorActionDependencies(
+            outreach_sender=sender,
+        ),
+    )
+    message_row = connection.execute(
+        """
+        SELECT outreach_message_id
+        FROM outreach_messages
+        WHERE contact_id = ?
+          AND outreach_mode = 'general_learning'
+        ORDER BY created_at DESC, outreach_message_id DESC
+        LIMIT 1
+        """,
+        (contact_id,),
+    ).fetchone()
+
+    second_execution = run_supervisor_cycle(
+        connection,
+        paths,
+        trigger_type="launchd_heartbeat",
+        scheduler_name="launchd",
+        started_at="2026-04-08T00:40:00Z",
+    )
+    latest_feedback = connection.execute(
+        """
+        SELECT event_state, event_timestamp
+        FROM delivery_feedback_events
+        WHERE outreach_message_id = ?
+        ORDER BY event_timestamp DESC, delivery_feedback_event_id DESC
+        LIMIT 1
+        """,
+        (message_row["outreach_message_id"],),
+    ).fetchone()
+
+    third_execution = run_supervisor_cycle(
+        connection,
+        paths,
+        trigger_type="launchd_heartbeat",
+        scheduler_name="launchd",
+        started_at="2026-04-08T00:41:00Z",
+    )
+    connection.close()
+
+    assert first_execution.cycle.result == SUPERVISOR_CYCLE_RESULT_SUCCESS
+    assert first_execution.selected_work is not None
+    assert first_execution.selected_work.action_id == ACTION_RUN_GENERAL_LEARNING_OUTREACH
+    assert second_execution.cycle.result == SUPERVISOR_CYCLE_RESULT_SUCCESS
+    assert second_execution.selected_work is not None
+    assert (
+        second_execution.selected_work.action_id
+        == ACTION_RUN_GENERAL_LEARNING_DELIVERY_FEEDBACK
+    )
+    assert second_execution.pipeline_run is None
+    assert second_execution.review_packet is None
+    assert dict(latest_feedback) == {
+        "event_state": EVENT_STATE_NOT_BOUNCED,
+        "event_timestamp": "2026-04-08T00:36:00Z",
+    }
+    assert third_execution.cycle.result == SUPERVISOR_CYCLE_RESULT_NO_WORK
+    assert third_execution.selected_work is None
+    assert third_execution.pipeline_run is None
+    assert third_execution.review_packet is None
 
 
 def test_new_role_targeted_posting_is_selected_before_general_learning_contact(

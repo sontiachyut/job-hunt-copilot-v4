@@ -1643,3 +1643,30 @@ Use this file as an append-only implementation log for the build agent.
 ### Notes
 - The acceptance matrix still reports 194 implemented / 4 partial / 14 gap scenarios; this pass narrowed the downstream-supervisor gap but did not close another acceptance scenario.
 - The remaining downstream-supervisor blocker is no longer contact-rooted discovery plus delayed-feedback follow-through; it is now delayed-feedback follow-through for sent contact-rooted outreach.
+
+### Session
+- Date: 2026-04-08 18:25:27 MST
+- Slice: BA-10-S4 contact-rooted general-learning delayed-feedback follow-through
+- Goal: Add the last missing contact-rooted supervisor action so sent general-learning outreach no longer falls out of the autonomous catalog after dispatch, then refresh BA-10 evidence and move focus to the next open hardening slice.
+
+### Work Done
+- Extended `job_hunt_copilot.supervisor` with `run_general_learning_delivery_feedback`, inserted that selector path ahead of other contact-rooted general-learning work, and reused the shared delayed-feedback sync logic so sent general-learning messages now get bounded supervisor follow-through without inventing a pipeline run or posting linkage.
+- Added focused regressions in `tests/test_supervisor_downstream_actions.py` proving two new behaviors: a sent contact-rooted general-learning message is selected for delayed feedback on the next heartbeat with no pipeline run, and a later delayed sync persists a `not_bounced` event then clears the remaining follow-up work for that contact.
+- Closed the downstream-supervisor gap cluster in `job_hunt_copilot.acceptance_traceability` and `job_hunt_copilot.blocker_audit`, refreshed the committed BA-10 reports plus the latest validation-suite snapshot, and moved `build-agent/state/build-board.yaml` plus `build-agent/state/IMPLEMENTATION_PLAN.md` to the next BA-10-S3 focus on maintenance, chat, idle-timeout-resume, and posting-abandon work.
+- Updated the report-guard tests in `tests/test_acceptance_traceability.py`, `tests/test_blocker_audit.py`, and `tests/test_quality_validation.py` so the committed BA-10 evidence now expects the closed supervisor gap, the BA-10-S3 current focus, and the new maintenance-led open-gap cluster set.
+
+### Validation
+- Ran `python3.11 -m py_compile job_hunt_copilot/supervisor.py job_hunt_copilot/acceptance_traceability.py job_hunt_copilot/blocker_audit.py tests/test_supervisor_downstream_actions.py tests/test_acceptance_traceability.py tests/test_blocker_audit.py tests/test_quality_validation.py` and confirmed the changed runtime, report, and guard files compile cleanly.
+- Ran `python3.11 -m pytest tests/test_supervisor_downstream_actions.py tests/test_acceptance_traceability.py tests/test_blocker_audit.py tests/test_quality_validation.py` and confirmed all 36 focused supervisor plus BA-10 report/validation tests passed.
+- Ran `python3.11 -m pytest tests/test_delivery_feedback.py` and confirmed all 3 direct delivery-feedback regressions passed.
+- Ran `python3.11 scripts/quality/run_ba10_validation_suite.py --project-root /Users/achyutaramsonti/Projects/job-hunt-copilot-v4 --current-focus` and confirmed the refreshed BA-10-S3 current-focus replay passed, regenerating the committed acceptance-trace and blocker-audit reports plus `build-agent/reports/ba-10-validation-suite-latest.{json,md}`.
+
+### Result
+- `done`
+
+### Next
+- Start `BA-10-S3` as the quality-engineer slice: burn down the remaining maintenance automation, chat review/control, idle-timeout resume, and posting-abandon blocker clusters while keeping the BA-10 reports and latest validation-suite snapshot honest.
+
+### Notes
+- The acceptance matrix still reports 194 implemented / 4 partial / 14 gap scenarios because the closed downstream-supervisor partial was replaced by the already-open maintenance priority-order partial rather than by a new implemented acceptance scenario.
+- The remaining open acceptance-gap clusters are now `BA10_MAINTENANCE_AUTOMATION`, `BA10_CHAT_REVIEW_AND_CONTROL`, `BA10_CHAT_IDLE_TIMEOUT_RESUME`, and `BA10_POSTING_ABANDON_CONTROL`.

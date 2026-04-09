@@ -71,7 +71,7 @@ VALIDATION_COMMANDS: dict[str, dict[str, str]] = {
         "title": "Supervisor downstream hardening regressions",
         "kind": "automated",
         "command": "python3.11 -m pytest tests/test_supervisor_downstream_actions.py",
-        "description": "Confirms `lead_handoff` advances into `agent_review`, bounded mandatory review advances into `people_search`, bounded people search advances into `email_discovery`, bounded email discovery advances into `sending`, bounded sending advances into `delivery_feedback`, bounded delivery feedback either stays active until high-level outcomes are due or completes the same durable run with a review packet, contact-rooted general-learning work now advances from bounded email discovery into send-ready dispatch without posting review state, and the remaining contact-rooted general-learning gap is limited to delayed-feedback follow-through.",
+        "description": "Confirms `lead_handoff` advances into `agent_review`, bounded mandatory review advances into `people_search`, bounded people search advances into `email_discovery`, bounded email discovery advances into `sending`, bounded sending advances into `delivery_feedback`, bounded delivery feedback either stays active until high-level outcomes are due or completes the same durable run with a review packet, and contact-rooted general-learning work now advances through bounded email discovery, sending, and delayed-feedback follow-through without posting review state.",
     },
     "qa_runtime_control_regressions": {
         "title": "Runtime control regressions",
@@ -112,10 +112,6 @@ VALIDATION_COMMANDS: dict[str, dict[str, str]] = {
 }
 
 GAP_VALIDATION_COMMAND_IDS: dict[str, tuple[str, ...]] = {
-    "BA10_SUPERVISOR_DOWNSTREAM_ACTION_CATALOG": (
-        "qa_supervisor_regressions",
-        "qa_acceptance_reports",
-    ),
     "BA10_MAINTENANCE_AUTOMATION": (
         "qa_runtime_pack_regressions",
         "qa_acceptance_reports",

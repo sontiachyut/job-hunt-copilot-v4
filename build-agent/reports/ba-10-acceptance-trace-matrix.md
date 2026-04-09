@@ -45,7 +45,7 @@
 | BA-10-S1 | BA-10 | quality-engineer | completed |
 | BA-10-S2 | BA-10 | quality-engineer | completed |
 | BA-10-S3 | BA-10 | quality-engineer | in_progress |
-| BA-10-S4 | BA-10 | build-lead | in_progress |
+| BA-10-S4 | BA-10 | build-lead | completed |
 
 ## Rule Summary
 
@@ -117,20 +117,6 @@
 
 ## Explicit Gaps
 
-### BA10_SUPERVISOR_DOWNSTREAM_ACTION_CATALOG: Supervisor general-learning orchestration remains partial beyond bounded contact-rooted send completion
-- Next slice: `BA-10-S4`
-- Supporting slices: `BA-02-S1`, `BA-02-S2`, `BA-02-S3`, `BA-03-S1`, `BA-03-S2`, `BA-03-S3`, `BA-10-S4`
-- Reason: The durable heartbeat now covers the full role-targeted flow through bounded delivery-feedback completion and can advance contact-rooted general-learning work from email discovery into send-ready dispatch, but delayed feedback follow-through for sent contact-rooted outreach still remains outside the registered autonomous catalog.
-- Evidence summary: Focused downstream-stage regressions prove active incidents still outrank ordinary progression, existing durable runs are selected before bootstrapping new eligible postings, `lead_handoff` now advances into `agent_review`, bounded mandatory agent review advances the same run into `people_search`, bounded people search materializes shortlist artifacts and advances the same run into `email_discovery`, bounded email discovery advances the same durable run into `sending` when readiness is satisfied, bounded sending now drafts the ready send set, executes one safe send, stays at `sending` while later-wave contacts remain paced, advances the same durable run into `delivery_feedback` after terminal sent waves, bounded delivery feedback now runs the shared delayed-sync logic, keeps the durable run active while high-level outcomes remain pending, completes the same durable run with a review packet once all sent messages reach bounced, not_bounced, or replied state, a contact-rooted general-learning candidate without a working email now runs bounded email discovery, becomes send-ready in canonical contact state, and is then selected for the existing contact-rooted send path on the next heartbeat without posting linkage or review-gate prerequisites, and the remaining contact-rooted gap is narrowed to delayed-feedback follow-through after sent general-learning outreach.
-- Evidence code refs: `job_hunt_copilot/supervisor.py`, `job_hunt_copilot/email_discovery.py`, `job_hunt_copilot/outreach.py`, `job_hunt_copilot/delivery_feedback.py`, `job_hunt_copilot/local_runtime.py`, `job_hunt_copilot/runtime_pack.py`
-- Evidence test refs: `tests/test_supervisor_downstream_actions.py`, `tests/test_blocker_audit.py`, `tests/test_acceptance_traceability.py`
-- Implementation snapshot:
-  - Current selector priority order: `active_incident`, `open_pipeline_run`, `new_role_targeted_posting`, `general_learning_contact`
-  - Registered role-targeted checkpoint stages: `agent_review`, `lead_handoff`
-  - Unsupported autonomous scope paths: `contact_rooted_general_learning_delayed_feedback_followthrough`
-- Scenarios: `1`
-  - Supervisor work selection follows the current default priority order
-
 ### BA10_MAINTENANCE_AUTOMATION: Maintenance workflow and artifacts are not implemented
 - Next slice: `BA-10-S3`
 - Supporting slices: `BA-01-S1`, `BA-01-S2`, `BA-01-S3`, `BA-02-S1`, `BA-02-S2`, `BA-02-S3`, `BA-04-S1`, `BA-04-S2`, `BA-04-S3`, `BA-04-S4`, `BA-06-S1`, `BA-06-S2`, `BA-06-S3`, `BA-06-S4`, `BA-07-S1`, `BA-07-S2`, `BA-07-S3`, `BA-08-S1`, `BA-08-S2`, `BA-08-S3`, `BA-09-S1`, `BA-09-S2`, `BA-09-S3`, `BA-03-S1`, `BA-03-S2`, `BA-03-S3`, `BA-10-S3`
@@ -138,8 +124,9 @@
 - Evidence summary: Schema and runtime scaffolding reserve maintenance surfaces, but there is still no maintenance module, runner, or review-artifact workflow.
 - Evidence code refs: `job_hunt_copilot/migrations/0002_canonical_schema.sql`, `job_hunt_copilot/paths.py`, `job_hunt_copilot/runtime_pack.py`
 - Evidence test refs: `tests/test_schema.py`, `tests/test_runtime_pack.py`, `tests/test_acceptance_traceability.py`
-- Scenarios: `5`
+- Scenarios: `6`
   - Maintenance change artifacts exist for every autonomous maintenance batch
+  - Supervisor work selection follows the current default priority order
   - Daily maintenance is mandatory, bounded, and run-boundary aware
   - Maintenance changes follow the current git and approval workflow
   - Proper maintenance validation requires both change-scoped and full-project testing
