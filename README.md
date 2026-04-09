@@ -46,7 +46,8 @@ What already exists:
 - the current BA-10 quality layer under `build-agent/reports/` and `scripts/quality/`, including the committed acceptance trace matrix, blocker audit, latest validation-suite report snapshot, smoke harness, and a reproducible `run_ba10_validation_suite.py` entrypoint for the automated hardening checks
 
 What is still in progress:
-- acceptance hardening plus the remaining runtime components on top of the now-landed local operator, delayed-feedback scheduler wiring, and completed ingestion, tailoring, discovery, send-set planning, draft persistence, paced send execution, delivery-feedback persistence, and queryable review surfaces
+- BA-10 hardening is not fully closed yet: the remaining explicit acceptance gaps are autonomous maintenance workflow or artifacts, richer `jhc-chat` review and control behavior, idle-timeout auto-resume after unexpected chat exit, and posting-abandon control
+- those open gaps are tracked explicitly in `build-agent/reports/ba-10-acceptance-trace-matrix.md`, `build-agent/reports/ba-10-blocker-audit.md`, and `build-agent/reports/ba-10-validation-suite-latest.md` rather than being hidden behind a generic "in progress" label
 
 ## System Overview
 

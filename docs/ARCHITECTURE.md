@@ -105,6 +105,11 @@ The product runtime now has an explicit bootstrap layer under `job_hunt_copilot/
 - a read-only review-query layer under `job_hunt_copilot.review_queries` that turns the persisted outreach and supervisor state into grouped review surfaces for postings, contacts, sent-message history, unresolved discovery, feedback-reuse candidates, bounced feedback, expert review packets, open incidents, blocked or failed outreach cases, override history, and per-object traceability without requiring a GUI or manual log reconstruction
 - committed BA-10 quality surfaces under `build-agent/reports/` and `scripts/quality/`, including the acceptance trace matrix, blocker audit, latest validation-suite run report, and a reusable automated validation-suite runner for smoke plus hardening regressions
 
+The current hardening boundary is explicit rather than implied:
+- the end-to-end role-targeted and contact-rooted flows now have committed smoke plus regression coverage
+- the remaining open BA-10 gaps are autonomous maintenance workflow or artifacts, richer `jhc-chat` review and control behavior, idle-timeout auto-resume after unexpected chat exit, and posting-abandon control
+- those gaps stay visible through the committed BA-10 reports instead of being folded into the general architecture summary
+
 Important artifact families:
 - `lead-manifest.yaml`
 - `capture-bundle.json`

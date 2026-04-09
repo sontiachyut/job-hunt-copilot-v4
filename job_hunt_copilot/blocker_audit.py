@@ -218,10 +218,16 @@ def _build_acceptance_gap_clusters(matrix: dict[str, Any]) -> list[dict[str, Any
             for gap_id in scenario["gap_ids"]:
                 scenario_rows_by_gap_id[gap_id].append(
                     {
+                        "rule": rule["rule"],
                         "name": scenario["name"],
+                        "scenario_line": scenario["scenario_line"],
                         "status": scenario["status"],
                         "owner_role": scenario["owner_role"],
                         "epic_ids": list(scenario["epic_ids"]),
+                        "slice_ids": list(scenario["slice_ids"]),
+                        "code_refs": list(scenario["code_refs"]),
+                        "test_refs": list(scenario["test_refs"]),
+                        "note": scenario["note"],
                     }
                 )
                 owner_roles_by_gap_id[gap_id].add(scenario["owner_role"])
@@ -500,7 +506,21 @@ def render_ba10_blocker_audit_markdown(audit: dict[str, Any]) -> str:
             )
         lines.append("- Open scenarios:")
         for scenario in cluster["scenarios"]:
-            lines.append(f"  - `[{scenario['status']}]` {scenario['name']}")
+            lines.append(
+                f"  - `[{scenario['status']}]` {scenario['name']} "
+                f"(rule: `{scenario['rule']}`, line: `{scenario['scenario_line']}`)"
+            )
+            lines.append(
+                "    - Evidence refs: "
+                + ", ".join(
+                    f"`{path}`"
+                    for path in (
+                        list(scenario["code_refs"]) + list(scenario["test_refs"])
+                    )
+                )
+            )
+            if scenario.get("note"):
+                lines.append(f"    - Note: {scenario['note']}")
         lines.append("")
 
     lines.extend(["## Build-Board Blockers", ""])

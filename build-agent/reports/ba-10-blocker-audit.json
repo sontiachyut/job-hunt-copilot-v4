@@ -399,7 +399,9 @@
       },
       "scenarios": [
         {
+          "rule": "Machine handoff contracts and canonical state",
           "name": "Maintenance change artifacts exist for every autonomous maintenance batch",
+          "scenario_line": 220,
           "status": "gap",
           "owner_role": "build-lead",
           "epic_ids": [
@@ -410,52 +412,244 @@
             "BA-07",
             "BA-08",
             "BA-09"
-          ]
+          ],
+          "slice_ids": [
+            "BA-01-S1",
+            "BA-01-S2",
+            "BA-01-S3",
+            "BA-02-S1",
+            "BA-02-S2",
+            "BA-02-S3",
+            "BA-04-S1",
+            "BA-04-S2",
+            "BA-04-S3",
+            "BA-04-S4",
+            "BA-06-S1",
+            "BA-06-S2",
+            "BA-06-S3",
+            "BA-06-S4",
+            "BA-07-S1",
+            "BA-07-S2",
+            "BA-07-S3",
+            "BA-08-S1",
+            "BA-08-S2",
+            "BA-08-S3",
+            "BA-09-S1",
+            "BA-09-S2",
+            "BA-09-S3"
+          ],
+          "code_refs": [
+            "job_hunt_copilot/artifacts.py",
+            "job_hunt_copilot/contracts.py",
+            "job_hunt_copilot/supervisor.py",
+            "job_hunt_copilot/linkedin_scraping.py",
+            "job_hunt_copilot/resume_tailoring.py",
+            "job_hunt_copilot/email_discovery.py",
+            "job_hunt_copilot/outreach.py",
+            "job_hunt_copilot/delivery_feedback.py",
+            "job_hunt_copilot/review_queries.py"
+          ],
+          "test_refs": [
+            "tests/test_artifacts.py",
+            "tests/test_supervisor.py",
+            "tests/test_linkedin_scraping.py",
+            "tests/test_resume_tailoring.py",
+            "tests/test_email_discovery.py",
+            "tests/test_outreach.py",
+            "tests/test_delivery_feedback.py",
+            "tests/test_review_queries.py"
+          ],
+          "note": "Maintenance artifacts are specified in the schema and PRD, but no maintenance batch workflow writes them yet."
         },
         {
+          "rule": "Supervisor Agent behavior",
           "name": "Supervisor work selection follows the current default priority order",
+          "scenario_line": 1132,
           "status": "partial",
           "owner_role": "build-lead",
           "epic_ids": [
             "BA-02",
             "BA-03"
-          ]
+          ],
+          "slice_ids": [
+            "BA-02-S1",
+            "BA-02-S2",
+            "BA-02-S3",
+            "BA-03-S1",
+            "BA-03-S2",
+            "BA-03-S3"
+          ],
+          "code_refs": [
+            "job_hunt_copilot/supervisor.py",
+            "job_hunt_copilot/local_runtime.py",
+            "job_hunt_copilot/runtime_pack.py",
+            "scripts/ops/run_supervisor_cycle.py",
+            "scripts/ops/control_agent.py",
+            "scripts/ops/chat_session.py",
+            "bin/jhc-agent-start",
+            "bin/jhc-agent-stop",
+            "bin/jhc-agent-cycle",
+            "bin/jhc-chat"
+          ],
+          "test_refs": [
+            "tests/test_supervisor_downstream_actions.py",
+            "tests/test_supervisor.py",
+            "tests/test_local_runtime.py",
+            "tests/test_runtime_pack.py"
+          ],
+          "note": "Current supervisor regressions prove open incidents outrank ordinary pipeline advancement, existing runs outrank new posting bootstrap, new postings outrank opportunistic contact-rooted general-learning work, and contact-rooted general-learning work now covers bounded delayed feedback, send-ready dispatch, and email discovery, but bounded maintenance work itself still has no dedicated selector or action path."
         },
         {
+          "rule": "Supervisor Agent behavior",
           "name": "Daily maintenance is mandatory, bounded, and run-boundary aware",
+          "scenario_line": 1322,
           "status": "gap",
           "owner_role": "build-lead",
           "epic_ids": [
             "BA-02",
             "BA-03"
-          ]
+          ],
+          "slice_ids": [
+            "BA-02-S1",
+            "BA-02-S2",
+            "BA-02-S3",
+            "BA-03-S1",
+            "BA-03-S2",
+            "BA-03-S3"
+          ],
+          "code_refs": [
+            "job_hunt_copilot/supervisor.py",
+            "job_hunt_copilot/local_runtime.py",
+            "job_hunt_copilot/runtime_pack.py",
+            "scripts/ops/run_supervisor_cycle.py",
+            "scripts/ops/control_agent.py",
+            "scripts/ops/chat_session.py",
+            "bin/jhc-agent-start",
+            "bin/jhc-agent-stop",
+            "bin/jhc-agent-cycle",
+            "bin/jhc-chat"
+          ],
+          "test_refs": [
+            "tests/test_supervisor_downstream_actions.py",
+            "tests/test_supervisor.py",
+            "tests/test_local_runtime.py",
+            "tests/test_runtime_pack.py"
+          ],
+          "note": "Only maintenance placeholders exist today; the maintenance workflow itself is still missing."
         },
         {
+          "rule": "Supervisor Agent behavior",
           "name": "Maintenance changes follow the current git and approval workflow",
+          "scenario_line": 1331,
           "status": "gap",
           "owner_role": "build-lead",
           "epic_ids": [
             "BA-02",
             "BA-03"
-          ]
+          ],
+          "slice_ids": [
+            "BA-02-S1",
+            "BA-02-S2",
+            "BA-02-S3",
+            "BA-03-S1",
+            "BA-03-S2",
+            "BA-03-S3"
+          ],
+          "code_refs": [
+            "job_hunt_copilot/supervisor.py",
+            "job_hunt_copilot/local_runtime.py",
+            "job_hunt_copilot/runtime_pack.py",
+            "scripts/ops/run_supervisor_cycle.py",
+            "scripts/ops/control_agent.py",
+            "scripts/ops/chat_session.py",
+            "bin/jhc-agent-start",
+            "bin/jhc-agent-stop",
+            "bin/jhc-agent-cycle",
+            "bin/jhc-chat"
+          ],
+          "test_refs": [
+            "tests/test_supervisor_downstream_actions.py",
+            "tests/test_supervisor.py",
+            "tests/test_local_runtime.py",
+            "tests/test_runtime_pack.py"
+          ],
+          "note": "Only maintenance placeholders exist today; the maintenance workflow itself is still missing."
         },
         {
+          "rule": "Supervisor Agent behavior",
           "name": "Proper maintenance validation requires both change-scoped and full-project testing",
+          "scenario_line": 1342,
           "status": "gap",
           "owner_role": "build-lead",
           "epic_ids": [
             "BA-02",
             "BA-03"
-          ]
+          ],
+          "slice_ids": [
+            "BA-02-S1",
+            "BA-02-S2",
+            "BA-02-S3",
+            "BA-03-S1",
+            "BA-03-S2",
+            "BA-03-S3"
+          ],
+          "code_refs": [
+            "job_hunt_copilot/supervisor.py",
+            "job_hunt_copilot/local_runtime.py",
+            "job_hunt_copilot/runtime_pack.py",
+            "scripts/ops/run_supervisor_cycle.py",
+            "scripts/ops/control_agent.py",
+            "scripts/ops/chat_session.py",
+            "bin/jhc-agent-start",
+            "bin/jhc-agent-stop",
+            "bin/jhc-agent-cycle",
+            "bin/jhc-chat"
+          ],
+          "test_refs": [
+            "tests/test_supervisor_downstream_actions.py",
+            "tests/test_supervisor.py",
+            "tests/test_local_runtime.py",
+            "tests/test_runtime_pack.py"
+          ],
+          "note": "Only maintenance placeholders exist today; the maintenance workflow itself is still missing."
         },
         {
+          "rule": "Supervisor Agent behavior",
           "name": "Failed or unapproved maintenance batches remain reviewable",
+          "scenario_line": 1349,
           "status": "gap",
           "owner_role": "build-lead",
           "epic_ids": [
             "BA-02",
             "BA-03"
-          ]
+          ],
+          "slice_ids": [
+            "BA-02-S1",
+            "BA-02-S2",
+            "BA-02-S3",
+            "BA-03-S1",
+            "BA-03-S2",
+            "BA-03-S3"
+          ],
+          "code_refs": [
+            "job_hunt_copilot/supervisor.py",
+            "job_hunt_copilot/local_runtime.py",
+            "job_hunt_copilot/runtime_pack.py",
+            "scripts/ops/run_supervisor_cycle.py",
+            "scripts/ops/control_agent.py",
+            "scripts/ops/chat_session.py",
+            "bin/jhc-agent-start",
+            "bin/jhc-agent-stop",
+            "bin/jhc-agent-cycle",
+            "bin/jhc-chat"
+          ],
+          "test_refs": [
+            "tests/test_supervisor_downstream_actions.py",
+            "tests/test_supervisor.py",
+            "tests/test_local_runtime.py",
+            "tests/test_runtime_pack.py"
+          ],
+          "note": "Only maintenance placeholders exist today; the maintenance workflow itself is still missing."
         }
       ]
     },
@@ -549,94 +743,375 @@
       },
       "scenarios": [
         {
+          "rule": "Supervisor Agent behavior",
           "name": "jhc-chat startup dashboard is detailed, bounded, and clean-first",
+          "scenario_line": 1218,
           "status": "partial",
           "owner_role": "build-lead",
           "epic_ids": [
             "BA-02",
             "BA-03"
-          ]
+          ],
+          "slice_ids": [
+            "BA-02-S1",
+            "BA-02-S2",
+            "BA-02-S3",
+            "BA-03-S1",
+            "BA-03-S2",
+            "BA-03-S3"
+          ],
+          "code_refs": [
+            "job_hunt_copilot/supervisor.py",
+            "job_hunt_copilot/local_runtime.py",
+            "job_hunt_copilot/runtime_pack.py",
+            "scripts/ops/run_supervisor_cycle.py",
+            "scripts/ops/control_agent.py",
+            "scripts/ops/chat_session.py",
+            "bin/jhc-agent-start",
+            "bin/jhc-agent-stop",
+            "bin/jhc-agent-cycle",
+            "bin/jhc-chat"
+          ],
+          "test_refs": [
+            "tests/test_supervisor_downstream_actions.py",
+            "tests/test_supervisor.py",
+            "tests/test_local_runtime.py",
+            "tests/test_runtime_pack.py"
+          ],
+          "note": "The runtime pack and review-query layer exist, but the direct chat experience has not yet implemented this richer behavior end to end."
         },
         {
+          "rule": "Supervisor Agent behavior",
           "name": "Startup dashboard runtime metrics count only active autonomous execution",
+          "scenario_line": 1227,
           "status": "gap",
           "owner_role": "build-lead",
           "epic_ids": [
             "BA-02",
             "BA-03"
-          ]
+          ],
+          "slice_ids": [
+            "BA-02-S1",
+            "BA-02-S2",
+            "BA-02-S3",
+            "BA-03-S1",
+            "BA-03-S2",
+            "BA-03-S3"
+          ],
+          "code_refs": [
+            "job_hunt_copilot/supervisor.py",
+            "job_hunt_copilot/local_runtime.py",
+            "job_hunt_copilot/runtime_pack.py",
+            "scripts/ops/run_supervisor_cycle.py",
+            "scripts/ops/control_agent.py",
+            "scripts/ops/chat_session.py",
+            "bin/jhc-agent-start",
+            "bin/jhc-agent-stop",
+            "bin/jhc-agent-cycle",
+            "bin/jhc-chat"
+          ],
+          "test_refs": [
+            "tests/test_supervisor_downstream_actions.py",
+            "tests/test_supervisor.py",
+            "tests/test_local_runtime.py",
+            "tests/test_runtime_pack.py"
+          ],
+          "note": "The direct `jhc-chat` wrapper manages session state only; chat-side review retrieval, routing, and guidance behaviors are still missing."
         },
         {
+          "rule": "Supervisor Agent behavior",
           "name": "Review retrieval is grouped, compact-first, and newest-first within each group",
+          "scenario_line": 1233,
           "status": "partial",
           "owner_role": "build-lead",
           "epic_ids": [
             "BA-02",
             "BA-03"
-          ]
+          ],
+          "slice_ids": [
+            "BA-02-S1",
+            "BA-02-S2",
+            "BA-02-S3",
+            "BA-03-S1",
+            "BA-03-S2",
+            "BA-03-S3"
+          ],
+          "code_refs": [
+            "job_hunt_copilot/supervisor.py",
+            "job_hunt_copilot/local_runtime.py",
+            "job_hunt_copilot/runtime_pack.py",
+            "scripts/ops/run_supervisor_cycle.py",
+            "scripts/ops/control_agent.py",
+            "scripts/ops/chat_session.py",
+            "bin/jhc-agent-start",
+            "bin/jhc-agent-stop",
+            "bin/jhc-agent-cycle",
+            "bin/jhc-chat"
+          ],
+          "test_refs": [
+            "tests/test_supervisor_downstream_actions.py",
+            "tests/test_supervisor.py",
+            "tests/test_local_runtime.py",
+            "tests/test_runtime_pack.py"
+          ],
+          "note": "The runtime pack and review-query layer exist, but the direct chat experience has not yet implemented this richer behavior end to end."
         },
         {
+          "rule": "Supervisor Agent behavior",
           "name": "jhc-chat uses persisted state for answers and control routing",
+          "scenario_line": 1249,
           "status": "gap",
           "owner_role": "build-lead",
           "epic_ids": [
             "BA-02",
             "BA-03"
-          ]
+          ],
+          "slice_ids": [
+            "BA-02-S1",
+            "BA-02-S2",
+            "BA-02-S3",
+            "BA-03-S1",
+            "BA-03-S2",
+            "BA-03-S3"
+          ],
+          "code_refs": [
+            "job_hunt_copilot/supervisor.py",
+            "job_hunt_copilot/local_runtime.py",
+            "job_hunt_copilot/runtime_pack.py",
+            "scripts/ops/run_supervisor_cycle.py",
+            "scripts/ops/control_agent.py",
+            "scripts/ops/chat_session.py",
+            "bin/jhc-agent-start",
+            "bin/jhc-agent-stop",
+            "bin/jhc-agent-cycle",
+            "bin/jhc-chat"
+          ],
+          "test_refs": [
+            "tests/test_supervisor_downstream_actions.py",
+            "tests/test_supervisor.py",
+            "tests/test_local_runtime.py",
+            "tests/test_runtime_pack.py"
+          ],
+          "note": "The direct `jhc-chat` wrapper manages session state only; chat-side review retrieval, routing, and guidance behaviors are still missing."
         },
         {
+          "rule": "Supervisor Agent behavior",
           "name": "Default change summaries cover activity since the last completed expert review",
+          "scenario_line": 1267,
           "status": "gap",
           "owner_role": "build-lead",
           "epic_ids": [
             "BA-02",
             "BA-03"
-          ]
+          ],
+          "slice_ids": [
+            "BA-02-S1",
+            "BA-02-S2",
+            "BA-02-S3",
+            "BA-03-S1",
+            "BA-03-S2",
+            "BA-03-S3"
+          ],
+          "code_refs": [
+            "job_hunt_copilot/supervisor.py",
+            "job_hunt_copilot/local_runtime.py",
+            "job_hunt_copilot/runtime_pack.py",
+            "scripts/ops/run_supervisor_cycle.py",
+            "scripts/ops/control_agent.py",
+            "scripts/ops/chat_session.py",
+            "bin/jhc-agent-start",
+            "bin/jhc-agent-stop",
+            "bin/jhc-agent-cycle",
+            "bin/jhc-chat"
+          ],
+          "test_refs": [
+            "tests/test_supervisor_downstream_actions.py",
+            "tests/test_supervisor.py",
+            "tests/test_local_runtime.py",
+            "tests/test_runtime_pack.py"
+          ],
+          "note": "The direct `jhc-chat` wrapper manages session state only; chat-side review retrieval, routing, and guidance behaviors are still missing."
         },
         {
+          "rule": "Supervisor Agent behavior",
           "name": "Expert guidance becomes live immediately but conflicting or uncertain reuse asks first",
+          "scenario_line": 1273,
           "status": "gap",
           "owner_role": "build-lead",
           "epic_ids": [
             "BA-02",
             "BA-03"
-          ]
+          ],
+          "slice_ids": [
+            "BA-02-S1",
+            "BA-02-S2",
+            "BA-02-S3",
+            "BA-03-S1",
+            "BA-03-S2",
+            "BA-03-S3"
+          ],
+          "code_refs": [
+            "job_hunt_copilot/supervisor.py",
+            "job_hunt_copilot/local_runtime.py",
+            "job_hunt_copilot/runtime_pack.py",
+            "scripts/ops/run_supervisor_cycle.py",
+            "scripts/ops/control_agent.py",
+            "scripts/ops/chat_session.py",
+            "bin/jhc-agent-start",
+            "bin/jhc-agent-stop",
+            "bin/jhc-agent-cycle",
+            "bin/jhc-chat"
+          ],
+          "test_refs": [
+            "tests/test_supervisor_downstream_actions.py",
+            "tests/test_supervisor.py",
+            "tests/test_local_runtime.py",
+            "tests/test_runtime_pack.py"
+          ],
+          "note": "The direct `jhc-chat` wrapper manages session state only; chat-side review retrieval, routing, and guidance behaviors are still missing."
         },
         {
+          "rule": "Supervisor Agent behavior",
           "name": "Conflicting expert guidance pauses the whole autonomous system",
+          "scenario_line": 1281,
           "status": "gap",
           "owner_role": "build-lead",
           "epic_ids": [
             "BA-02",
             "BA-03"
-          ]
+          ],
+          "slice_ids": [
+            "BA-02-S1",
+            "BA-02-S2",
+            "BA-02-S3",
+            "BA-03-S1",
+            "BA-03-S2",
+            "BA-03-S3"
+          ],
+          "code_refs": [
+            "job_hunt_copilot/supervisor.py",
+            "job_hunt_copilot/local_runtime.py",
+            "job_hunt_copilot/runtime_pack.py",
+            "scripts/ops/run_supervisor_cycle.py",
+            "scripts/ops/control_agent.py",
+            "scripts/ops/chat_session.py",
+            "bin/jhc-agent-start",
+            "bin/jhc-agent-stop",
+            "bin/jhc-agent-cycle",
+            "bin/jhc-chat"
+          ],
+          "test_refs": [
+            "tests/test_supervisor_downstream_actions.py",
+            "tests/test_supervisor.py",
+            "tests/test_local_runtime.py",
+            "tests/test_runtime_pack.py"
+          ],
+          "note": "The direct `jhc-chat` wrapper manages session state only; chat-side review retrieval, routing, and guidance behaviors are still missing."
         },
         {
+          "rule": "Supervisor Agent behavior",
           "name": "Expert-requested background tasks require explicit handoff summary and exclusive focus",
+          "scenario_line": 1307,
           "status": "gap",
           "owner_role": "build-lead",
           "epic_ids": [
             "BA-02",
             "BA-03"
-          ]
+          ],
+          "slice_ids": [
+            "BA-02-S1",
+            "BA-02-S2",
+            "BA-02-S3",
+            "BA-03-S1",
+            "BA-03-S2",
+            "BA-03-S3"
+          ],
+          "code_refs": [
+            "job_hunt_copilot/supervisor.py",
+            "job_hunt_copilot/local_runtime.py",
+            "job_hunt_copilot/runtime_pack.py",
+            "scripts/ops/run_supervisor_cycle.py",
+            "scripts/ops/control_agent.py",
+            "scripts/ops/chat_session.py",
+            "bin/jhc-agent-start",
+            "bin/jhc-agent-stop",
+            "bin/jhc-agent-cycle",
+            "bin/jhc-chat"
+          ],
+          "test_refs": [
+            "tests/test_supervisor_downstream_actions.py",
+            "tests/test_supervisor.py",
+            "tests/test_local_runtime.py",
+            "tests/test_runtime_pack.py"
+          ],
+          "note": "The direct `jhc-chat` wrapper manages session state only; chat-side review retrieval, routing, and guidance behaviors are still missing."
         },
         {
+          "rule": "Supervisor Agent behavior",
           "name": "Expert-requested background task outcomes return to review appropriately",
+          "scenario_line": 1314,
           "status": "gap",
           "owner_role": "build-lead",
           "epic_ids": [
             "BA-02",
             "BA-03"
-          ]
+          ],
+          "slice_ids": [
+            "BA-02-S1",
+            "BA-02-S2",
+            "BA-02-S3",
+            "BA-03-S1",
+            "BA-03-S2",
+            "BA-03-S3"
+          ],
+          "code_refs": [
+            "job_hunt_copilot/supervisor.py",
+            "job_hunt_copilot/local_runtime.py",
+            "job_hunt_copilot/runtime_pack.py",
+            "scripts/ops/run_supervisor_cycle.py",
+            "scripts/ops/control_agent.py",
+            "scripts/ops/chat_session.py",
+            "bin/jhc-agent-start",
+            "bin/jhc-agent-stop",
+            "bin/jhc-agent-cycle",
+            "bin/jhc-chat"
+          ],
+          "test_refs": [
+            "tests/test_supervisor_downstream_actions.py",
+            "tests/test_supervisor.py",
+            "tests/test_local_runtime.py",
+            "tests/test_runtime_pack.py"
+          ],
+          "note": "The direct `jhc-chat` wrapper manages session state only; chat-side review retrieval, routing, and guidance behaviors are still missing."
         },
         {
+          "rule": "Review surfaces and chat-based control",
           "name": "AI agent surfaces the current review queue in chat",
+          "scenario_line": 1360,
           "status": "gap",
           "owner_role": "quality-engineer",
           "epic_ids": [
             "BA-03",
             "BA-09"
-          ]
+          ],
+          "slice_ids": [
+            "BA-03-S1",
+            "BA-03-S2",
+            "BA-03-S3",
+            "BA-09-S1",
+            "BA-09-S2",
+            "BA-09-S3"
+          ],
+          "code_refs": [
+            "job_hunt_copilot/review_queries.py",
+            "job_hunt_copilot/local_runtime.py",
+            "bin/jhc-chat"
+          ],
+          "test_refs": [
+            "tests/test_review_queries.py",
+            "tests/test_local_runtime.py"
+          ],
+          "note": "The direct `jhc-chat` wrapper manages session state only; chat-side review retrieval, routing, and guidance behaviors are still missing."
         }
       ]
     },
@@ -714,13 +1189,42 @@
       },
       "scenarios": [
         {
+          "rule": "Supervisor Agent behavior",
           "name": "Expert-interaction resume follows explicit close, explicit resume, or safe idle timeout",
+          "scenario_line": 1297,
           "status": "partial",
           "owner_role": "build-lead",
           "epic_ids": [
             "BA-02",
             "BA-03"
-          ]
+          ],
+          "slice_ids": [
+            "BA-02-S1",
+            "BA-02-S2",
+            "BA-02-S3",
+            "BA-03-S1",
+            "BA-03-S2",
+            "BA-03-S3"
+          ],
+          "code_refs": [
+            "job_hunt_copilot/supervisor.py",
+            "job_hunt_copilot/local_runtime.py",
+            "job_hunt_copilot/runtime_pack.py",
+            "scripts/ops/run_supervisor_cycle.py",
+            "scripts/ops/control_agent.py",
+            "scripts/ops/chat_session.py",
+            "bin/jhc-agent-start",
+            "bin/jhc-agent-stop",
+            "bin/jhc-agent-cycle",
+            "bin/jhc-chat"
+          ],
+          "test_refs": [
+            "tests/test_supervisor_downstream_actions.py",
+            "tests/test_supervisor.py",
+            "tests/test_local_runtime.py",
+            "tests/test_runtime_pack.py"
+          ],
+          "note": "Explicit close and explicit resume paths exist, but automatic idle-timeout recovery after unexpected chat exit is still backlog."
         }
       ]
     },
@@ -800,7 +1304,9 @@
       },
       "scenarios": [
         {
+          "rule": "Current-build orchestration remains sequential",
           "name": "The user may explicitly abandon a posting from any active orchestration state",
+          "scenario_line": 1536,
           "status": "gap",
           "owner_role": "build-lead",
           "epic_ids": [
@@ -808,7 +1314,38 @@
             "BA-07",
             "BA-08",
             "BA-09"
-          ]
+          ],
+          "slice_ids": [
+            "BA-06-S1",
+            "BA-06-S2",
+            "BA-06-S3",
+            "BA-06-S4",
+            "BA-07-S1",
+            "BA-07-S2",
+            "BA-07-S3",
+            "BA-08-S1",
+            "BA-08-S2",
+            "BA-08-S3",
+            "BA-09-S1",
+            "BA-09-S2",
+            "BA-09-S3"
+          ],
+          "code_refs": [
+            "job_hunt_copilot/resume_tailoring.py",
+            "job_hunt_copilot/email_discovery.py",
+            "job_hunt_copilot/outreach.py",
+            "job_hunt_copilot/delivery_feedback.py",
+            "job_hunt_copilot/supervisor.py"
+          ],
+          "test_refs": [
+            "tests/test_resume_tailoring.py",
+            "tests/test_email_discovery.py",
+            "tests/test_outreach.py",
+            "tests/test_delivery_feedback.py",
+            "tests/test_supervisor_downstream_actions.py",
+            "tests/test_supervisor.py"
+          ],
+          "note": "No posting-abandon runtime control surface or tests exist yet."
         }
       ]
     }
@@ -819,9 +1356,9 @@
       "status": "open",
       "severity": "high",
       "owner_role": "quality-engineer",
-      "summary": "The regenerated BA-10 trace matrix still reports 194 implemented / 4 partial / 14 gap scenarios; explicit smoke-coverage targets, implemented-slice traceability, reproducible validation-command mappings, and a durable latest validation-suite report snapshot cover bootstrap, tailoring, discovery, send, feedback, review-query, and downstream supervisor follow-through, but chat review/control, idle-timeout resume, maintenance automation, and posting-abandon behavior themselves remain open.",
-      "impact": "Acceptance signoff is more credible now that committed smoke coverage, blocker-specific evidence refs, and explicit negative regressions exist, but BA-10 still cannot close until the remaining gap clusters are actually burned down or deliberately left open.",
-      "next_action": "Hand the next functional slice to the quality-engineer: cross-component regression and blocker burn-down across maintenance automation, chat review/control, idle-timeout resume, and posting-abandon behavior, then refresh the BA-10 reports and validation-suite evidence.",
+      "summary": "The regenerated BA-10 trace matrix still reports 194 implemented / 4 partial / 14 gap scenarios; explicit smoke-coverage targets, implemented-slice traceability, reproducible validation-command mappings, and a durable latest validation-suite report snapshot cover bootstrap, tailoring, discovery, send, feedback, review-query, and downstream supervisor follow-through, and the blocker audit plus current-focus validation snapshot now enumerate the exact remaining open scenarios with rule and line references, but chat review/control, idle-timeout resume, maintenance automation, and posting-abandon behavior themselves remain open.",
+      "impact": "Acceptance signoff is more credible now that committed smoke coverage, blocker-specific evidence refs, explicit negative regressions, and exact open-scenario traces exist, but BA-10 still cannot close until the remaining gap clusters are actually burned down or deliberately left open.",
+      "next_action": "Hand the next functional slice to the build lead and the relevant runtime owner for one real remaining BA-10-S3 gap, starting with posting-abandon control or idle-timeout auto-resume, then refresh the BA-10 reports and validation-suite evidence.",
       "evidence_refs": [
         "build-agent/reports/ba-10-acceptance-trace-matrix.json",
         "build-agent/reports/ba-10-acceptance-trace-matrix.md",

@@ -1670,3 +1670,29 @@ Use this file as an append-only implementation log for the build agent.
 ### Notes
 - The acceptance matrix still reports 194 implemented / 4 partial / 14 gap scenarios because the closed downstream-supervisor partial was replaced by the already-open maintenance priority-order partial rather than by a new implemented acceptance scenario.
 - The remaining open acceptance-gap clusters are now `BA10_MAINTENANCE_AUTOMATION`, `BA10_CHAT_REVIEW_AND_CONTROL`, `BA10_CHAT_IDLE_TIMEOUT_RESUME`, and `BA10_POSTING_ABANDON_CONTROL`.
+
+### Session
+- Date: 2026-04-08 18:40:08 MST
+- Slice: BA-10-S3 blocker-detail reporting and repo-facing readiness notes
+- Goal: Make the remaining BA-10-S3 blocker evidence more explicit in the generated validation surfaces and keep reviewer-facing repo docs honest about the exact open hardening gaps.
+
+### Work Done
+- Expanded `job_hunt_copilot.blocker_audit` so each open BA-10 gap cluster now carries exact open scenario metadata, including rule name, feature-file line, scenario-local code or test refs, and the persisted acceptance-trace note instead of only a scenario title and status.
+- Expanded `job_hunt_copilot.quality_validation` so gap selectors and the active `--current-focus` selector now surface status counts plus the exact remaining open scenarios for each gap cluster, and so the latest validation-suite snapshot can publish readable open-gap summaries alongside the existing id-based repo status.
+- Updated `README.md`, `docs/ARCHITECTURE.md`, and `build-agent/reports/README.md` so manager- and recruiter-facing repo surfaces now name the four remaining BA-10 hardening gaps explicitly and point directly at the committed acceptance trace, blocker audit, and latest validation-suite snapshot.
+- Refreshed `build-agent/reports/ba-10-blocker-audit.{json,md}` and `build-agent/reports/ba-10-validation-suite-latest.{json,md}` so the committed evidence now matches the richer blocker-detail schema and current repo-facing status wording.
+- Updated `build-agent/state/build-board.yaml`, `build-agent/state/IMPLEMENTATION_PLAN.md`, `build-agent/state/build-journal.md`, and `build-agent/state/codex-progress.txt` so the persisted build record captures this BA-10-S3 evidence/readiness slice without pretending the four open gaps are closed.
+
+### Validation
+- Ran `python3.11 -m pytest tests/test_quality_validation.py` and confirmed all 17 quality-validation selector and report-rendering regressions passed after the richer gap-detail payload landed.
+- Ran `python3.11 scripts/quality/run_ba10_validation_suite.py --project-root /Users/achyutaramsonti/Projects/job-hunt-copilot-v4 --current-focus` and confirmed the focused BA-10-S3 replay passed, refreshing the committed acceptance-trace, blocker-audit, and latest validation-suite reports while exercising `tests/test_runtime_pack.py`, `tests/test_acceptance_traceability.py`, `tests/test_blocker_audit.py`, `tests/test_local_runtime.py`, and `tests/test_review_queries.py`.
+
+### Result
+- `done`
+
+### Next
+- Keep BA-10-S3 open for a real remaining runtime/control gap. The next highest-value slice is build-lead ownership with the relevant runtime owner for one functional blocker, starting with posting-abandon control or idle-timeout auto-resume, then refresh the BA-10 reports again.
+
+### Notes
+- The acceptance matrix still reports 194 implemented / 4 partial / 14 gap scenarios; this session only strengthened blocker traceability and repo-facing honesty.
+- The remaining open acceptance-gap clusters are still `BA10_MAINTENANCE_AUTOMATION`, `BA10_CHAT_REVIEW_AND_CONTROL`, `BA10_CHAT_IDLE_TIMEOUT_RESUME`, and `BA10_POSTING_ABANDON_CONTROL`, but the blocker audit and current-focus validation snapshot now enumerate their exact open scenarios directly.

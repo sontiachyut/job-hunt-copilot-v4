@@ -10,6 +10,11 @@ Suggested file shapes:
 - `ba-10-validation-suite-latest.json`
 
 These reports are for human review.
+For the current BA-10 hardening surface, start with:
+- `ba-10-acceptance-trace-matrix.md`
+- `ba-10-blocker-audit.md`
+- `ba-10-validation-suite-latest.md`
+
 The canonical implementation-progress state still lives in:
 - `build-agent/state/build-board.yaml`
 - `build-agent/state/build-journal.md`

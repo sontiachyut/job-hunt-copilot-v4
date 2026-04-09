@@ -33,12 +33,24 @@
   - `python3.11 -m pytest tests/test_runtime_pack.py` (automated: Confirms generated runtime scaffolding stays honest about current action-catalog and maintenance placeholder status.)
   - `python3.11 -m pytest tests/test_acceptance_traceability.py tests/test_blocker_audit.py` (automated: Keeps the committed BA-10 acceptance and blocker reports synchronized with repo code, tests, and state references.)
 - Open scenarios:
-  - `[gap]` Maintenance change artifacts exist for every autonomous maintenance batch
-  - `[partial]` Supervisor work selection follows the current default priority order
-  - `[gap]` Daily maintenance is mandatory, bounded, and run-boundary aware
-  - `[gap]` Maintenance changes follow the current git and approval workflow
-  - `[gap]` Proper maintenance validation requires both change-scoped and full-project testing
-  - `[gap]` Failed or unapproved maintenance batches remain reviewable
+  - `[gap]` Maintenance change artifacts exist for every autonomous maintenance batch (rule: `Machine handoff contracts and canonical state`, line: `220`)
+    - Evidence refs: `job_hunt_copilot/artifacts.py`, `job_hunt_copilot/contracts.py`, `job_hunt_copilot/supervisor.py`, `job_hunt_copilot/linkedin_scraping.py`, `job_hunt_copilot/resume_tailoring.py`, `job_hunt_copilot/email_discovery.py`, `job_hunt_copilot/outreach.py`, `job_hunt_copilot/delivery_feedback.py`, `job_hunt_copilot/review_queries.py`, `tests/test_artifacts.py`, `tests/test_supervisor.py`, `tests/test_linkedin_scraping.py`, `tests/test_resume_tailoring.py`, `tests/test_email_discovery.py`, `tests/test_outreach.py`, `tests/test_delivery_feedback.py`, `tests/test_review_queries.py`
+    - Note: Maintenance artifacts are specified in the schema and PRD, but no maintenance batch workflow writes them yet.
+  - `[partial]` Supervisor work selection follows the current default priority order (rule: `Supervisor Agent behavior`, line: `1132`)
+    - Evidence refs: `job_hunt_copilot/supervisor.py`, `job_hunt_copilot/local_runtime.py`, `job_hunt_copilot/runtime_pack.py`, `scripts/ops/run_supervisor_cycle.py`, `scripts/ops/control_agent.py`, `scripts/ops/chat_session.py`, `bin/jhc-agent-start`, `bin/jhc-agent-stop`, `bin/jhc-agent-cycle`, `bin/jhc-chat`, `tests/test_supervisor_downstream_actions.py`, `tests/test_supervisor.py`, `tests/test_local_runtime.py`, `tests/test_runtime_pack.py`
+    - Note: Current supervisor regressions prove open incidents outrank ordinary pipeline advancement, existing runs outrank new posting bootstrap, new postings outrank opportunistic contact-rooted general-learning work, and contact-rooted general-learning work now covers bounded delayed feedback, send-ready dispatch, and email discovery, but bounded maintenance work itself still has no dedicated selector or action path.
+  - `[gap]` Daily maintenance is mandatory, bounded, and run-boundary aware (rule: `Supervisor Agent behavior`, line: `1322`)
+    - Evidence refs: `job_hunt_copilot/supervisor.py`, `job_hunt_copilot/local_runtime.py`, `job_hunt_copilot/runtime_pack.py`, `scripts/ops/run_supervisor_cycle.py`, `scripts/ops/control_agent.py`, `scripts/ops/chat_session.py`, `bin/jhc-agent-start`, `bin/jhc-agent-stop`, `bin/jhc-agent-cycle`, `bin/jhc-chat`, `tests/test_supervisor_downstream_actions.py`, `tests/test_supervisor.py`, `tests/test_local_runtime.py`, `tests/test_runtime_pack.py`
+    - Note: Only maintenance placeholders exist today; the maintenance workflow itself is still missing.
+  - `[gap]` Maintenance changes follow the current git and approval workflow (rule: `Supervisor Agent behavior`, line: `1331`)
+    - Evidence refs: `job_hunt_copilot/supervisor.py`, `job_hunt_copilot/local_runtime.py`, `job_hunt_copilot/runtime_pack.py`, `scripts/ops/run_supervisor_cycle.py`, `scripts/ops/control_agent.py`, `scripts/ops/chat_session.py`, `bin/jhc-agent-start`, `bin/jhc-agent-stop`, `bin/jhc-agent-cycle`, `bin/jhc-chat`, `tests/test_supervisor_downstream_actions.py`, `tests/test_supervisor.py`, `tests/test_local_runtime.py`, `tests/test_runtime_pack.py`
+    - Note: Only maintenance placeholders exist today; the maintenance workflow itself is still missing.
+  - `[gap]` Proper maintenance validation requires both change-scoped and full-project testing (rule: `Supervisor Agent behavior`, line: `1342`)
+    - Evidence refs: `job_hunt_copilot/supervisor.py`, `job_hunt_copilot/local_runtime.py`, `job_hunt_copilot/runtime_pack.py`, `scripts/ops/run_supervisor_cycle.py`, `scripts/ops/control_agent.py`, `scripts/ops/chat_session.py`, `bin/jhc-agent-start`, `bin/jhc-agent-stop`, `bin/jhc-agent-cycle`, `bin/jhc-chat`, `tests/test_supervisor_downstream_actions.py`, `tests/test_supervisor.py`, `tests/test_local_runtime.py`, `tests/test_runtime_pack.py`
+    - Note: Only maintenance placeholders exist today; the maintenance workflow itself is still missing.
+  - `[gap]` Failed or unapproved maintenance batches remain reviewable (rule: `Supervisor Agent behavior`, line: `1349`)
+    - Evidence refs: `job_hunt_copilot/supervisor.py`, `job_hunt_copilot/local_runtime.py`, `job_hunt_copilot/runtime_pack.py`, `scripts/ops/run_supervisor_cycle.py`, `scripts/ops/control_agent.py`, `scripts/ops/chat_session.py`, `bin/jhc-agent-start`, `bin/jhc-agent-stop`, `bin/jhc-agent-cycle`, `bin/jhc-chat`, `tests/test_supervisor_downstream_actions.py`, `tests/test_supervisor.py`, `tests/test_local_runtime.py`, `tests/test_runtime_pack.py`
+    - Note: Only maintenance placeholders exist today; the maintenance workflow itself is still missing.
 
 ### BA10_CHAT_REVIEW_AND_CONTROL: Chat review and control remain wrapper-only
 - Next slice: `BA-10-S3`
@@ -58,16 +70,36 @@
   - `python3.11 -m pytest tests/test_runtime_pack.py` (automated: Confirms generated runtime scaffolding stays honest about current action-catalog and maintenance placeholder status.)
   - `python3.11 -m pytest tests/test_acceptance_traceability.py tests/test_blocker_audit.py` (automated: Keeps the committed BA-10 acceptance and blocker reports synchronized with repo code, tests, and state references.)
 - Open scenarios:
-  - `[partial]` jhc-chat startup dashboard is detailed, bounded, and clean-first
-  - `[gap]` Startup dashboard runtime metrics count only active autonomous execution
-  - `[partial]` Review retrieval is grouped, compact-first, and newest-first within each group
-  - `[gap]` jhc-chat uses persisted state for answers and control routing
-  - `[gap]` Default change summaries cover activity since the last completed expert review
-  - `[gap]` Expert guidance becomes live immediately but conflicting or uncertain reuse asks first
-  - `[gap]` Conflicting expert guidance pauses the whole autonomous system
-  - `[gap]` Expert-requested background tasks require explicit handoff summary and exclusive focus
-  - `[gap]` Expert-requested background task outcomes return to review appropriately
-  - `[gap]` AI agent surfaces the current review queue in chat
+  - `[partial]` jhc-chat startup dashboard is detailed, bounded, and clean-first (rule: `Supervisor Agent behavior`, line: `1218`)
+    - Evidence refs: `job_hunt_copilot/supervisor.py`, `job_hunt_copilot/local_runtime.py`, `job_hunt_copilot/runtime_pack.py`, `scripts/ops/run_supervisor_cycle.py`, `scripts/ops/control_agent.py`, `scripts/ops/chat_session.py`, `bin/jhc-agent-start`, `bin/jhc-agent-stop`, `bin/jhc-agent-cycle`, `bin/jhc-chat`, `tests/test_supervisor_downstream_actions.py`, `tests/test_supervisor.py`, `tests/test_local_runtime.py`, `tests/test_runtime_pack.py`
+    - Note: The runtime pack and review-query layer exist, but the direct chat experience has not yet implemented this richer behavior end to end.
+  - `[gap]` Startup dashboard runtime metrics count only active autonomous execution (rule: `Supervisor Agent behavior`, line: `1227`)
+    - Evidence refs: `job_hunt_copilot/supervisor.py`, `job_hunt_copilot/local_runtime.py`, `job_hunt_copilot/runtime_pack.py`, `scripts/ops/run_supervisor_cycle.py`, `scripts/ops/control_agent.py`, `scripts/ops/chat_session.py`, `bin/jhc-agent-start`, `bin/jhc-agent-stop`, `bin/jhc-agent-cycle`, `bin/jhc-chat`, `tests/test_supervisor_downstream_actions.py`, `tests/test_supervisor.py`, `tests/test_local_runtime.py`, `tests/test_runtime_pack.py`
+    - Note: The direct `jhc-chat` wrapper manages session state only; chat-side review retrieval, routing, and guidance behaviors are still missing.
+  - `[partial]` Review retrieval is grouped, compact-first, and newest-first within each group (rule: `Supervisor Agent behavior`, line: `1233`)
+    - Evidence refs: `job_hunt_copilot/supervisor.py`, `job_hunt_copilot/local_runtime.py`, `job_hunt_copilot/runtime_pack.py`, `scripts/ops/run_supervisor_cycle.py`, `scripts/ops/control_agent.py`, `scripts/ops/chat_session.py`, `bin/jhc-agent-start`, `bin/jhc-agent-stop`, `bin/jhc-agent-cycle`, `bin/jhc-chat`, `tests/test_supervisor_downstream_actions.py`, `tests/test_supervisor.py`, `tests/test_local_runtime.py`, `tests/test_runtime_pack.py`
+    - Note: The runtime pack and review-query layer exist, but the direct chat experience has not yet implemented this richer behavior end to end.
+  - `[gap]` jhc-chat uses persisted state for answers and control routing (rule: `Supervisor Agent behavior`, line: `1249`)
+    - Evidence refs: `job_hunt_copilot/supervisor.py`, `job_hunt_copilot/local_runtime.py`, `job_hunt_copilot/runtime_pack.py`, `scripts/ops/run_supervisor_cycle.py`, `scripts/ops/control_agent.py`, `scripts/ops/chat_session.py`, `bin/jhc-agent-start`, `bin/jhc-agent-stop`, `bin/jhc-agent-cycle`, `bin/jhc-chat`, `tests/test_supervisor_downstream_actions.py`, `tests/test_supervisor.py`, `tests/test_local_runtime.py`, `tests/test_runtime_pack.py`
+    - Note: The direct `jhc-chat` wrapper manages session state only; chat-side review retrieval, routing, and guidance behaviors are still missing.
+  - `[gap]` Default change summaries cover activity since the last completed expert review (rule: `Supervisor Agent behavior`, line: `1267`)
+    - Evidence refs: `job_hunt_copilot/supervisor.py`, `job_hunt_copilot/local_runtime.py`, `job_hunt_copilot/runtime_pack.py`, `scripts/ops/run_supervisor_cycle.py`, `scripts/ops/control_agent.py`, `scripts/ops/chat_session.py`, `bin/jhc-agent-start`, `bin/jhc-agent-stop`, `bin/jhc-agent-cycle`, `bin/jhc-chat`, `tests/test_supervisor_downstream_actions.py`, `tests/test_supervisor.py`, `tests/test_local_runtime.py`, `tests/test_runtime_pack.py`
+    - Note: The direct `jhc-chat` wrapper manages session state only; chat-side review retrieval, routing, and guidance behaviors are still missing.
+  - `[gap]` Expert guidance becomes live immediately but conflicting or uncertain reuse asks first (rule: `Supervisor Agent behavior`, line: `1273`)
+    - Evidence refs: `job_hunt_copilot/supervisor.py`, `job_hunt_copilot/local_runtime.py`, `job_hunt_copilot/runtime_pack.py`, `scripts/ops/run_supervisor_cycle.py`, `scripts/ops/control_agent.py`, `scripts/ops/chat_session.py`, `bin/jhc-agent-start`, `bin/jhc-agent-stop`, `bin/jhc-agent-cycle`, `bin/jhc-chat`, `tests/test_supervisor_downstream_actions.py`, `tests/test_supervisor.py`, `tests/test_local_runtime.py`, `tests/test_runtime_pack.py`
+    - Note: The direct `jhc-chat` wrapper manages session state only; chat-side review retrieval, routing, and guidance behaviors are still missing.
+  - `[gap]` Conflicting expert guidance pauses the whole autonomous system (rule: `Supervisor Agent behavior`, line: `1281`)
+    - Evidence refs: `job_hunt_copilot/supervisor.py`, `job_hunt_copilot/local_runtime.py`, `job_hunt_copilot/runtime_pack.py`, `scripts/ops/run_supervisor_cycle.py`, `scripts/ops/control_agent.py`, `scripts/ops/chat_session.py`, `bin/jhc-agent-start`, `bin/jhc-agent-stop`, `bin/jhc-agent-cycle`, `bin/jhc-chat`, `tests/test_supervisor_downstream_actions.py`, `tests/test_supervisor.py`, `tests/test_local_runtime.py`, `tests/test_runtime_pack.py`
+    - Note: The direct `jhc-chat` wrapper manages session state only; chat-side review retrieval, routing, and guidance behaviors are still missing.
+  - `[gap]` Expert-requested background tasks require explicit handoff summary and exclusive focus (rule: `Supervisor Agent behavior`, line: `1307`)
+    - Evidence refs: `job_hunt_copilot/supervisor.py`, `job_hunt_copilot/local_runtime.py`, `job_hunt_copilot/runtime_pack.py`, `scripts/ops/run_supervisor_cycle.py`, `scripts/ops/control_agent.py`, `scripts/ops/chat_session.py`, `bin/jhc-agent-start`, `bin/jhc-agent-stop`, `bin/jhc-agent-cycle`, `bin/jhc-chat`, `tests/test_supervisor_downstream_actions.py`, `tests/test_supervisor.py`, `tests/test_local_runtime.py`, `tests/test_runtime_pack.py`
+    - Note: The direct `jhc-chat` wrapper manages session state only; chat-side review retrieval, routing, and guidance behaviors are still missing.
+  - `[gap]` Expert-requested background task outcomes return to review appropriately (rule: `Supervisor Agent behavior`, line: `1314`)
+    - Evidence refs: `job_hunt_copilot/supervisor.py`, `job_hunt_copilot/local_runtime.py`, `job_hunt_copilot/runtime_pack.py`, `scripts/ops/run_supervisor_cycle.py`, `scripts/ops/control_agent.py`, `scripts/ops/chat_session.py`, `bin/jhc-agent-start`, `bin/jhc-agent-stop`, `bin/jhc-agent-cycle`, `bin/jhc-chat`, `tests/test_supervisor_downstream_actions.py`, `tests/test_supervisor.py`, `tests/test_local_runtime.py`, `tests/test_runtime_pack.py`
+    - Note: The direct `jhc-chat` wrapper manages session state only; chat-side review retrieval, routing, and guidance behaviors are still missing.
+  - `[gap]` AI agent surfaces the current review queue in chat (rule: `Review surfaces and chat-based control`, line: `1360`)
+    - Evidence refs: `job_hunt_copilot/review_queries.py`, `job_hunt_copilot/local_runtime.py`, `bin/jhc-chat`, `tests/test_review_queries.py`, `tests/test_local_runtime.py`
+    - Note: The direct `jhc-chat` wrapper manages session state only; chat-side review retrieval, routing, and guidance behaviors are still missing.
 
 ### BA10_CHAT_IDLE_TIMEOUT_RESUME: Idle-timeout resume is still backlog
 - Next slice: `BA-10-S3`
@@ -86,7 +118,9 @@
   - `python3.11 -m pytest tests/test_runtime_pack.py` (automated: Confirms generated runtime scaffolding stays honest about current action-catalog and maintenance placeholder status.)
   - `python3.11 -m pytest tests/test_acceptance_traceability.py tests/test_blocker_audit.py` (automated: Keeps the committed BA-10 acceptance and blocker reports synchronized with repo code, tests, and state references.)
 - Open scenarios:
-  - `[partial]` Expert-interaction resume follows explicit close, explicit resume, or safe idle timeout
+  - `[partial]` Expert-interaction resume follows explicit close, explicit resume, or safe idle timeout (rule: `Supervisor Agent behavior`, line: `1297`)
+    - Evidence refs: `job_hunt_copilot/supervisor.py`, `job_hunt_copilot/local_runtime.py`, `job_hunt_copilot/runtime_pack.py`, `scripts/ops/run_supervisor_cycle.py`, `scripts/ops/control_agent.py`, `scripts/ops/chat_session.py`, `bin/jhc-agent-start`, `bin/jhc-agent-stop`, `bin/jhc-agent-cycle`, `bin/jhc-chat`, `tests/test_supervisor_downstream_actions.py`, `tests/test_supervisor.py`, `tests/test_local_runtime.py`, `tests/test_runtime_pack.py`
+    - Note: Explicit close and explicit resume paths exist, but automatic idle-timeout recovery after unexpected chat exit is still backlog.
 
 ### BA10_POSTING_ABANDON_CONTROL: Posting-abandon control surface is missing
 - Next slice: `BA-10-S3`
@@ -104,7 +138,9 @@
   - `python3.11 -m pytest tests/test_local_runtime.py` (automated: Covers launchd plist wiring, control commands, chat lifecycle state, delayed feedback runners, and explicit negative control cases.)
   - `python3.11 -m pytest tests/test_acceptance_traceability.py tests/test_blocker_audit.py` (automated: Keeps the committed BA-10 acceptance and blocker reports synchronized with repo code, tests, and state references.)
 - Open scenarios:
-  - `[gap]` The user may explicitly abandon a posting from any active orchestration state
+  - `[gap]` The user may explicitly abandon a posting from any active orchestration state (rule: `Current-build orchestration remains sequential`, line: `1536`)
+    - Evidence refs: `job_hunt_copilot/resume_tailoring.py`, `job_hunt_copilot/email_discovery.py`, `job_hunt_copilot/outreach.py`, `job_hunt_copilot/delivery_feedback.py`, `job_hunt_copilot/supervisor.py`, `tests/test_resume_tailoring.py`, `tests/test_email_discovery.py`, `tests/test_outreach.py`, `tests/test_delivery_feedback.py`, `tests/test_supervisor_downstream_actions.py`, `tests/test_supervisor.py`
+    - Note: No posting-abandon runtime control surface or tests exist yet.
 
 ## Build-Board Blockers
 
@@ -112,9 +148,9 @@
 - Status: `open`
 - Severity: `high`
 - Owner role: `quality-engineer`
-- Summary: The regenerated BA-10 trace matrix still reports 194 implemented / 4 partial / 14 gap scenarios; explicit smoke-coverage targets, implemented-slice traceability, reproducible validation-command mappings, and a durable latest validation-suite report snapshot cover bootstrap, tailoring, discovery, send, feedback, review-query, and downstream supervisor follow-through, but chat review/control, idle-timeout resume, maintenance automation, and posting-abandon behavior themselves remain open.
-- Impact: Acceptance signoff is more credible now that committed smoke coverage, blocker-specific evidence refs, and explicit negative regressions exist, but BA-10 still cannot close until the remaining gap clusters are actually burned down or deliberately left open.
-- Next action: Hand the next functional slice to the quality-engineer: cross-component regression and blocker burn-down across maintenance automation, chat review/control, idle-timeout resume, and posting-abandon behavior, then refresh the BA-10 reports and validation-suite evidence.
+- Summary: The regenerated BA-10 trace matrix still reports 194 implemented / 4 partial / 14 gap scenarios; explicit smoke-coverage targets, implemented-slice traceability, reproducible validation-command mappings, and a durable latest validation-suite report snapshot cover bootstrap, tailoring, discovery, send, feedback, review-query, and downstream supervisor follow-through, and the blocker audit plus current-focus validation snapshot now enumerate the exact remaining open scenarios with rule and line references, but chat review/control, idle-timeout resume, maintenance automation, and posting-abandon behavior themselves remain open.
+- Impact: Acceptance signoff is more credible now that committed smoke coverage, blocker-specific evidence refs, explicit negative regressions, and exact open-scenario traces exist, but BA-10 still cannot close until the remaining gap clusters are actually burned down or deliberately left open.
+- Next action: Hand the next functional slice to the build lead and the relevant runtime owner for one real remaining BA-10-S3 gap, starting with posting-abandon control or idle-timeout auto-resume, then refresh the BA-10 reports and validation-suite evidence.
 - Evidence refs: `build-agent/reports/ba-10-acceptance-trace-matrix.json`, `build-agent/reports/ba-10-acceptance-trace-matrix.md`, `build-agent/reports/ba-10-blocker-audit.json`, `build-agent/reports/ba-10-blocker-audit.md`, `build-agent/reports/ba-10-validation-suite-latest.json`, `build-agent/reports/ba-10-validation-suite-latest.md`, `job_hunt_copilot/acceptance_traceability.py`, `job_hunt_copilot/blocker_audit.py`, `job_hunt_copilot/quality_validation.py`, `scripts/quality/generate_blocker_audit.py`, `scripts/quality/run_ba10_validation_suite.py`, `scripts/ops/control_agent.py`, `tests/test_acceptance_traceability.py`, `tests/test_blocker_audit.py`, `tests/test_local_runtime.py`, `tests/test_quality_validation.py`, `tests/test_supervisor_downstream_actions.py`, `tests/test_delivery_feedback.py`, `tests/test_schema.py`, `tests/test_smoke_harness.py`, `tests/test_supervisor.py`, `tests/test_runtime_pack.py`, `tests/test_resume_tailoring.py`, `tests/test_outreach.py`, `tests/test_review_queries.py`
 - Validation suite: `python3.11 scripts/quality/run_ba10_validation_suite.py --project-root <repo_root> --blocker-id BA10-TRACE-001`
 - Confirmation commands:

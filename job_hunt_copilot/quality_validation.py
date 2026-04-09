@@ -109,6 +109,30 @@ def _dedupe_command_ids(command_ids: Sequence[str]) -> list[str]:
     return _dedupe_values(command_ids)
 
 
+def _build_gap_selector_summary(cluster: dict[str, Any]) -> dict[str, Any]:
+    return {
+        "gap_id": cluster["gap_id"],
+        "title": cluster["title"],
+        "next_slice": cluster["next_slice"],
+        "open_scenario_count": cluster["open_scenario_count"],
+        "status_counts": dict(cluster.get("status_counts") or {}),
+        "validation_command_ids": [
+            command["command_id"] for command in cluster["validation_commands"]
+        ],
+        "validation_suite_command": cluster["validation_suite"]["command"],
+        "open_scenarios": [
+            {
+                "name": scenario["name"],
+                "status": scenario["status"],
+                "rule": scenario["rule"],
+                "scenario_line": scenario["scenario_line"],
+                "note": scenario.get("note"),
+            }
+            for scenario in cluster.get("scenarios", [])
+        ],
+    }
+
+
 def _resolve_audit_validation_command_ids(
     entries: Sequence[dict[str, Any]],
     *,
@@ -213,18 +237,7 @@ def resolve_validation_selector_details(
         cluster = gaps_by_id.get(gap_id)
         if cluster is None:
             raise ValueError(f"Unknown BA-10 acceptance gap: {gap_id}")
-        details["acceptance_gaps"].append(
-            {
-                "gap_id": cluster["gap_id"],
-                "title": cluster["title"],
-                "next_slice": cluster["next_slice"],
-                "open_scenario_count": cluster["open_scenario_count"],
-                "validation_command_ids": [
-                    command["command_id"] for command in cluster["validation_commands"]
-                ],
-                "validation_suite_command": cluster["validation_suite"]["command"],
-            }
-        )
+        details["acceptance_gaps"].append(_build_gap_selector_summary(cluster))
 
     for blocker_id in requested_blocker_ids:
         blocker = blockers_by_id.get(blocker_id)
@@ -245,12 +258,18 @@ def resolve_validation_selector_details(
 
     if include_current_focus:
         current_focus = audit["current_focus"]
+        gap_summaries = [
+            _build_gap_selector_summary(gaps_by_id[gap_id])
+            for gap_id in current_focus.get("gap_ids", [])
+            if gap_id in gaps_by_id
+        ]
         details["current_focus"] = {
             "epic_id": current_focus.get("epic_id"),
             "slice_id": current_focus.get("slice_id"),
             "owner_role": current_focus.get("owner_role"),
             "reason": current_focus.get("reason"),
             "gap_ids": list(current_focus.get("gap_ids") or []),
+            "gap_summaries": gap_summaries,
             "validation_command_ids": [
                 command["command_id"]
                 for command in current_focus.get("validation_commands", [])
@@ -345,10 +364,17 @@ def _build_repo_status_snapshot(project_root: Path | str) -> dict[str, Any] | No
         return None
 
     summary = dict(audit["summary"])
-    open_gap_ids = [
-        cluster["gap_id"]
+    open_gap_summaries = [
+        {
+            "gap_id": cluster["gap_id"],
+            "title": cluster["title"],
+            "open_scenario_count": cluster["open_scenario_count"],
+        }
         for cluster in audit["acceptance_gap_clusters"]
         if cluster.get("open_scenario_count")
+    ]
+    open_gap_ids = [
+        cluster["gap_id"] for cluster in open_gap_summaries
     ]
     open_blocker_ids = [
         blocker["blocker_id"]
@@ -364,6 +390,7 @@ def _build_repo_status_snapshot(project_root: Path | str) -> dict[str, Any] | No
             "open_acceptance_gap_cluster_count"
         ),
         "open_acceptance_gap_ids": open_gap_ids,
+        "open_acceptance_gap_summaries": open_gap_summaries,
         "open_build_board_blocker_count": summary.get(
             "open_build_board_blocker_count"
         ),
@@ -504,6 +531,15 @@ def render_ba10_validation_suite_markdown(report: dict[str, Any]) -> str:
             "- Open acceptance gap ids: "
             + _selector_value_text(repo_status.get("open_acceptance_gap_ids"))
         )
+        open_gap_summaries = repo_status.get("open_acceptance_gap_summaries") or []
+        if open_gap_summaries:
+            lines.append("- Open acceptance gap summaries:")
+            for gap in open_gap_summaries:
+                lines.append(
+                    "  - "
+                    f"`{gap['gap_id']}`: {gap['title']} "
+                    f"(`{gap['open_scenario_count']}` scenarios)"
+                )
         lines.append(
             "- Open build-board blockers: "
             f"`{repo_status.get('open_build_board_blocker_count')}`"
@@ -563,6 +599,13 @@ def render_ba10_validation_suite_markdown(report: dict[str, Any]) -> str:
                     f"  - Open scenario count: `{gap['open_scenario_count']}`"
                 )
                 lines.append(
+                    "  - Status counts: "
+                    + ", ".join(
+                        f"`{status}`={count}"
+                        for status, count in gap.get("status_counts", {}).items()
+                    )
+                )
+                lines.append(
                     "  - Validation command ids: "
                     + ", ".join(
                         f"`{command_id}`"
@@ -573,6 +616,15 @@ def render_ba10_validation_suite_markdown(report: dict[str, Any]) -> str:
                     "  - Validation suite: "
                     f"`{gap.get('validation_suite_command', '')}`"
                 )
+                open_scenarios = gap.get("open_scenarios") or []
+                if open_scenarios:
+                    lines.append("  - Open scenarios:")
+                    for scenario in open_scenarios:
+                        lines.append(
+                            "    - "
+                            f"`[{scenario['status']}]` {scenario['name']} "
+                            f"(rule: `{scenario['rule']}`, line: `{scenario['scenario_line']}`)"
+                        )
             lines.append("")
 
         if build_board_blockers:
@@ -612,6 +664,24 @@ def render_ba10_validation_suite_markdown(report: dict[str, Any]) -> str:
                 "- Validation suite: "
                 f"`{current_focus.get('validation_suite_command', '')}`"
             )
+            gap_summaries = current_focus.get("gap_summaries") or []
+            if gap_summaries:
+                lines.append("- Gap summaries:")
+                for gap in gap_summaries:
+                    lines.append(
+                        "  - "
+                        f"`{gap['gap_id']}`: {gap['title']} "
+                        f"(`{gap['open_scenario_count']}` scenarios)"
+                    )
+                    open_scenarios = gap.get("open_scenarios") or []
+                    if open_scenarios:
+                        lines.append(
+                            "    - Open scenarios: "
+                            + "; ".join(
+                                f"`[{scenario['status']}]` {scenario['name']}"
+                                for scenario in open_scenarios
+                            )
+                        )
 
     lines.extend(
         [

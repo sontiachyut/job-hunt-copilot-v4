@@ -936,6 +936,8 @@ epics:
           - Extended `job_hunt_copilot.quality_validation` plus `scripts/quality/run_ba10_validation_suite.py` again so dry-run payloads and durable latest-run evidence now preserve the resolved smoke-target, acceptance-gap, build-board-blocker, and current-focus selector context rather than only the flattened command list.
           - Added `build-agent/scripts/run_build_lead_cycle.build_codex_exec_command`, `tests/test_build_agent_cycle.py`, and updated `job_hunt_copilot.blocker_audit` so `BUILD-CLI-001` now has automated regression coverage for the unattended `codex exec` invocation shape while the required host-side wrapper replay remains an explicit open blocker.
           - Updated the repo-facing BA-10 report surfaces so `README.md`, `docs/ARCHITECTURE.md`, and `build-agent/reports/README.md` now point reviewers at the latest validation-suite snapshot alongside the acceptance trace matrix and blocker audit.
+          - Expanded `job_hunt_copilot.blocker_audit` and `job_hunt_copilot.quality_validation` so each remaining BA-10 gap cluster and the active `--current-focus` selector now enumerate exact open scenario names, rule names, feature-file lines, status counts, and persisted scenario notes instead of stopping at gap ids or aggregate counts.
+          - Refined `README.md`, `docs/ARCHITECTURE.md`, and `build-agent/reports/README.md` again so manager-facing repo surfaces now name the four remaining BA-10 hardening gaps explicitly and point directly at the committed acceptance trace, blocker audit, and latest validation-suite snapshot.
         validation:
           - "`python3.11 -m py_compile job_hunt_copilot/local_runtime.py job_hunt_copilot/acceptance_traceability.py job_hunt_copilot/runtime_pack.py job_hunt_copilot/paths.py scripts/ops/materialize_feedback_sync_plist.py scripts/ops/run_feedback_sync.py tests/test_local_runtime.py`"
           - "`zsh -n bin/jhc-agent-start bin/jhc-agent-stop bin/jhc-agent-cycle bin/jhc-feedback-sync-cycle bin/jhc-chat`"
@@ -1043,7 +1045,7 @@ known_blockers:
     status: open
     severity: high
     owner_role: quality-engineer
-    summary: "The regenerated BA-10 trace matrix still reports 194 implemented / 4 partial / 14 gap scenarios; explicit smoke-coverage targets, implemented-slice traceability, reproducible validation-command mappings, and a durable latest validation-suite report snapshot cover bootstrap, tailoring, discovery, send, feedback, review-query, and downstream supervisor follow-through, but chat review/control, idle-timeout resume, maintenance automation, and posting-abandon behavior themselves remain open."
+    summary: "The regenerated BA-10 trace matrix still reports 194 implemented / 4 partial / 14 gap scenarios; explicit smoke-coverage targets, implemented-slice traceability, reproducible validation-command mappings, and a durable latest validation-suite report snapshot cover bootstrap, tailoring, discovery, send, feedback, review-query, and downstream supervisor follow-through, and the blocker audit plus current-focus validation snapshot now enumerate the exact remaining open scenarios with rule and line references, but chat review/control, idle-timeout resume, maintenance automation, and posting-abandon behavior themselves remain open."
     evidence:
       - build-agent/reports/ba-10-acceptance-trace-matrix.json
       - build-agent/reports/ba-10-acceptance-trace-matrix.md
@@ -1070,8 +1072,8 @@ known_blockers:
       - tests/test_resume_tailoring.py
       - tests/test_outreach.py
       - tests/test_review_queries.py
-    impact: Acceptance signoff is more credible now that committed smoke coverage, blocker-specific evidence refs, and explicit negative regressions exist, but BA-10 still cannot close until the remaining gap clusters are actually burned down or deliberately left open.
-    next_action: "Hand the next functional slice to the quality-engineer: cross-component regression and blocker burn-down across maintenance automation, chat review/control, idle-timeout resume, and posting-abandon behavior, then refresh the BA-10 reports and validation-suite evidence."
+    impact: Acceptance signoff is more credible now that committed smoke coverage, blocker-specific evidence refs, explicit negative regressions, and exact open-scenario traces exist, but BA-10 still cannot close until the remaining gap clusters are actually burned down or deliberately left open.
+    next_action: "Hand the next functional slice to the build lead and the relevant runtime owner for one real remaining BA-10-S3 gap, starting with posting-abandon control or idle-timeout auto-resume, then refresh the BA-10 reports and validation-suite evidence."
   - blocker_id: BUILD-CLI-001
     status: open
     severity: medium

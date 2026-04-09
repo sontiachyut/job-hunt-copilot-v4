@@ -107,6 +107,10 @@ def test_validation_selector_details_include_requested_smoke_gap_blocker_and_cur
         "title": "Maintenance workflow and artifacts are not implemented",
         "next_slice": "BA-10-S3",
         "open_scenario_count": 6,
+        "status_counts": {
+            "partial": 1,
+            "gap": 5,
+        },
         "validation_command_ids": [
             "qa_runtime_pack_regressions",
             "qa_acceptance_reports",
@@ -115,6 +119,50 @@ def test_validation_selector_details_include_requested_smoke_gap_blocker_and_cur
             "python3.11 scripts/quality/run_ba10_validation_suite.py "
             "--project-root <repo_root> --gap-id BA10_MAINTENANCE_AUTOMATION"
         ),
+        "open_scenarios": [
+            {
+                "name": "Maintenance change artifacts exist for every autonomous maintenance batch",
+                "status": "gap",
+                "rule": "Machine handoff contracts and canonical state",
+                "scenario_line": 220,
+                "note": "Maintenance artifacts are specified in the schema and PRD, but no maintenance batch workflow writes them yet.",
+            },
+            {
+                "name": "Supervisor work selection follows the current default priority order",
+                "status": "partial",
+                "rule": "Supervisor Agent behavior",
+                "scenario_line": 1132,
+                "note": "Current supervisor regressions prove open incidents outrank ordinary pipeline advancement, existing runs outrank new posting bootstrap, new postings outrank opportunistic contact-rooted general-learning work, and contact-rooted general-learning work now covers bounded delayed feedback, send-ready dispatch, and email discovery, but bounded maintenance work itself still has no dedicated selector or action path.",
+            },
+            {
+                "name": "Daily maintenance is mandatory, bounded, and run-boundary aware",
+                "status": "gap",
+                "rule": "Supervisor Agent behavior",
+                "scenario_line": 1322,
+                "note": "Only maintenance placeholders exist today; the maintenance workflow itself is still missing.",
+            },
+            {
+                "name": "Maintenance changes follow the current git and approval workflow",
+                "status": "gap",
+                "rule": "Supervisor Agent behavior",
+                "scenario_line": 1331,
+                "note": "Only maintenance placeholders exist today; the maintenance workflow itself is still missing.",
+            },
+            {
+                "name": "Proper maintenance validation requires both change-scoped and full-project testing",
+                "status": "gap",
+                "rule": "Supervisor Agent behavior",
+                "scenario_line": 1342,
+                "note": "Only maintenance placeholders exist today; the maintenance workflow itself is still missing.",
+            },
+            {
+                "name": "Failed or unapproved maintenance batches remain reviewable",
+                "status": "gap",
+                "rule": "Supervisor Agent behavior",
+                "scenario_line": 1349,
+                "note": "Only maintenance placeholders exist today; the maintenance workflow itself is still missing.",
+            },
+        ],
     }
     assert details["build_board_blockers"][0]["blocker_id"] == "BA10-TRACE-001"
     assert details["build_board_blockers"][0]["validation_command_ids"] == [
@@ -145,6 +193,19 @@ def test_validation_selector_details_include_requested_smoke_gap_blocker_and_cur
         "qa_runtime_control_regressions",
         "qa_review_surface_regressions",
     ]
+    assert [gap["gap_id"] for gap in details["current_focus"]["gap_summaries"]] == [
+        "BA10_MAINTENANCE_AUTOMATION",
+        "BA10_CHAT_REVIEW_AND_CONTROL",
+        "BA10_CHAT_IDLE_TIMEOUT_RESUME",
+        "BA10_POSTING_ABANDON_CONTROL",
+    ]
+    assert details["current_focus"]["gap_summaries"][0]["open_scenarios"][0] == {
+        "name": "Maintenance change artifacts exist for every autonomous maintenance batch",
+        "status": "gap",
+        "rule": "Machine handoff contracts and canonical state",
+        "scenario_line": 220,
+        "note": "Maintenance artifacts are specified in the schema and PRD, but no maintenance batch workflow writes them yet.",
+    }
     assert details["current_focus"]["validation_suite_command"] == (
         "python3.11 scripts/quality/run_ba10_validation_suite.py "
         "--project-root <repo_root> --current-focus"
@@ -274,6 +335,10 @@ def test_quality_validation_suite_script_dry_run_expands_gap_ids():
             "title": "Maintenance workflow and artifacts are not implemented",
             "next_slice": "BA-10-S3",
             "open_scenario_count": 6,
+            "status_counts": {
+                "partial": 1,
+                "gap": 5,
+            },
             "validation_command_ids": [
                 "qa_runtime_pack_regressions",
                 "qa_acceptance_reports",
@@ -282,6 +347,50 @@ def test_quality_validation_suite_script_dry_run_expands_gap_ids():
                 "python3.11 scripts/quality/run_ba10_validation_suite.py "
                 "--project-root <repo_root> --gap-id BA10_MAINTENANCE_AUTOMATION"
             ),
+            "open_scenarios": [
+                {
+                    "name": "Maintenance change artifacts exist for every autonomous maintenance batch",
+                    "status": "gap",
+                    "rule": "Machine handoff contracts and canonical state",
+                    "scenario_line": 220,
+                    "note": "Maintenance artifacts are specified in the schema and PRD, but no maintenance batch workflow writes them yet.",
+                },
+                {
+                    "name": "Supervisor work selection follows the current default priority order",
+                    "status": "partial",
+                    "rule": "Supervisor Agent behavior",
+                    "scenario_line": 1132,
+                    "note": "Current supervisor regressions prove open incidents outrank ordinary pipeline advancement, existing runs outrank new posting bootstrap, new postings outrank opportunistic contact-rooted general-learning work, and contact-rooted general-learning work now covers bounded delayed feedback, send-ready dispatch, and email discovery, but bounded maintenance work itself still has no dedicated selector or action path.",
+                },
+                {
+                    "name": "Daily maintenance is mandatory, bounded, and run-boundary aware",
+                    "status": "gap",
+                    "rule": "Supervisor Agent behavior",
+                    "scenario_line": 1322,
+                    "note": "Only maintenance placeholders exist today; the maintenance workflow itself is still missing.",
+                },
+                {
+                    "name": "Maintenance changes follow the current git and approval workflow",
+                    "status": "gap",
+                    "rule": "Supervisor Agent behavior",
+                    "scenario_line": 1331,
+                    "note": "Only maintenance placeholders exist today; the maintenance workflow itself is still missing.",
+                },
+                {
+                    "name": "Proper maintenance validation requires both change-scoped and full-project testing",
+                    "status": "gap",
+                    "rule": "Supervisor Agent behavior",
+                    "scenario_line": 1342,
+                    "note": "Only maintenance placeholders exist today; the maintenance workflow itself is still missing.",
+                },
+                {
+                    "name": "Failed or unapproved maintenance batches remain reviewable",
+                    "status": "gap",
+                    "rule": "Supervisor Agent behavior",
+                    "scenario_line": 1349,
+                    "note": "Only maintenance placeholders exist today; the maintenance workflow itself is still missing.",
+                },
+            ],
         }
     ]
 
@@ -398,6 +507,12 @@ def test_quality_validation_suite_script_dry_run_expands_current_focus():
         "qa_runtime_control_regressions",
         "qa_review_surface_regressions",
     ]
+    assert [gap["gap_id"] for gap in current_focus["gap_summaries"]] == [
+        "BA10_MAINTENANCE_AUTOMATION",
+        "BA10_CHAT_REVIEW_AND_CONTROL",
+        "BA10_CHAT_IDLE_TIMEOUT_RESUME",
+        "BA10_POSTING_ABANDON_CONTROL",
+    ]
     assert current_focus["validation_suite_command"] == (
         "python3.11 scripts/quality/run_ba10_validation_suite.py "
         "--project-root <repo_root> --current-focus"
@@ -502,6 +617,18 @@ def test_build_ba10_validation_suite_report_summarizes_results():
                     "BA10_CHAT_IDLE_TIMEOUT_RESUME",
                     "BA10_POSTING_ABANDON_CONTROL",
                 ],
+                "open_acceptance_gap_summaries": [
+                    {
+                        "gap_id": "BA10_MAINTENANCE_AUTOMATION",
+                        "title": "Maintenance workflow and artifacts are not implemented",
+                        "open_scenario_count": 6,
+                    },
+                    {
+                        "gap_id": "BA10_CHAT_REVIEW_AND_CONTROL",
+                        "title": "Chat review and control remain wrapper-only",
+                        "open_scenario_count": 10,
+                    },
+                ],
                 "open_build_board_blocker_count": 3,
                 "open_build_board_blocker_ids": [
                     "BA10-TRACE-001",
@@ -549,6 +676,10 @@ def test_build_ba10_validation_suite_report_summarizes_results():
                         "title": "Maintenance workflow and artifacts are not implemented",
                         "next_slice": "BA-10-S3",
                         "open_scenario_count": 6,
+                        "status_counts": {
+                            "partial": 1,
+                            "gap": 5,
+                        },
                         "validation_command_ids": [
                             "qa_runtime_pack_regressions",
                             "qa_acceptance_reports",
@@ -557,6 +688,22 @@ def test_build_ba10_validation_suite_report_summarizes_results():
                             "python3.11 scripts/quality/run_ba10_validation_suite.py "
                             "--project-root <repo_root> --gap-id BA10_MAINTENANCE_AUTOMATION"
                         ),
+                        "open_scenarios": [
+                            {
+                                "name": "Maintenance change artifacts exist for every autonomous maintenance batch",
+                                "status": "gap",
+                                "rule": "Machine handoff contracts and canonical state",
+                                "scenario_line": 220,
+                                "note": "Maintenance artifacts are specified in the schema and PRD, but no maintenance batch workflow writes them yet.",
+                            },
+                            {
+                                "name": "Supervisor work selection follows the current default priority order",
+                                "status": "partial",
+                                "rule": "Supervisor Agent behavior",
+                                "scenario_line": 1132,
+                                "note": "Current supervisor regressions prove open incidents outrank ordinary pipeline advancement, existing runs outrank new posting bootstrap, new postings outrank opportunistic contact-rooted general-learning work, and contact-rooted general-learning work now covers bounded delayed feedback, send-ready dispatch, and email discovery, but bounded maintenance work itself still has no dedicated selector or action path.",
+                            },
+                        ],
                     }
                 ],
                 "build_board_blockers": [],
@@ -570,6 +717,35 @@ def test_build_ba10_validation_suite_report_summarizes_results():
                         "BA10_CHAT_REVIEW_AND_CONTROL",
                         "BA10_CHAT_IDLE_TIMEOUT_RESUME",
                         "BA10_POSTING_ABANDON_CONTROL",
+                    ],
+                    "gap_summaries": [
+                        {
+                            "gap_id": "BA10_MAINTENANCE_AUTOMATION",
+                            "title": "Maintenance workflow and artifacts are not implemented",
+                            "next_slice": "BA-10-S3",
+                            "open_scenario_count": 6,
+                            "status_counts": {
+                                "partial": 1,
+                                "gap": 5,
+                            },
+                            "validation_command_ids": [
+                                "qa_runtime_pack_regressions",
+                                "qa_acceptance_reports",
+                            ],
+                            "validation_suite_command": (
+                                "python3.11 scripts/quality/run_ba10_validation_suite.py "
+                                "--project-root <repo_root> --gap-id BA10_MAINTENANCE_AUTOMATION"
+                            ),
+                            "open_scenarios": [
+                                {
+                                    "name": "Maintenance change artifacts exist for every autonomous maintenance batch",
+                                    "status": "gap",
+                                    "rule": "Machine handoff contracts and canonical state",
+                                    "scenario_line": 220,
+                                    "note": "Maintenance artifacts are specified in the schema and PRD, but no maintenance batch workflow writes them yet.",
+                                }
+                            ],
+                        }
                     ],
                     "validation_command_ids": [
                         "qa_runtime_pack_regressions",
@@ -640,6 +816,18 @@ def test_build_ba10_validation_suite_report_summarizes_results():
             "BA10_CHAT_IDLE_TIMEOUT_RESUME",
             "BA10_POSTING_ABANDON_CONTROL",
         ],
+        "open_acceptance_gap_summaries": [
+            {
+                "gap_id": "BA10_MAINTENANCE_AUTOMATION",
+                "title": "Maintenance workflow and artifacts are not implemented",
+                "open_scenario_count": 6,
+            },
+            {
+                "gap_id": "BA10_CHAT_REVIEW_AND_CONTROL",
+                "title": "Chat review and control remain wrapper-only",
+                "open_scenario_count": 10,
+            },
+        ],
         "open_build_board_blocker_count": 3,
         "open_build_board_blocker_ids": [
             "BA10-TRACE-001",
@@ -663,6 +851,11 @@ def test_build_ba10_validation_suite_report_summarizes_results():
     assert "- Failed command ids: `qa_host_launchd_validation`" in markdown
     assert "## Open BA-10 Status" in markdown
     assert "- Open acceptance gap clusters: `4`" in markdown
+    assert "- Open acceptance gap summaries:" in markdown
+    assert (
+        "  - `BA10_MAINTENANCE_AUTOMATION`: Maintenance workflow and artifacts are not implemented (`6` scenarios)"
+        in markdown
+    )
     assert "- Open build-board blocker ids: `BA10-TRACE-001`, `BUILD-CLI-001`, `OPS-LAUNCHD-001`" in markdown
     assert "## Selector Details" in markdown
     assert "### Smoke Targets" in markdown
@@ -672,6 +865,11 @@ def test_build_ba10_validation_suite_report_summarizes_results():
     assert (
         "- `BA10_MAINTENANCE_AUTOMATION`: Maintenance workflow and artifacts are not implemented"
     ) in markdown
+    assert (
+        "    - `[gap]` Maintenance change artifacts exist for every autonomous maintenance batch (rule: `Machine handoff contracts and canonical state`, line: `220`)"
+        in markdown
+    )
+    assert "- Gap summaries:" in markdown
     assert "| qa_smoke_flow | automated | passed | 0 | 1.250 |" in markdown
     assert "### qa_host_launchd_validation: Host launchd validation" in markdown
 
@@ -702,6 +900,13 @@ def test_write_ba10_validation_suite_reports_persists_json_and_markdown(tmp_path
                 "open_acceptance_gap_cluster_count": 4,
                 "open_acceptance_gap_ids": [
                     "BA10_MAINTENANCE_AUTOMATION",
+                ],
+                "open_acceptance_gap_summaries": [
+                    {
+                        "gap_id": "BA10_MAINTENANCE_AUTOMATION",
+                        "title": "Maintenance workflow and artifacts are not implemented",
+                        "open_scenario_count": 6,
+                    }
                 ],
                 "open_build_board_blocker_count": 1,
                 "open_build_board_blocker_ids": ["OPS-LAUNCHD-001"],

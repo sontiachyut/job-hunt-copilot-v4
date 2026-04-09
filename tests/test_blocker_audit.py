@@ -84,6 +84,27 @@ def test_ba10_blocker_audit_reports_are_current_and_reference_real_repo_paths():
     assert maintenance_cluster["next_slice"] == "BA-10-S3"
     assert maintenance_cluster["status_counts"] == {"partial": 1, "gap": 5}
     assert "BA-10-S3" in maintenance_cluster["slice_ids"]
+    maintenance_scenario = maintenance_cluster["scenarios"][0]
+    assert maintenance_scenario["rule"] == "Machine handoff contracts and canonical state"
+    assert (
+        maintenance_scenario["name"]
+        == "Maintenance change artifacts exist for every autonomous maintenance batch"
+    )
+    assert maintenance_scenario["scenario_line"] == 220
+    assert maintenance_scenario["status"] == "gap"
+    assert maintenance_scenario["owner_role"] == "build-lead"
+    assert "BA-01" in maintenance_scenario["epic_ids"]
+    assert "BA-09" in maintenance_scenario["epic_ids"]
+    assert "BA-01-S1" in maintenance_scenario["slice_ids"]
+    assert "BA-09-S3" in maintenance_scenario["slice_ids"]
+    assert "job_hunt_copilot/supervisor.py" in maintenance_scenario["code_refs"]
+    assert "job_hunt_copilot/review_queries.py" in maintenance_scenario["code_refs"]
+    assert "tests/test_supervisor.py" in maintenance_scenario["test_refs"]
+    assert "tests/test_review_queries.py" in maintenance_scenario["test_refs"]
+    assert (
+        maintenance_scenario["note"]
+        == "Maintenance artifacts are specified in the schema and PRD, but no maintenance batch workflow writes them yet."
+    )
 
     build_cli_blocker = next(
         blocker

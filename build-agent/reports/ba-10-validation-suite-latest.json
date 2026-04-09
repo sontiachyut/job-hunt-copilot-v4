@@ -32,6 +32,205 @@
         "BA10_CHAT_IDLE_TIMEOUT_RESUME",
         "BA10_POSTING_ABANDON_CONTROL"
       ],
+      "gap_summaries": [
+        {
+          "gap_id": "BA10_MAINTENANCE_AUTOMATION",
+          "title": "Maintenance workflow and artifacts are not implemented",
+          "next_slice": "BA-10-S3",
+          "open_scenario_count": 6,
+          "status_counts": {
+            "partial": 1,
+            "gap": 5
+          },
+          "validation_command_ids": [
+            "qa_runtime_pack_regressions",
+            "qa_acceptance_reports"
+          ],
+          "validation_suite_command": "python3.11 scripts/quality/run_ba10_validation_suite.py --project-root <repo_root> --gap-id BA10_MAINTENANCE_AUTOMATION",
+          "open_scenarios": [
+            {
+              "name": "Maintenance change artifacts exist for every autonomous maintenance batch",
+              "status": "gap",
+              "rule": "Machine handoff contracts and canonical state",
+              "scenario_line": 220,
+              "note": "Maintenance artifacts are specified in the schema and PRD, but no maintenance batch workflow writes them yet."
+            },
+            {
+              "name": "Supervisor work selection follows the current default priority order",
+              "status": "partial",
+              "rule": "Supervisor Agent behavior",
+              "scenario_line": 1132,
+              "note": "Current supervisor regressions prove open incidents outrank ordinary pipeline advancement, existing runs outrank new posting bootstrap, new postings outrank opportunistic contact-rooted general-learning work, and contact-rooted general-learning work now covers bounded delayed feedback, send-ready dispatch, and email discovery, but bounded maintenance work itself still has no dedicated selector or action path."
+            },
+            {
+              "name": "Daily maintenance is mandatory, bounded, and run-boundary aware",
+              "status": "gap",
+              "rule": "Supervisor Agent behavior",
+              "scenario_line": 1322,
+              "note": "Only maintenance placeholders exist today; the maintenance workflow itself is still missing."
+            },
+            {
+              "name": "Maintenance changes follow the current git and approval workflow",
+              "status": "gap",
+              "rule": "Supervisor Agent behavior",
+              "scenario_line": 1331,
+              "note": "Only maintenance placeholders exist today; the maintenance workflow itself is still missing."
+            },
+            {
+              "name": "Proper maintenance validation requires both change-scoped and full-project testing",
+              "status": "gap",
+              "rule": "Supervisor Agent behavior",
+              "scenario_line": 1342,
+              "note": "Only maintenance placeholders exist today; the maintenance workflow itself is still missing."
+            },
+            {
+              "name": "Failed or unapproved maintenance batches remain reviewable",
+              "status": "gap",
+              "rule": "Supervisor Agent behavior",
+              "scenario_line": 1349,
+              "note": "Only maintenance placeholders exist today; the maintenance workflow itself is still missing."
+            }
+          ]
+        },
+        {
+          "gap_id": "BA10_CHAT_REVIEW_AND_CONTROL",
+          "title": "Chat review and control remain wrapper-only",
+          "next_slice": "BA-10-S3",
+          "open_scenario_count": 10,
+          "status_counts": {
+            "partial": 2,
+            "gap": 8
+          },
+          "validation_command_ids": [
+            "qa_runtime_control_regressions",
+            "qa_review_surface_regressions",
+            "qa_runtime_pack_regressions",
+            "qa_acceptance_reports"
+          ],
+          "validation_suite_command": "python3.11 scripts/quality/run_ba10_validation_suite.py --project-root <repo_root> --gap-id BA10_CHAT_REVIEW_AND_CONTROL",
+          "open_scenarios": [
+            {
+              "name": "jhc-chat startup dashboard is detailed, bounded, and clean-first",
+              "status": "partial",
+              "rule": "Supervisor Agent behavior",
+              "scenario_line": 1218,
+              "note": "The runtime pack and review-query layer exist, but the direct chat experience has not yet implemented this richer behavior end to end."
+            },
+            {
+              "name": "Startup dashboard runtime metrics count only active autonomous execution",
+              "status": "gap",
+              "rule": "Supervisor Agent behavior",
+              "scenario_line": 1227,
+              "note": "The direct `jhc-chat` wrapper manages session state only; chat-side review retrieval, routing, and guidance behaviors are still missing."
+            },
+            {
+              "name": "Review retrieval is grouped, compact-first, and newest-first within each group",
+              "status": "partial",
+              "rule": "Supervisor Agent behavior",
+              "scenario_line": 1233,
+              "note": "The runtime pack and review-query layer exist, but the direct chat experience has not yet implemented this richer behavior end to end."
+            },
+            {
+              "name": "jhc-chat uses persisted state for answers and control routing",
+              "status": "gap",
+              "rule": "Supervisor Agent behavior",
+              "scenario_line": 1249,
+              "note": "The direct `jhc-chat` wrapper manages session state only; chat-side review retrieval, routing, and guidance behaviors are still missing."
+            },
+            {
+              "name": "Default change summaries cover activity since the last completed expert review",
+              "status": "gap",
+              "rule": "Supervisor Agent behavior",
+              "scenario_line": 1267,
+              "note": "The direct `jhc-chat` wrapper manages session state only; chat-side review retrieval, routing, and guidance behaviors are still missing."
+            },
+            {
+              "name": "Expert guidance becomes live immediately but conflicting or uncertain reuse asks first",
+              "status": "gap",
+              "rule": "Supervisor Agent behavior",
+              "scenario_line": 1273,
+              "note": "The direct `jhc-chat` wrapper manages session state only; chat-side review retrieval, routing, and guidance behaviors are still missing."
+            },
+            {
+              "name": "Conflicting expert guidance pauses the whole autonomous system",
+              "status": "gap",
+              "rule": "Supervisor Agent behavior",
+              "scenario_line": 1281,
+              "note": "The direct `jhc-chat` wrapper manages session state only; chat-side review retrieval, routing, and guidance behaviors are still missing."
+            },
+            {
+              "name": "Expert-requested background tasks require explicit handoff summary and exclusive focus",
+              "status": "gap",
+              "rule": "Supervisor Agent behavior",
+              "scenario_line": 1307,
+              "note": "The direct `jhc-chat` wrapper manages session state only; chat-side review retrieval, routing, and guidance behaviors are still missing."
+            },
+            {
+              "name": "Expert-requested background task outcomes return to review appropriately",
+              "status": "gap",
+              "rule": "Supervisor Agent behavior",
+              "scenario_line": 1314,
+              "note": "The direct `jhc-chat` wrapper manages session state only; chat-side review retrieval, routing, and guidance behaviors are still missing."
+            },
+            {
+              "name": "AI agent surfaces the current review queue in chat",
+              "status": "gap",
+              "rule": "Review surfaces and chat-based control",
+              "scenario_line": 1360,
+              "note": "The direct `jhc-chat` wrapper manages session state only; chat-side review retrieval, routing, and guidance behaviors are still missing."
+            }
+          ]
+        },
+        {
+          "gap_id": "BA10_CHAT_IDLE_TIMEOUT_RESUME",
+          "title": "Idle-timeout resume is still backlog",
+          "next_slice": "BA-10-S3",
+          "open_scenario_count": 1,
+          "status_counts": {
+            "partial": 1,
+            "gap": 0
+          },
+          "validation_command_ids": [
+            "qa_runtime_control_regressions",
+            "qa_runtime_pack_regressions",
+            "qa_acceptance_reports"
+          ],
+          "validation_suite_command": "python3.11 scripts/quality/run_ba10_validation_suite.py --project-root <repo_root> --gap-id BA10_CHAT_IDLE_TIMEOUT_RESUME",
+          "open_scenarios": [
+            {
+              "name": "Expert-interaction resume follows explicit close, explicit resume, or safe idle timeout",
+              "status": "partial",
+              "rule": "Supervisor Agent behavior",
+              "scenario_line": 1297,
+              "note": "Explicit close and explicit resume paths exist, but automatic idle-timeout recovery after unexpected chat exit is still backlog."
+            }
+          ]
+        },
+        {
+          "gap_id": "BA10_POSTING_ABANDON_CONTROL",
+          "title": "Posting-abandon control surface is missing",
+          "next_slice": "BA-10-S3",
+          "open_scenario_count": 1,
+          "status_counts": {
+            "partial": 0,
+            "gap": 1
+          },
+          "validation_command_ids": [
+            "qa_runtime_control_regressions",
+            "qa_acceptance_reports"
+          ],
+          "validation_suite_command": "python3.11 scripts/quality/run_ba10_validation_suite.py --project-root <repo_root> --gap-id BA10_POSTING_ABANDON_CONTROL",
+          "open_scenarios": [
+            {
+              "name": "The user may explicitly abandon a posting from any active orchestration state",
+              "status": "gap",
+              "rule": "Current-build orchestration remains sequential",
+              "scenario_line": 1536,
+              "note": "No posting-abandon runtime control surface or tests exist yet."
+            }
+          ]
+        }
+      ],
       "validation_command_ids": [
         "qa_runtime_pack_regressions",
         "qa_acceptance_reports",
@@ -50,7 +249,7 @@
       "description": "Confirms generated runtime scaffolding stays honest about current action-catalog and maintenance placeholder status.",
       "status": "passed",
       "returncode": 0,
-      "duration_seconds": 0.233
+      "duration_seconds": 0.206
     },
     {
       "command_id": "qa_acceptance_reports",
@@ -60,7 +259,7 @@
       "description": "Keeps the committed BA-10 acceptance and blocker reports synchronized with repo code, tests, and state references.",
       "status": "passed",
       "returncode": 0,
-      "duration_seconds": 0.319
+      "duration_seconds": 0.328
     },
     {
       "command_id": "qa_runtime_control_regressions",
@@ -70,7 +269,7 @@
       "description": "Covers launchd plist wiring, control commands, chat lifecycle state, delayed feedback runners, and explicit negative control cases.",
       "status": "passed",
       "returncode": 0,
-      "duration_seconds": 4.454
+      "duration_seconds": 4.351
     },
     {
       "command_id": "qa_review_surface_regressions",
@@ -80,13 +279,13 @@
       "description": "Verifies persisted grouped review surfaces and traceability reads that back the chat/review boundary.",
       "status": "passed",
       "returncode": 0,
-      "duration_seconds": 0.463
+      "duration_seconds": 0.445
     }
   ],
   "failed_command_ids": [],
   "passed": true,
   "validation_suite_report_version": 2,
-  "generated_at": "2026-04-09T01:24:28Z",
+  "generated_at": "2026-04-09T01:41:54Z",
   "summary": {
     "command_count": 4,
     "command_kind_counts": {
@@ -94,7 +293,7 @@
     },
     "passed_command_count": 4,
     "failed_command_count": 0,
-    "total_duration_seconds": 5.469
+    "total_duration_seconds": 5.33
   },
   "repo_status": {
     "acceptance_scenario_count": 214,
@@ -112,6 +311,28 @@
       "BA10_CHAT_REVIEW_AND_CONTROL",
       "BA10_CHAT_IDLE_TIMEOUT_RESUME",
       "BA10_POSTING_ABANDON_CONTROL"
+    ],
+    "open_acceptance_gap_summaries": [
+      {
+        "gap_id": "BA10_MAINTENANCE_AUTOMATION",
+        "title": "Maintenance workflow and artifacts are not implemented",
+        "open_scenario_count": 6
+      },
+      {
+        "gap_id": "BA10_CHAT_REVIEW_AND_CONTROL",
+        "title": "Chat review and control remain wrapper-only",
+        "open_scenario_count": 10
+      },
+      {
+        "gap_id": "BA10_CHAT_IDLE_TIMEOUT_RESUME",
+        "title": "Idle-timeout resume is still backlog",
+        "open_scenario_count": 1
+      },
+      {
+        "gap_id": "BA10_POSTING_ABANDON_CONTROL",
+        "title": "Posting-abandon control surface is missing",
+        "open_scenario_count": 1
+      }
     ],
     "open_build_board_blocker_count": 3,
     "open_build_board_blocker_ids": [
