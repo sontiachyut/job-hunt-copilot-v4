@@ -8,7 +8,10 @@ import sys
 from datetime import timedelta, timezone
 from pathlib import Path
 
-from job_hunt_copilot.chat_runtime import build_chat_startup_dashboard
+from job_hunt_copilot.chat_runtime import (
+    build_chat_review_queue,
+    build_chat_startup_dashboard,
+)
 import job_hunt_copilot.local_runtime as local_runtime
 from job_hunt_copilot.delivery_feedback import DeliveryFeedbackSignal
 from job_hunt_copilot.local_runtime import execute_delayed_feedback_sync, execute_supervisor_heartbeat
@@ -493,6 +496,178 @@ def seed_chat_dashboard_state(connection: sqlite3.Connection) -> None:
             "2026-04-07T15:20:00Z",
             "Let's reconnect next quarter.",
             "2026-04-07T15:20:00Z",
+        ),
+    )
+    connection.commit()
+
+
+def seed_chat_review_queue_state(connection: sqlite3.Connection) -> None:
+    seed_chat_dashboard_state(connection)
+    connection.execute(
+        """
+        INSERT INTO linkedin_leads (
+          lead_id, lead_identity_key, lead_status, lead_shape, split_review_status,
+          source_type, source_reference, source_mode, source_url, company_name, role_title,
+          created_at, updated_at
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        """,
+        (
+            "ld_chat_newer",
+            "beta-labs|ml-platform-engineer",
+            "handed_off",
+            "posting_only",
+            "not_applicable",
+            "gmail_job_alert",
+            "gmail/message/chat-newer",
+            "gmail_job_alert",
+            "https://careers.beta.example/jobs/ml-platform",
+            "Beta Labs",
+            "ML Platform Engineer",
+            "2026-04-08T15:00:00Z",
+            "2026-04-08T15:00:00Z",
+        ),
+    )
+    connection.execute(
+        """
+        INSERT INTO job_postings (
+          job_posting_id, lead_id, posting_identity_key, company_name, role_title,
+          posting_status, created_at, updated_at
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+        """,
+        (
+            "jp_chat_newer",
+            "ld_chat_newer",
+            "beta-labs|ml-platform-engineer",
+            "Beta Labs",
+            "ML Platform Engineer",
+            "delivery_feedback",
+            "2026-04-08T15:00:00Z",
+            "2026-04-08T15:00:00Z",
+        ),
+    )
+    connection.execute(
+        """
+        INSERT INTO pipeline_runs (
+          pipeline_run_id, run_scope_type, run_status, current_stage, lead_id,
+          job_posting_id, review_packet_status, run_summary, started_at, completed_at,
+          created_at, updated_at
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        """,
+        (
+            "pr_chat_review_newer",
+            "job_posting",
+            "escalated",
+            "email_discovery",
+            "ld_chat_newer",
+            "jp_chat_newer",
+            "pending_expert_review",
+            "Newer discovery stall needs expert review.",
+            "2026-04-08T15:00:00Z",
+            "2026-04-08T15:10:00Z",
+            "2026-04-08T15:00:00Z",
+            "2026-04-08T15:10:00Z",
+        ),
+    )
+    connection.execute(
+        """
+        INSERT INTO expert_review_packets (
+          expert_review_packet_id, pipeline_run_id, packet_status, packet_path,
+          job_posting_id, summary_excerpt, created_at
+        ) VALUES (?, ?, ?, ?, ?, ?, ?)
+        """,
+        (
+            "erp_chat_newer",
+            "pr_chat_review_newer",
+            "pending_expert_review",
+            "ops/review-packets/pr_chat_review_newer/review_packet.md",
+            "jp_chat_newer",
+            "Discovery stalled after contact enrichment.",
+            "2026-04-08T15:11:00Z",
+        ),
+    )
+    connection.execute(
+        """
+        INSERT INTO pipeline_runs (
+          pipeline_run_id, run_scope_type, run_status, current_stage, lead_id,
+          job_posting_id, review_packet_status, run_summary, started_at, completed_at,
+          created_at, updated_at
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        """,
+        (
+            "pr_background_older",
+            "expert_requested_background_task",
+            "failed",
+            "investigation",
+            None,
+            None,
+            "not_ready",
+            "Investigate mailbox bounce pattern.",
+            "2026-04-08T14:00:00Z",
+            "2026-04-08T14:20:00Z",
+            "2026-04-08T14:00:00Z",
+            "2026-04-08T14:20:00Z",
+        ),
+    )
+    connection.execute(
+        """
+        INSERT INTO pipeline_runs (
+          pipeline_run_id, run_scope_type, run_status, current_stage, lead_id,
+          job_posting_id, review_packet_status, run_summary, started_at, completed_at,
+          created_at, updated_at
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        """,
+        (
+            "pr_background_newer",
+            "expert_requested_background_task",
+            "paused",
+            "repair",
+            None,
+            None,
+            "not_ready",
+            "Reconcile launchctl bootstrap failure evidence.",
+            "2026-04-08T15:05:00Z",
+            None,
+            "2026-04-08T15:05:00Z",
+            "2026-04-08T15:21:00Z",
+        ),
+    )
+    connection.execute(
+        """
+        INSERT INTO maintenance_change_batches (
+          maintenance_change_batch_id, branch_name, scope_slug, status, approval_outcome,
+          summary_path, json_path, validation_summary, failed_at, created_at
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        """,
+        (
+            "mcb_chat_newer",
+            "maintenance/20260408-mcb-feedback-retry-hardening",
+            "feedback-retry-hardening",
+            "failed_validation",
+            "needs_review",
+            "ops/maintenance/mcb_chat_newer/summary.md",
+            "ops/maintenance/mcb_chat_newer/summary.json",
+            "Scoped retry checks passed but the full regression replay failed.",
+            "2026-04-08T15:16:00Z",
+            "2026-04-08T15:04:00Z",
+        ),
+    )
+    connection.execute(
+        """
+        INSERT INTO agent_incidents (
+          agent_incident_id, incident_type, severity, status, summary,
+          pipeline_run_id, job_posting_id, created_at, updated_at
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+        """,
+        (
+            "ai_chat_newer",
+            "email_discovery_stalled",
+            "medium",
+            "open",
+            "Contact enrichment stalled without a verified working email.",
+            "pr_chat_review_newer",
+            "jp_chat_newer",
+            "2026-04-08T15:12:00Z",
+            "2026-04-08T15:18:00Z",
         ),
     )
     connection.commit()
@@ -1330,6 +1505,63 @@ def test_chat_session_begin_persists_startup_briefing_for_wrapper_startup(tmp_pa
     assert "Pending expert review packets: 1" in begin_report["startup_briefing"]
     assert "Autonomous maintenance change batches: 1" in begin_report["startup_briefing"]
     assert "Open incidents: 1" in begin_report["startup_briefing"]
+
+
+def test_chat_review_queue_is_compact_first_and_newest_first_within_each_group(tmp_path):
+    project_root = tmp_path / "repo"
+    project_root.mkdir()
+    create_minimal_project(project_root)
+    run_script(
+        "scripts/ops/control_agent.py",
+        "status",
+        "--project-root",
+        str(project_root),
+    )
+
+    connection = connect_database(project_root / "job_hunt_copilot.db")
+    seed_chat_review_queue_state(connection)
+    review_queue = build_chat_review_queue(
+        connection,
+        project_root=project_root,
+        local_timezone=timezone(timedelta(hours=-7)),
+        max_items_per_group=1,
+    )
+    connection.close()
+
+    groups = {group["group_id"]: group for group in review_queue["groups"]}
+
+    assert review_queue["group_order"] == [
+        "pending_expert_review_packets",
+        "failed_expert_requested_background_tasks",
+        "maintenance_change_batches",
+        "open_incidents",
+    ]
+    assert groups["pending_expert_review_packets"]["total_count"] == 2
+    assert len(groups["pending_expert_review_packets"]["items"]) == 1
+    assert groups["pending_expert_review_packets"]["items"][0]["headline"] == (
+        "Beta Labs / ML Platform Engineer"
+    )
+
+    assert groups["failed_expert_requested_background_tasks"]["total_count"] == 2
+    assert len(groups["failed_expert_requested_background_tasks"]["items"]) == 1
+    assert groups["failed_expert_requested_background_tasks"]["items"][0]["headline"] == (
+        "Reconcile launchctl bootstrap failure evidence."
+    )
+
+    assert groups["maintenance_change_batches"]["total_count"] == 2
+    assert len(groups["maintenance_change_batches"]["items"]) == 1
+    assert groups["maintenance_change_batches"]["items"][0]["headline"] == (
+        "feedback-retry-hardening"
+    )
+
+    assert groups["open_incidents"]["total_count"] == 2
+    assert len(groups["open_incidents"]["items"]) == 1
+    assert groups["open_incidents"]["items"][0]["headline"] == (
+        "Beta Labs / ML Platform Engineer"
+    )
+    assert groups["open_incidents"]["items"][0]["summary"] == (
+        "medium: Contact enrichment stalled without a verified working email."
+    )
 
 
 def test_repo_agent_wrappers_use_expected_repo_local_wiring():

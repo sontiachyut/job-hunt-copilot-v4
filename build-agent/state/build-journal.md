@@ -1774,3 +1774,27 @@ Use this file as an append-only implementation log for the build agent.
 ### Notes
 - The acceptance matrix now reports 196 implemented / 3 partial / 13 gap scenarios, and the remaining open gap clusters are `BA10_MAINTENANCE_AUTOMATION`, `BA10_CHAT_REVIEW_AND_CONTROL`, `BA10_CHAT_IDLE_TIMEOUT_RESUME`, and `BA10_POSTING_ABANDON_CONTROL`.
 - This slice intentionally improved the deterministic `jhc-chat` startup surface only; it did not claim closure of richer chat control routing, default change summaries, expert-guidance workflows, maintenance automation, or posting-abandon behavior.
+
+### Session
+- Date: 2026-04-08 19:39:12 MST
+- Slice: BA-10-S3 chat review-queue regression hardening
+- Goal: Strengthen persisted `jhc-chat` review-queue evidence for compact-first and newest-first behavior, then refresh BA-10 current-focus validation without overstating the remaining runtime gaps.
+
+### Work Done
+- Extended `tests/test_local_runtime.py` with seeded multi-item chat review data plus a direct `build_chat_review_queue` regression that checks group order, newest-first selection, and `max_items_per_group` compaction across pending review packets, failed expert-requested background tasks, maintenance batches, and open incidents.
+- Re-ran the BA-10 current-focus validation suite so `build-agent/reports/ba-10-validation-suite-latest.{json,md}` now reflects a fresh 5-command replay generated at `2026-04-09T02:38:39Z`.
+- Updated `build-agent/state/build-board.yaml`, `build-agent/state/IMPLEMENTATION_PLAN.md`, `build-agent/state/build-journal.md`, and `build-agent/state/codex-progress.txt` so the durable handoff notes capture the stronger chat review evidence while keeping the same four BA-10-S3 gap clusters explicit.
+
+### Validation
+- Ran `python3.11 -m pytest tests/test_local_runtime.py` and confirmed all 17 tests passed.
+- Ran `python3.11 scripts/quality/run_ba10_validation_suite.py --project-root /Users/achyutaramsonti/Projects/job-hunt-copilot-v4 --current-focus` and confirmed all 5 automated commands passed while refreshing `build-agent/reports/ba-10-validation-suite-latest.{json,md}`.
+
+### Result
+- `partial`
+
+### Next
+- Hand the next functional BA-10-S3 slice to the build lead for posting-abandon control; idle-timeout auto-resume remains the adjacent fallback if that smaller control surface cannot land cleanly first.
+
+### Notes
+- The acceptance matrix still reports `196 implemented / 3 partial / 13 gap` scenarios; this pass tightened regression evidence but did not close a remaining runtime/control gap.
+- The open BA-10-S3 gap clusters remain `BA10_MAINTENANCE_AUTOMATION`, `BA10_CHAT_REVIEW_AND_CONTROL`, `BA10_CHAT_IDLE_TIMEOUT_RESUME`, and `BA10_POSTING_ABANDON_CONTROL`.

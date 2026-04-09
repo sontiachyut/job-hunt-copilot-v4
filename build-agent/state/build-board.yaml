@@ -941,6 +941,8 @@ epics:
           - Refined `README.md`, `docs/ARCHITECTURE.md`, and `build-agent/reports/README.md` again so manager-facing repo surfaces now name the four remaining BA-10 hardening gaps explicitly and point directly at the committed acceptance trace, blocker audit, and latest validation-suite snapshot.
           - Added `job_hunt_copilot.chat_runtime`, wired `job_hunt_copilot.local_runtime` plus `bin/jhc-chat` to materialize and print `ops/agent/chat-startup.md`, and added focused runtime regressions so the chat surface now has a persisted clean-first startup dashboard with grouped review items and runtime metrics derived only from active supervisor-cycle execution time.
           - Re-ran `python3.11 scripts/quality/run_ba10_validation_suite.py --project-root /Users/achyutaramsonti/Projects/job-hunt-copilot-v4 --current-focus` on 2026-04-09T02:23:21Z, refreshing the durable latest-run evidence snapshot with 5 of 5 automated checks passing while moving the acceptance status to `196 implemented / 3 partial / 13 gap` and keeping the same four open BA-10-S3 gap clusters explicit.
+          - Added multi-item chat review-queue regressions in `tests/test_local_runtime.py` so the persisted `jhc-chat` review snapshot now has direct newest-first and compact-first evidence across pending review packets, failed expert-requested background tasks, maintenance batches, and open incidents without claiming broader in-chat retrieval or control behavior.
+          - Re-ran `python3.11 scripts/quality/run_ba10_validation_suite.py --project-root /Users/achyutaramsonti/Projects/job-hunt-copilot-v4 --current-focus` on 2026-04-09T02:38:39Z, refreshing `build-agent/reports/ba-10-validation-suite-latest.{json,md}` with another passing 5-command replay while keeping the same four open BA-10-S3 gap clusters explicit.
         validation:
           - "`python3.11 -m py_compile job_hunt_copilot/local_runtime.py job_hunt_copilot/acceptance_traceability.py job_hunt_copilot/runtime_pack.py job_hunt_copilot/paths.py scripts/ops/materialize_feedback_sync_plist.py scripts/ops/run_feedback_sync.py tests/test_local_runtime.py`"
           - "`zsh -n bin/jhc-agent-start bin/jhc-agent-stop bin/jhc-agent-cycle bin/jhc-feedback-sync-cycle bin/jhc-chat`"
@@ -958,6 +960,8 @@ epics:
           - "`python3.11 -m pytest`"
           - "`python3.11 -m py_compile job_hunt_copilot/acceptance_traceability.py tests/test_supervisor.py tests/test_acceptance_traceability.py`"
           - "`python3.11 -m pytest tests/test_supervisor.py tests/test_acceptance_traceability.py`"
+          - "`python3.11 -m pytest tests/test_local_runtime.py`"
+          - "`python3.11 scripts/quality/run_ba10_validation_suite.py --project-root /Users/achyutaramsonti/Projects/job-hunt-copilot-v4 --current-focus`"
           - "`python3.11 -m pytest tests/test_local_runtime.py tests/test_runtime_pack.py tests/test_acceptance_traceability.py`"
           - "`python3.11 -m py_compile job_hunt_copilot/acceptance_traceability.py job_hunt_copilot/blocker_audit.py tests/test_acceptance_traceability.py tests/test_blocker_audit.py`"
           - "`python3.11 -m pytest tests/test_acceptance_traceability.py tests/test_blocker_audit.py tests/test_quality_validation.py`"
