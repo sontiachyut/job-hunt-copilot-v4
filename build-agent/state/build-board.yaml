@@ -958,6 +958,8 @@ epics:
           - Re-ran `python3.11 scripts/quality/run_ba10_validation_suite.py --project-root /Users/achyutaramsonti/Projects/job-hunt-copilot-v4 --current-focus` on 2026-04-09T04:48:30Z, refreshing the readiness summary plus latest validation-suite snapshot with another passing 5-command replay while keeping the blocker surface unchanged at `201 implemented / 2 partial / 9 gap`.
           - Tightened `job_hunt_copilot.repo_readiness` and `tests/test_repo_readiness.py` so `README.md` and `docs/ARCHITECTURE.md` must now mention the exact currently open BA-10 gap titles from the blocker audit instead of only generic readiness phrases, which keeps recruiter- and manager-facing repo surfaces fail-closed against stale blocker wording.
           - Updated `README.md` and `docs/ARCHITECTURE.md` to name `BA10_MAINTENANCE_AUTOMATION` and `BA10_CHAT_REVIEW_AND_CONTROL` verbatim, then re-ran `python3.11 scripts/quality/run_ba10_validation_suite.py --project-root /Users/achyutaramsonti/Projects/job-hunt-copilot-v4 --current-focus` on 2026-04-09T18:53:24Z, refreshing the readiness summary plus latest validation-suite snapshot with another passing 5-command replay while keeping the blocker surface unchanged at `201 implemented / 2 partial / 9 gap`.
+          - Added focused `tests/test_blocker_audit.py` and `tests/test_quality_validation.py` regressions that pin the still-open `BA10_CHAT_REVIEW_AND_CONTROL` cluster to its exact validation-command mapping, open scenario names, feature-file lines, and persisted note text instead of relying on current-focus coverage alone.
+          - Re-ran `python3.11 scripts/quality/run_ba10_validation_suite.py --project-root /Users/achyutaramsonti/Projects/job-hunt-copilot-v4 --current-focus` on 2026-04-09T19:07:11Z, refreshing the readiness summary plus latest validation-suite snapshot with another passing 5-command replay while keeping the blocker surface unchanged at `201 implemented / 2 partial / 9 gap`.
         validation:
           - "`python3.11 -m py_compile job_hunt_copilot/local_runtime.py job_hunt_copilot/acceptance_traceability.py job_hunt_copilot/runtime_pack.py job_hunt_copilot/paths.py scripts/ops/materialize_feedback_sync_plist.py scripts/ops/run_feedback_sync.py tests/test_local_runtime.py`"
           - "`zsh -n bin/jhc-agent-start bin/jhc-agent-stop bin/jhc-agent-cycle bin/jhc-feedback-sync-cycle bin/jhc-chat`"
@@ -977,6 +979,7 @@ epics:
           - "`python3.11 -m pytest tests/test_supervisor.py tests/test_acceptance_traceability.py`"
           - "`python3.11 -m pytest tests/test_local_runtime.py`"
           - "`python3.11 scripts/quality/run_ba10_validation_suite.py --project-root /Users/achyutaramsonti/Projects/job-hunt-copilot-v4 --current-focus`"
+          - "`python3.11 -m pytest tests/test_blocker_audit.py tests/test_quality_validation.py`"
           - "`python3.11 -m pytest tests/test_local_runtime.py tests/test_runtime_pack.py tests/test_acceptance_traceability.py`"
           - "`python3.11 -m py_compile job_hunt_copilot/acceptance_traceability.py job_hunt_copilot/blocker_audit.py tests/test_acceptance_traceability.py tests/test_blocker_audit.py`"
           - "`python3.11 -m pytest tests/test_acceptance_traceability.py tests/test_blocker_audit.py tests/test_quality_validation.py`"

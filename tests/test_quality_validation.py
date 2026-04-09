@@ -230,6 +230,19 @@ def test_gap_validation_command_resolution_follows_open_gap_command_mapping():
     ]
 
 
+def test_chat_review_gap_validation_command_resolution_follows_open_gap_command_mapping():
+    command_ids = resolve_acceptance_gap_validation_command_ids(
+        REPO_ROOT, ["BA10_CHAT_REVIEW_AND_CONTROL"]
+    )
+
+    assert command_ids == [
+        "qa_runtime_control_regressions",
+        "qa_review_surface_regressions",
+        "qa_runtime_pack_regressions",
+        "qa_acceptance_reports",
+    ]
+
+
 def test_current_focus_validation_command_resolution_follows_active_slice():
     command_ids = resolve_current_focus_validation_command_ids(REPO_ROOT)
 
@@ -390,6 +403,93 @@ def test_quality_validation_suite_script_dry_run_expands_gap_ids():
                     "rule": "Supervisor Agent behavior",
                     "scenario_line": 1349,
                     "note": "Only maintenance placeholders exist today; the maintenance workflow itself is still missing.",
+                },
+            ],
+        }
+    ]
+
+
+def test_quality_validation_suite_script_dry_run_expands_chat_review_gap_ids():
+    result = subprocess.run(
+        [
+            sys.executable,
+            "scripts/quality/run_ba10_validation_suite.py",
+            "--project-root",
+            str(REPO_ROOT),
+            "--dry-run",
+            "--gap-id",
+            "BA10_CHAT_REVIEW_AND_CONTROL",
+        ],
+        cwd=REPO_ROOT,
+        check=False,
+        capture_output=True,
+        text=True,
+    )
+
+    assert result.returncode == 0
+    payload = json.loads(result.stdout)
+    assert payload["requested_gap_ids"] == ["BA10_CHAT_REVIEW_AND_CONTROL"]
+    assert [command["command_id"] for command in payload["commands"]] == [
+        "qa_runtime_control_regressions",
+        "qa_review_surface_regressions",
+        "qa_runtime_pack_regressions",
+        "qa_acceptance_reports",
+    ]
+    assert payload["selector_details"]["acceptance_gaps"] == [
+        {
+            "gap_id": "BA10_CHAT_REVIEW_AND_CONTROL",
+            "title": "Chat review and control are still missing deeper expert-guidance workflows",
+            "next_slice": "BA-10-S3",
+            "open_scenario_count": 5,
+            "status_counts": {
+                "partial": 1,
+                "gap": 4,
+            },
+            "validation_command_ids": [
+                "qa_runtime_control_regressions",
+                "qa_review_surface_regressions",
+                "qa_runtime_pack_regressions",
+                "qa_acceptance_reports",
+            ],
+            "validation_suite_command": (
+                "python3.11 scripts/quality/run_ba10_validation_suite.py "
+                "--project-root <repo_root> --gap-id BA10_CHAT_REVIEW_AND_CONTROL"
+            ),
+            "open_scenarios": [
+                {
+                    "name": "jhc-chat uses persisted state for answers and control routing",
+                    "status": "partial",
+                    "rule": "Supervisor Agent behavior",
+                    "scenario_line": 1249,
+                    "note": "`scripts/ops/chat_state.py` now rereads persisted dashboard, review-queue, and change-summary state, and `scripts/ops/control_agent.py` remains the canonical global-control route, but generic object-specific override routing and broader chat-native control workflows are still incomplete.",
+                },
+                {
+                    "name": "Expert guidance becomes live immediately but conflicting or uncertain reuse asks first",
+                    "status": "gap",
+                    "rule": "Supervisor Agent behavior",
+                    "scenario_line": 1273,
+                    "note": "The direct `jhc-chat` wrapper now has persisted review-queue and default change-summary helper reads, but expert-guidance reuse decisions, conflict-wide pausing, and background-task handoff or return workflows are still missing.",
+                },
+                {
+                    "name": "Conflicting expert guidance pauses the whole autonomous system",
+                    "status": "gap",
+                    "rule": "Supervisor Agent behavior",
+                    "scenario_line": 1281,
+                    "note": "The direct `jhc-chat` wrapper now has persisted review-queue and default change-summary helper reads, but expert-guidance reuse decisions, conflict-wide pausing, and background-task handoff or return workflows are still missing.",
+                },
+                {
+                    "name": "Expert-requested background tasks require explicit handoff summary and exclusive focus",
+                    "status": "gap",
+                    "rule": "Supervisor Agent behavior",
+                    "scenario_line": 1307,
+                    "note": "The direct `jhc-chat` wrapper now has persisted review-queue and default change-summary helper reads, but expert-guidance reuse decisions, conflict-wide pausing, and background-task handoff or return workflows are still missing.",
+                },
+                {
+                    "name": "Expert-requested background task outcomes return to review appropriately",
+                    "status": "gap",
+                    "rule": "Supervisor Agent behavior",
+                    "scenario_line": 1314,
+                    "note": "The direct `jhc-chat` wrapper now has persisted review-queue and default change-summary helper reads, but expert-guidance reuse decisions, conflict-wide pausing, and background-task handoff or return workflows are still missing.",
                 },
             ],
         }

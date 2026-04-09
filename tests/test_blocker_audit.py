@@ -110,6 +110,60 @@ def test_ba10_blocker_audit_reports_are_current_and_reference_real_repo_paths():
         == "Maintenance artifacts are specified in the schema and PRD, but no maintenance batch workflow writes them yet."
     )
 
+    chat_cluster = next(
+        cluster
+        for cluster in audit["acceptance_gap_clusters"]
+        if cluster["gap_id"] == "BA10_CHAT_REVIEW_AND_CONTROL"
+    )
+    assert chat_cluster["next_slice"] == "BA-10-S3"
+    assert chat_cluster["status_counts"] == {"partial": 1, "gap": 4}
+    assert "BA-10-S3" in chat_cluster["slice_ids"]
+    assert [command["command_id"] for command in chat_cluster["validation_commands"]] == [
+        "qa_runtime_control_regressions",
+        "qa_review_surface_regressions",
+        "qa_runtime_pack_regressions",
+        "qa_acceptance_reports",
+    ]
+    assert "job_hunt_copilot/chat_runtime.py" in chat_cluster["evidence_code_refs"]
+    assert "scripts/ops/chat_state.py" in chat_cluster["evidence_code_refs"]
+    assert "tests/test_local_runtime.py" in chat_cluster["evidence_test_refs"]
+    assert "tests/test_review_queries.py" in chat_cluster["evidence_test_refs"]
+
+    chat_partial_scenario = next(
+        scenario
+        for scenario in chat_cluster["scenarios"]
+        if scenario["status"] == "partial"
+    )
+    assert chat_partial_scenario["rule"] == "Supervisor Agent behavior"
+    assert chat_partial_scenario["name"] == "jhc-chat uses persisted state for answers and control routing"
+    assert chat_partial_scenario["scenario_line"] == 1249
+    assert chat_partial_scenario["owner_role"] == "build-lead"
+    assert "BA-02" in chat_partial_scenario["epic_ids"]
+    assert "BA-03" in chat_partial_scenario["epic_ids"]
+    assert "BA-02-S1" in chat_partial_scenario["slice_ids"]
+    assert "BA-03-S3" in chat_partial_scenario["slice_ids"]
+    assert "job_hunt_copilot/chat_runtime.py" in chat_partial_scenario["code_refs"]
+    assert "scripts/ops/chat_session.py" in chat_partial_scenario["code_refs"]
+    assert "tests/test_local_runtime.py" in chat_partial_scenario["test_refs"]
+    assert "tests/test_runtime_pack.py" in chat_partial_scenario["test_refs"]
+    assert (
+        chat_partial_scenario["note"]
+        == "`scripts/ops/chat_state.py` now rereads persisted dashboard, review-queue, and change-summary state, and `scripts/ops/control_agent.py` remains the canonical global-control route, but generic object-specific override routing and broader chat-native control workflows are still incomplete."
+    )
+
+    chat_background_gap = next(
+        scenario
+        for scenario in chat_cluster["scenarios"]
+        if scenario["name"]
+        == "Expert-requested background task outcomes return to review appropriately"
+    )
+    assert chat_background_gap["status"] == "gap"
+    assert chat_background_gap["scenario_line"] == 1314
+    assert (
+        chat_background_gap["note"]
+        == "The direct `jhc-chat` wrapper now has persisted review-queue and default change-summary helper reads, but expert-guidance reuse decisions, conflict-wide pausing, and background-task handoff or return workflows are still missing."
+    )
+
     build_cli_blocker = next(
         blocker
         for blocker in audit["build_board_blockers"]

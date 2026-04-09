@@ -1,12 +1,12 @@
 # BA-10 Validation Suite Report
 
-- Generated at: `2026-04-09T18:53:24Z`
+- Generated at: `2026-04-09T19:07:11Z`
 - Project root: `/Users/achyutaramsonti/Projects/job-hunt-copilot-v4`
 - Passed: `True`
 - Command count: `5`
 - Passed commands: `5`
 - Failed commands: `0`
-- Total duration seconds: `15.474`
+- Total duration seconds: `15.366`
 - Requested command ids: none
 - Requested smoke targets: none
 - Requested acceptance gaps: none
@@ -64,10 +64,10 @@
 | Command | Kind | Status | Returncode | Duration (s) |
 | --- | --- | --- | ---: | ---: |
 | qa_runtime_pack_regressions | automated | passed | 0 | 0.289 |
-| qa_acceptance_reports | automated | passed | 0 | 1.574 |
-| qa_supervisor_regressions | automated | passed | 0 | 1.076 |
-| qa_runtime_control_regressions | automated | passed | 0 | 12.073 |
-| qa_review_surface_regressions | automated | passed | 0 | 0.462 |
+| qa_acceptance_reports | automated | passed | 0 | 1.885 |
+| qa_supervisor_regressions | automated | passed | 0 | 1.034 |
+| qa_runtime_control_regressions | automated | passed | 0 | 11.700 |
+| qa_review_surface_regressions | automated | passed | 0 | 0.458 |
 
 ## Command Details
 
@@ -83,7 +83,7 @@
 - Kind: `automated`
 - Status: `passed`
 - Returncode: `0`
-- Duration seconds: `1.574`
+- Duration seconds: `1.885`
 - Command: `python3.11 -m pytest tests/test_acceptance_traceability.py tests/test_blocker_audit.py tests/test_quality_validation.py tests/test_repo_readiness.py`
 - Description: Keeps the committed BA-10 acceptance, blocker, readiness, and validation-suite reports synchronized with repo code, tests, and state references.
 
@@ -91,7 +91,7 @@
 - Kind: `automated`
 - Status: `passed`
 - Returncode: `0`
-- Duration seconds: `1.076`
+- Duration seconds: `1.034`
 - Command: `python3.11 -m pytest tests/test_supervisor_downstream_actions.py`
 - Description: Confirms incident-first selector ordering, existing-run reuse, bounded role-targeted progression through `delivery_feedback`, and contact-rooted general-learning follow-through while keeping the remaining maintenance-selector gap explicit.
 
@@ -99,7 +99,7 @@
 - Kind: `automated`
 - Status: `passed`
 - Returncode: `0`
-- Duration seconds: `12.073`
+- Duration seconds: `11.7`
 - Command: `python3.11 -m pytest tests/test_local_runtime.py`
 - Description: Covers launchd plist wiring, control commands, chat lifecycle state, delayed feedback runners, and explicit negative control cases.
 
@@ -107,6 +107,6 @@
 - Kind: `automated`
 - Status: `passed`
 - Returncode: `0`
-- Duration seconds: `0.462`
+- Duration seconds: `0.458`
 - Command: `python3.11 -m pytest tests/test_review_queries.py`
 - Description: Verifies persisted grouped review surfaces and traceability reads that back the chat/review boundary.
