@@ -104,7 +104,7 @@ def test_validation_selector_details_include_requested_smoke_gap_blocker_and_cur
     ]
     assert details["acceptance_gaps"][0] == {
         "gap_id": "BA10_SUPERVISOR_DOWNSTREAM_ACTION_CATALOG",
-        "title": "Supervisor general-learning orchestration remains partial beyond send-ready contact dispatch",
+        "title": "Supervisor general-learning orchestration remains partial beyond bounded contact-rooted send completion",
         "next_slice": "BA-10-S4",
         "open_scenario_count": 1,
         "validation_command_ids": [
@@ -143,12 +143,12 @@ def test_validation_selector_details_include_requested_smoke_gap_blocker_and_cur
         "--project-root <repo_root> --current-focus"
     )
     assert (
-        "bounded `delivery_feedback` completion plus one send-ready contact-rooted "
-        "general-learning dispatch"
+        "bounded `delivery_feedback` completion plus contact-rooted "
+        "general-learning discovery into send-ready dispatch"
         in details["current_focus"]["reason"]
     )
     assert (
-        "contact-rooted email discovery plus delayed-feedback follow-through"
+        "delayed-feedback follow-through for sent contact-rooted outreach"
         in details["current_focus"]["reason"]
     )
 
@@ -262,7 +262,7 @@ def test_quality_validation_suite_script_dry_run_expands_gap_ids():
     assert payload["selector_details"]["acceptance_gaps"] == [
         {
             "gap_id": "BA10_SUPERVISOR_DOWNSTREAM_ACTION_CATALOG",
-            "title": "Supervisor general-learning orchestration remains partial beyond send-ready contact dispatch",
+            "title": "Supervisor general-learning orchestration remains partial beyond bounded contact-rooted send completion",
             "next_slice": "BA-10-S4",
             "open_scenario_count": 1,
             "validation_command_ids": [
@@ -385,12 +385,12 @@ def test_quality_validation_suite_script_dry_run_expands_current_focus():
         "--project-root <repo_root> --current-focus"
     )
     assert (
-        "bounded `delivery_feedback` completion plus one send-ready contact-rooted "
-        "general-learning dispatch"
+        "bounded `delivery_feedback` completion plus contact-rooted "
+        "general-learning discovery into send-ready dispatch"
         in current_focus["reason"]
     )
     assert (
-        "contact-rooted email discovery plus delayed-feedback follow-through"
+        "delayed-feedback follow-through for sent contact-rooted outreach"
         in current_focus["reason"]
     )
 

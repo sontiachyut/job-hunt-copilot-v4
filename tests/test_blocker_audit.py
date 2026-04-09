@@ -91,11 +91,11 @@ def test_ba10_blocker_audit_reports_are_current_and_reference_real_repo_paths():
             "sending",
         ],
         "registered_contact_rooted_action_ids": [
+            "general_learning_email_discovery",
             "general_learning_outreach",
         ],
         "validated_blocked_role_targeted_stages": [],
         "unsupported_autonomous_scope_paths": [
-            "contact_rooted_general_learning_email_discovery",
             "contact_rooted_general_learning_delayed_feedback_followthrough",
         ],
     }

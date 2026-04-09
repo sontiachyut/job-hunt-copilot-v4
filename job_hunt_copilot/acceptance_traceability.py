@@ -153,11 +153,11 @@ def _supervisor_downstream_implementation_snapshot() -> dict[str, Any]:
             ROLE_TARGETED_PIPELINE_STAGE_ACTIONS
         ),
         "registered_contact_rooted_action_ids": [
+            "general_learning_email_discovery",
             "general_learning_outreach",
         ],
         "validated_blocked_role_targeted_stages": [],
         "unsupported_autonomous_scope_paths": [
-            "contact_rooted_general_learning_email_discovery",
             "contact_rooted_general_learning_delayed_feedback_followthrough",
         ],
     }
@@ -181,10 +181,10 @@ GAP_REGISTRY: dict[str, dict[str, Any]] = {
         ),
     ),
     "BA10_SUPERVISOR_DOWNSTREAM_ACTION_CATALOG": _gap_metadata(
-        title="Supervisor general-learning orchestration remains partial beyond send-ready contact dispatch",
-        reason="The durable heartbeat now covers the role-targeted flow through bounded delivery-feedback completion and can dispatch one send-ready contact-rooted general-learning send, but contact-rooted email discovery and delayed feedback follow-through still remain outside the registered autonomous catalog.",
+        title="Supervisor general-learning orchestration remains partial beyond bounded contact-rooted send completion",
+        reason="The durable heartbeat now covers the full role-targeted flow through bounded delivery-feedback completion and can advance contact-rooted general-learning work from email discovery into send-ready dispatch, but delayed feedback follow-through for sent contact-rooted outreach still remains outside the registered autonomous catalog.",
         next_slice="BA-10-S4",
-        evidence_summary="Focused downstream-stage regressions prove active incidents still outrank ordinary progression, existing durable runs are selected before bootstrapping new eligible postings, `lead_handoff` now advances into `agent_review`, bounded mandatory agent review advances the same run into `people_search`, bounded people search materializes shortlist artifacts and advances the same run into `email_discovery`, bounded email discovery advances the same durable run into `sending` when readiness is satisfied, bounded sending now drafts the ready send set, executes one safe send, stays at `sending` while later-wave contacts remain paced, advances the same durable run into `delivery_feedback` after terminal sent waves, bounded delivery feedback now runs the shared delayed-sync logic, keeps the durable run active while high-level outcomes remain pending, completes the same durable run with a review packet once all sent messages reach bounced, not_bounced, or replied state, a send-ready contact-rooted general-learning candidate is now selected and sent without posting linkage or review-gate prerequisites, and the remaining contact-rooted gaps are bounded to email discovery plus delayed-feedback follow-through.",
+        evidence_summary="Focused downstream-stage regressions prove active incidents still outrank ordinary progression, existing durable runs are selected before bootstrapping new eligible postings, `lead_handoff` now advances into `agent_review`, bounded mandatory agent review advances the same run into `people_search`, bounded people search materializes shortlist artifacts and advances the same run into `email_discovery`, bounded email discovery advances the same durable run into `sending` when readiness is satisfied, bounded sending now drafts the ready send set, executes one safe send, stays at `sending` while later-wave contacts remain paced, advances the same durable run into `delivery_feedback` after terminal sent waves, bounded delivery feedback now runs the shared delayed-sync logic, keeps the durable run active while high-level outcomes remain pending, completes the same durable run with a review packet once all sent messages reach bounced, not_bounced, or replied state, a contact-rooted general-learning candidate without a working email now runs bounded email discovery, becomes send-ready in canonical contact state, and is then selected for the existing contact-rooted send path on the next heartbeat without posting linkage or review-gate prerequisites, and the remaining contact-rooted gap is narrowed to delayed-feedback follow-through after sent general-learning outreach.",
         evidence_code_refs=(
             "job_hunt_copilot/supervisor.py",
             "job_hunt_copilot/email_discovery.py",
@@ -468,7 +468,7 @@ RULE_BLUEPRINTS: dict[str, RuleBlueprint] = {
         ),
         default_status=STATUS_PARTIAL,
         default_gap_ids=("BA10_SUPERVISOR_DOWNSTREAM_ACTION_CATALOG",),
-        note="The durable supervisor core is real and tested, and the autonomous catalog now covers both the full role-targeted chain and a conservative send-ready general-learning contact step, but broader contact-rooted follow-through plus richer chat or maintenance runtime behavior remain incomplete.",
+        note="The durable supervisor core is real and tested, and the autonomous catalog now covers both the full role-targeted chain and bounded contact-rooted general-learning discovery plus send-ready dispatch, but delayed-feedback follow-through for sent contact-rooted outreach plus richer chat or maintenance runtime behavior remain incomplete.",
     ),
     "Review surfaces and chat-based control": RuleBlueprint(
         owner_role="quality-engineer",
@@ -501,7 +501,7 @@ RULE_BLUEPRINTS: dict[str, RuleBlueprint] = {
             "tests/test_supervisor_downstream_actions.py",
             "tests/test_supervisor.py",
         ),
-        note="Component-level state gates and sequencing exist, and the autonomous heartbeat now covers the role-targeted flow through bounded delivery feedback plus a send-ready contact-rooted general-learning dispatch, while contact-rooted email discovery and delayed-feedback supervisor follow-through remain incomplete.",
+        note="Component-level state gates and sequencing exist, and the autonomous heartbeat now covers the role-targeted flow through bounded delivery feedback plus contact-rooted general-learning discovery into send-ready dispatch, while delayed-feedback supervisor follow-through for sent contact-rooted outreach remains incomplete.",
     ),
     "LinkedIn Scraping acceptance": RuleBlueprint(
         owner_role="ingestion-engineer",
@@ -538,7 +538,7 @@ RULE_BLUEPRINTS: dict[str, RuleBlueprint] = {
         ),
         default_status=STATUS_PARTIAL,
         default_gap_ids=("BA10_SUPERVISOR_DOWNSTREAM_ACTION_CATALOG",),
-        note="The components exist and now have committed smoke coverage across tailoring, discovery, send, delayed feedback, and review-query boundaries, and the autonomous supervisor covers the full role-targeted chain through bounded delivery feedback plus a send-ready general-learning contact step, while deeper contact-rooted follow-through remains open.",
+        note="The components exist and now have committed smoke coverage across tailoring, discovery, send, delayed feedback, and review-query boundaries, and the autonomous supervisor covers the full role-targeted chain through bounded delivery feedback plus contact-rooted general-learning discovery into send-ready dispatch, while delayed-feedback follow-through for sent contact-rooted outreach remains open.",
     ),
     "Current-build safety, privacy, and evidence-grounding boundaries": RuleBlueprint(
         owner_role="quality-engineer",
@@ -891,7 +891,7 @@ _register_override(
     ),
     status=STATUS_PARTIAL,
     gap_ids=("BA10_SUPERVISOR_DOWNSTREAM_ACTION_CATALOG",),
-    note="Current supervisor regressions prove open incidents outrank ordinary pipeline advancement, existing runs outrank new posting bootstrap, new postings outrank opportunistic send-ready general-learning contacts, and open pipeline runs now cover due delivery-feedback completion, but maintenance plus deeper contact-rooted general-learning follow-through still have no dedicated selector or action path.",
+    note="Current supervisor regressions prove open incidents outrank ordinary pipeline advancement, existing runs outrank new posting bootstrap, new postings outrank opportunistic contact-rooted general-learning work, open pipeline runs now cover due delivery-feedback completion, and contact-rooted general-learning work now covers bounded email discovery plus send-ready dispatch, but maintenance plus delayed-feedback follow-through for sent general-learning outreach still have no dedicated selector or action path.",
 )
 _register_override(
     scenarios=(
@@ -909,7 +909,7 @@ _register_override(
 _register_override(
     scenarios=("General learning outreach bypasses the role-targeted agent-review requirement",),
     status=STATUS_IMPLEMENTED,
-    note="General-learning drafting and sending exist in the outreach component, and `tests/test_supervisor_downstream_actions.py` now proves the supervisor can select a send-ready contact-rooted case and send it without posting-specific tailoring or the role-targeted review gate.",
+    note="General-learning drafting and sending exist in the outreach component, and `tests/test_supervisor_downstream_actions.py` now proves the supervisor can take a contact-rooted case from bounded email discovery into sending without posting-specific tailoring or the role-targeted review gate.",
 )
 _register_override(
     scenarios=("Two-step outreach is excluded from required acceptance",),

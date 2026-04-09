@@ -528,6 +528,13 @@ class ProjectPaths:
             / contact_id
         )
 
+    def general_learning_outreach_discovery_result_path(
+        self,
+        company_name: str,
+        contact_id: str,
+    ) -> Path:
+        return self.general_learning_outreach_workspace_dir(company_name, contact_id) / "discovery_result.json"
+
     def general_learning_outreach_message_dir(
         self,
         company_name: str,

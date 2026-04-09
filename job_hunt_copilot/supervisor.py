@@ -151,6 +151,9 @@ ACTION_RUN_ROLE_TARGETED_SENDING: Final = "run_role_targeted_sending"
 ACTION_RUN_ROLE_TARGETED_DELIVERY_FEEDBACK: Final = (
     "run_role_targeted_delivery_feedback"
 )
+ACTION_RUN_GENERAL_LEARNING_EMAIL_DISCOVERY: Final = (
+    "run_general_learning_email_discovery"
+)
 ACTION_RUN_GENERAL_LEARNING_OUTREACH: Final = "run_general_learning_outreach"
 ACTION_ESCALATE_OPEN_INCIDENT: Final = "escalate_open_incident"
 
@@ -680,6 +683,26 @@ SUPERVISOR_ACTION_CATALOG = MappingProxyType(
             validation_references=(
                 "prd/spec.md FR-SYS-38, FR-SYS-38D5 through FR-SYS-38D9, FR-EF-01J through FR-EF-01P, and FR-OPS-17C",
                 "prd/test-spec.feature delivery-feedback timing, delayed-bounce, dependency-order, and end-to-end acceptance scenarios",
+            ),
+        ),
+        ACTION_RUN_GENERAL_LEARNING_EMAIL_DISCOVERY: SupervisorActionCatalogEntry(
+            action_id=ACTION_RUN_GENERAL_LEARNING_EMAIL_DISCOVERY,
+            work_type=WORK_TYPE_CONTACT,
+            description="Run one bounded contact-rooted general-learning email-discovery step so a non-posting contact can become send-ready without entering the role-targeted review path.",
+            prerequisites=(
+                "contact exists in canonical state",
+                "contact does not yet have a usable working email and is not tied to a current job_posting contact link",
+                "the selected contact has no prior sent outreach history that would require repeat-outreach review",
+                "the selected contact has no active general-learning message state yet",
+            ),
+            expected_outputs=(
+                "the supervisor runs one bounded contact-rooted email-discovery attempt or working-email reuse step",
+                "discovery_result.json and canonical contact discovery state refresh without adding posting linkage",
+                "the selected contact either becomes `working_email_found`, stays eligible for later bounded discovery, or becomes `exhausted` when the current provider set is spent",
+            ),
+            validation_references=(
+                "prd/spec.md FR-SYS-38A, FR-SYS-41, FR-SYS-41B, and FR-OPS-17K",
+                "prd/test-spec.feature general-learning orchestration and discovery-before-send scenarios",
             ),
         ),
         ACTION_RUN_GENERAL_LEARNING_OUTREACH: SupervisorActionCatalogEntry(
@@ -2450,7 +2473,7 @@ def _select_new_posting_work_unit(
 def _select_general_learning_contact_work_unit(
     connection: sqlite3.Connection,
 ) -> SupervisorWorkUnit | None:
-    row = connection.execute(
+    send_ready_row = connection.execute(
         """
         SELECT c.contact_id, c.display_name, c.company_name,
                (
@@ -2504,24 +2527,72 @@ def _select_general_learning_contact_work_unit(
         LIMIT 1
         """
     ).fetchone()
-    if row is None:
-        return None
-    display_name = _optional_text(row[1]) or row[0]
-    company_name = _optional_text(row[2]) or "unknown-company"
-    latest_status = _optional_text(row[3])
-    summary = (
-        "Resume a previously drafted contact-rooted general-learning send."
-        if latest_status == "generated"
-        else (
-            "Create and send one bounded contact-rooted general-learning outreach "
-            f"message for {display_name} at {company_name}."
+    if send_ready_row is not None:
+        display_name = _optional_text(send_ready_row[1]) or send_ready_row[0]
+        company_name = _optional_text(send_ready_row[2]) or "unknown-company"
+        latest_status = _optional_text(send_ready_row[3])
+        summary = (
+            "Resume a previously drafted contact-rooted general-learning send."
+            if latest_status == "generated"
+            else (
+                "Create and send one bounded contact-rooted general-learning outreach "
+                f"message for {display_name} at {company_name}."
+            )
         )
-    )
+        return SupervisorWorkUnit(
+            work_type=WORK_TYPE_CONTACT,
+            work_id=send_ready_row[0],
+            action_id=ACTION_RUN_GENERAL_LEARNING_OUTREACH,
+            summary=summary,
+        )
+
+    discovery_row = connection.execute(
+        """
+        SELECT c.contact_id, c.display_name, c.company_name
+        FROM contacts c
+        WHERE (
+                c.current_working_email IS NULL
+                OR TRIM(c.current_working_email) = ''
+              )
+          AND c.contact_status NOT IN ('outreach_in_progress', 'sent', 'exhausted')
+          AND NOT EXISTS (
+            SELECT 1
+            FROM job_posting_contacts jpc
+            WHERE jpc.contact_id = c.contact_id
+          )
+          AND NOT EXISTS (
+            SELECT 1
+            FROM outreach_messages sent_om
+            WHERE sent_om.contact_id = c.contact_id
+              AND (
+                sent_om.sent_at IS NOT NULL
+                OR sent_om.message_status = 'sent'
+              )
+          )
+          AND COALESCE((
+                SELECT om.message_status
+                FROM outreach_messages om
+                WHERE om.contact_id = c.contact_id
+                  AND om.outreach_mode = 'general_learning'
+                ORDER BY om.created_at DESC, om.outreach_message_id DESC
+                LIMIT 1
+              ), '') = ''
+        ORDER BY c.created_at ASC, c.contact_id ASC
+        LIMIT 1
+        """
+    ).fetchone()
+    if discovery_row is None:
+        return None
+    display_name = _optional_text(discovery_row[1]) or discovery_row[0]
+    company_name = _optional_text(discovery_row[2]) or "unknown-company"
     return SupervisorWorkUnit(
         work_type=WORK_TYPE_CONTACT,
-        work_id=row[0],
-        action_id=ACTION_RUN_GENERAL_LEARNING_OUTREACH,
-        summary=summary,
+        work_id=discovery_row[0],
+        action_id=ACTION_RUN_GENERAL_LEARNING_EMAIL_DISCOVERY,
+        summary=(
+            "Run one bounded contact-rooted general-learning email-discovery step "
+            f"for {display_name} at {company_name}."
+        ),
     )
 
 
@@ -2867,6 +2938,68 @@ def _validate_selected_work(
             return (
                 f"job_posting {job_posting_id!r} reached delivery_feedback without any "
                 "sent outreach messages."
+            )
+        return None
+
+    if catalog_entry.action_id == ACTION_RUN_GENERAL_LEARNING_EMAIL_DISCOVERY:
+        row = connection.execute(
+            """
+            SELECT c.contact_id, c.current_working_email, c.contact_status,
+                   (
+                     SELECT COUNT(*)
+                     FROM job_posting_contacts jpc
+                     WHERE jpc.contact_id = c.contact_id
+                   ) AS posting_link_count,
+                   (
+                     SELECT COUNT(*)
+                     FROM outreach_messages om
+                     WHERE om.contact_id = c.contact_id
+                       AND (
+                         om.sent_at IS NOT NULL
+                         OR om.message_status = 'sent'
+                       )
+                   ) AS sent_message_count,
+                   (
+                     SELECT om.message_status
+                     FROM outreach_messages om
+                     WHERE om.contact_id = c.contact_id
+                       AND om.outreach_mode = 'general_learning'
+                     ORDER BY om.created_at DESC, om.outreach_message_id DESC
+                     LIMIT 1
+                   ) AS latest_general_learning_message_status
+            FROM contacts c
+            WHERE c.contact_id = ?
+            """,
+            (selected_work.work_id,),
+        ).fetchone()
+        if row is None:
+            return f"contact {selected_work.work_id!r} no longer exists."
+        if _optional_text(row[1]):
+            return (
+                f"contact {selected_work.work_id!r} already has a usable working email "
+                "and should advance to bounded general-learning outreach instead."
+            )
+        if int(row[3] or 0) > 0:
+            return (
+                f"contact {selected_work.work_id!r} is still tied to posting-linked "
+                "outreach state and is not eligible for the contact-rooted "
+                "general-learning discovery boundary."
+            )
+        if int(row[4] or 0) > 0:
+            return (
+                f"contact {selected_work.work_id!r} already has prior sent outreach "
+                "history and requires repeat-outreach review."
+            )
+        latest_status = _optional_text(row[5])
+        if latest_status is not None:
+            return (
+                f"contact {selected_work.work_id!r} already has general-learning "
+                f"message state {latest_status!r}."
+            )
+        if _optional_text(row[2]) in {"outreach_in_progress", "sent", "exhausted"}:
+            return (
+                f"contact {selected_work.work_id!r} is already at contact_status="
+                f"{row[2]!r} and is not eligible for bounded general-learning discovery."
             )
         return None
 
@@ -3387,6 +3520,26 @@ def _execute_selected_work_unit(
         )
         return pipeline_run, None
 
+    if catalog_entry.action_id == ACTION_RUN_GENERAL_LEARNING_EMAIL_DISCOVERY:
+        from .email_discovery import run_general_learning_email_discovery
+
+        general_learning_discovery = run_general_learning_email_discovery(
+            project_root=paths.project_root,
+            contact_id=selected_work.work_id,
+            providers=action_dependencies.email_finder_providers,
+            current_time=timestamp,
+        )
+        if general_learning_discovery.contact_status in {
+            "identified",
+            "working_email_found",
+            "exhausted",
+        }:
+            return None, None
+        raise SupervisorStateError(
+            "General-learning email discovery completed with an unsupported contact "
+            f"status {general_learning_discovery.contact_status!r}."
+        )
+
     if catalog_entry.action_id == ACTION_RUN_GENERAL_LEARNING_OUTREACH:
         from .outreach import execute_general_learning_outreach
 
@@ -3803,6 +3956,65 @@ def _validate_selected_work_result(
                 f"{pipeline_run.current_stage!r}."
             )
         return None
+
+    if catalog_entry.action_id == ACTION_RUN_GENERAL_LEARNING_EMAIL_DISCOVERY:
+        contact_row = connection.execute(
+            """
+            SELECT current_working_email, contact_status
+            FROM contacts
+            WHERE contact_id = ?
+            """,
+            (selected_work.work_id,),
+        ).fetchone()
+        if contact_row is None:
+            return "General-learning discovery removed the selected contact unexpectedly."
+        artifact_count = int(
+            connection.execute(
+                """
+                SELECT COUNT(*)
+                FROM artifact_records
+                WHERE artifact_type = 'discovery_result'
+                  AND contact_id = ?
+                  AND job_posting_id IS NULL
+                """,
+                (selected_work.work_id,),
+            ).fetchone()[0]
+            or 0
+        )
+        if artifact_count <= 0:
+            return (
+                "General-learning discovery completed without a persisted contact-rooted "
+                "discovery_result artifact."
+            )
+        contact_status = _require_text(
+            _optional_text(contact_row["contact_status"]),
+            "contact_status",
+        )
+        if contact_status == "working_email_found":
+            if not _optional_text(contact_row["current_working_email"]):
+                return (
+                    "General-learning discovery marked the contact as "
+                    "`working_email_found` without persisting a usable email."
+                )
+            return None
+        if contact_status == "identified":
+            if _optional_text(contact_row["current_working_email"]):
+                return (
+                    "General-learning discovery left the contact at `identified` even "
+                    "though a working email is now present."
+                )
+            return None
+        if contact_status == "exhausted":
+            if _optional_text(contact_row["current_working_email"]):
+                return (
+                    "General-learning discovery marked the contact exhausted while still "
+                    "keeping a working email attached."
+                )
+            return None
+        return (
+            "General-learning discovery persisted an unexpected contact status "
+            f"{contact_status!r}."
+        )
 
     if catalog_entry.action_id == ACTION_RUN_GENERAL_LEARNING_OUTREACH:
         message_row = connection.execute(

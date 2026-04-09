@@ -10,6 +10,7 @@ from job_hunt_copilot.outreach import (
 )
 from job_hunt_copilot.paths import ProjectPaths
 from job_hunt_copilot.supervisor import (
+    ACTION_RUN_GENERAL_LEARNING_EMAIL_DISCOVERY,
     ACTION_RUN_GENERAL_LEARNING_OUTREACH,
     ACTION_PERFORM_MANDATORY_AGENT_REVIEW,
     ACTION_RUN_ROLE_TARGETED_EMAIL_DISCOVERY,
@@ -141,6 +142,7 @@ def seed_approved_tailoring_run(
 def seed_general_learning_contact(
     connection: sqlite3.Connection,
     *,
+    current_working_email: str | None = "sam.learner@acme.example",
     timestamp: str = "2026-04-08T00:00:00Z",
 ) -> str:
     connection.execute(
@@ -161,7 +163,7 @@ def seed_general_learning_contact(
             "Sam Learner",
             "Sam",
             "Learner",
-            "sam.learner@acme.example",
+            current_working_email,
             timestamp,
             timestamp,
         ),
@@ -1280,6 +1282,144 @@ def test_contact_rooted_general_learning_contact_is_selected_and_sent_without_pi
         "scheduler_type": "interactive",
         "observation_scope": "immediate_post_send",
         "result": "success",
+    }
+    assert observer.poll_calls[0]["message_ids"] == [message_row["outreach_message_id"]]
+    assert observer.poll_calls[0]["observation_scope"] == "immediate_post_send"
+
+
+def test_contact_rooted_general_learning_email_discovery_advances_to_send_ready_follow_up(
+    tmp_path: Path,
+) -> None:
+    project_root = bootstrap_project(tmp_path)
+    paths = ProjectPaths.from_root(project_root)
+    write_sender_profile(paths)
+    connection = connect_database(project_root / "job_hunt_copilot.db")
+    contact_id = seed_general_learning_contact(
+        connection,
+        current_working_email=None,
+    )
+    finder = FakeEmailFinderProvider(
+        provider_name="hunter",
+        responses=[
+            {
+                "outcome": "found",
+                "email": "sam.learner@acme.example",
+                "provider_verification_status": "valid",
+                "provider_score": "0.91",
+            }
+        ],
+    )
+    sender = OutreachRecordingSender()
+    observer = OutreachImmediateBounceObserver(event_timestamp="2026-04-08T00:08:30Z")
+    resume_agent(
+        connection,
+        manual_command="jhc-agent-start",
+        timestamp="2026-04-08T00:05:00Z",
+    )
+
+    first_execution = run_supervisor_cycle(
+        connection,
+        paths,
+        trigger_type="launchd_heartbeat",
+        scheduler_name="launchd",
+        started_at="2026-04-08T00:06:00Z",
+        action_dependencies=SupervisorActionDependencies(
+            email_finder_providers=(finder,),
+        ),
+    )
+    discovery_contact_row = connection.execute(
+        """
+        SELECT current_working_email, contact_status
+        FROM contacts
+        WHERE contact_id = ?
+        """,
+        (contact_id,),
+    ).fetchone()
+    discovery_artifact_path = connection.execute(
+        """
+        SELECT file_path
+        FROM artifact_records
+        WHERE artifact_type = 'discovery_result'
+          AND contact_id = ?
+          AND job_posting_id IS NULL
+        ORDER BY created_at DESC, artifact_id DESC
+        LIMIT 1
+        """,
+        (contact_id,),
+    ).fetchone()[0]
+
+    second_execution = run_supervisor_cycle(
+        connection,
+        paths,
+        trigger_type="launchd_heartbeat",
+        scheduler_name="launchd",
+        started_at="2026-04-08T00:08:00Z",
+        action_dependencies=SupervisorActionDependencies(
+            outreach_sender=sender,
+            feedback_observer=observer,
+        ),
+    )
+    pipeline_run_count = connection.execute(
+        "SELECT COUNT(*) FROM pipeline_runs"
+    ).fetchone()[0]
+    sent_contact_row = connection.execute(
+        """
+        SELECT current_working_email, contact_status
+        FROM contacts
+        WHERE contact_id = ?
+        """,
+        (contact_id,),
+    ).fetchone()
+    message_row = connection.execute(
+        """
+        SELECT outreach_message_id, message_status, job_posting_id, sent_at
+        FROM outreach_messages
+        WHERE contact_id = ?
+          AND outreach_mode = 'general_learning'
+        ORDER BY created_at DESC, outreach_message_id DESC
+        LIMIT 1
+        """,
+        (contact_id,),
+    ).fetchone()
+    connection.close()
+
+    assert first_execution.cycle.result == SUPERVISOR_CYCLE_RESULT_SUCCESS
+    assert first_execution.selected_work is not None
+    assert first_execution.selected_work.work_type == "contact"
+    assert first_execution.selected_work.work_id == contact_id
+    assert (
+        first_execution.selected_work.action_id
+        == ACTION_RUN_GENERAL_LEARNING_EMAIL_DISCOVERY
+    )
+    assert first_execution.pipeline_run is None
+    assert first_execution.incident is None
+    assert first_execution.review_packet is None
+    assert len(finder.calls) == 1
+    assert dict(discovery_contact_row) == {
+        "current_working_email": "sam.learner@acme.example",
+        "contact_status": "working_email_found",
+    }
+    assert (project_root / discovery_artifact_path).exists()
+
+    assert second_execution.cycle.result == SUPERVISOR_CYCLE_RESULT_SUCCESS
+    assert second_execution.selected_work is not None
+    assert second_execution.selected_work.work_type == "contact"
+    assert second_execution.selected_work.work_id == contact_id
+    assert second_execution.selected_work.action_id == ACTION_RUN_GENERAL_LEARNING_OUTREACH
+    assert second_execution.pipeline_run is None
+    assert second_execution.incident is None
+    assert second_execution.review_packet is None
+    assert pipeline_run_count == 0
+    assert sender.attempted_message_ids == [message_row["outreach_message_id"]]
+    assert dict(sent_contact_row) == {
+        "current_working_email": "sam.learner@acme.example",
+        "contact_status": "sent",
+    }
+    assert dict(message_row) == {
+        "outreach_message_id": message_row["outreach_message_id"],
+        "message_status": "sent",
+        "job_posting_id": None,
+        "sent_at": "2026-04-08T00:08:00Z",
     }
     assert observer.poll_calls[0]["message_ids"] == [message_row["outreach_message_id"]]
     assert observer.poll_calls[0]["observation_scope"] == "immediate_post_send"

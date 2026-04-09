@@ -435,6 +435,19 @@ class EmailDiscoveryRunResult:
     reused_existing_email: bool
 
 
+@dataclass(frozen=True)
+class GeneralLearningEmailDiscoveryRunResult:
+    contact_id: str
+    discovery_attempt_id: str
+    artifact_path: Path
+    outcome: str
+    provider_name: str | None
+    email: str | None
+    attempted_provider_names: tuple[str, ...]
+    contact_status: str
+    reused_existing_email: bool
+
+
 class ApolloPeopleSearchProvider(Protocol):
     def resolve_company(
         self,
@@ -1583,7 +1596,6 @@ def run_email_discovery_for_contact(
                 _apply_discovery_failure(
                     connection,
                     target_row=target_row,
-                    provider_steps=provider_steps,
                     result=final_result,
                     current_time=timestamp,
                 )
@@ -1625,6 +1637,195 @@ def run_email_discovery_for_contact(
             posting_status=posting_status,
             contact_status=str(refreshed_row["contact_status"]),
             link_level_status=str(refreshed_row["link_level_status"]),
+            reused_existing_email=reused_existing_email,
+        )
+    finally:
+        connection.close()
+
+
+def run_general_learning_email_discovery(
+    *,
+    project_root: Path | str,
+    contact_id: str,
+    providers: Sequence[EmailFinderProvider] | None = None,
+    current_time: str | None = None,
+) -> GeneralLearningEmailDiscoveryRunResult:
+    paths = ProjectPaths.from_root(project_root)
+    connection = sqlite3.connect(paths.db_path)
+    connection.row_factory = sqlite3.Row
+    connection.execute("PRAGMA foreign_keys = ON;")
+
+    try:
+        target_row = _load_general_learning_discovery_contact_row(
+            connection,
+            contact_id=contact_id,
+        )
+        timestamp = current_time or now_utc_iso()
+        discovery_attempt_id = new_canonical_id("discovery_attempts")
+        feedback_reuse_state = _load_contact_feedback_reuse_state(
+            connection,
+            contact_id=contact_id,
+        )
+
+        reusable_email = _normalize_optional_text(target_row.get("current_working_email"))
+        provider_steps: list[dict[str, Any]] = []
+        attempted_provider_names: list[str] = []
+        reused_existing_email = False
+
+        feedback_reuse_result = _select_feedback_reusable_email(
+            target_row=target_row,
+            feedback_reuse_state=feedback_reuse_state,
+        )
+        latest_found_attempt = (
+            _load_latest_found_attempt_for_email(
+                connection,
+                contact_id=contact_id,
+                email=reusable_email,
+            )
+            if (
+                feedback_reuse_result is None
+                and _is_usable_email(reusable_email)
+                and _normalize_email(reusable_email) not in feedback_reuse_state["blocked_emails"]
+            )
+            else None
+        )
+        if feedback_reuse_result is not None:
+            reused_existing_email = True
+            final_result = feedback_reuse_result
+        elif latest_found_attempt is not None and reusable_email is not None:
+            reused_existing_email = True
+            final_result = EmailDiscoveryProviderResult(
+                provider_name=_normalize_optional_text(latest_found_attempt["provider_name"]) or "",
+                outcome=DISCOVERY_OUTCOME_FOUND,
+                email=reusable_email,
+                provider_verification_status=_normalize_optional_text(
+                    latest_found_attempt["provider_verification_status"]
+                ),
+                provider_score=_normalize_optional_text(latest_found_attempt["provider_score"]),
+                detected_pattern=_normalize_optional_text(latest_found_attempt["detected_pattern"]),
+            )
+        else:
+            provider_sequence = (
+                tuple(providers)
+                if providers is not None
+                else _build_default_email_finder_providers(paths)
+            )
+            final_result: EmailDiscoveryProviderResult | None = None
+
+            for provider in provider_sequence:
+                provider_name = _normalize_optional_text(
+                    getattr(provider, "provider_name", None)
+                )
+                if provider_name is None:
+                    raise EmailDiscoveryError(
+                        "Email-finder providers must expose a non-empty `provider_name`."
+                    )
+                attempted_provider_names.append(provider_name)
+
+                if provider_name in feedback_reuse_state["blocked_providers"]:
+                    skipped_result = EmailDiscoveryProviderResult(
+                        provider_name=provider_name,
+                        outcome=DISCOVERY_OUTCOME_SKIPPED_BOUNCED_PROVIDER,
+                    )
+                    provider_steps.append(_provider_step_payload(skipped_result))
+                    with connection:
+                        _persist_provider_budget_signal(
+                            connection,
+                            result=skipped_result,
+                            discovery_attempt_id=discovery_attempt_id,
+                            contact_id=contact_id,
+                            created_at=timestamp,
+                        )
+                    continue
+
+                raw_result = provider.discover_email(
+                    contact=target_row,
+                    posting=target_row,
+                    company_domain=None,
+                    company_name=_normalize_optional_text(target_row.get("company_name")),
+                )
+                normalized_result = _normalize_email_finder_provider_result(
+                    raw_result,
+                    provider_name=provider_name,
+                )
+                if (
+                    _is_usable_email(normalized_result.email)
+                    and _normalize_email(normalized_result.email)
+                    in feedback_reuse_state["blocked_emails"]
+                ):
+                    normalized_result = replace(
+                        normalized_result,
+                        email=normalized_result.email,
+                        outcome=DISCOVERY_OUTCOME_BOUNCED_MATCH,
+                    )
+                provider_steps.append(_provider_step_payload(normalized_result))
+                with connection:
+                    _persist_provider_budget_signal(
+                        connection,
+                        result=normalized_result,
+                        discovery_attempt_id=discovery_attempt_id,
+                        contact_id=contact_id,
+                        created_at=timestamp,
+                    )
+                if normalized_result.is_found:
+                    final_result = normalized_result
+                    break
+
+            if final_result is None:
+                final_result = EmailDiscoveryProviderResult(
+                    provider_name="",
+                    outcome=_select_final_discovery_outcome(provider_steps),
+                )
+
+        with connection:
+            _persist_discovery_attempt(
+                connection,
+                discovery_attempt_id=discovery_attempt_id,
+                target_row=target_row,
+                result=final_result,
+                created_at=timestamp,
+            )
+            if final_result.is_found:
+                _apply_general_learning_discovery_success(
+                    connection,
+                    target_row=target_row,
+                    result=final_result,
+                    current_time=timestamp,
+                )
+            else:
+                _apply_general_learning_discovery_failure(
+                    connection,
+                    target_row=target_row,
+                    result=final_result,
+                    current_time=timestamp,
+                )
+
+            refreshed_row = _load_general_learning_discovery_contact_row(
+                connection,
+                contact_id=contact_id,
+                allow_terminal_status=True,
+            )
+            artifact_path = _publish_general_learning_discovery_result_artifact(
+                connection,
+                paths,
+                target_row=refreshed_row,
+                discovery_attempt_id=discovery_attempt_id,
+                result=final_result,
+                provider_steps=provider_steps,
+                feedback_reuse_state=feedback_reuse_state,
+                attempted_provider_names=attempted_provider_names,
+                produced_at=timestamp,
+            )
+
+        return GeneralLearningEmailDiscoveryRunResult(
+            contact_id=str(refreshed_row["contact_id"]),
+            discovery_attempt_id=discovery_attempt_id,
+            artifact_path=artifact_path,
+            outcome=final_result.outcome,
+            provider_name=final_result.provider_name or None,
+            email=final_result.email,
+            attempted_provider_names=tuple(attempted_provider_names),
+            contact_status=str(refreshed_row["contact_status"]),
             reused_existing_email=reused_existing_email,
         )
     finally:
@@ -2062,6 +2263,79 @@ def _load_discovery_ready_contact_row(
     return dict(row)
 
 
+def _load_general_learning_discovery_contact_row(
+    connection: sqlite3.Connection,
+    *,
+    contact_id: str,
+    allow_terminal_status: bool = False,
+) -> dict[str, Any]:
+    row = connection.execute(
+        """
+        SELECT c.contact_id, c.identity_key, c.display_name, c.company_name, c.origin_component,
+               c.contact_status, c.full_name, c.first_name, c.last_name, c.linkedin_url,
+               c.position_title, c.location, c.discovery_summary, c.current_working_email,
+               c.identity_source, c.provider_name, c.provider_person_id, c.name_quality,
+               c.created_at, c.updated_at,
+               (
+                 SELECT COUNT(*)
+                 FROM job_posting_contacts jpc
+                 WHERE jpc.contact_id = c.contact_id
+               ) AS posting_link_count,
+               (
+                 SELECT COUNT(*)
+                 FROM outreach_messages om
+                 WHERE om.contact_id = c.contact_id
+                   AND (
+                     om.sent_at IS NOT NULL
+                     OR om.message_status = 'sent'
+                   )
+               ) AS sent_message_count,
+               (
+                 SELECT om.message_status
+                 FROM outreach_messages om
+                 WHERE om.contact_id = c.contact_id
+                   AND om.outreach_mode = 'general_learning'
+                 ORDER BY om.created_at DESC, om.outreach_message_id DESC
+                 LIMIT 1
+               ) AS latest_general_learning_message_status
+        FROM contacts c
+        WHERE c.contact_id = ?
+        """,
+        (contact_id,),
+    ).fetchone()
+    if row is None:
+        raise EmailDiscoveryError(f"Contact `{contact_id}` was not found.")
+
+    posting_link_count = int(row["posting_link_count"] or 0)
+    if posting_link_count > 0:
+        raise EmailDiscoveryError(
+            f"Contact `{contact_id}` is still tied to posting-linked outreach state."
+        )
+
+    sent_message_count = int(row["sent_message_count"] or 0)
+    if sent_message_count > 0:
+        raise EmailDiscoveryError(
+            f"Contact `{contact_id}` already has prior sent outreach history."
+        )
+
+    latest_status = _normalize_optional_text(row["latest_general_learning_message_status"])
+    if latest_status is not None:
+        raise EmailDiscoveryError(
+            f"Contact `{contact_id}` already has general-learning outreach state at "
+            f"{latest_status!r}."
+        )
+
+    contact_status = _normalize_optional_text(row["contact_status"]) or CONTACT_STATUS_IDENTIFIED
+    if (
+        not allow_terminal_status
+        and contact_status in {CONTACT_STATUS_EXHAUSTED, "outreach_in_progress", "sent"}
+    ):
+        raise EmailDiscoveryError(
+            f"Contact `{contact_id}` is already at contact_status={contact_status!r}."
+        )
+    return dict(row)
+
+
 def _load_contact_feedback_reuse_state(
     connection: sqlite3.Connection,
     *,
@@ -2295,7 +2569,7 @@ def _persist_discovery_attempt(
         (
             discovery_attempt_id,
             target_row["contact_id"],
-            target_row["job_posting_id"],
+            target_row.get("job_posting_id"),
             result.outcome,
             _normalize_optional_text(result.provider_name),
             email,
@@ -2381,7 +2655,6 @@ def _apply_discovery_failure(
     connection: sqlite3.Connection,
     *,
     target_row: Mapping[str, Any],
-    provider_steps: Sequence[Mapping[str, Any]],
     result: EmailDiscoveryProviderResult,
     current_time: str,
 ) -> None:
@@ -2459,6 +2732,101 @@ def _apply_discovery_failure(
             job_posting_id=str(target_row["job_posting_id"]),
             contact_id=str(target_row["contact_id"]),
         )
+
+
+def _apply_general_learning_discovery_success(
+    connection: sqlite3.Connection,
+    *,
+    target_row: Mapping[str, Any],
+    result: EmailDiscoveryProviderResult,
+    current_time: str,
+) -> None:
+    previous_contact_status = _normalize_optional_text(target_row.get("contact_status")) or CONTACT_STATUS_IDENTIFIED
+    connection.execute(
+        """
+        UPDATE contacts
+        SET current_working_email = ?, discovery_summary = ?, contact_status = ?, updated_at = ?
+        WHERE contact_id = ?
+        """,
+        (
+            result.email,
+            CONTACT_STATUS_WORKING_EMAIL_FOUND,
+            CONTACT_STATUS_WORKING_EMAIL_FOUND,
+            current_time,
+            target_row["contact_id"],
+        ),
+    )
+    if previous_contact_status != CONTACT_STATUS_WORKING_EMAIL_FOUND:
+        _record_state_transition(
+            connection,
+            object_type="contacts",
+            object_id=str(target_row["contact_id"]),
+            stage="contact_status",
+            previous_state=previous_contact_status,
+            new_state=CONTACT_STATUS_WORKING_EMAIL_FOUND,
+            transition_timestamp=current_time,
+            transition_reason="Contact-rooted general-learning email discovery produced a usable work email.",
+            lead_id=None,
+            job_posting_id=None,
+            contact_id=str(target_row["contact_id"]),
+        )
+
+
+def _apply_general_learning_discovery_failure(
+    connection: sqlite3.Connection,
+    *,
+    target_row: Mapping[str, Any],
+    result: EmailDiscoveryProviderResult,
+    current_time: str,
+) -> None:
+    exhausted = _all_email_finder_providers_exhausted(
+        connection,
+        contact_id=str(target_row["contact_id"]),
+    )
+    discovery_summary = "all_providers_exhausted" if exhausted else result.outcome
+    connection.execute(
+        """
+        UPDATE contacts
+        SET discovery_summary = ?, updated_at = ?
+        WHERE contact_id = ?
+        """,
+        (
+            discovery_summary,
+            current_time,
+            target_row["contact_id"],
+        ),
+    )
+    if not exhausted:
+        return
+
+    previous_contact_status = _normalize_optional_text(target_row.get("contact_status")) or CONTACT_STATUS_IDENTIFIED
+    if previous_contact_status == CONTACT_STATUS_EXHAUSTED:
+        return
+    connection.execute(
+        """
+        UPDATE contacts
+        SET contact_status = ?, current_working_email = NULL, updated_at = ?
+        WHERE contact_id = ?
+        """,
+        (
+            CONTACT_STATUS_EXHAUSTED,
+            current_time,
+            target_row["contact_id"],
+        ),
+    )
+    _record_state_transition(
+        connection,
+        object_type="contacts",
+        object_id=str(target_row["contact_id"]),
+        stage="contact_status",
+        previous_state=previous_contact_status,
+        new_state=CONTACT_STATUS_EXHAUSTED,
+        transition_timestamp=current_time,
+        transition_reason="Contact-rooted general-learning email discovery exhausted the current provider set without a non-bounced usable email.",
+        lead_id=None,
+        job_posting_id=None,
+        contact_id=str(target_row["contact_id"]),
+    )
 
 
 def _all_email_finder_providers_exhausted(
@@ -2560,6 +2928,77 @@ def _publish_discovery_result_artifact(
             "provider_steps": [dict(step) for step in provider_steps],
             "recipient_profile_artifact_ref": recipient_profile["relative_path"],
             "recipient_profile_artifact_path": recipient_profile["absolute_path"],
+        },
+        produced_at=produced_at,
+        reason_code=None if result.is_found else result.outcome,
+        message=None if result.is_found else _discovery_blocked_message(result.outcome),
+    )
+    return artifact_path
+
+
+def _publish_general_learning_discovery_result_artifact(
+    connection: sqlite3.Connection,
+    paths: ProjectPaths,
+    *,
+    target_row: Mapping[str, Any],
+    discovery_attempt_id: str,
+    result: EmailDiscoveryProviderResult,
+    provider_steps: Sequence[Mapping[str, Any]],
+    feedback_reuse_state: Mapping[str, Any],
+    attempted_provider_names: Sequence[str],
+    produced_at: str,
+) -> Path:
+    company_name = _normalize_optional_text(target_row.get("company_name")) or "unknown-company"
+    artifact_path = paths.general_learning_outreach_discovery_result_path(
+        company_name,
+        str(target_row["contact_id"]),
+    )
+    connection.execute(
+        """
+        DELETE FROM artifact_records
+        WHERE artifact_type = ?
+          AND contact_id = ?
+          AND job_posting_id IS NULL
+        """,
+        (
+            DISCOVERY_RESULT_ARTIFACT_TYPE,
+            target_row["contact_id"],
+        ),
+    )
+    publish_json_artifact(
+        connection,
+        paths,
+        artifact_type=DISCOVERY_RESULT_ARTIFACT_TYPE,
+        artifact_path=artifact_path,
+        producer_component=EMAIL_DISCOVERY_COMPONENT,
+        result="success" if result.is_found else "blocked",
+        linkage=ArtifactLinkage(contact_id=str(target_row["contact_id"])),
+        payload={
+            "discovery_attempt_id": discovery_attempt_id,
+            "outcome": result.outcome,
+            "email": result.email,
+            "provider_name": _normalize_optional_text(result.provider_name),
+            "provider_verification_status": result.provider_verification_status,
+            "provider_score": result.provider_score,
+            "detected_pattern": result.detected_pattern,
+            "observed_bounced": bool(feedback_reuse_state.get("blocked_emails")),
+            "observed_not_bounced": bool(feedback_reuse_state.get("reusable_emails")),
+            "reply_retained_for_review_only": bool(feedback_reuse_state.get("reply_only_emails")),
+            "feedback_reuse_summary": {
+                "blocked_bounced_emails": sorted(
+                    str(email) for email in feedback_reuse_state.get("blocked_emails", set())
+                ),
+                "reusable_not_bounced_emails": sorted(
+                    str(email) for email in feedback_reuse_state.get("reusable_emails", set())
+                ),
+                "reply_only_emails": sorted(
+                    str(email) for email in feedback_reuse_state.get("reply_only_emails", set())
+                ),
+            },
+            "attempted_provider_names": list(attempted_provider_names),
+            "provider_steps": [dict(step) for step in provider_steps],
+            "recipient_profile_artifact_ref": None,
+            "recipient_profile_artifact_path": None,
         },
         produced_at=produced_at,
         reason_code=None if result.is_found else result.outcome,

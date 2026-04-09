@@ -9,7 +9,7 @@
     "epic_id": "BA-10",
     "slice_id": "BA-10-S4",
     "owner_role": "build-lead",
-    "reason": "BA-10-S4 now covers the full role-targeted supervisor chain through bounded `delivery_feedback` completion plus one send-ready contact-rooted general-learning dispatch and moved the acceptance matrix to 194 implemented / 4 partial / 14 gap scenarios; the highest-value remaining work in this slice is contact-rooted email discovery plus delayed-feedback follow-through.",
+    "reason": "BA-10-S4 now covers the full role-targeted supervisor chain through bounded `delivery_feedback` completion plus contact-rooted general-learning discovery into send-ready dispatch and still holds the acceptance matrix at 194 implemented / 4 partial / 14 gap scenarios; the highest-value remaining work in this slice is delayed-feedback follow-through for sent contact-rooted outreach.",
     "gap_ids": [
       "BA10_SUPERVISOR_DOWNSTREAM_ACTION_CATALOG"
     ],
@@ -19,7 +19,7 @@
         "title": "Supervisor downstream hardening regressions",
         "kind": "automated",
         "command": "python3.11 -m pytest tests/test_supervisor_downstream_actions.py",
-        "description": "Confirms `lead_handoff` advances into `agent_review`, bounded mandatory review advances into `people_search`, bounded people search advances into `email_discovery`, bounded email discovery advances into `sending`, bounded sending advances into `delivery_feedback`, bounded delivery feedback either stays active until high-level outcomes are due or completes the same durable run with a review packet, send-ready contact-rooted general-learning work now dispatches without posting review state, and the remaining contact-rooted general-learning gap is limited to discovery plus delayed-feedback follow-through."
+        "description": "Confirms `lead_handoff` advances into `agent_review`, bounded mandatory review advances into `people_search`, bounded people search advances into `email_discovery`, bounded email discovery advances into `sending`, bounded sending advances into `delivery_feedback`, bounded delivery feedback either stays active until high-level outcomes are due or completes the same durable run with a review packet, contact-rooted general-learning work now advances from bounded email discovery into send-ready dispatch without posting review state, and the remaining contact-rooted general-learning gap is limited to delayed-feedback follow-through."
       },
       {
         "command_id": "qa_acceptance_reports",
@@ -289,8 +289,8 @@
   "acceptance_gap_clusters": [
     {
       "gap_id": "BA10_SUPERVISOR_DOWNSTREAM_ACTION_CATALOG",
-      "title": "Supervisor general-learning orchestration remains partial beyond send-ready contact dispatch",
-      "reason": "The durable heartbeat now covers the role-targeted flow through bounded delivery-feedback completion and can dispatch one send-ready contact-rooted general-learning send, but contact-rooted email discovery and delayed feedback follow-through still remain outside the registered autonomous catalog.",
+      "title": "Supervisor general-learning orchestration remains partial beyond bounded contact-rooted send completion",
+      "reason": "The durable heartbeat now covers the full role-targeted flow through bounded delivery-feedback completion and can advance contact-rooted general-learning work from email discovery into send-ready dispatch, but delayed feedback follow-through for sent contact-rooted outreach still remains outside the registered autonomous catalog.",
       "next_slice": "BA-10-S4",
       "rules": [
         "Supervisor Agent behavior"
@@ -316,7 +316,7 @@
         "partial": 1,
         "gap": 0
       },
-      "evidence_summary": "Focused downstream-stage regressions prove active incidents still outrank ordinary progression, existing durable runs are selected before bootstrapping new eligible postings, `lead_handoff` now advances into `agent_review`, bounded mandatory agent review advances the same run into `people_search`, bounded people search materializes shortlist artifacts and advances the same run into `email_discovery`, bounded email discovery advances the same durable run into `sending` when readiness is satisfied, bounded sending now drafts the ready send set, executes one safe send, stays at `sending` while later-wave contacts remain paced, advances the same durable run into `delivery_feedback` after terminal sent waves, bounded delivery feedback now runs the shared delayed-sync logic, keeps the durable run active while high-level outcomes remain pending, completes the same durable run with a review packet once all sent messages reach bounced, not_bounced, or replied state, a send-ready contact-rooted general-learning candidate is now selected and sent without posting linkage or review-gate prerequisites, and the remaining contact-rooted gaps are bounded to email discovery plus delayed-feedback follow-through.",
+      "evidence_summary": "Focused downstream-stage regressions prove active incidents still outrank ordinary progression, existing durable runs are selected before bootstrapping new eligible postings, `lead_handoff` now advances into `agent_review`, bounded mandatory agent review advances the same run into `people_search`, bounded people search materializes shortlist artifacts and advances the same run into `email_discovery`, bounded email discovery advances the same durable run into `sending` when readiness is satisfied, bounded sending now drafts the ready send set, executes one safe send, stays at `sending` while later-wave contacts remain paced, advances the same durable run into `delivery_feedback` after terminal sent waves, bounded delivery feedback now runs the shared delayed-sync logic, keeps the durable run active while high-level outcomes remain pending, completes the same durable run with a review packet once all sent messages reach bounced, not_bounced, or replied state, a contact-rooted general-learning candidate without a working email now runs bounded email discovery, becomes send-ready in canonical contact state, and is then selected for the existing contact-rooted send path on the next heartbeat without posting linkage or review-gate prerequisites, and the remaining contact-rooted gap is narrowed to delayed-feedback follow-through after sent general-learning outreach.",
       "evidence_code_refs": [
         "job_hunt_copilot/supervisor.py",
         "job_hunt_copilot/email_discovery.py",
@@ -336,7 +336,7 @@
           "title": "Supervisor downstream hardening regressions",
           "kind": "automated",
           "command": "python3.11 -m pytest tests/test_supervisor_downstream_actions.py",
-          "description": "Confirms `lead_handoff` advances into `agent_review`, bounded mandatory review advances into `people_search`, bounded people search advances into `email_discovery`, bounded email discovery advances into `sending`, bounded sending advances into `delivery_feedback`, bounded delivery feedback either stays active until high-level outcomes are due or completes the same durable run with a review packet, send-ready contact-rooted general-learning work now dispatches without posting review state, and the remaining contact-rooted general-learning gap is limited to discovery plus delayed-feedback follow-through."
+          "description": "Confirms `lead_handoff` advances into `agent_review`, bounded mandatory review advances into `people_search`, bounded people search advances into `email_discovery`, bounded email discovery advances into `sending`, bounded sending advances into `delivery_feedback`, bounded delivery feedback either stays active until high-level outcomes are due or completes the same durable run with a review packet, contact-rooted general-learning work now advances from bounded email discovery into send-ready dispatch without posting review state, and the remaining contact-rooted general-learning gap is limited to delayed-feedback follow-through."
         },
         {
           "command_id": "qa_acceptance_reports",
@@ -387,11 +387,11 @@
           "sending"
         ],
         "registered_contact_rooted_action_ids": [
+          "general_learning_email_discovery",
           "general_learning_outreach"
         ],
         "validated_blocked_role_targeted_stages": [],
         "unsupported_autonomous_scope_paths": [
-          "contact_rooted_general_learning_email_discovery",
           "contact_rooted_general_learning_delayed_feedback_followthrough"
         ]
       }
@@ -902,7 +902,7 @@
       "status": "open",
       "severity": "high",
       "owner_role": "quality-engineer",
-      "summary": "The regenerated BA-10 trace matrix now reports 194 implemented / 4 partial / 14 gap scenarios; explicit smoke-coverage targets, implemented-slice traceability, reproducible validation-command mappings, and a durable latest validation-suite report snapshot now cover bootstrap, tailoring, discovery, send, feedback, and review-query flows, while downstream supervisor progression now reaches bounded `delivery_feedback` completion plus send-ready contact-rooted general-learning dispatch, but the remaining contact-rooted follow-through, chat, maintenance, and posting-abandon behaviors themselves remain open.",
+      "summary": "The regenerated BA-10 trace matrix now reports 194 implemented / 4 partial / 14 gap scenarios; explicit smoke-coverage targets, implemented-slice traceability, reproducible validation-command mappings, and a durable latest validation-suite report snapshot now cover bootstrap, tailoring, discovery, send, feedback, and review-query flows, while downstream supervisor progression now reaches bounded `delivery_feedback` completion plus contact-rooted general-learning discovery into send-ready dispatch, but delayed-feedback follow-through for sent contact-rooted outreach, chat, maintenance, and posting-abandon behaviors themselves remain open.",
       "impact": "Acceptance signoff is more credible now that committed smoke coverage, blocker-specific evidence refs, and explicit negative regressions exist, but BA-10 still cannot close until the remaining gap clusters are actually burned down or deliberately left open.",
       "next_action": "Hand the next functional slice to the build-lead: downstream action-catalog burn-down beyond `sending`, starting with a bounded `delivery_feedback` action or the contact-rooted general-learning selector path, or switch to posting-abandon control if runtime-control coverage becomes more urgent. Maintenance automation remains an explicit follow-up gap after those surfaces.",
       "evidence_refs": [
@@ -988,7 +988,7 @@
           "title": "Supervisor downstream hardening regressions",
           "kind": "automated",
           "command": "python3.11 -m pytest tests/test_supervisor_downstream_actions.py",
-          "description": "Confirms `lead_handoff` advances into `agent_review`, bounded mandatory review advances into `people_search`, bounded people search advances into `email_discovery`, bounded email discovery advances into `sending`, bounded sending advances into `delivery_feedback`, bounded delivery feedback either stays active until high-level outcomes are due or completes the same durable run with a review packet, send-ready contact-rooted general-learning work now dispatches without posting review state, and the remaining contact-rooted general-learning gap is limited to discovery plus delayed-feedback follow-through."
+          "description": "Confirms `lead_handoff` advances into `agent_review`, bounded mandatory review advances into `people_search`, bounded people search advances into `email_discovery`, bounded email discovery advances into `sending`, bounded sending advances into `delivery_feedback`, bounded delivery feedback either stays active until high-level outcomes are due or completes the same durable run with a review packet, contact-rooted general-learning work now advances from bounded email discovery into send-ready dispatch without posting review state, and the remaining contact-rooted general-learning gap is limited to delayed-feedback follow-through."
         },
         {
           "command_id": "qa_runtime_control_regressions",

@@ -1617,3 +1617,29 @@ Use this file as an append-only implementation log for the build agent.
 ### Notes
 - The acceptance matrix now reports 194 implemented / 4 partial / 14 gap scenarios; this cycle closed the general-learning review-bypass partial while leaving one downstream-supervisor priority-order scenario explicit.
 - The remaining downstream-supervisor blocker is no longer the absence of any contact-rooted action; it is now the missing contact-rooted email-discovery and delayed-feedback follow-through path.
+
+### Session
+- Date: 2026-04-08 18:01:00 MST
+- Slice: BA-10-S4 contact-rooted general-learning email discovery
+- Goal: Add the next bounded contact-rooted supervisor action so a no-email general-learning contact can become send-ready without a pipeline run, then refresh the BA-10 evidence and keep the remaining blocker explicit.
+
+### Work Done
+- Added `job_hunt_copilot.email_discovery.run_general_learning_email_discovery`, a contact-rooted discovery helper that persists `discovery_attempts`, provider-budget signals, a contact-rooted `discovery_result.json`, and canonical `contact_status` updates without posting linkage.
+- Extended `job_hunt_copilot.supervisor` with `run_general_learning_email_discovery`, updated the contact-rooted selector so send-ready general-learning sends still win first but no-email contacts now get a bounded discovery step instead of being invisible, and kept the work pipeline-run-free.
+- Added direct discovery coverage in `tests/test_email_discovery.py` plus a focused supervisor progression regression in `tests/test_supervisor_downstream_actions.py` proving `contact without email -> bounded discovery -> working_email_found -> next-heartbeat general-learning send`.
+- Refreshed `job_hunt_copilot.acceptance_traceability`, `job_hunt_copilot.blocker_audit`, the committed BA-10 reports, and the build-agent state files so the remaining downstream-supervisor blocker is now delayed-feedback follow-through for sent contact-rooted outreach rather than discovery plus follow-through.
+
+### Validation
+- Ran `python3.11 -m py_compile job_hunt_copilot/paths.py job_hunt_copilot/email_discovery.py job_hunt_copilot/supervisor.py tests/test_email_discovery.py tests/test_supervisor_downstream_actions.py tests/test_acceptance_traceability.py tests/test_blocker_audit.py tests/test_quality_validation.py` and confirmed the changed runtime, report, and state-guard files compile cleanly.
+- Ran `python3.11 -m pytest tests/test_email_discovery.py tests/test_supervisor_downstream_actions.py` and confirmed all 29 targeted discovery plus supervisor regressions passed.
+- Ran `python3.11 scripts/quality/run_ba10_validation_suite.py --project-root /Users/achyutaramsonti/Projects/job-hunt-copilot-v4 --current-focus` and confirmed the refreshed BA-10 current-focus replay passed, regenerating the committed acceptance-trace, blocker-audit, and latest validation-suite reports.
+
+### Result
+- `partial`
+
+### Next
+- Keep BA-10-S4 in progress and add the remaining bounded contact-rooted delayed-feedback follow-through action so sent general-learning outreach no longer falls out of the autonomous catalog after dispatch.
+
+### Notes
+- The acceptance matrix still reports 194 implemented / 4 partial / 14 gap scenarios; this pass narrowed the downstream-supervisor gap but did not close another acceptance scenario.
+- The remaining downstream-supervisor blocker is no longer contact-rooted discovery plus delayed-feedback follow-through; it is now delayed-feedback follow-through for sent contact-rooted outreach.

@@ -30,6 +30,7 @@ from job_hunt_copilot.email_discovery import (
     run_apollo_contact_enrichment,
     run_apollo_people_search,
     run_email_discovery_for_contact,
+    run_general_learning_email_discovery,
 )
 from job_hunt_copilot.paths import ProjectPaths
 from tests.support import create_minimal_project
@@ -352,6 +353,132 @@ def seed_linked_contact(
         ),
     )
     connection.commit()
+
+
+def seed_general_learning_contact(
+    connection: sqlite3.Connection,
+    *,
+    contact_id: str = "ct_general_learning",
+    company_name: str = "Acme Robotics",
+    display_name: str = "Sam Learner",
+    full_name: str | None = "Sam Learner",
+    first_name: str | None = "Sam",
+    last_name: str | None = "Learner",
+    linkedin_url: str | None = "https://linkedin.example/sam",
+    position_title: str = "Engineering Manager",
+    current_working_email: str | None = None,
+    contact_status: str = "identified",
+    provider_name: str | None = None,
+    provider_person_id: str | None = None,
+    identity_key: str = "manual|sam-learner",
+    created_at: str = "2026-04-06T21:30:00Z",
+) -> None:
+    connection.execute(
+        """
+        INSERT INTO contacts (
+          contact_id, identity_key, display_name, company_name, origin_component, contact_status,
+          full_name, first_name, last_name, linkedin_url, position_title, location,
+          discovery_summary, current_working_email, identity_source, provider_name,
+          provider_person_id, name_quality, created_at, updated_at
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        """,
+        (
+            contact_id,
+            identity_key,
+            display_name,
+            company_name,
+            "manual_capture",
+            contact_status,
+            full_name,
+            first_name,
+            last_name,
+            linkedin_url,
+            position_title,
+            "Phoenix, AZ",
+            "general_learning_candidate",
+            current_working_email,
+            "manual_capture",
+            provider_name,
+            provider_person_id,
+            "provider_full" if full_name else "provider_sparse",
+            created_at,
+            created_at,
+        ),
+    )
+    connection.commit()
+
+
+def test_general_learning_email_discovery_persists_contact_rooted_result_without_job_posting(
+    tmp_path: Path,
+):
+    project_root = bootstrap_project(tmp_path)
+    connection = connect_database(project_root / "job_hunt_copilot.db")
+    seed_general_learning_contact(connection)
+
+    hunter = FakeEmailFinderProvider(
+        provider_name="hunter",
+        responses=[
+            {
+                "outcome": "found",
+                "email": "sam.learner@acme.example",
+                "provider_verification_status": "valid",
+                "provider_score": "0.91",
+            }
+        ],
+    )
+
+    result = run_general_learning_email_discovery(
+        project_root=project_root,
+        contact_id="ct_general_learning",
+        providers=(hunter,),
+        current_time="2026-04-06T21:40:00Z",
+    )
+
+    assert result.outcome == "found"
+    assert result.provider_name == "hunter"
+    assert result.email == "sam.learner@acme.example"
+    assert result.contact_status == CONTACT_STATUS_WORKING_EMAIL_FOUND
+    assert result.reused_existing_email is False
+    assert hunter.calls == [
+        {
+            "contact_id": "ct_general_learning",
+            "job_posting_id": None,
+            "company_domain": None,
+            "company_name": "Acme Robotics",
+        }
+    ]
+
+    contact_row = connection.execute(
+        """
+        SELECT current_working_email, contact_status
+        FROM contacts
+        WHERE contact_id = 'ct_general_learning'
+        """
+    ).fetchone()
+    assert dict(contact_row) == {
+        "current_working_email": "sam.learner@acme.example",
+        "contact_status": CONTACT_STATUS_WORKING_EMAIL_FOUND,
+    }
+
+    artifact_row = connection.execute(
+        """
+        SELECT job_posting_id, file_path
+        FROM artifact_records
+        WHERE artifact_type = 'discovery_result'
+          AND contact_id = 'ct_general_learning'
+        ORDER BY created_at DESC, artifact_id DESC
+        LIMIT 1
+        """
+    ).fetchone()
+    assert artifact_row["job_posting_id"] is None
+    artifact_payload = json.loads(result.artifact_path.read_text(encoding="utf-8"))
+    assert artifact_payload["contact_id"] == "ct_general_learning"
+    assert artifact_payload.get("job_posting_id") is None
+    assert artifact_payload["outcome"] == "found"
+    assert artifact_payload["email"] == "sam.learner@acme.example"
+    assert artifact_payload["attempted_provider_names"] == ["hunter"]
+
+    connection.close()
 
 
 def test_apollo_people_search_persists_broad_result_and_shortlists_only_selected_candidates(tmp_path: Path):
