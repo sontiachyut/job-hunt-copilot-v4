@@ -1956,3 +1956,29 @@ Use this file as an append-only implementation log for the build agent.
 ### Notes
 - The acceptance matrix still reports `201 implemented / 2 partial / 9 gap` scenarios, and the open BA-10-S3 gap clusters remain `BA10_MAINTENANCE_AUTOMATION` and `BA10_CHAT_REVIEW_AND_CONTROL`.
 - This slice stayed inside quality ownership: it improved validation evidence and repo-surface honesty, but it did not claim maintenance automation or deeper chat-guidance workflows as implemented.
+
+### Session
+- Date: 2026-04-08 21:48:30 MST
+- Slice: BA-10-S3 persisted dashboard CLI regression hardening
+- Goal: Close the remaining validation hole around the direct `scripts/ops/chat_state.py dashboard` path and refresh the BA-10 current-focus evidence without overstating the still-open maintenance or deeper chat-control gaps.
+
+### Work Done
+- Added a direct persisted-state `dashboard` CLI regression in `tests/test_local_runtime.py` so the actual `scripts/ops/chat_state.py dashboard` command is now covered, not just the underlying builder helpers.
+- Expanded the existing read-only/idempotency guard so repeated `dashboard`, `review-queue`, and `change-summary` reads are all proven byte-stable while watching the pipeline, supervisor-cycle, message, feedback, and review tables that feed the dashboard metrics.
+- Re-ran the BA-10 current-focus validation suite, which refreshed `build-agent/reports/ba-10-validation-suite-latest.{json,md}` plus `build-agent/reports/repo-readiness-summary.{json,md}` and confirmed the blocker surface stayed unchanged.
+- Updated the build board, implementation plan, and handoff note so the stronger dashboard-evidence slice is checkpointed explicitly instead of being left in chat history only.
+
+### Validation
+- Ran `python3.11 -m py_compile tests/test_local_runtime.py`.
+- Ran `python3.11 -m pytest tests/test_local_runtime.py` and confirmed all 26 local-runtime regressions passed.
+- Ran `python3.11 scripts/quality/run_ba10_validation_suite.py --project-root /Users/achyutaramsonti/Projects/job-hunt-copilot-v4 --current-focus` and confirmed all 5 automated current-focus checks passed while refreshing `build-agent/reports/ba-10-validation-suite-latest.{json,md}` at `2026-04-09T04:48:30Z`.
+
+### Result
+- `partial`
+
+### Next
+- Keep BA-10-S3 open for a real remaining functional blocker. The next best slice is build-lead ownership for the remaining `jhc-chat` control-routing gap, starting with generic object-specific override routing or expert-guidance conflict handling before maintenance automation.
+
+### Notes
+- The acceptance matrix still reports `201 implemented / 2 partial / 9 gap` scenarios, and the open BA-10-S3 gap clusters remain `BA10_MAINTENANCE_AUTOMATION` and `BA10_CHAT_REVIEW_AND_CONTROL`.
+- This slice stayed inside quality ownership: it strengthened persisted dashboard evidence and refreshed the latest readiness snapshot, but it did not claim any new functional chat-control or maintenance behavior.

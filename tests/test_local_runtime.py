@@ -2145,6 +2145,61 @@ def test_chat_session_begin_persists_startup_briefing_for_wrapper_startup(tmp_pa
     assert "Open incidents: 1" in begin_report["startup_briefing"]
 
 
+def test_chat_state_script_returns_persisted_dashboard_from_canonical_state(tmp_path):
+    project_root = tmp_path / "repo"
+    project_root.mkdir()
+    create_minimal_project(project_root)
+    run_script(
+        "scripts/ops/control_agent.py",
+        "start",
+        "--project-root",
+        str(project_root),
+        "--manual-command",
+        "jhc-agent-start",
+    )
+
+    connection = connect_database(project_root / "job_hunt_copilot.db")
+    seed_chat_dashboard_state(connection)
+    connection.close()
+
+    report = json.loads(
+        run_script(
+            "scripts/ops/chat_state.py",
+            "dashboard",
+            "--project-root",
+            str(project_root),
+            "--current-time",
+            "2026-04-08T10:00:00Z",
+        ).stdout
+    )
+
+    payload = report["payload"]
+    assert report["command"] == "dashboard"
+    assert report["current_time"] == "2026-04-08T10:00:00Z"
+    assert payload["generated_at"] == "2026-04-08T10:00:00Z"
+    assert payload["summary"] == {
+        "pending_expert_review_count": 1,
+        "open_incident_count": 1,
+        "maintenance_batch_count": 1,
+        "maintenance_state": "1 recorded maintenance batches",
+    }
+    assert payload["runtime_metrics"]["today"]["runtime_display"] == "35m"
+    assert payload["runtime_metrics"]["yesterday"]["runtime_display"] == "30m"
+    assert [group["group_id"] for group in payload["review_queue"]["groups"]] == [
+        "pending_expert_review_packets",
+        "failed_expert_requested_background_tasks",
+        "maintenance_change_batches",
+        "open_incidents",
+    ]
+    assert payload["review_queue"]["groups"][0]["items"][0]["headline"] == (
+        "Acme Robotics / Staff Software Engineer / AI"
+    )
+    assert report["rendered_markdown"].startswith("# Job Hunt Copilot Dashboard\n")
+    assert "- Pending expert review items: 1" in report["rendered_markdown"]
+    assert "- Maintenance state: 1 recorded maintenance batches" in report["rendered_markdown"]
+    assert "## Review Queue" in report["rendered_markdown"]
+
+
 def test_chat_review_queue_is_compact_first_and_newest_first_within_each_group(tmp_path):
     project_root = tmp_path / "repo"
     project_root.mkdir()
@@ -2260,10 +2315,15 @@ def test_chat_state_scripts_are_idempotent_and_read_only(tmp_path):
 
     tracked_tables = (
         "agent_control_state",
+        "delivery_feedback_events",
+        "expert_review_decisions",
         "expert_review_packets",
         "maintenance_change_batches",
         "agent_incidents",
         "override_events",
+        "outreach_messages",
+        "pipeline_runs",
+        "supervisor_cycles",
         "windows",
         "state_transition_events",
     )
@@ -2295,6 +2355,18 @@ def test_chat_state_scripts_are_idempotent_and_read_only(tmp_path):
     first_review_queue = json.loads(run_script(*review_queue_args).stdout)
     second_review_queue = json.loads(run_script(*review_queue_args).stdout)
     assert first_review_queue == second_review_queue
+
+    dashboard_args = (
+        "scripts/ops/chat_state.py",
+        "dashboard",
+        "--project-root",
+        str(project_root),
+        "--current-time",
+        "2026-04-08T15:30:00Z",
+    )
+    first_dashboard = json.loads(run_script(*dashboard_args).stdout)
+    second_dashboard = json.loads(run_script(*dashboard_args).stdout)
+    assert first_dashboard == second_dashboard
 
     change_summary_args = (
         "scripts/ops/chat_state.py",
