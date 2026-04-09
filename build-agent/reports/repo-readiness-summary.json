@@ -1,6 +1,6 @@
 {
   "repo_readiness_report_version": 1,
-  "generated_at": "2026-04-09T19:40:28Z",
+  "generated_at": "2026-04-09T19:52:13Z",
   "project_root": "/Users/achyutaramsonti/Projects/job-hunt-copilot-v4",
   "sources": {
     "build_board": "build-agent/state/build-board.yaml",
@@ -34,9 +34,9 @@
   },
   "latest_validation": {
     "available": true,
-    "generated_at": "2026-04-09T19:40:28Z",
+    "generated_at": "2026-04-09T19:52:13Z",
     "passed": true,
-    "command_count": 5,
+    "command_count": 11,
     "failed_command_count": 0,
     "report_paths": {
       "json_path": "/Users/achyutaramsonti/Projects/job-hunt-copilot-v4/build-agent/reports/ba-10-validation-suite-latest.json",

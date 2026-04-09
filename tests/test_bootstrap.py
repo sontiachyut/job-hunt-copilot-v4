@@ -7,6 +7,7 @@ import yaml
 
 from job_hunt_copilot.bootstrap import run_bootstrap
 from job_hunt_copilot.paths import ProjectPaths
+from job_hunt_copilot.supervisor import registered_supervisor_action_catalog
 from tests.support import create_minimal_project
 
 
@@ -95,9 +96,7 @@ def test_bootstrap_runtime_pack_uses_absolute_paths_and_expected_runtime_shapes(
     assert identity["canonical_state_locations"]["project_root"] == str(project_root)
     assert identity["canonical_state_locations"]["database"] == str(project_root / "job_hunt_copilot.db")
     assert [entry["action_id"] for entry in action_catalog["actions"]] == [
-        "bootstrap_role_targeted_run",
-        "checkpoint_pipeline_run",
-        "escalate_open_incident",
+        entry.action_id for entry in registered_supervisor_action_catalog().values()
     ]
     assert service_goals["deployment"]["scheduler"] == "launchd"
     assert service_goals["deployment"]["heartbeat_interval_seconds"] == 180

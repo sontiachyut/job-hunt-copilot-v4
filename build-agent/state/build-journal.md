@@ -2107,3 +2107,29 @@ Use this file as an append-only implementation log for the build agent.
 ### Notes
 - The acceptance matrix still reports `201 implemented / 2 partial / 9 gap` scenarios, and the open BA-10-S3 gap clusters remain `BA10_MAINTENANCE_AUTOMATION` and `BA10_CHAT_REVIEW_AND_CONTROL`.
 - This session stayed inside quality ownership: it hardened the latest evidence snapshot itself and refreshed blocker confirmation, but it did not claim any new chat-control or maintenance implementation.
+
+### Session
+- Date: 2026-04-09 12:52:48 MST
+- Slice: BA-10-S3 broad trace replay and stale bootstrap guard repair
+- Goal: Re-run the full BA10 trace blocker suite across bootstrap through review-query, repair any stale quality guard it exposes, and checkpoint the unchanged blocker surface with fresh repo-readiness evidence.
+
+### Work Done
+- Re-ran `scripts/quality/run_ba10_validation_suite.py --blocker-id BA10-TRACE-001` to get a broad cross-component replay instead of another current-focus-only evidence refresh.
+- Confirmed the first replay failure was a stale quality guard, not a runtime defect: `tests/test_bootstrap.py` was still pinned to the original three-action runtime-pack scaffold even though the implemented supervisor action catalog now includes downstream role-targeted and general-learning actions.
+- Updated `tests/test_bootstrap.py` to derive the expected action ids from `job_hunt_copilot.supervisor.registered_supervisor_action_catalog()`, keeping the bootstrap/runtime-pack regression aligned with the live generated action catalog.
+- Re-ran the targeted bootstrap/runtime-pack regression set and then the full `BA10-TRACE-001` suite, refreshing `build-agent/reports/ba-10-validation-suite-latest.{json,md}` plus `build-agent/reports/repo-readiness-summary.{json,md}` with a passing 11-command replay generated at `2026-04-09T19:52:13Z`.
+- Updated `build-agent/state/build-board.yaml`, `build-agent/state/IMPLEMENTATION_PLAN.md`, `build-agent/state/build-journal.md`, and `build-agent/state/codex-progress.txt` so the persisted build memory records both the stale guard repair and the broader readiness replay.
+
+### Validation
+- Ran `python3.11 -m pytest tests/test_bootstrap.py tests/test_schema.py tests/test_artifacts.py tests/test_runtime_pack.py` and confirmed all 13 targeted bootstrap/runtime-pack regressions passed.
+- Ran `python3.11 scripts/quality/run_ba10_validation_suite.py --project-root /Users/achyutaramsonti/Projects/job-hunt-copilot-v4 --blocker-id BA10-TRACE-001` and confirmed all 11 automated checks passed while refreshing `build-agent/reports/ba-10-validation-suite-latest.{json,md}` plus `build-agent/reports/repo-readiness-summary.{json,md}` at `2026-04-09T19:52:13Z`.
+
+### Result
+- `partial`
+
+### Next
+- Keep BA-10-S3 open for real remaining functional gaps. The next best slice is still build-lead ownership for the remaining `jhc-chat` control-routing and expert-guidance work, starting with generic object-specific override routing or conflict handling before maintenance automation.
+
+### Notes
+- The acceptance matrix still reports `201 implemented / 2 partial / 9 gap` scenarios, and the open BA-10-S3 gap clusters remain `BA10_MAINTENANCE_AUTOMATION` and `BA10_CHAT_REVIEW_AND_CONTROL`.
+- This session improved regression honesty and readiness evidence, but it did not claim any new functional chat-control or maintenance implementation.
