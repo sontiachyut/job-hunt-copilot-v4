@@ -26,8 +26,8 @@
         "command_id": "qa_acceptance_reports",
         "title": "Acceptance report guards",
         "kind": "automated",
-        "command": "python3.11 -m pytest tests/test_acceptance_traceability.py tests/test_blocker_audit.py tests/test_quality_validation.py",
-        "description": "Keeps the committed BA-10 acceptance and blocker reports plus validation-suite selectors synchronized with repo code, tests, and state references."
+        "command": "python3.11 -m pytest tests/test_acceptance_traceability.py tests/test_blocker_audit.py tests/test_quality_validation.py tests/test_repo_readiness.py",
+        "description": "Keeps the committed BA-10 acceptance, blocker, readiness, and validation-suite reports synchronized with repo code, tests, and state references."
       },
       {
         "command_id": "qa_supervisor_regressions",
@@ -388,8 +388,8 @@
           "command_id": "qa_acceptance_reports",
           "title": "Acceptance report guards",
           "kind": "automated",
-          "command": "python3.11 -m pytest tests/test_acceptance_traceability.py tests/test_blocker_audit.py tests/test_quality_validation.py",
-          "description": "Keeps the committed BA-10 acceptance and blocker reports plus validation-suite selectors synchronized with repo code, tests, and state references."
+          "command": "python3.11 -m pytest tests/test_acceptance_traceability.py tests/test_blocker_audit.py tests/test_quality_validation.py tests/test_repo_readiness.py",
+          "description": "Keeps the committed BA-10 acceptance, blocker, readiness, and validation-suite reports synchronized with repo code, tests, and state references."
         },
         {
           "command_id": "qa_supervisor_regressions",
@@ -740,8 +740,8 @@
           "command_id": "qa_acceptance_reports",
           "title": "Acceptance report guards",
           "kind": "automated",
-          "command": "python3.11 -m pytest tests/test_acceptance_traceability.py tests/test_blocker_audit.py tests/test_quality_validation.py",
-          "description": "Keeps the committed BA-10 acceptance and blocker reports plus validation-suite selectors synchronized with repo code, tests, and state references."
+          "command": "python3.11 -m pytest tests/test_acceptance_traceability.py tests/test_blocker_audit.py tests/test_quality_validation.py tests/test_repo_readiness.py",
+          "description": "Keeps the committed BA-10 acceptance, blocker, readiness, and validation-suite reports synchronized with repo code, tests, and state references."
         }
       ],
       "validation_suite": {
@@ -959,26 +959,31 @@
       "status": "open",
       "severity": "high",
       "owner_role": "quality-engineer",
-      "summary": "The regenerated BA-10 trace matrix now reports 201 implemented / 2 partial / 9 gap scenarios; explicit smoke-coverage targets, implemented-slice traceability, reproducible validation-command mappings, and a durable latest validation-suite report snapshot cover bootstrap, tailoring, discovery, send, feedback, review-query, downstream supervisor follow-through, the persisted `jhc-chat` startup dashboard surface, explicit review-queue or change-summary reads, read-only idempotency for repeated chat-state helper queries, posting-abandon control, and idle-timeout auto-resume after unexpected chat exit, but maintenance automation and deeper chat guidance or override workflows still remain open.",
-      "impact": "Acceptance signoff is more credible now that committed smoke coverage, blocker-specific evidence refs, explicit negative regressions, and exact open-scenario traces exist, but BA-10 still cannot close until the remaining gap clusters are actually burned down or deliberately left open.",
+      "summary": "The regenerated BA-10 trace matrix now reports 201 implemented / 2 partial / 9 gap scenarios; explicit smoke-coverage targets, implemented-slice traceability, reproducible validation-command mappings, a guarded repo-readiness summary, and a durable latest validation-suite report snapshot cover bootstrap, tailoring, discovery, send, feedback, review-query, downstream supervisor follow-through, the persisted `jhc-chat` startup dashboard surface, explicit review-queue or change-summary reads, read-only idempotency for repeated chat-state helper queries, posting-abandon control, and idle-timeout auto-resume after unexpected chat exit, but maintenance automation and deeper chat guidance or override workflows still remain open.",
+      "impact": "Acceptance signoff is more credible now that committed smoke coverage, blocker-specific evidence refs, explicit negative regressions, exact open-scenario traces, and a guarded repo-surface readiness snapshot exist, but BA-10 still cannot close until the remaining gap clusters are actually burned down or deliberately left open.",
       "next_action": "Hand the next functional slice to the build lead and the relevant runtime owner for the remaining `jhc-chat` control gap, starting with generic object-specific override routing or expert-guidance conflict handling, then tackle maintenance automation and refresh the BA-10 reports plus validation-suite evidence afterward.",
       "evidence_refs": [
         "build-agent/reports/ba-10-acceptance-trace-matrix.json",
         "build-agent/reports/ba-10-acceptance-trace-matrix.md",
         "build-agent/reports/ba-10-blocker-audit.json",
         "build-agent/reports/ba-10-blocker-audit.md",
+        "build-agent/reports/repo-readiness-summary.json",
+        "build-agent/reports/repo-readiness-summary.md",
         "build-agent/reports/ba-10-validation-suite-latest.json",
         "build-agent/reports/ba-10-validation-suite-latest.md",
         "job_hunt_copilot/acceptance_traceability.py",
         "job_hunt_copilot/blocker_audit.py",
         "job_hunt_copilot/quality_validation.py",
+        "job_hunt_copilot/repo_readiness.py",
         "scripts/quality/generate_blocker_audit.py",
+        "scripts/quality/generate_repo_readiness_report.py",
         "scripts/quality/run_ba10_validation_suite.py",
         "scripts/ops/control_agent.py",
         "tests/test_acceptance_traceability.py",
         "tests/test_blocker_audit.py",
         "tests/test_local_runtime.py",
         "tests/test_quality_validation.py",
+        "tests/test_repo_readiness.py",
         "tests/test_supervisor_downstream_actions.py",
         "tests/test_delivery_feedback.py",
         "tests/test_schema.py",
@@ -995,8 +1000,8 @@
           "command_id": "qa_acceptance_reports",
           "title": "Acceptance report guards",
           "kind": "automated",
-          "command": "python3.11 -m pytest tests/test_acceptance_traceability.py tests/test_blocker_audit.py tests/test_quality_validation.py",
-          "description": "Keeps the committed BA-10 acceptance and blocker reports plus validation-suite selectors synchronized with repo code, tests, and state references."
+          "command": "python3.11 -m pytest tests/test_acceptance_traceability.py tests/test_blocker_audit.py tests/test_quality_validation.py tests/test_repo_readiness.py",
+          "description": "Keeps the committed BA-10 acceptance, blocker, readiness, and validation-suite reports synchronized with repo code, tests, and state references."
         },
         {
           "command_id": "qa_smoke_flow",

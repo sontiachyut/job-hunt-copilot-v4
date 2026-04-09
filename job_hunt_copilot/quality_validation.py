@@ -9,10 +9,12 @@ from typing import Any, Sequence
 from .acceptance_traceability import SMOKE_COVERAGE_TARGETS
 from .acceptance_traceability import write_acceptance_trace_reports
 from .blocker_audit import (
+    BUILD_BOARD_PATH,
     VALIDATION_COMMANDS,
     build_ba10_blocker_audit,
     write_ba10_blocker_audit_reports,
 )
+from .repo_readiness import write_repo_readiness_reports
 
 
 AUTOMATED_VALIDATION_KIND = "automated"
@@ -344,6 +346,7 @@ def refresh_ba10_validation_reports(project_root: Path | str) -> dict[str, Any]:
     return {
         "acceptance_trace_reports": write_acceptance_trace_reports(root),
         "blocker_audit_reports": write_ba10_blocker_audit_reports(root),
+        "repo_readiness_reports": write_repo_readiness_reports(root),
     }
 
 
@@ -505,6 +508,16 @@ def render_ba10_validation_suite_markdown(report: dict[str, Any]) -> str:
             lines.append(
                 "- Blocker audit markdown: "
                 f"`{blocker_audit_reports.get('markdown_path', '')}`"
+            )
+        repo_readiness_reports = refreshed_reports.get("repo_readiness_reports") or {}
+        if repo_readiness_reports:
+            lines.append(
+                "- Repo readiness JSON: "
+                f"`{repo_readiness_reports.get('json_path', '')}`"
+            )
+            lines.append(
+                "- Repo readiness markdown: "
+                f"`{repo_readiness_reports.get('markdown_path', '')}`"
             )
 
     repo_status = report.get("repo_status") or {}
@@ -730,6 +743,20 @@ def write_ba10_validation_suite_reports(
 ) -> dict[str, Any]:
     root = Path(project_root)
     report = build_ba10_validation_suite_report(payload)
+    refreshed_reports = report.get("refreshed_reports")
+    if not isinstance(refreshed_reports, dict):
+        refreshed_reports = {}
+        report["refreshed_reports"] = refreshed_reports
+    required_repo_readiness_inputs = (
+        root / BUILD_BOARD_PATH,
+        root / "README.md",
+        root / "docs/ARCHITECTURE.md",
+    )
+    if all(path.exists() for path in required_repo_readiness_inputs):
+        refreshed_reports["repo_readiness_reports"] = write_repo_readiness_reports(
+            root,
+            validation_suite_report=report,
+        )
     json_path = root / VALIDATION_SUITE_REPORT_JSON_PATH
     md_path = root / VALIDATION_SUITE_REPORT_MD_PATH
     json_path.parent.mkdir(parents=True, exist_ok=True)

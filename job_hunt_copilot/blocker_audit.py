@@ -28,8 +28,8 @@ VALIDATION_COMMANDS: dict[str, dict[str, str]] = {
     "qa_acceptance_reports": {
         "title": "Acceptance report guards",
         "kind": "automated",
-        "command": "python3.11 -m pytest tests/test_acceptance_traceability.py tests/test_blocker_audit.py tests/test_quality_validation.py",
-        "description": "Keeps the committed BA-10 acceptance and blocker reports plus validation-suite selectors synchronized with repo code, tests, and state references.",
+        "command": "python3.11 -m pytest tests/test_acceptance_traceability.py tests/test_blocker_audit.py tests/test_quality_validation.py tests/test_repo_readiness.py",
+        "description": "Keeps the committed BA-10 acceptance, blocker, readiness, and validation-suite reports synchronized with repo code, tests, and state references.",
     },
     "qa_smoke_flow": {
         "title": "Smoke harness flow",

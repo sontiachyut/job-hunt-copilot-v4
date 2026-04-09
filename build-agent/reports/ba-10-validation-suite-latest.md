@@ -1,12 +1,12 @@
 # BA-10 Validation Suite Report
 
-- Generated at: `2026-04-09T04:17:35Z`
+- Generated at: `2026-04-09T04:35:52Z`
 - Project root: `/Users/achyutaramsonti/Projects/job-hunt-copilot-v4`
 - Passed: `True`
 - Command count: `5`
 - Passed commands: `5`
 - Failed commands: `0`
-- Total duration seconds: `14.336`
+- Total duration seconds: `14.552`
 - Requested command ids: none
 - Requested smoke targets: none
 - Requested acceptance gaps: none
@@ -25,6 +25,8 @@
 - Acceptance trace markdown: `/Users/achyutaramsonti/Projects/job-hunt-copilot-v4/build-agent/reports/ba-10-acceptance-trace-matrix.md`
 - Blocker audit JSON: `/Users/achyutaramsonti/Projects/job-hunt-copilot-v4/build-agent/reports/ba-10-blocker-audit.json`
 - Blocker audit markdown: `/Users/achyutaramsonti/Projects/job-hunt-copilot-v4/build-agent/reports/ba-10-blocker-audit.md`
+- Repo readiness JSON: `/Users/achyutaramsonti/Projects/job-hunt-copilot-v4/build-agent/reports/repo-readiness-summary.json`
+- Repo readiness markdown: `/Users/achyutaramsonti/Projects/job-hunt-copilot-v4/build-agent/reports/repo-readiness-summary.md`
 
 ## Open BA-10 Status
 
@@ -61,11 +63,11 @@
 
 | Command | Kind | Status | Returncode | Duration (s) |
 | --- | --- | --- | ---: | ---: |
-| qa_runtime_pack_regressions | automated | passed | 0 | 0.252 |
-| qa_acceptance_reports | automated | passed | 0 | 1.468 |
-| qa_supervisor_regressions | automated | passed | 0 | 1.002 |
-| qa_runtime_control_regressions | automated | passed | 0 | 11.203 |
-| qa_review_surface_regressions | automated | passed | 0 | 0.411 |
+| qa_runtime_pack_regressions | automated | passed | 0 | 0.279 |
+| qa_acceptance_reports | automated | passed | 0 | 1.522 |
+| qa_supervisor_regressions | automated | passed | 0 | 1.026 |
+| qa_runtime_control_regressions | automated | passed | 0 | 11.309 |
+| qa_review_surface_regressions | automated | passed | 0 | 0.416 |
 
 ## Command Details
 
@@ -73,7 +75,7 @@
 - Kind: `automated`
 - Status: `passed`
 - Returncode: `0`
-- Duration seconds: `0.252`
+- Duration seconds: `0.279`
 - Command: `python3.11 -m pytest tests/test_runtime_pack.py`
 - Description: Confirms generated runtime scaffolding stays honest about current action-catalog and maintenance placeholder status.
 
@@ -81,15 +83,15 @@
 - Kind: `automated`
 - Status: `passed`
 - Returncode: `0`
-- Duration seconds: `1.468`
-- Command: `python3.11 -m pytest tests/test_acceptance_traceability.py tests/test_blocker_audit.py tests/test_quality_validation.py`
-- Description: Keeps the committed BA-10 acceptance and blocker reports plus validation-suite selectors synchronized with repo code, tests, and state references.
+- Duration seconds: `1.522`
+- Command: `python3.11 -m pytest tests/test_acceptance_traceability.py tests/test_blocker_audit.py tests/test_quality_validation.py tests/test_repo_readiness.py`
+- Description: Keeps the committed BA-10 acceptance, blocker, readiness, and validation-suite reports synchronized with repo code, tests, and state references.
 
 ### qa_supervisor_regressions: Supervisor downstream hardening regressions
 - Kind: `automated`
 - Status: `passed`
 - Returncode: `0`
-- Duration seconds: `1.002`
+- Duration seconds: `1.026`
 - Command: `python3.11 -m pytest tests/test_supervisor_downstream_actions.py`
 - Description: Confirms incident-first selector ordering, existing-run reuse, bounded role-targeted progression through `delivery_feedback`, and contact-rooted general-learning follow-through while keeping the remaining maintenance-selector gap explicit.
 
@@ -97,7 +99,7 @@
 - Kind: `automated`
 - Status: `passed`
 - Returncode: `0`
-- Duration seconds: `11.203`
+- Duration seconds: `11.309`
 - Command: `python3.11 -m pytest tests/test_local_runtime.py`
 - Description: Covers launchd plist wiring, control commands, chat lifecycle state, delayed feedback runners, and explicit negative control cases.
 
@@ -105,6 +107,6 @@
 - Kind: `automated`
 - Status: `passed`
 - Returncode: `0`
-- Duration seconds: `0.411`
+- Duration seconds: `0.416`
 - Command: `python3.11 -m pytest tests/test_review_queries.py`
 - Description: Verifies persisted grouped review surfaces and traceability reads that back the chat/review boundary.

@@ -47,7 +47,8 @@ What already exists:
 
 What is still in progress:
 - BA-10 hardening is not fully closed yet: the remaining explicit acceptance gaps are autonomous maintenance workflow or artifacts and the deeper `jhc-chat` guidance or override workflows that still sit beyond the new persisted read-only review helpers
-- those open gaps are tracked explicitly in `build-agent/reports/ba-10-acceptance-trace-matrix.md`, `build-agent/reports/ba-10-blocker-audit.md`, and `build-agent/reports/ba-10-validation-suite-latest.md` rather than being hidden behind a generic "in progress" label
+- the quickest current build snapshot lives in [build-agent/reports/repo-readiness-summary.md](./build-agent/reports/repo-readiness-summary.md)
+- those open gaps are tracked explicitly in [build-agent/reports/repo-readiness-summary.md](./build-agent/reports/repo-readiness-summary.md), [build-agent/reports/ba-10-acceptance-trace-matrix.md](./build-agent/reports/ba-10-acceptance-trace-matrix.md), [build-agent/reports/ba-10-blocker-audit.md](./build-agent/reports/ba-10-blocker-audit.md), and [build-agent/reports/ba-10-validation-suite-latest.md](./build-agent/reports/ba-10-validation-suite-latest.md) rather than being hidden behind a generic "in progress" label
 
 ## System Overview
 

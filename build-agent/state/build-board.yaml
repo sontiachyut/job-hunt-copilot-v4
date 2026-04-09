@@ -950,6 +950,10 @@ epics:
           - Tightened `job_hunt_copilot.blocker_audit` so `qa_acceptance_reports` now executes `tests/test_quality_validation.py` alongside the committed acceptance-trace and blocker-audit guard tests, keeping the BA-10 validation command registry under the same automated report-guard replay it advertises.
           - Re-ran `python3.11 scripts/quality/run_ba10_validation_suite.py --project-root /Users/achyutaramsonti/Projects/job-hunt-copilot-v4 --current-focus` on 2026-04-09T03:58:26Z, refreshing `build-agent/reports/ba-10-validation-suite-latest.{json,md}` with another passing 5-command replay while keeping the blocker surface unchanged at `201 implemented / 2 partial / 9 gap` across maintenance automation and deeper chat guidance or override workflows.
           - Re-ran `python3.11 scripts/quality/run_ba10_validation_suite.py --project-root /Users/achyutaramsonti/Projects/job-hunt-copilot-v4 --current-focus` on 2026-04-09T04:17:35Z after the chat-state read-only regression, stricter acceptance-report guard, and final state-file checkpoint landed; the same 5 automated checks passed again, `qa_acceptance_reports` still exercises `tests/test_quality_validation.py` in the durable latest-run snapshot, and the blocker surface remained unchanged at `201 implemented / 2 partial / 9 gap`.
+          - Added `job_hunt_copilot.repo_readiness`, `scripts/quality/generate_repo_readiness_report.py`, committed `build-agent/reports/repo-readiness-summary.json` plus `.md`, and `tests/test_repo_readiness.py` so recruiter- and manager-facing repo surfaces now have a durable readiness snapshot anchored to the current blocker audit, latest validation-suite evidence, and the still-open maintenance plus deeper chat-control gap themes.
+          - Tightened `job_hunt_copilot.quality_validation` plus `job_hunt_copilot.blocker_audit` so `qa_acceptance_reports` now guards the readiness summary alongside the acceptance trace, blocker audit, and validation-suite selectors, and the refreshed `build-agent/reports/ba-10-validation-suite-latest.{json,md}` snapshot now links the readiness report explicitly.
+          - Refined `README.md`, `docs/ARCHITECTURE.md`, and `build-agent/reports/README.md` so manager-facing repo surfaces now route readers through `build-agent/reports/repo-readiness-summary.md` before the lower-level BA-10 evidence reports.
+          - Re-ran `python3.11 scripts/quality/run_ba10_validation_suite.py --project-root /Users/achyutaramsonti/Projects/job-hunt-copilot-v4 --current-focus` on 2026-04-09T04:35:52Z, refreshing the blocker audit, readiness summary, and latest validation-suite snapshot with another passing 5-command replay while keeping the blocker surface unchanged at `201 implemented / 2 partial / 9 gap`.
         validation:
           - "`python3.11 -m py_compile job_hunt_copilot/local_runtime.py job_hunt_copilot/acceptance_traceability.py job_hunt_copilot/runtime_pack.py job_hunt_copilot/paths.py scripts/ops/materialize_feedback_sync_plist.py scripts/ops/run_feedback_sync.py tests/test_local_runtime.py`"
           - "`zsh -n bin/jhc-agent-start bin/jhc-agent-stop bin/jhc-agent-cycle bin/jhc-feedback-sync-cycle bin/jhc-chat`"
@@ -1061,24 +1065,29 @@ known_blockers:
     status: open
     severity: high
     owner_role: quality-engineer
-    summary: "The regenerated BA-10 trace matrix now reports 201 implemented / 2 partial / 9 gap scenarios; explicit smoke-coverage targets, implemented-slice traceability, reproducible validation-command mappings, and a durable latest validation-suite report snapshot cover bootstrap, tailoring, discovery, send, feedback, review-query, downstream supervisor follow-through, the persisted `jhc-chat` startup dashboard surface, explicit review-queue or change-summary reads, read-only idempotency for repeated chat-state helper queries, posting-abandon control, and idle-timeout auto-resume after unexpected chat exit, but maintenance automation and deeper chat guidance or override workflows still remain open."
+    summary: "The regenerated BA-10 trace matrix now reports 201 implemented / 2 partial / 9 gap scenarios; explicit smoke-coverage targets, implemented-slice traceability, reproducible validation-command mappings, a guarded repo-readiness summary, and a durable latest validation-suite report snapshot cover bootstrap, tailoring, discovery, send, feedback, review-query, downstream supervisor follow-through, the persisted `jhc-chat` startup dashboard surface, explicit review-queue or change-summary reads, read-only idempotency for repeated chat-state helper queries, posting-abandon control, and idle-timeout auto-resume after unexpected chat exit, but maintenance automation and deeper chat guidance or override workflows still remain open."
     evidence:
       - build-agent/reports/ba-10-acceptance-trace-matrix.json
       - build-agent/reports/ba-10-acceptance-trace-matrix.md
       - build-agent/reports/ba-10-blocker-audit.json
       - build-agent/reports/ba-10-blocker-audit.md
+      - build-agent/reports/repo-readiness-summary.json
+      - build-agent/reports/repo-readiness-summary.md
       - build-agent/reports/ba-10-validation-suite-latest.json
       - build-agent/reports/ba-10-validation-suite-latest.md
       - job_hunt_copilot/acceptance_traceability.py
       - job_hunt_copilot/blocker_audit.py
       - job_hunt_copilot/quality_validation.py
+      - job_hunt_copilot/repo_readiness.py
       - scripts/quality/generate_blocker_audit.py
+      - scripts/quality/generate_repo_readiness_report.py
       - scripts/quality/run_ba10_validation_suite.py
       - scripts/ops/control_agent.py
       - tests/test_acceptance_traceability.py
       - tests/test_blocker_audit.py
       - tests/test_local_runtime.py
       - tests/test_quality_validation.py
+      - tests/test_repo_readiness.py
       - tests/test_supervisor_downstream_actions.py
       - tests/test_delivery_feedback.py
       - tests/test_schema.py
@@ -1088,7 +1097,7 @@ known_blockers:
       - tests/test_resume_tailoring.py
       - tests/test_outreach.py
       - tests/test_review_queries.py
-    impact: Acceptance signoff is more credible now that committed smoke coverage, blocker-specific evidence refs, explicit negative regressions, and exact open-scenario traces exist, but BA-10 still cannot close until the remaining gap clusters are actually burned down or deliberately left open.
+    impact: Acceptance signoff is more credible now that committed smoke coverage, blocker-specific evidence refs, explicit negative regressions, exact open-scenario traces, and a guarded repo-surface readiness snapshot exist, but BA-10 still cannot close until the remaining gap clusters are actually burned down or deliberately left open.
     next_action: "Hand the next functional slice to the build lead and the relevant runtime owner for the remaining `jhc-chat` control gap, starting with generic object-specific override routing or expert-guidance conflict handling, then tackle maintenance automation and refresh the BA-10 reports plus validation-suite evidence afterward."
   - blocker_id: BUILD-CLI-001
     status: open

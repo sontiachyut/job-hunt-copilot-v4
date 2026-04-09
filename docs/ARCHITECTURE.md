@@ -108,6 +108,7 @@ The product runtime now has an explicit bootstrap layer under `job_hunt_copilot/
 The current hardening boundary is explicit rather than implied:
 - the end-to-end role-targeted and contact-rooted flows now have committed smoke plus regression coverage
 - the remaining open BA-10 gaps are autonomous maintenance workflow or artifacts and the deeper `jhc-chat` expert-guidance or object-override behaviors that still sit beyond the new persisted read-only review helpers
+- the quickest current build snapshot lives in [build-agent/reports/repo-readiness-summary.md](../build-agent/reports/repo-readiness-summary.md)
 - those gaps stay visible through the committed BA-10 reports instead of being folded into the general architecture summary
 
 Important artifact families:
