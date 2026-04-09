@@ -5,8 +5,10 @@ import plistlib
 import sqlite3
 import subprocess
 import sys
+from datetime import timedelta, timezone
 from pathlib import Path
 
+from job_hunt_copilot.chat_runtime import build_chat_startup_dashboard
 import job_hunt_copilot.local_runtime as local_runtime
 from job_hunt_copilot.delivery_feedback import DeliveryFeedbackSignal
 from job_hunt_copilot.local_runtime import execute_delayed_feedback_sync, execute_supervisor_heartbeat
@@ -166,6 +168,331 @@ def seed_feedback_candidate(connection: sqlite3.Connection) -> None:
             "2026-04-07T10:03:00Z",
             "2026-04-07T10:03:00Z",
             "2026-04-07T10:03:00Z",
+        ),
+    )
+    connection.commit()
+
+
+def seed_chat_dashboard_state(connection: sqlite3.Connection) -> None:
+    connection.execute(
+        """
+        INSERT INTO linkedin_leads (
+          lead_id, lead_identity_key, lead_status, lead_shape, split_review_status,
+          source_type, source_reference, source_mode, source_url, company_name, role_title,
+          created_at, updated_at
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        """,
+        (
+            "ld_chat",
+            "acme-robotics|staff-software-engineer-ai",
+            "handed_off",
+            "posting_only",
+            "not_applicable",
+            "manual_capture",
+            "paste/lead-chat",
+            "manual_capture",
+            "https://careers.acme.example/jobs/ai",
+            "Acme Robotics",
+            "Staff Software Engineer / AI",
+            "2026-04-07T15:00:00Z",
+            "2026-04-08T14:35:00Z",
+        ),
+    )
+    connection.execute(
+        """
+        INSERT INTO job_postings (
+          job_posting_id, lead_id, posting_identity_key, company_name, role_title,
+          posting_status, created_at, updated_at
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+        """,
+        (
+            "jp_chat",
+            "ld_chat",
+            "acme-robotics|staff-software-engineer-ai",
+            "Acme Robotics",
+            "Staff Software Engineer / AI",
+            "outreach_in_progress",
+            "2026-04-07T15:05:00Z",
+            "2026-04-08T14:35:00Z",
+        ),
+    )
+    connection.execute(
+        """
+        INSERT INTO pipeline_runs (
+          pipeline_run_id, run_scope_type, run_status, current_stage, lead_id,
+          job_posting_id, review_packet_status, run_summary, started_at, completed_at,
+          created_at, updated_at
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        """,
+        (
+            "pr_chat_review",
+            "job_posting",
+            "escalated",
+            "sending",
+            "ld_chat",
+            "jp_chat",
+            "pending_expert_review",
+            "Duplicate-send risk needs expert review.",
+            "2026-04-08T14:10:00Z",
+            "2026-04-08T14:35:00Z",
+            "2026-04-08T14:10:00Z",
+            "2026-04-08T14:35:00Z",
+        ),
+    )
+    connection.execute(
+        """
+        INSERT INTO expert_review_packets (
+          expert_review_packet_id, pipeline_run_id, packet_status, packet_path,
+          job_posting_id, summary_excerpt, created_at
+        ) VALUES (?, ?, ?, ?, ?, ?, ?)
+        """,
+        (
+            "erp_chat",
+            "pr_chat_review",
+            "pending_expert_review",
+            "ops/review-packets/pr_chat_review/review_packet.md",
+            "jp_chat",
+            "Duplicate-send risk requires review before another send.",
+            "2026-04-08T14:36:00Z",
+        ),
+    )
+    connection.execute(
+        """
+        INSERT INTO agent_incidents (
+          agent_incident_id, incident_type, severity, status, summary,
+          pipeline_run_id, job_posting_id, created_at, updated_at
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+        """,
+        (
+            "ai_chat",
+            "duplicate_send_risk",
+            "high",
+            "open",
+            "Potential resend detected for the current outreach wave.",
+            "pr_chat_review",
+            "jp_chat",
+            "2026-04-08T14:34:00Z",
+            "2026-04-08T14:37:00Z",
+        ),
+    )
+    connection.execute(
+        """
+        INSERT INTO maintenance_change_batches (
+          maintenance_change_batch_id, branch_name, scope_slug, status, approval_outcome,
+          summary_path, json_path, validation_summary, failed_at, created_at
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        """,
+        (
+            "mcb_chat",
+            "maintenance/20260408-mcb-chat-runtime-summary",
+            "chat-runtime-summary",
+            "failed_validation",
+            "needs_review",
+            "ops/maintenance/mcb_chat/summary.md",
+            "ops/maintenance/mcb_chat/summary.json",
+            "Full-project validation failed after the scoped patch passed.",
+            "2026-04-08T13:50:00Z",
+            "2026-04-08T13:10:00Z",
+        ),
+    )
+    connection.execute(
+        """
+        INSERT INTO pipeline_runs (
+          pipeline_run_id, run_scope_type, run_status, current_stage, lead_id,
+          job_posting_id, review_packet_status, run_summary, started_at, completed_at,
+          created_at, updated_at
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        """,
+        (
+            "pr_success_today",
+            "job_posting",
+            "completed",
+            "delivery_feedback",
+            "ld_chat",
+            "jp_chat",
+            "not_ready",
+            "Completed role-targeted send wave.",
+            "2026-04-08T13:00:00Z",
+            "2026-04-08T13:20:00Z",
+            "2026-04-08T13:00:00Z",
+            "2026-04-08T13:20:00Z",
+        ),
+    )
+    connection.execute(
+        """
+        INSERT INTO pipeline_runs (
+          pipeline_run_id, run_scope_type, run_status, current_stage, lead_id,
+          job_posting_id, review_packet_status, run_summary, started_at, completed_at,
+          created_at, updated_at
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        """,
+        (
+            "pr_success_yesterday",
+            "job_posting",
+            "completed",
+            "delivery_feedback",
+            "ld_chat",
+            "jp_chat",
+            "not_ready",
+            "Completed earlier role-targeted send wave.",
+            "2026-04-07T15:00:00Z",
+            "2026-04-07T15:30:00Z",
+            "2026-04-07T15:00:00Z",
+            "2026-04-07T15:30:00Z",
+        ),
+    )
+    connection.execute(
+        """
+        INSERT INTO supervisor_cycles (
+          supervisor_cycle_id, trigger_type, scheduler_name, pipeline_run_id,
+          started_at, completed_at, result, created_at
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+        """,
+        (
+            "sc_chat_today_1",
+            "launchd_heartbeat",
+            "launchd",
+            "pr_success_today",
+            "2026-04-08T13:00:00Z",
+            "2026-04-08T13:20:00Z",
+            "completed",
+            "2026-04-08T13:00:00Z",
+        ),
+    )
+    connection.execute(
+        """
+        INSERT INTO supervisor_cycles (
+          supervisor_cycle_id, trigger_type, scheduler_name, pipeline_run_id,
+          started_at, completed_at, result, created_at
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+        """,
+        (
+            "sc_chat_today_2",
+            "launchd_heartbeat",
+            "launchd",
+            "pr_chat_review",
+            "2026-04-08T14:20:00Z",
+            "2026-04-08T14:35:00Z",
+            "escalated",
+            "2026-04-08T14:20:00Z",
+        ),
+    )
+    connection.execute(
+        """
+        INSERT INTO supervisor_cycles (
+          supervisor_cycle_id, trigger_type, scheduler_name, pipeline_run_id,
+          started_at, completed_at, result, created_at
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+        """,
+        (
+            "sc_chat_yesterday",
+            "launchd_heartbeat",
+            "launchd",
+            "pr_success_yesterday",
+            "2026-04-07T15:00:00Z",
+            "2026-04-07T15:30:00Z",
+            "completed",
+            "2026-04-07T15:00:00Z",
+        ),
+    )
+    connection.execute(
+        """
+        INSERT INTO contacts (
+          contact_id, identity_key, display_name, company_name, origin_component, contact_status,
+          full_name, current_working_email, created_at, updated_at
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        """,
+        (
+            "ct_chat",
+            "priya-recruiter|acme-robotics",
+            "Priya Recruiter",
+            "Acme Robotics",
+            "email_discovery",
+            "sent",
+            "Priya Recruiter",
+            "priya@acme.example",
+            "2026-04-07T15:10:00Z",
+            "2026-04-08T14:35:00Z",
+        ),
+    )
+    connection.execute(
+        """
+        INSERT INTO outreach_messages (
+          outreach_message_id, contact_id, outreach_mode, recipient_email, message_status,
+          job_posting_id, subject, body_text, thread_id, delivery_tracking_id, sent_at,
+          created_at, updated_at
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        """,
+        (
+            "msg_today",
+            "ct_chat",
+            "role_targeted",
+            "priya@acme.example",
+            "sent",
+            "jp_chat",
+            "Hello again",
+            "Follow-up body",
+            "thread-today",
+            "delivery-today",
+            "2026-04-08T14:00:00Z",
+            "2026-04-08T14:00:00Z",
+            "2026-04-08T14:00:00Z",
+        ),
+    )
+    connection.execute(
+        """
+        INSERT INTO outreach_messages (
+          outreach_message_id, contact_id, outreach_mode, recipient_email, message_status,
+          job_posting_id, subject, body_text, thread_id, delivery_tracking_id, sent_at,
+          created_at, updated_at
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        """,
+        (
+            "msg_yesterday",
+            "ct_chat",
+            "role_targeted",
+            "priya@acme.example",
+            "sent",
+            "jp_chat",
+            "Yesterday hello",
+            "Earlier body",
+            "thread-yesterday",
+            "delivery-yesterday",
+            "2026-04-07T15:05:00Z",
+            "2026-04-07T15:05:00Z",
+            "2026-04-07T15:05:00Z",
+        ),
+    )
+    connection.execute(
+        """
+        INSERT INTO delivery_feedback_events (
+          delivery_feedback_event_id, outreach_message_id, event_state, event_timestamp,
+          reply_summary, created_at
+        ) VALUES (?, ?, ?, ?, ?, ?)
+        """,
+        (
+            "dfe_bounce_today",
+            "msg_today",
+            "bounced",
+            "2026-04-08T14:10:00Z",
+            "",
+            "2026-04-08T14:10:00Z",
+        ),
+    )
+    connection.execute(
+        """
+        INSERT INTO delivery_feedback_events (
+          delivery_feedback_event_id, outreach_message_id, event_state, event_timestamp,
+          reply_summary, created_at
+        ) VALUES (?, ?, ?, ?, ?, ?)
+        """,
+        (
+            "dfe_reply_yesterday",
+            "msg_yesterday",
+            "replied",
+            "2026-04-07T15:20:00Z",
+            "Let's reconnect next quarter.",
+            "2026-04-07T15:20:00Z",
         ),
     )
     connection.commit()
@@ -892,6 +1219,119 @@ def test_chat_session_explicit_close_preserves_preexisting_non_chat_pause(tmp_pa
     assert end_report["control_state"]["pause_reason"] == "manual_triage"
 
 
+def test_chat_startup_dashboard_uses_persisted_state_for_clean_metrics_and_grouped_review_items(tmp_path):
+    project_root = tmp_path / "repo"
+    project_root.mkdir()
+    create_minimal_project(project_root)
+
+    run_script(
+        "scripts/ops/control_agent.py",
+        "start",
+        "--project-root",
+        str(project_root),
+        "--manual-command",
+        "jhc-agent-start",
+    )
+
+    connection = connect_database(project_root / "job_hunt_copilot.db")
+    seed_chat_dashboard_state(connection)
+    dashboard = build_chat_startup_dashboard(
+        connection,
+        project_root=project_root,
+        current_time="2026-04-08T10:00:00Z",
+        agent_mode="paused",
+        pause_reason="expert_interaction",
+        local_timezone=timezone(timedelta(hours=-7)),
+    )
+    connection.close()
+
+    assert dashboard["summary"] == {
+        "pending_expert_review_count": 1,
+        "open_incident_count": 1,
+        "maintenance_batch_count": 1,
+        "maintenance_state": "1 recorded maintenance batches",
+    }
+    assert dashboard["runtime_metrics"]["today"] == {
+        "date": "2026-04-08",
+        "runtime_seconds": 2100.0,
+        "runtime_display": "35m",
+        "successful_run_count": 1,
+        "successful_send_count": 1,
+        "bounce_count": 1,
+        "reply_count": 0,
+    }
+    assert dashboard["runtime_metrics"]["yesterday"] == {
+        "date": "2026-04-07",
+        "runtime_seconds": 1800.0,
+        "runtime_display": "30m",
+        "successful_run_count": 1,
+        "successful_send_count": 1,
+        "bounce_count": 0,
+        "reply_count": 1,
+    }
+    assert dashboard["runtime_metrics"]["rolling_average_daily_runtime_seconds"] == 557.143
+    assert dashboard["runtime_metrics"]["rolling_average_daily_runtime_display"] == "9m"
+
+    review_groups = dashboard["review_queue"]["groups"]
+    assert [group["group_id"] for group in review_groups] == [
+        "pending_expert_review_packets",
+        "failed_expert_requested_background_tasks",
+        "maintenance_change_batches",
+        "open_incidents",
+    ]
+    assert review_groups[0]["items"][0]["headline"] == "Acme Robotics / Staff Software Engineer / AI"
+    assert (
+        review_groups[0]["items"][0]["summary"]
+        == "Duplicate-send risk needs expert review."
+    )
+    assert review_groups[1]["items"] == []
+    assert review_groups[2]["items"][0]["headline"] == "chat-runtime-summary"
+    assert "Full-project validation failed" in review_groups[2]["items"][0]["summary"]
+    assert review_groups[3]["items"][0]["summary"] == (
+        "high: Potential resend detected for the current outreach wave."
+    )
+
+
+def test_chat_session_begin_persists_startup_briefing_for_wrapper_startup(tmp_path):
+    project_root = tmp_path / "repo"
+    project_root.mkdir()
+    create_minimal_project(project_root)
+
+    run_script(
+        "scripts/ops/control_agent.py",
+        "start",
+        "--project-root",
+        str(project_root),
+        "--manual-command",
+        "jhc-agent-start",
+    )
+    connection = connect_database(project_root / "job_hunt_copilot.db")
+    seed_chat_dashboard_state(connection)
+    connection.close()
+
+    begin_report = json.loads(
+        run_script(
+            "scripts/ops/chat_session.py",
+            "begin",
+            "--project-root",
+            str(project_root),
+        ).stdout
+    )
+
+    startup_path = project_root / "ops" / "agent" / "chat-startup.md"
+
+    assert begin_report["startup_briefing_path"] == str(startup_path)
+    assert begin_report["startup_dashboard"]["summary"]["pending_expert_review_count"] == 1
+    assert startup_path.read_text(encoding="utf-8") == begin_report["startup_briefing"]
+    assert begin_report["startup_briefing"].startswith("# Job Hunt Copilot Dashboard\n")
+    assert "- Pending expert review items: 1" in begin_report["startup_briefing"]
+    assert "- Open incidents: 1" in begin_report["startup_briefing"]
+    assert "## Review Queue" in begin_report["startup_briefing"]
+    assert "Pending expert review packets: 1" in begin_report["startup_briefing"]
+    assert "Autonomous maintenance change batches: 1" in begin_report["startup_briefing"]
+    assert "Open incidents: 1" in begin_report["startup_briefing"]
+
+
 def test_repo_agent_wrappers_use_expected_repo_local_wiring():
     start_wrapper = (REPO_ROOT / "bin" / "jhc-agent-start").read_text(encoding="utf-8")
     stop_wrapper = (REPO_ROOT / "bin" / "jhc-agent-stop").read_text(encoding="utf-8")
@@ -927,6 +1367,8 @@ def test_repo_agent_wrappers_use_expected_repo_local_wiring():
     assert "scripts/ops/chat_session.py\" begin" in chat_wrapper
     assert "scripts/ops/chat_session.py\" end" in chat_wrapper
     assert 'PROMPT_FILE="$ROOT/ops/agent/chat-bootstrap.md"' in chat_wrapper
+    assert 'STARTUP_BRIEFING="$(printf ' in chat_wrapper
+    assert 'Current persisted startup briefing:' in chat_wrapper
     assert "--ephemeral" in chat_wrapper
     assert "--sandbox workspace-write" in chat_wrapper
     assert "--ask-for-approval never" in chat_wrapper

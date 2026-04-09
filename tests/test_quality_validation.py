@@ -217,8 +217,8 @@ def test_validation_selector_details_include_requested_smoke_gap_blocker_and_cur
         in details["current_focus"]["reason"]
     )
     assert (
-        "maintenance automation, chat review/control, idle-timeout resume, "
-        "and posting-abandon behavior remain open BA-10-S3 hardening work"
+        "maintenance automation, richer chat review/control, idle-timeout resume, "
+        "and posting-abandon behavior remain open BA-10-S3 work"
         in details["current_focus"]["reason"]
     )
 
@@ -530,8 +530,8 @@ def test_quality_validation_suite_script_dry_run_expands_current_focus():
         in current_focus["reason"]
     )
     assert (
-        "maintenance automation, chat review/control, idle-timeout resume, "
-        "and posting-abandon behavior remain open BA-10-S3 hardening work"
+        "maintenance automation, richer chat review/control, idle-timeout resume, "
+        "and posting-abandon behavior remain open BA-10-S3 work"
         in current_focus["reason"]
     )
 

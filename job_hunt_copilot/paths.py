@@ -102,6 +102,10 @@ class ProjectPaths:
         return self.ops_agent_dir / "chat-bootstrap.md"
 
     @property
+    def ops_agent_chat_startup_path(self) -> Path:
+        return self.ops_agent_dir / "chat-startup.md"
+
+    @property
     def ops_agent_supervisor_bootstrap_path(self) -> Path:
         return self.ops_agent_dir / "supervisor-bootstrap.md"
 

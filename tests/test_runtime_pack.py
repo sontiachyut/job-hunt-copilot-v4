@@ -61,8 +61,13 @@ def test_runtime_pack_chat_bootstrap_scaffolds_review_and_control_surfaces(tmp_p
     assert f"- Canonical DB: {project_root / 'job_hunt_copilot.db'}" in chat_bootstrap
     assert f"- Progress log: {project_root / 'ops' / 'agent' / 'progress-log.md'}" in chat_bootstrap
     assert f"- Ops plan: {project_root / 'ops' / 'agent' / 'ops-plan.yaml'}" in chat_bootstrap
+    assert f"- Chat startup dashboard: {project_root / 'ops' / 'agent' / 'chat-startup.md'}" in chat_bootstrap
     assert (
-        "3. inspect canonical control state, open incidents, pending expert review packets, "
+        "3. use the persisted chat-startup dashboard as the clean first-response "
+        "summary and compact review-queue snapshot"
+    ) in chat_bootstrap
+    assert (
+        "4. inspect canonical control state, open incidents, pending expert review packets, "
         "and the relevant DB-backed status snapshot"
     ) in chat_bootstrap
     assert "- persist pause, resume, stop, replanning, and override intents into canonical state instead of relying on chat memory" in chat_bootstrap

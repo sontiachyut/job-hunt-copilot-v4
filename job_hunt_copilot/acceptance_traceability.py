@@ -14,7 +14,7 @@ from .supervisor import (
 )
 
 
-TRACE_MATRIX_VERSION = 5
+TRACE_MATRIX_VERSION = 6
 FEATURE_PATH = Path("prd/test-spec.feature")
 BUILD_BOARD_PATH = Path("build-agent/state/build-board.yaml")
 REPORT_JSON_PATH = Path("build-agent/reports/ba-10-acceptance-trace-matrix.json")
@@ -199,8 +199,9 @@ GAP_REGISTRY: dict[str, dict[str, Any]] = {
         title="Chat review and control remain wrapper-only",
         reason="The direct `jhc-chat` entrypoint manages chat session lifecycle, but richer review retrieval, control routing, and expert-guidance behaviors are not yet implemented in the chat surface.",
         next_slice="BA-10-S3",
-        evidence_summary="Chat lifecycle, review-query reads, and bootstrap scaffolding exist, but chat itself still does not retrieve grouped reviews or route control decisions.",
+        evidence_summary="Chat lifecycle, a persisted startup dashboard, and a grouped review-queue snapshot now exist, but chat itself still does not route control decisions, default change summaries, or expert-guidance workflows.",
         evidence_code_refs=(
+            "job_hunt_copilot/chat_runtime.py",
             "scripts/ops/chat_session.py",
             "job_hunt_copilot/local_runtime.py",
             "job_hunt_copilot/review_queries.py",
@@ -428,6 +429,7 @@ RULE_BLUEPRINTS: dict[str, RuleBlueprint] = {
         owner_role="build-lead",
         epic_ids=("BA-02", "BA-03"),
         code_refs=(
+            "job_hunt_copilot/chat_runtime.py",
             "job_hunt_copilot/supervisor.py",
             "job_hunt_copilot/local_runtime.py",
             "job_hunt_copilot/runtime_pack.py",
@@ -453,6 +455,7 @@ RULE_BLUEPRINTS: dict[str, RuleBlueprint] = {
         owner_role="quality-engineer",
         epic_ids=("BA-03", "BA-09"),
         code_refs=(
+            "job_hunt_copilot/chat_runtime.py",
             "job_hunt_copilot/review_queries.py",
             "job_hunt_copilot/local_runtime.py",
             "bin/jhc-chat",
@@ -904,16 +907,22 @@ _register_override(
 _register_override(
     scenarios=(
         "jhc-chat startup dashboard is detailed, bounded, and clean-first",
+        "Startup dashboard runtime metrics count only active autonomous execution",
+    ),
+    status=STATUS_IMPLEMENTED,
+    note="`job_hunt_copilot.chat_runtime`, `job_hunt_copilot.local_runtime`, `bin/jhc-chat`, and `tests/test_local_runtime.py` now materialize and print a persisted-state startup dashboard that stays clean-first, includes pending review items, open incidents, and maintenance state, and derives runtime totals only from active supervisor-cycle execution time.",
+)
+_register_override(
+    scenarios=(
         "Review retrieval is grouped, compact-first, and newest-first within each group",
     ),
     status=STATUS_PARTIAL,
     gap_ids=("BA10_CHAT_REVIEW_AND_CONTROL",),
-    note="The runtime pack and review-query layer exist, but the direct chat experience has not yet implemented this richer behavior end to end.",
+    note="The generated chat startup briefing now includes a grouped compact review-queue snapshot ordered by pending expert review packets, failed expert-requested background tasks, maintenance batches, and open incidents, but explicit chat-time retrieval and deeper control routing are still incomplete.",
 )
 _register_override(
     scenarios=(
         "AI agent surfaces the current review queue in chat",
-        "Startup dashboard runtime metrics count only active autonomous execution",
         "jhc-chat uses persisted state for answers and control routing",
         "Default change summaries cover activity since the last completed expert review",
         "Expert guidance becomes live immediately but conflicting or uncertain reuse asks first",
@@ -923,7 +932,7 @@ _register_override(
     ),
     status=STATUS_GAP,
     gap_ids=("BA10_CHAT_REVIEW_AND_CONTROL",),
-    note="The direct `jhc-chat` wrapper manages session state only; chat-side review retrieval, routing, and guidance behaviors are still missing.",
+    note="The direct `jhc-chat` wrapper now prints a persisted startup dashboard plus grouped review snapshot, but explicit chat-side review retrieval, control routing, change summaries, and expert-guidance behaviors are still missing.",
 )
 _register_override(
     scenarios=("Expert-interaction resume follows explicit close, explicit resume, or safe idle timeout",),

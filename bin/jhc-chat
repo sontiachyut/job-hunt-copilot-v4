@@ -24,6 +24,7 @@ fi
 
 SESSION_JSON="$("$PYTHON_BIN" "$ROOT/scripts/ops/chat_session.py" begin --project-root "$ROOT")"
 SESSION_ID="$(printf '%s' "$SESSION_JSON" | "$PYTHON_BIN" -c 'import json,sys; print(json.load(sys.stdin)["session_id"])')"
+STARTUP_BRIEFING="$(printf '%s' "$SESSION_JSON" | "$PYTHON_BIN" -c 'import json,sys; print(json.load(sys.stdin).get("startup_briefing", ""), end="")')"
 
 cleanup() {
   local exit_code="$1"
@@ -36,4 +37,13 @@ cleanup() {
 
 trap 'cleanup $?' EXIT
 
-"$CODEX_BIN" --ephemeral --sandbox workspace-write --ask-for-approval never -C "$ROOT" "$(cat "$PROMPT_FILE")"
+if [[ -n "$STARTUP_BRIEFING" ]]; then
+  printf '%s\n\n' "$STARTUP_BRIEFING"
+fi
+
+FULL_PROMPT="$(cat "$PROMPT_FILE")"
+if [[ -n "$STARTUP_BRIEFING" ]]; then
+  FULL_PROMPT="${FULL_PROMPT}"$'\n\n'"Current persisted startup briefing:"$'\n\n'"${STARTUP_BRIEFING}"
+fi
+
+"$CODEX_BIN" --ephemeral --sandbox workspace-write --ask-for-approval never -C "$ROOT" "$FULL_PROMPT"

@@ -1745,3 +1745,32 @@ Use this file as an append-only implementation log for the build agent.
 ### Notes
 - The acceptance matrix remains at 194 implemented / 4 partial / 14 gap scenarios; this cycle refreshed evidence and confirmed blockers rather than closing a functional runtime gap.
 - The refreshed latest validation-suite snapshot was generated at `2026-04-09T01:59:21Z` and still shows the same four open BA-10-S3 gap clusters plus the same three open build-board blockers.
+
+### Session
+- Date: 2026-04-08 19:24:17 MST
+- Slice: BA-10-S3 `jhc-chat` startup dashboard hardening
+- Goal: Burn down the thin `jhc-chat` startup surface by materializing a persisted clean-first dashboard and grouped review snapshot from canonical state, then refresh the BA-10 evidence so the remaining chat gaps stay narrower and explicit.
+
+### Work Done
+- Added `job_hunt_copilot.chat_runtime` to build a persisted chat startup dashboard from canonical state, including grouped review items, maintenance-state summary, and today/yesterday plus rolling runtime metrics derived only from active supervisor-cycle execution time.
+- Wired `job_hunt_copilot.local_runtime.begin_chat_operator_session` to materialize `ops/agent/chat-startup.md` and return the rendered briefing payload, then updated `bin/jhc-chat` to print that clean-first summary before launching Codex and to append it to the startup prompt context.
+- Updated the generated `ops/agent/chat-bootstrap.md` guidance plus manager-facing `README.md` and `docs/ARCHITECTURE.md` so the repo and runtime surfaces now describe the richer startup summary honestly without claiming broader in-chat control behavior.
+- Refined `job_hunt_copilot.acceptance_traceability` and refreshed the committed BA-10 reports so `jhc-chat startup dashboard is detailed, bounded, and clean-first` plus `Startup dashboard runtime metrics count only active autonomous execution` are now implemented while richer chat review/control behavior, idle-timeout resume, maintenance automation, and posting-abandon control remain explicit blockers.
+- Updated `tests/test_quality_validation.py` after the build-board reason text changed so the guard suite now expects the narrower `196 implemented / 3 partial / 13 gap` current-focus wording instead of the earlier stale BA-10 count phrase.
+- Updated `build-agent/state/build-board.yaml`, `build-agent/state/IMPLEMENTATION_PLAN.md`, `build-agent/state/build-journal.md`, and `build-agent/state/codex-progress.txt` so the persisted handoff state records the narrower BA-10-S3 blocker surface and the new 196 implemented / 3 partial / 13 gap acceptance counts.
+
+### Validation
+- Ran `python3.11 -m py_compile job_hunt_copilot/chat_runtime.py job_hunt_copilot/local_runtime.py job_hunt_copilot/runtime_pack.py tests/test_local_runtime.py tests/test_runtime_pack.py` and confirmed the new chat-surface modules and regressions compile cleanly.
+- Ran `python3.11 -m pytest tests/test_local_runtime.py -k "chat_startup_dashboard or startup_briefing or repo_agent_wrappers_use_expected_repo_local_wiring"` and `python3.11 -m pytest tests/test_runtime_pack.py`, then confirmed the targeted chat startup and runtime-pack regressions passed.
+- Ran `python3.11 scripts/quality/run_ba10_validation_suite.py --project-root /Users/achyutaramsonti/Projects/job-hunt-copilot-v4 --current-focus` and confirmed the refreshed BA-10 current-focus replay passed with 5 automated checks, regenerating the committed BA-10 reports again at `2026-04-09T02:26:52Z` after the state-file checkpoint.
+- Ran `python3.11 -m pytest tests/test_quality_validation.py tests/test_blocker_audit.py tests/test_acceptance_traceability.py` and confirmed all 20 guard tests passed after the narrowed current-focus wording landed.
+
+### Result
+- `partial`
+
+### Next
+- Keep BA-10-S3 open for one real remaining runtime/control burn-down slice. The next highest-value functional work is still build-lead ownership with the relevant runtime owner for posting-abandon control or idle-timeout auto-resume, then refresh the BA-10 reports again.
+
+### Notes
+- The acceptance matrix now reports 196 implemented / 3 partial / 13 gap scenarios, and the remaining open gap clusters are `BA10_MAINTENANCE_AUTOMATION`, `BA10_CHAT_REVIEW_AND_CONTROL`, `BA10_CHAT_IDLE_TIMEOUT_RESUME`, and `BA10_POSTING_ABANDON_CONTROL`.
+- This slice intentionally improved the deterministic `jhc-chat` startup surface only; it did not claim closure of richer chat control routing, default change summaries, expert-guidance workflows, maintenance automation, or posting-abandon behavior.

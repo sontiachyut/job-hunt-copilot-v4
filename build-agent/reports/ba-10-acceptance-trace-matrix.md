@@ -3,9 +3,9 @@
 - Feature file: `prd/test-spec.feature`
 - Scenario count: `214`
 - Status counts:
-  - `implemented`: `194`
-  - `partial`: `4`
-  - `gap`: `14`
+  - `implemented`: `196`
+  - `partial`: `3`
+  - `gap`: `13`
   - `deferred_optional`: `1`
   - `excluded_from_required_acceptance`: `1`
 
@@ -60,7 +60,7 @@
 | Email Discovery behavior | outreach-engineer | 17 | 0 | 0 | 0 | 0 |
 | Email Drafting and Sending behavior | outreach-engineer | 14 | 0 | 0 | 0 | 0 |
 | Delivery Feedback behavior | outreach-engineer | 11 | 0 | 0 | 0 | 0 |
-| Supervisor Agent behavior | build-lead | 18 | 4 | 11 | 0 | 0 |
+| Supervisor Agent behavior | build-lead | 20 | 3 | 10 | 0 | 0 |
 | Review surfaces and chat-based control | quality-engineer | 6 | 0 | 1 | 0 | 0 |
 | Current-build orchestration remains sequential | build-lead | 21 | 0 | 1 | 0 | 0 |
 | LinkedIn Scraping acceptance | ingestion-engineer | 12 | 0 | 0 | 0 | 0 |
@@ -136,12 +136,10 @@
 - Next slice: `BA-10-S3`
 - Supporting slices: `BA-02-S1`, `BA-02-S2`, `BA-02-S3`, `BA-03-S1`, `BA-03-S2`, `BA-03-S3`, `BA-09-S1`, `BA-09-S2`, `BA-09-S3`, `BA-10-S3`
 - Reason: The direct `jhc-chat` entrypoint manages chat session lifecycle, but richer review retrieval, control routing, and expert-guidance behaviors are not yet implemented in the chat surface.
-- Evidence summary: Chat lifecycle, review-query reads, and bootstrap scaffolding exist, but chat itself still does not retrieve grouped reviews or route control decisions.
-- Evidence code refs: `scripts/ops/chat_session.py`, `job_hunt_copilot/local_runtime.py`, `job_hunt_copilot/review_queries.py`, `job_hunt_copilot/runtime_pack.py`
+- Evidence summary: Chat lifecycle, a persisted startup dashboard, and a grouped review-queue snapshot now exist, but chat itself still does not route control decisions, default change summaries, or expert-guidance workflows.
+- Evidence code refs: `job_hunt_copilot/chat_runtime.py`, `scripts/ops/chat_session.py`, `job_hunt_copilot/local_runtime.py`, `job_hunt_copilot/review_queries.py`, `job_hunt_copilot/runtime_pack.py`
 - Evidence test refs: `tests/test_local_runtime.py`, `tests/test_review_queries.py`, `tests/test_runtime_pack.py`, `tests/test_acceptance_traceability.py`
-- Scenarios: `10`
-  - jhc-chat startup dashboard is detailed, bounded, and clean-first
-  - Startup dashboard runtime metrics count only active autonomous execution
+- Scenarios: `8`
   - Review retrieval is grouped, compact-first, and newest-first within each group
   - jhc-chat uses persisted state for answers and control routing
   - Default change summaries cover activity since the last completed expert review

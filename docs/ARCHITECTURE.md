@@ -90,7 +90,7 @@ The product runtime now has an explicit bootstrap layer under `job_hunt_copilot/
 - expert review packet generation under `ops/review-packets/`, canonical `expert_review_packets` and `expert_review_decisions`, and override audit history through `override_events`
 - generated runtime self-awareness artifacts under `ops/agent/` for identity, policies, action catalog, service goals, escalation policy, progress log, ops plan, and bootstrap prompts
 - local launchd materialization under `ops/launchd/` plus repo-local `jhc-agent-start`, `jhc-agent-stop`, `jhc-agent-cycle`, `jhc-feedback-sync-cycle`, and `jhc-chat` wrappers for start/stop, one-shot heartbeat execution, recurring delayed-feedback polling, and the expert chat entrypoint
-- canonical chat-session bookkeeping that records active-session state, pauses autonomous work on chat open, and resumes on clean explicit close while preserving non-chat pause conditions
+- canonical chat-session bookkeeping that records active-session state, pauses autonomous work on chat open, resumes on clean explicit close while preserving non-chat pause conditions, and now materializes a persisted clean-first startup dashboard plus grouped review snapshot from canonical state for `jhc-chat`
 - bootstrap checks for assets and local secret materialization
 - repo-local runtime directory creation for downstream components
 - manual LinkedIn intake helpers that ingest `paste/paste.txt` or browser-style capture bundles into canonical lead workspaces, persist `capture-bundle.json`, and register the lead raw-source artifact in canonical state

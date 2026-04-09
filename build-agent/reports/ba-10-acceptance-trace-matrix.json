@@ -1,11 +1,11 @@
 {
-  "trace_matrix_version": 5,
+  "trace_matrix_version": 6,
   "feature_path": "prd/test-spec.feature",
   "scenario_count": 214,
   "status_counts": {
-    "implemented": 194,
-    "partial": 4,
-    "gap": 14,
+    "implemented": 196,
+    "partial": 3,
+    "gap": 13,
     "deferred_optional": 1,
     "excluded_from_required_acceptance": 1
   },
@@ -5749,6 +5749,7 @@
         "BA-03-S3"
       ],
       "code_refs": [
+        "job_hunt_copilot/chat_runtime.py",
         "job_hunt_copilot/supervisor.py",
         "job_hunt_copilot/local_runtime.py",
         "job_hunt_copilot/runtime_pack.py",
@@ -5768,9 +5769,9 @@
       ],
       "note": "The durable supervisor core is real and tested, and the autonomous catalog now covers both the full role-targeted chain and contact-rooted general-learning discovery, sending, and bounded delayed-feedback follow-through, while richer chat, maintenance, and posting-abandon runtime behavior remain incomplete.",
       "status_counts": {
-        "implemented": 18,
-        "partial": 4,
-        "gap": 11,
+        "implemented": 20,
+        "partial": 3,
+        "gap": 10,
         "deferred_optional": 0,
         "excluded_from_required_acceptance": 0
       },
@@ -5793,6 +5794,7 @@
             "BA-03-S3"
           ],
           "code_refs": [
+            "job_hunt_copilot/chat_runtime.py",
             "job_hunt_copilot/supervisor.py",
             "job_hunt_copilot/local_runtime.py",
             "job_hunt_copilot/runtime_pack.py",
@@ -5831,6 +5833,7 @@
             "BA-03-S3"
           ],
           "code_refs": [
+            "job_hunt_copilot/chat_runtime.py",
             "job_hunt_copilot/supervisor.py",
             "job_hunt_copilot/local_runtime.py",
             "job_hunt_copilot/runtime_pack.py",
@@ -5869,6 +5872,7 @@
             "BA-03-S3"
           ],
           "code_refs": [
+            "job_hunt_copilot/chat_runtime.py",
             "job_hunt_copilot/supervisor.py",
             "job_hunt_copilot/local_runtime.py",
             "job_hunt_copilot/runtime_pack.py",
@@ -5907,6 +5911,7 @@
             "BA-03-S3"
           ],
           "code_refs": [
+            "job_hunt_copilot/chat_runtime.py",
             "job_hunt_copilot/supervisor.py",
             "job_hunt_copilot/local_runtime.py",
             "job_hunt_copilot/runtime_pack.py",
@@ -5945,6 +5950,7 @@
             "BA-03-S3"
           ],
           "code_refs": [
+            "job_hunt_copilot/chat_runtime.py",
             "job_hunt_copilot/supervisor.py",
             "job_hunt_copilot/local_runtime.py",
             "job_hunt_copilot/runtime_pack.py",
@@ -5983,6 +5989,7 @@
             "BA-03-S3"
           ],
           "code_refs": [
+            "job_hunt_copilot/chat_runtime.py",
             "job_hunt_copilot/supervisor.py",
             "job_hunt_copilot/local_runtime.py",
             "job_hunt_copilot/runtime_pack.py",
@@ -6021,6 +6028,7 @@
             "BA-03-S3"
           ],
           "code_refs": [
+            "job_hunt_copilot/chat_runtime.py",
             "job_hunt_copilot/supervisor.py",
             "job_hunt_copilot/local_runtime.py",
             "job_hunt_copilot/runtime_pack.py",
@@ -6061,6 +6069,7 @@
             "BA-03-S3"
           ],
           "code_refs": [
+            "job_hunt_copilot/chat_runtime.py",
             "job_hunt_copilot/supervisor.py",
             "job_hunt_copilot/local_runtime.py",
             "job_hunt_copilot/runtime_pack.py",
@@ -6099,6 +6108,7 @@
             "BA-03-S3"
           ],
           "code_refs": [
+            "job_hunt_copilot/chat_runtime.py",
             "job_hunt_copilot/supervisor.py",
             "job_hunt_copilot/local_runtime.py",
             "job_hunt_copilot/runtime_pack.py",
@@ -6137,6 +6147,7 @@
             "BA-03-S3"
           ],
           "code_refs": [
+            "job_hunt_copilot/chat_runtime.py",
             "job_hunt_copilot/supervisor.py",
             "job_hunt_copilot/local_runtime.py",
             "job_hunt_copilot/runtime_pack.py",
@@ -6175,6 +6186,7 @@
             "BA-03-S3"
           ],
           "code_refs": [
+            "job_hunt_copilot/chat_runtime.py",
             "job_hunt_copilot/supervisor.py",
             "job_hunt_copilot/local_runtime.py",
             "job_hunt_copilot/runtime_pack.py",
@@ -6213,6 +6225,7 @@
             "BA-03-S3"
           ],
           "code_refs": [
+            "job_hunt_copilot/chat_runtime.py",
             "job_hunt_copilot/supervisor.py",
             "job_hunt_copilot/local_runtime.py",
             "job_hunt_copilot/runtime_pack.py",
@@ -6251,6 +6264,7 @@
             "BA-03-S3"
           ],
           "code_refs": [
+            "job_hunt_copilot/chat_runtime.py",
             "job_hunt_copilot/supervisor.py",
             "job_hunt_copilot/local_runtime.py",
             "job_hunt_copilot/runtime_pack.py",
@@ -6289,6 +6303,7 @@
             "BA-03-S3"
           ],
           "code_refs": [
+            "job_hunt_copilot/chat_runtime.py",
             "job_hunt_copilot/supervisor.py",
             "job_hunt_copilot/local_runtime.py",
             "job_hunt_copilot/runtime_pack.py",
@@ -6327,6 +6342,7 @@
             "BA-03-S3"
           ],
           "code_refs": [
+            "job_hunt_copilot/chat_runtime.py",
             "job_hunt_copilot/supervisor.py",
             "job_hunt_copilot/local_runtime.py",
             "job_hunt_copilot/runtime_pack.py",
@@ -6365,6 +6381,7 @@
             "BA-03-S3"
           ],
           "code_refs": [
+            "job_hunt_copilot/chat_runtime.py",
             "job_hunt_copilot/supervisor.py",
             "job_hunt_copilot/local_runtime.py",
             "job_hunt_copilot/runtime_pack.py",
@@ -6388,7 +6405,7 @@
         {
           "name": "jhc-chat startup dashboard is detailed, bounded, and clean-first",
           "scenario_line": 1218,
-          "status": "partial",
+          "status": "implemented",
           "owner_role": "build-lead",
           "epic_ids": [
             "BA-02",
@@ -6403,6 +6420,7 @@
             "BA-03-S3"
           ],
           "code_refs": [
+            "job_hunt_copilot/chat_runtime.py",
             "job_hunt_copilot/supervisor.py",
             "job_hunt_copilot/local_runtime.py",
             "job_hunt_copilot/runtime_pack.py",
@@ -6420,15 +6438,13 @@
             "tests/test_local_runtime.py",
             "tests/test_runtime_pack.py"
           ],
-          "gap_ids": [
-            "BA10_CHAT_REVIEW_AND_CONTROL"
-          ],
-          "note": "The runtime pack and review-query layer exist, but the direct chat experience has not yet implemented this richer behavior end to end."
+          "gap_ids": [],
+          "note": "`job_hunt_copilot.chat_runtime`, `job_hunt_copilot.local_runtime`, `bin/jhc-chat`, and `tests/test_local_runtime.py` now materialize and print a persisted-state startup dashboard that stays clean-first, includes pending review items, open incidents, and maintenance state, and derives runtime totals only from active supervisor-cycle execution time."
         },
         {
           "name": "Startup dashboard runtime metrics count only active autonomous execution",
           "scenario_line": 1227,
-          "status": "gap",
+          "status": "implemented",
           "owner_role": "build-lead",
           "epic_ids": [
             "BA-02",
@@ -6443,6 +6459,7 @@
             "BA-03-S3"
           ],
           "code_refs": [
+            "job_hunt_copilot/chat_runtime.py",
             "job_hunt_copilot/supervisor.py",
             "job_hunt_copilot/local_runtime.py",
             "job_hunt_copilot/runtime_pack.py",
@@ -6460,10 +6477,8 @@
             "tests/test_local_runtime.py",
             "tests/test_runtime_pack.py"
           ],
-          "gap_ids": [
-            "BA10_CHAT_REVIEW_AND_CONTROL"
-          ],
-          "note": "The direct `jhc-chat` wrapper manages session state only; chat-side review retrieval, routing, and guidance behaviors are still missing."
+          "gap_ids": [],
+          "note": "`job_hunt_copilot.chat_runtime`, `job_hunt_copilot.local_runtime`, `bin/jhc-chat`, and `tests/test_local_runtime.py` now materialize and print a persisted-state startup dashboard that stays clean-first, includes pending review items, open incidents, and maintenance state, and derives runtime totals only from active supervisor-cycle execution time."
         },
         {
           "name": "Review retrieval is grouped, compact-first, and newest-first within each group",
@@ -6483,6 +6498,7 @@
             "BA-03-S3"
           ],
           "code_refs": [
+            "job_hunt_copilot/chat_runtime.py",
             "job_hunt_copilot/supervisor.py",
             "job_hunt_copilot/local_runtime.py",
             "job_hunt_copilot/runtime_pack.py",
@@ -6503,7 +6519,7 @@
           "gap_ids": [
             "BA10_CHAT_REVIEW_AND_CONTROL"
           ],
-          "note": "The runtime pack and review-query layer exist, but the direct chat experience has not yet implemented this richer behavior end to end."
+          "note": "The generated chat startup briefing now includes a grouped compact review-queue snapshot ordered by pending expert review packets, failed expert-requested background tasks, maintenance batches, and open incidents, but explicit chat-time retrieval and deeper control routing are still incomplete."
         },
         {
           "name": "Progress log, ops plan, and context snapshot use the current exact file shapes",
@@ -6523,6 +6539,7 @@
             "BA-03-S3"
           ],
           "code_refs": [
+            "job_hunt_copilot/chat_runtime.py",
             "job_hunt_copilot/supervisor.py",
             "job_hunt_copilot/local_runtime.py",
             "job_hunt_copilot/runtime_pack.py",
@@ -6561,6 +6578,7 @@
             "BA-03-S3"
           ],
           "code_refs": [
+            "job_hunt_copilot/chat_runtime.py",
             "job_hunt_copilot/supervisor.py",
             "job_hunt_copilot/local_runtime.py",
             "job_hunt_copilot/runtime_pack.py",
@@ -6581,7 +6599,7 @@
           "gap_ids": [
             "BA10_CHAT_REVIEW_AND_CONTROL"
           ],
-          "note": "The direct `jhc-chat` wrapper manages session state only; chat-side review retrieval, routing, and guidance behaviors are still missing."
+          "note": "The direct `jhc-chat` wrapper now prints a persisted startup dashboard plus grouped review snapshot, but explicit chat-side review retrieval, control routing, change summaries, and expert-guidance behaviors are still missing."
         },
         {
           "name": "Current macOS sleep or wake detection uses pmset logs first and conservative fallback second",
@@ -6601,6 +6619,7 @@
             "BA-03-S3"
           ],
           "code_refs": [
+            "job_hunt_copilot/chat_runtime.py",
             "job_hunt_copilot/supervisor.py",
             "job_hunt_copilot/local_runtime.py",
             "job_hunt_copilot/runtime_pack.py",
@@ -6639,6 +6658,7 @@
             "BA-03-S3"
           ],
           "code_refs": [
+            "job_hunt_copilot/chat_runtime.py",
             "job_hunt_copilot/supervisor.py",
             "job_hunt_copilot/local_runtime.py",
             "job_hunt_copilot/runtime_pack.py",
@@ -6659,7 +6679,7 @@
           "gap_ids": [
             "BA10_CHAT_REVIEW_AND_CONTROL"
           ],
-          "note": "The direct `jhc-chat` wrapper manages session state only; chat-side review retrieval, routing, and guidance behaviors are still missing."
+          "note": "The direct `jhc-chat` wrapper now prints a persisted startup dashboard plus grouped review snapshot, but explicit chat-side review retrieval, control routing, change summaries, and expert-guidance behaviors are still missing."
         },
         {
           "name": "Expert guidance becomes live immediately but conflicting or uncertain reuse asks first",
@@ -6679,6 +6699,7 @@
             "BA-03-S3"
           ],
           "code_refs": [
+            "job_hunt_copilot/chat_runtime.py",
             "job_hunt_copilot/supervisor.py",
             "job_hunt_copilot/local_runtime.py",
             "job_hunt_copilot/runtime_pack.py",
@@ -6699,7 +6720,7 @@
           "gap_ids": [
             "BA10_CHAT_REVIEW_AND_CONTROL"
           ],
-          "note": "The direct `jhc-chat` wrapper manages session state only; chat-side review retrieval, routing, and guidance behaviors are still missing."
+          "note": "The direct `jhc-chat` wrapper now prints a persisted startup dashboard plus grouped review snapshot, but explicit chat-side review retrieval, control routing, change summaries, and expert-guidance behaviors are still missing."
         },
         {
           "name": "Conflicting expert guidance pauses the whole autonomous system",
@@ -6719,6 +6740,7 @@
             "BA-03-S3"
           ],
           "code_refs": [
+            "job_hunt_copilot/chat_runtime.py",
             "job_hunt_copilot/supervisor.py",
             "job_hunt_copilot/local_runtime.py",
             "job_hunt_copilot/runtime_pack.py",
@@ -6739,7 +6761,7 @@
           "gap_ids": [
             "BA10_CHAT_REVIEW_AND_CONTROL"
           ],
-          "note": "The direct `jhc-chat` wrapper manages session state only; chat-side review retrieval, routing, and guidance behaviors are still missing."
+          "note": "The direct `jhc-chat` wrapper now prints a persisted startup dashboard plus grouped review snapshot, but explicit chat-side review retrieval, control routing, change summaries, and expert-guidance behaviors are still missing."
         },
         {
           "name": "Opening jhc-chat immediately pauses autonomous work and safe checkpointing is strict",
@@ -6759,6 +6781,7 @@
             "BA-03-S3"
           ],
           "code_refs": [
+            "job_hunt_copilot/chat_runtime.py",
             "job_hunt_copilot/supervisor.py",
             "job_hunt_copilot/local_runtime.py",
             "job_hunt_copilot/runtime_pack.py",
@@ -6797,6 +6820,7 @@
             "BA-03-S3"
           ],
           "code_refs": [
+            "job_hunt_copilot/chat_runtime.py",
             "job_hunt_copilot/supervisor.py",
             "job_hunt_copilot/local_runtime.py",
             "job_hunt_copilot/runtime_pack.py",
@@ -6837,6 +6861,7 @@
             "BA-03-S3"
           ],
           "code_refs": [
+            "job_hunt_copilot/chat_runtime.py",
             "job_hunt_copilot/supervisor.py",
             "job_hunt_copilot/local_runtime.py",
             "job_hunt_copilot/runtime_pack.py",
@@ -6857,7 +6882,7 @@
           "gap_ids": [
             "BA10_CHAT_REVIEW_AND_CONTROL"
           ],
-          "note": "The direct `jhc-chat` wrapper manages session state only; chat-side review retrieval, routing, and guidance behaviors are still missing."
+          "note": "The direct `jhc-chat` wrapper now prints a persisted startup dashboard plus grouped review snapshot, but explicit chat-side review retrieval, control routing, change summaries, and expert-guidance behaviors are still missing."
         },
         {
           "name": "Expert-requested background task outcomes return to review appropriately",
@@ -6877,6 +6902,7 @@
             "BA-03-S3"
           ],
           "code_refs": [
+            "job_hunt_copilot/chat_runtime.py",
             "job_hunt_copilot/supervisor.py",
             "job_hunt_copilot/local_runtime.py",
             "job_hunt_copilot/runtime_pack.py",
@@ -6897,7 +6923,7 @@
           "gap_ids": [
             "BA10_CHAT_REVIEW_AND_CONTROL"
           ],
-          "note": "The direct `jhc-chat` wrapper manages session state only; chat-side review retrieval, routing, and guidance behaviors are still missing."
+          "note": "The direct `jhc-chat` wrapper now prints a persisted startup dashboard plus grouped review snapshot, but explicit chat-side review retrieval, control routing, change summaries, and expert-guidance behaviors are still missing."
         },
         {
           "name": "Daily maintenance is mandatory, bounded, and run-boundary aware",
@@ -6917,6 +6943,7 @@
             "BA-03-S3"
           ],
           "code_refs": [
+            "job_hunt_copilot/chat_runtime.py",
             "job_hunt_copilot/supervisor.py",
             "job_hunt_copilot/local_runtime.py",
             "job_hunt_copilot/runtime_pack.py",
@@ -6957,6 +6984,7 @@
             "BA-03-S3"
           ],
           "code_refs": [
+            "job_hunt_copilot/chat_runtime.py",
             "job_hunt_copilot/supervisor.py",
             "job_hunt_copilot/local_runtime.py",
             "job_hunt_copilot/runtime_pack.py",
@@ -6997,6 +7025,7 @@
             "BA-03-S3"
           ],
           "code_refs": [
+            "job_hunt_copilot/chat_runtime.py",
             "job_hunt_copilot/supervisor.py",
             "job_hunt_copilot/local_runtime.py",
             "job_hunt_copilot/runtime_pack.py",
@@ -7037,6 +7066,7 @@
             "BA-03-S3"
           ],
           "code_refs": [
+            "job_hunt_copilot/chat_runtime.py",
             "job_hunt_copilot/supervisor.py",
             "job_hunt_copilot/local_runtime.py",
             "job_hunt_copilot/runtime_pack.py",
@@ -7078,6 +7108,7 @@
         "BA-09-S3"
       ],
       "code_refs": [
+        "job_hunt_copilot/chat_runtime.py",
         "job_hunt_copilot/review_queries.py",
         "job_hunt_copilot/local_runtime.py",
         "bin/jhc-chat"
@@ -7113,6 +7144,7 @@
             "BA-09-S3"
           ],
           "code_refs": [
+            "job_hunt_copilot/chat_runtime.py",
             "job_hunt_copilot/review_queries.py",
             "job_hunt_copilot/local_runtime.py",
             "bin/jhc-chat"
@@ -7124,7 +7156,7 @@
           "gap_ids": [
             "BA10_CHAT_REVIEW_AND_CONTROL"
           ],
-          "note": "The direct `jhc-chat` wrapper manages session state only; chat-side review retrieval, routing, and guidance behaviors are still missing."
+          "note": "The direct `jhc-chat` wrapper now prints a persisted startup dashboard plus grouped review snapshot, but explicit chat-side review retrieval, control routing, change summaries, and expert-guidance behaviors are still missing."
         },
         {
           "name": "Review surfaces are queryable from canonical state",
@@ -7144,6 +7176,7 @@
             "BA-09-S3"
           ],
           "code_refs": [
+            "job_hunt_copilot/chat_runtime.py",
             "job_hunt_copilot/review_queries.py",
             "job_hunt_copilot/local_runtime.py",
             "bin/jhc-chat"
@@ -7173,6 +7206,7 @@
             "BA-09-S3"
           ],
           "code_refs": [
+            "job_hunt_copilot/chat_runtime.py",
             "job_hunt_copilot/review_queries.py",
             "job_hunt_copilot/local_runtime.py",
             "bin/jhc-chat"
@@ -7202,6 +7236,7 @@
             "BA-09-S3"
           ],
           "code_refs": [
+            "job_hunt_copilot/chat_runtime.py",
             "job_hunt_copilot/review_queries.py",
             "job_hunt_copilot/local_runtime.py",
             "bin/jhc-chat"
@@ -7231,6 +7266,7 @@
             "BA-09-S3"
           ],
           "code_refs": [
+            "job_hunt_copilot/chat_runtime.py",
             "job_hunt_copilot/review_queries.py",
             "job_hunt_copilot/local_runtime.py",
             "bin/jhc-chat"
@@ -7260,6 +7296,7 @@
             "BA-09-S3"
           ],
           "code_refs": [
+            "job_hunt_copilot/chat_runtime.py",
             "job_hunt_copilot/review_queries.py",
             "job_hunt_copilot/local_runtime.py",
             "bin/jhc-chat"
@@ -7289,6 +7326,7 @@
             "BA-09-S3"
           ],
           "code_refs": [
+            "job_hunt_copilot/chat_runtime.py",
             "job_hunt_copilot/review_queries.py",
             "job_hunt_copilot/local_runtime.py",
             "bin/jhc-chat"
@@ -9223,8 +9261,9 @@
       "title": "Chat review and control remain wrapper-only",
       "reason": "The direct `jhc-chat` entrypoint manages chat session lifecycle, but richer review retrieval, control routing, and expert-guidance behaviors are not yet implemented in the chat surface.",
       "next_slice": "BA-10-S3",
-      "evidence_summary": "Chat lifecycle, review-query reads, and bootstrap scaffolding exist, but chat itself still does not retrieve grouped reviews or route control decisions.",
+      "evidence_summary": "Chat lifecycle, a persisted startup dashboard, and a grouped review-queue snapshot now exist, but chat itself still does not route control decisions, default change summaries, or expert-guidance workflows.",
       "evidence_code_refs": [
+        "job_hunt_copilot/chat_runtime.py",
         "scripts/ops/chat_session.py",
         "job_hunt_copilot/local_runtime.py",
         "job_hunt_copilot/review_queries.py",
@@ -9249,8 +9288,6 @@
         "BA-10-S3"
       ],
       "scenario_names": [
-        "jhc-chat startup dashboard is detailed, bounded, and clean-first",
-        "Startup dashboard runtime metrics count only active autonomous execution",
         "Review retrieval is grouped, compact-first, and newest-first within each group",
         "jhc-chat uses persisted state for answers and control routing",
         "Default change summaries cover activity since the last completed expert review",

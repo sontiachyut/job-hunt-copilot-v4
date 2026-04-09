@@ -10,6 +10,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
+from .chat_runtime import build_chat_startup_dashboard, render_chat_startup_dashboard
 from .contracts import CONTRACT_VERSION
 from .db import initialize_database
 from .delivery_feedback import (
@@ -407,6 +408,16 @@ def begin_chat_operator_session(
                 }
             )
         snapshot = upsert_control_values(connection, updates, timestamp=current_timestamp)
+        startup_dashboard = build_chat_startup_dashboard(
+            connection,
+            project_root=paths.project_root,
+            current_time=current_timestamp,
+            agent_mode=snapshot.agent_mode,
+            pause_reason=snapshot.pause_reason,
+        )
+
+    startup_briefing = render_chat_startup_dashboard(startup_dashboard)
+    write_text_atomic(paths.ops_agent_chat_startup_path, startup_briefing)
 
     append_jsonl_record(
         paths.chat_sessions_log_path,
@@ -434,6 +445,9 @@ def begin_chat_operator_session(
         "resume_on_close": resume_on_close,
         "started_at": current_timestamp,
         "chat_sessions_log_path": str(paths.chat_sessions_log_path),
+        "startup_briefing_path": str(paths.ops_agent_chat_startup_path),
+        "startup_briefing": startup_briefing,
+        "startup_dashboard": startup_dashboard,
         "control_state": dict(snapshot.values),
         "runtime_pack": runtime_pack,
     }
