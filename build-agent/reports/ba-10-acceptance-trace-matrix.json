@@ -3,9 +3,9 @@
   "feature_path": "prd/test-spec.feature",
   "scenario_count": 214,
   "status_counts": {
-    "implemented": 206,
-    "partial": 1,
-    "gap": 5,
+    "implemented": 212,
+    "partial": 0,
+    "gap": 0,
     "deferred_optional": 1,
     "excluded_from_required_acceptance": 1
   },
@@ -232,7 +232,7 @@
       "epic_id": "BA-10",
       "name": "Cross-component regression and blocker burn-down",
       "owner_role": "build-lead",
-      "status": "in_progress"
+      "status": "completed"
     },
     {
       "slice_id": "BA-10-S4",
@@ -623,9 +623,9 @@
       ],
       "note": "Artifact contracts, DB-first bootstraps, and review-packet companions are validated at each component boundary rather than through one end-to-end smoke yet.",
       "status_counts": {
-        "implemented": 14,
+        "implemented": 15,
         "partial": 0,
-        "gap": 1,
+        "gap": 0,
         "deferred_optional": 0,
         "excluded_from_required_acceptance": 0
       },
@@ -1326,7 +1326,7 @@
         {
           "name": "Maintenance change artifacts exist for every autonomous maintenance batch",
           "scenario_line": 220,
-          "status": "gap",
+          "status": "implemented",
           "owner_role": "build-lead",
           "epic_ids": [
             "BA-01",
@@ -1383,10 +1383,8 @@
             "tests/test_delivery_feedback.py",
             "tests/test_review_queries.py"
           ],
-          "gap_ids": [
-            "BA10_MAINTENANCE_AUTOMATION"
-          ],
-          "note": "Maintenance artifacts are specified in the schema and PRD, but no maintenance batch workflow writes them yet."
+          "gap_ids": [],
+          "note": "`job_hunt_copilot.maintenance`, `job_hunt_copilot.supervisor`, and `tests/test_supervisor.py` now persist `maintenance_change.json` plus `maintenance_change.md` for every autonomous maintenance batch, including failed-validation batches retained for review."
         },
         {
           "name": "Generated artifacts are queryable from shared artifact metadata",
@@ -5769,9 +5767,9 @@
       ],
       "note": "The durable supervisor core is real and tested, and the autonomous catalog now covers both the full role-targeted chain and contact-rooted general-learning discovery, sending, and bounded delayed-feedback follow-through, while richer chat, maintenance, and posting-abandon runtime behavior remain incomplete.",
       "status_counts": {
-        "implemented": 28,
-        "partial": 1,
-        "gap": 4,
+        "implemented": 33,
+        "partial": 0,
+        "gap": 0,
         "deferred_optional": 0,
         "excluded_from_required_acceptance": 0
       },
@@ -6013,7 +6011,7 @@
         {
           "name": "Supervisor work selection follows the current default priority order",
           "scenario_line": 1132,
-          "status": "partial",
+          "status": "implemented",
           "owner_role": "build-lead",
           "epic_ids": [
             "BA-02",
@@ -6046,10 +6044,8 @@
             "tests/test_local_runtime.py",
             "tests/test_runtime_pack.py"
           ],
-          "gap_ids": [
-            "BA10_MAINTENANCE_AUTOMATION"
-          ],
-          "note": "Current supervisor regressions prove open incidents outrank ordinary pipeline advancement, existing runs outrank new posting bootstrap, new postings outrank opportunistic contact-rooted general-learning work, and contact-rooted general-learning work now covers bounded delayed feedback, send-ready dispatch, and email discovery, but bounded maintenance work itself still has no dedicated selector or action path."
+          "gap_ids": [],
+          "note": "`job_hunt_copilot.supervisor`, `tests/test_supervisor.py`, and `tests/test_supervisor_downstream_actions.py` now prove the selector order remains incident-first, then existing durable runs, then new posting bootstrap, then contact-rooted general-learning follow-through or discovery, with bounded daily maintenance left as the lowest default priority."
         },
         {
           "name": "Supervisor chooses only registered catalog actions and escalates unknown needs",
@@ -6912,7 +6908,7 @@
         {
           "name": "Daily maintenance is mandatory, bounded, and run-boundary aware",
           "scenario_line": 1322,
-          "status": "gap",
+          "status": "implemented",
           "owner_role": "build-lead",
           "epic_ids": [
             "BA-02",
@@ -6945,15 +6941,13 @@
             "tests/test_local_runtime.py",
             "tests/test_runtime_pack.py"
           ],
-          "gap_ids": [
-            "BA10_MAINTENANCE_AUTOMATION"
-          ],
-          "note": "Only maintenance placeholders exist today; the maintenance workflow itself is still missing."
+          "gap_ids": [],
+          "note": "`job_hunt_copilot.maintenance`, `job_hunt_copilot.local_runtime`, `scripts/ops/control_agent.py`, `tests/test_supervisor.py`, and `tests/test_local_runtime.py` now cover the bounded daily maintenance selector, isolated git branch workflow, two-layer validation, retained failed or rejected batches, and explicit approval-only merge path."
         },
         {
           "name": "Maintenance changes follow the current git and approval workflow",
           "scenario_line": 1331,
-          "status": "gap",
+          "status": "implemented",
           "owner_role": "build-lead",
           "epic_ids": [
             "BA-02",
@@ -6986,15 +6980,13 @@
             "tests/test_local_runtime.py",
             "tests/test_runtime_pack.py"
           ],
-          "gap_ids": [
-            "BA10_MAINTENANCE_AUTOMATION"
-          ],
-          "note": "Only maintenance placeholders exist today; the maintenance workflow itself is still missing."
+          "gap_ids": [],
+          "note": "`job_hunt_copilot.maintenance`, `job_hunt_copilot.local_runtime`, `scripts/ops/control_agent.py`, `tests/test_supervisor.py`, and `tests/test_local_runtime.py` now cover the bounded daily maintenance selector, isolated git branch workflow, two-layer validation, retained failed or rejected batches, and explicit approval-only merge path."
         },
         {
           "name": "Proper maintenance validation requires both change-scoped and full-project testing",
           "scenario_line": 1342,
-          "status": "gap",
+          "status": "implemented",
           "owner_role": "build-lead",
           "epic_ids": [
             "BA-02",
@@ -7027,15 +7019,13 @@
             "tests/test_local_runtime.py",
             "tests/test_runtime_pack.py"
           ],
-          "gap_ids": [
-            "BA10_MAINTENANCE_AUTOMATION"
-          ],
-          "note": "Only maintenance placeholders exist today; the maintenance workflow itself is still missing."
+          "gap_ids": [],
+          "note": "`job_hunt_copilot.maintenance`, `job_hunt_copilot.local_runtime`, `scripts/ops/control_agent.py`, `tests/test_supervisor.py`, and `tests/test_local_runtime.py` now cover the bounded daily maintenance selector, isolated git branch workflow, two-layer validation, retained failed or rejected batches, and explicit approval-only merge path."
         },
         {
           "name": "Failed or unapproved maintenance batches remain reviewable",
           "scenario_line": 1349,
-          "status": "gap",
+          "status": "implemented",
           "owner_role": "build-lead",
           "epic_ids": [
             "BA-02",
@@ -7068,10 +7058,8 @@
             "tests/test_local_runtime.py",
             "tests/test_runtime_pack.py"
           ],
-          "gap_ids": [
-            "BA10_MAINTENANCE_AUTOMATION"
-          ],
-          "note": "Only maintenance placeholders exist today; the maintenance workflow itself is still missing."
+          "gap_ids": [],
+          "note": "`job_hunt_copilot.maintenance`, `job_hunt_copilot.local_runtime`, `scripts/ops/control_agent.py`, `tests/test_supervisor.py`, and `tests/test_local_runtime.py` now cover the bounded daily maintenance selector, isolated git branch workflow, two-layer validation, retained failed or rejected batches, and explicit approval-only merge path."
         }
       ]
     },
@@ -9199,42 +9187,9 @@
         "tests/test_acceptance_traceability.py"
       ],
       "slice_ids": [
-        "BA-01-S1",
-        "BA-01-S2",
-        "BA-01-S3",
-        "BA-02-S1",
-        "BA-02-S2",
-        "BA-02-S3",
-        "BA-04-S1",
-        "BA-04-S2",
-        "BA-04-S3",
-        "BA-04-S4",
-        "BA-06-S1",
-        "BA-06-S2",
-        "BA-06-S3",
-        "BA-06-S4",
-        "BA-07-S1",
-        "BA-07-S2",
-        "BA-07-S3",
-        "BA-08-S1",
-        "BA-08-S2",
-        "BA-08-S3",
-        "BA-09-S1",
-        "BA-09-S2",
-        "BA-09-S3",
-        "BA-03-S1",
-        "BA-03-S2",
-        "BA-03-S3",
         "BA-10-S3"
       ],
-      "scenario_names": [
-        "Maintenance change artifacts exist for every autonomous maintenance batch",
-        "Supervisor work selection follows the current default priority order",
-        "Daily maintenance is mandatory, bounded, and run-boundary aware",
-        "Maintenance changes follow the current git and approval workflow",
-        "Proper maintenance validation requires both change-scoped and full-project testing",
-        "Failed or unapproved maintenance batches remain reviewable"
-      ]
+      "scenario_names": []
     },
     {
       "gap_id": "BA10_CHAT_REVIEW_AND_CONTROL",

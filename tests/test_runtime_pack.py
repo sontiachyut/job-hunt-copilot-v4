@@ -112,6 +112,11 @@ def test_runtime_pack_chat_bootstrap_scaffolds_review_and_control_surfaces(tmp_p
         f"--project-root {project_root} --object-type job_posting|tailoring_review "
         "--object-id <object_id> --new-value <value> --reason \"<reason>\""
     ) in chat_bootstrap
+    assert (
+        "python3.11 scripts/ops/control_agent.py review-maintenance "
+        f"--project-root {project_root} --maintenance-change-batch-id <maintenance_change_batch_id> "
+        "--decision approve|reject [--reason \"<reason>\"]"
+    ) in chat_bootstrap
     assert "- agent_mode: stopped" in chat_bootstrap
     assert "- open_incident_count: 0" in chat_bootstrap
     assert "- pending_review_count: 0" in chat_bootstrap
@@ -127,23 +132,6 @@ def test_runtime_pack_reflects_background_task_closure_and_remaining_maintenance
     materialize_runtime_pack(project_root=project_root)
     ops_plan = yaml.safe_load((project_root / "ops" / "agent" / "ops-plan.yaml").read_text(encoding="utf-8"))
 
-    assert ops_plan["maintenance_backlog"] == [
-        {
-            "title": "Implement bounded daily maintenance automation",
-            "note": "The current build still lacks autonomous maintenance batches, validation replay, approval persistence, and retained maintenance review artifacts.",
-        }
-    ]
-    assert ops_plan["weak_areas"] == [
-        {
-            "area": "action_catalog_coverage",
-            "note": "Core role-targeted and general-learning actions are registered, but autonomous maintenance work is still uncataloged.",
-        },
-        {
-            "area": "maintenance_automation",
-            "note": "The runtime reserves maintenance state and review surfaces, but no autonomous maintenance batch workflow has been implemented yet.",
-        },
-    ]
-    assert all(
-        priority["scope_type"] != "maintenance_change_batch"
-        for priority in ops_plan["active_priorities"]
-    )
+    assert ops_plan["maintenance_backlog"] == []
+    assert ops_plan["weak_areas"] == []
+    assert all(priority["scope_type"] != "maintenance_change_batch" for priority in ops_plan["active_priorities"])

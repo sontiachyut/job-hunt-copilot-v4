@@ -29,90 +29,29 @@
       "epic_id": "BA-10",
       "slice_id": "BA-10-S3",
       "owner_role": "build-lead",
-      "reason": "BA-10-S4 closed the downstream supervisor action-catalog gap, the latest BA-10-S3 hardening passes already burned down the persisted chat read surfaces, object-specific override routing, live expert-guidance clarification controls, and the remaining expert-requested background-task workflow gap, so BA-10-S3 now resolves only the maintenance-automation cluster at 206 implemented / 1 partial / 5 gap scenarios; the active same-slice handoff stays with build-lead for the remaining maintenance workflow and approval-automation work rather than more chat/runtime control burn-down.",
-      "gap_ids": [
-        "BA10_MAINTENANCE_AUTOMATION"
-      ],
-      "gap_summaries": [
-        {
-          "gap_id": "BA10_MAINTENANCE_AUTOMATION",
-          "title": "Maintenance workflow and artifacts are not implemented",
-          "next_slice": "BA-10-S3",
-          "open_scenario_count": 6,
-          "status_counts": {
-            "partial": 1,
-            "gap": 5
-          },
-          "validation_command_ids": [
-            "qa_runtime_pack_regressions",
-            "qa_acceptance_reports",
-            "qa_supervisor_regressions"
-          ],
-          "validation_suite_command": "python3.11 scripts/quality/run_ba10_validation_suite.py --project-root <repo_root> --gap-id BA10_MAINTENANCE_AUTOMATION",
-          "open_scenarios": [
-            {
-              "name": "Maintenance change artifacts exist for every autonomous maintenance batch",
-              "status": "gap",
-              "rule": "Machine handoff contracts and canonical state",
-              "scenario_line": 220,
-              "note": "Maintenance artifacts are specified in the schema and PRD, but no maintenance batch workflow writes them yet."
-            },
-            {
-              "name": "Supervisor work selection follows the current default priority order",
-              "status": "partial",
-              "rule": "Supervisor Agent behavior",
-              "scenario_line": 1132,
-              "note": "Current supervisor regressions prove open incidents outrank ordinary pipeline advancement, existing runs outrank new posting bootstrap, new postings outrank opportunistic contact-rooted general-learning work, and contact-rooted general-learning work now covers bounded delayed feedback, send-ready dispatch, and email discovery, but bounded maintenance work itself still has no dedicated selector or action path."
-            },
-            {
-              "name": "Daily maintenance is mandatory, bounded, and run-boundary aware",
-              "status": "gap",
-              "rule": "Supervisor Agent behavior",
-              "scenario_line": 1322,
-              "note": "Only maintenance placeholders exist today; the maintenance workflow itself is still missing."
-            },
-            {
-              "name": "Maintenance changes follow the current git and approval workflow",
-              "status": "gap",
-              "rule": "Supervisor Agent behavior",
-              "scenario_line": 1331,
-              "note": "Only maintenance placeholders exist today; the maintenance workflow itself is still missing."
-            },
-            {
-              "name": "Proper maintenance validation requires both change-scoped and full-project testing",
-              "status": "gap",
-              "rule": "Supervisor Agent behavior",
-              "scenario_line": 1342,
-              "note": "Only maintenance placeholders exist today; the maintenance workflow itself is still missing."
-            },
-            {
-              "name": "Failed or unapproved maintenance batches remain reviewable",
-              "status": "gap",
-              "rule": "Supervisor Agent behavior",
-              "scenario_line": 1349,
-              "note": "Only maintenance placeholders exist today; the maintenance workflow itself is still missing."
-            }
-          ]
-        }
-      ],
+      "reason": "BA-10-S3 closed the final required acceptance gap through the bounded maintenance workflow, retained review artifacts, and approval controls, so the product now sits at 212 implemented / 0 partial / 0 gap scenarios; the board stays parked on this closing build-lead handoff while the only remaining repo-tracked follow-up is out-of-sandbox confirmation for `BUILD-CLI-001` and `OPS-LAUNCHD-001`.",
+      "gap_ids": [],
+      "gap_summaries": [],
       "validation_command_ids": [
-        "qa_runtime_pack_regressions",
+        "qa_smoke_flow",
         "qa_acceptance_reports",
-        "qa_supervisor_regressions"
+        "qa_supervisor_regressions",
+        "qa_runtime_control_regressions",
+        "qa_runtime_pack_regressions"
       ],
       "validation_suite_command": "python3.11 scripts/quality/run_ba10_validation_suite.py --project-root <repo_root> --current-focus"
     }
   },
   "commands": [
     {
-      "command_id": "qa_runtime_pack_regressions",
-      "title": "Runtime pack regressions",
+      "command_id": "qa_smoke_flow",
+      "title": "Smoke harness flow",
       "kind": "automated",
-      "command": "python3.11 -m pytest tests/test_runtime_pack.py",
-      "description": "Confirms generated runtime scaffolding stays honest about current action-catalog and maintenance placeholder status.",
+      "command": "python3.11 -m pytest tests/test_smoke_harness.py",
+      "description": "Replays the committed bootstrap -> tailoring -> discovery -> send -> feedback -> review-query smoke path.",
       "status": "passed",
       "returncode": 0,
-      "duration_seconds": 0.325
+      "duration_seconds": 2.638
     },
     {
       "command_id": "qa_acceptance_reports",
@@ -122,56 +61,67 @@
       "description": "Keeps the committed BA-10 acceptance, blocker, readiness, and validation-suite reports synchronized with repo code, tests, and state references.",
       "status": "passed",
       "returncode": 0,
-      "duration_seconds": 2.234
+      "duration_seconds": 2.344
     },
     {
       "command_id": "qa_supervisor_regressions",
       "title": "Supervisor downstream hardening regressions",
       "kind": "automated",
-      "command": "python3.11 -m pytest tests/test_supervisor_downstream_actions.py",
-      "description": "Confirms incident-first selector ordering, existing-run reuse, bounded role-targeted progression through `delivery_feedback`, and contact-rooted general-learning follow-through while keeping the remaining maintenance-selector gap explicit.",
+      "command": "python3.11 -m pytest tests/test_supervisor.py tests/test_supervisor_downstream_actions.py",
+      "description": "Confirms incident-first selector ordering, existing-run reuse, bounded role-targeted progression through `delivery_feedback`, contact-rooted general-learning follow-through, and bounded daily maintenance selection or retention behavior.",
       "status": "passed",
       "returncode": 0,
-      "duration_seconds": 1.123
+      "duration_seconds": 2.567
+    },
+    {
+      "command_id": "qa_runtime_control_regressions",
+      "title": "Runtime control regressions",
+      "kind": "automated",
+      "command": "python3.11 -m pytest tests/test_local_runtime.py",
+      "description": "Covers launchd plist wiring, control commands, chat lifecycle state, delayed feedback runners, maintenance review controls, and explicit negative control cases.",
+      "status": "passed",
+      "returncode": 0,
+      "duration_seconds": 16.204
+    },
+    {
+      "command_id": "qa_runtime_pack_regressions",
+      "title": "Runtime pack regressions",
+      "kind": "automated",
+      "command": "python3.11 -m pytest tests/test_runtime_pack.py",
+      "description": "Confirms generated runtime scaffolding stays honest about the current action catalog, maintenance workflow, and operator control surfaces.",
+      "status": "passed",
+      "returncode": 0,
+      "duration_seconds": 0.209
     }
   ],
   "failed_command_ids": [],
   "passed": true,
   "validation_suite_report_version": 2,
-  "generated_at": "2026-04-09T21:54:46Z",
+  "generated_at": "2026-04-09T22:49:06Z",
   "summary": {
-    "command_count": 3,
+    "command_count": 5,
     "command_kind_counts": {
-      "automated": 3
+      "automated": 5
     },
-    "passed_command_count": 3,
+    "passed_command_count": 5,
     "failed_command_count": 0,
-    "total_duration_seconds": 3.682
+    "total_duration_seconds": 23.962
   },
   "repo_status": {
     "acceptance_scenario_count": 214,
     "acceptance_status_counts": {
-      "implemented": 206,
-      "partial": 1,
-      "gap": 5,
+      "implemented": 212,
+      "partial": 0,
+      "gap": 0,
       "deferred_optional": 1,
       "excluded_from_required_acceptance": 1
     },
-    "open_acceptance_scenario_count": 6,
-    "open_acceptance_gap_cluster_count": 1,
-    "open_acceptance_gap_ids": [
-      "BA10_MAINTENANCE_AUTOMATION"
-    ],
-    "open_acceptance_gap_summaries": [
-      {
-        "gap_id": "BA10_MAINTENANCE_AUTOMATION",
-        "title": "Maintenance workflow and artifacts are not implemented",
-        "open_scenario_count": 6
-      }
-    ],
-    "open_build_board_blocker_count": 3,
+    "open_acceptance_scenario_count": 0,
+    "open_acceptance_gap_cluster_count": 0,
+    "open_acceptance_gap_ids": [],
+    "open_acceptance_gap_summaries": [],
+    "open_build_board_blocker_count": 2,
     "open_build_board_blocker_ids": [
-      "BA10-TRACE-001",
       "BUILD-CLI-001",
       "OPS-LAUNCHD-001"
     ],

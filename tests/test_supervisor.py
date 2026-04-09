@@ -2,12 +2,20 @@ from __future__ import annotations
 
 import json
 import sqlite3
+import subprocess
+from pathlib import Path
 
 import pytest
 
 from job_hunt_copilot.bootstrap import run_bootstrap
+from job_hunt_copilot.maintenance import (
+    MaintenanceDependencies,
+    MaintenancePlan,
+    MaintenanceValidationCommand,
+)
 from job_hunt_copilot.paths import ProjectPaths
 from job_hunt_copilot.supervisor import (
+    ACTION_RUN_DAILY_MAINTENANCE,
     AGENT_MODE_PAUSED,
     AGENT_MODE_REPLANNING,
     AGENT_MODE_RUNNING,
@@ -60,8 +68,9 @@ from job_hunt_copilot.supervisor import (
     set_pipeline_run_review_packet_status,
     start_supervisor_cycle,
     stop_agent,
+    SupervisorActionDependencies,
 )
-from tests.support import create_minimal_project
+from tests.support import create_minimal_project, initialize_git_repository
 
 
 def bootstrap_project(tmp_path):
@@ -77,6 +86,60 @@ def connect_database(db_path):
     connection.row_factory = sqlite3.Row
     connection.execute("PRAGMA foreign_keys = ON;")
     return connection
+
+
+def build_test_maintenance_dependencies(
+    *,
+    should_fail_full_system: bool = False,
+) -> SupervisorActionDependencies:
+    def apply_changes(worktree_path: Path) -> None:
+        changed_path = worktree_path / "maintenance-check.txt"
+        changed_path.write_text("maintenance checkpoint\n", encoding="utf-8")
+
+    def run_validation(
+        args: tuple[str, ...],
+        cwd: Path,
+    ) -> subprocess.CompletedProcess[str]:
+        del cwd
+        label = args[-1]
+        if should_fail_full_system and label == "full-system-check":
+            return subprocess.CompletedProcess(
+                args=list(args),
+                returncode=1,
+                stdout="full-system validation failed\n",
+                stderr="",
+            )
+        return subprocess.CompletedProcess(
+            args=list(args),
+            returncode=0,
+            stdout=f"{label} passed\n",
+            stderr="",
+        )
+
+    return SupervisorActionDependencies(
+        local_timezone="UTC",
+        maintenance_dependencies=MaintenanceDependencies(
+            plan=MaintenancePlan(
+                scope_slug="daily-healthcheck",
+                short_reason="Record the bounded maintenance checkpoint for validation coverage.",
+                notes="Supervisor regression test maintenance batch.",
+                apply_changes=apply_changes,
+                change_scoped_validation=(
+                    MaintenanceValidationCommand(
+                        label="change-scoped-check",
+                        args=("mock-validation", "change-scoped-check"),
+                    ),
+                ),
+                full_system_validation=(
+                    MaintenanceValidationCommand(
+                        label="full-system-check",
+                        args=("mock-validation", "full-system-check"),
+                    ),
+                ),
+            ),
+            command_runner=run_validation,
+        ),
+    )
 
 
 def seed_role_targeted_posting(
@@ -1108,3 +1171,234 @@ def test_retry_after_downstream_stage_blocker_reuses_same_run_and_pending_review
         }
     ]
     assert len(stored_packets) == 1
+
+
+def test_run_supervisor_cycle_executes_daily_maintenance_and_persists_artifacts(tmp_path):
+    project_root = bootstrap_project(tmp_path)
+    initialize_git_repository(project_root)
+    paths = ProjectPaths.from_root(project_root)
+    connection = connect_database(project_root / "job_hunt_copilot.db")
+    resume_agent(
+        connection,
+        manual_command="jhc-agent-start",
+        timestamp="2026-04-09T00:58:00Z",
+    )
+
+    execution = run_supervisor_cycle(
+        connection,
+        paths,
+        trigger_type="launchd_heartbeat",
+        scheduler_name="launchd",
+        started_at="2026-04-09T01:00:00Z",
+        action_dependencies=build_test_maintenance_dependencies(),
+    )
+    batch_row = connection.execute(
+        """
+        SELECT maintenance_change_batch_id, branch_name, status, approval_outcome, json_path, summary_path
+        FROM maintenance_change_batches
+        """
+    ).fetchone()
+    snapshot = json.loads(
+        (project_root / execution.context_snapshot_path).read_text(encoding="utf-8")
+    )
+    connection.close()
+
+    assert execution.cycle.result == SUPERVISOR_CYCLE_RESULT_SUCCESS
+    assert execution.selected_work is not None
+    assert execution.selected_work.work_type == "maintenance_cycle"
+    assert execution.selected_work.action_id == ACTION_RUN_DAILY_MAINTENANCE
+    assert execution.maintenance_batch_id is not None
+    assert batch_row is not None
+    assert batch_row["maintenance_change_batch_id"] == execution.maintenance_batch_id
+    assert batch_row["branch_name"].startswith(
+        f"maintenance/20260409-{execution.maintenance_batch_id}-"
+    )
+    assert batch_row["status"] == "validated"
+    assert batch_row["approval_outcome"] == "pending"
+
+    artifact_json_path = project_root / str(batch_row["json_path"])
+    artifact_markdown_path = project_root / str(batch_row["summary_path"])
+    artifact_payload = json.loads(artifact_json_path.read_text(encoding="utf-8"))
+
+    assert artifact_json_path.exists()
+    assert artifact_markdown_path.exists()
+    assert artifact_payload["maintenance_change_batch_id"] == execution.maintenance_batch_id
+    assert artifact_payload["local_day"] == "20260409"
+    assert artifact_payload["change_scoped_validation"][0]["passed"] is True
+    assert artifact_payload["full_system_validation"][0]["passed"] is True
+    assert "maintenance-check.txt" in artifact_payload["files_changed"]
+    assert snapshot["maintenance_batch"]["maintenance_change_batch_id"] == (
+        execution.maintenance_batch_id
+    )
+
+
+def test_run_supervisor_cycle_does_not_interrupt_active_pipeline_run_for_due_maintenance(
+    tmp_path,
+):
+    project_root = bootstrap_project(tmp_path)
+    initialize_git_repository(project_root)
+    paths = ProjectPaths.from_root(project_root)
+    connection = connect_database(project_root / "job_hunt_copilot.db")
+    lead_id, job_posting_id = seed_role_targeted_posting(connection)
+    resume_agent(
+        connection,
+        manual_command="jhc-agent-start",
+        timestamp="2026-04-09T01:10:00Z",
+    )
+    active_run, _ = ensure_role_targeted_pipeline_run(
+        connection,
+        lead_id=lead_id,
+        job_posting_id=job_posting_id,
+        current_stage="lead_handoff",
+        started_at="2026-04-09T01:11:00Z",
+    )
+
+    execution = run_supervisor_cycle(
+        connection,
+        paths,
+        trigger_type="launchd_heartbeat",
+        scheduler_name="launchd",
+        started_at="2026-04-09T01:12:00Z",
+        action_dependencies=build_test_maintenance_dependencies(),
+    )
+    maintenance_count = int(
+        connection.execute(
+            "SELECT COUNT(*) FROM maintenance_change_batches"
+        ).fetchone()[0]
+        or 0
+    )
+    connection.close()
+
+    assert execution.cycle.result == SUPERVISOR_CYCLE_RESULT_SUCCESS
+    assert execution.selected_work is not None
+    assert execution.selected_work.work_type == "pipeline_run"
+    assert execution.pipeline_run is not None
+    assert execution.pipeline_run.pipeline_run_id == active_run.pipeline_run_id
+    assert execution.pipeline_run.current_stage == "agent_review"
+    assert maintenance_count == 0
+
+
+def test_run_supervisor_cycle_selects_new_posting_before_due_maintenance(tmp_path):
+    project_root = bootstrap_project(tmp_path)
+    initialize_git_repository(project_root)
+    paths = ProjectPaths.from_root(project_root)
+    connection = connect_database(project_root / "job_hunt_copilot.db")
+    _, job_posting_id = seed_role_targeted_posting(connection)
+    resume_agent(
+        connection,
+        manual_command="jhc-agent-start",
+        timestamp="2026-04-09T01:15:00Z",
+    )
+
+    execution = run_supervisor_cycle(
+        connection,
+        paths,
+        trigger_type="launchd_heartbeat",
+        scheduler_name="launchd",
+        started_at="2026-04-09T01:16:00Z",
+        action_dependencies=build_test_maintenance_dependencies(),
+    )
+    maintenance_count = int(
+        connection.execute(
+            "SELECT COUNT(*) FROM maintenance_change_batches"
+        ).fetchone()[0]
+        or 0
+    )
+    connection.close()
+
+    assert execution.cycle.result == SUPERVISOR_CYCLE_RESULT_SUCCESS
+    assert execution.selected_work is not None
+    assert execution.selected_work.work_type == "job_posting"
+    assert execution.selected_work.job_posting_id == job_posting_id
+    assert execution.pipeline_run is not None
+    assert execution.pipeline_run.job_posting_id == job_posting_id
+    assert maintenance_count == 0
+
+
+def test_run_supervisor_cycle_retains_failed_maintenance_batch_for_review(tmp_path):
+    project_root = bootstrap_project(tmp_path)
+    initialize_git_repository(project_root)
+    paths = ProjectPaths.from_root(project_root)
+    connection = connect_database(project_root / "job_hunt_copilot.db")
+    resume_agent(
+        connection,
+        manual_command="jhc-agent-start",
+        timestamp="2026-04-09T01:20:00Z",
+    )
+
+    execution = run_supervisor_cycle(
+        connection,
+        paths,
+        trigger_type="launchd_heartbeat",
+        scheduler_name="launchd",
+        started_at="2026-04-09T01:21:00Z",
+        action_dependencies=build_test_maintenance_dependencies(
+            should_fail_full_system=True
+        ),
+    )
+    batch_row = connection.execute(
+        """
+        SELECT status, approval_outcome, failed_at, json_path
+        FROM maintenance_change_batches
+        WHERE maintenance_change_batch_id = ?
+        """,
+        (execution.maintenance_batch_id,),
+    ).fetchone()
+    connection.close()
+
+    assert execution.cycle.result == SUPERVISOR_CYCLE_RESULT_SUCCESS
+    assert execution.maintenance_batch_id is not None
+    assert batch_row is not None
+    assert batch_row["status"] == "retained_for_review"
+    assert batch_row["approval_outcome"] == "failed_validation"
+    assert batch_row["failed_at"] == "2026-04-09T01:21:00Z"
+
+    artifact_payload = json.loads(
+        (project_root / str(batch_row["json_path"])).read_text(encoding="utf-8")
+    )
+    assert artifact_payload["full_system_validation"][0]["passed"] is False
+    assert artifact_payload["change_scoped_validation"][0]["passed"] is True
+    assert artifact_payload["status"] == "retained_for_review"
+    assert artifact_payload["approval_outcome"] == "failed_validation"
+
+
+def test_run_supervisor_cycle_runs_maintenance_only_once_per_local_day(tmp_path):
+    project_root = bootstrap_project(tmp_path)
+    initialize_git_repository(project_root)
+    paths = ProjectPaths.from_root(project_root)
+    connection = connect_database(project_root / "job_hunt_copilot.db")
+    resume_agent(
+        connection,
+        manual_command="jhc-agent-start",
+        timestamp="2026-04-09T01:30:00Z",
+    )
+    action_dependencies = build_test_maintenance_dependencies()
+
+    first_execution = run_supervisor_cycle(
+        connection,
+        paths,
+        trigger_type="launchd_heartbeat",
+        scheduler_name="launchd",
+        started_at="2026-04-09T01:31:00Z",
+        action_dependencies=action_dependencies,
+    )
+    second_execution = run_supervisor_cycle(
+        connection,
+        paths,
+        trigger_type="launchd_heartbeat",
+        scheduler_name="launchd",
+        started_at="2026-04-09T12:00:00Z",
+        action_dependencies=action_dependencies,
+    )
+    maintenance_count = int(
+        connection.execute(
+            "SELECT COUNT(*) FROM maintenance_change_batches"
+        ).fetchone()[0]
+        or 0
+    )
+    connection.close()
+
+    assert first_execution.maintenance_batch_id is not None
+    assert second_execution.cycle.result == "no_work"
+    assert second_execution.selected_work is None
+    assert maintenance_count == 1

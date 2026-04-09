@@ -517,6 +517,12 @@ def render_chat_bootstrap(
                 "--object-type job_posting|tailoring_review --object-id <object_id> "
                 "--new-value <value> --reason \"<reason>\""
             ),
+            (
+                "- Maintenance review routing: "
+                f"python3.11 scripts/ops/control_agent.py review-maintenance --project-root {paths.project_root} "
+                "--maintenance-change-batch-id <maintenance_change_batch_id> "
+                "--decision approve|reject [--reason \"<reason>\"]"
+            ),
             f"- Posting abandon control: python3.11 scripts/ops/control_agent.py abandon --project-root {paths.project_root} --job-posting-id <job_posting_id>",
             "",
             "Current snapshot:",
@@ -589,9 +595,7 @@ def render_initial_progress_log(
     generated_at: str,
 ) -> str:
     local_day = datetime.now().astimezone().date().isoformat()
-    blockers = [
-        "Autonomous maintenance workflow and maintenance artifacts are still backlog in the current build.",
-    ]
+    blockers = ["No active runtime-scaffold blockers are recorded in the generated pack."]
     return "\n".join(
         [
             "# Supervisor Progress Log",
@@ -689,22 +693,8 @@ def build_initial_ops_plan(runtime_snapshot: dict[str, Any], generated_at: str) 
                 "trigger_condition": "critical_incident in auto_pause_critical_types remains unresolved",
             },
         ],
-        "maintenance_backlog": [
-            {
-                "title": "Implement bounded daily maintenance automation",
-                "note": "The current build still lacks autonomous maintenance batches, validation replay, approval persistence, and retained maintenance review artifacts.",
-            }
-        ],
-        "weak_areas": [
-            {
-                "area": "action_catalog_coverage",
-                "note": "Core role-targeted and general-learning actions are registered, but autonomous maintenance work is still uncataloged.",
-            },
-            {
-                "area": "maintenance_automation",
-                "note": "The runtime reserves maintenance state and review surfaces, but no autonomous maintenance batch workflow has been implemented yet.",
-            },
-        ],
+        "maintenance_backlog": [],
+        "weak_areas": [],
         "replan": {
             "status": "idle",
             "last_replan_at": None,

@@ -14,6 +14,12 @@ from job_hunt_copilot.chat_runtime import (
 )
 import job_hunt_copilot.local_runtime as local_runtime
 from job_hunt_copilot.delivery_feedback import DeliveryFeedbackSignal
+from job_hunt_copilot.maintenance import (
+    MaintenanceDependencies,
+    MaintenancePlan,
+    MaintenanceValidationCommand,
+    run_daily_maintenance_cycle,
+)
 from job_hunt_copilot.paths import ProjectPaths
 from job_hunt_copilot.local_runtime import (
     begin_chat_operator_session,
@@ -27,7 +33,12 @@ from job_hunt_copilot.resume_tailoring import (
     RESUME_REVIEW_STATUS_REJECTED,
     record_tailoring_review_decision,
 )
-from tests.support import create_minimal_project, seed_pending_review_tailoring_run
+from job_hunt_copilot.supervisor import SupervisorActionDependencies
+from tests.support import (
+    create_minimal_project,
+    initialize_git_repository,
+    seed_pending_review_tailoring_run,
+)
 
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
@@ -60,6 +71,55 @@ def make_command_result(
         returncode=returncode,
         stdout=stdout,
         stderr=stderr,
+    )
+
+
+def build_test_maintenance_dependencies(
+    *,
+    should_fail_full_system: bool = False,
+) -> SupervisorActionDependencies:
+    def apply_changes(worktree_path: Path) -> None:
+        (worktree_path / "maintenance-check.txt").write_text(
+            "maintenance checkpoint\n",
+            encoding="utf-8",
+        )
+
+    def run_validation(
+        args: tuple[str, ...],
+        cwd: Path,
+    ) -> subprocess.CompletedProcess[str]:
+        del cwd
+        label = args[-1]
+        if should_fail_full_system and label == "full-system-check":
+            return make_command_result(
+                stdout="full-system validation failed\n",
+                returncode=1,
+            )
+        return make_command_result(stdout=f"{label} passed\n")
+
+    return SupervisorActionDependencies(
+        local_timezone="UTC",
+        maintenance_dependencies=MaintenanceDependencies(
+            plan=MaintenancePlan(
+                scope_slug="daily-healthcheck",
+                short_reason="Record the bounded maintenance checkpoint for runtime-control coverage.",
+                notes="Local runtime maintenance regression test batch.",
+                apply_changes=apply_changes,
+                change_scoped_validation=(
+                    MaintenanceValidationCommand(
+                        label="change-scoped-check",
+                        args=("mock-validation", "change-scoped-check"),
+                    ),
+                ),
+                full_system_validation=(
+                    MaintenanceValidationCommand(
+                        label="full-system-check",
+                        args=("mock-validation", "full-system-check"),
+                    ),
+                ),
+            ),
+            command_runner=run_validation,
+        ),
     )
 
 
@@ -1952,6 +2012,139 @@ def test_run_supervisor_cycle_script_records_no_work_launchd_cycle(tmp_path):
         "scheduler_name": "launchd",
         "result": "no_work",
     }
+
+
+def test_execute_supervisor_heartbeat_reports_maintenance_batch_when_dependencies_are_injected(
+    tmp_path,
+    monkeypatch,
+):
+    project_root = tmp_path / "repo"
+    project_root.mkdir()
+    create_minimal_project(project_root)
+    initialize_git_repository(project_root)
+
+    def fake_run_system_command(args: list[str]) -> subprocess.CompletedProcess[str]:
+        if args == ["pmset", "-g", "uuid"]:
+            return make_command_result(stdout="TEST-UUID\n")
+        if args == ["pmset", "-g", "log"]:
+            return make_command_result(stdout="")
+        raise AssertionError(f"Unexpected system command: {args!r}")
+
+    monkeypatch.setattr(local_runtime, "_run_system_command", fake_run_system_command)
+
+    run_script(
+        "scripts/ops/control_agent.py",
+        "start",
+        "--project-root",
+        str(project_root),
+        "--manual-command",
+        "jhc-agent-start",
+    )
+    report = execute_supervisor_heartbeat(
+        project_root=project_root,
+        started_at="2026-04-09T02:00:00Z",
+        action_dependencies=build_test_maintenance_dependencies(),
+    )
+
+    assert report["cycle"]["result"] == "success"
+    assert report["selected_work"]["work_type"] == "maintenance_cycle"
+    assert report["selected_work"]["action_id"] == "run_daily_maintenance"
+    assert report["maintenance_change_batch_id"] is not None
+
+
+def test_review_maintenance_command_approves_and_merges_validated_batch(tmp_path):
+    project_root = tmp_path / "repo"
+    project_root.mkdir()
+    create_minimal_project(project_root)
+    initialize_git_repository(project_root)
+    paths = ProjectPaths.from_root(project_root)
+
+    run_script(
+        "scripts/ops/control_agent.py",
+        "status",
+        "--project-root",
+        str(project_root),
+    )
+
+    connection = connect_database(project_root / "job_hunt_copilot.db")
+    batch_execution = run_daily_maintenance_cycle(
+        connection,
+        paths,
+        current_time="2026-04-09T02:10:00Z",
+        local_timezone="UTC",
+        dependencies=build_test_maintenance_dependencies().maintenance_dependencies,
+    )
+    connection.close()
+
+    report = json.loads(
+        run_script(
+            "scripts/ops/control_agent.py",
+            "review-maintenance",
+            "--project-root",
+            str(project_root),
+            "--maintenance-change-batch-id",
+            batch_execution.batch.maintenance_change_batch_id,
+            "--decision",
+            "approve",
+            "--reason",
+            "Owner approved the bounded maintenance batch.",
+        ).stdout
+    )
+
+    assert report["command"] == "review-maintenance"
+    assert report["decision"] == "approve"
+    assert report["maintenance_batch"]["status"] == "merged"
+    assert report["maintenance_batch"]["approval_outcome"] == "approved"
+    assert report["maintenance_batch"]["merged_commit_sha"] is not None
+    assert report["maintenance_batch"]["merge_commit_message"].startswith(
+        f"merge(maintenance): {batch_execution.batch.maintenance_change_batch_id} "
+    )
+
+
+def test_review_maintenance_command_rejects_without_merging(tmp_path):
+    project_root = tmp_path / "repo"
+    project_root.mkdir()
+    create_minimal_project(project_root)
+    initialize_git_repository(project_root)
+    paths = ProjectPaths.from_root(project_root)
+
+    run_script(
+        "scripts/ops/control_agent.py",
+        "status",
+        "--project-root",
+        str(project_root),
+    )
+
+    connection = connect_database(project_root / "job_hunt_copilot.db")
+    batch_execution = run_daily_maintenance_cycle(
+        connection,
+        paths,
+        current_time="2026-04-09T02:20:00Z",
+        local_timezone="UTC",
+        dependencies=build_test_maintenance_dependencies().maintenance_dependencies,
+    )
+    connection.close()
+
+    report = json.loads(
+        run_script(
+            "scripts/ops/control_agent.py",
+            "review-maintenance",
+            "--project-root",
+            str(project_root),
+            "--maintenance-change-batch-id",
+            batch_execution.batch.maintenance_change_batch_id,
+            "--decision",
+            "reject",
+            "--reason",
+            "Owner wants to inspect the retained branch first.",
+        ).stdout
+    )
+
+    assert report["command"] == "review-maintenance"
+    assert report["decision"] == "reject"
+    assert report["maintenance_batch"]["status"] == "retained_for_review"
+    assert report["maintenance_batch"]["approval_outcome"] == "not_approved"
+    assert report["maintenance_batch"]["merged_commit_sha"] is None
 
 
 def test_execute_supervisor_heartbeat_prefers_pmset_events_for_recovery_detection(

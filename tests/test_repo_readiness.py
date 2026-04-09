@@ -26,9 +26,7 @@ def test_repo_readiness_reports_are_current_and_repo_surfaces_are_honest():
     assert committed_markdown == generated_markdown
     assert report["surface_status"] == "current"
     assert report["current_focus"]["slice_id"] == "BA-10-S3"
-    assert report["acceptance_status"]["open_gap_ids"] == [
-        "BA10_MAINTENANCE_AUTOMATION",
-    ]
+    assert report["acceptance_status"]["open_gap_ids"] == []
 
     latest_validation = report["latest_validation"]
     assert latest_validation["available"] is True
@@ -58,9 +56,7 @@ def test_repo_readiness_reports_are_current_and_repo_surfaces_are_honest():
         surface for surface in report["repo_surfaces"] if surface["path"] == "README.md"
     )
     assert readme_surface["requires_open_gap_titles"] is True
-    assert readme_surface["required_gap_titles"] == [
-        "Maintenance workflow and artifacts are not implemented",
-    ]
+    assert readme_surface["required_gap_titles"] == []
 
     architecture_surface = next(
         surface
@@ -68,9 +64,7 @@ def test_repo_readiness_reports_are_current_and_repo_surfaces_are_honest():
         if surface["path"] == "docs/ARCHITECTURE.md"
     )
     assert architecture_surface["requires_open_gap_titles"] is True
-    assert architecture_surface["required_gap_titles"] == [
-        "Maintenance workflow and artifacts are not implemented",
-    ]
+    assert architecture_surface["required_gap_titles"] == []
 
     reports_index_surface = next(
         surface

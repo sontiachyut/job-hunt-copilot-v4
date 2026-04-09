@@ -20,6 +20,12 @@ from .delivery_feedback import (
     MailboxFeedbackObserver,
     sync_delivery_feedback,
 )
+from .maintenance import (
+    MaintenanceStateError,
+    MaintenanceDependencies,
+    build_default_maintenance_plan,
+    review_maintenance_change_batch as review_persisted_maintenance_change_batch,
+)
 from .paths import ProjectPaths
 from .records import new_canonical_id, now_utc_iso
 from .resume_tailoring import (
@@ -51,6 +57,7 @@ from .supervisor import (
     run_supervisor_cycle,
     set_pipeline_run_review_packet_status,
     stop_agent,
+    SupervisorActionDependencies,
     upsert_control_values,
 )
 
@@ -153,6 +160,45 @@ PMSET_EVENT_LINE_PATTERN = re.compile(
 
 def _run_system_command(args: list[str]) -> subprocess.CompletedProcess[str]:
     return subprocess.run(args, check=False, capture_output=True, text=True)
+
+
+def _default_maintenance_dependencies(
+    paths: ProjectPaths,
+) -> MaintenanceDependencies | None:
+    if not (paths.project_root / ".git").exists():
+        return None
+    try:
+        return MaintenanceDependencies(
+            plan=build_default_maintenance_plan(paths.project_root)
+        )
+    except MaintenanceStateError:
+        return None
+
+
+def _resolve_supervisor_action_dependencies(
+    paths: ProjectPaths,
+    action_dependencies: SupervisorActionDependencies | None,
+) -> SupervisorActionDependencies:
+    default_maintenance_dependencies = _default_maintenance_dependencies(paths)
+    if action_dependencies is None:
+        return SupervisorActionDependencies(
+            maintenance_dependencies=default_maintenance_dependencies
+        )
+    if (
+        action_dependencies.maintenance_dependencies is not None
+        or default_maintenance_dependencies is None
+    ):
+        return action_dependencies
+    return SupervisorActionDependencies(
+        apollo_people_search_provider=action_dependencies.apollo_people_search_provider,
+        apollo_contact_enrichment_provider=action_dependencies.apollo_contact_enrichment_provider,
+        recipient_profile_extractor=action_dependencies.recipient_profile_extractor,
+        email_finder_providers=action_dependencies.email_finder_providers,
+        outreach_sender=action_dependencies.outreach_sender,
+        feedback_observer=action_dependencies.feedback_observer,
+        local_timezone=action_dependencies.local_timezone,
+        maintenance_dependencies=default_maintenance_dependencies,
+    )
 
 
 def _parse_utc_iso(timestamp: str) -> datetime:
@@ -2396,14 +2442,98 @@ def execute_delayed_feedback_sync(
     }
 
 
+def review_maintenance_change_batch(
+    maintenance_change_batch_id: str,
+    *,
+    decision: str,
+    project_root: Path | str | None = None,
+    reason: str | None = None,
+    manual_command: str | None = None,
+    timestamp: str | None = None,
+) -> dict[str, Any]:
+    normalized_batch_id = maintenance_change_batch_id.strip()
+    normalized_decision = decision.strip().lower()
+    if not normalized_batch_id:
+        raise ValueError(
+            "maintenance_change_batch_id is required for the review-maintenance command."
+        )
+    if normalized_decision not in {"approve", "reject"}:
+        raise ValueError(
+            "decision is required for the review-maintenance command and must be "
+            "'approve' or 'reject'."
+        )
+
+    paths = ProjectPaths.from_root(project_root)
+    migration = initialize_database(paths.db_path)
+    current_timestamp = timestamp or now_utc_iso()
+
+    with connect_canonical_database(paths) as connection:
+        try:
+            execution = review_persisted_maintenance_change_batch(
+                connection,
+                paths,
+                normalized_batch_id,
+                decision=normalized_decision,
+                current_time=current_timestamp,
+                reason=reason,
+            )
+        except MaintenanceStateError as exc:
+            raise ValueError(str(exc)) from exc
+        control_state = read_agent_control_state(connection, timestamp=current_timestamp)
+
+    runtime_pack = materialize_runtime_pack(paths.project_root)
+    batch = execution.batch
+    return {
+        "contract_version": CONTRACT_VERSION,
+        "produced_at": now_utc_iso(),
+        "project_root": str(paths.project_root),
+        "database": {
+            "db_path": str(migration.db_path),
+            "applied_migrations": migration.applied_migrations,
+            "user_version": migration.user_version,
+        },
+        "command": "review-maintenance",
+        "decision": normalized_decision,
+        "status": batch.status,
+        "manual_command": manual_command,
+        "maintenance_batch": {
+            "maintenance_change_batch_id": batch.maintenance_change_batch_id,
+            "branch_name": batch.branch_name,
+            "scope_slug": batch.scope_slug,
+            "status": batch.status,
+            "approval_outcome": batch.approval_outcome,
+            "head_commit_sha": batch.head_commit_sha,
+            "merged_commit_sha": batch.merged_commit_sha,
+            "merge_commit_message": batch.merge_commit_message,
+            "validated_at": batch.validated_at,
+            "approved_at": batch.approved_at,
+            "merged_at": batch.merged_at,
+            "failed_at": batch.failed_at,
+            "validation_summary": batch.validation_summary,
+            "created_at": batch.created_at,
+        },
+        "artifacts": {
+            "json_path": execution.json_path,
+            "markdown_path": execution.markdown_path,
+        },
+        "control_state": dict(control_state.values),
+        "runtime_pack": runtime_pack,
+    }
+
+
 def execute_supervisor_heartbeat(
     *,
     project_root: Path | str | None = None,
     started_at: str | None = None,
+    action_dependencies: SupervisorActionDependencies | None = None,
 ) -> dict[str, Any]:
     paths = ProjectPaths.from_root(project_root)
     migration = initialize_database(paths.db_path)
     effective_started_at = started_at or now_utc_iso()
+    resolved_action_dependencies = _resolve_supervisor_action_dependencies(
+        paths,
+        action_dependencies,
+    )
 
     with connect_canonical_database(paths) as connection:
         control_state_values, sleep_wake_recovery_context = detect_sleep_wake_recovery(
@@ -2430,6 +2560,7 @@ def execute_supervisor_heartbeat(
                 else None
             ),
             started_at=effective_started_at,
+            action_dependencies=resolved_action_dependencies,
         )
 
     runtime_pack = materialize_runtime_pack(paths.project_root)
@@ -2493,5 +2624,6 @@ def execute_supervisor_heartbeat(
             if execution.review_packet is not None
             else None
         ),
+        "maintenance_change_batch_id": execution.maintenance_batch_id,
         "runtime_pack": runtime_pack,
     }

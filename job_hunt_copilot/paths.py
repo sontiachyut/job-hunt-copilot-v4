@@ -125,6 +125,15 @@ class ProjectPaths:
     def ops_maintenance_dir(self) -> Path:
         return self.ops_dir / "maintenance"
 
+    def maintenance_batch_dir(self, maintenance_change_batch_id: str) -> Path:
+        return self.ops_maintenance_dir / maintenance_change_batch_id
+
+    def maintenance_change_json_path(self, maintenance_change_batch_id: str) -> Path:
+        return self.maintenance_batch_dir(maintenance_change_batch_id) / "maintenance_change.json"
+
+    def maintenance_change_markdown_path(self, maintenance_change_batch_id: str) -> Path:
+        return self.maintenance_batch_dir(maintenance_change_batch_id) / "maintenance_change.md"
+
     @property
     def ops_incidents_dir(self) -> Path:
         return self.ops_dir / "incidents"

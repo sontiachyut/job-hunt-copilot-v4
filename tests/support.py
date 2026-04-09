@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import sqlite3
+import subprocess
 from pathlib import Path
 
 from job_hunt_copilot.paths import ProjectPaths
@@ -55,6 +56,44 @@ def create_minimal_project(root: Path) -> None:
         )
         + "\n",
         encoding="utf-8",
+    )
+
+
+def initialize_git_repository(root: Path) -> None:
+    subprocess.run(
+        ["git", "init", "-b", "main"],
+        cwd=root,
+        check=True,
+        capture_output=True,
+        text=True,
+    )
+    subprocess.run(
+        ["git", "config", "user.name", "Test User"],
+        cwd=root,
+        check=True,
+        capture_output=True,
+        text=True,
+    )
+    subprocess.run(
+        ["git", "config", "user.email", "test@example.com"],
+        cwd=root,
+        check=True,
+        capture_output=True,
+        text=True,
+    )
+    subprocess.run(
+        ["git", "add", "."],
+        cwd=root,
+        check=True,
+        capture_output=True,
+        text=True,
+    )
+    subprocess.run(
+        ["git", "commit", "-m", "Initial repo scaffold"],
+        cwd=root,
+        check=True,
+        capture_output=True,
+        text=True,
     )
 
 

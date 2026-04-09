@@ -100,8 +100,8 @@ def test_acceptance_trace_matrix_reports_are_current_and_reference_real_repo_pat
         for scenario in rule["scenarios"]
         if scenario["name"] == "Supervisor work selection follows the current default priority order"
     )
-    assert priority_order_scenario["status"] == "partial"
-    assert priority_order_scenario["gap_ids"] == ["BA10_MAINTENANCE_AUTOMATION"]
+    assert priority_order_scenario["status"] == "implemented"
+    assert priority_order_scenario["gap_ids"] == []
     assert "BA-03-S3" in priority_order_scenario["slice_ids"]
 
     bootstrap_rule = next(

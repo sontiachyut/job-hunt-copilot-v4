@@ -8,8 +8,8 @@ global_status:
   canonical_inputs:
     - prd/spec.md
     - prd/test-spec.feature
-  current_phase: implementation_in_progress
-  overall_risk: high
+  current_phase: operational_validation_pending
+  overall_risk: medium
   summary:
     - Planning now reflects the PRD and acceptance spec instead of the initial seeded checklist.
     - BA-01 is now complete: the repo has runtime bootstrap checks, canonical SQLite schema migration, review views, and shared record-ID/timestamp helpers.
@@ -28,7 +28,7 @@ global_status:
     - "BA-09 is now complete in code: delivery feedback now dedupes repeated mailbox signals at the logical-event level, exposes queryable feedback-reuse candidates for bounced and `not_bounced` discovery reads, keeps replied outcomes review-only, and lets discovery consume those feedback signals without auto-clearing contact email state."
     - "BA-10-S1 is now complete: `build-agent/reports/ba-10-acceptance-trace-matrix.json` and `.md` now map all 214 acceptance scenarios to owning epics, code, tests, and explicit hardening gaps, with a guard test that keeps the matrix aligned to `prd/test-spec.feature`."
     - "BA-10-S2 is now complete: `tests/test_smoke_harness.py` now drives a committed bootstrap -> tailoring -> discovery -> send -> delayed-feedback -> review-query smoke flow with deterministic fakes, and the regenerated acceptance trace matrix now closes the explicit smoke-harness gap while leaving the remaining blocker clusters honest."
-    - "BA-10-S3 remains in progress: targeted hardening regressions now prove unsupported tailoring asks stay explicit gaps, automatic outreach still requires approved review and blocks repeat ambiguity, outreach-message traceability omits raw reply excerpts, runtime secret values stay out of canonical state or review outputs, delayed feedback has dedicated launchd scheduler wiring, `jhc-chat` now prints a persisted clean-first startup dashboard plus grouped review snapshot sourced from canonical state, explicit `scripts/ops/chat_state.py` helper commands now back persisted review-queue and default change-summary reads, repeated chat-state helper reads are now proven idempotent and read-only against canonical state, supported job-posting and tailoring-review overrides now route through canonical state updates plus `override_events`, live expert-guidance persistence now defaults to current-plus-similar-future scope and pauses the system on conflict or uncertain reuse through canonical incidents, supervisor heartbeats now auto-resume safely after an unexpected `jhc-chat` exit has idled for 15 minutes, and explicit `scripts/ops/control_agent.py handoff-background-task|return-background-task` flows now persist expert-requested background-task handoff summaries plus review returns with exclusive-focus control-state semantics, so the BA-10 reporting layer now holds at 206 implemented, 1 partial, and 5 gap scenarios with maintenance automation as the only remaining functional hardening cluster."
+    - "BA-10 is now complete for required acceptance: the acceptance trace matrix, smoke harness, blocker audit, repo-readiness summary, and current-focus validation suite now land at 212 implemented / 0 partial / 0 gap scenarios, and the final BA-10-S3 closeout adds bounded daily maintenance execution, retained maintenance review artifacts, maintenance approval controls, and honest recruiter- and manager-facing repo notes while leaving only host-side `BUILD-CLI-001` and `OPS-LAUNCHD-001` follow-up blockers explicit."
     - "BA-10-S3 report hardening now also records whether the committed latest validation snapshot actually tracks the active current-focus slice, and the validation-suite runner pre-seeds that selector-aligned snapshot before `qa_acceptance_reports` executes, so replaying `--current-focus` can recover cleanly from a stale blocker-specific latest-report state without manual report prep."
     - "BA-10-S4 is now complete in code: `job_hunt_copilot.supervisor` now advances durable role-targeted runs through `lead_handoff`, bounded mandatory review, bounded `people_search`, bounded `email_discovery`, bounded `sending`, and bounded `delivery_feedback`, and it now also advances contact-rooted general-learning work through bounded email discovery, send-ready dispatch, and delayed-feedback follow-through without posting linkage or role-targeted review prerequisites."
     - "`jhc-chat` now records canonical begin/end state, pauses autonomous work on open, resumes on clean explicit close when chat caused the pause, auto-resumes safely after an unexpected exit has idled for 15 minutes, materializes a persisted clean-first startup dashboard plus grouped review snapshot before Codex opens, and exposes explicit persisted-state helper commands for review-queue and default change-summary reads."
@@ -841,7 +841,7 @@ epics:
 
   - id: BA-10
     name: Validation and hardening
-    status: in_progress
+    status: completed
     owner_role: quality-engineer
     phase: P5
     dependencies:
@@ -908,7 +908,7 @@ epics:
       - id: BA-10-S3
         name: Cross-component regression and blocker burn-down
         owner_role: build-lead
-        status: in_progress
+        status: completed
         dependencies:
           - BA-10-S2
         deliverables:
@@ -979,6 +979,9 @@ epics:
           - Added persisted expert-requested background-task handoff and return routing through `scripts/ops/control_agent.py handoff-background-task|return-background-task`, `job_hunt_copilot.local_runtime`, `job_hunt_copilot.chat_runtime`, and the generated runtime-pack chat bootstrap so longer chat-owned tasks now record an explicit handoff summary, hold exclusive focus over routine supervisor work, surface unresolved returns in the failed-background-task review group, and automatically create pending expert review packets when they finish successfully.
           - Added focused local-runtime plus runtime-pack regressions proving exclusive-focus control-state persistence, successful background-task return into the expert review queue, unresolved return behavior that restores normal chat-pause semantics safely, and the remaining runtime-pack honesty updates that now leave maintenance automation as the only open BA-10 functional gap.
           - Refined `tests/test_blocker_audit.py`, `tests/test_quality_validation.py`, and `tests/test_repo_readiness.py` so the committed BA-10 evidence now fails closed if the retired `BA10_CHAT_REVIEW_AND_CONTROL` cluster reappears in current-focus, repo-readiness, or latest validation-suite surfaces without a matching acceptance-trace regression.
+          - Added `job_hunt_copilot.maintenance`, new maintenance artifact path helpers, and supervisor or local-runtime or control-agent integration so daily maintenance now runs on an isolated git branch or worktree, writes `maintenance_change.json` plus `maintenance_change.md`, records both change-scoped and full-system validation outcomes, and retains failed batches for explicit review instead of silently merging or discarding them.
+          - Added maintenance-targeted regressions across `tests/test_supervisor.py`, `tests/test_local_runtime.py`, `tests/test_runtime_pack.py`, `tests/test_acceptance_traceability.py`, `tests/test_blocker_audit.py`, `tests/test_quality_validation.py`, and `tests/test_repo_readiness.py`, then updated `README.md` and `docs/ARCHITECTURE.md` so recruiter- and manager-facing repo surfaces now describe the implemented maintenance review and approval flow honestly.
+          - Re-ran `python3.11 scripts/quality/run_ba10_validation_suite.py --project-root /Users/achyutaramsonti/Projects/job-hunt-copilot-v4 --current-focus` on 2026-04-09T22:49:06Z after the maintenance closeout, selector-order fix, and state-file checkpoint, refreshing the acceptance trace, blocker audit, repo-readiness summary, and latest validation-suite snapshot with another passing 5-command replay while moving required acceptance to `212 implemented / 0 partial / 0 gap`; `BA10-TRACE-001` is now closed and only host-side `BUILD-CLI-001` plus `OPS-LAUNCHD-001` remain open.
         validation:
           - "`python3.11 -m py_compile job_hunt_copilot/local_runtime.py job_hunt_copilot/chat_runtime.py job_hunt_copilot/runtime_pack.py job_hunt_copilot/review_queries.py job_hunt_copilot/supervisor.py scripts/ops/control_agent.py tests/test_local_runtime.py tests/test_runtime_pack.py`"
           - "`python3.11 -m pytest tests/test_local_runtime.py tests/test_runtime_pack.py`"
@@ -1023,9 +1026,13 @@ epics:
           - "`python3.11 scripts/quality/run_ba10_validation_suite.py --project-root /Users/achyutaramsonti/Projects/job-hunt-copilot-v4 --current-focus`"
           - "`python3.11 -m pytest tests/test_bootstrap.py tests/test_schema.py tests/test_artifacts.py tests/test_runtime_pack.py`"
           - "`python3.11 scripts/quality/run_ba10_validation_suite.py --project-root /Users/achyutaramsonti/Projects/job-hunt-copilot-v4 --blocker-id BA10-TRACE-001`"
+          - "`python3.11 -m py_compile job_hunt_copilot/supervisor.py job_hunt_copilot/local_runtime.py job_hunt_copilot/maintenance.py scripts/ops/control_agent.py`"
+          - "`python3.11 -m pytest tests/test_supervisor.py -k maintenance tests/test_local_runtime.py -k 'maintenance or execute_supervisor_heartbeat_reports_maintenance_batch_when_dependencies_are_injected'`"
+          - "`python3.11 -m pytest tests/test_supervisor.py tests/test_supervisor_downstream_actions.py`"
+          - "`python3.11 scripts/quality/run_ba10_validation_suite.py --project-root /Users/achyutaramsonti/Projects/job-hunt-copilot-v4 --current-focus`"
         remaining_scope:
-          - maintenance automation
-          - build-lead/local-runtime implementation for bounded autonomous maintenance selection, branch workflow, approval persistence, and retained maintenance review artifacts
+          - host-side unattended build wrapper confirmation for `BUILD-CLI-001`
+          - host-side supervisor and delayed-feedback `launchctl` validation for `OPS-LAUNCHD-001`
       - id: BA-10-S4
         name: Downstream supervisor action-catalog burn-down
         owner_role: build-lead
@@ -1080,11 +1087,11 @@ current_focus:
   epic_id: BA-10
   slice_id: BA-10-S3
   owner_role: build-lead
-  reason: BA-10-S4 closed the downstream supervisor action-catalog gap, the latest BA-10-S3 hardening passes already burned down the persisted chat read surfaces, object-specific override routing, live expert-guidance clarification controls, and the remaining expert-requested background-task workflow gap, so BA-10-S3 now resolves only the maintenance-automation cluster at 206 implemented / 1 partial / 5 gap scenarios; the active same-slice handoff stays with build-lead for the remaining maintenance workflow and approval-automation work rather than more chat/runtime control burn-down.
+  reason: BA-10-S3 closed the final required acceptance gap through the bounded maintenance workflow, retained review artifacts, and approval controls, so the product now sits at 212 implemented / 0 partial / 0 gap scenarios; the board stays parked on this closing build-lead handoff while the only remaining repo-tracked follow-up is out-of-sandbox confirmation for `BUILD-CLI-001` and `OPS-LAUNCHD-001`.
   exit_criteria:
-    - targeted regressions and report refresh either close or keep explicit the remaining maintenance gaps with fresh evidence
-    - blocker-audit current-focus validation resolves the BA-10-S3 command set directly from the remaining open gap clusters
-    - the acceptance trace matrix, blocker audit, and state notes all agree on the remaining BA-10 blocker surface
+    - the acceptance trace matrix, blocker audit, repo-readiness summary, and latest validation snapshot stay aligned to the zero-gap required-acceptance surface
+    - host-side `BUILD-CLI-001` and `OPS-LAUNCHD-001` evidence is captured or kept explicit without claiming unsupported validation
+    - no new acceptance regressions appear in the BA-10 closeout validation suite
 
 focus_order:
   - epic_id: BA-10
@@ -1096,10 +1103,10 @@ focus_order:
 
 known_blockers:
   - blocker_id: BA10-TRACE-001
-    status: open
+    status: closed
     severity: high
     owner_role: quality-engineer
-    summary: "The regenerated BA-10 trace matrix now reports 206 implemented / 1 partial / 5 gap scenarios; explicit smoke-coverage targets, implemented-slice traceability, reproducible validation-command mappings, a guarded repo-readiness summary, and a durable latest validation-suite report snapshot cover bootstrap, tailoring, discovery, send, feedback, review-query, downstream supervisor follow-through, the persisted `jhc-chat` startup dashboard surface, explicit review-queue or change-summary reads, read-only idempotency for repeated chat-state helper queries, supported job-posting and tailoring-review override routing, live expert-guidance clarification controls, idle-timeout auto-resume after unexpected chat exit, and explicit expert-requested background-task handoff/return workflows, but maintenance automation still remains open."
+    summary: "The regenerated BA-10 trace matrix now reports 212 implemented / 0 partial / 0 gap scenarios; explicit smoke-coverage targets, implemented-slice traceability, reproducible validation-command mappings, a guarded repo-readiness summary, and a durable latest validation-suite snapshot now cover the full required acceptance surface including bounded maintenance selection, retained maintenance review artifacts, and maintenance approval controls."
     evidence:
       - build-agent/reports/ba-10-acceptance-trace-matrix.json
       - build-agent/reports/ba-10-acceptance-trace-matrix.md
@@ -1131,8 +1138,8 @@ known_blockers:
       - tests/test_resume_tailoring.py
       - tests/test_outreach.py
       - tests/test_review_queries.py
-    impact: Acceptance signoff is more credible now that committed smoke coverage, blocker-specific evidence refs, explicit negative regressions, exact open-scenario traces, and a guarded repo-surface readiness snapshot exist, but BA-10 still cannot close until the remaining gap clusters are actually burned down or deliberately left open.
-    next_action: "Keep the current BA-10-S3 focus with the build lead for maintenance automation, then refresh the BA-10 reports plus validation-suite evidence afterward."
+    impact: Required acceptance coverage is now fully traceable and replayable from committed reports; reopen this blocker only if the acceptance trace, blocker audit, repo-readiness summary, or current-focus validation suite drifts away from the zero-gap surface.
+    next_action: No immediate code follow-up. Keep the committed BA-10 reports current and reopen this blocker only if a new acceptance regression appears.
   - blocker_id: BUILD-CLI-001
     status: open
     severity: medium

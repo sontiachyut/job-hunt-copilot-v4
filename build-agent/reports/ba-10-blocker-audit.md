@@ -1,9 +1,9 @@
 # BA-10 Blocker Audit
 
 - Acceptance scenarios: `214`
-- Open acceptance scenarios: `6`
-- Open acceptance gap clusters: `1`
-- Open build-board blockers: `3`
+- Open acceptance scenarios: `0`
+- Open acceptance gap clusters: `0`
+- Open build-board blockers: `2`
 - Blockers with missing evidence refs: `0`
 
 ## Current Focus
@@ -11,57 +11,20 @@
 - Epic: `BA-10`
 - Slice: `BA-10-S3`
 - Owner role: `build-lead`
-- Reason: BA-10-S4 closed the downstream supervisor action-catalog gap, the latest BA-10-S3 hardening passes already burned down the persisted chat read surfaces, object-specific override routing, live expert-guidance clarification controls, and the remaining expert-requested background-task workflow gap, so BA-10-S3 now resolves only the maintenance-automation cluster at 206 implemented / 1 partial / 5 gap scenarios; the active same-slice handoff stays with build-lead for the remaining maintenance workflow and approval-automation work rather than more chat/runtime control burn-down.
-- Matching gap ids: `BA10_MAINTENANCE_AUTOMATION`
+- Reason: BA-10-S3 closed the final required acceptance gap through the bounded maintenance workflow, retained review artifacts, and approval controls, so the product now sits at 212 implemented / 0 partial / 0 gap scenarios; the board stays parked on this closing build-lead handoff while the only remaining repo-tracked follow-up is out-of-sandbox confirmation for `BUILD-CLI-001` and `OPS-LAUNCHD-001`.
 - Validation suite: `python3.11 scripts/quality/run_ba10_validation_suite.py --project-root <repo_root> --current-focus`
 
 ## Acceptance Gap Clusters
 
-### BA10_MAINTENANCE_AUTOMATION: Maintenance workflow and artifacts are not implemented
-- Next slice: `BA-10-S3`
-- Owner roles: `build-lead`
-- Rules: `Machine handoff contracts and canonical state`, `Supervisor Agent behavior`
-- Epics: `BA-01`, `BA-02`, `BA-03`, `BA-04`, `BA-06`, `BA-07`, `BA-08`, `BA-09`
-- Supporting slices: `BA-01-S1`, `BA-01-S2`, `BA-01-S3`, `BA-02-S1`, `BA-02-S2`, `BA-02-S3`, `BA-04-S1`, `BA-04-S2`, `BA-04-S3`, `BA-04-S4`, `BA-06-S1`, `BA-06-S2`, `BA-06-S3`, `BA-06-S4`, `BA-07-S1`, `BA-07-S2`, `BA-07-S3`, `BA-08-S1`, `BA-08-S2`, `BA-08-S3`, `BA-09-S1`, `BA-09-S2`, `BA-09-S3`, `BA-03-S1`, `BA-03-S2`, `BA-03-S3`, `BA-10-S3`
-- Open scenarios: `6` (`partial`: `1`, `gap`: `5`)
-- Reason: The schema and runtime pack reserve maintenance surfaces, but there is no autonomous maintenance batch workflow, no maintenance artifacts, and no maintenance review flow yet.
-- Evidence summary: Schema and runtime scaffolding reserve maintenance surfaces, but there is still no maintenance module, runner, or review-artifact workflow.
-- Evidence code refs: `job_hunt_copilot/migrations/0002_canonical_schema.sql`, `job_hunt_copilot/paths.py`, `job_hunt_copilot/runtime_pack.py`
-- Evidence test refs: `tests/test_schema.py`, `tests/test_runtime_pack.py`, `tests/test_acceptance_traceability.py`
-- Validation suite: `python3.11 scripts/quality/run_ba10_validation_suite.py --project-root <repo_root> --gap-id BA10_MAINTENANCE_AUTOMATION`
-- Confirmation commands:
-  - `python3.11 -m pytest tests/test_runtime_pack.py` (automated: Confirms generated runtime scaffolding stays honest about current action-catalog and maintenance placeholder status.)
-  - `python3.11 -m pytest tests/test_acceptance_traceability.py tests/test_blocker_audit.py tests/test_quality_validation.py tests/test_repo_readiness.py` (automated: Keeps the committed BA-10 acceptance, blocker, readiness, and validation-suite reports synchronized with repo code, tests, and state references.)
-  - `python3.11 -m pytest tests/test_supervisor_downstream_actions.py` (automated: Confirms incident-first selector ordering, existing-run reuse, bounded role-targeted progression through `delivery_feedback`, and contact-rooted general-learning follow-through while keeping the remaining maintenance-selector gap explicit.)
-- Open scenarios:
-  - `[gap]` Maintenance change artifacts exist for every autonomous maintenance batch (rule: `Machine handoff contracts and canonical state`, line: `220`)
-    - Evidence refs: `job_hunt_copilot/artifacts.py`, `job_hunt_copilot/contracts.py`, `job_hunt_copilot/supervisor.py`, `job_hunt_copilot/linkedin_scraping.py`, `job_hunt_copilot/resume_tailoring.py`, `job_hunt_copilot/email_discovery.py`, `job_hunt_copilot/outreach.py`, `job_hunt_copilot/delivery_feedback.py`, `job_hunt_copilot/review_queries.py`, `tests/test_artifacts.py`, `tests/test_supervisor.py`, `tests/test_linkedin_scraping.py`, `tests/test_resume_tailoring.py`, `tests/test_email_discovery.py`, `tests/test_outreach.py`, `tests/test_delivery_feedback.py`, `tests/test_review_queries.py`
-    - Note: Maintenance artifacts are specified in the schema and PRD, but no maintenance batch workflow writes them yet.
-  - `[partial]` Supervisor work selection follows the current default priority order (rule: `Supervisor Agent behavior`, line: `1132`)
-    - Evidence refs: `job_hunt_copilot/chat_runtime.py`, `job_hunt_copilot/supervisor.py`, `job_hunt_copilot/local_runtime.py`, `job_hunt_copilot/runtime_pack.py`, `scripts/ops/run_supervisor_cycle.py`, `scripts/ops/control_agent.py`, `scripts/ops/chat_session.py`, `bin/jhc-agent-start`, `bin/jhc-agent-stop`, `bin/jhc-agent-cycle`, `bin/jhc-chat`, `tests/test_supervisor_downstream_actions.py`, `tests/test_supervisor.py`, `tests/test_local_runtime.py`, `tests/test_runtime_pack.py`
-    - Note: Current supervisor regressions prove open incidents outrank ordinary pipeline advancement, existing runs outrank new posting bootstrap, new postings outrank opportunistic contact-rooted general-learning work, and contact-rooted general-learning work now covers bounded delayed feedback, send-ready dispatch, and email discovery, but bounded maintenance work itself still has no dedicated selector or action path.
-  - `[gap]` Daily maintenance is mandatory, bounded, and run-boundary aware (rule: `Supervisor Agent behavior`, line: `1322`)
-    - Evidence refs: `job_hunt_copilot/chat_runtime.py`, `job_hunt_copilot/supervisor.py`, `job_hunt_copilot/local_runtime.py`, `job_hunt_copilot/runtime_pack.py`, `scripts/ops/run_supervisor_cycle.py`, `scripts/ops/control_agent.py`, `scripts/ops/chat_session.py`, `bin/jhc-agent-start`, `bin/jhc-agent-stop`, `bin/jhc-agent-cycle`, `bin/jhc-chat`, `tests/test_supervisor_downstream_actions.py`, `tests/test_supervisor.py`, `tests/test_local_runtime.py`, `tests/test_runtime_pack.py`
-    - Note: Only maintenance placeholders exist today; the maintenance workflow itself is still missing.
-  - `[gap]` Maintenance changes follow the current git and approval workflow (rule: `Supervisor Agent behavior`, line: `1331`)
-    - Evidence refs: `job_hunt_copilot/chat_runtime.py`, `job_hunt_copilot/supervisor.py`, `job_hunt_copilot/local_runtime.py`, `job_hunt_copilot/runtime_pack.py`, `scripts/ops/run_supervisor_cycle.py`, `scripts/ops/control_agent.py`, `scripts/ops/chat_session.py`, `bin/jhc-agent-start`, `bin/jhc-agent-stop`, `bin/jhc-agent-cycle`, `bin/jhc-chat`, `tests/test_supervisor_downstream_actions.py`, `tests/test_supervisor.py`, `tests/test_local_runtime.py`, `tests/test_runtime_pack.py`
-    - Note: Only maintenance placeholders exist today; the maintenance workflow itself is still missing.
-  - `[gap]` Proper maintenance validation requires both change-scoped and full-project testing (rule: `Supervisor Agent behavior`, line: `1342`)
-    - Evidence refs: `job_hunt_copilot/chat_runtime.py`, `job_hunt_copilot/supervisor.py`, `job_hunt_copilot/local_runtime.py`, `job_hunt_copilot/runtime_pack.py`, `scripts/ops/run_supervisor_cycle.py`, `scripts/ops/control_agent.py`, `scripts/ops/chat_session.py`, `bin/jhc-agent-start`, `bin/jhc-agent-stop`, `bin/jhc-agent-cycle`, `bin/jhc-chat`, `tests/test_supervisor_downstream_actions.py`, `tests/test_supervisor.py`, `tests/test_local_runtime.py`, `tests/test_runtime_pack.py`
-    - Note: Only maintenance placeholders exist today; the maintenance workflow itself is still missing.
-  - `[gap]` Failed or unapproved maintenance batches remain reviewable (rule: `Supervisor Agent behavior`, line: `1349`)
-    - Evidence refs: `job_hunt_copilot/chat_runtime.py`, `job_hunt_copilot/supervisor.py`, `job_hunt_copilot/local_runtime.py`, `job_hunt_copilot/runtime_pack.py`, `scripts/ops/run_supervisor_cycle.py`, `scripts/ops/control_agent.py`, `scripts/ops/chat_session.py`, `bin/jhc-agent-start`, `bin/jhc-agent-stop`, `bin/jhc-agent-cycle`, `bin/jhc-chat`, `tests/test_supervisor_downstream_actions.py`, `tests/test_supervisor.py`, `tests/test_local_runtime.py`, `tests/test_runtime_pack.py`
-    - Note: Only maintenance placeholders exist today; the maintenance workflow itself is still missing.
-
 ## Build-Board Blockers
 
 ### BA10-TRACE-001
-- Status: `open`
+- Status: `closed`
 - Severity: `high`
 - Owner role: `quality-engineer`
-- Summary: The regenerated BA-10 trace matrix now reports 206 implemented / 1 partial / 5 gap scenarios; explicit smoke-coverage targets, implemented-slice traceability, reproducible validation-command mappings, a guarded repo-readiness summary, and a durable latest validation-suite report snapshot cover bootstrap, tailoring, discovery, send, feedback, review-query, downstream supervisor follow-through, the persisted `jhc-chat` startup dashboard surface, explicit review-queue or change-summary reads, read-only idempotency for repeated chat-state helper queries, supported job-posting and tailoring-review override routing, live expert-guidance clarification controls, idle-timeout auto-resume after unexpected chat exit, and explicit expert-requested background-task handoff/return workflows, but maintenance automation still remains open.
-- Impact: Acceptance signoff is more credible now that committed smoke coverage, blocker-specific evidence refs, explicit negative regressions, exact open-scenario traces, and a guarded repo-surface readiness snapshot exist, but BA-10 still cannot close until the remaining gap clusters are actually burned down or deliberately left open.
-- Next action: Keep the current BA-10-S3 focus with the build lead for maintenance automation, then refresh the BA-10 reports plus validation-suite evidence afterward.
+- Summary: The regenerated BA-10 trace matrix now reports 212 implemented / 0 partial / 0 gap scenarios; explicit smoke-coverage targets, implemented-slice traceability, reproducible validation-command mappings, a guarded repo-readiness summary, and a durable latest validation-suite snapshot now cover the full required acceptance surface including bounded maintenance selection, retained maintenance review artifacts, and maintenance approval controls.
+- Impact: Required acceptance coverage is now fully traceable and replayable from committed reports; reopen this blocker only if the acceptance trace, blocker audit, repo-readiness summary, or current-focus validation suite drifts away from the zero-gap surface.
+- Next action: No immediate code follow-up. Keep the committed BA-10 reports current and reopen this blocker only if a new acceptance regression appears.
 - Evidence refs: `build-agent/reports/ba-10-acceptance-trace-matrix.json`, `build-agent/reports/ba-10-acceptance-trace-matrix.md`, `build-agent/reports/ba-10-blocker-audit.json`, `build-agent/reports/ba-10-blocker-audit.md`, `build-agent/reports/repo-readiness-summary.json`, `build-agent/reports/repo-readiness-summary.md`, `build-agent/reports/ba-10-validation-suite-latest.json`, `build-agent/reports/ba-10-validation-suite-latest.md`, `job_hunt_copilot/acceptance_traceability.py`, `job_hunt_copilot/blocker_audit.py`, `job_hunt_copilot/quality_validation.py`, `job_hunt_copilot/repo_readiness.py`, `scripts/quality/generate_blocker_audit.py`, `scripts/quality/generate_repo_readiness_report.py`, `scripts/quality/run_ba10_validation_suite.py`, `scripts/ops/control_agent.py`, `tests/test_acceptance_traceability.py`, `tests/test_blocker_audit.py`, `tests/test_local_runtime.py`, `tests/test_quality_validation.py`, `tests/test_repo_readiness.py`, `tests/test_supervisor_downstream_actions.py`, `tests/test_delivery_feedback.py`, `tests/test_schema.py`, `tests/test_smoke_harness.py`, `tests/test_supervisor.py`, `tests/test_runtime_pack.py`, `tests/test_resume_tailoring.py`, `tests/test_outreach.py`, `tests/test_review_queries.py`
 - Validation suite: `python3.11 scripts/quality/run_ba10_validation_suite.py --project-root <repo_root> --blocker-id BA10-TRACE-001`
 - Confirmation commands:
@@ -72,10 +35,10 @@
   - `python3.11 -m pytest tests/test_email_discovery.py` (automated: Confirms people search, shortlist materialization, enrichment, discovery artifacts, and provider-budget behavior stay intact.)
   - `python3.11 -m pytest tests/test_outreach.py` (automated: Confirms send-set readiness, draft persistence, safe send execution, and repeat-outreach guardrails stay intact.)
   - `python3.11 -m pytest tests/test_delivery_feedback.py` (automated: Confirms immediate or delayed feedback ingestion, normalized event persistence, and delivery outcome artifacts stay intact.)
-  - `python3.11 -m pytest tests/test_supervisor_downstream_actions.py` (automated: Confirms incident-first selector ordering, existing-run reuse, bounded role-targeted progression through `delivery_feedback`, and contact-rooted general-learning follow-through while keeping the remaining maintenance-selector gap explicit.)
-  - `python3.11 -m pytest tests/test_local_runtime.py` (automated: Covers launchd plist wiring, control commands, chat lifecycle state, delayed feedback runners, and explicit negative control cases.)
+  - `python3.11 -m pytest tests/test_supervisor.py tests/test_supervisor_downstream_actions.py` (automated: Confirms incident-first selector ordering, existing-run reuse, bounded role-targeted progression through `delivery_feedback`, contact-rooted general-learning follow-through, and bounded daily maintenance selection or retention behavior.)
+  - `python3.11 -m pytest tests/test_local_runtime.py` (automated: Covers launchd plist wiring, control commands, chat lifecycle state, delayed feedback runners, maintenance review controls, and explicit negative control cases.)
   - `python3.11 -m pytest tests/test_review_queries.py` (automated: Verifies persisted grouped review surfaces and traceability reads that back the chat/review boundary.)
-  - `python3.11 -m pytest tests/test_runtime_pack.py` (automated: Confirms generated runtime scaffolding stays honest about current action-catalog and maintenance placeholder status.)
+  - `python3.11 -m pytest tests/test_runtime_pack.py` (automated: Confirms generated runtime scaffolding stays honest about the current action catalog, maintenance workflow, and operator control surfaces.)
 
 ### BUILD-CLI-001
 - Status: `open`
@@ -100,5 +63,5 @@
 - Evidence refs: `build-agent/logs/cycles/build-cycle-20260407T213533Z-5b2c1d98.log`, `bin/jhc-agent-start`, `bin/jhc-feedback-sync-cycle`, `scripts/ops/materialize_supervisor_plist.py`, `scripts/ops/materialize_feedback_sync_plist.py`, `tests/test_local_runtime.py`
 - Validation suite: `python3.11 scripts/quality/run_ba10_validation_suite.py --project-root <repo_root> --blocker-id OPS-LAUNCHD-001 --include-manual`
 - Confirmation commands:
-  - `python3.11 -m pytest tests/test_local_runtime.py` (automated: Covers launchd plist wiring, control commands, chat lifecycle state, delayed feedback runners, and explicit negative control cases.)
+  - `python3.11 -m pytest tests/test_local_runtime.py` (automated: Covers launchd plist wiring, control commands, chat lifecycle state, delayed feedback runners, maintenance review controls, and explicit negative control cases.)
   - `bin/jhc-agent-start && launchctl print gui/$UID/com.jobhuntcopilot.supervisor` (manual_host: Must run outside the sandbox to validate real host launchd bootstrap behavior and collect diagnostic output.)

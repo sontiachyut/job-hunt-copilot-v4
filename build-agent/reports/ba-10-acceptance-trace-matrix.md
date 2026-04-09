@@ -3,9 +3,9 @@
 - Feature file: `prd/test-spec.feature`
 - Scenario count: `214`
 - Status counts:
-  - `implemented`: `206`
-  - `partial`: `1`
-  - `gap`: `5`
+  - `implemented`: `212`
+  - `partial`: `0`
+  - `gap`: `0`
   - `deferred_optional`: `1`
   - `excluded_from_required_acceptance`: `1`
 
@@ -44,7 +44,7 @@
 | BA-09-S3 | BA-09 | outreach-engineer | completed |
 | BA-10-S1 | BA-10 | quality-engineer | completed |
 | BA-10-S2 | BA-10 | quality-engineer | completed |
-| BA-10-S3 | BA-10 | build-lead | in_progress |
+| BA-10-S3 | BA-10 | build-lead | completed |
 | BA-10-S4 | BA-10 | build-lead | completed |
 
 ## Rule Summary
@@ -52,7 +52,7 @@
 | Rule | Owner | Implemented | Partial | Gap | Deferred | Excluded |
 | --- | --- | ---: | ---: | ---: | ---: | ---: |
 | Build bootstrap and prerequisites | foundation-engineer | 7 | 0 | 0 | 0 | 0 |
-| Machine handoff contracts and canonical state | build-lead | 14 | 0 | 1 | 0 | 0 |
+| Machine handoff contracts and canonical state | build-lead | 15 | 0 | 0 | 0 | 0 |
 | State transitions and relationship records | build-lead | 12 | 0 | 0 | 0 | 0 |
 | External integrations and bootstrap configuration | ingestion-engineer | 25 | 0 | 0 | 1 | 0 |
 | Failure, retry, and idempotency behavior | quality-engineer | 8 | 0 | 0 | 0 | 0 |
@@ -60,7 +60,7 @@
 | Email Discovery behavior | outreach-engineer | 17 | 0 | 0 | 0 | 0 |
 | Email Drafting and Sending behavior | outreach-engineer | 14 | 0 | 0 | 0 | 0 |
 | Delivery Feedback behavior | outreach-engineer | 11 | 0 | 0 | 0 | 0 |
-| Supervisor Agent behavior | build-lead | 28 | 1 | 4 | 0 | 0 |
+| Supervisor Agent behavior | build-lead | 33 | 0 | 0 | 0 | 0 |
 | Review surfaces and chat-based control | quality-engineer | 7 | 0 | 0 | 0 | 0 |
 | Current-build orchestration remains sequential | build-lead | 22 | 0 | 0 | 0 | 0 |
 | LinkedIn Scraping acceptance | ingestion-engineer | 12 | 0 | 0 | 0 | 0 |
@@ -116,21 +116,6 @@
 
 
 ## Explicit Gaps
-
-### BA10_MAINTENANCE_AUTOMATION: Maintenance workflow and artifacts are not implemented
-- Next slice: `BA-10-S3`
-- Supporting slices: `BA-01-S1`, `BA-01-S2`, `BA-01-S3`, `BA-02-S1`, `BA-02-S2`, `BA-02-S3`, `BA-04-S1`, `BA-04-S2`, `BA-04-S3`, `BA-04-S4`, `BA-06-S1`, `BA-06-S2`, `BA-06-S3`, `BA-06-S4`, `BA-07-S1`, `BA-07-S2`, `BA-07-S3`, `BA-08-S1`, `BA-08-S2`, `BA-08-S3`, `BA-09-S1`, `BA-09-S2`, `BA-09-S3`, `BA-03-S1`, `BA-03-S2`, `BA-03-S3`, `BA-10-S3`
-- Reason: The schema and runtime pack reserve maintenance surfaces, but there is no autonomous maintenance batch workflow, no maintenance artifacts, and no maintenance review flow yet.
-- Evidence summary: Schema and runtime scaffolding reserve maintenance surfaces, but there is still no maintenance module, runner, or review-artifact workflow.
-- Evidence code refs: `job_hunt_copilot/migrations/0002_canonical_schema.sql`, `job_hunt_copilot/paths.py`, `job_hunt_copilot/runtime_pack.py`
-- Evidence test refs: `tests/test_schema.py`, `tests/test_runtime_pack.py`, `tests/test_acceptance_traceability.py`
-- Scenarios: `6`
-  - Maintenance change artifacts exist for every autonomous maintenance batch
-  - Supervisor work selection follows the current default priority order
-  - Daily maintenance is mandatory, bounded, and run-boundary aware
-  - Maintenance changes follow the current git and approval workflow
-  - Proper maintenance validation requires both change-scoped and full-project testing
-  - Failed or unapproved maintenance batches remain reviewable
 
 ## Epic Validation Ownership
 

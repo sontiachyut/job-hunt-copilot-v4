@@ -17,6 +17,7 @@ from job_hunt_copilot.local_runtime import (
     handoff_background_task,
     mutate_agent_control_state,
     persist_expert_guidance,
+    review_maintenance_change_batch,
     request_guidance_clarification,
     return_background_task,
 )
@@ -37,6 +38,7 @@ def main() -> int:
             "override",
             "guidance",
             "clarify-guidance",
+            "review-maintenance",
             "handoff-background-task",
             "return-background-task",
         ],
@@ -45,9 +47,11 @@ def main() -> int:
     parser.add_argument("--reason")
     parser.add_argument("--manual-command")
     parser.add_argument("--job-posting-id")
+    parser.add_argument("--maintenance-change-batch-id")
     parser.add_argument("--object-type")
     parser.add_argument("--object-id")
     parser.add_argument("--new-value")
+    parser.add_argument("--decision", choices=["approve", "reject"])
     parser.add_argument("--component-stage")
     parser.add_argument("--directive-key")
     parser.add_argument("--directive-value")
@@ -130,6 +134,21 @@ def main() -> int:
                 guidance_scope=args.scope,
                 source_override_event_id=args.source_override_event_id,
                 manual_command=args.manual_command or "guidance",
+            )
+        elif args.command == "review-maintenance":
+            if not args.maintenance_change_batch_id:
+                parser.error(
+                    "--maintenance-change-batch-id is required for the "
+                    "review-maintenance command."
+                )
+            if not args.decision:
+                parser.error("--decision is required for the review-maintenance command.")
+            report = review_maintenance_change_batch(
+                args.maintenance_change_batch_id,
+                decision=args.decision,
+                project_root=Path(args.project_root),
+                reason=args.reason,
+                manual_command=args.manual_command or "review-maintenance",
             )
         elif args.command == "clarify-guidance":
             if not args.object_type:

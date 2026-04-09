@@ -107,9 +107,9 @@ The product runtime now has an explicit bootstrap layer under `job_hunt_copilot/
 
 The current hardening boundary is explicit rather than implied:
 - the end-to-end role-targeted and contact-rooted flows now have committed smoke plus regression coverage
-- `BA10_MAINTENANCE_AUTOMATION`: Maintenance workflow and artifacts are not implemented.
+- bounded daily maintenance automation now runs through the supervisor with isolated git branches, retained maintenance artifacts, explicit validation evidence, and explicit approve-or-reject merge control
 - the quickest current build snapshot lives in [build-agent/reports/repo-readiness-summary.md](../build-agent/reports/repo-readiness-summary.md)
-- those gaps stay visible through the committed BA-10 reports instead of being folded into the general architecture summary
+- the committed BA-10 reports remain the source of truth for the latest readiness and validation evidence instead of folding that detail into the architecture summary
 
 Important artifact families:
 - `lead-manifest.yaml`

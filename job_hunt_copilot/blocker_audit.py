@@ -70,14 +70,14 @@ VALIDATION_COMMANDS: dict[str, dict[str, str]] = {
     "qa_supervisor_regressions": {
         "title": "Supervisor downstream hardening regressions",
         "kind": "automated",
-        "command": "python3.11 -m pytest tests/test_supervisor_downstream_actions.py",
-        "description": "Confirms incident-first selector ordering, existing-run reuse, bounded role-targeted progression through `delivery_feedback`, and contact-rooted general-learning follow-through while keeping the remaining maintenance-selector gap explicit.",
+        "command": "python3.11 -m pytest tests/test_supervisor.py tests/test_supervisor_downstream_actions.py",
+        "description": "Confirms incident-first selector ordering, existing-run reuse, bounded role-targeted progression through `delivery_feedback`, contact-rooted general-learning follow-through, and bounded daily maintenance selection or retention behavior.",
     },
     "qa_runtime_control_regressions": {
         "title": "Runtime control regressions",
         "kind": "automated",
         "command": "python3.11 -m pytest tests/test_local_runtime.py",
-        "description": "Covers launchd plist wiring, control commands, chat lifecycle state, delayed feedback runners, and explicit negative control cases.",
+        "description": "Covers launchd plist wiring, control commands, chat lifecycle state, delayed feedback runners, maintenance review controls, and explicit negative control cases.",
     },
     "qa_review_surface_regressions": {
         "title": "Review surface regressions",
@@ -89,7 +89,7 @@ VALIDATION_COMMANDS: dict[str, dict[str, str]] = {
         "title": "Runtime pack regressions",
         "kind": "automated",
         "command": "python3.11 -m pytest tests/test_runtime_pack.py",
-        "description": "Confirms generated runtime scaffolding stays honest about current action-catalog and maintenance placeholder status.",
+        "description": "Confirms generated runtime scaffolding stays honest about the current action catalog, maintenance workflow, and operator control surfaces.",
     },
     "qa_build_agent_cycle_regressions": {
         "title": "Build-agent cycle regressions",
@@ -155,6 +155,16 @@ BOARD_BLOCKER_VALIDATION_COMMAND_IDS: dict[str, tuple[str, ...]] = {
     "OPS-LAUNCHD-001": (
         "qa_runtime_control_regressions",
         "qa_host_launchd_validation",
+    ),
+}
+
+CURRENT_FOCUS_VALIDATION_COMMAND_IDS: dict[str, tuple[str, ...]] = {
+    "BA-10-S3": (
+        "qa_smoke_flow",
+        "qa_acceptance_reports",
+        "qa_supervisor_regressions",
+        "qa_runtime_control_regressions",
+        "qa_runtime_pack_regressions",
     ),
 }
 
@@ -343,6 +353,15 @@ def _build_current_focus(
         if cluster["open_scenario_count"] and cluster["next_slice"] == slice_id
     ]
     if not matching_clusters:
+        default_command_ids = CURRENT_FOCUS_VALIDATION_COMMAND_IDS.get(str(slice_id))
+        if default_command_ids:
+            validation_commands = _resolve_validation_commands(default_command_ids)
+            focus["gap_ids"] = []
+            focus["validation_commands"] = validation_commands
+            focus["validation_suite"] = _build_validation_suite_entry(
+                selector_args=("--current-focus",),
+                validation_commands=validation_commands,
+            )
         return focus
 
     seen_command_ids: set[str] = set()

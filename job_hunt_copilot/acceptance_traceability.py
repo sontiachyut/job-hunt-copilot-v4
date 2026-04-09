@@ -816,9 +816,8 @@ _register_override(
 )
 _register_override(
     scenarios=("Maintenance change artifacts exist for every autonomous maintenance batch",),
-    status=STATUS_GAP,
-    gap_ids=("BA10_MAINTENANCE_AUTOMATION",),
-    note="Maintenance artifacts are specified in the schema and PRD, but no maintenance batch workflow writes them yet.",
+    status=STATUS_IMPLEMENTED,
+    note="`job_hunt_copilot.maintenance`, `job_hunt_copilot.supervisor`, and `tests/test_supervisor.py` now persist `maintenance_change.json` plus `maintenance_change.md` for every autonomous maintenance batch, including failed-validation batches retained for review.",
 )
 _register_override(
     scenarios=("Optional AI second pass can replace an ambiguous rule split only when confidence improves",),
@@ -857,9 +856,8 @@ _register_override(
     scenarios=(
         "Supervisor work selection follows the current default priority order",
     ),
-    status=STATUS_PARTIAL,
-    gap_ids=("BA10_MAINTENANCE_AUTOMATION",),
-    note="Current supervisor regressions prove open incidents outrank ordinary pipeline advancement, existing runs outrank new posting bootstrap, new postings outrank opportunistic contact-rooted general-learning work, and contact-rooted general-learning work now covers bounded delayed feedback, send-ready dispatch, and email discovery, but bounded maintenance work itself still has no dedicated selector or action path.",
+    status=STATUS_IMPLEMENTED,
+    note="`job_hunt_copilot.supervisor`, `tests/test_supervisor.py`, and `tests/test_supervisor_downstream_actions.py` now prove the selector order remains incident-first, then existing durable runs, then new posting bootstrap, then contact-rooted general-learning follow-through or discovery, with bounded daily maintenance left as the lowest default priority.",
 )
 _register_override(
     scenarios=(
@@ -952,9 +950,8 @@ _register_override(
         "Proper maintenance validation requires both change-scoped and full-project testing",
         "Failed or unapproved maintenance batches remain reviewable",
     ),
-    status=STATUS_GAP,
-    gap_ids=("BA10_MAINTENANCE_AUTOMATION",),
-    note="Only maintenance placeholders exist today; the maintenance workflow itself is still missing.",
+    status=STATUS_IMPLEMENTED,
+    note="`job_hunt_copilot.maintenance`, `job_hunt_copilot.local_runtime`, `scripts/ops/control_agent.py`, `tests/test_supervisor.py`, and `tests/test_local_runtime.py` now cover the bounded daily maintenance selector, isolated git branch workflow, two-layer validation, retained failed or rejected batches, and explicit approval-only merge path.",
 )
 _register_override(
     scenarios=("Delayed bounce after the send session still gets captured",),

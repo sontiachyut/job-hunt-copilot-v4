@@ -8,6 +8,13 @@ from types import MappingProxyType
 from typing import Final
 
 from .artifacts import ArtifactLinkage, register_artifact_record
+from .maintenance import (
+    MaintenanceDependencies,
+    get_maintenance_batch,
+    is_daily_maintenance_due,
+    maintenance_local_day,
+    run_daily_maintenance_cycle,
+)
 from .paths import ProjectPaths
 from .records import lifecycle_timestamps, new_canonical_id, now_utc_iso
 
@@ -140,6 +147,7 @@ WORK_TYPE_AGENT_INCIDENT: Final = "agent_incident"
 WORK_TYPE_INCIDENT_CLUSTER: Final = "incident_cluster"
 WORK_TYPE_CONTACT: Final = "contact"
 WORK_TYPE_JOB_POSTING: Final = "job_posting"
+WORK_TYPE_MAINTENANCE_CYCLE: Final = "maintenance_cycle"
 WORK_TYPE_PIPELINE_RUN: Final = "pipeline_run"
 
 ACTION_BOOTSTRAP_ROLE_TARGETED_RUN: Final = "bootstrap_role_targeted_run"
@@ -158,6 +166,7 @@ ACTION_RUN_GENERAL_LEARNING_OUTREACH: Final = "run_general_learning_outreach"
 ACTION_RUN_GENERAL_LEARNING_DELIVERY_FEEDBACK: Final = (
     "run_general_learning_delivery_feedback"
 )
+ACTION_RUN_DAILY_MAINTENANCE: Final = "run_daily_maintenance"
 ACTION_ESCALATE_OPEN_INCIDENT: Final = "escalate_open_incident"
 
 SUPERVISOR_DELIVERY_FEEDBACK_SCHEDULER_NAME: Final = "supervisor_delivery_feedback"
@@ -530,6 +539,7 @@ class SupervisorCycleExecution:
     pipeline_run: PipelineRunRecord | None = None
     incident: AgentIncidentRecord | None = None
     review_packet: ExpertReviewPacketRecord | None = None
+    maintenance_batch_id: str | None = None
     context_snapshot_path: str | None = None
 
 
@@ -542,6 +552,7 @@ class SupervisorActionDependencies:
     outreach_sender: object | None = None
     feedback_observer: object | None = None
     local_timezone: object | str | None = None
+    maintenance_dependencies: MaintenanceDependencies | None = None
 
 
 @dataclass(frozen=True)
@@ -755,6 +766,25 @@ SUPERVISOR_ACTION_CATALOG = MappingProxyType(
             validation_references=(
                 "prd/spec.md FR-SYS-38A, FR-SYS-38D2, FR-EF-01J through FR-EF-01P, and FR-OPS-17K",
                 "prd/test-spec.feature general-learning orchestration, delayed feedback timing, and delayed-bounce scenarios",
+            ),
+        ),
+        ACTION_RUN_DAILY_MAINTENANCE: SupervisorActionCatalogEntry(
+            action_id=ACTION_RUN_DAILY_MAINTENANCE,
+            work_type=WORK_TYPE_MAINTENANCE_CYCLE,
+            description="Create one bounded isolated daily maintenance batch, record its validation evidence, and leave merge approval explicit.",
+            prerequisites=(
+                "no maintenance_change_batch has been created for the current local day",
+                "no non-terminal role-targeted pipeline_run is active",
+                "the maintenance workflow is enabled for the current runtime",
+            ),
+            expected_outputs=(
+                "one maintenance_change_batches row exists for the current local day",
+                "maintenance_change.json and maintenance_change.md exist for that batch",
+                "validation outcomes and approval state remain reviewable without auto-merging",
+            ),
+            validation_references=(
+                "prd/spec.md FR-OPS-17P through FR-OPS-17W6",
+                "prd/test-spec.feature maintenance automation scenarios",
             ),
         ),
         ACTION_ESCALATE_OPEN_INCIDENT: SupervisorActionCatalogEntry(
@@ -2097,6 +2127,7 @@ def run_supervisor_cycle(
     pipeline_run: PipelineRunRecord | None = None
     incident: AgentIncidentRecord | None = None
     review_packet: ExpertReviewPacketRecord | None = None
+    maintenance_batch_id: str | None = None
     context_snapshot_path: str | None = None
     cycle_result = SUPERVISOR_CYCLE_RESULT_NO_WORK
     error_summary: str | None = None
@@ -2132,7 +2163,11 @@ def run_supervisor_cycle(
                 error_summary = auto_pause.reason
                 cycle_result = SUPERVISOR_CYCLE_RESULT_AUTO_PAUSED
             else:
-                selected_work = select_next_supervisor_work_unit(connection)
+                selected_work = select_next_supervisor_work_unit(
+                    connection,
+                    current_time=cycle_started_at,
+                    action_dependencies=resolved_action_dependencies,
+                )
                 if selected_work is None:
                     error_summary = "no bounded supervisor work unit is currently due"
                 else:
@@ -2160,6 +2195,7 @@ def run_supervisor_cycle(
                             connection,
                             selected_work,
                             catalog_entry=catalog_entry,
+                            current_time=cycle_started_at,
                             action_dependencies=resolved_action_dependencies,
                         )
                         if validation_error is not None:
@@ -2180,7 +2216,11 @@ def run_supervisor_cycle(
                             )
                             cycle_result = SUPERVISOR_CYCLE_RESULT_FAILED
                         else:
-                            pipeline_run, incident = _execute_selected_work_unit(
+                            (
+                                pipeline_run,
+                                incident,
+                                maintenance_batch_id,
+                            ) = _execute_selected_work_unit(
                                 connection,
                                 paths,
                                 selected_work,
@@ -2190,10 +2230,12 @@ def run_supervisor_cycle(
                             )
                             execution_error = _validate_selected_work_result(
                                 connection,
+                                paths,
                                 selected_work,
                                 catalog_entry=catalog_entry,
                                 pipeline_run=pipeline_run,
                                 incident=incident,
+                                maintenance_batch_id=maintenance_batch_id,
                             )
                             if execution_error is not None:
                                 error_summary = execution_error
@@ -2285,6 +2327,11 @@ def run_supervisor_cycle(
                         if review_packet is not None
                         else None
                     ),
+                    "maintenance_batch": (
+                        _maintenance_batch_snapshot(connection, maintenance_batch_id)
+                        if maintenance_batch_id is not None
+                        else None
+                    ),
                 },
             )
             cycle = assign_supervisor_cycle_work_unit(
@@ -2316,6 +2363,7 @@ def run_supervisor_cycle(
             pipeline_run=pipeline_run,
             incident=incident,
             review_packet=review_packet,
+            maintenance_batch_id=maintenance_batch_id,
             context_snapshot_path=context_snapshot_path,
         )
     finally:
@@ -2328,6 +2376,9 @@ def run_supervisor_cycle(
 
 def select_next_supervisor_work_unit(
     connection: sqlite3.Connection,
+    *,
+    current_time: str,
+    action_dependencies: SupervisorActionDependencies,
 ) -> SupervisorWorkUnit | None:
     incident_work = _select_active_incident_work_unit(connection)
     if incident_work is not None:
@@ -2341,7 +2392,24 @@ def select_next_supervisor_work_unit(
     if posting_work is not None:
         return posting_work
 
-    return _select_general_learning_contact_work_unit(connection)
+    general_learning_priority_work = _select_general_learning_priority_work_unit(
+        connection
+    )
+    if general_learning_priority_work is not None:
+        return general_learning_priority_work
+
+    general_learning_discovery_work = _select_general_learning_discovery_work_unit(
+        connection
+    )
+    if general_learning_discovery_work is not None:
+        return general_learning_discovery_work
+
+    return _select_maintenance_work_unit(
+        connection,
+        current_time=current_time,
+        local_timezone=action_dependencies.local_timezone,
+        maintenance_dependencies=action_dependencies.maintenance_dependencies,
+    )
 
 
 def _detect_auto_pause_condition(
@@ -2503,7 +2571,7 @@ def _select_new_posting_work_unit(
     )
 
 
-def _select_general_learning_contact_work_unit(
+def _select_general_learning_priority_work_unit(
     connection: sqlite3.Connection,
 ) -> SupervisorWorkUnit | None:
     delayed_feedback_row = connection.execute(
@@ -2619,6 +2687,42 @@ def _select_general_learning_contact_work_unit(
             summary=summary,
         )
 
+    return None
+
+
+def _select_maintenance_work_unit(
+    connection: sqlite3.Connection,
+    *,
+    current_time: str,
+    local_timezone: object | str | None,
+    maintenance_dependencies: MaintenanceDependencies | None,
+) -> SupervisorWorkUnit | None:
+    if maintenance_dependencies is None:
+        return None
+    if not is_daily_maintenance_due(
+        connection,
+        current_time=current_time,
+        local_timezone=local_timezone,
+    ):
+        return None
+    local_day = maintenance_local_day(
+        current_time,
+        local_timezone=local_timezone,
+    )
+    return SupervisorWorkUnit(
+        work_type=WORK_TYPE_MAINTENANCE_CYCLE,
+        work_id=local_day,
+        action_id=ACTION_RUN_DAILY_MAINTENANCE,
+        summary=(
+            "Run the bounded daily maintenance cycle before starting new autonomous work "
+            f"for local day {local_day}."
+        ),
+    )
+
+
+def _select_general_learning_discovery_work_unit(
+    connection: sqlite3.Connection,
+) -> SupervisorWorkUnit | None:
     discovery_row = connection.execute(
         """
         SELECT c.contact_id, c.display_name, c.company_name
@@ -2674,6 +2778,7 @@ def _validate_selected_work(
     selected_work: SupervisorWorkUnit,
     *,
     catalog_entry: SupervisorActionCatalogEntry,
+    current_time: str,
     action_dependencies: SupervisorActionDependencies,
 ) -> str | None:
     if catalog_entry.work_type != selected_work.work_type:
@@ -3178,6 +3283,25 @@ def _validate_selected_work(
             )
         return None
 
+    if catalog_entry.action_id == ACTION_RUN_DAILY_MAINTENANCE:
+        if selected_work.work_type != WORK_TYPE_MAINTENANCE_CYCLE:
+            return (
+                "Daily maintenance selected a mismatched work type "
+                f"{selected_work.work_type!r}."
+            )
+        if action_dependencies.maintenance_dependencies is None:
+            return "Daily maintenance is not enabled for the current runtime."
+        if not is_daily_maintenance_due(
+            connection,
+            current_time=current_time,
+            local_timezone=action_dependencies.local_timezone,
+        ):
+            return (
+                "A maintenance batch already exists for the current local day, so no "
+                "additional daily maintenance batch is due."
+            )
+        return None
+
     if catalog_entry.action_id == ACTION_ESCALATE_OPEN_INCIDENT:
         incident = get_agent_incident(connection, selected_work.work_id)
         if incident is None:
@@ -3200,7 +3324,7 @@ def _execute_selected_work_unit(
     catalog_entry: SupervisorActionCatalogEntry,
     timestamp: str,
     action_dependencies: SupervisorActionDependencies,
-) -> tuple[PipelineRunRecord | None, AgentIncidentRecord | None]:
+) -> tuple[PipelineRunRecord | None, AgentIncidentRecord | None, str | None]:
     if catalog_entry.action_id == ACTION_BOOTSTRAP_ROLE_TARGETED_RUN:
         pipeline_run, _ = ensure_role_targeted_pipeline_run(
             connection,
@@ -3212,7 +3336,7 @@ def _execute_selected_work_unit(
                 "Supervisor bootstrapped a durable role-targeted run from posting state."
             ),
         )
-        return pipeline_run, None
+        return pipeline_run, None, None
 
     if catalog_entry.action_id == ACTION_CHECKPOINT_PIPELINE_RUN:
         pipeline_run = advance_pipeline_run(
@@ -3225,7 +3349,7 @@ def _execute_selected_work_unit(
             ),
             timestamp=timestamp,
         )
-        return pipeline_run, None
+        return pipeline_run, None, None
 
     if catalog_entry.action_id == ACTION_PERFORM_MANDATORY_AGENT_REVIEW:
         from .resume_tailoring import (
@@ -3267,7 +3391,7 @@ def _execute_selected_work_unit(
             ),
             timestamp=timestamp,
         )
-        return pipeline_run, None
+        return pipeline_run, None, None
 
     if catalog_entry.action_id == ACTION_RUN_ROLE_TARGETED_PEOPLE_SEARCH:
         from .email_discovery import (
@@ -3352,7 +3476,7 @@ def _execute_selected_work_unit(
             run_summary=run_summary,
             timestamp=timestamp,
         )
-        return pipeline_run, None
+        return pipeline_run, None, None
 
     if catalog_entry.action_id == ACTION_RUN_ROLE_TARGETED_EMAIL_DISCOVERY:
         from .email_discovery import (
@@ -3443,7 +3567,7 @@ def _execute_selected_work_unit(
             run_summary=run_summary,
             timestamp=timestamp,
         )
-        return pipeline_run, None
+        return pipeline_run, None, None
 
     if catalog_entry.action_id == ACTION_RUN_ROLE_TARGETED_SENDING:
         from .outreach import (
@@ -3539,7 +3663,7 @@ def _execute_selected_work_unit(
                     ),
                     timestamp=timestamp,
                 )
-            return pipeline_run, None
+            return pipeline_run, None, None
 
         if latest_posting_status != JOB_POSTING_STATUS_OUTREACH_IN_PROGRESS:
             raise SupervisorStateError(
@@ -3559,7 +3683,7 @@ def _execute_selected_work_unit(
             ),
             timestamp=timestamp,
         )
-        return pipeline_run, None
+        return pipeline_run, None, None
 
     if catalog_entry.action_id == ACTION_RUN_ROLE_TARGETED_DELIVERY_FEEDBACK:
         from .delivery_feedback import (
@@ -3609,7 +3733,7 @@ def _execute_selected_work_unit(
                 ),
                 timestamp=timestamp,
             )
-            return pipeline_run, None
+            return pipeline_run, None, None
 
         pipeline_run = complete_pipeline_run(
             connection,
@@ -3626,7 +3750,7 @@ def _execute_selected_work_unit(
             ),
             timestamp=timestamp,
         )
-        return pipeline_run, None
+        return pipeline_run, None, None
 
     if catalog_entry.action_id == ACTION_RUN_GENERAL_LEARNING_EMAIL_DISCOVERY:
         from .email_discovery import run_general_learning_email_discovery
@@ -3642,7 +3766,7 @@ def _execute_selected_work_unit(
             "working_email_found",
             "exhausted",
         }:
-            return None, None
+            return None, None, None
         raise SupervisorStateError(
             "General-learning email discovery completed with an unsupported contact "
             f"status {general_learning_discovery.contact_status!r}."
@@ -3663,9 +3787,9 @@ def _execute_selected_work_unit(
             feedback_observer=action_dependencies.feedback_observer,
         )
         if general_learning_result.message_status_after_execution == "sent":
-            return None, None
+            return None, None, None
         if general_learning_result.message_status_after_execution in {"blocked", "failed"}:
-            return None, None
+            return None, None, None
         raise SupervisorStateError(
             "General-learning outreach completed with an unsupported message status "
             f"{general_learning_result.message_status_after_execution!r}."
@@ -3698,7 +3822,20 @@ def _execute_selected_work_unit(
             observer=action_dependencies.feedback_observer,
             target_outreach_message_ids=pending_feedback_message_ids,
         )
-        return None, None
+        return None, None, None
+
+    if catalog_entry.action_id == ACTION_RUN_DAILY_MAINTENANCE:
+        maintenance_execution = run_daily_maintenance_cycle(
+            connection,
+            paths,
+            current_time=timestamp,
+            local_timezone=action_dependencies.local_timezone,
+            dependencies=_require_dependency(
+                action_dependencies.maintenance_dependencies,
+                "Supervisor maintenance requires injected maintenance dependencies.",
+            ),
+        )
+        return None, None, maintenance_execution.batch.maintenance_change_batch_id
 
     if catalog_entry.action_id == ACTION_ESCALATE_OPEN_INCIDENT:
         incident = escalate_agent_incident(
@@ -3714,7 +3851,7 @@ def _execute_selected_work_unit(
                 "because the current action catalog has no repair handler yet."
             ),
         )
-        return None, incident
+        return None, incident, None
 
     raise SupervisorStateError(
         f"Catalog action {catalog_entry.action_id!r} is not executable yet."
@@ -3723,11 +3860,13 @@ def _execute_selected_work_unit(
 
 def _validate_selected_work_result(
     connection: sqlite3.Connection,
+    paths: ProjectPaths,
     selected_work: SupervisorWorkUnit,
     *,
     catalog_entry: SupervisorActionCatalogEntry,
     pipeline_run: PipelineRunRecord | None,
     incident: AgentIncidentRecord | None,
+    maintenance_batch_id: str | None,
 ) -> str | None:
     if catalog_entry.action_id == ACTION_BOOTSTRAP_ROLE_TARGETED_RUN:
         if pipeline_run is None:
@@ -4293,6 +4432,91 @@ def _validate_selected_work_result(
             )
         return None
 
+    if catalog_entry.action_id == ACTION_RUN_DAILY_MAINTENANCE:
+        if maintenance_batch_id is None:
+            return "Supervisor failed to persist a maintenance_change_batch for the selected cycle."
+        batch = get_maintenance_batch(connection, maintenance_batch_id)
+        if batch is None:
+            return (
+                "Supervisor completed maintenance without a persisted "
+                f"maintenance_change_batch row for {maintenance_batch_id!r}."
+            )
+        if batch.status not in {"validated", "retained_for_review"}:
+            return (
+                "Maintenance completed with an unsupported batch status "
+                f"{batch.status!r}."
+            )
+        if batch.approval_outcome not in {"pending", "failed_validation"}:
+            return (
+                "Maintenance completed with an unsupported approval outcome "
+                f"{batch.approval_outcome!r}."
+            )
+        json_path = paths.resolve_from_root(batch.json_path)
+        markdown_path = paths.resolve_from_root(batch.summary_path)
+        if not json_path.exists():
+            return (
+                "Maintenance completed without a persisted maintenance_change.json artifact "
+                f"at {batch.json_path!r}."
+            )
+        if not markdown_path.exists():
+            return (
+                "Maintenance completed without a persisted maintenance_change.md artifact "
+                f"at {batch.summary_path!r}."
+            )
+        payload = json.loads(json_path.read_text(encoding="utf-8"))
+        if not isinstance(payload, dict):
+            return (
+                "Maintenance completed with a malformed machine-readable artifact "
+                f"at {batch.json_path!r}."
+            )
+        if payload.get("maintenance_change_batch_id") != maintenance_batch_id:
+            return (
+                "Maintenance artifact recorded the wrong maintenance_change_batch_id: "
+                f"{payload.get('maintenance_change_batch_id')!r}."
+            )
+        if payload.get("local_day") != selected_work.work_id:
+            return (
+                "Maintenance artifact recorded the wrong local_day for the selected "
+                f"maintenance cycle: {payload.get('local_day')!r}."
+            )
+        if payload.get("status") != batch.status:
+            return (
+                "Maintenance artifact status does not match the persisted batch row: "
+                f"artifact={payload.get('status')!r}, row={batch.status!r}."
+            )
+        if payload.get("approval_outcome") != batch.approval_outcome:
+            return (
+                "Maintenance artifact approval outcome does not match the persisted "
+                f"batch row: artifact={payload.get('approval_outcome')!r}, row={batch.approval_outcome!r}."
+            )
+        if not _optional_text(payload.get("head_commit_sha")):
+            return "Maintenance completed without a head_commit_sha in maintenance_change.json."
+        if not str(payload.get("branch_name") or "").startswith("maintenance/"):
+            return (
+                "Maintenance completed with a branch_name outside the maintenance/ "
+                f"namespace: {payload.get('branch_name')!r}."
+            )
+        if payload.get("merged_commit_sha") is not None:
+            return "Fresh maintenance batches must not record merged_commit_sha before approval."
+        if payload.get("merge_commit_message") is not None:
+            return (
+                "Fresh maintenance batches must not record merge_commit_message before explicit approval."
+            )
+        if batch.approval_outcome == "pending" and batch.status != "validated":
+            return (
+                "Maintenance batches awaiting approval must stay at status "
+                f"'validated'; found {batch.status!r}."
+            )
+        if (
+            batch.approval_outcome == "failed_validation"
+            and batch.status != "retained_for_review"
+        ):
+            return (
+                "Maintenance batches that fail validation must be retained for review; "
+                f"found status {batch.status!r}."
+            )
+        return None
+
     if catalog_entry.action_id == ACTION_ESCALATE_OPEN_INCIDENT:
         if incident is None:
             return "Supervisor failed to load the escalated incident result."
@@ -4645,6 +4869,34 @@ def _catalog_entry_snapshot(
         "prerequisites": list(catalog_entry.prerequisites),
         "expected_outputs": list(catalog_entry.expected_outputs),
         "validation_references": list(catalog_entry.validation_references),
+    }
+
+
+def _maintenance_batch_snapshot(
+    connection: sqlite3.Connection,
+    maintenance_batch_id: str,
+) -> dict[str, object] | None:
+    batch = get_maintenance_batch(connection, maintenance_batch_id)
+    if batch is None:
+        return None
+    return {
+        "maintenance_change_batch_id": batch.maintenance_change_batch_id,
+        "branch_name": batch.branch_name,
+        "scope_slug": batch.scope_slug,
+        "status": batch.status,
+        "approval_outcome": batch.approval_outcome,
+        "summary_path": batch.summary_path,
+        "json_path": batch.json_path,
+        "head_commit_sha": batch.head_commit_sha,
+        "merged_commit_sha": batch.merged_commit_sha,
+        "merge_commit_message": batch.merge_commit_message,
+        "validated_at": batch.validated_at,
+        "approved_at": batch.approved_at,
+        "merged_at": batch.merged_at,
+        "failed_at": batch.failed_at,
+        "validation_summary": batch.validation_summary,
+        "expert_review_packet_id": batch.expert_review_packet_id,
+        "created_at": batch.created_at,
     }
 
 

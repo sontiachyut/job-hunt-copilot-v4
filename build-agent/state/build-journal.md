@@ -2286,3 +2286,29 @@ Use this file as an append-only implementation log for the build agent.
 ### Notes
 - The acceptance matrix now reports `206 implemented / 1 partial / 5 gap` scenarios, and the only open BA-10-S3 acceptance-gap cluster is `BA10_MAINTENANCE_AUTOMATION`.
 - The retired `BA10_CHAT_REVIEW_AND_CONTROL` cluster is now guarded as closed across the blocker audit, current-focus validation selector, repo-readiness summary, and committed latest validation-suite snapshot.
+
+### Session
+- Date: 2026-04-09 15:46:37 MST
+- Slice: BA-10-S3 cross-component regression and blocker burn-down closeout
+- Goal: Close the remaining maintenance-automation acceptance cluster, refresh the BA-10 evidence surface, and checkpoint the repo against any residual non-acceptance blockers.
+
+### Work Done
+- Added the bounded maintenance workflow across `job_hunt_copilot/maintenance.py`, `job_hunt_copilot/supervisor.py`, `job_hunt_copilot/local_runtime.py`, `job_hunt_copilot/paths.py`, and `scripts/ops/control_agent.py` so daily maintenance now selects safely behind higher-priority work, runs on an isolated git branch or worktree, writes `maintenance_change.json` plus `maintenance_change.md`, records change-scoped and full-system validation outcomes, and keeps failed batches reviewable instead of silently merging them.
+- Added and aligned maintenance-targeted regressions across `tests/test_supervisor.py`, `tests/test_local_runtime.py`, `tests/test_runtime_pack.py`, `tests/test_acceptance_traceability.py`, `tests/test_blocker_audit.py`, `tests/test_quality_validation.py`, and `tests/test_repo_readiness.py`; a first current-focus replay exposed a selector-order regression against `tests/test_supervisor_downstream_actions.py`, and the follow-up fix restored maintenance to the lowest default selector priority before the final replay.
+- Updated `README.md`, `docs/ARCHITECTURE.md`, `build-agent/state/build-board.yaml`, `build-agent/state/IMPLEMENTATION_PLAN.md`, `build-agent/state/build-journal.md`, and `build-agent/state/codex-progress.txt` so the recruiter-, manager-, and build-memory surfaces now describe the implemented maintenance review and approval workflow honestly instead of leaving it as an open acceptance gap.
+
+### Validation
+- Ran `python3.11 -m py_compile job_hunt_copilot/supervisor.py job_hunt_copilot/local_runtime.py job_hunt_copilot/maintenance.py scripts/ops/control_agent.py`.
+- Ran `python3.11 -m pytest tests/test_supervisor.py -k maintenance tests/test_local_runtime.py -k 'maintenance or execute_supervisor_heartbeat_reports_maintenance_batch_when_dependencies_are_injected'` and confirmed `7 passed, 49 deselected`.
+- Ran `python3.11 -m pytest tests/test_supervisor.py tests/test_supervisor_downstream_actions.py` and confirmed `35 passed`.
+- Ran `python3.11 scripts/quality/run_ba10_validation_suite.py --project-root /Users/achyutaramsonti/Projects/job-hunt-copilot-v4 --current-focus` and confirmed the final post-checkpoint 5-command closeout replay passed at `2026-04-09T22:49:06Z` while refreshing the committed BA-10 reports.
+
+### Result
+- `done`
+
+### Next
+- Shift the next build-lead cycle to host-side operational confirmation for `BUILD-CLI-001` and `OPS-LAUNCHD-001`; there is no remaining required-acceptance implementation gap in the repo.
+
+### Notes
+- The acceptance matrix now reports `212 implemented / 0 partial / 0 gap` required scenarios, and `BA10_MAINTENANCE_AUTOMATION` is closed.
+- `BA10-TRACE-001` is now closed in the build board. The only remaining open blockers are `BUILD-CLI-001` and `OPS-LAUNCHD-001`, both requiring out-of-sandbox host evidence rather than additional repo-side feature work.
