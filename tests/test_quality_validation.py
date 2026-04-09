@@ -18,6 +18,7 @@ from job_hunt_copilot.quality_validation import (
     list_smoke_validation_targets,
     render_ba10_validation_suite_markdown,
     resolve_acceptance_gap_validation_command_ids,
+    resolve_build_board_blocker_validation_command_ids,
     resolve_current_focus_validation_command_ids,
     resolve_validation_selector_details,
     write_ba10_validation_suite_reports,
@@ -693,6 +694,80 @@ def test_quality_validation_suite_script_dry_run_expands_smoke_targets():
     ]
 
 
+def test_committed_validation_suite_latest_report_is_current_and_matches_resolved_plan():
+    committed_report = json.loads(
+        (REPO_ROOT / VALIDATION_SUITE_REPORT_JSON_PATH).read_text(encoding="utf-8")
+    )
+    committed_markdown = (REPO_ROOT / VALIDATION_SUITE_REPORT_MD_PATH).read_text(
+        encoding="utf-8"
+    )
+
+    assert committed_markdown == render_ba10_validation_suite_markdown(committed_report)
+
+    expected_selector_details = resolve_validation_selector_details(
+        REPO_ROOT,
+        smoke_target_ids=committed_report["requested_smoke_targets"],
+        gap_ids=committed_report["requested_gap_ids"],
+        blocker_ids=committed_report["requested_blocker_ids"],
+        include_current_focus=committed_report["requested_current_focus"],
+    )
+    assert committed_report["selector_details"] == expected_selector_details
+
+    resolved_command_ids: list[str] = []
+    if committed_report["requested_current_focus"]:
+        resolved_command_ids.extend(resolve_current_focus_validation_command_ids(REPO_ROOT))
+    if committed_report["requested_gap_ids"]:
+        resolved_command_ids.extend(
+            resolve_acceptance_gap_validation_command_ids(
+                REPO_ROOT,
+                committed_report["requested_gap_ids"],
+            )
+        )
+    if committed_report["requested_blocker_ids"]:
+        resolved_command_ids.extend(
+            resolve_build_board_blocker_validation_command_ids(
+                REPO_ROOT,
+                committed_report["requested_blocker_ids"],
+            )
+        )
+    if committed_report["requested_smoke_targets"]:
+        resolved_command_ids.extend(
+            command.command_id
+            for command in build_smoke_validation_plan(
+                committed_report["requested_smoke_targets"]
+            )
+        )
+    if committed_report["requested_command_ids"]:
+        resolved_command_ids.extend(committed_report["requested_command_ids"])
+
+    expected_plan = build_quality_validation_plan(
+        resolved_command_ids or None,
+        include_manual=committed_report["include_manual"],
+    )
+    assert [command.command_id for command in expected_plan] == [
+        command["command_id"] for command in committed_report["commands"]
+    ]
+    assert [command.as_dict() for command in expected_plan] == [
+        {
+            "command_id": command["command_id"],
+            "title": command["title"],
+            "kind": command["kind"],
+            "command": command["command"],
+            "description": command["description"],
+        }
+        for command in committed_report["commands"]
+    ]
+
+    expected_repo_status = build_ba10_validation_suite_report(
+        {
+            "project_root": str(REPO_ROOT),
+            "commands": [],
+        },
+        generated_at=committed_report["generated_at"],
+    )["repo_status"]
+    assert committed_report["repo_status"] == expected_repo_status
+
+
 def test_build_ba10_validation_suite_report_summarizes_results():
     report = build_ba10_validation_suite_report(
         {
@@ -965,6 +1040,14 @@ def test_build_ba10_validation_suite_report_summarizes_results():
         in markdown
     )
     assert "- Gap summaries:" in markdown
+    assert "    - Open scenarios:" in markdown
+    assert (
+        "      - `[gap]` Maintenance change artifacts exist for every autonomous maintenance batch "
+        "(rule: `Machine handoff contracts and canonical state`, line: `220`)"
+    ) in markdown
+    assert (
+        "        Note: Maintenance artifacts are specified in the schema and PRD, but no maintenance batch workflow writes them yet."
+    ) in markdown
     assert "| qa_smoke_flow | automated | passed | 0 | 1.250 |" in markdown
     assert "### qa_host_launchd_validation: Host launchd validation" in markdown
 

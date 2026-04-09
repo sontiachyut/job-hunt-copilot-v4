@@ -1,12 +1,12 @@
 # BA-10 Validation Suite Report
 
-- Generated at: `2026-04-09T19:27:06Z`
+- Generated at: `2026-04-09T19:40:28Z`
 - Project root: `/Users/achyutaramsonti/Projects/job-hunt-copilot-v4`
 - Passed: `True`
 - Command count: `5`
 - Passed commands: `5`
 - Failed commands: `0`
-- Total duration seconds: `15.342`
+- Total duration seconds: `15.244`
 - Requested command ids: none
 - Requested smoke targets: none
 - Requested acceptance gaps: none
@@ -55,19 +55,41 @@
 - Validation suite: `python3.11 scripts/quality/run_ba10_validation_suite.py --project-root <repo_root> --current-focus`
 - Gap summaries:
   - `BA10_MAINTENANCE_AUTOMATION`: Maintenance workflow and artifacts are not implemented (`6` scenarios)
-    - Open scenarios: `[gap]` Maintenance change artifacts exist for every autonomous maintenance batch; `[partial]` Supervisor work selection follows the current default priority order; `[gap]` Daily maintenance is mandatory, bounded, and run-boundary aware; `[gap]` Maintenance changes follow the current git and approval workflow; `[gap]` Proper maintenance validation requires both change-scoped and full-project testing; `[gap]` Failed or unapproved maintenance batches remain reviewable
+    - Open scenarios:
+      - `[gap]` Maintenance change artifacts exist for every autonomous maintenance batch (rule: `Machine handoff contracts and canonical state`, line: `220`)
+        Note: Maintenance artifacts are specified in the schema and PRD, but no maintenance batch workflow writes them yet.
+      - `[partial]` Supervisor work selection follows the current default priority order (rule: `Supervisor Agent behavior`, line: `1132`)
+        Note: Current supervisor regressions prove open incidents outrank ordinary pipeline advancement, existing runs outrank new posting bootstrap, new postings outrank opportunistic contact-rooted general-learning work, and contact-rooted general-learning work now covers bounded delayed feedback, send-ready dispatch, and email discovery, but bounded maintenance work itself still has no dedicated selector or action path.
+      - `[gap]` Daily maintenance is mandatory, bounded, and run-boundary aware (rule: `Supervisor Agent behavior`, line: `1322`)
+        Note: Only maintenance placeholders exist today; the maintenance workflow itself is still missing.
+      - `[gap]` Maintenance changes follow the current git and approval workflow (rule: `Supervisor Agent behavior`, line: `1331`)
+        Note: Only maintenance placeholders exist today; the maintenance workflow itself is still missing.
+      - `[gap]` Proper maintenance validation requires both change-scoped and full-project testing (rule: `Supervisor Agent behavior`, line: `1342`)
+        Note: Only maintenance placeholders exist today; the maintenance workflow itself is still missing.
+      - `[gap]` Failed or unapproved maintenance batches remain reviewable (rule: `Supervisor Agent behavior`, line: `1349`)
+        Note: Only maintenance placeholders exist today; the maintenance workflow itself is still missing.
   - `BA10_CHAT_REVIEW_AND_CONTROL`: Chat review and control are still missing deeper expert-guidance workflows (`5` scenarios)
-    - Open scenarios: `[partial]` jhc-chat uses persisted state for answers and control routing; `[gap]` Expert guidance becomes live immediately but conflicting or uncertain reuse asks first; `[gap]` Conflicting expert guidance pauses the whole autonomous system; `[gap]` Expert-requested background tasks require explicit handoff summary and exclusive focus; `[gap]` Expert-requested background task outcomes return to review appropriately
+    - Open scenarios:
+      - `[partial]` jhc-chat uses persisted state for answers and control routing (rule: `Supervisor Agent behavior`, line: `1249`)
+        Note: `scripts/ops/chat_state.py` now rereads persisted dashboard, review-queue, and change-summary state, and `scripts/ops/control_agent.py` remains the canonical global-control route, but generic object-specific override routing and broader chat-native control workflows are still incomplete.
+      - `[gap]` Expert guidance becomes live immediately but conflicting or uncertain reuse asks first (rule: `Supervisor Agent behavior`, line: `1273`)
+        Note: The direct `jhc-chat` wrapper now has persisted review-queue and default change-summary helper reads, but expert-guidance reuse decisions, conflict-wide pausing, and background-task handoff or return workflows are still missing.
+      - `[gap]` Conflicting expert guidance pauses the whole autonomous system (rule: `Supervisor Agent behavior`, line: `1281`)
+        Note: The direct `jhc-chat` wrapper now has persisted review-queue and default change-summary helper reads, but expert-guidance reuse decisions, conflict-wide pausing, and background-task handoff or return workflows are still missing.
+      - `[gap]` Expert-requested background tasks require explicit handoff summary and exclusive focus (rule: `Supervisor Agent behavior`, line: `1307`)
+        Note: The direct `jhc-chat` wrapper now has persisted review-queue and default change-summary helper reads, but expert-guidance reuse decisions, conflict-wide pausing, and background-task handoff or return workflows are still missing.
+      - `[gap]` Expert-requested background task outcomes return to review appropriately (rule: `Supervisor Agent behavior`, line: `1314`)
+        Note: The direct `jhc-chat` wrapper now has persisted review-queue and default change-summary helper reads, but expert-guidance reuse decisions, conflict-wide pausing, and background-task handoff or return workflows are still missing.
 
 ## Command Results
 
 | Command | Kind | Status | Returncode | Duration (s) |
 | --- | --- | --- | ---: | ---: |
-| qa_runtime_pack_regressions | automated | passed | 0 | 0.289 |
-| qa_acceptance_reports | automated | passed | 0 | 1.850 |
-| qa_supervisor_regressions | automated | passed | 0 | 1.051 |
-| qa_runtime_control_regressions | automated | passed | 0 | 11.656 |
-| qa_review_surface_regressions | automated | passed | 0 | 0.496 |
+| qa_runtime_pack_regressions | automated | passed | 0 | 0.196 |
+| qa_acceptance_reports | automated | passed | 0 | 2.112 |
+| qa_supervisor_regressions | automated | passed | 0 | 1.034 |
+| qa_runtime_control_regressions | automated | passed | 0 | 11.483 |
+| qa_review_surface_regressions | automated | passed | 0 | 0.419 |
 
 ## Command Details
 
@@ -75,7 +97,7 @@
 - Kind: `automated`
 - Status: `passed`
 - Returncode: `0`
-- Duration seconds: `0.289`
+- Duration seconds: `0.196`
 - Command: `python3.11 -m pytest tests/test_runtime_pack.py`
 - Description: Confirms generated runtime scaffolding stays honest about current action-catalog and maintenance placeholder status.
 
@@ -83,7 +105,7 @@
 - Kind: `automated`
 - Status: `passed`
 - Returncode: `0`
-- Duration seconds: `1.85`
+- Duration seconds: `2.112`
 - Command: `python3.11 -m pytest tests/test_acceptance_traceability.py tests/test_blocker_audit.py tests/test_quality_validation.py tests/test_repo_readiness.py`
 - Description: Keeps the committed BA-10 acceptance, blocker, readiness, and validation-suite reports synchronized with repo code, tests, and state references.
 
@@ -91,7 +113,7 @@
 - Kind: `automated`
 - Status: `passed`
 - Returncode: `0`
-- Duration seconds: `1.051`
+- Duration seconds: `1.034`
 - Command: `python3.11 -m pytest tests/test_supervisor_downstream_actions.py`
 - Description: Confirms incident-first selector ordering, existing-run reuse, bounded role-targeted progression through `delivery_feedback`, and contact-rooted general-learning follow-through while keeping the remaining maintenance-selector gap explicit.
 
@@ -99,7 +121,7 @@
 - Kind: `automated`
 - Status: `passed`
 - Returncode: `0`
-- Duration seconds: `11.656`
+- Duration seconds: `11.483`
 - Command: `python3.11 -m pytest tests/test_local_runtime.py`
 - Description: Covers launchd plist wiring, control commands, chat lifecycle state, delayed feedback runners, and explicit negative control cases.
 
@@ -107,6 +129,6 @@
 - Kind: `automated`
 - Status: `passed`
 - Returncode: `0`
-- Duration seconds: `0.496`
+- Duration seconds: `0.419`
 - Command: `python3.11 -m pytest tests/test_review_queries.py`
 - Description: Verifies persisted grouped review surfaces and traceability reads that back the chat/review boundary.

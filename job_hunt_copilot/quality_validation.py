@@ -688,13 +688,17 @@ def render_ba10_validation_suite_markdown(report: dict[str, Any]) -> str:
                     )
                     open_scenarios = gap.get("open_scenarios") or []
                     if open_scenarios:
-                        lines.append(
-                            "    - Open scenarios: "
-                            + "; ".join(
-                                f"`[{scenario['status']}]` {scenario['name']}"
-                                for scenario in open_scenarios
+                        lines.append("    - Open scenarios:")
+                        for scenario in open_scenarios:
+                            lines.append(
+                                "      - "
+                                f"`[{scenario['status']}]` {scenario['name']} "
+                                f"(rule: `{scenario['rule']}`, line: `{scenario['scenario_line']}`)"
                             )
-                        )
+                            if scenario.get("note"):
+                                lines.append(
+                                    f"        Note: {scenario['note']}"
+                                )
 
     lines.extend(
         [
