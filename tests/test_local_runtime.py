@@ -2247,6 +2247,81 @@ def test_chat_state_script_returns_grouped_review_queue_from_persisted_state(tmp
     assert "Autonomous maintenance change batches: 2" in report["rendered_markdown"]
 
 
+def test_chat_state_scripts_are_idempotent_and_read_only(tmp_path):
+    project_root = tmp_path / "repo"
+    project_root.mkdir()
+    create_minimal_project(project_root)
+    run_script(
+        "scripts/ops/control_agent.py",
+        "status",
+        "--project-root",
+        str(project_root),
+    )
+
+    tracked_tables = (
+        "agent_control_state",
+        "expert_review_packets",
+        "maintenance_change_batches",
+        "agent_incidents",
+        "override_events",
+        "windows",
+        "state_transition_events",
+    )
+    control_state_query = """
+        SELECT control_key, control_value
+        FROM agent_control_state
+        ORDER BY control_key
+    """
+
+    connection = connect_database(project_root / "job_hunt_copilot.db")
+    seed_chat_change_summary_state(connection)
+    before_counts = {
+        table_name: connection.execute(f"SELECT COUNT(*) FROM {table_name}").fetchone()[0]
+        for table_name in tracked_tables
+    }
+    before_control_state = dict(connection.execute(control_state_query).fetchall())
+    connection.close()
+
+    review_queue_args = (
+        "scripts/ops/chat_state.py",
+        "review-queue",
+        "--project-root",
+        str(project_root),
+        "--current-time",
+        "2026-04-08T15:30:00Z",
+        "--max-items-per-group",
+        "2",
+    )
+    first_review_queue = json.loads(run_script(*review_queue_args).stdout)
+    second_review_queue = json.loads(run_script(*review_queue_args).stdout)
+    assert first_review_queue == second_review_queue
+
+    change_summary_args = (
+        "scripts/ops/chat_state.py",
+        "change-summary",
+        "--project-root",
+        str(project_root),
+        "--current-time",
+        "2026-04-08T15:30:00Z",
+        "--max-items-per-group",
+        "2",
+    )
+    first_change_summary = json.loads(run_script(*change_summary_args).stdout)
+    second_change_summary = json.loads(run_script(*change_summary_args).stdout)
+    assert first_change_summary == second_change_summary
+
+    connection = connect_database(project_root / "job_hunt_copilot.db")
+    after_counts = {
+        table_name: connection.execute(f"SELECT COUNT(*) FROM {table_name}").fetchone()[0]
+        for table_name in tracked_tables
+    }
+    after_control_state = dict(connection.execute(control_state_query).fetchall())
+    connection.close()
+
+    assert after_counts == before_counts
+    assert after_control_state == before_control_state
+
+
 def test_chat_state_script_change_summary_defaults_to_last_completed_expert_review(tmp_path):
     project_root = tmp_path / "repo"
     project_root.mkdir()

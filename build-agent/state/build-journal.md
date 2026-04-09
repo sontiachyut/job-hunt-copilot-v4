@@ -1904,3 +1904,29 @@ Use this file as an append-only implementation log for the build agent.
 ### Notes
 - The acceptance matrix still reports `201 implemented / 2 partial / 9 gap` scenarios, and the open BA-10-S3 gap clusters remain `BA10_MAINTENANCE_AUTOMATION` and `BA10_CHAT_REVIEW_AND_CONTROL`.
 - Recruiter- and manager-facing repo surfaces did not need another doc edit in this pass because the blocker counts and repo-facing readiness wording stayed accurate; only the latest validation-suite evidence snapshot changed.
+
+### Session
+- Date: 2026-04-08 21:12:51 MST
+- Slice: BA-10-S3 validation-suite guard and chat-state idempotency hardening
+- Goal: Tighten the current-focus validation evidence around persisted `jhc-chat` state reads and make the BA-10 report-guard command execute the validation-suite regression file it already claims as evidence.
+
+### Work Done
+- Extended `tests/test_local_runtime.py` so repeated `scripts/ops/chat_state.py review-queue` and `change-summary` reads are now proven byte-stable and read-only against canonical control, review, maintenance, and override state.
+- Tightened `job_hunt_copilot.blocker_audit` so `qa_acceptance_reports` now executes `tests/test_quality_validation.py` alongside the committed acceptance-trace and blocker-audit guard tests, keeping the BA-10 validation command registry self-guarding.
+- Refreshed `build-agent/reports/ba-10-blocker-audit.{json,md}` and `build-agent/reports/ba-10-validation-suite-latest.{json,md}` after rerunning the current-focus BA-10 replay, and updated the build-agent state files to record the stronger evidence without claiming the remaining maintenance or deeper chat-control gaps are closed.
+
+### Validation
+- Ran `python3.11 -m pytest tests/test_local_runtime.py` and confirmed all 25 local-runtime regressions passed, including the new read-only chat-state checks.
+- Ran `python3.11 -m pytest tests/test_quality_validation.py` and confirmed all 17 validation-suite regressions passed.
+- Ran `python3.11 -m pytest tests/test_acceptance_traceability.py tests/test_blocker_audit.py tests/test_quality_validation.py` and confirmed all 20 report-guard tests passed after refreshing the committed BA-10 reports.
+- Ran `python3.11 scripts/quality/run_ba10_validation_suite.py --project-root /Users/achyutaramsonti/Projects/job-hunt-copilot-v4 --current-focus` and confirmed all 5 automated current-focus commands passed while refreshing `build-agent/reports/ba-10-validation-suite-latest.{json,md}` at `2026-04-09T04:17:35Z`.
+
+### Result
+- `partial`
+
+### Next
+- Keep BA-10-S3 open for a real remaining functional blocker. The next best slice is build-lead ownership for the remaining `jhc-chat` control-routing gap, starting with generic object-specific override routing or expert-guidance conflict handling before maintenance automation.
+
+### Notes
+- The acceptance matrix still reports `201 implemented / 2 partial / 9 gap` scenarios, and the open BA-10-S3 gap clusters remain `BA10_MAINTENANCE_AUTOMATION` and `BA10_CHAT_REVIEW_AND_CONTROL`.
+- Recruiter- and manager-facing repo surfaces stayed honest in this pass, so no README or architecture-doc change was needed; only the validation evidence and state checkpoint changed.
