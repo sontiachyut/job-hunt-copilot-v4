@@ -313,13 +313,14 @@ def test_quality_validation_suite_script_dry_run_expands_build_cli_blocker_with_
     assert payload["selector_details"]["build_board_blockers"] == [
         {
             "blocker_id": "BUILD-CLI-001",
-            "status": "open",
+            "status": "closed",
             "owner_role": "build-lead",
             "summary": (
-                "The unattended build wrapper now has automated regression "
-                "coverage for its `codex exec` command shape, but real host-side "
-                "cycle execution still needs confirmation after the "
-                "`--ask-for-approval` incompatibility."
+                "Host-side replay now confirms `build-agent/bin/jhc-build-start` "
+                "loads `gui/$UID/com.jobhuntcopilot.buildlead`, starts real "
+                "build-lead heartbeat cycles, and records clean `no_work` cycle "
+                "rows with the supported `codex exec` invocation after the "
+                "`--ask-for-approval` incompatibility fix."
             ),
             "validation_command_ids": [
                 "qa_build_agent_cycle_regressions",

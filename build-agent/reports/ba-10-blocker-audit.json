@@ -9,7 +9,7 @@
     "epic_id": "BA-10",
     "slice_id": "BA-10-S3",
     "owner_role": "build-lead",
-    "reason": "BA-10-S3 closed the final required acceptance gap through the bounded maintenance workflow, retained review artifacts, and approval controls, so the product now sits at 212 implemented / 0 partial / 0 gap scenarios; the board stays parked on this closing build-lead handoff while the only remaining repo-tracked follow-up is out-of-sandbox confirmation for `BUILD-CLI-001` and `OPS-LAUNCHD-001`.",
+    "reason": "BA-10-S3 closed the final required acceptance gap through the bounded maintenance workflow, retained review artifacts, and approval controls, and host-side validation has now confirmed both the unattended build wrapper and the product launchd helpers on the real machine, so the product now sits at 212 implemented / 0 partial / 0 gap scenarios with no remaining repo-tracked blockers.",
     "gap_ids": [],
     "validation_commands": [
       {
@@ -69,7 +69,7 @@
     },
     "open_acceptance_scenario_count": 0,
     "open_acceptance_gap_cluster_count": 0,
-    "open_build_board_blocker_count": 2,
+    "open_build_board_blocker_count": 0,
     "build_board_blockers_with_missing_evidence": 0
   },
   "implemented_slices": [
@@ -440,16 +440,20 @@
     },
     {
       "blocker_id": "BUILD-CLI-001",
-      "status": "open",
+      "status": "closed",
       "severity": "medium",
       "owner_role": "build-lead",
-      "summary": "The unattended build wrapper now has automated regression coverage for its `codex exec` command shape, but real host-side cycle execution still needs confirmation after the `--ask-for-approval` incompatibility.",
-      "impact": "The wrapper command shape is now guarded in automated tests, but unattended build sessions can still fail before work starts if the real host environment or Codex CLI invocation diverges from that validated shape.",
-      "next_action": "Re-run the unattended build-lead wrapper on the host and confirm it starts a real cycle with the supported `codex exec` flags.",
+      "summary": "Host-side replay now confirms `build-agent/bin/jhc-build-start` loads `gui/$UID/com.jobhuntcopilot.buildlead`, starts real build-lead heartbeat cycles, and records clean `no_work` cycle rows with the supported `codex exec` invocation after the `--ask-for-approval` incompatibility fix.",
+      "impact": "The unattended build wrapper is now validated both in automated tests and on the host machine, so this blocker only needs reopening if a future host replay fails or the Codex CLI shape changes again.",
+      "next_action": "No immediate follow-up. Reopen only if a future host replay fails or the supported `codex exec` contract changes.",
       "evidence_refs": [
+        "build-agent/reports/host-validation-closeout.md",
         "build-agent/scripts/run_build_lead_cycle.py",
+        "build-agent/bin/jhc-build-start",
+        "build-agent/bin/jhc-build-stop",
+        "build-agent/state/build-cycles.jsonl",
         "tests/test_build_agent_cycle.py",
-        "build-agent/logs/cycles/build-cycle-20260406T034335Z-66be05af.log"
+        "build-agent/logs/build-lead.stdout.log"
       ],
       "missing_evidence_refs": [],
       "validation_commands": [
@@ -482,18 +486,22 @@
     },
     {
       "blocker_id": "OPS-LAUNCHD-001",
-      "status": "open",
+      "status": "closed",
       "severity": "medium",
       "owner_role": "build-lead",
-      "summary": "Live `launchctl bootstrap gui/$UID /Users/achyutaramsonti/Projects/job-hunt-copilot-v4/ops/launchd/job-hunt-copilot-supervisor.plist` still returns `Input/output error` in the current sandboxed session, so successful host-side launchd load validation remains pending for both the supervisor and delayed-feedback jobs even though their plists, wrappers, runners, and failed-start rollback validate locally.",
-      "impact": "Product-side background launchd startup is not yet verified outside the sandbox even though the repo-local helper code and rollback behavior are working.",
-      "next_action": "Run `bin/jhc-agent-start` on the host outside the sandbox, then inspect `launchctl print gui/$UID/com.jobhuntcopilot.supervisor` and system launchd logs to capture the real bootstrap outcome.",
+      "summary": "Host-side replay now confirms `bin/jhc-agent-start` successfully bootstraps both `gui/$UID/com.jobhuntcopilot.supervisor` and `gui/$UID/com.jobhuntcopilot.feedback-sync`, `launchctl print` reports the expected live launchd state, and `bin/jhc-agent-stop` cleanly boots both jobs out while canonical control state returns to `stopped`.",
+      "impact": "Product-side launchd startup and shutdown are now verified on the host machine, so this blocker only needs reopening if future host launchctl behavior regresses.",
+      "next_action": "No immediate follow-up. Reopen only if a future host launchctl replay fails or the launchd job definitions change materially.",
       "evidence_refs": [
-        "build-agent/logs/cycles/build-cycle-20260407T213533Z-5b2c1d98.log",
+        "build-agent/reports/host-validation-closeout.md",
         "bin/jhc-agent-start",
+        "bin/jhc-agent-stop",
         "bin/jhc-feedback-sync-cycle",
+        "ops/launchd/job-hunt-copilot-supervisor.plist",
+        "ops/launchd/job-hunt-copilot-feedback-sync.plist",
         "scripts/ops/materialize_supervisor_plist.py",
         "scripts/ops/materialize_feedback_sync_plist.py",
+        "scripts/ops/control_agent.py",
         "tests/test_local_runtime.py"
       ],
       "missing_evidence_refs": [],

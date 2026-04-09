@@ -3,7 +3,7 @@
 - Acceptance scenarios: `214`
 - Open acceptance scenarios: `0`
 - Open acceptance gap clusters: `0`
-- Open build-board blockers: `2`
+- Open build-board blockers: `0`
 - Blockers with missing evidence refs: `0`
 
 ## Current Focus
@@ -11,7 +11,7 @@
 - Epic: `BA-10`
 - Slice: `BA-10-S3`
 - Owner role: `build-lead`
-- Reason: BA-10-S3 closed the final required acceptance gap through the bounded maintenance workflow, retained review artifacts, and approval controls, so the product now sits at 212 implemented / 0 partial / 0 gap scenarios; the board stays parked on this closing build-lead handoff while the only remaining repo-tracked follow-up is out-of-sandbox confirmation for `BUILD-CLI-001` and `OPS-LAUNCHD-001`.
+- Reason: BA-10-S3 closed the final required acceptance gap through the bounded maintenance workflow, retained review artifacts, and approval controls, and host-side validation has now confirmed both the unattended build wrapper and the product launchd helpers on the real machine, so the product now sits at 212 implemented / 0 partial / 0 gap scenarios with no remaining repo-tracked blockers.
 - Validation suite: `python3.11 scripts/quality/run_ba10_validation_suite.py --project-root <repo_root> --current-focus`
 
 ## Acceptance Gap Clusters
@@ -41,26 +41,26 @@
   - `python3.11 -m pytest tests/test_runtime_pack.py` (automated: Confirms generated runtime scaffolding stays honest about the current action catalog, maintenance workflow, and operator control surfaces.)
 
 ### BUILD-CLI-001
-- Status: `open`
+- Status: `closed`
 - Severity: `medium`
 - Owner role: `build-lead`
-- Summary: The unattended build wrapper now has automated regression coverage for its `codex exec` command shape, but real host-side cycle execution still needs confirmation after the `--ask-for-approval` incompatibility.
-- Impact: The wrapper command shape is now guarded in automated tests, but unattended build sessions can still fail before work starts if the real host environment or Codex CLI invocation diverges from that validated shape.
-- Next action: Re-run the unattended build-lead wrapper on the host and confirm it starts a real cycle with the supported `codex exec` flags.
-- Evidence refs: `build-agent/scripts/run_build_lead_cycle.py`, `tests/test_build_agent_cycle.py`, `build-agent/logs/cycles/build-cycle-20260406T034335Z-66be05af.log`
+- Summary: Host-side replay now confirms `build-agent/bin/jhc-build-start` loads `gui/$UID/com.jobhuntcopilot.buildlead`, starts real build-lead heartbeat cycles, and records clean `no_work` cycle rows with the supported `codex exec` invocation after the `--ask-for-approval` incompatibility fix.
+- Impact: The unattended build wrapper is now validated both in automated tests and on the host machine, so this blocker only needs reopening if a future host replay fails or the Codex CLI shape changes again.
+- Next action: No immediate follow-up. Reopen only if a future host replay fails or the supported `codex exec` contract changes.
+- Evidence refs: `build-agent/reports/host-validation-closeout.md`, `build-agent/scripts/run_build_lead_cycle.py`, `build-agent/bin/jhc-build-start`, `build-agent/bin/jhc-build-stop`, `build-agent/state/build-cycles.jsonl`, `tests/test_build_agent_cycle.py`, `build-agent/logs/build-lead.stdout.log`
 - Validation suite: `python3.11 scripts/quality/run_ba10_validation_suite.py --project-root <repo_root> --blocker-id BUILD-CLI-001 --include-manual`
 - Confirmation commands:
   - `python3.11 -m pytest tests/test_build_agent_cycle.py` (automated: Guards the unattended build-lead `codex exec` invocation shape so unsupported approval flags do not return.)
   - `codex exec --help && codex --help` (manual_local: Reconfirms the current CLI shape so unattended build wrappers do not reintroduce unsupported approval flags.)
 
 ### OPS-LAUNCHD-001
-- Status: `open`
+- Status: `closed`
 - Severity: `medium`
 - Owner role: `build-lead`
-- Summary: Live `launchctl bootstrap gui/$UID /Users/achyutaramsonti/Projects/job-hunt-copilot-v4/ops/launchd/job-hunt-copilot-supervisor.plist` still returns `Input/output error` in the current sandboxed session, so successful host-side launchd load validation remains pending for both the supervisor and delayed-feedback jobs even though their plists, wrappers, runners, and failed-start rollback validate locally.
-- Impact: Product-side background launchd startup is not yet verified outside the sandbox even though the repo-local helper code and rollback behavior are working.
-- Next action: Run `bin/jhc-agent-start` on the host outside the sandbox, then inspect `launchctl print gui/$UID/com.jobhuntcopilot.supervisor` and system launchd logs to capture the real bootstrap outcome.
-- Evidence refs: `build-agent/logs/cycles/build-cycle-20260407T213533Z-5b2c1d98.log`, `bin/jhc-agent-start`, `bin/jhc-feedback-sync-cycle`, `scripts/ops/materialize_supervisor_plist.py`, `scripts/ops/materialize_feedback_sync_plist.py`, `tests/test_local_runtime.py`
+- Summary: Host-side replay now confirms `bin/jhc-agent-start` successfully bootstraps both `gui/$UID/com.jobhuntcopilot.supervisor` and `gui/$UID/com.jobhuntcopilot.feedback-sync`, `launchctl print` reports the expected live launchd state, and `bin/jhc-agent-stop` cleanly boots both jobs out while canonical control state returns to `stopped`.
+- Impact: Product-side launchd startup and shutdown are now verified on the host machine, so this blocker only needs reopening if future host launchctl behavior regresses.
+- Next action: No immediate follow-up. Reopen only if a future host launchctl replay fails or the launchd job definitions change materially.
+- Evidence refs: `build-agent/reports/host-validation-closeout.md`, `bin/jhc-agent-start`, `bin/jhc-agent-stop`, `bin/jhc-feedback-sync-cycle`, `ops/launchd/job-hunt-copilot-supervisor.plist`, `ops/launchd/job-hunt-copilot-feedback-sync.plist`, `scripts/ops/materialize_supervisor_plist.py`, `scripts/ops/materialize_feedback_sync_plist.py`, `scripts/ops/control_agent.py`, `tests/test_local_runtime.py`
 - Validation suite: `python3.11 scripts/quality/run_ba10_validation_suite.py --project-root <repo_root> --blocker-id OPS-LAUNCHD-001 --include-manual`
 - Confirmation commands:
   - `python3.11 -m pytest tests/test_local_runtime.py` (automated: Covers launchd plist wiring, control commands, chat lifecycle state, delayed feedback runners, maintenance review controls, and explicit negative control cases.)

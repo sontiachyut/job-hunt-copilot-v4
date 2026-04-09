@@ -8,8 +8,8 @@ global_status:
   canonical_inputs:
     - prd/spec.md
     - prd/test-spec.feature
-  current_phase: operational_validation_pending
-  overall_risk: medium
+  current_phase: complete
+  overall_risk: low
   summary:
     - Planning now reflects the PRD and acceptance spec instead of the initial seeded checklist.
     - BA-01 is now complete: the repo has runtime bootstrap checks, canonical SQLite schema migration, review views, and shared record-ID/timestamp helpers.
@@ -28,11 +28,11 @@ global_status:
     - "BA-09 is now complete in code: delivery feedback now dedupes repeated mailbox signals at the logical-event level, exposes queryable feedback-reuse candidates for bounced and `not_bounced` discovery reads, keeps replied outcomes review-only, and lets discovery consume those feedback signals without auto-clearing contact email state."
     - "BA-10-S1 is now complete: `build-agent/reports/ba-10-acceptance-trace-matrix.json` and `.md` now map all 214 acceptance scenarios to owning epics, code, tests, and explicit hardening gaps, with a guard test that keeps the matrix aligned to `prd/test-spec.feature`."
     - "BA-10-S2 is now complete: `tests/test_smoke_harness.py` now drives a committed bootstrap -> tailoring -> discovery -> send -> delayed-feedback -> review-query smoke flow with deterministic fakes, and the regenerated acceptance trace matrix now closes the explicit smoke-harness gap while leaving the remaining blocker clusters honest."
-    - "BA-10 is now complete for required acceptance: the acceptance trace matrix, smoke harness, blocker audit, repo-readiness summary, and current-focus validation suite now land at 212 implemented / 0 partial / 0 gap scenarios, and the final BA-10-S3 closeout adds bounded daily maintenance execution, retained maintenance review artifacts, maintenance approval controls, and honest recruiter- and manager-facing repo notes while leaving only host-side `BUILD-CLI-001` and `OPS-LAUNCHD-001` follow-up blockers explicit."
+    - "BA-10 is now complete for required acceptance: the acceptance trace matrix, smoke harness, blocker audit, repo-readiness summary, and current-focus validation suite now land at 212 implemented / 0 partial / 0 gap scenarios, and the final BA-10-S3 closeout adds bounded daily maintenance execution, retained maintenance review artifacts, maintenance approval controls, and honest recruiter- and manager-facing repo notes."
     - "BA-10-S3 report hardening now also records whether the committed latest validation snapshot actually tracks the active current-focus slice, and the validation-suite runner pre-seeds that selector-aligned snapshot before `qa_acceptance_reports` executes, so replaying `--current-focus` can recover cleanly from a stale blocker-specific latest-report state without manual report prep."
     - "BA-10-S4 is now complete in code: `job_hunt_copilot.supervisor` now advances durable role-targeted runs through `lead_handoff`, bounded mandatory review, bounded `people_search`, bounded `email_discovery`, bounded `sending`, and bounded `delivery_feedback`, and it now also advances contact-rooted general-learning work through bounded email discovery, send-ready dispatch, and delayed-feedback follow-through without posting linkage or role-targeted review prerequisites."
     - "`jhc-chat` now records canonical begin/end state, pauses autonomous work on open, resumes on clean explicit close when chat caused the pause, auto-resumes safely after an unexpected exit has idled for 15 minutes, materializes a persisted clean-first startup dashboard plus grouped review snapshot before Codex opens, and exposes explicit persisted-state helper commands for review-queue and default change-summary reads."
-    - Host-side `launchctl bootstrap` success still needs follow-up validation outside the current sandboxed session even though the plist, wrapper wiring, and failed-start rollback all validate locally.
+    - "Host-side launchd and build-wrapper validation have now been replayed successfully on the real machine: `bin/jhc-agent-start` loaded supervisor and delayed-feedback jobs, `launchctl print` confirmed the live job state, `bin/jhc-agent-stop` cleanly booted those jobs out, and `build-agent/bin/jhc-build-start` started real host build-lead cycles with the supported `codex exec` invocation before `build-agent/bin/jhc-build-stop` returned the machine to an idle state."
   execution_principles:
     - One primary slice per unattended build session.
     - Prefer DB-first state, artifact contracts, and runtime scaffolding before higher-level agent behavior.
@@ -1031,8 +1031,7 @@ epics:
           - "`python3.11 -m pytest tests/test_supervisor.py tests/test_supervisor_downstream_actions.py`"
           - "`python3.11 scripts/quality/run_ba10_validation_suite.py --project-root /Users/achyutaramsonti/Projects/job-hunt-copilot-v4 --current-focus`"
         remaining_scope:
-          - host-side unattended build wrapper confirmation for `BUILD-CLI-001`
-          - host-side supervisor and delayed-feedback `launchctl` validation for `OPS-LAUNCHD-001`
+          - none
       - id: BA-10-S4
         name: Downstream supervisor action-catalog burn-down
         owner_role: build-lead
@@ -1087,10 +1086,10 @@ current_focus:
   epic_id: BA-10
   slice_id: BA-10-S3
   owner_role: build-lead
-  reason: BA-10-S3 closed the final required acceptance gap through the bounded maintenance workflow, retained review artifacts, and approval controls, so the product now sits at 212 implemented / 0 partial / 0 gap scenarios; the board stays parked on this closing build-lead handoff while the only remaining repo-tracked follow-up is out-of-sandbox confirmation for `BUILD-CLI-001` and `OPS-LAUNCHD-001`.
+  reason: BA-10-S3 closed the final required acceptance gap through the bounded maintenance workflow, retained review artifacts, and approval controls, and host-side validation has now confirmed both the unattended build wrapper and the product launchd helpers on the real machine, so the product now sits at 212 implemented / 0 partial / 0 gap scenarios with no remaining repo-tracked blockers.
   exit_criteria:
     - the acceptance trace matrix, blocker audit, repo-readiness summary, and latest validation snapshot stay aligned to the zero-gap required-acceptance surface
-    - host-side `BUILD-CLI-001` and `OPS-LAUNCHD-001` evidence is captured or kept explicit without claiming unsupported validation
+    - host-side validation evidence stays captured in the committed closeout notes and reports
     - no new acceptance regressions appear in the BA-10 closeout validation suite
 
 focus_order:
@@ -1141,27 +1140,35 @@ known_blockers:
     impact: Required acceptance coverage is now fully traceable and replayable from committed reports; reopen this blocker only if the acceptance trace, blocker audit, repo-readiness summary, or current-focus validation suite drifts away from the zero-gap surface.
     next_action: No immediate code follow-up. Keep the committed BA-10 reports current and reopen this blocker only if a new acceptance regression appears.
   - blocker_id: BUILD-CLI-001
-    status: open
+    status: closed
     severity: medium
     owner_role: build-lead
-    summary: "The unattended build wrapper now has automated regression coverage for its `codex exec` command shape, but real host-side cycle execution still needs confirmation after the `--ask-for-approval` incompatibility."
+    summary: "Host-side replay now confirms `build-agent/bin/jhc-build-start` loads `gui/$UID/com.jobhuntcopilot.buildlead`, starts real build-lead heartbeat cycles, and records clean `no_work` cycle rows with the supported `codex exec` invocation after the `--ask-for-approval` incompatibility fix."
     evidence:
+      - build-agent/reports/host-validation-closeout.md
       - build-agent/scripts/run_build_lead_cycle.py
+      - build-agent/bin/jhc-build-start
+      - build-agent/bin/jhc-build-stop
+      - build-agent/state/build-cycles.jsonl
       - tests/test_build_agent_cycle.py
-      - build-agent/logs/cycles/build-cycle-20260406T034335Z-66be05af.log
-    impact: The wrapper command shape is now guarded in automated tests, but unattended build sessions can still fail before work starts if the real host environment or Codex CLI invocation diverges from that validated shape.
-    next_action: Re-run the unattended build-lead wrapper on the host and confirm it starts a real cycle with the supported `codex exec` flags.
+      - build-agent/logs/build-lead.stdout.log
+    impact: The unattended build wrapper is now validated both in automated tests and on the host machine, so this blocker only needs reopening if a future host replay fails or the Codex CLI shape changes again.
+    next_action: No immediate follow-up. Reopen only if a future host replay fails or the supported `codex exec` contract changes.
   - blocker_id: OPS-LAUNCHD-001
-    status: open
+    status: closed
     severity: medium
     owner_role: build-lead
-    summary: "Live `launchctl bootstrap gui/$UID /Users/achyutaramsonti/Projects/job-hunt-copilot-v4/ops/launchd/job-hunt-copilot-supervisor.plist` still returns `Input/output error` in the current sandboxed session, so successful host-side launchd load validation remains pending for both the supervisor and delayed-feedback jobs even though their plists, wrappers, runners, and failed-start rollback validate locally."
+    summary: "Host-side replay now confirms `bin/jhc-agent-start` successfully bootstraps both `gui/$UID/com.jobhuntcopilot.supervisor` and `gui/$UID/com.jobhuntcopilot.feedback-sync`, `launchctl print` reports the expected live launchd state, and `bin/jhc-agent-stop` cleanly boots both jobs out while canonical control state returns to `stopped`."
     evidence:
-      - build-agent/logs/cycles/build-cycle-20260407T213533Z-5b2c1d98.log
+      - build-agent/reports/host-validation-closeout.md
       - bin/jhc-agent-start
+      - bin/jhc-agent-stop
       - bin/jhc-feedback-sync-cycle
+      - ops/launchd/job-hunt-copilot-supervisor.plist
+      - ops/launchd/job-hunt-copilot-feedback-sync.plist
       - scripts/ops/materialize_supervisor_plist.py
       - scripts/ops/materialize_feedback_sync_plist.py
+      - scripts/ops/control_agent.py
       - tests/test_local_runtime.py
-    impact: Product-side background launchd startup is not yet verified outside the sandbox even though the repo-local helper code and rollback behavior are working.
-    next_action: Run `bin/jhc-agent-start` on the host outside the sandbox, then inspect `launchctl print gui/$UID/com.jobhuntcopilot.supervisor` and system launchd logs to capture the real bootstrap outcome.
+    impact: Product-side launchd startup and shutdown are now verified on the host machine, so this blocker only needs reopening if future host launchctl behavior regresses.
+    next_action: No immediate follow-up. Reopen only if a future host launchctl replay fails or the launchd job definitions change materially.

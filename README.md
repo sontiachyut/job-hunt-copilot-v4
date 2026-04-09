@@ -22,7 +22,7 @@ The goal is to build a reliable autonomous workflow with:
 
 ## Current Status
 
-This repo is currently in a **spec-complete, implementation-underway** phase.
+This repo is currently in a **spec-complete, implementation-complete** phase.
 
 What already exists:
 - a detailed product specification in [prd/spec.md](./prd/spec.md)
@@ -45,10 +45,12 @@ What already exists:
 - the completed Delivery Feedback and review-surface epic under `job_hunt_copilot.delivery_feedback` and `job_hunt_copilot.review_queries`, including reusable immediate or delayed mailbox polling over canonical sent-message records, `feedback_sync_runs` audit rows, exact-message `delivery_feedback_events` persistence for `bounced`, `not_bounced`, and `replied` outcomes, logical-event dedupe for repeated mailbox ingestion, per-event `delivery_outcome.json` artifacts under each message workspace plus root-level latest mirrors, a grouped read-only review snapshot over postings, contacts, sent messages, unresolved discovery, incidents, and expert review packets, a queryable delivery-feedback reuse surface that keeps bounced and `not_bounced` signals available to discovery while replies stay review-only, outstanding blocked/failed/repeat-outreach review-item queries with artifact-backed reason recovery, override history retrieval, and per-object traceability over artifacts, state transitions, and downstream records
 - the current BA-10 quality layer under `build-agent/reports/` and `scripts/quality/`, including the committed acceptance trace matrix, blocker audit, latest validation-suite report snapshot, smoke harness, and a reproducible `run_ba10_validation_suite.py` entrypoint for the automated hardening checks
 
-What is still in progress:
-- BA-10 closeout now includes bounded daily maintenance automation with isolated git branches, retained `maintenance_change.json` / `maintenance_change.md` audit artifacts, and explicit approval-only merges through the runtime control surface.
+Current closeout state:
+- required acceptance is complete at `212 implemented / 0 partial / 0 gap`
+- BA-10 closeout includes bounded daily maintenance automation with isolated git branches, retained `maintenance_change.json` / `maintenance_change.md` audit artifacts, and explicit approval-only merges through the runtime control surface
+- host-side validation is complete for both the product launchd helpers and the unattended build wrapper; the closeout notes live in [build-agent/reports/host-validation-closeout.md](./build-agent/reports/host-validation-closeout.md)
 - the quickest current build snapshot lives in [build-agent/reports/repo-readiness-summary.md](./build-agent/reports/repo-readiness-summary.md)
-- the current readiness and validation evidence lives in [build-agent/reports/repo-readiness-summary.md](./build-agent/reports/repo-readiness-summary.md), [build-agent/reports/ba-10-acceptance-trace-matrix.md](./build-agent/reports/ba-10-acceptance-trace-matrix.md), [build-agent/reports/ba-10-blocker-audit.md](./build-agent/reports/ba-10-blocker-audit.md), and [build-agent/reports/ba-10-validation-suite-latest.md](./build-agent/reports/ba-10-validation-suite-latest.md) rather than being hidden behind a generic "in progress" label
+- the current readiness and validation evidence lives in [build-agent/reports/repo-readiness-summary.md](./build-agent/reports/repo-readiness-summary.md), [build-agent/reports/ba-10-acceptance-trace-matrix.md](./build-agent/reports/ba-10-acceptance-trace-matrix.md), [build-agent/reports/ba-10-blocker-audit.md](./build-agent/reports/ba-10-blocker-audit.md), [build-agent/reports/ba-10-validation-suite-latest.md](./build-agent/reports/ba-10-validation-suite-latest.md), and [build-agent/reports/host-validation-closeout.md](./build-agent/reports/host-validation-closeout.md)
 
 ## System Overview
 

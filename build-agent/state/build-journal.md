@@ -2312,3 +2312,37 @@ Use this file as an append-only implementation log for the build agent.
 ### Notes
 - The acceptance matrix now reports `212 implemented / 0 partial / 0 gap` required scenarios, and `BA10_MAINTENANCE_AUTOMATION` is closed.
 - `BA10-TRACE-001` is now closed in the build board. The only remaining open blockers are `BUILD-CLI-001` and `OPS-LAUNCHD-001`, both requiring out-of-sandbox host evidence rather than additional repo-side feature work.
+
+### Session
+- Date: 2026-04-09 16:32:49 MST
+- Slice: BA-10-S3 host validation closeout
+- Goal: Capture the final real-machine evidence for `BUILD-CLI-001` and `OPS-LAUNCHD-001`, then return the machine to a stopped idle state and close the last repo-tracked operational blockers.
+
+### Work Done
+- Ran `bin/jhc-agent-start` on the host and confirmed it loaded both `gui/$UID/com.jobhuntcopilot.supervisor` and `gui/$UID/com.jobhuntcopilot.feedback-sync` successfully.
+- Captured `launchctl print` evidence showing the supervisor job loaded and running from `ops/launchd/job-hunt-copilot-supervisor.plist`, while the delayed-feedback job loaded from `ops/launchd/job-hunt-copilot-feedback-sync.plist` with `last exit code = 0`.
+- Ran `bin/jhc-agent-stop` and confirmed both product launchd jobs booted out cleanly; follow-up `launchctl print` calls returned "Could not find service", and `scripts/ops/control_agent.py status` reported canonical `agent_mode = stopped`.
+- Ran `build-agent/bin/jhc-build-start` on the host and confirmed it loaded `gui/$UID/com.jobhuntcopilot.buildlead`, started real build-lead heartbeat cycles under launchd, and recorded clean `no_work` rows in `build-agent/state/build-cycles.jsonl` once no remaining build slices existed.
+- Ran `build-agent/bin/jhc-build-stop` and confirmed the build agent returned to a stopped idle state with no loaded `com.jobhuntcopilot.buildlead` service.
+- Added `build-agent/reports/host-validation-closeout.md` and updated the board, implementation plan, and closeout reports so the final host evidence is committed rather than remaining implicit in shell history.
+
+### Validation
+- Ran `bin/jhc-agent-start`.
+- Ran `launchctl print gui/$UID/com.jobhuntcopilot.supervisor`.
+- Ran `launchctl print gui/$UID/com.jobhuntcopilot.feedback-sync`.
+- Ran `bin/jhc-agent-stop`.
+- Ran `scripts/ops/control_agent.py status --project-root /Users/achyutaramsonti/Projects/job-hunt-copilot-v4`.
+- Ran `build-agent/bin/jhc-build-start`.
+- Confirmed fresh host-side `no_work` cycle rows in `build-agent/state/build-cycles.jsonl`.
+- Ran `launchctl print gui/$UID/com.jobhuntcopilot.buildlead`.
+- Ran `build-agent/bin/jhc-build-stop`.
+
+### Result
+- `done`
+
+### Next
+- No remaining required-acceptance or repo-tracked operational follow-up is open. Reopen only if a future host replay or validation-suite run fails.
+
+### Notes
+- `BUILD-CLI-001` and `OPS-LAUNCHD-001` are now closed with real host evidence.
+- The machine has been returned to a fully stopped idle state for both the product supervisor jobs and the build agent.
