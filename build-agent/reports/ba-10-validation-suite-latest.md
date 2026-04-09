@@ -1,12 +1,12 @@
 # BA-10 Validation Suite Report
 
-- Generated at: `2026-04-09T02:38:39Z`
+- Generated at: `2026-04-09T03:02:16Z`
 - Project root: `/Users/achyutaramsonti/Projects/job-hunt-copilot-v4`
 - Passed: `True`
 - Command count: `5`
 - Passed commands: `5`
 - Failed commands: `0`
-- Total duration seconds: `6.605`
+- Total duration seconds: `9.582`
 - Requested command ids: none
 - Requested smoke targets: none
 - Requested acceptance gaps: none
@@ -29,15 +29,14 @@
 ## Open BA-10 Status
 
 - Acceptance scenarios: `214`
-- Open acceptance scenarios: `16`
-- Acceptance status counts: `implemented`=196, `partial`=3, `gap`=13, `deferred_optional`=1, `excluded_from_required_acceptance`=1
-- Open acceptance gap clusters: `4`
-- Open acceptance gap ids: `BA10_MAINTENANCE_AUTOMATION`, `BA10_CHAT_REVIEW_AND_CONTROL`, `BA10_CHAT_IDLE_TIMEOUT_RESUME`, `BA10_POSTING_ABANDON_CONTROL`
+- Open acceptance scenarios: `15`
+- Acceptance status counts: `implemented`=197, `partial`=3, `gap`=12, `deferred_optional`=1, `excluded_from_required_acceptance`=1
+- Open acceptance gap clusters: `3`
+- Open acceptance gap ids: `BA10_MAINTENANCE_AUTOMATION`, `BA10_CHAT_REVIEW_AND_CONTROL`, `BA10_CHAT_IDLE_TIMEOUT_RESUME`
 - Open acceptance gap summaries:
   - `BA10_MAINTENANCE_AUTOMATION`: Maintenance workflow and artifacts are not implemented (`6` scenarios)
   - `BA10_CHAT_REVIEW_AND_CONTROL`: Chat review and control remain wrapper-only (`8` scenarios)
   - `BA10_CHAT_IDLE_TIMEOUT_RESUME`: Idle-timeout resume is still backlog (`1` scenarios)
-  - `BA10_POSTING_ABANDON_CONTROL`: Posting-abandon control surface is missing (`1` scenarios)
 - Open build-board blockers: `3`
 - Open build-board blocker ids: `BA10-TRACE-001`, `BUILD-CLI-001`, `OPS-LAUNCHD-001`
 - Current build focus: `BA-10` / `BA-10-S3` / `quality-engineer`
@@ -49,8 +48,8 @@
 - Epic: `BA-10`
 - Slice: `BA-10-S3`
 - Owner role: `quality-engineer`
-- Reason: BA-10-S4 closed the downstream supervisor action-catalog gap and the latest BA-10-S3 hardening pass burned down the `jhc-chat` startup dashboard plus active-runtime-metrics scenarios, but the acceptance matrix still holds at 196 implemented / 3 partial / 13 gap scenarios because maintenance automation, richer chat review/control, idle-timeout resume, and posting-abandon behavior remain open BA-10-S3 work.
-- Gap ids: `BA10_MAINTENANCE_AUTOMATION`, `BA10_CHAT_REVIEW_AND_CONTROL`, `BA10_CHAT_IDLE_TIMEOUT_RESUME`, `BA10_POSTING_ABANDON_CONTROL`
+- Reason: BA-10-S4 closed the downstream supervisor action-catalog gap and the latest BA-10-S3 hardening pass burned down the `jhc-chat` startup dashboard plus active-runtime-metrics scenarios; this cycle also closed the posting-abandon control gap, so the acceptance matrix now holds at 197 implemented / 3 partial / 12 gap scenarios with maintenance automation, richer chat review/control, and idle-timeout resume still open BA-10-S3 work.
+- Gap ids: `BA10_MAINTENANCE_AUTOMATION`, `BA10_CHAT_REVIEW_AND_CONTROL`, `BA10_CHAT_IDLE_TIMEOUT_RESUME`
 - Validation command ids: `qa_runtime_pack_regressions`, `qa_acceptance_reports`, `qa_supervisor_regressions`, `qa_runtime_control_regressions`, `qa_review_surface_regressions`
 - Validation suite: `python3.11 scripts/quality/run_ba10_validation_suite.py --project-root <repo_root> --current-focus`
 - Gap summaries:
@@ -60,18 +59,16 @@
     - Open scenarios: `[partial]` Review retrieval is grouped, compact-first, and newest-first within each group; `[gap]` jhc-chat uses persisted state for answers and control routing; `[gap]` Default change summaries cover activity since the last completed expert review; `[gap]` Expert guidance becomes live immediately but conflicting or uncertain reuse asks first; `[gap]` Conflicting expert guidance pauses the whole autonomous system; `[gap]` Expert-requested background tasks require explicit handoff summary and exclusive focus; `[gap]` Expert-requested background task outcomes return to review appropriately; `[gap]` AI agent surfaces the current review queue in chat
   - `BA10_CHAT_IDLE_TIMEOUT_RESUME`: Idle-timeout resume is still backlog (`1` scenarios)
     - Open scenarios: `[partial]` Expert-interaction resume follows explicit close, explicit resume, or safe idle timeout
-  - `BA10_POSTING_ABANDON_CONTROL`: Posting-abandon control surface is missing (`1` scenarios)
-    - Open scenarios: `[gap]` The user may explicitly abandon a posting from any active orchestration state
 
 ## Command Results
 
 | Command | Kind | Status | Returncode | Duration (s) |
 | --- | --- | --- | ---: | ---: |
-| qa_runtime_pack_regressions | automated | passed | 0 | 0.244 |
-| qa_acceptance_reports | automated | passed | 0 | 0.321 |
-| qa_supervisor_regressions | automated | passed | 0 | 1.009 |
-| qa_runtime_control_regressions | automated | passed | 0 | 4.618 |
-| qa_review_surface_regressions | automated | passed | 0 | 0.413 |
+| qa_runtime_pack_regressions | automated | passed | 0 | 0.236 |
+| qa_acceptance_reports | automated | passed | 0 | 0.320 |
+| qa_supervisor_regressions | automated | passed | 0 | 1.147 |
+| qa_runtime_control_regressions | automated | passed | 0 | 7.473 |
+| qa_review_surface_regressions | automated | passed | 0 | 0.406 |
 
 ## Command Details
 
@@ -79,7 +76,7 @@
 - Kind: `automated`
 - Status: `passed`
 - Returncode: `0`
-- Duration seconds: `0.244`
+- Duration seconds: `0.236`
 - Command: `python3.11 -m pytest tests/test_runtime_pack.py`
 - Description: Confirms generated runtime scaffolding stays honest about current action-catalog and maintenance placeholder status.
 
@@ -87,7 +84,7 @@
 - Kind: `automated`
 - Status: `passed`
 - Returncode: `0`
-- Duration seconds: `0.321`
+- Duration seconds: `0.32`
 - Command: `python3.11 -m pytest tests/test_acceptance_traceability.py tests/test_blocker_audit.py`
 - Description: Keeps the committed BA-10 acceptance and blocker reports synchronized with repo code, tests, and state references.
 
@@ -95,7 +92,7 @@
 - Kind: `automated`
 - Status: `passed`
 - Returncode: `0`
-- Duration seconds: `1.009`
+- Duration seconds: `1.147`
 - Command: `python3.11 -m pytest tests/test_supervisor_downstream_actions.py`
 - Description: Confirms incident-first selector ordering, existing-run reuse, bounded role-targeted progression through `delivery_feedback`, and contact-rooted general-learning follow-through while keeping the remaining maintenance-selector gap explicit.
 
@@ -103,7 +100,7 @@
 - Kind: `automated`
 - Status: `passed`
 - Returncode: `0`
-- Duration seconds: `4.618`
+- Duration seconds: `7.473`
 - Command: `python3.11 -m pytest tests/test_local_runtime.py`
 - Description: Covers launchd plist wiring, control commands, chat lifecycle state, delayed feedback runners, and explicit negative control cases.
 
@@ -111,6 +108,6 @@
 - Kind: `automated`
 - Status: `passed`
 - Returncode: `0`
-- Duration seconds: `0.413`
+- Duration seconds: `0.406`
 - Command: `python3.11 -m pytest tests/test_review_queries.py`
 - Description: Verifies persisted grouped review surfaces and traceability reads that back the chat/review boundary.

@@ -1,8 +1,8 @@
 # BA-10 Blocker Audit
 
 - Acceptance scenarios: `214`
-- Open acceptance scenarios: `16`
-- Open acceptance gap clusters: `4`
+- Open acceptance scenarios: `15`
+- Open acceptance gap clusters: `3`
 - Open build-board blockers: `3`
 - Blockers with missing evidence refs: `0`
 
@@ -11,8 +11,8 @@
 - Epic: `BA-10`
 - Slice: `BA-10-S3`
 - Owner role: `quality-engineer`
-- Reason: BA-10-S4 closed the downstream supervisor action-catalog gap and the latest BA-10-S3 hardening pass burned down the `jhc-chat` startup dashboard plus active-runtime-metrics scenarios, but the acceptance matrix still holds at 196 implemented / 3 partial / 13 gap scenarios because maintenance automation, richer chat review/control, idle-timeout resume, and posting-abandon behavior remain open BA-10-S3 work.
-- Matching gap ids: `BA10_MAINTENANCE_AUTOMATION`, `BA10_CHAT_REVIEW_AND_CONTROL`, `BA10_CHAT_IDLE_TIMEOUT_RESUME`, `BA10_POSTING_ABANDON_CONTROL`
+- Reason: BA-10-S4 closed the downstream supervisor action-catalog gap and the latest BA-10-S3 hardening pass burned down the `jhc-chat` startup dashboard plus active-runtime-metrics scenarios; this cycle also closed the posting-abandon control gap, so the acceptance matrix now holds at 197 implemented / 3 partial / 12 gap scenarios with maintenance automation, richer chat review/control, and idle-timeout resume still open BA-10-S3 work.
+- Matching gap ids: `BA10_MAINTENANCE_AUTOMATION`, `BA10_CHAT_REVIEW_AND_CONTROL`, `BA10_CHAT_IDLE_TIMEOUT_RESUME`
 - Validation suite: `python3.11 scripts/quality/run_ba10_validation_suite.py --project-root <repo_root> --current-focus`
 
 ## Acceptance Gap Clusters
@@ -117,35 +117,15 @@
     - Evidence refs: `job_hunt_copilot/chat_runtime.py`, `job_hunt_copilot/supervisor.py`, `job_hunt_copilot/local_runtime.py`, `job_hunt_copilot/runtime_pack.py`, `scripts/ops/run_supervisor_cycle.py`, `scripts/ops/control_agent.py`, `scripts/ops/chat_session.py`, `bin/jhc-agent-start`, `bin/jhc-agent-stop`, `bin/jhc-agent-cycle`, `bin/jhc-chat`, `tests/test_supervisor_downstream_actions.py`, `tests/test_supervisor.py`, `tests/test_local_runtime.py`, `tests/test_runtime_pack.py`
     - Note: Explicit close and explicit resume paths exist, but automatic idle-timeout recovery after unexpected chat exit is still backlog.
 
-### BA10_POSTING_ABANDON_CONTROL: Posting-abandon control surface is missing
-- Next slice: `BA-10-S3`
-- Owner roles: `build-lead`
-- Rules: `Current-build orchestration remains sequential`
-- Epics: `BA-06`, `BA-07`, `BA-08`, `BA-09`
-- Supporting slices: `BA-06-S1`, `BA-06-S2`, `BA-06-S3`, `BA-06-S4`, `BA-07-S1`, `BA-07-S2`, `BA-07-S3`, `BA-08-S1`, `BA-08-S2`, `BA-08-S3`, `BA-09-S1`, `BA-09-S2`, `BA-09-S3`, `BA-10-S3`
-- Open scenarios: `1` (`partial`: `0`, `gap`: `1`)
-- Reason: There is no explicit user-facing or runtime control path that abandons a posting from arbitrary active orchestration states while preserving canonical history.
-- Evidence summary: Agent-level start/stop/pause/resume/replan controls exist, but there is still no posting-scoped abandon command or runtime mutation path.
-- Evidence code refs: `scripts/ops/control_agent.py`, `job_hunt_copilot/local_runtime.py`, `job_hunt_copilot/supervisor.py`
-- Evidence test refs: `tests/test_local_runtime.py`, `tests/test_acceptance_traceability.py`
-- Validation suite: `python3.11 scripts/quality/run_ba10_validation_suite.py --project-root <repo_root> --gap-id BA10_POSTING_ABANDON_CONTROL`
-- Confirmation commands:
-  - `python3.11 -m pytest tests/test_local_runtime.py` (automated: Covers launchd plist wiring, control commands, chat lifecycle state, delayed feedback runners, and explicit negative control cases.)
-  - `python3.11 -m pytest tests/test_acceptance_traceability.py tests/test_blocker_audit.py` (automated: Keeps the committed BA-10 acceptance and blocker reports synchronized with repo code, tests, and state references.)
-- Open scenarios:
-  - `[gap]` The user may explicitly abandon a posting from any active orchestration state (rule: `Current-build orchestration remains sequential`, line: `1536`)
-    - Evidence refs: `job_hunt_copilot/resume_tailoring.py`, `job_hunt_copilot/email_discovery.py`, `job_hunt_copilot/outreach.py`, `job_hunt_copilot/delivery_feedback.py`, `job_hunt_copilot/supervisor.py`, `tests/test_resume_tailoring.py`, `tests/test_email_discovery.py`, `tests/test_outreach.py`, `tests/test_delivery_feedback.py`, `tests/test_supervisor_downstream_actions.py`, `tests/test_supervisor.py`
-    - Note: No posting-abandon runtime control surface or tests exist yet.
-
 ## Build-Board Blockers
 
 ### BA10-TRACE-001
 - Status: `open`
 - Severity: `high`
 - Owner role: `quality-engineer`
-- Summary: The regenerated BA-10 trace matrix now reports 196 implemented / 3 partial / 13 gap scenarios; explicit smoke-coverage targets, implemented-slice traceability, reproducible validation-command mappings, and a durable latest validation-suite report snapshot cover bootstrap, tailoring, discovery, send, feedback, review-query, downstream supervisor follow-through, and the new persisted `jhc-chat` startup dashboard surface, but richer chat review/control, idle-timeout resume, maintenance automation, and posting-abandon behavior themselves remain open.
+- Summary: The regenerated BA-10 trace matrix now reports 197 implemented / 3 partial / 12 gap scenarios; explicit smoke-coverage targets, implemented-slice traceability, reproducible validation-command mappings, and a durable latest validation-suite report snapshot cover bootstrap, tailoring, discovery, send, feedback, review-query, downstream supervisor follow-through, the persisted `jhc-chat` startup dashboard surface, and the new posting-abandon control path, but richer chat review/control, idle-timeout resume, and maintenance automation themselves remain open.
 - Impact: Acceptance signoff is more credible now that committed smoke coverage, blocker-specific evidence refs, explicit negative regressions, and exact open-scenario traces exist, but BA-10 still cannot close until the remaining gap clusters are actually burned down or deliberately left open.
-- Next action: Hand the next functional slice to the build lead and the relevant runtime owner for one real remaining BA-10-S3 gap, starting with posting-abandon control or idle-timeout auto-resume, then refresh the BA-10 reports and validation-suite evidence.
+- Next action: Hand the next functional slice to the build lead and the relevant runtime owner for one real remaining BA-10-S3 gap, starting with idle-timeout auto-resume, then richer chat review/control or maintenance automation, and refresh the BA-10 reports plus validation-suite evidence afterward.
 - Evidence refs: `build-agent/reports/ba-10-acceptance-trace-matrix.json`, `build-agent/reports/ba-10-acceptance-trace-matrix.md`, `build-agent/reports/ba-10-blocker-audit.json`, `build-agent/reports/ba-10-blocker-audit.md`, `build-agent/reports/ba-10-validation-suite-latest.json`, `build-agent/reports/ba-10-validation-suite-latest.md`, `job_hunt_copilot/acceptance_traceability.py`, `job_hunt_copilot/blocker_audit.py`, `job_hunt_copilot/quality_validation.py`, `scripts/quality/generate_blocker_audit.py`, `scripts/quality/run_ba10_validation_suite.py`, `scripts/ops/control_agent.py`, `tests/test_acceptance_traceability.py`, `tests/test_blocker_audit.py`, `tests/test_local_runtime.py`, `tests/test_quality_validation.py`, `tests/test_supervisor_downstream_actions.py`, `tests/test_delivery_feedback.py`, `tests/test_schema.py`, `tests/test_smoke_harness.py`, `tests/test_supervisor.py`, `tests/test_runtime_pack.py`, `tests/test_resume_tailoring.py`, `tests/test_outreach.py`, `tests/test_review_queries.py`
 - Validation suite: `python3.11 scripts/quality/run_ba10_validation_suite.py --project-root <repo_root> --blocker-id BA10-TRACE-001`
 - Confirmation commands:

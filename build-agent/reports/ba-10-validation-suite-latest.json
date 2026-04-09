@@ -25,12 +25,11 @@
       "epic_id": "BA-10",
       "slice_id": "BA-10-S3",
       "owner_role": "quality-engineer",
-      "reason": "BA-10-S4 closed the downstream supervisor action-catalog gap and the latest BA-10-S3 hardening pass burned down the `jhc-chat` startup dashboard plus active-runtime-metrics scenarios, but the acceptance matrix still holds at 196 implemented / 3 partial / 13 gap scenarios because maintenance automation, richer chat review/control, idle-timeout resume, and posting-abandon behavior remain open BA-10-S3 work.",
+      "reason": "BA-10-S4 closed the downstream supervisor action-catalog gap and the latest BA-10-S3 hardening pass burned down the `jhc-chat` startup dashboard plus active-runtime-metrics scenarios; this cycle also closed the posting-abandon control gap, so the acceptance matrix now holds at 197 implemented / 3 partial / 12 gap scenarios with maintenance automation, richer chat review/control, and idle-timeout resume still open BA-10-S3 work.",
       "gap_ids": [
         "BA10_MAINTENANCE_AUTOMATION",
         "BA10_CHAT_REVIEW_AND_CONTROL",
-        "BA10_CHAT_IDLE_TIMEOUT_RESUME",
-        "BA10_POSTING_ABANDON_CONTROL"
+        "BA10_CHAT_IDLE_TIMEOUT_RESUME"
       ],
       "gap_summaries": [
         {
@@ -192,30 +191,6 @@
               "note": "Explicit close and explicit resume paths exist, but automatic idle-timeout recovery after unexpected chat exit is still backlog."
             }
           ]
-        },
-        {
-          "gap_id": "BA10_POSTING_ABANDON_CONTROL",
-          "title": "Posting-abandon control surface is missing",
-          "next_slice": "BA-10-S3",
-          "open_scenario_count": 1,
-          "status_counts": {
-            "partial": 0,
-            "gap": 1
-          },
-          "validation_command_ids": [
-            "qa_runtime_control_regressions",
-            "qa_acceptance_reports"
-          ],
-          "validation_suite_command": "python3.11 scripts/quality/run_ba10_validation_suite.py --project-root <repo_root> --gap-id BA10_POSTING_ABANDON_CONTROL",
-          "open_scenarios": [
-            {
-              "name": "The user may explicitly abandon a posting from any active orchestration state",
-              "status": "gap",
-              "rule": "Current-build orchestration remains sequential",
-              "scenario_line": 1536,
-              "note": "No posting-abandon runtime control surface or tests exist yet."
-            }
-          ]
         }
       ],
       "validation_command_ids": [
@@ -237,7 +212,7 @@
       "description": "Confirms generated runtime scaffolding stays honest about current action-catalog and maintenance placeholder status.",
       "status": "passed",
       "returncode": 0,
-      "duration_seconds": 0.244
+      "duration_seconds": 0.236
     },
     {
       "command_id": "qa_acceptance_reports",
@@ -247,7 +222,7 @@
       "description": "Keeps the committed BA-10 acceptance and blocker reports synchronized with repo code, tests, and state references.",
       "status": "passed",
       "returncode": 0,
-      "duration_seconds": 0.321
+      "duration_seconds": 0.32
     },
     {
       "command_id": "qa_supervisor_regressions",
@@ -257,7 +232,7 @@
       "description": "Confirms incident-first selector ordering, existing-run reuse, bounded role-targeted progression through `delivery_feedback`, and contact-rooted general-learning follow-through while keeping the remaining maintenance-selector gap explicit.",
       "status": "passed",
       "returncode": 0,
-      "duration_seconds": 1.009
+      "duration_seconds": 1.147
     },
     {
       "command_id": "qa_runtime_control_regressions",
@@ -267,7 +242,7 @@
       "description": "Covers launchd plist wiring, control commands, chat lifecycle state, delayed feedback runners, and explicit negative control cases.",
       "status": "passed",
       "returncode": 0,
-      "duration_seconds": 4.618
+      "duration_seconds": 7.473
     },
     {
       "command_id": "qa_review_surface_regressions",
@@ -277,13 +252,13 @@
       "description": "Verifies persisted grouped review surfaces and traceability reads that back the chat/review boundary.",
       "status": "passed",
       "returncode": 0,
-      "duration_seconds": 0.413
+      "duration_seconds": 0.406
     }
   ],
   "failed_command_ids": [],
   "passed": true,
   "validation_suite_report_version": 2,
-  "generated_at": "2026-04-09T02:38:39Z",
+  "generated_at": "2026-04-09T03:02:16Z",
   "summary": {
     "command_count": 5,
     "command_kind_counts": {
@@ -291,24 +266,23 @@
     },
     "passed_command_count": 5,
     "failed_command_count": 0,
-    "total_duration_seconds": 6.605
+    "total_duration_seconds": 9.582
   },
   "repo_status": {
     "acceptance_scenario_count": 214,
     "acceptance_status_counts": {
-      "implemented": 196,
+      "implemented": 197,
       "partial": 3,
-      "gap": 13,
+      "gap": 12,
       "deferred_optional": 1,
       "excluded_from_required_acceptance": 1
     },
-    "open_acceptance_scenario_count": 16,
-    "open_acceptance_gap_cluster_count": 4,
+    "open_acceptance_scenario_count": 15,
+    "open_acceptance_gap_cluster_count": 3,
     "open_acceptance_gap_ids": [
       "BA10_MAINTENANCE_AUTOMATION",
       "BA10_CHAT_REVIEW_AND_CONTROL",
-      "BA10_CHAT_IDLE_TIMEOUT_RESUME",
-      "BA10_POSTING_ABANDON_CONTROL"
+      "BA10_CHAT_IDLE_TIMEOUT_RESUME"
     ],
     "open_acceptance_gap_summaries": [
       {
@@ -324,11 +298,6 @@
       {
         "gap_id": "BA10_CHAT_IDLE_TIMEOUT_RESUME",
         "title": "Idle-timeout resume is still backlog",
-        "open_scenario_count": 1
-      },
-      {
-        "gap_id": "BA10_POSTING_ABANDON_CONTROL",
-        "title": "Posting-abandon control surface is missing",
         "open_scenario_count": 1
       }
     ],

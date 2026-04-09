@@ -176,6 +176,83 @@ def seed_feedback_candidate(connection: sqlite3.Connection) -> None:
     connection.commit()
 
 
+def seed_posting_for_abandon(
+    connection: sqlite3.Connection,
+    *,
+    posting_status: str,
+    run_status: str | None = None,
+    current_stage: str = "sending",
+) -> None:
+    connection.execute(
+        """
+        INSERT INTO linkedin_leads (
+          lead_id, lead_identity_key, lead_status, lead_shape, split_review_status,
+          source_type, source_reference, source_mode, source_url, company_name, role_title,
+          created_at, updated_at
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        """,
+        (
+            "ld_abandon",
+            "acme-robotics|staff-software-engineer-platform",
+            "handed_off",
+            "posting_only",
+            "not_applicable",
+            "manual_capture",
+            "paste/lead-abandon",
+            "manual_capture",
+            "https://careers.acme.example/jobs/abandon",
+            "Acme Robotics",
+            "Staff Software Engineer / Platform",
+            "2026-04-08T12:00:00Z",
+            "2026-04-08T12:00:00Z",
+        ),
+    )
+    connection.execute(
+        """
+        INSERT INTO job_postings (
+          job_posting_id, lead_id, posting_identity_key, company_name, role_title,
+          posting_status, created_at, updated_at
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+        """,
+        (
+            "jp_abandon",
+            "ld_abandon",
+            "acme-robotics|staff-software-engineer-platform",
+            "Acme Robotics",
+            "Staff Software Engineer / Platform",
+            posting_status,
+            "2026-04-08T12:00:00Z",
+            "2026-04-08T12:00:00Z",
+        ),
+    )
+    if run_status is not None:
+        connection.execute(
+            """
+            INSERT INTO pipeline_runs (
+              pipeline_run_id, run_scope_type, run_status, current_stage, lead_id,
+              job_posting_id, completed_at, last_error_summary, review_packet_status,
+              run_summary, started_at, created_at, updated_at
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """,
+            (
+                "pr_abandon",
+                "role_targeted_posting",
+                run_status,
+                current_stage,
+                "ld_abandon",
+                "jp_abandon",
+                None,
+                None,
+                "not_ready",
+                "Active pipeline run before abandon.",
+                "2026-04-08T12:05:00Z",
+                "2026-04-08T12:05:00Z",
+                "2026-04-08T12:05:00Z",
+            ),
+        )
+    connection.commit()
+
+
 def seed_chat_dashboard_state(connection: sqlite3.Connection) -> None:
     connection.execute(
         """
@@ -769,27 +846,187 @@ def test_control_agent_script_persists_running_and_stopped_modes(tmp_path):
     }
 
 
-def test_control_agent_script_rejects_posting_abandon_command_until_surface_exists(tmp_path):
+def test_control_agent_script_abandons_active_posting_and_retires_open_pipeline_run(tmp_path):
     project_root = tmp_path / "repo"
     project_root.mkdir()
     create_minimal_project(project_root)
+    run_script(
+        "scripts/ops/control_agent.py",
+        "status",
+        "--project-root",
+        str(project_root),
+    )
+    connection = connect_database(project_root / "job_hunt_copilot.db")
+    seed_posting_for_abandon(
+        connection,
+        posting_status="outreach_in_progress",
+        run_status="in_progress",
+        current_stage="sending",
+    )
+    connection.close()
 
-    result = subprocess.run(
-        [
-            sys.executable,
-            str(REPO_ROOT / "scripts/ops/control_agent.py"),
+    report = json.loads(
+        run_script(
+            "scripts/ops/control_agent.py",
             "abandon",
             "--project-root",
             str(project_root),
-        ],
-        check=False,
-        capture_output=True,
-        text=True,
+            "--job-posting-id",
+            "jp_abandon",
+            "--reason",
+            "No longer pursuing this role.",
+        ).stdout
     )
 
-    assert result.returncode == 2
-    assert "invalid choice: 'abandon'" in result.stderr
-    assert "{start,stop,pause,resume,replan,status}" in result.stderr
+    assert report["status"] == "abandoned"
+    assert report["job_posting"]["job_posting_id"] == "jp_abandon"
+    assert report["job_posting"]["lead_id"] == "ld_abandon"
+    assert report["job_posting"]["previous_status"] == "outreach_in_progress"
+    assert report["job_posting"]["posting_status"] == "abandoned"
+    assert report["job_posting"]["updated_at"].endswith("Z")
+    assert report["retired_pipeline_runs"] == [
+        {
+            "pipeline_run_id": "pr_abandon",
+            "previous_run_status": "in_progress",
+            "new_run_status": "completed",
+            "previous_stage": "sending",
+            "new_stage": "abandoned",
+        }
+    ]
+    assert report["state_transition_event_id"]
+    assert report["override_event_id"]
+
+    connection = connect_database(project_root / "job_hunt_copilot.db")
+    posting_row = connection.execute(
+        """
+        SELECT posting_status, updated_at
+        FROM job_postings
+        WHERE job_posting_id = ?
+        """,
+        ("jp_abandon",),
+    ).fetchone()
+    pipeline_row = connection.execute(
+        """
+        SELECT run_status, current_stage, completed_at, run_summary
+        FROM pipeline_runs
+        WHERE pipeline_run_id = ?
+        """,
+        ("pr_abandon",),
+    ).fetchone()
+    state_transition_row = connection.execute(
+        """
+        SELECT object_type, object_id, stage, previous_state, new_state, transition_reason, caused_by
+        FROM state_transition_events
+        WHERE object_id = ?
+        ORDER BY transition_timestamp DESC, state_transition_event_id DESC
+        LIMIT 1
+        """,
+        ("jp_abandon",),
+    ).fetchone()
+    override_row = connection.execute(
+        """
+        SELECT object_type, object_id, component_stage, previous_value, new_value, override_reason, override_by
+        FROM override_events
+        WHERE object_id = ?
+        ORDER BY override_timestamp DESC, override_event_id DESC
+        LIMIT 1
+        """,
+        ("jp_abandon",),
+    ).fetchone()
+    connection.close()
+
+    assert dict(posting_row) == {
+        "posting_status": "abandoned",
+        "updated_at": report["job_posting"]["updated_at"],
+    }
+    assert dict(pipeline_row) == {
+        "run_status": "completed",
+        "current_stage": "abandoned",
+        "completed_at": report["job_posting"]["updated_at"],
+        "run_summary": "The linked job_posting jp_abandon was explicitly abandoned by the expert.",
+    }
+    assert dict(state_transition_row) == {
+        "object_type": "job_postings",
+        "object_id": "jp_abandon",
+        "stage": "posting_status",
+        "previous_state": "outreach_in_progress",
+        "new_state": "abandoned",
+        "transition_reason": "No longer pursuing this role.",
+        "caused_by": "local_runtime_control",
+    }
+    assert dict(override_row) == {
+        "object_type": "job_postings",
+        "object_id": "jp_abandon",
+        "component_stage": "posting_status",
+        "previous_value": "outreach_in_progress",
+        "new_value": "abandoned",
+        "override_reason": "No longer pursuing this role.",
+        "override_by": "owner",
+    }
+
+    run_script(
+        "scripts/ops/control_agent.py",
+        "start",
+        "--project-root",
+        str(project_root),
+        "--manual-command",
+        "jhc-agent-start",
+    )
+    cycle_report = json.loads(
+        run_script(
+            "scripts/ops/run_supervisor_cycle.py",
+            "--project-root",
+            str(project_root),
+        ).stdout
+    )
+    assert cycle_report["cycle"]["result"] == "no_work"
+
+
+def test_control_agent_script_abandon_is_idempotent_for_existing_abandoned_posting(tmp_path):
+    project_root = tmp_path / "repo"
+    project_root.mkdir()
+    create_minimal_project(project_root)
+    run_script(
+        "scripts/ops/control_agent.py",
+        "status",
+        "--project-root",
+        str(project_root),
+    )
+    connection = connect_database(project_root / "job_hunt_copilot.db")
+    seed_posting_for_abandon(connection, posting_status="abandoned")
+    connection.close()
+
+    report = json.loads(
+        run_script(
+            "scripts/ops/control_agent.py",
+            "abandon",
+            "--project-root",
+            str(project_root),
+            "--job-posting-id",
+            "jp_abandon",
+        ).stdout
+    )
+
+    assert report["status"] == "already_abandoned"
+    assert report["job_posting"]["previous_status"] == "abandoned"
+    assert report["job_posting"]["posting_status"] == "abandoned"
+    assert report["retired_pipeline_runs"] == []
+    assert report["state_transition_event_id"] is None
+    assert report["override_event_id"] is None
+
+    connection = connect_database(project_root / "job_hunt_copilot.db")
+    transition_count = connection.execute(
+        "SELECT COUNT(*) FROM state_transition_events WHERE object_id = ?",
+        ("jp_abandon",),
+    ).fetchone()[0]
+    override_count = connection.execute(
+        "SELECT COUNT(*) FROM override_events WHERE object_id = ?",
+        ("jp_abandon",),
+    ).fetchone()[0]
+    connection.close()
+
+    assert transition_count == 0
+    assert override_count == 0
 
 
 def test_run_supervisor_cycle_script_records_no_work_launchd_cycle(tmp_path):

@@ -1798,3 +1798,30 @@ Use this file as an append-only implementation log for the build agent.
 ### Notes
 - The acceptance matrix still reports `196 implemented / 3 partial / 13 gap` scenarios; this pass tightened regression evidence but did not close a remaining runtime/control gap.
 - The open BA-10-S3 gap clusters remain `BA10_MAINTENANCE_AUTOMATION`, `BA10_CHAT_REVIEW_AND_CONTROL`, `BA10_CHAT_IDLE_TIMEOUT_RESUME`, and `BA10_POSTING_ABANDON_CONTROL`.
+
+### Session
+- Date: 2026-04-08 20:03:20 MST
+- Slice: BA-10-S3 posting-abandon control burn-down
+- Goal: Close the posting-abandon BA-10 runtime/control gap with a real operator control path, explicit canonical history, and refreshed current-focus validation evidence.
+
+### Work Done
+- Added a real posting-scoped `abandon` control path in `job_hunt_copilot.local_runtime` plus `scripts/ops/control_agent.py`, including canonical `job_postings.posting_status = abandoned`, a `state_transition_events` row, an `override_events` row, and retirement of any non-terminal `pipeline_runs` tied to the posting.
+- Replaced the old negative local-runtime regression with positive coverage in `tests/test_local_runtime.py` for active-posting abandonment, active-run retirement, supervisor no-work behavior after abandonment, and idempotent re-abandon requests.
+- Closed the acceptance scenario in `job_hunt_copilot.acceptance_traceability`, regenerated the committed BA-10 acceptance trace and blocker audit reports, refreshed the latest BA-10 validation-suite snapshot, and updated `README.md`, `docs/ARCHITECTURE.md`, `build-agent/state/build-board.yaml`, and `build-agent/state/IMPLEMENTATION_PLAN.md` so the repo and build state now reflect the narrower three-gap BA-10-S3 surface honestly.
+
+### Validation
+- Ran `python3.11 -m py_compile job_hunt_copilot/local_runtime.py scripts/ops/control_agent.py tests/test_local_runtime.py` and confirmed the new runtime-control path compiles cleanly.
+- Ran `python3.11 -m pytest tests/test_local_runtime.py` and confirmed all 18 local-runtime regressions passed, including the new posting-abandon coverage.
+- Ran `python3.11 -m pytest tests/test_acceptance_traceability.py tests/test_blocker_audit.py tests/test_quality_validation.py` and confirmed all 20 report-guard tests passed after the closed-gap and count updates.
+- Ran `python3.11 -m pytest tests/test_smoke_harness.py` and confirmed the committed bootstrap -> tailoring -> discovery -> send -> delayed-feedback -> review-query smoke flow still passed.
+- Ran `python3.11 scripts/quality/run_ba10_validation_suite.py --project-root /Users/achyutaramsonti/Projects/job-hunt-copilot-v4 --current-focus` and confirmed all 5 automated current-focus commands passed while refreshing `build-agent/reports/ba-10-validation-suite-latest.{json,md}` at `2026-04-09T03:02:16Z`.
+
+### Result
+- `done`
+
+### Next
+- Keep BA-10-S3 open for the next remaining runtime/control burn-down slice. The best next slice is idle-timeout auto-resume after unexpected `jhc-chat` exit, with richer in-chat review/control or maintenance automation following after that.
+
+### Notes
+- The acceptance matrix now reports `197 implemented / 3 partial / 12 gap` scenarios, and the open BA-10-S3 gap clusters are now `BA10_MAINTENANCE_AUTOMATION`, `BA10_CHAT_REVIEW_AND_CONTROL`, and `BA10_CHAT_IDLE_TIMEOUT_RESUME`.
+- This slice intentionally stayed bounded to posting-abandon control, acceptance closure, and refreshed evidence. It did not claim maintenance automation, richer chat control routing, or idle-timeout recovery itself.

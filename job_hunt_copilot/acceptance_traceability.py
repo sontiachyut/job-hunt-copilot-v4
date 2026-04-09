@@ -257,21 +257,6 @@ GAP_REGISTRY: dict[str, dict[str, Any]] = {
             "tests/test_acceptance_traceability.py",
         ),
     ),
-    "BA10_POSTING_ABANDON_CONTROL": _gap_metadata(
-        title="Posting-abandon control surface is missing",
-        reason="There is no explicit user-facing or runtime control path that abandons a posting from arbitrary active orchestration states while preserving canonical history.",
-        next_slice="BA-10-S3",
-        evidence_summary="Agent-level start/stop/pause/resume/replan controls exist, but there is still no posting-scoped abandon command or runtime mutation path.",
-        evidence_code_refs=(
-            "scripts/ops/control_agent.py",
-            "job_hunt_copilot/local_runtime.py",
-            "job_hunt_copilot/supervisor.py",
-        ),
-        evidence_test_refs=(
-            "tests/test_local_runtime.py",
-            "tests/test_acceptance_traceability.py",
-        ),
-    ),
 }
 
 
@@ -900,9 +885,8 @@ _register_override(
 )
 _register_override(
     scenarios=("The user may explicitly abandon a posting from any active orchestration state",),
-    status=STATUS_GAP,
-    gap_ids=("BA10_POSTING_ABANDON_CONTROL",),
-    note="No posting-abandon runtime control surface or tests exist yet.",
+    status=STATUS_IMPLEMENTED,
+    note="`scripts/ops/control_agent.py` and `job_hunt_copilot.local_runtime` now provide a posting-scoped `abandon` control path that marks the canonical posting as `abandoned`, records the transition plus override lineage, and retires any non-terminal pipeline run tied to that posting.",
 )
 _register_override(
     scenarios=(

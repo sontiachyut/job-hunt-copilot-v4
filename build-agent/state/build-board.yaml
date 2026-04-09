@@ -28,7 +28,7 @@ global_status:
     - "BA-09 is now complete in code: delivery feedback now dedupes repeated mailbox signals at the logical-event level, exposes queryable feedback-reuse candidates for bounced and `not_bounced` discovery reads, keeps replied outcomes review-only, and lets discovery consume those feedback signals without auto-clearing contact email state."
     - "BA-10-S1 is now complete: `build-agent/reports/ba-10-acceptance-trace-matrix.json` and `.md` now map all 214 acceptance scenarios to owning epics, code, tests, and explicit hardening gaps, with a guard test that keeps the matrix aligned to `prd/test-spec.feature`."
     - "BA-10-S2 is now complete: `tests/test_smoke_harness.py` now drives a committed bootstrap -> tailoring -> discovery -> send -> delayed-feedback -> review-query smoke flow with deterministic fakes, and the regenerated acceptance trace matrix now closes the explicit smoke-harness gap while leaving the remaining blocker clusters honest."
-    - "BA-10-S3 remains in progress: targeted hardening regressions now prove unsupported tailoring asks stay explicit gaps, automatic outreach still requires approved review and blocks repeat ambiguity, outreach-message traceability omits raw reply excerpts, runtime secret values stay out of canonical state or review outputs, delayed feedback has dedicated launchd scheduler wiring, and `jhc-chat` now prints a persisted clean-first startup dashboard plus grouped review snapshot sourced from canonical state, moving the BA-10 reporting layer to 196 implemented, 3 partial, and 13 gap scenarios while the current-focus replay continues to rerun focused supervisor ordering evidence for the remaining maintenance partial."
+    - "BA-10-S3 remains in progress: targeted hardening regressions now prove unsupported tailoring asks stay explicit gaps, automatic outreach still requires approved review and blocks repeat ambiguity, outreach-message traceability omits raw reply excerpts, runtime secret values stay out of canonical state or review outputs, delayed feedback has dedicated launchd scheduler wiring, `jhc-chat` now prints a persisted clean-first startup dashboard plus grouped review snapshot sourced from canonical state, and the new posting-abandon control path now marks canonical postings as `abandoned` while retiring non-terminal pipeline runs cleanly, moving the BA-10 reporting layer to 197 implemented, 3 partial, and 12 gap scenarios while the current-focus replay continues to rerun focused supervisor ordering evidence for the remaining maintenance partial."
     - "BA-10-S4 is now complete in code: `job_hunt_copilot.supervisor` now advances durable role-targeted runs through `lead_handoff`, bounded mandatory review, bounded `people_search`, bounded `email_discovery`, bounded `sending`, and bounded `delivery_feedback`, and it now also advances contact-rooted general-learning work through bounded email discovery, send-ready dispatch, and delayed-feedback follow-through without posting linkage or role-targeted review prerequisites."
     - "`jhc-chat` now records canonical begin/end state, pauses autonomous work on open, resumes on clean explicit close when chat caused the pause, leaves unexpected-exit pauses intact until a later explicit resume or future idle-timeout handling, and now also materializes a persisted clean-first startup dashboard plus grouped review snapshot before Codex opens."
     - Host-side `launchctl bootstrap` success still needs follow-up validation outside the current sandboxed session even though the plist, wrapper wiring, and failed-start rollback all validate locally.
@@ -1033,9 +1033,9 @@ current_focus:
   epic_id: BA-10
   slice_id: BA-10-S3
   owner_role: quality-engineer
-  reason: BA-10-S4 closed the downstream supervisor action-catalog gap and the latest BA-10-S3 hardening pass burned down the `jhc-chat` startup dashboard plus active-runtime-metrics scenarios, but the acceptance matrix still holds at 196 implemented / 3 partial / 13 gap scenarios because maintenance automation, richer chat review/control, idle-timeout resume, and posting-abandon behavior remain open BA-10-S3 work.
+  reason: BA-10-S4 closed the downstream supervisor action-catalog gap and the latest BA-10-S3 hardening pass burned down the `jhc-chat` startup dashboard plus active-runtime-metrics scenarios; this cycle also closed the posting-abandon control gap, so the acceptance matrix now holds at 197 implemented / 3 partial / 12 gap scenarios with maintenance automation, richer chat review/control, and idle-timeout resume still open BA-10-S3 work.
   exit_criteria:
-    - targeted regressions and report refresh either close or keep explicit the remaining maintenance, chat, idle-timeout-resume, and posting-abandon gaps with fresh evidence
+    - targeted regressions and report refresh either close or keep explicit the remaining maintenance, chat, and idle-timeout-resume gaps with fresh evidence
     - blocker-audit current-focus validation resolves the BA-10-S3 command set directly from the remaining open gap clusters
     - the acceptance trace matrix, blocker audit, and state notes all agree on the remaining BA-10 blocker surface
 
@@ -1052,7 +1052,7 @@ known_blockers:
     status: open
     severity: high
     owner_role: quality-engineer
-    summary: "The regenerated BA-10 trace matrix now reports 196 implemented / 3 partial / 13 gap scenarios; explicit smoke-coverage targets, implemented-slice traceability, reproducible validation-command mappings, and a durable latest validation-suite report snapshot cover bootstrap, tailoring, discovery, send, feedback, review-query, downstream supervisor follow-through, and the new persisted `jhc-chat` startup dashboard surface, but richer chat review/control, idle-timeout resume, maintenance automation, and posting-abandon behavior themselves remain open."
+    summary: "The regenerated BA-10 trace matrix now reports 197 implemented / 3 partial / 12 gap scenarios; explicit smoke-coverage targets, implemented-slice traceability, reproducible validation-command mappings, and a durable latest validation-suite report snapshot cover bootstrap, tailoring, discovery, send, feedback, review-query, downstream supervisor follow-through, the persisted `jhc-chat` startup dashboard surface, and the new posting-abandon control path, but richer chat review/control, idle-timeout resume, and maintenance automation themselves remain open."
     evidence:
       - build-agent/reports/ba-10-acceptance-trace-matrix.json
       - build-agent/reports/ba-10-acceptance-trace-matrix.md
@@ -1080,7 +1080,7 @@ known_blockers:
       - tests/test_outreach.py
       - tests/test_review_queries.py
     impact: Acceptance signoff is more credible now that committed smoke coverage, blocker-specific evidence refs, explicit negative regressions, and exact open-scenario traces exist, but BA-10 still cannot close until the remaining gap clusters are actually burned down or deliberately left open.
-    next_action: "Hand the next functional slice to the build lead and the relevant runtime owner for one real remaining BA-10-S3 gap, starting with posting-abandon control or idle-timeout auto-resume, then refresh the BA-10 reports and validation-suite evidence."
+    next_action: "Hand the next functional slice to the build lead and the relevant runtime owner for one real remaining BA-10-S3 gap, starting with idle-timeout auto-resume, then richer chat review/control or maintenance automation, and refresh the BA-10 reports plus validation-suite evidence afterward."
   - blocker_id: BUILD-CLI-001
     status: open
     severity: medium

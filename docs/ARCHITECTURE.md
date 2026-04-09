@@ -89,7 +89,7 @@ The product runtime now has an explicit bootstrap layer under `job_hunt_copilot/
 - a bounded supervisor cycle executor that acquires the canonical lease, selects one work unit, persists a context snapshot, and records auto-pause or escalation outcomes through canonical incidents
 - expert review packet generation under `ops/review-packets/`, canonical `expert_review_packets` and `expert_review_decisions`, and override audit history through `override_events`
 - generated runtime self-awareness artifacts under `ops/agent/` for identity, policies, action catalog, service goals, escalation policy, progress log, ops plan, and bootstrap prompts
-- local launchd materialization under `ops/launchd/` plus repo-local `jhc-agent-start`, `jhc-agent-stop`, `jhc-agent-cycle`, `jhc-feedback-sync-cycle`, and `jhc-chat` wrappers for start/stop, one-shot heartbeat execution, recurring delayed-feedback polling, and the expert chat entrypoint
+- local launchd materialization under `ops/launchd/` plus repo-local `jhc-agent-start`, `jhc-agent-stop`, `jhc-agent-cycle`, `jhc-feedback-sync-cycle`, and `jhc-chat` wrappers for start/stop, one-shot heartbeat execution, recurring delayed-feedback polling, the expert chat entrypoint, and the explicit posting-abandon control path
 - canonical chat-session bookkeeping that records active-session state, pauses autonomous work on chat open, resumes on clean explicit close while preserving non-chat pause conditions, and now materializes a persisted clean-first startup dashboard plus grouped review snapshot from canonical state for `jhc-chat`
 - bootstrap checks for assets and local secret materialization
 - repo-local runtime directory creation for downstream components
@@ -107,7 +107,7 @@ The product runtime now has an explicit bootstrap layer under `job_hunt_copilot/
 
 The current hardening boundary is explicit rather than implied:
 - the end-to-end role-targeted and contact-rooted flows now have committed smoke plus regression coverage
-- the remaining open BA-10 gaps are autonomous maintenance workflow or artifacts, richer `jhc-chat` review and control behavior, idle-timeout auto-resume after unexpected chat exit, and posting-abandon control
+- the remaining open BA-10 gaps are autonomous maintenance workflow or artifacts, richer `jhc-chat` review and control behavior, and idle-timeout auto-resume after unexpected chat exit
 - those gaps stay visible through the committed BA-10 reports instead of being folded into the general architecture summary
 
 Important artifact families:

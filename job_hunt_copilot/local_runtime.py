@@ -20,15 +20,18 @@ from .delivery_feedback import (
     sync_delivery_feedback,
 )
 from .paths import ProjectPaths
-from .records import now_utc_iso
+from .records import new_canonical_id, now_utc_iso
 from .runtime_pack import materialize_runtime_pack, write_text_atomic
 from .supervisor import (
     AGENT_MODE_PAUSED,
     AGENT_MODE_RUNNING,
     AGENT_MODE_STOPPED,
+    NON_TERMINAL_RUN_STATUSES,
     begin_replanning,
+    complete_pipeline_run,
     pause_agent,
     read_agent_control_state,
+    record_override_event,
     resume_agent,
     run_supervisor_cycle,
     stop_agent,
@@ -48,6 +51,24 @@ FEEDBACK_SYNC_LAUNCHD_LABEL = "com.jobhuntcopilot.feedback-sync"
 FEEDBACK_SYNC_INTERVAL_SECONDS = DELAYED_FEEDBACK_POLL_INTERVAL_MINUTES * 60
 FEEDBACK_SYNC_SCHEDULER_NAME = "job-hunt-copilot-feedback-sync"
 FEEDBACK_SYNC_SCHEDULER_TYPE = "launchd"
+LOCAL_RUNTIME_COMPONENT = "local_runtime_control"
+JOB_POSTING_STATUS_SOURCED = "sourced"
+JOB_POSTING_STATUS_TAILORING_IN_PROGRESS = "tailoring_in_progress"
+JOB_POSTING_STATUS_RESUME_REVIEW_PENDING = "resume_review_pending"
+JOB_POSTING_STATUS_REQUIRES_CONTACTS = "requires_contacts"
+JOB_POSTING_STATUS_READY_FOR_OUTREACH = "ready_for_outreach"
+JOB_POSTING_STATUS_OUTREACH_IN_PROGRESS = "outreach_in_progress"
+JOB_POSTING_STATUS_ABANDONED = "abandoned"
+ABANDONABLE_POSTING_STATUSES = frozenset(
+    {
+        JOB_POSTING_STATUS_SOURCED,
+        JOB_POSTING_STATUS_TAILORING_IN_PROGRESS,
+        JOB_POSTING_STATUS_RESUME_REVIEW_PENDING,
+        JOB_POSTING_STATUS_REQUIRES_CONTACTS,
+        JOB_POSTING_STATUS_READY_FOR_OUTREACH,
+        JOB_POSTING_STATUS_OUTREACH_IN_PROGRESS,
+    }
+)
 CHAT_SESSION_EXIT_MODE_EXPLICIT_CLOSE = "explicit_close"
 CHAT_SESSION_EXIT_MODE_UNEXPECTED_EXIT = "unexpected_exit"
 CHAT_SESSION_EXIT_MODES = frozenset(
@@ -217,6 +238,46 @@ def append_jsonl_record(path: Path, payload: dict[str, Any]) -> None:
         handle.write("\n")
 
 
+def _record_state_transition(
+    connection: sqlite3.Connection,
+    *,
+    object_type: str,
+    object_id: str,
+    stage: str,
+    previous_state: str,
+    new_state: str,
+    transition_timestamp: str,
+    transition_reason: str | None,
+    lead_id: str | None,
+    job_posting_id: str | None,
+) -> str:
+    state_transition_event_id = new_canonical_id("state_transition_events")
+    connection.execute(
+        """
+        INSERT INTO state_transition_events (
+          state_transition_event_id, object_type, object_id, stage, previous_state,
+          new_state, transition_timestamp, transition_reason, caused_by, lead_id,
+          job_posting_id, contact_id
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        """,
+        (
+            state_transition_event_id,
+            object_type,
+            object_id,
+            stage,
+            previous_state,
+            new_state,
+            transition_timestamp,
+            transition_reason,
+            LOCAL_RUNTIME_COMPONENT,
+            lead_id,
+            job_posting_id,
+            None,
+        ),
+    )
+    return state_transition_event_id
+
+
 def render_supervisor_launchd_plist_payload(paths: ProjectPaths) -> dict[str, Any]:
     return {
         "Label": SUPERVISOR_LAUNCHD_LABEL,
@@ -369,6 +430,174 @@ def mutate_agent_control_state(
         },
         "command": command,
         "control_state": dict(snapshot.values),
+    }
+
+
+def abandon_job_posting(
+    job_posting_id: str,
+    *,
+    project_root: Path | str | None = None,
+    reason: str | None = None,
+    manual_command: str | None = None,
+    timestamp: str | None = None,
+) -> dict[str, Any]:
+    normalized_job_posting_id = job_posting_id.strip()
+    if not normalized_job_posting_id:
+        raise ValueError("job_posting_id is required for the abandon command.")
+
+    paths = ProjectPaths.from_root(project_root)
+    migration = initialize_database(paths.db_path)
+    current_timestamp = timestamp or now_utc_iso()
+    reason_text = (reason or "The posting was explicitly abandoned by the expert.").strip()
+
+    with connect_canonical_database(paths) as connection:
+        posting_row = connection.execute(
+            """
+            SELECT lead_id, posting_status
+            FROM job_postings
+            WHERE job_posting_id = ?
+            """,
+            (normalized_job_posting_id,),
+        ).fetchone()
+        if posting_row is None:
+            raise ValueError(f"job_posting {normalized_job_posting_id!r} does not exist.")
+
+        lead_id = str(posting_row["lead_id"]) if posting_row["lead_id"] else None
+        previous_status = str(posting_row["posting_status"] or "").strip()
+        if (
+            previous_status != JOB_POSTING_STATUS_ABANDONED
+            and previous_status not in ABANDONABLE_POSTING_STATUSES
+        ):
+            raise ValueError(
+                "Only non-terminal active postings may be abandoned; "
+                f"job_posting {normalized_job_posting_id!r} is at "
+                f"posting_status={previous_status!r}."
+            )
+
+        control_state = read_agent_control_state(connection, timestamp=current_timestamp)
+        open_pipeline_rows = connection.execute(
+            """
+            SELECT pipeline_run_id, run_status, current_stage
+            FROM pipeline_runs
+            WHERE job_posting_id = ?
+              AND run_status IN ({})
+            ORDER BY started_at ASC, pipeline_run_id ASC
+            """.format(",".join("?" for _ in NON_TERMINAL_RUN_STATUSES)),
+            (
+                normalized_job_posting_id,
+                *sorted(NON_TERMINAL_RUN_STATUSES),
+            ),
+        ).fetchall()
+
+        override_event = None
+        state_transition_event_id = None
+        if previous_status != JOB_POSTING_STATUS_ABANDONED:
+            with connection:
+                connection.execute(
+                    """
+                    UPDATE job_postings
+                    SET posting_status = ?, updated_at = ?
+                    WHERE job_posting_id = ?
+                    """,
+                    (
+                        JOB_POSTING_STATUS_ABANDONED,
+                        current_timestamp,
+                        normalized_job_posting_id,
+                    ),
+                )
+                state_transition_event_id = _record_state_transition(
+                    connection,
+                    object_type="job_postings",
+                    object_id=normalized_job_posting_id,
+                    stage="posting_status",
+                    previous_state=previous_status,
+                    new_state=JOB_POSTING_STATUS_ABANDONED,
+                    transition_timestamp=current_timestamp,
+                    transition_reason=reason_text,
+                    lead_id=lead_id,
+                    job_posting_id=normalized_job_posting_id,
+                )
+                override_event = record_override_event(
+                    connection,
+                    object_type="job_postings",
+                    object_id=normalized_job_posting_id,
+                    component_stage="posting_status",
+                    previous_value=previous_status,
+                    new_value=JOB_POSTING_STATUS_ABANDONED,
+                    override_reason=reason_text,
+                    override_by="owner",
+                    lead_id=lead_id,
+                    job_posting_id=normalized_job_posting_id,
+                    override_timestamp=current_timestamp,
+                )
+
+        retired_pipeline_runs: list[dict[str, str]] = []
+        for row in open_pipeline_rows:
+            previous_run_status = str(row["run_status"])
+            previous_stage = str(row["current_stage"])
+            run_summary = (
+                f"The linked job_posting {normalized_job_posting_id} was explicitly abandoned "
+                "by the expert."
+            )
+            if previous_status == JOB_POSTING_STATUS_ABANDONED:
+                run_summary = (
+                    f"The linked job_posting {normalized_job_posting_id} was already "
+                    "abandoned; the stray active pipeline_run was retired."
+                )
+            completed_run = complete_pipeline_run(
+                connection,
+                str(row["pipeline_run_id"]),
+                current_stage=JOB_POSTING_STATUS_ABANDONED,
+                run_summary=run_summary,
+                timestamp=current_timestamp,
+            )
+            retired_pipeline_runs.append(
+                {
+                    "pipeline_run_id": completed_run.pipeline_run_id,
+                    "previous_run_status": previous_run_status,
+                    "new_run_status": completed_run.run_status,
+                    "previous_stage": previous_stage,
+                    "new_stage": completed_run.current_stage,
+                }
+            )
+
+        current_posting = connection.execute(
+            """
+            SELECT lead_id, posting_status, updated_at
+            FROM job_postings
+            WHERE job_posting_id = ?
+            """,
+            (normalized_job_posting_id,),
+        ).fetchone()
+        status = (
+            "abandoned"
+            if previous_status != JOB_POSTING_STATUS_ABANDONED
+            else "already_abandoned"
+        )
+
+    return {
+        "contract_version": CONTRACT_VERSION,
+        "produced_at": now_utc_iso(),
+        "project_root": str(paths.project_root),
+        "database": {
+            "db_path": str(migration.db_path),
+            "applied_migrations": migration.applied_migrations,
+            "user_version": migration.user_version,
+        },
+        "command": "abandon",
+        "status": status,
+        "job_posting": {
+            "job_posting_id": normalized_job_posting_id,
+            "lead_id": str(current_posting["lead_id"]) if current_posting["lead_id"] else None,
+            "previous_status": previous_status,
+            "posting_status": str(current_posting["posting_status"]),
+            "updated_at": str(current_posting["updated_at"]),
+        },
+        "retired_pipeline_runs": retired_pipeline_runs,
+        "state_transition_event_id": state_transition_event_id,
+        "override_event_id": None if override_event is None else override_event.override_event_id,
+        "manual_command": manual_command,
+        "control_state": dict(control_state.values),
     }
 
 

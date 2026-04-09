@@ -3,9 +3,9 @@
 - Feature file: `prd/test-spec.feature`
 - Scenario count: `214`
 - Status counts:
-  - `implemented`: `196`
+  - `implemented`: `197`
   - `partial`: `3`
-  - `gap`: `13`
+  - `gap`: `12`
   - `deferred_optional`: `1`
   - `excluded_from_required_acceptance`: `1`
 
@@ -62,7 +62,7 @@
 | Delivery Feedback behavior | outreach-engineer | 11 | 0 | 0 | 0 | 0 |
 | Supervisor Agent behavior | build-lead | 20 | 3 | 10 | 0 | 0 |
 | Review surfaces and chat-based control | quality-engineer | 6 | 0 | 1 | 0 | 0 |
-| Current-build orchestration remains sequential | build-lead | 21 | 0 | 1 | 0 | 0 |
+| Current-build orchestration remains sequential | build-lead | 22 | 0 | 0 | 0 | 0 |
 | LinkedIn Scraping acceptance | ingestion-engineer | 12 | 0 | 0 | 0 | 0 |
 | End-to-end acceptance | quality-engineer | 3 | 0 | 0 | 0 | 1 |
 | Current-build safety, privacy, and evidence-grounding boundaries | quality-engineer | 3 | 0 | 0 | 0 | 0 |
@@ -158,16 +158,6 @@
 - Evidence test refs: `tests/test_local_runtime.py`, `tests/test_runtime_pack.py`, `tests/test_acceptance_traceability.py`
 - Scenarios: `1`
   - Expert-interaction resume follows explicit close, explicit resume, or safe idle timeout
-
-### BA10_POSTING_ABANDON_CONTROL: Posting-abandon control surface is missing
-- Next slice: `BA-10-S3`
-- Supporting slices: `BA-06-S1`, `BA-06-S2`, `BA-06-S3`, `BA-06-S4`, `BA-07-S1`, `BA-07-S2`, `BA-07-S3`, `BA-08-S1`, `BA-08-S2`, `BA-08-S3`, `BA-09-S1`, `BA-09-S2`, `BA-09-S3`, `BA-10-S3`
-- Reason: There is no explicit user-facing or runtime control path that abandons a posting from arbitrary active orchestration states while preserving canonical history.
-- Evidence summary: Agent-level start/stop/pause/resume/replan controls exist, but there is still no posting-scoped abandon command or runtime mutation path.
-- Evidence code refs: `scripts/ops/control_agent.py`, `job_hunt_copilot/local_runtime.py`, `job_hunt_copilot/supervisor.py`
-- Evidence test refs: `tests/test_local_runtime.py`, `tests/test_acceptance_traceability.py`
-- Scenarios: `1`
-  - The user may explicitly abandon a posting from any active orchestration state
 
 ## Epic Validation Ownership
 
