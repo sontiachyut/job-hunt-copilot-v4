@@ -103,6 +103,37 @@ def _load_validation_suite_report(project_root: Path) -> dict[str, Any] | None:
     return payload
 
 
+def _build_validation_selector_summary(payload: dict[str, Any]) -> dict[str, Any]:
+    return {
+        "requested_command_ids": list(payload.get("requested_command_ids") or []),
+        "requested_smoke_targets": list(payload.get("requested_smoke_targets") or []),
+        "requested_gap_ids": list(payload.get("requested_gap_ids") or []),
+        "requested_blocker_ids": list(payload.get("requested_blocker_ids") or []),
+        "requested_current_focus": bool(payload.get("requested_current_focus")),
+    }
+
+
+def _build_validation_selector_label(selector_summary: dict[str, Any]) -> str:
+    selector_parts: list[str] = []
+    if selector_summary["requested_current_focus"]:
+        selector_parts.append("current_focus")
+    if selector_summary["requested_blocker_ids"]:
+        selector_parts.append(
+            "blockers: " + ", ".join(selector_summary["requested_blocker_ids"])
+        )
+    if selector_summary["requested_gap_ids"]:
+        selector_parts.append("gaps: " + ", ".join(selector_summary["requested_gap_ids"]))
+    if selector_summary["requested_smoke_targets"]:
+        selector_parts.append(
+            "smoke: " + ", ".join(selector_summary["requested_smoke_targets"])
+        )
+    if selector_summary["requested_command_ids"]:
+        selector_parts.append(
+            "commands: " + ", ".join(selector_summary["requested_command_ids"])
+        )
+    return "; ".join(selector_parts) if selector_parts else "default_automated_plan"
+
+
 def _build_surface_status(
     project_root: Path,
     expectation: RepoSurfaceExpectation,
@@ -143,6 +174,7 @@ def _build_latest_validation_snapshot(
     project_root: Path,
     *,
     validation_suite_report: dict[str, Any] | None,
+    current_focus: dict[str, Any],
 ) -> dict[str, Any]:
     payload = validation_suite_report or _load_validation_suite_report(project_root)
     if payload is None:
@@ -156,6 +188,15 @@ def _build_latest_validation_snapshot(
                 "json_path": str(project_root / VALIDATION_SUITE_REPORT_JSON_PATH),
                 "markdown_path": str(project_root / VALIDATION_SUITE_REPORT_MD_PATH),
             },
+            "selector_summary": {
+                "requested_command_ids": [],
+                "requested_smoke_targets": [],
+                "requested_gap_ids": [],
+                "requested_blocker_ids": [],
+                "requested_current_focus": False,
+            },
+            "selector_label": "unavailable",
+            "tracks_current_focus": False,
         }
 
     summary = payload.get("summary") or {}
@@ -163,6 +204,16 @@ def _build_latest_validation_snapshot(
         "json_path": str(project_root / VALIDATION_SUITE_REPORT_JSON_PATH),
         "markdown_path": str(project_root / VALIDATION_SUITE_REPORT_MD_PATH),
     }
+    selector_summary = _build_validation_selector_summary(payload)
+    selector_details = payload.get("selector_details") or {}
+    selector_current_focus = selector_details.get("current_focus") or {}
+    tracks_current_focus = bool(
+        current_focus.get("slice_id")
+        and selector_summary["requested_current_focus"]
+        and selector_current_focus.get("epic_id") == current_focus.get("epic_id")
+        and selector_current_focus.get("slice_id") == current_focus.get("slice_id")
+        and selector_current_focus.get("owner_role") == current_focus.get("owner_role")
+    )
     return {
         "available": True,
         "generated_at": payload.get("generated_at"),
@@ -170,6 +221,9 @@ def _build_latest_validation_snapshot(
         "command_count": summary.get("command_count"),
         "failed_command_count": summary.get("failed_command_count"),
         "report_paths": report_paths,
+        "selector_summary": selector_summary,
+        "selector_label": _build_validation_selector_label(selector_summary),
+        "tracks_current_focus": tracks_current_focus,
     }
 
 
@@ -181,9 +235,11 @@ def build_repo_readiness_report(
     root = Path(project_root)
     board = _load_build_board(root)
     audit = build_ba10_blocker_audit(root)
+    current_focus = audit["current_focus"]
     latest_validation = _build_latest_validation_snapshot(
         root,
         validation_suite_report=validation_suite_report,
+        current_focus=current_focus,
     )
 
     epics = [
@@ -230,7 +286,6 @@ def build_repo_readiness_report(
     ]
 
     summary = audit["summary"]
-    current_focus = audit["current_focus"]
     return {
         "repo_readiness_report_version": REPO_READINESS_REPORT_VERSION,
         "generated_at": latest_validation["generated_at"],
@@ -303,6 +358,8 @@ def render_repo_readiness_markdown(report: dict[str, Any]) -> str:
                 f"- Passed: `{latest_validation['passed']}`",
                 f"- Command count: `{latest_validation['command_count']}`",
                 f"- Failed command count: `{latest_validation['failed_command_count']}`",
+                f"- Validation selector: `{latest_validation['selector_label']}`",
+                f"- Tracks active focus: `{latest_validation['tracks_current_focus']}`",
                 "- Validation suite report: "
                 f"`{latest_validation['report_paths']['markdown_path']}`",
             ]

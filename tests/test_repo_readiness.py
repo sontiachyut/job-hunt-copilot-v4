@@ -33,6 +33,15 @@ def test_repo_readiness_reports_are_current_and_repo_surfaces_are_honest():
 
     latest_validation = report["latest_validation"]
     assert latest_validation["available"] is True
+    assert latest_validation["selector_label"] == "current_focus"
+    assert latest_validation["selector_summary"] == {
+        "requested_command_ids": [],
+        "requested_smoke_targets": [],
+        "requested_gap_ids": [],
+        "requested_blocker_ids": [],
+        "requested_current_focus": True,
+    }
+    assert latest_validation["tracks_current_focus"] is True
     assert latest_validation["report_paths"]["markdown_path"].endswith(
         "build-agent/reports/ba-10-validation-suite-latest.md"
     )
@@ -78,3 +87,46 @@ def test_repo_readiness_reports_are_current_and_repo_surfaces_are_honest():
         "tests/test_repo_readiness.py"
         in VALIDATION_COMMANDS["qa_acceptance_reports"]["command"]
     )
+
+
+def test_repo_readiness_marks_latest_validation_as_custom_when_it_does_not_track_current_focus():
+    report = build_repo_readiness_report(
+        REPO_ROOT,
+        validation_suite_report={
+            "generated_at": "2026-04-09T20:15:00Z",
+            "passed": True,
+            "summary": {
+                "command_count": 11,
+                "failed_command_count": 0,
+            },
+            "report_paths": {
+                "json_path": str(REPO_ROOT / "build-agent/reports/ba-10-validation-suite-latest.json"),
+                "markdown_path": str(REPO_ROOT / "build-agent/reports/ba-10-validation-suite-latest.md"),
+            },
+            "requested_command_ids": [],
+            "requested_smoke_targets": [],
+            "requested_gap_ids": [],
+            "requested_blocker_ids": ["BA10-TRACE-001"],
+            "requested_current_focus": False,
+            "selector_details": {
+                "smoke_targets": [],
+                "acceptance_gaps": [],
+                "build_board_blockers": [
+                    {
+                        "blocker_id": "BA10-TRACE-001",
+                    }
+                ],
+                "current_focus": None,
+            },
+        },
+    )
+
+    assert report["latest_validation"]["selector_summary"] == {
+        "requested_command_ids": [],
+        "requested_smoke_targets": [],
+        "requested_gap_ids": [],
+        "requested_blocker_ids": ["BA10-TRACE-001"],
+        "requested_current_focus": False,
+    }
+    assert report["latest_validation"]["selector_label"] == "blockers: BA10-TRACE-001"
+    assert report["latest_validation"]["tracks_current_focus"] is False

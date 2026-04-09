@@ -1,6 +1,6 @@
 {
   "repo_readiness_report_version": 1,
-  "generated_at": "2026-04-09T19:52:13Z",
+  "generated_at": "2026-04-09T20:08:57Z",
   "project_root": "/Users/achyutaramsonti/Projects/job-hunt-copilot-v4",
   "sources": {
     "build_board": "build-agent/state/build-board.yaml",
@@ -34,14 +34,23 @@
   },
   "latest_validation": {
     "available": true,
-    "generated_at": "2026-04-09T19:52:13Z",
+    "generated_at": "2026-04-09T20:08:57Z",
     "passed": true,
-    "command_count": 11,
+    "command_count": 5,
     "failed_command_count": 0,
     "report_paths": {
       "json_path": "/Users/achyutaramsonti/Projects/job-hunt-copilot-v4/build-agent/reports/ba-10-validation-suite-latest.json",
       "markdown_path": "/Users/achyutaramsonti/Projects/job-hunt-copilot-v4/build-agent/reports/ba-10-validation-suite-latest.md"
-    }
+    },
+    "selector_summary": {
+      "requested_command_ids": [],
+      "requested_smoke_targets": [],
+      "requested_gap_ids": [],
+      "requested_blocker_ids": [],
+      "requested_current_focus": true
+    },
+    "selector_label": "current_focus",
+    "tracks_current_focus": true
   },
   "acceptance_status": {
     "scenario_count": 214,

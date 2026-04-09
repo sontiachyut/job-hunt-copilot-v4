@@ -703,6 +703,10 @@ def test_committed_validation_suite_latest_report_is_current_and_matches_resolve
     )
 
     assert committed_markdown == render_ba10_validation_suite_markdown(committed_report)
+    assert committed_report["requested_current_focus"] is True
+    assert committed_report["requested_gap_ids"] == []
+    assert committed_report["requested_blocker_ids"] == []
+    assert committed_report["requested_smoke_targets"] == []
 
     expected_selector_details = resolve_validation_selector_details(
         REPO_ROOT,

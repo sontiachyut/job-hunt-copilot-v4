@@ -16,41 +16,161 @@
   },
   "requested_command_ids": [],
   "requested_gap_ids": [],
-  "requested_blocker_ids": [
-    "BA10-TRACE-001"
-  ],
-  "requested_current_focus": false,
+  "requested_blocker_ids": [],
+  "requested_current_focus": true,
   "requested_smoke_targets": [],
   "include_manual": false,
   "skip_report_refresh": false,
   "selector_details": {
     "smoke_targets": [],
     "acceptance_gaps": [],
-    "build_board_blockers": [
-      {
-        "blocker_id": "BA10-TRACE-001",
-        "status": "open",
-        "owner_role": "quality-engineer",
-        "summary": "The regenerated BA-10 trace matrix now reports 201 implemented / 2 partial / 9 gap scenarios; explicit smoke-coverage targets, implemented-slice traceability, reproducible validation-command mappings, a guarded repo-readiness summary, and a durable latest validation-suite report snapshot cover bootstrap, tailoring, discovery, send, feedback, review-query, downstream supervisor follow-through, the persisted `jhc-chat` startup dashboard surface, explicit review-queue or change-summary reads, read-only idempotency for repeated chat-state helper queries, posting-abandon control, and idle-timeout auto-resume after unexpected chat exit, but maintenance automation and deeper chat guidance or override workflows still remain open.",
-        "validation_command_ids": [
-          "qa_acceptance_reports",
-          "qa_smoke_flow",
-          "qa_bootstrap_regressions",
-          "qa_tailoring_regressions",
-          "qa_discovery_regressions",
-          "qa_outreach_regressions",
-          "qa_feedback_regressions",
-          "qa_supervisor_regressions",
-          "qa_runtime_control_regressions",
-          "qa_review_surface_regressions",
-          "qa_runtime_pack_regressions"
-        ],
-        "validation_suite_command": "python3.11 scripts/quality/run_ba10_validation_suite.py --project-root <repo_root> --blocker-id BA10-TRACE-001"
-      }
-    ],
-    "current_focus": null
+    "build_board_blockers": [],
+    "current_focus": {
+      "epic_id": "BA-10",
+      "slice_id": "BA-10-S3",
+      "owner_role": "quality-engineer",
+      "reason": "BA-10-S4 closed the downstream supervisor action-catalog gap, the latest BA-10-S3 hardening passes burned down the `jhc-chat` startup dashboard plus active-runtime-metrics scenarios, posting-abandon control, idle-timeout auto-resume, and the explicit persisted-state review-queue or default change-summary chat reads, so the acceptance matrix now holds at 201 implemented / 2 partial / 9 gap scenarios with maintenance automation and deeper chat guidance or override workflows still open BA-10-S3 work.",
+      "gap_ids": [
+        "BA10_MAINTENANCE_AUTOMATION",
+        "BA10_CHAT_REVIEW_AND_CONTROL"
+      ],
+      "gap_summaries": [
+        {
+          "gap_id": "BA10_MAINTENANCE_AUTOMATION",
+          "title": "Maintenance workflow and artifacts are not implemented",
+          "next_slice": "BA-10-S3",
+          "open_scenario_count": 6,
+          "status_counts": {
+            "partial": 1,
+            "gap": 5
+          },
+          "validation_command_ids": [
+            "qa_runtime_pack_regressions",
+            "qa_acceptance_reports",
+            "qa_supervisor_regressions"
+          ],
+          "validation_suite_command": "python3.11 scripts/quality/run_ba10_validation_suite.py --project-root <repo_root> --gap-id BA10_MAINTENANCE_AUTOMATION",
+          "open_scenarios": [
+            {
+              "name": "Maintenance change artifacts exist for every autonomous maintenance batch",
+              "status": "gap",
+              "rule": "Machine handoff contracts and canonical state",
+              "scenario_line": 220,
+              "note": "Maintenance artifacts are specified in the schema and PRD, but no maintenance batch workflow writes them yet."
+            },
+            {
+              "name": "Supervisor work selection follows the current default priority order",
+              "status": "partial",
+              "rule": "Supervisor Agent behavior",
+              "scenario_line": 1132,
+              "note": "Current supervisor regressions prove open incidents outrank ordinary pipeline advancement, existing runs outrank new posting bootstrap, new postings outrank opportunistic contact-rooted general-learning work, and contact-rooted general-learning work now covers bounded delayed feedback, send-ready dispatch, and email discovery, but bounded maintenance work itself still has no dedicated selector or action path."
+            },
+            {
+              "name": "Daily maintenance is mandatory, bounded, and run-boundary aware",
+              "status": "gap",
+              "rule": "Supervisor Agent behavior",
+              "scenario_line": 1322,
+              "note": "Only maintenance placeholders exist today; the maintenance workflow itself is still missing."
+            },
+            {
+              "name": "Maintenance changes follow the current git and approval workflow",
+              "status": "gap",
+              "rule": "Supervisor Agent behavior",
+              "scenario_line": 1331,
+              "note": "Only maintenance placeholders exist today; the maintenance workflow itself is still missing."
+            },
+            {
+              "name": "Proper maintenance validation requires both change-scoped and full-project testing",
+              "status": "gap",
+              "rule": "Supervisor Agent behavior",
+              "scenario_line": 1342,
+              "note": "Only maintenance placeholders exist today; the maintenance workflow itself is still missing."
+            },
+            {
+              "name": "Failed or unapproved maintenance batches remain reviewable",
+              "status": "gap",
+              "rule": "Supervisor Agent behavior",
+              "scenario_line": 1349,
+              "note": "Only maintenance placeholders exist today; the maintenance workflow itself is still missing."
+            }
+          ]
+        },
+        {
+          "gap_id": "BA10_CHAT_REVIEW_AND_CONTROL",
+          "title": "Chat review and control are still missing deeper expert-guidance workflows",
+          "next_slice": "BA-10-S3",
+          "open_scenario_count": 5,
+          "status_counts": {
+            "partial": 1,
+            "gap": 4
+          },
+          "validation_command_ids": [
+            "qa_runtime_control_regressions",
+            "qa_review_surface_regressions",
+            "qa_runtime_pack_regressions",
+            "qa_acceptance_reports"
+          ],
+          "validation_suite_command": "python3.11 scripts/quality/run_ba10_validation_suite.py --project-root <repo_root> --gap-id BA10_CHAT_REVIEW_AND_CONTROL",
+          "open_scenarios": [
+            {
+              "name": "jhc-chat uses persisted state for answers and control routing",
+              "status": "partial",
+              "rule": "Supervisor Agent behavior",
+              "scenario_line": 1249,
+              "note": "`scripts/ops/chat_state.py` now rereads persisted dashboard, review-queue, and change-summary state, and `scripts/ops/control_agent.py` remains the canonical global-control route, but generic object-specific override routing and broader chat-native control workflows are still incomplete."
+            },
+            {
+              "name": "Expert guidance becomes live immediately but conflicting or uncertain reuse asks first",
+              "status": "gap",
+              "rule": "Supervisor Agent behavior",
+              "scenario_line": 1273,
+              "note": "The direct `jhc-chat` wrapper now has persisted review-queue and default change-summary helper reads, but expert-guidance reuse decisions, conflict-wide pausing, and background-task handoff or return workflows are still missing."
+            },
+            {
+              "name": "Conflicting expert guidance pauses the whole autonomous system",
+              "status": "gap",
+              "rule": "Supervisor Agent behavior",
+              "scenario_line": 1281,
+              "note": "The direct `jhc-chat` wrapper now has persisted review-queue and default change-summary helper reads, but expert-guidance reuse decisions, conflict-wide pausing, and background-task handoff or return workflows are still missing."
+            },
+            {
+              "name": "Expert-requested background tasks require explicit handoff summary and exclusive focus",
+              "status": "gap",
+              "rule": "Supervisor Agent behavior",
+              "scenario_line": 1307,
+              "note": "The direct `jhc-chat` wrapper now has persisted review-queue and default change-summary helper reads, but expert-guidance reuse decisions, conflict-wide pausing, and background-task handoff or return workflows are still missing."
+            },
+            {
+              "name": "Expert-requested background task outcomes return to review appropriately",
+              "status": "gap",
+              "rule": "Supervisor Agent behavior",
+              "scenario_line": 1314,
+              "note": "The direct `jhc-chat` wrapper now has persisted review-queue and default change-summary helper reads, but expert-guidance reuse decisions, conflict-wide pausing, and background-task handoff or return workflows are still missing."
+            }
+          ]
+        }
+      ],
+      "validation_command_ids": [
+        "qa_runtime_pack_regressions",
+        "qa_acceptance_reports",
+        "qa_supervisor_regressions",
+        "qa_runtime_control_regressions",
+        "qa_review_surface_regressions"
+      ],
+      "validation_suite_command": "python3.11 scripts/quality/run_ba10_validation_suite.py --project-root <repo_root> --current-focus"
+    }
   },
   "commands": [
+    {
+      "command_id": "qa_runtime_pack_regressions",
+      "title": "Runtime pack regressions",
+      "kind": "automated",
+      "command": "python3.11 -m pytest tests/test_runtime_pack.py",
+      "description": "Confirms generated runtime scaffolding stays honest about current action-catalog and maintenance placeholder status.",
+      "status": "passed",
+      "returncode": 0,
+      "duration_seconds": 0.309
+    },
     {
       "command_id": "qa_acceptance_reports",
       "title": "Acceptance report guards",
@@ -59,67 +179,7 @@
       "description": "Keeps the committed BA-10 acceptance, blocker, readiness, and validation-suite reports synchronized with repo code, tests, and state references.",
       "status": "passed",
       "returncode": 0,
-      "duration_seconds": 2.104
-    },
-    {
-      "command_id": "qa_smoke_flow",
-      "title": "Smoke harness flow",
-      "kind": "automated",
-      "command": "python3.11 -m pytest tests/test_smoke_harness.py",
-      "description": "Replays the committed bootstrap -> tailoring -> discovery -> send -> feedback -> review-query smoke path.",
-      "status": "passed",
-      "returncode": 0,
-      "duration_seconds": 2.359
-    },
-    {
-      "command_id": "qa_bootstrap_regressions",
-      "title": "Bootstrap regressions",
-      "kind": "automated",
-      "command": "python3.11 -m pytest tests/test_bootstrap.py tests/test_schema.py tests/test_artifacts.py",
-      "description": "Confirms bootstrap prerequisites, canonical schema migration, and shared artifact contracts stay valid.",
-      "status": "passed",
-      "returncode": 0,
-      "duration_seconds": 0.509
-    },
-    {
-      "command_id": "qa_tailoring_regressions",
-      "title": "Tailoring regressions",
-      "kind": "automated",
-      "command": "python3.11 -m pytest tests/test_resume_tailoring.py",
-      "description": "Confirms tailoring bootstrap, deterministic artifact generation, compile verification, and mandatory review gates stay intact.",
-      "status": "passed",
-      "returncode": 0,
-      "duration_seconds": 5.95
-    },
-    {
-      "command_id": "qa_discovery_regressions",
-      "title": "Discovery regressions",
-      "kind": "automated",
-      "command": "python3.11 -m pytest tests/test_email_discovery.py",
-      "description": "Confirms people search, shortlist materialization, enrichment, discovery artifacts, and provider-budget behavior stay intact.",
-      "status": "passed",
-      "returncode": 0,
-      "duration_seconds": 0.793
-    },
-    {
-      "command_id": "qa_outreach_regressions",
-      "title": "Outreach regressions",
-      "kind": "automated",
-      "command": "python3.11 -m pytest tests/test_outreach.py",
-      "description": "Confirms send-set readiness, draft persistence, safe send execution, and repeat-outreach guardrails stay intact.",
-      "status": "passed",
-      "returncode": 0,
-      "duration_seconds": 1.032
-    },
-    {
-      "command_id": "qa_feedback_regressions",
-      "title": "Delivery feedback regressions",
-      "kind": "automated",
-      "command": "python3.11 -m pytest tests/test_delivery_feedback.py",
-      "description": "Confirms immediate or delayed feedback ingestion, normalized event persistence, and delivery outcome artifacts stay intact.",
-      "status": "passed",
-      "returncode": 0,
-      "duration_seconds": 0.352
+      "duration_seconds": 2.307
     },
     {
       "command_id": "qa_supervisor_regressions",
@@ -129,7 +189,7 @@
       "description": "Confirms incident-first selector ordering, existing-run reuse, bounded role-targeted progression through `delivery_feedback`, and contact-rooted general-learning follow-through while keeping the remaining maintenance-selector gap explicit.",
       "status": "passed",
       "returncode": 0,
-      "duration_seconds": 1.206
+      "duration_seconds": 1.055
     },
     {
       "command_id": "qa_runtime_control_regressions",
@@ -139,7 +199,7 @@
       "description": "Covers launchd plist wiring, control commands, chat lifecycle state, delayed feedback runners, and explicit negative control cases.",
       "status": "passed",
       "returncode": 0,
-      "duration_seconds": 11.877
+      "duration_seconds": 12.052
     },
     {
       "command_id": "qa_review_surface_regressions",
@@ -149,31 +209,21 @@
       "description": "Verifies persisted grouped review surfaces and traceability reads that back the chat/review boundary.",
       "status": "passed",
       "returncode": 0,
-      "duration_seconds": 0.453
-    },
-    {
-      "command_id": "qa_runtime_pack_regressions",
-      "title": "Runtime pack regressions",
-      "kind": "automated",
-      "command": "python3.11 -m pytest tests/test_runtime_pack.py",
-      "description": "Confirms generated runtime scaffolding stays honest about current action-catalog and maintenance placeholder status.",
-      "status": "passed",
-      "returncode": 0,
-      "duration_seconds": 0.223
+      "duration_seconds": 0.471
     }
   ],
   "failed_command_ids": [],
   "passed": true,
   "validation_suite_report_version": 2,
-  "generated_at": "2026-04-09T19:52:13Z",
+  "generated_at": "2026-04-09T20:08:57Z",
   "summary": {
-    "command_count": 11,
+    "command_count": 5,
     "command_kind_counts": {
-      "automated": 11
+      "automated": 5
     },
-    "passed_command_count": 11,
+    "passed_command_count": 5,
     "failed_command_count": 0,
-    "total_duration_seconds": 26.858
+    "total_duration_seconds": 16.194
   },
   "repo_status": {
     "acceptance_scenario_count": 214,

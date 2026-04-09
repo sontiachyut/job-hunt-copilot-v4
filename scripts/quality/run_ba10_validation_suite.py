@@ -139,6 +139,25 @@ def main() -> int:
     if not args.skip_report_refresh:
         refreshed_reports = refresh_ba10_validation_reports(project_root)
 
+    # Seed the committed "latest" snapshot with the selector-aligned plan before
+    # report-guard tests run so a focus change does not fail on stale metadata.
+    preflight_payload = {
+        "project_root": str(project_root),
+        "refreshed_reports": refreshed_reports,
+        "requested_command_ids": list(args.command_ids),
+        "requested_gap_ids": list(args.gap_ids),
+        "requested_blocker_ids": list(args.blocker_ids),
+        "requested_current_focus": args.current_focus,
+        "requested_smoke_targets": list(args.smoke_target_ids),
+        "include_manual": args.include_manual,
+        "skip_report_refresh": args.skip_report_refresh,
+        "selector_details": selector_details,
+        "commands": [command.as_dict() for command in plan],
+        "failed_command_ids": [],
+        "passed": False,
+    }
+    write_ba10_validation_suite_reports(project_root, preflight_payload)
+
     results: list[dict[str, object]] = []
     failed_command_ids: list[str] = []
     for command in plan:

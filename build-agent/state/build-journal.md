@@ -2133,3 +2133,30 @@ Use this file as an append-only implementation log for the build agent.
 ### Notes
 - The acceptance matrix still reports `201 implemented / 2 partial / 9 gap` scenarios, and the open BA-10-S3 gap clusters remain `BA10_MAINTENANCE_AUTOMATION` and `BA10_CHAT_REVIEW_AND_CONTROL`.
 - This session improved regression honesty and readiness evidence, but it did not claim any new functional chat-control or maintenance implementation.
+
+### Session
+- Date: 2026-04-09 13:06:27 MST
+- Slice: BA-10-S3 current-focus selector-alignment hardening
+- Goal: Keep the committed latest BA-10 validation snapshot honest about the active slice and make the current-focus replay recover automatically from stale blocker-specific report state.
+
+### Work Done
+- Tightened `job_hunt_copilot.repo_readiness` so the readiness summary now records the latest validation selector label and whether that snapshot actually tracks the active BA-10 current-focus slice.
+- Extended `tests/test_repo_readiness.py` and `tests/test_quality_validation.py` so the committed latest validation snapshot must now stay on the `--current-focus` selector while BA-10-S3 remains the active slice, and so blocker-specific latest-report drift fails closed in the acceptance-report guard path.
+- Updated `scripts/quality/run_ba10_validation_suite.py` so non-dry-run replays seed the selector-aligned `build-agent/reports/ba-10-validation-suite-latest.{json,md}` snapshot before executing command steps, which removes the stale-selector bootstrap failure when a replay switches from blocker-specific evidence back to `--current-focus`.
+- Forced a stale blocker-specific latest validation snapshot deliberately, then re-ran the current-focus replay so the committed `build-agent/reports/ba-10-validation-suite-latest.{json,md}` and `build-agent/reports/repo-readiness-summary.{json,md}` now prove the repaired self-healing path instead of only describing it.
+- Updated `build-agent/state/build-board.yaml`, `build-agent/state/IMPLEMENTATION_PLAN.md`, `build-agent/state/build-journal.md`, and `build-agent/state/codex-progress.txt` so the persisted build memory records this report-hardening slice explicitly.
+
+### Validation
+- Seeded a stale blocker-specific latest validation snapshot with a one-off `python3.11` helper that called `write_ba10_validation_suite_reports(...)` for `BA10-TRACE-001`.
+- Ran `python3.11 scripts/quality/run_ba10_validation_suite.py --project-root /Users/achyutaramsonti/Projects/job-hunt-copilot-v4 --current-focus` and confirmed the stale-to-current-focus repair path passed all 5 automated checks.
+- Re-ran `python3.11 scripts/quality/run_ba10_validation_suite.py --project-root /Users/achyutaramsonti/Projects/job-hunt-copilot-v4 --current-focus` after the state-file checkpoint and refreshed `build-agent/reports/ba-10-validation-suite-latest.{json,md}` plus `build-agent/reports/repo-readiness-summary.{json,md}` again at `2026-04-09T20:08:57Z`, with the same 5 automated checks still passing.
+
+### Result
+- `partial`
+
+### Next
+- Keep BA-10-S3 open for a real remaining functional blocker. The next best slice is still build-lead ownership for the remaining `jhc-chat` control-routing and expert-guidance gap, starting with generic object-specific override routing or conflict handling before maintenance automation.
+
+### Notes
+- The acceptance matrix still reports `201 implemented / 2 partial / 9 gap` scenarios, and the open BA-10-S3 gap clusters remain `BA10_MAINTENANCE_AUTOMATION` and `BA10_CHAT_REVIEW_AND_CONTROL`.
+- This session stayed inside quality ownership: it hardened the replay evidence path and readiness notes, but it did not claim any new functional chat-control or maintenance implementation.
