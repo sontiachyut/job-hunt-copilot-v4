@@ -10,6 +10,7 @@ from job_hunt_copilot.outreach import (
 )
 from job_hunt_copilot.paths import ProjectPaths
 from job_hunt_copilot.supervisor import (
+    ACTION_RUN_GENERAL_LEARNING_OUTREACH,
     ACTION_PERFORM_MANDATORY_AGENT_REVIEW,
     ACTION_RUN_ROLE_TARGETED_EMAIL_DISCOVERY,
     ACTION_RUN_ROLE_TARGETED_DELIVERY_FEEDBACK,
@@ -1194,11 +1195,16 @@ def test_existing_pipeline_run_is_selected_before_bootstrapping_another_eligible
     ]
 
 
-def test_contact_rooted_general_learning_work_is_not_selected_yet(tmp_path: Path) -> None:
+def test_contact_rooted_general_learning_contact_is_selected_and_sent_without_pipeline_run(
+    tmp_path: Path,
+) -> None:
     project_root = bootstrap_project(tmp_path)
     paths = ProjectPaths.from_root(project_root)
+    write_sender_profile(paths)
     connection = connect_database(project_root / "job_hunt_copilot.db")
     contact_id = seed_general_learning_contact(connection)
+    sender = OutreachRecordingSender()
+    observer = OutreachImmediateBounceObserver(event_timestamp="2026-04-08T00:06:30Z")
     resume_agent(
         connection,
         manual_command="jhc-agent-start",
@@ -1211,30 +1217,130 @@ def test_contact_rooted_general_learning_work_is_not_selected_yet(tmp_path: Path
         trigger_type="launchd_heartbeat",
         scheduler_name="launchd",
         started_at="2026-04-08T00:06:00Z",
+        action_dependencies=SupervisorActionDependencies(
+            outreach_sender=sender,
+            feedback_observer=observer,
+        ),
     )
     pipeline_run_count = connection.execute(
         "SELECT COUNT(*) FROM pipeline_runs"
     ).fetchone()[0]
     contact_row = connection.execute(
         """
-        SELECT contact_id, current_working_email
+        SELECT contact_id, current_working_email, contact_status
         FROM contacts
         WHERE contact_id = ?
         """,
         (contact_id,),
     ).fetchone()
+    message_row = connection.execute(
+        """
+        SELECT outreach_message_id, outreach_mode, message_status, job_posting_id, sent_at
+        FROM outreach_messages
+        WHERE contact_id = ?
+        ORDER BY created_at DESC, outreach_message_id DESC
+        LIMIT 1
+        """,
+        (contact_id,),
+    ).fetchone()
+    feedback_sync_row = connection.execute(
+        """
+        SELECT scheduler_name, scheduler_type, observation_scope, result
+        FROM feedback_sync_runs
+        ORDER BY started_at DESC, feedback_sync_run_id DESC
+        LIMIT 1
+        """
+    ).fetchone()
     connection.close()
 
-    assert execution.cycle.result == SUPERVISOR_CYCLE_RESULT_NO_WORK
-    assert execution.selected_work is None
+    assert execution.cycle.result == SUPERVISOR_CYCLE_RESULT_SUCCESS
+    assert execution.selected_work is not None
+    assert execution.selected_work.work_type == "contact"
+    assert execution.selected_work.work_id == contact_id
+    assert execution.selected_work.action_id == ACTION_RUN_GENERAL_LEARNING_OUTREACH
     assert execution.pipeline_run is None
     assert execution.incident is None
     assert execution.review_packet is None
-    assert execution.cycle.error_summary == "no bounded supervisor work unit is currently due"
+    assert execution.cycle.error_summary is None
     assert pipeline_run_count == 0
+    assert sender.attempted_message_ids == [message_row["outreach_message_id"]]
     assert contact_row is not None
     assert contact_row["contact_id"] == contact_id
     assert contact_row["current_working_email"] == "sam.learner@acme.example"
+    assert contact_row["contact_status"] == "sent"
+    assert dict(message_row) == {
+        "outreach_message_id": message_row["outreach_message_id"],
+        "outreach_mode": "general_learning",
+        "message_status": "sent",
+        "job_posting_id": None,
+        "sent_at": "2026-04-08T00:06:00Z",
+    }
+    assert dict(feedback_sync_row) == {
+        "scheduler_name": "interactive_post_send",
+        "scheduler_type": "interactive",
+        "observation_scope": "immediate_post_send",
+        "result": "success",
+    }
+    assert observer.poll_calls[0]["message_ids"] == [message_row["outreach_message_id"]]
+    assert observer.poll_calls[0]["observation_scope"] == "immediate_post_send"
+
+
+def test_new_role_targeted_posting_is_selected_before_general_learning_contact(
+    tmp_path: Path,
+) -> None:
+    project_root = bootstrap_project(tmp_path)
+    paths = ProjectPaths.from_root(project_root)
+    write_sender_profile(paths)
+    connection = connect_database(project_root / "job_hunt_copilot.db")
+    contact_id = seed_general_learning_contact(connection)
+    lead_id, job_posting_id = seed_role_targeted_posting(connection)
+    resume_agent(
+        connection,
+        manual_command="jhc-agent-start",
+        timestamp="2026-04-08T00:05:00Z",
+    )
+
+    execution = run_supervisor_cycle(
+        connection,
+        paths,
+        trigger_type="launchd_heartbeat",
+        scheduler_name="launchd",
+        started_at="2026-04-08T00:06:00Z",
+        action_dependencies=SupervisorActionDependencies(
+            outreach_sender=OutreachRecordingSender()
+        ),
+    )
+    pipeline_run_rows = connection.execute(
+        """
+        SELECT job_posting_id, current_stage
+        FROM pipeline_runs
+        ORDER BY started_at DESC, pipeline_run_id DESC
+        """
+    ).fetchall()
+    message_count = connection.execute(
+        """
+        SELECT COUNT(*)
+        FROM outreach_messages
+        WHERE contact_id = ?
+        """,
+        (contact_id,),
+    ).fetchone()[0]
+    connection.close()
+
+    assert execution.cycle.result == SUPERVISOR_CYCLE_RESULT_SUCCESS
+    assert execution.selected_work is not None
+    assert execution.selected_work.work_type == "job_posting"
+    assert execution.selected_work.job_posting_id == job_posting_id
+    assert execution.pipeline_run is not None
+    assert execution.pipeline_run.lead_id == lead_id
+    assert execution.pipeline_run.job_posting_id == job_posting_id
+    assert [dict(row) for row in pipeline_run_rows] == [
+        {
+            "job_posting_id": job_posting_id,
+            "current_stage": "lead_handoff",
+        }
+    ]
+    assert message_count == 0
 
 def test_delivery_feedback_stage_stays_active_while_high_level_outcome_is_still_pending(
     tmp_path: Path,

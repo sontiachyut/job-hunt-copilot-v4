@@ -3,8 +3,8 @@
 - Feature file: `prd/test-spec.feature`
 - Scenario count: `214`
 - Status counts:
-  - `implemented`: `193`
-  - `partial`: `5`
+  - `implemented`: `194`
+  - `partial`: `4`
   - `gap`: `14`
   - `deferred_optional`: `1`
   - `excluded_from_required_acceptance`: `1`
@@ -62,7 +62,7 @@
 | Delivery Feedback behavior | outreach-engineer | 11 | 0 | 0 | 0 | 0 |
 | Supervisor Agent behavior | build-lead | 18 | 4 | 11 | 0 | 0 |
 | Review surfaces and chat-based control | quality-engineer | 6 | 0 | 1 | 0 | 0 |
-| Current-build orchestration remains sequential | build-lead | 20 | 1 | 1 | 0 | 0 |
+| Current-build orchestration remains sequential | build-lead | 21 | 0 | 1 | 0 | 0 |
 | LinkedIn Scraping acceptance | ingestion-engineer | 12 | 0 | 0 | 0 | 0 |
 | End-to-end acceptance | quality-engineer | 3 | 0 | 0 | 0 | 1 |
 | Current-build safety, privacy, and evidence-grounding boundaries | quality-engineer | 3 | 0 | 0 | 0 | 0 |
@@ -117,20 +117,19 @@
 
 ## Explicit Gaps
 
-### BA10_SUPERVISOR_DOWNSTREAM_ACTION_CATALOG: Supervisor orchestration still lacks contact-rooted general-learning selection
+### BA10_SUPERVISOR_DOWNSTREAM_ACTION_CATALOG: Supervisor general-learning orchestration remains partial beyond send-ready contact dispatch
 - Next slice: `BA-10-S4`
-- Supporting slices: `BA-02-S1`, `BA-02-S2`, `BA-02-S3`, `BA-03-S1`, `BA-03-S2`, `BA-03-S3`, `BA-06-S1`, `BA-06-S2`, `BA-06-S3`, `BA-06-S4`, `BA-07-S1`, `BA-07-S2`, `BA-07-S3`, `BA-08-S1`, `BA-08-S2`, `BA-08-S3`, `BA-09-S1`, `BA-09-S2`, `BA-09-S3`, `BA-10-S4`
-- Reason: The durable heartbeat now covers the role-targeted flow through bounded delivery-feedback completion, but contact-rooted general-learning work still yields no selected supervisor action and remains outside the registered autonomous catalog.
-- Evidence summary: Focused downstream-stage regressions prove active incidents still outrank ordinary progression, existing durable runs are selected before bootstrapping new eligible postings, `lead_handoff` now advances into `agent_review`, bounded mandatory agent review advances the same run into `people_search`, bounded people search materializes shortlist artifacts and advances the same run into `email_discovery`, bounded email discovery advances the same durable run into `sending` when readiness is satisfied, bounded sending now drafts the ready send set, executes one safe send, stays at `sending` while later-wave contacts remain paced, advances the same durable run into `delivery_feedback` after terminal sent waves, bounded delivery feedback now runs the shared delayed-sync logic, keeps the durable run active while high-level outcomes remain pending, completes the same durable run with a review packet once all sent messages reach bounced, not_bounced, or replied state, and a ready contact-rooted general-learning candidate still yields no selected supervisor work.
+- Supporting slices: `BA-02-S1`, `BA-02-S2`, `BA-02-S3`, `BA-03-S1`, `BA-03-S2`, `BA-03-S3`, `BA-10-S4`
+- Reason: The durable heartbeat now covers the role-targeted flow through bounded delivery-feedback completion and can dispatch one send-ready contact-rooted general-learning send, but contact-rooted email discovery and delayed feedback follow-through still remain outside the registered autonomous catalog.
+- Evidence summary: Focused downstream-stage regressions prove active incidents still outrank ordinary progression, existing durable runs are selected before bootstrapping new eligible postings, `lead_handoff` now advances into `agent_review`, bounded mandatory agent review advances the same run into `people_search`, bounded people search materializes shortlist artifacts and advances the same run into `email_discovery`, bounded email discovery advances the same durable run into `sending` when readiness is satisfied, bounded sending now drafts the ready send set, executes one safe send, stays at `sending` while later-wave contacts remain paced, advances the same durable run into `delivery_feedback` after terminal sent waves, bounded delivery feedback now runs the shared delayed-sync logic, keeps the durable run active while high-level outcomes remain pending, completes the same durable run with a review packet once all sent messages reach bounced, not_bounced, or replied state, a send-ready contact-rooted general-learning candidate is now selected and sent without posting linkage or review-gate prerequisites, and the remaining contact-rooted gaps are bounded to email discovery plus delayed-feedback follow-through.
 - Evidence code refs: `job_hunt_copilot/supervisor.py`, `job_hunt_copilot/email_discovery.py`, `job_hunt_copilot/outreach.py`, `job_hunt_copilot/delivery_feedback.py`, `job_hunt_copilot/local_runtime.py`, `job_hunt_copilot/runtime_pack.py`
 - Evidence test refs: `tests/test_supervisor_downstream_actions.py`, `tests/test_blocker_audit.py`, `tests/test_acceptance_traceability.py`
 - Implementation snapshot:
-  - Current selector priority order: `active_incident`, `open_pipeline_run`, `new_role_targeted_posting`
+  - Current selector priority order: `active_incident`, `open_pipeline_run`, `new_role_targeted_posting`, `general_learning_contact`
   - Registered role-targeted checkpoint stages: `agent_review`, `lead_handoff`
-  - Unsupported autonomous scope paths: `contact_rooted_general_learning`
-- Scenarios: `2`
+  - Unsupported autonomous scope paths: `contact_rooted_general_learning_email_discovery`, `contact_rooted_general_learning_delayed_feedback_followthrough`
+- Scenarios: `1`
   - Supervisor work selection follows the current default priority order
-  - General learning outreach bypasses the role-targeted agent-review requirement
 
 ### BA10_MAINTENANCE_AUTOMATION: Maintenance workflow and artifacts are not implemented
 - Next slice: `BA-10-S3`

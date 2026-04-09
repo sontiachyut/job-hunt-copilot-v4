@@ -33,6 +33,7 @@ from job_hunt_copilot.outreach import (
     RECIPIENT_TYPE_ENGINEER,
     RECIPIENT_TYPE_HIRING_MANAGER,
     RECIPIENT_TYPE_RECRUITER,
+    execute_general_learning_outreach,
     execute_role_targeted_send_set,
     evaluate_role_targeted_send_set,
     generate_general_learning_draft,
@@ -1318,6 +1319,123 @@ def test_general_learning_draft_persists_without_posting_or_resume(tmp_path: Pat
     assert send_result_payload.get("job_posting_id") is None
     assert send_result_payload["outreach_mode"] == "general_learning"
     assert send_result_payload["send_status"] == MESSAGE_STATUS_GENERATED
+
+    connection.close()
+
+
+def test_general_learning_send_execution_drafts_sends_and_polls_feedback(tmp_path: Path):
+    project_root, paths = bootstrap_project(tmp_path)
+    connection = connect_database(project_root / "job_hunt_copilot.db")
+    write_sender_profile(paths)
+    connection.execute(
+        """
+        INSERT INTO contacts (
+          contact_id, identity_key, display_name, company_name, origin_component, contact_status,
+          full_name, current_working_email, position_title, created_at, updated_at
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        """,
+        (
+            "ct_general_send",
+            "sam-learner|acme-robotics",
+            "Sam Learner",
+            "Acme Robotics",
+            "manual_capture",
+            "identified",
+            "Sam Learner",
+            "sam.learner@acme.example",
+            "Engineering Manager",
+            "2026-04-06T20:00:00Z",
+            "2026-04-06T20:00:00Z",
+        ),
+    )
+    connection.commit()
+
+    sender = RecordingOutreachSender()
+    observer = ImmediateBounceObserver(event_timestamp="2026-04-06T20:31:00Z")
+
+    result = execute_general_learning_outreach(
+        connection,
+        project_root=project_root,
+        contact_id="ct_general_send",
+        current_time="2026-04-06T20:30:00Z",
+        sender=sender,
+        feedback_observer=observer,
+    )
+
+    assert sender.attempted_message_ids == [result.outreach_message_id]
+    assert result.drafted_message is not None
+    assert result.message_status_after_execution == MESSAGE_STATUS_SENT
+    assert result.sent_at == "2026-04-06T20:30:00Z"
+    assert result.thread_id == f"thread-{result.outreach_message_id}"
+    assert result.delivery_tracking_id == f"delivery-{result.outreach_message_id}"
+    assert observer.poll_calls == [
+        {
+            "message_ids": [result.outreach_message_id],
+            "current_time": "2026-04-06T20:30:00Z",
+            "observation_scope": OBSERVATION_SCOPE_IMMEDIATE,
+        }
+    ]
+
+    message_row = connection.execute(
+        """
+        SELECT outreach_mode, message_status, job_posting_id, sent_at
+        FROM outreach_messages
+        WHERE outreach_message_id = ?
+        """,
+        (result.outreach_message_id,),
+    ).fetchone()
+    assert dict(message_row) == {
+        "outreach_mode": "general_learning",
+        "message_status": "sent",
+        "job_posting_id": None,
+        "sent_at": "2026-04-06T20:30:00Z",
+    }
+
+    contact_status = connection.execute(
+        "SELECT contact_status FROM contacts WHERE contact_id = 'ct_general_send'"
+    ).fetchone()[0]
+    assert contact_status == CONTACT_STATUS_SENT
+
+    send_result_payload = json.loads(
+        Path(result.send_result_artifact_path).read_text(encoding="utf-8")
+    )
+    assert send_result_payload.get("job_posting_id") is None
+    assert send_result_payload["outreach_mode"] == "general_learning"
+    assert send_result_payload["send_status"] == MESSAGE_STATUS_SENT
+    assert send_result_payload["thread_id"] == f"thread-{result.outreach_message_id}"
+    assert send_result_payload["delivery_tracking_id"] == (
+        f"delivery-{result.outreach_message_id}"
+    )
+
+    feedback_sync_row = connection.execute(
+        """
+        SELECT scheduler_name, scheduler_type, observation_scope, result
+        FROM feedback_sync_runs
+        ORDER BY started_at DESC, feedback_sync_run_id DESC
+        LIMIT 1
+        """
+    ).fetchone()
+    assert dict(feedback_sync_row) == {
+        "scheduler_name": "interactive_post_send",
+        "scheduler_type": "interactive",
+        "observation_scope": OBSERVATION_SCOPE_IMMEDIATE,
+        "result": "success",
+    }
+
+    feedback_event_row = connection.execute(
+        """
+        SELECT event_state, job_posting_id
+        FROM delivery_feedback_events
+        WHERE outreach_message_id = ?
+        ORDER BY event_timestamp DESC, delivery_feedback_event_id DESC
+        LIMIT 1
+        """,
+        (result.outreach_message_id,),
+    ).fetchone()
+    assert dict(feedback_event_row) == {
+        "event_state": "bounced",
+        "job_posting_id": None,
+    }
 
     connection.close()
 

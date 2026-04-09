@@ -138,6 +138,7 @@ AUTO_PAUSE_CRITICAL_INCIDENT_TYPES = frozenset(
 
 WORK_TYPE_AGENT_INCIDENT: Final = "agent_incident"
 WORK_TYPE_INCIDENT_CLUSTER: Final = "incident_cluster"
+WORK_TYPE_CONTACT: Final = "contact"
 WORK_TYPE_JOB_POSTING: Final = "job_posting"
 WORK_TYPE_PIPELINE_RUN: Final = "pipeline_run"
 
@@ -150,6 +151,7 @@ ACTION_RUN_ROLE_TARGETED_SENDING: Final = "run_role_targeted_sending"
 ACTION_RUN_ROLE_TARGETED_DELIVERY_FEEDBACK: Final = (
     "run_role_targeted_delivery_feedback"
 )
+ACTION_RUN_GENERAL_LEARNING_OUTREACH: Final = "run_general_learning_outreach"
 ACTION_ESCALATE_OPEN_INCIDENT: Final = "escalate_open_incident"
 
 SUPERVISOR_DELIVERY_FEEDBACK_SCHEDULER_NAME: Final = "supervisor_delivery_feedback"
@@ -678,6 +680,26 @@ SUPERVISOR_ACTION_CATALOG = MappingProxyType(
             validation_references=(
                 "prd/spec.md FR-SYS-38, FR-SYS-38D5 through FR-SYS-38D9, FR-EF-01J through FR-EF-01P, and FR-OPS-17C",
                 "prd/test-spec.feature delivery-feedback timing, delayed-bounce, dependency-order, and end-to-end acceptance scenarios",
+            ),
+        ),
+        ACTION_RUN_GENERAL_LEARNING_OUTREACH: SupervisorActionCatalogEntry(
+            action_id=ACTION_RUN_GENERAL_LEARNING_OUTREACH,
+            work_type=WORK_TYPE_CONTACT,
+            description="Run one bounded contact-rooted general-learning outreach step for a send-ready contact without requiring posting-specific tailoring or agent review.",
+            prerequisites=(
+                "contact exists in canonical state",
+                "contact has a usable working email and is not tied to a current job_posting contact link",
+                "the selected contact has no prior sent outreach history that would require repeat-outreach review",
+                "a bounded outreach sender is configured before any automatic send is attempted",
+            ),
+            expected_outputs=(
+                "the supervisor reuses an existing generated general-learning draft or creates one when missing",
+                "the selected contact receives at most one bounded general-learning send attempt in the cycle",
+                "outreach_messages and send_result.json persist the resulting sent, blocked, or failed outcome without adding posting linkage",
+            ),
+            validation_references=(
+                "prd/spec.md FR-SYS-38A, FR-EM-12E1, and FR-OPS-17K",
+                "prd/test-spec.feature general-learning drafting and orchestration scenarios",
             ),
         ),
         ACTION_ESCALATE_OPEN_INCIDENT: SupervisorActionCatalogEntry(
@@ -2259,7 +2281,11 @@ def select_next_supervisor_work_unit(
     if pipeline_run_work is not None:
         return pipeline_run_work
 
-    return _select_new_posting_work_unit(connection)
+    posting_work = _select_new_posting_work_unit(connection)
+    if posting_work is not None:
+        return posting_work
+
+    return _select_general_learning_contact_work_unit(connection)
 
 
 def _detect_auto_pause_condition(
@@ -2418,6 +2444,84 @@ def _select_new_posting_work_unit(
         ),
         lead_id=_optional_text(row[1]),
         job_posting_id=row[0],
+    )
+
+
+def _select_general_learning_contact_work_unit(
+    connection: sqlite3.Connection,
+) -> SupervisorWorkUnit | None:
+    row = connection.execute(
+        """
+        SELECT c.contact_id, c.display_name, c.company_name,
+               (
+                 SELECT om.message_status
+                 FROM outreach_messages om
+                 WHERE om.contact_id = c.contact_id
+                   AND om.outreach_mode = 'general_learning'
+                 ORDER BY om.created_at DESC, om.outreach_message_id DESC
+                 LIMIT 1
+               ) AS latest_general_learning_message_status
+        FROM contacts c
+        WHERE c.current_working_email IS NOT NULL
+          AND TRIM(c.current_working_email) <> ''
+          AND c.contact_status NOT IN ('outreach_in_progress', 'sent', 'exhausted')
+          AND NOT EXISTS (
+            SELECT 1
+            FROM job_posting_contacts jpc
+            WHERE jpc.contact_id = c.contact_id
+          )
+          AND NOT EXISTS (
+            SELECT 1
+            FROM outreach_messages sent_om
+            WHERE sent_om.contact_id = c.contact_id
+              AND (
+                sent_om.sent_at IS NOT NULL
+                OR sent_om.message_status = 'sent'
+              )
+          )
+          AND COALESCE((
+                SELECT om.message_status
+                FROM outreach_messages om
+                WHERE om.contact_id = c.contact_id
+                  AND om.outreach_mode = 'general_learning'
+                ORDER BY om.created_at DESC, om.outreach_message_id DESC
+                LIMIT 1
+              ), '') NOT IN ('blocked', 'failed', 'sent')
+        ORDER BY
+          CASE
+            WHEN COALESCE((
+              SELECT om.message_status
+              FROM outreach_messages om
+              WHERE om.contact_id = c.contact_id
+                AND om.outreach_mode = 'general_learning'
+              ORDER BY om.created_at DESC, om.outreach_message_id DESC
+              LIMIT 1
+            ), '') = 'generated' THEN 0
+            ELSE 1
+          END,
+          c.created_at ASC,
+          c.contact_id ASC
+        LIMIT 1
+        """
+    ).fetchone()
+    if row is None:
+        return None
+    display_name = _optional_text(row[1]) or row[0]
+    company_name = _optional_text(row[2]) or "unknown-company"
+    latest_status = _optional_text(row[3])
+    summary = (
+        "Resume a previously drafted contact-rooted general-learning send."
+        if latest_status == "generated"
+        else (
+            "Create and send one bounded contact-rooted general-learning outreach "
+            f"message for {display_name} at {company_name}."
+        )
+    )
+    return SupervisorWorkUnit(
+        work_type=WORK_TYPE_CONTACT,
+        work_id=row[0],
+        action_id=ACTION_RUN_GENERAL_LEARNING_OUTREACH,
+        summary=summary,
     )
 
 
@@ -2763,6 +2867,73 @@ def _validate_selected_work(
             return (
                 f"job_posting {job_posting_id!r} reached delivery_feedback without any "
                 "sent outreach messages."
+            )
+        return None
+
+    if catalog_entry.action_id == ACTION_RUN_GENERAL_LEARNING_OUTREACH:
+        if action_dependencies.outreach_sender is None:
+            return (
+                "Supervisor general-learning outreach requires an injected outreach "
+                "sender before any automatic send is attempted."
+            )
+        row = connection.execute(
+            """
+            SELECT c.contact_id, c.current_working_email, c.contact_status,
+                   (
+                     SELECT COUNT(*)
+                     FROM job_posting_contacts jpc
+                     WHERE jpc.contact_id = c.contact_id
+                   ) AS posting_link_count,
+                   (
+                     SELECT COUNT(*)
+                     FROM outreach_messages om
+                     WHERE om.contact_id = c.contact_id
+                       AND (
+                         om.sent_at IS NOT NULL
+                         OR om.message_status = 'sent'
+                       )
+                   ) AS sent_message_count,
+                   (
+                     SELECT om.message_status
+                     FROM outreach_messages om
+                     WHERE om.contact_id = c.contact_id
+                       AND om.outreach_mode = 'general_learning'
+                     ORDER BY om.created_at DESC, om.outreach_message_id DESC
+                     LIMIT 1
+                   ) AS latest_general_learning_message_status
+            FROM contacts c
+            WHERE c.contact_id = ?
+            """,
+            (selected_work.work_id,),
+        ).fetchone()
+        if row is None:
+            return f"contact {selected_work.work_id!r} no longer exists."
+        if not _optional_text(row[1]):
+            return (
+                f"contact {selected_work.work_id!r} is missing a usable working email "
+                "for bounded general-learning outreach."
+            )
+        if int(row[3] or 0) > 0:
+            return (
+                f"contact {selected_work.work_id!r} is still tied to posting-linked "
+                "outreach state and is not eligible for the contact-rooted "
+                "general-learning boundary."
+            )
+        if int(row[4] or 0) > 0:
+            return (
+                f"contact {selected_work.work_id!r} already has prior sent outreach "
+                "history and requires repeat-outreach review."
+            )
+        latest_status = _optional_text(row[5])
+        if latest_status in {"blocked", "failed", "sent"}:
+            return (
+                f"contact {selected_work.work_id!r} is already at a terminal or "
+                f"review-blocked general-learning message status {latest_status!r}."
+            )
+        if _optional_text(row[2]) in {"outreach_in_progress", "sent", "exhausted"} and latest_status != "generated":
+            return (
+                f"contact {selected_work.work_id!r} is already at contact_status="
+                f"{row[2]!r} and has no resumable generated general-learning draft."
             )
         return None
 
@@ -3216,6 +3387,29 @@ def _execute_selected_work_unit(
         )
         return pipeline_run, None
 
+    if catalog_entry.action_id == ACTION_RUN_GENERAL_LEARNING_OUTREACH:
+        from .outreach import execute_general_learning_outreach
+
+        general_learning_result = execute_general_learning_outreach(
+            connection,
+            project_root=paths.project_root,
+            contact_id=selected_work.work_id,
+            current_time=timestamp,
+            sender=_require_dependency(
+                action_dependencies.outreach_sender,
+                "Supervisor general-learning outreach requires an injected outreach sender.",
+            ),
+            feedback_observer=action_dependencies.feedback_observer,
+        )
+        if general_learning_result.message_status_after_execution == "sent":
+            return None, None
+        if general_learning_result.message_status_after_execution in {"blocked", "failed"}:
+            return None, None
+        raise SupervisorStateError(
+            "General-learning outreach completed with an unsupported message status "
+            f"{general_learning_result.message_status_after_execution!r}."
+        )
+
     if catalog_entry.action_id == ACTION_ESCALATE_OPEN_INCIDENT:
         incident = escalate_agent_incident(
             connection,
@@ -3608,6 +3802,96 @@ def _validate_selected_work_result(
                 "Completed delivery-feedback runs should end at `completed`, but found "
                 f"{pipeline_run.current_stage!r}."
             )
+        return None
+
+    if catalog_entry.action_id == ACTION_RUN_GENERAL_LEARNING_OUTREACH:
+        message_row = connection.execute(
+            """
+            SELECT outreach_message_id, outreach_mode, message_status, job_posting_id,
+                   sent_at, thread_id, delivery_tracking_id
+            FROM outreach_messages
+            WHERE contact_id = ?
+              AND outreach_mode = 'general_learning'
+            ORDER BY created_at DESC, outreach_message_id DESC
+            LIMIT 1
+            """,
+            (selected_work.work_id,),
+        ).fetchone()
+        if message_row is None:
+            return (
+                "Supervisor failed to persist a general-learning outreach message for the "
+                "selected contact."
+            )
+        if message_row["job_posting_id"] is not None:
+            return (
+                "General-learning supervisor outreach should remain contact-rooted without "
+                "introducing job_posting linkage."
+            )
+        if message_row["message_status"] not in {"sent", "blocked", "failed"}:
+            return (
+                "General-learning supervisor outreach must persist a terminal bounded "
+                f"message outcome; found {message_row['message_status']!r}."
+            )
+        artifact_count = int(
+            connection.execute(
+                """
+                SELECT COUNT(*)
+                FROM artifact_records
+                WHERE artifact_type = 'send_result'
+                  AND contact_id = ?
+                  AND outreach_message_id = ?
+                """,
+                (
+                    selected_work.work_id,
+                    message_row["outreach_message_id"],
+                ),
+            ).fetchone()[0]
+            or 0
+        )
+        if artifact_count <= 0:
+            return (
+                "General-learning supervisor outreach completed without a persisted "
+                "send_result artifact."
+            )
+        if message_row["message_status"] == "sent":
+            contact_row = connection.execute(
+                """
+                SELECT contact_status
+                FROM contacts
+                WHERE contact_id = ?
+                """,
+                (selected_work.work_id,),
+            ).fetchone()
+            if contact_row is None:
+                return "General-learning send removed the selected contact unexpectedly."
+            if contact_row[0] != "sent":
+                return (
+                    "General-learning send should persist `contact_status = sent` after a "
+                    f"successful send, but found {contact_row[0]!r}."
+                )
+            feedback_sync_row = connection.execute(
+                """
+                SELECT scheduler_name, scheduler_type, observation_scope, result
+                FROM feedback_sync_runs
+                ORDER BY started_at DESC, feedback_sync_run_id DESC
+                LIMIT 1
+                """
+            ).fetchone()
+            if feedback_sync_row is None:
+                return (
+                    "General-learning send should trigger an immediate feedback sync run "
+                    "even when no mailbox observer is configured."
+                )
+            if dict(feedback_sync_row) != {
+                "scheduler_name": "interactive_post_send",
+                "scheduler_type": "interactive",
+                "observation_scope": "immediate_post_send",
+                "result": "success",
+            }:
+                return (
+                    "General-learning send did not persist the expected immediate feedback "
+                    f"sync metadata; found {dict(feedback_sync_row)!r}."
+                )
         return None
 
     if catalog_entry.action_id == ACTION_ESCALATE_OPEN_INCIDENT:

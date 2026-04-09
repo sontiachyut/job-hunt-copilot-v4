@@ -104,9 +104,9 @@ def test_validation_selector_details_include_requested_smoke_gap_blocker_and_cur
     ]
     assert details["acceptance_gaps"][0] == {
         "gap_id": "BA10_SUPERVISOR_DOWNSTREAM_ACTION_CATALOG",
-        "title": "Supervisor orchestration still stops before autonomous delivery feedback completes",
+        "title": "Supervisor general-learning orchestration remains partial beyond send-ready contact dispatch",
         "next_slice": "BA-10-S4",
-        "open_scenario_count": 4,
+        "open_scenario_count": 1,
         "validation_command_ids": [
             "qa_supervisor_regressions",
             "qa_acceptance_reports",
@@ -143,11 +143,14 @@ def test_validation_selector_details_include_requested_smoke_gap_blocker_and_cur
         "--project-root <repo_root> --current-focus"
     )
     assert (
-        "`lead_handoff -> agent_review -> people_search -> email_discovery -> sending -> delivery_feedback`"
+        "bounded `delivery_feedback` completion plus one send-ready contact-rooted "
+        "general-learning dispatch"
         in details["current_focus"]["reason"]
     )
-    assert "beyond `sending`" in details["current_focus"]["reason"]
-    assert "contact-rooted general-learning selection" in details["current_focus"]["reason"]
+    assert (
+        "contact-rooted email discovery plus delayed-feedback follow-through"
+        in details["current_focus"]["reason"]
+    )
 
 
 def test_gap_validation_command_resolution_follows_open_gap_command_mapping():
@@ -259,9 +262,9 @@ def test_quality_validation_suite_script_dry_run_expands_gap_ids():
     assert payload["selector_details"]["acceptance_gaps"] == [
         {
             "gap_id": "BA10_SUPERVISOR_DOWNSTREAM_ACTION_CATALOG",
-            "title": "Supervisor orchestration still stops before autonomous delivery feedback completes",
+            "title": "Supervisor general-learning orchestration remains partial beyond send-ready contact dispatch",
             "next_slice": "BA-10-S4",
-            "open_scenario_count": 4,
+            "open_scenario_count": 1,
             "validation_command_ids": [
                 "qa_supervisor_regressions",
                 "qa_acceptance_reports",
@@ -382,11 +385,14 @@ def test_quality_validation_suite_script_dry_run_expands_current_focus():
         "--project-root <repo_root> --current-focus"
     )
     assert (
-        "`lead_handoff -> agent_review -> people_search -> email_discovery -> sending -> delivery_feedback`"
+        "bounded `delivery_feedback` completion plus one send-ready contact-rooted "
+        "general-learning dispatch"
         in current_focus["reason"]
     )
-    assert "beyond `sending`" in current_focus["reason"]
-    assert "contact-rooted general-learning selection" in current_focus["reason"]
+    assert (
+        "contact-rooted email discovery plus delayed-feedback follow-through"
+        in current_focus["reason"]
+    )
 
 
 def test_quality_validation_suite_script_dry_run_expands_smoke_targets():

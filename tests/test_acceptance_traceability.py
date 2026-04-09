@@ -98,6 +98,7 @@ def test_acceptance_trace_matrix_reports_are_current_and_reference_real_repo_pat
             "active_incident",
             "open_pipeline_run",
             "new_role_targeted_posting",
+            "general_learning_contact",
         ],
         "registered_role_targeted_checkpoint_stages": ["agent_review", "lead_handoff"],
         "registered_role_targeted_action_stages": [
@@ -108,9 +109,13 @@ def test_acceptance_trace_matrix_reports_are_current_and_reference_real_repo_pat
             "people_search",
             "sending",
         ],
+        "registered_contact_rooted_action_ids": [
+            "general_learning_outreach",
+        ],
         "validated_blocked_role_targeted_stages": [],
         "unsupported_autonomous_scope_paths": [
-            "contact_rooted_general_learning",
+            "contact_rooted_general_learning_email_discovery",
+            "contact_rooted_general_learning_delayed_feedback_followthrough",
         ],
     }
     assert "BA-10-S4" in supervisor_gap["slice_ids"]

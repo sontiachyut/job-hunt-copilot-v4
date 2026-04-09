@@ -440,6 +440,36 @@ class RoleTargetedSendExecutionResult:
         }
 
 
+@dataclass(frozen=True)
+class GeneralLearningSendExecutionResult:
+    contact_id: str
+    outreach_message_id: str
+    drafted_message: DraftedOutreachMessage | None
+    message_status_after_execution: str
+    send_result_artifact_path: str
+    sent_at: str | None
+    thread_id: str | None
+    delivery_tracking_id: str | None
+    reason_code: str | None
+    message: str | None
+
+    def as_dict(self) -> dict[str, Any]:
+        return {
+            "contact_id": self.contact_id,
+            "outreach_message_id": self.outreach_message_id,
+            "drafted_message": (
+                None if self.drafted_message is None else self.drafted_message.as_dict()
+            ),
+            "message_status_after_execution": self.message_status_after_execution,
+            "send_result_artifact_path": self.send_result_artifact_path,
+            "sent_at": self.sent_at,
+            "thread_id": self.thread_id,
+            "delivery_tracking_id": self.delivery_tracking_id,
+            "reason_code": self.reason_code,
+            "message": self.message,
+        }
+
+
 class OutreachDraftRenderer:
     def render_role_targeted(self, context: RoleTargetedDraftContext) -> RenderedDraft:
         raise NotImplementedError
@@ -1155,6 +1185,128 @@ def generate_general_learning_draft(
         current_time=current_time,
     )
     return GeneralLearningDraftResult(drafted_message=drafted_message)
+
+
+def execute_general_learning_outreach(
+    connection: sqlite3.Connection,
+    *,
+    project_root: Path | str,
+    contact_id: str,
+    current_time: str,
+    sender: OutreachMessageSender,
+    renderer: OutreachDraftRenderer | None = None,
+    feedback_observer: MailboxFeedbackObserver | None = None,
+) -> GeneralLearningSendExecutionResult:
+    paths = ProjectPaths.from_root(project_root)
+    contact_row = _load_general_learning_contact_row(connection, contact_id=contact_id)
+    drafted_message: DraftedOutreachMessage | None = None
+
+    active_message = _load_latest_general_learning_message_row(
+        connection,
+        contact_id=contact_id,
+    )
+    if active_message is None:
+        draft_result = generate_general_learning_draft(
+            connection,
+            project_root=project_root,
+            contact_id=contact_id,
+            current_time=current_time,
+            renderer=renderer,
+        )
+        drafted_message = draft_result.drafted_message
+        active_message = _load_latest_general_learning_message_row(
+            connection,
+            contact_id=contact_id,
+        )
+
+    if active_message is None:  # pragma: no cover - defensive invariant
+        raise OutreachSendingError(
+            f"General-learning outreach failed to materialize a message for contact `{contact_id}`."
+        )
+    if str(active_message["message_status"]) != MESSAGE_STATUS_GENERATED:
+        raise OutreachSendingError(
+            "General-learning automatic sending requires the latest message to be "
+            f"`{MESSAGE_STATUS_GENERATED}`, but `{active_message['outreach_message_id']}` is "
+            f"`{active_message['message_status']}`."
+        )
+
+    guardrail_block = _evaluate_general_learning_send_guardrails(
+        connection,
+        paths,
+        contact_row=contact_row,
+        active_message=active_message,
+    )
+    if guardrail_block is not None:
+        return _persist_blocked_general_learning_send(
+            connection,
+            paths,
+            contact_row=contact_row,
+            active_message=active_message,
+            current_time=current_time,
+            drafted_message=drafted_message,
+            reason_code=guardrail_block["reason_code"],
+            message=guardrail_block["message"],
+        )
+
+    outbound = OutboundOutreachMessage(
+        outreach_message_id=str(active_message["outreach_message_id"]),
+        contact_id=str(contact_row["contact_id"]),
+        job_posting_id=None,
+        job_posting_contact_id=None,
+        outreach_mode=OUTREACH_MODE_GENERAL_LEARNING,
+        recipient_email=str(active_message["recipient_email"]),
+        subject=str(active_message["subject"]),
+        body_text=str(active_message["body_text"]),
+        body_html=_normalize_optional_text(active_message["body_html"]),
+        resume_attachment_path=None,
+    )
+    normalized_outcome = _normalize_send_attempt_outcome(sender.send(outbound))
+
+    if normalized_outcome.outcome == SEND_OUTCOME_SENT:
+        result = _persist_successful_general_learning_send(
+            connection,
+            paths,
+            contact_row=contact_row,
+            active_message=active_message,
+            current_time=current_time,
+            drafted_message=drafted_message,
+            sent_at=normalized_outcome.sent_at or current_time,
+            thread_id=normalized_outcome.thread_id,
+            delivery_tracking_id=normalized_outcome.delivery_tracking_id,
+        )
+        run_immediate_delivery_feedback_poll(
+            connection,
+            project_root=project_root,
+            current_time=current_time,
+            outreach_message_ids=[result.outreach_message_id],
+            observer=feedback_observer,
+        )
+        return result
+
+    if normalized_outcome.outcome == SEND_OUTCOME_AMBIGUOUS:
+        return _persist_blocked_general_learning_send(
+            connection,
+            paths,
+            contact_row=contact_row,
+            active_message=active_message,
+            current_time=current_time,
+            drafted_message=drafted_message,
+            reason_code=normalized_outcome.reason_code or "ambiguous_send_outcome",
+            message=normalized_outcome.message
+            or "The general-learning send outcome could not be reconciled safely.",
+        )
+
+    return _persist_failed_general_learning_send_attempt(
+        connection,
+        paths,
+        contact_row=contact_row,
+        active_message=active_message,
+        current_time=current_time,
+        drafted_message=drafted_message,
+        reason_code=normalized_outcome.reason_code or "send_provider_failed",
+        message=normalized_outcome.message
+        or "The outbound send provider returned a failure.",
+    )
 
 
 @dataclass(frozen=True)
@@ -2169,6 +2321,7 @@ def _load_general_learning_contact_row(
     row = connection.execute(
         """
         SELECT c.contact_id, c.display_name, c.current_working_email, c.company_name,
+               c.contact_status,
                c.position_title, c.discovery_summary,
                (
                  SELECT jpc.recipient_type
@@ -2185,6 +2338,26 @@ def _load_general_learning_contact_row(
     if row is None:
         raise OutreachDraftingError(f"Contact `{contact_id}` was not found.")
     return row
+
+
+def _load_latest_general_learning_message_row(
+    connection: sqlite3.Connection,
+    *,
+    contact_id: str,
+) -> sqlite3.Row | None:
+    return connection.execute(
+        """
+        SELECT outreach_message_id, contact_id, recipient_email, message_status, subject,
+               body_text, body_html, thread_id, delivery_tracking_id, sent_at, created_at,
+               updated_at
+        FROM outreach_messages
+        WHERE contact_id = ?
+          AND outreach_mode = ?
+        ORDER BY created_at DESC, outreach_message_id DESC
+        LIMIT 1
+        """,
+        (contact_id, OUTREACH_MODE_GENERAL_LEARNING),
+    ).fetchone()
 
 
 def _load_tailoring_draft_inputs(
@@ -2751,6 +2924,126 @@ def _persist_rendered_general_learning_draft(
     )
 
 
+def _evaluate_general_learning_send_guardrails(
+    connection: sqlite3.Connection,
+    paths: ProjectPaths,
+    *,
+    contact_row: Mapping[str, Any],
+    active_message: Mapping[str, Any],
+) -> dict[str, str] | None:
+    contact_id = str(contact_row["contact_id"])
+    recipient_email = _normalize_optional_text(active_message["recipient_email"])
+    if recipient_email is None:
+        return {
+            "reason_code": "missing_recipient_email",
+            "message": "Automatic general-learning sending requires a usable recipient email.",
+        }
+    if (
+        _normalize_optional_text(active_message["subject"]) is None
+        or _normalize_optional_text(active_message["body_text"]) is None
+    ):
+        return {
+            "reason_code": "missing_draft_content",
+            "message": "Automatic general-learning sending requires persisted draft subject and body content.",
+        }
+
+    company_name = str(contact_row["company_name"] or "unknown-company")
+    draft_path = paths.general_learning_outreach_draft_path(
+        company_name,
+        contact_id,
+        str(active_message["outreach_message_id"]),
+    )
+    send_result_path = paths.general_learning_outreach_send_result_path(
+        company_name,
+        contact_id,
+        str(active_message["outreach_message_id"]),
+    )
+    if not draft_path.exists():
+        return {
+            "reason_code": "missing_draft_artifact",
+            "message": f"Draft artifact is missing for `{active_message['outreach_message_id']}`.",
+        }
+    if not send_result_path.exists():
+        return {
+            "reason_code": "missing_send_result_artifact",
+            "message": f"send_result.json is missing for `{active_message['outreach_message_id']}`.",
+        }
+
+    try:
+        send_result_contract = _read_json_file(send_result_path)
+    except Exception:
+        return {
+            "reason_code": "invalid_send_result_artifact",
+            "message": f"send_result.json is unreadable for `{active_message['outreach_message_id']}`.",
+        }
+    send_status = _normalize_optional_text(send_result_contract.get("send_status"))
+    if send_status in {MESSAGE_STATUS_SENT, MESSAGE_STATUS_BLOCKED}:
+        return {
+            "reason_code": "ambiguous_send_state",
+            "message": "Stored general-learning send_result.json already reflects a non-generated send state, so automatic resend is unsafe.",
+        }
+    if (
+        _normalize_optional_text(active_message["sent_at"]) is not None
+        or _normalize_optional_text(active_message["thread_id"]) is not None
+        or _normalize_optional_text(active_message["delivery_tracking_id"]) is not None
+    ):
+        return {
+            "reason_code": "ambiguous_send_state",
+            "message": "Message delivery metadata already exists without a clean completed send state, so automatic resend is unsafe.",
+        }
+
+    prior_sent_count = int(
+        connection.execute(
+            """
+            SELECT COUNT(*)
+            FROM outreach_messages
+            WHERE contact_id = ?
+              AND outreach_message_id <> ?
+              AND (
+                sent_at IS NOT NULL
+                OR message_status = ?
+              )
+            """,
+            (
+                contact_id,
+                str(active_message["outreach_message_id"]),
+                MESSAGE_STATUS_SENT,
+            ),
+        ).fetchone()[0]
+        or 0
+    )
+    if prior_sent_count > 0:
+        return {
+            "reason_code": "repeat_outreach_review_required",
+            "message": "Prior outreach history exists for this contact, so automatic repeat sending is blocked pending review.",
+        }
+
+    other_active_message_count = int(
+        connection.execute(
+            """
+            SELECT COUNT(*)
+            FROM outreach_messages
+            WHERE contact_id = ?
+              AND outreach_message_id <> ?
+              AND message_status IN (?, ?)
+            """,
+            (
+                contact_id,
+                str(active_message["outreach_message_id"]),
+                MESSAGE_STATUS_GENERATED,
+                MESSAGE_STATUS_BLOCKED,
+            ),
+        ).fetchone()[0]
+        or 0
+    )
+    if other_active_message_count > 0:
+        return {
+            "reason_code": "ambiguous_send_state",
+            "message": "Multiple active outreach messages exist for this contact, so automatic resend is unsafe.",
+        }
+    return None
+
+
 def _persist_failed_draft_attempt(
     connection: sqlite3.Connection,
     paths: ProjectPaths,
@@ -2834,6 +3127,264 @@ def _persist_failed_draft_attempt(
         reason_code=reason_code,
         message=message,
     )
+
+
+def _persist_successful_general_learning_send(
+    connection: sqlite3.Connection,
+    paths: ProjectPaths,
+    *,
+    contact_row: Mapping[str, Any],
+    active_message: Mapping[str, Any],
+    current_time: str,
+    drafted_message: DraftedOutreachMessage | None,
+    sent_at: str,
+    thread_id: str | None,
+    delivery_tracking_id: str | None,
+) -> GeneralLearningSendExecutionResult:
+    normalized_sent_at = _isoformat_utc(_parse_iso_datetime(sent_at))
+    outreach_message_id = str(active_message["outreach_message_id"])
+    with connection:
+        connection.execute(
+            """
+            UPDATE outreach_messages
+            SET message_status = ?, thread_id = ?, delivery_tracking_id = ?, sent_at = ?, updated_at = ?
+            WHERE outreach_message_id = ?
+            """,
+            (
+                MESSAGE_STATUS_SENT,
+                thread_id,
+                delivery_tracking_id,
+                normalized_sent_at,
+                current_time,
+                outreach_message_id,
+            ),
+        )
+
+    current_contact_status = str(contact_row["contact_status"]).strip()
+    if current_contact_status != CONTACT_STATUS_SENT:
+        with connection:
+            connection.execute(
+                """
+                UPDATE contacts
+                SET contact_status = ?, updated_at = ?
+                WHERE contact_id = ?
+                """,
+                (
+                    CONTACT_STATUS_SENT,
+                    current_time,
+                    contact_row["contact_id"],
+                ),
+            )
+            _record_state_transition(
+                connection,
+                object_type="contact",
+                object_id=str(contact_row["contact_id"]),
+                stage="contact_status",
+                previous_state=current_contact_status,
+                new_state=CONTACT_STATUS_SENT,
+                transition_timestamp=current_time,
+                transition_reason="A general-learning outreach message was sent for this contact.",
+                lead_id=None,
+                job_posting_id=None,
+                contact_id=str(contact_row["contact_id"]),
+            )
+
+    send_result_artifact_path = _publish_general_learning_send_result(
+        connection,
+        paths,
+        contact_row=contact_row,
+        active_message=active_message,
+        current_time=current_time,
+        result="success",
+        send_status=MESSAGE_STATUS_SENT,
+        sent_at=normalized_sent_at,
+        thread_id=thread_id,
+        delivery_tracking_id=delivery_tracking_id,
+        reason_code=None,
+        message=None,
+    )
+    return GeneralLearningSendExecutionResult(
+        contact_id=str(contact_row["contact_id"]),
+        outreach_message_id=outreach_message_id,
+        drafted_message=drafted_message,
+        message_status_after_execution=MESSAGE_STATUS_SENT,
+        send_result_artifact_path=send_result_artifact_path,
+        sent_at=normalized_sent_at,
+        thread_id=thread_id,
+        delivery_tracking_id=delivery_tracking_id,
+        reason_code=None,
+        message=None,
+    )
+
+
+def _persist_blocked_general_learning_send(
+    connection: sqlite3.Connection,
+    paths: ProjectPaths,
+    *,
+    contact_row: Mapping[str, Any],
+    active_message: Mapping[str, Any],
+    current_time: str,
+    drafted_message: DraftedOutreachMessage | None,
+    reason_code: str,
+    message: str,
+) -> GeneralLearningSendExecutionResult:
+    outreach_message_id = str(active_message["outreach_message_id"])
+    with connection:
+        connection.execute(
+            """
+            UPDATE outreach_messages
+            SET message_status = ?, updated_at = ?
+            WHERE outreach_message_id = ?
+            """,
+            (
+                MESSAGE_STATUS_BLOCKED,
+                current_time,
+                outreach_message_id,
+            ),
+        )
+
+    send_result_artifact_path = _publish_general_learning_send_result(
+        connection,
+        paths,
+        contact_row=contact_row,
+        active_message=active_message,
+        current_time=current_time,
+        result="blocked",
+        send_status=MESSAGE_STATUS_BLOCKED,
+        sent_at=None,
+        thread_id=_normalize_optional_text(active_message["thread_id"]),
+        delivery_tracking_id=_normalize_optional_text(active_message["delivery_tracking_id"]),
+        reason_code=reason_code,
+        message=message,
+    )
+    return GeneralLearningSendExecutionResult(
+        contact_id=str(contact_row["contact_id"]),
+        outreach_message_id=outreach_message_id,
+        drafted_message=drafted_message,
+        message_status_after_execution=MESSAGE_STATUS_BLOCKED,
+        send_result_artifact_path=send_result_artifact_path,
+        sent_at=None,
+        thread_id=None,
+        delivery_tracking_id=None,
+        reason_code=reason_code,
+        message=message,
+    )
+
+
+def _persist_failed_general_learning_send_attempt(
+    connection: sqlite3.Connection,
+    paths: ProjectPaths,
+    *,
+    contact_row: Mapping[str, Any],
+    active_message: Mapping[str, Any],
+    current_time: str,
+    drafted_message: DraftedOutreachMessage | None,
+    reason_code: str,
+    message: str,
+) -> GeneralLearningSendExecutionResult:
+    outreach_message_id = str(active_message["outreach_message_id"])
+    with connection:
+        connection.execute(
+            """
+            UPDATE outreach_messages
+            SET message_status = ?, updated_at = ?
+            WHERE outreach_message_id = ?
+            """,
+            (
+                MESSAGE_STATUS_FAILED,
+                current_time,
+                outreach_message_id,
+            ),
+        )
+
+    send_result_artifact_path = _publish_general_learning_send_result(
+        connection,
+        paths,
+        contact_row=contact_row,
+        active_message=active_message,
+        current_time=current_time,
+        result="failed",
+        send_status=MESSAGE_STATUS_FAILED,
+        sent_at=None,
+        thread_id=None,
+        delivery_tracking_id=None,
+        reason_code=reason_code,
+        message=message,
+    )
+    return GeneralLearningSendExecutionResult(
+        contact_id=str(contact_row["contact_id"]),
+        outreach_message_id=outreach_message_id,
+        drafted_message=drafted_message,
+        message_status_after_execution=MESSAGE_STATUS_FAILED,
+        send_result_artifact_path=send_result_artifact_path,
+        sent_at=None,
+        thread_id=None,
+        delivery_tracking_id=None,
+        reason_code=reason_code,
+        message=message,
+    )
+
+
+def _publish_general_learning_send_result(
+    connection: sqlite3.Connection,
+    paths: ProjectPaths,
+    *,
+    contact_row: Mapping[str, Any],
+    active_message: Mapping[str, Any],
+    current_time: str,
+    result: str,
+    send_status: str,
+    sent_at: str | None,
+    thread_id: str | None,
+    delivery_tracking_id: str | None,
+    reason_code: str | None,
+    message: str | None,
+) -> str:
+    company_name = str(contact_row["company_name"] or "unknown-company")
+    contact_id = str(contact_row["contact_id"])
+    outreach_message_id = str(active_message["outreach_message_id"])
+    draft_path = paths.general_learning_outreach_draft_path(
+        company_name,
+        contact_id,
+        outreach_message_id,
+    )
+    html_path = paths.general_learning_outreach_html_path(
+        company_name,
+        contact_id,
+        outreach_message_id,
+    )
+    send_result_path = paths.general_learning_outreach_send_result_path(
+        company_name,
+        contact_id,
+        outreach_message_id,
+    )
+    publish_json_artifact(
+        connection,
+        paths,
+        artifact_type=SEND_RESULT_ARTIFACT_TYPE,
+        artifact_path=send_result_path,
+        producer_component=OUTREACH_COMPONENT,
+        result=result,
+        linkage=ArtifactLinkage(
+            contact_id=contact_id,
+            outreach_message_id=outreach_message_id,
+        ),
+        payload={
+            "outreach_mode": OUTREACH_MODE_GENERAL_LEARNING,
+            "recipient_email": _normalize_optional_text(active_message["recipient_email"]),
+            "send_status": send_status,
+            "sent_at": sent_at,
+            "thread_id": thread_id,
+            "delivery_tracking_id": delivery_tracking_id,
+            "subject": _normalize_optional_text(active_message["subject"]),
+            "body_text_artifact_path": str(draft_path.resolve()) if draft_path.exists() else None,
+            "body_html_artifact_path": str(html_path.resolve()) if html_path.exists() else None,
+        },
+        produced_at=current_time,
+        reason_code=reason_code,
+        message=message,
+    )
+    return str(send_result_path.resolve())
 
 
 def _promote_posting_into_outreach_in_progress(
