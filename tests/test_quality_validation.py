@@ -441,9 +441,9 @@ def test_quality_validation_suite_script_dry_run_expands_chat_review_gap_ids():
             "gap_id": "BA10_CHAT_REVIEW_AND_CONTROL",
             "title": "Chat review and control are still missing deeper expert-guidance workflows",
             "next_slice": "BA-10-S3",
-            "open_scenario_count": 5,
+            "open_scenario_count": 4,
             "status_counts": {
-                "partial": 1,
+                "partial": 0,
                 "gap": 4,
             },
             "validation_command_ids": [
@@ -457,13 +457,6 @@ def test_quality_validation_suite_script_dry_run_expands_chat_review_gap_ids():
                 "--project-root <repo_root> --gap-id BA10_CHAT_REVIEW_AND_CONTROL"
             ),
             "open_scenarios": [
-                {
-                    "name": "jhc-chat uses persisted state for answers and control routing",
-                    "status": "partial",
-                    "rule": "Supervisor Agent behavior",
-                    "scenario_line": 1249,
-                    "note": "`scripts/ops/chat_state.py` now rereads persisted dashboard, review-queue, and change-summary state, and `scripts/ops/control_agent.py` remains the canonical global-control route, but generic object-specific override routing and broader chat-native control workflows are still incomplete.",
-                },
                 {
                     "name": "Expert guidance becomes live immediately but conflicting or uncertain reuse asks first",
                     "status": "gap",

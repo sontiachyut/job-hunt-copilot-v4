@@ -14,6 +14,7 @@ from job_hunt_copilot.chat_runtime import (
 )
 import job_hunt_copilot.local_runtime as local_runtime
 from job_hunt_copilot.delivery_feedback import DeliveryFeedbackSignal
+from job_hunt_copilot.paths import ProjectPaths
 from job_hunt_copilot.local_runtime import (
     begin_chat_operator_session,
     end_chat_operator_session,
@@ -21,7 +22,12 @@ from job_hunt_copilot.local_runtime import (
     execute_supervisor_heartbeat,
     mutate_agent_control_state,
 )
-from tests.support import create_minimal_project
+from job_hunt_copilot.resume_tailoring import (
+    RESUME_REVIEW_STATUS_APPROVED,
+    RESUME_REVIEW_STATUS_REJECTED,
+    record_tailoring_review_decision,
+)
+from tests.support import create_minimal_project, seed_pending_review_tailoring_run
 
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
@@ -256,6 +262,57 @@ def seed_posting_for_abandon(
                 "2026-04-08T12:05:00Z",
             ),
         )
+    connection.commit()
+
+
+def seed_posting_for_tailoring_override(
+    connection: sqlite3.Connection,
+    *,
+    posting_status: str = "resume_review_pending",
+    timestamp: str = "2026-04-08T09:00:00Z",
+) -> None:
+    connection.execute(
+        """
+        INSERT INTO linkedin_leads (
+          lead_id, lead_identity_key, lead_status, lead_shape, split_review_status,
+          source_type, source_reference, source_mode, source_url, company_name, role_title,
+          created_at, updated_at
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        """,
+        (
+            "ld_tailoring_override",
+            "acme-robotics|staff-platform-engineer",
+            "handed_off",
+            "posting_only",
+            "not_applicable",
+            "manual_capture",
+            "paste/lead-tailoring-override",
+            "manual_capture",
+            "https://careers.acme.example/jobs/tailoring-override",
+            "Acme Robotics",
+            "Staff Platform Engineer",
+            timestamp,
+            timestamp,
+        ),
+    )
+    connection.execute(
+        """
+        INSERT INTO job_postings (
+          job_posting_id, lead_id, posting_identity_key, company_name, role_title,
+          posting_status, created_at, updated_at
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+        """,
+        (
+            "jp_tailoring_override",
+            "ld_tailoring_override",
+            "acme-robotics|staff-platform-engineer",
+            "Acme Robotics",
+            "Staff Platform Engineer",
+            posting_status,
+            timestamp,
+            timestamp,
+        ),
+    )
     connection.commit()
 
 
@@ -1094,6 +1151,62 @@ def test_control_agent_script_abandons_active_posting_and_retires_open_pipeline_
     assert cycle_report["cycle"]["result"] == "no_work"
 
 
+def test_control_agent_script_override_routes_posting_abandon_through_generic_interface(tmp_path):
+    project_root = tmp_path / "repo"
+    project_root.mkdir()
+    create_minimal_project(project_root)
+    run_script(
+        "scripts/ops/control_agent.py",
+        "status",
+        "--project-root",
+        str(project_root),
+    )
+    connection = connect_database(project_root / "job_hunt_copilot.db")
+    seed_posting_for_abandon(
+        connection,
+        posting_status="requires_contacts",
+        run_status="paused",
+        current_stage="people_search",
+    )
+    connection.close()
+
+    report = json.loads(
+        run_script(
+            "scripts/ops/control_agent.py",
+            "override",
+            "--project-root",
+            str(project_root),
+            "--object-type",
+            "job_posting",
+            "--object-id",
+            "jp_abandon",
+            "--new-value",
+            "abandoned",
+            "--reason",
+            "Owner withdrew this posting from the active pipeline.",
+        ).stdout
+    )
+
+    assert report["command"] == "override"
+    assert report["status"] == "abandoned"
+    assert report["override_target"] == {
+        "object_type": "job_posting",
+        "object_id": "jp_abandon",
+        "component_stage": "posting_status",
+        "new_value": "abandoned",
+    }
+    assert report["job_posting"]["posting_status"] == "abandoned"
+    assert report["retired_pipeline_runs"] == [
+        {
+            "pipeline_run_id": "pr_abandon",
+            "previous_run_status": "paused",
+            "new_run_status": "completed",
+            "previous_stage": "people_search",
+            "new_stage": "abandoned",
+        }
+    ]
+
+
 def test_control_agent_script_abandon_is_idempotent_for_existing_abandoned_posting(tmp_path):
     project_root = tmp_path / "repo"
     project_root.mkdir()
@@ -1139,6 +1252,187 @@ def test_control_agent_script_abandon_is_idempotent_for_existing_abandoned_posti
 
     assert transition_count == 0
     assert override_count == 0
+
+
+def test_control_agent_script_override_routes_tailoring_review_override(tmp_path):
+    project_root = tmp_path / "repo"
+    project_root.mkdir()
+    create_minimal_project(project_root)
+    run_script(
+        "scripts/ops/control_agent.py",
+        "status",
+        "--project-root",
+        str(project_root),
+    )
+    paths = ProjectPaths.from_root(project_root)
+    connection = connect_database(project_root / "job_hunt_copilot.db")
+    seed_posting_for_tailoring_override(connection)
+    seed_pending_review_tailoring_run(
+        connection,
+        paths,
+        job_posting_id="jp_tailoring_override",
+        company_name="Acme Robotics",
+        role_title="Staff Platform Engineer",
+        resume_tailoring_run_id="rtr_tailoring_override",
+        timestamp="2026-04-08T09:05:00Z",
+    )
+    record_tailoring_review_decision(
+        connection,
+        paths,
+        job_posting_id="jp_tailoring_override",
+        decision_type=RESUME_REVIEW_STATUS_REJECTED,
+        decision_notes="Agent requested another revision before outreach.",
+        timestamp="2026-04-08T09:10:00Z",
+    )
+    connection.close()
+
+    report = json.loads(
+        run_script(
+            "scripts/ops/control_agent.py",
+            "override",
+            "--project-root",
+            str(project_root),
+            "--object-type",
+            "tailoring_review",
+            "--object-id",
+            "jp_tailoring_override",
+            "--new-value",
+            "approved",
+            "--reason",
+            "Owner approved the tailored output for contact discovery.",
+        ).stdout
+    )
+
+    assert report["command"] == "override"
+    assert report["status"] == "completed"
+    assert report["override_target"] == {
+        "object_type": "tailoring_review",
+        "object_id": "jp_tailoring_override",
+        "component_stage": "resume_review_status",
+        "new_value": "approved",
+    }
+    assert report["job_posting"] == {
+        "job_posting_id": "jp_tailoring_override",
+        "posting_status": "requires_contacts",
+    }
+    assert report["resume_tailoring_run"]["resume_tailoring_run_id"] == "rtr_tailoring_override"
+    assert report["resume_tailoring_run"]["resume_review_status"] == "approved"
+    assert report["override_event_id"]
+    assert report["review_artifact"]["artifact_type"] == "tailoring_review_decision"
+
+    connection = connect_database(project_root / "job_hunt_copilot.db")
+    posting_row = connection.execute(
+        """
+        SELECT posting_status
+        FROM job_postings
+        WHERE job_posting_id = ?
+        """,
+        ("jp_tailoring_override",),
+    ).fetchone()
+    run_row = connection.execute(
+        """
+        SELECT resume_review_status
+        FROM resume_tailoring_runs
+        WHERE resume_tailoring_run_id = ?
+        """,
+        ("rtr_tailoring_override",),
+    ).fetchone()
+    override_row = connection.execute(
+        """
+        SELECT object_type, object_id, component_stage, override_reason
+        FROM override_events
+        WHERE override_event_id = ?
+        """,
+        (report["override_event_id"],),
+    ).fetchone()
+    connection.close()
+
+    assert dict(posting_row) == {"posting_status": "requires_contacts"}
+    assert dict(run_row) == {"resume_review_status": "approved"}
+    assert dict(override_row) == {
+        "object_type": "resume_tailoring_runs",
+        "object_id": "rtr_tailoring_override",
+        "component_stage": "resume_review_status",
+        "override_reason": "Owner approved the tailored output for contact discovery.",
+    }
+
+
+def test_control_agent_script_override_rejects_redundant_tailoring_decision_without_side_effects(
+    tmp_path,
+):
+    project_root = tmp_path / "repo"
+    project_root.mkdir()
+    create_minimal_project(project_root)
+    run_script(
+        "scripts/ops/control_agent.py",
+        "status",
+        "--project-root",
+        str(project_root),
+    )
+    paths = ProjectPaths.from_root(project_root)
+    connection = connect_database(project_root / "job_hunt_copilot.db")
+    seed_posting_for_tailoring_override(connection)
+    seed_pending_review_tailoring_run(
+        connection,
+        paths,
+        job_posting_id="jp_tailoring_override",
+        company_name="Acme Robotics",
+        role_title="Staff Platform Engineer",
+        resume_tailoring_run_id="rtr_tailoring_override",
+        timestamp="2026-04-08T09:05:00Z",
+    )
+    record_tailoring_review_decision(
+        connection,
+        paths,
+        job_posting_id="jp_tailoring_override",
+        decision_type=RESUME_REVIEW_STATUS_APPROVED,
+        decision_notes="Agent approved the output for outreach bootstrap.",
+        timestamp="2026-04-08T09:10:00Z",
+    )
+    override_count_before = connection.execute(
+        "SELECT COUNT(*) FROM override_events"
+    ).fetchone()[0]
+    connection.close()
+
+    result = subprocess.run(
+        [
+            sys.executable,
+            str(REPO_ROOT / "scripts/ops/control_agent.py"),
+            "override",
+            "--project-root",
+            str(project_root),
+            "--object-type",
+            "tailoring_review",
+            "--object-id",
+            "jp_tailoring_override",
+            "--new-value",
+            "approved",
+            "--reason",
+            "Owner still approves the existing reviewed outcome.",
+        ],
+        check=False,
+        capture_output=True,
+        text=True,
+    )
+
+    assert result.returncode == 2
+    assert result.stdout == ""
+    assert result.stderr.strip() == "Tailoring review override must change the existing review decision."
+
+    connection = connect_database(project_root / "job_hunt_copilot.db")
+    override_count_after = connection.execute("SELECT COUNT(*) FROM override_events").fetchone()[0]
+    run_row = connection.execute(
+        """
+        SELECT resume_review_status
+        FROM resume_tailoring_runs
+        WHERE resume_tailoring_run_id = ?
+        """,
+        ("rtr_tailoring_override",),
+    ).fetchone()
+    connection.close()
+
+    assert override_count_after == override_count_before
+    assert dict(run_row) == {"resume_review_status": "approved"}
 
 
 def test_control_agent_script_abandon_rejects_terminal_posting_status_without_side_effects(tmp_path):

@@ -453,7 +453,7 @@ def render_chat_bootstrap(
             "2. read the current progress log, ops plan, and chat-startup dashboard before answering substantive runtime questions",
             "3. use the persisted chat-startup dashboard as the clean first-response summary and compact review-queue snapshot",
             "4. for explicit review asks or `what changed`, reread canonical state through the persisted chat helper commands instead of relying on startup memory alone",
-            "5. route global pause, resume, stop, replan, and abandon requests through the canonical control helper scripts",
+            "5. route global pause, resume, stop, replan, and supported object-specific overrides through the canonical control helper scripts",
             "6. inspect only the artifacts needed for the expert's current question or requested action",
             "",
             "Rules:",
@@ -469,6 +469,12 @@ def render_chat_bootstrap(
             f"- Read-only review queue: python3.11 scripts/ops/chat_state.py review-queue --project-root {paths.project_root}",
             f"- Default change summary: python3.11 scripts/ops/chat_state.py change-summary --project-root {paths.project_root}",
             f"- Global control routing: python3.11 scripts/ops/control_agent.py status|pause|resume|stop|replan --project-root {paths.project_root}",
+            (
+                "- Object override routing: "
+                f"python3.11 scripts/ops/control_agent.py override --project-root {paths.project_root} "
+                "--object-type job_posting|tailoring_review --object-id <object_id> "
+                "--new-value <value> --reason \"<reason>\""
+            ),
             f"- Posting abandon control: python3.11 scripts/ops/control_agent.py abandon --project-root {paths.project_root} --job-posting-id <job_posting_id>",
             "",
             "Current snapshot:",
@@ -650,7 +656,7 @@ def build_initial_ops_plan(runtime_snapshot: dict[str, Any], generated_at: str) 
             },
             {
                 "area": "chat_review_control_depth",
-                "note": "The runtime now has persisted-state chat helpers for review retrieval and default change summaries, but generic object-specific override routing and broader expert-guidance workflows are still backlog.",
+                "note": "The runtime now has persisted-state chat helpers plus supported object-specific override routing for posting abandon and tailoring-review overrides, but broader expert-guidance workflows are still backlog.",
             },
         ],
         "replan": {

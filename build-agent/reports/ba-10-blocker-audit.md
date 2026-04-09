@@ -1,7 +1,7 @@
 # BA-10 Blocker Audit
 
 - Acceptance scenarios: `214`
-- Open acceptance scenarios: `11`
+- Open acceptance scenarios: `10`
 - Open acceptance gap clusters: `2`
 - Open build-board blockers: `3`
 - Blockers with missing evidence refs: `0`
@@ -11,7 +11,7 @@
 - Epic: `BA-10`
 - Slice: `BA-10-S3`
 - Owner role: `build-lead`
-- Reason: BA-10-S4 closed the downstream supervisor action-catalog gap, the latest BA-10-S3 hardening passes already burned down the explicit persisted-state review-queue or default change-summary chat reads, and the latest current-focus replay reconfirmed that BA-10-S3 still resolves only the maintenance-automation and deeper chat-guidance or override gap clusters at 201 implemented / 2 partial / 9 gap scenarios, so the active same-slice handoff now belongs to build-lead for runtime-owned `jhc-chat` control or guidance work before maintenance automation rather than more quality-only hardening.
+- Reason: BA-10-S4 closed the downstream supervisor action-catalog gap, the latest BA-10-S3 hardening passes already burned down the explicit persisted-state review-queue or default change-summary chat reads, and the new supported object-specific override routing closed the remaining chat control-routing partial, so BA-10-S3 now resolves only the maintenance-automation and deeper expert-guidance gap clusters at 202 implemented / 1 partial / 9 gap scenarios; the active same-slice handoff stays with build-lead for runtime-owned expert-guidance or background-task work before maintenance automation rather than more quality-only hardening.
 - Matching gap ids: `BA10_MAINTENANCE_AUTOMATION`, `BA10_CHAT_REVIEW_AND_CONTROL`
 - Validation suite: `python3.11 scripts/quality/run_ba10_validation_suite.py --project-root <repo_root> --current-focus`
 
@@ -59,9 +59,9 @@
 - Rules: `Supervisor Agent behavior`
 - Epics: `BA-02`, `BA-03`
 - Supporting slices: `BA-02-S1`, `BA-02-S2`, `BA-02-S3`, `BA-03-S1`, `BA-03-S2`, `BA-03-S3`, `BA-10-S3`
-- Open scenarios: `5` (`partial`: `1`, `gap`: `4`)
-- Reason: The direct `jhc-chat` entrypoint now has persisted-state read helpers and global control routing guidance, but generic object-specific override routing and deeper expert-guidance workflows are not yet implemented in the chat surface.
-- Evidence summary: Chat lifecycle, persisted startup/dashboard reads, explicit review-queue retrieval, and default change summaries now exist through committed chat helper commands, but generic object-specific override routing and expert-guidance workflows are still incomplete.
+- Open scenarios: `4` (`partial`: `0`, `gap`: `4`)
+- Reason: The direct `jhc-chat` entrypoint now has persisted-state read helpers plus supported object-specific override routing, but deeper expert-guidance workflows are not yet implemented in the chat surface.
+- Evidence summary: Chat lifecycle, persisted startup/dashboard reads, explicit review-queue retrieval, default change summaries, and supported object-specific override routing now exist through committed chat helper commands, but deeper expert-guidance workflows are still incomplete.
 - Evidence code refs: `job_hunt_copilot/chat_runtime.py`, `scripts/ops/chat_session.py`, `scripts/ops/chat_state.py`, `job_hunt_copilot/local_runtime.py`, `job_hunt_copilot/review_queries.py`, `job_hunt_copilot/runtime_pack.py`
 - Evidence test refs: `tests/test_local_runtime.py`, `tests/test_review_queries.py`, `tests/test_runtime_pack.py`, `tests/test_acceptance_traceability.py`
 - Validation suite: `python3.11 scripts/quality/run_ba10_validation_suite.py --project-root <repo_root> --gap-id BA10_CHAT_REVIEW_AND_CONTROL`
@@ -71,9 +71,6 @@
   - `python3.11 -m pytest tests/test_runtime_pack.py` (automated: Confirms generated runtime scaffolding stays honest about current action-catalog and maintenance placeholder status.)
   - `python3.11 -m pytest tests/test_acceptance_traceability.py tests/test_blocker_audit.py tests/test_quality_validation.py tests/test_repo_readiness.py` (automated: Keeps the committed BA-10 acceptance, blocker, readiness, and validation-suite reports synchronized with repo code, tests, and state references.)
 - Open scenarios:
-  - `[partial]` jhc-chat uses persisted state for answers and control routing (rule: `Supervisor Agent behavior`, line: `1249`)
-    - Evidence refs: `job_hunt_copilot/chat_runtime.py`, `job_hunt_copilot/supervisor.py`, `job_hunt_copilot/local_runtime.py`, `job_hunt_copilot/runtime_pack.py`, `scripts/ops/run_supervisor_cycle.py`, `scripts/ops/control_agent.py`, `scripts/ops/chat_session.py`, `bin/jhc-agent-start`, `bin/jhc-agent-stop`, `bin/jhc-agent-cycle`, `bin/jhc-chat`, `tests/test_supervisor_downstream_actions.py`, `tests/test_supervisor.py`, `tests/test_local_runtime.py`, `tests/test_runtime_pack.py`
-    - Note: `scripts/ops/chat_state.py` now rereads persisted dashboard, review-queue, and change-summary state, and `scripts/ops/control_agent.py` remains the canonical global-control route, but generic object-specific override routing and broader chat-native control workflows are still incomplete.
   - `[gap]` Expert guidance becomes live immediately but conflicting or uncertain reuse asks first (rule: `Supervisor Agent behavior`, line: `1273`)
     - Evidence refs: `job_hunt_copilot/chat_runtime.py`, `job_hunt_copilot/supervisor.py`, `job_hunt_copilot/local_runtime.py`, `job_hunt_copilot/runtime_pack.py`, `scripts/ops/run_supervisor_cycle.py`, `scripts/ops/control_agent.py`, `scripts/ops/chat_session.py`, `bin/jhc-agent-start`, `bin/jhc-agent-stop`, `bin/jhc-agent-cycle`, `bin/jhc-chat`, `tests/test_supervisor_downstream_actions.py`, `tests/test_supervisor.py`, `tests/test_local_runtime.py`, `tests/test_runtime_pack.py`
     - Note: The direct `jhc-chat` wrapper now has persisted review-queue and default change-summary helper reads, but expert-guidance reuse decisions, conflict-wide pausing, and background-task handoff or return workflows are still missing.
@@ -93,9 +90,9 @@
 - Status: `open`
 - Severity: `high`
 - Owner role: `quality-engineer`
-- Summary: The regenerated BA-10 trace matrix now reports 201 implemented / 2 partial / 9 gap scenarios; explicit smoke-coverage targets, implemented-slice traceability, reproducible validation-command mappings, a guarded repo-readiness summary, and a durable latest validation-suite report snapshot cover bootstrap, tailoring, discovery, send, feedback, review-query, downstream supervisor follow-through, the persisted `jhc-chat` startup dashboard surface, explicit review-queue or change-summary reads, read-only idempotency for repeated chat-state helper queries, posting-abandon control, and idle-timeout auto-resume after unexpected chat exit, but maintenance automation and deeper chat guidance or override workflows still remain open.
+- Summary: The regenerated BA-10 trace matrix now reports 202 implemented / 1 partial / 9 gap scenarios; explicit smoke-coverage targets, implemented-slice traceability, reproducible validation-command mappings, a guarded repo-readiness summary, and a durable latest validation-suite report snapshot cover bootstrap, tailoring, discovery, send, feedback, review-query, downstream supervisor follow-through, the persisted `jhc-chat` startup dashboard surface, explicit review-queue or change-summary reads, read-only idempotency for repeated chat-state helper queries, supported job-posting and tailoring-review override routing, and idle-timeout auto-resume after unexpected chat exit, but maintenance automation and deeper expert-guidance workflows still remain open.
 - Impact: Acceptance signoff is more credible now that committed smoke coverage, blocker-specific evidence refs, explicit negative regressions, exact open-scenario traces, and a guarded repo-surface readiness snapshot exist, but BA-10 still cannot close until the remaining gap clusters are actually burned down or deliberately left open.
-- Next action: Hand the next functional slice to the build lead and the relevant runtime owner for the remaining `jhc-chat` control gap, starting with generic object-specific override routing or expert-guidance conflict handling, then tackle maintenance automation and refresh the BA-10 reports plus validation-suite evidence afterward.
+- Next action: Hand the next functional slice to the build lead and the relevant runtime owner for the remaining expert-guidance gap, starting with conflict handling or background-task handoff and return workflows, then tackle maintenance automation and refresh the BA-10 reports plus validation-suite evidence afterward.
 - Evidence refs: `build-agent/reports/ba-10-acceptance-trace-matrix.json`, `build-agent/reports/ba-10-acceptance-trace-matrix.md`, `build-agent/reports/ba-10-blocker-audit.json`, `build-agent/reports/ba-10-blocker-audit.md`, `build-agent/reports/repo-readiness-summary.json`, `build-agent/reports/repo-readiness-summary.md`, `build-agent/reports/ba-10-validation-suite-latest.json`, `build-agent/reports/ba-10-validation-suite-latest.md`, `job_hunt_copilot/acceptance_traceability.py`, `job_hunt_copilot/blocker_audit.py`, `job_hunt_copilot/quality_validation.py`, `job_hunt_copilot/repo_readiness.py`, `scripts/quality/generate_blocker_audit.py`, `scripts/quality/generate_repo_readiness_report.py`, `scripts/quality/run_ba10_validation_suite.py`, `scripts/ops/control_agent.py`, `tests/test_acceptance_traceability.py`, `tests/test_blocker_audit.py`, `tests/test_local_runtime.py`, `tests/test_quality_validation.py`, `tests/test_repo_readiness.py`, `tests/test_supervisor_downstream_actions.py`, `tests/test_delivery_feedback.py`, `tests/test_schema.py`, `tests/test_smoke_harness.py`, `tests/test_supervisor.py`, `tests/test_runtime_pack.py`, `tests/test_resume_tailoring.py`, `tests/test_outreach.py`, `tests/test_review_queries.py`
 - Validation suite: `python3.11 scripts/quality/run_ba10_validation_suite.py --project-root <repo_root> --blocker-id BA10-TRACE-001`
 - Confirmation commands:

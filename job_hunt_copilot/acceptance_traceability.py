@@ -197,9 +197,9 @@ GAP_REGISTRY: dict[str, dict[str, Any]] = {
     ),
     "BA10_CHAT_REVIEW_AND_CONTROL": _gap_metadata(
         title="Chat review and control are still missing deeper expert-guidance workflows",
-        reason="The direct `jhc-chat` entrypoint now has persisted-state read helpers and global control routing guidance, but generic object-specific override routing and deeper expert-guidance workflows are not yet implemented in the chat surface.",
+        reason="The direct `jhc-chat` entrypoint now has persisted-state read helpers plus supported object-specific override routing, but deeper expert-guidance workflows are not yet implemented in the chat surface.",
         next_slice="BA-10-S3",
-        evidence_summary="Chat lifecycle, persisted startup/dashboard reads, explicit review-queue retrieval, and default change summaries now exist through committed chat helper commands, but generic object-specific override routing and expert-guidance workflows are still incomplete.",
+        evidence_summary="Chat lifecycle, persisted startup/dashboard reads, explicit review-queue retrieval, default change summaries, and supported object-specific override routing now exist through committed chat helper commands, but deeper expert-guidance workflows are still incomplete.",
         evidence_code_refs=(
             "job_hunt_copilot/chat_runtime.py",
             "scripts/ops/chat_session.py",
@@ -908,9 +908,8 @@ _register_override(
     scenarios=(
         "jhc-chat uses persisted state for answers and control routing",
     ),
-    status=STATUS_PARTIAL,
-    gap_ids=("BA10_CHAT_REVIEW_AND_CONTROL",),
-    note="`scripts/ops/chat_state.py` now rereads persisted dashboard, review-queue, and change-summary state, and `scripts/ops/control_agent.py` remains the canonical global-control route, but generic object-specific override routing and broader chat-native control workflows are still incomplete.",
+    status=STATUS_IMPLEMENTED,
+    note="`scripts/ops/chat_state.py` now rereads persisted dashboard, review-queue, and change-summary state, while `scripts/ops/control_agent.py` routes global controls and the supported job-posting or tailoring-review override paths through canonical state updates plus `override_events` without mutating state for read-only requests.",
 )
 _register_override(
     scenarios=(

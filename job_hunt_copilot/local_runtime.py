@@ -21,6 +21,12 @@ from .delivery_feedback import (
 )
 from .paths import ProjectPaths
 from .records import new_canonical_id, now_utc_iso
+from .resume_tailoring import (
+    RESUME_REVIEW_STATUS_APPROVED,
+    RESUME_REVIEW_STATUS_REJECTED,
+    ResumeTailoringError,
+    record_tailoring_review_override,
+)
 from .runtime_pack import materialize_runtime_pack, write_text_atomic
 from .supervisor import (
     AGENT_MODE_PAUSED,
@@ -80,6 +86,20 @@ CHAT_SESSION_EXIT_MODES = frozenset(
 CHAT_INTERACTION_PAUSE_REASON = "expert_interaction"
 CHAT_IDLE_TIMEOUT_MINUTES = 15
 CHAT_IDLE_TIMEOUT_SECONDS = CHAT_IDLE_TIMEOUT_MINUTES * 60
+OBJECT_OVERRIDE_TYPE_JOB_POSTING = "job_posting"
+OBJECT_OVERRIDE_TYPE_TAILORING_REVIEW = "tailoring_review"
+SUPPORTED_OBJECT_OVERRIDE_TYPES = frozenset(
+    {
+        OBJECT_OVERRIDE_TYPE_JOB_POSTING,
+        OBJECT_OVERRIDE_TYPE_TAILORING_REVIEW,
+    }
+)
+SUPPORTED_TAILORING_REVIEW_OVERRIDE_DECISIONS = frozenset(
+    {
+        RESUME_REVIEW_STATUS_APPROVED,
+        RESUME_REVIEW_STATUS_REJECTED,
+    }
+)
 PMSET_EVENT_LINE_PATTERN = re.compile(
     r"^(?P<timestamp>\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2} [+-]\d{4})\s+(?P<body>.+)$"
 )
@@ -637,6 +657,122 @@ def abandon_job_posting(
         "retired_pipeline_runs": retired_pipeline_runs,
         "state_transition_event_id": state_transition_event_id,
         "override_event_id": None if override_event is None else override_event.override_event_id,
+        "manual_command": manual_command,
+        "control_state": dict(control_state.values),
+    }
+
+
+def apply_object_override(
+    object_type: str,
+    object_id: str,
+    *,
+    new_value: str,
+    reason: str | None,
+    project_root: Path | str | None = None,
+    manual_command: str | None = None,
+    timestamp: str | None = None,
+) -> dict[str, Any]:
+    normalized_object_type = object_type.strip()
+    normalized_object_id = object_id.strip()
+    normalized_new_value = new_value.strip()
+    reason_text = (reason or "").strip()
+
+    if normalized_object_type not in SUPPORTED_OBJECT_OVERRIDE_TYPES:
+        supported_types = ", ".join(sorted(SUPPORTED_OBJECT_OVERRIDE_TYPES))
+        raise ValueError(
+            f"Unsupported object_type={normalized_object_type!r}. Supported values: {supported_types}."
+        )
+    if not normalized_object_id:
+        raise ValueError("object_id is required for the override command.")
+    if not normalized_new_value:
+        raise ValueError("new_value is required for the override command.")
+    if not reason_text:
+        raise ValueError("Override reason is required for the override command.")
+
+    if normalized_object_type == OBJECT_OVERRIDE_TYPE_JOB_POSTING:
+        if normalized_new_value != JOB_POSTING_STATUS_ABANDONED:
+            raise ValueError(
+                "Supported job_posting override values: 'abandoned'."
+            )
+        report = abandon_job_posting(
+            normalized_object_id,
+            project_root=project_root,
+            reason=reason_text,
+            manual_command=manual_command or "override",
+            timestamp=timestamp,
+        )
+        report["command"] = "override"
+        report["override_target"] = {
+            "object_type": normalized_object_type,
+            "object_id": normalized_object_id,
+            "component_stage": "posting_status",
+            "new_value": normalized_new_value,
+        }
+        return report
+
+    if normalized_new_value not in SUPPORTED_TAILORING_REVIEW_OVERRIDE_DECISIONS:
+        supported_decisions = ", ".join(sorted(SUPPORTED_TAILORING_REVIEW_OVERRIDE_DECISIONS))
+        raise ValueError(
+            "Supported tailoring_review override values: "
+            f"{supported_decisions}."
+        )
+
+    paths = ProjectPaths.from_root(project_root)
+    migration = initialize_database(paths.db_path)
+    current_timestamp = timestamp or now_utc_iso()
+
+    with connect_canonical_database(paths) as connection:
+        try:
+            result = record_tailoring_review_override(
+                connection,
+                paths,
+                job_posting_id=normalized_object_id,
+                decision_type=normalized_new_value,
+                override_reason=reason_text,
+                decision_notes=reason_text,
+                timestamp=current_timestamp,
+            )
+        except ResumeTailoringError as exc:
+            raise ValueError(str(exc)) from exc
+
+        control_state = read_agent_control_state(connection, timestamp=current_timestamp)
+
+    return {
+        "contract_version": CONTRACT_VERSION,
+        "produced_at": now_utc_iso(),
+        "project_root": str(paths.project_root),
+        "database": {
+            "db_path": str(migration.db_path),
+            "applied_migrations": migration.applied_migrations,
+            "user_version": migration.user_version,
+        },
+        "command": "override",
+        "status": "completed",
+        "override_target": {
+            "object_type": normalized_object_type,
+            "object_id": normalized_object_id,
+            "component_stage": "resume_review_status",
+            "new_value": normalized_new_value,
+        },
+        "job_posting": {
+            "job_posting_id": result.job_posting_id,
+            "posting_status": result.posting_status,
+        },
+        "resume_tailoring_run": {
+            "resume_tailoring_run_id": result.resume_tailoring_run_id,
+            "resume_review_status": result.run.resume_review_status,
+            "tailoring_status": result.run.tailoring_status,
+            "workspace_path": result.run.workspace_path,
+        },
+        "review_artifact": {
+            "artifact_type": result.review_artifact.record.artifact_type,
+            "path": result.review_artifact.location.relative_path,
+        },
+        "override_event_id": (
+            None
+            if result.override_event is None
+            else result.override_event.override_event_id
+        ),
         "manual_command": manual_command,
         "control_state": dict(control_state.values),
     }
