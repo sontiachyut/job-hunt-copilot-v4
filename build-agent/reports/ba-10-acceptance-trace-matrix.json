@@ -3,8 +3,8 @@
   "feature_path": "prd/test-spec.feature",
   "scenario_count": 214,
   "status_counts": {
-    "implemented": 197,
-    "partial": 3,
+    "implemented": 198,
+    "partial": 2,
     "gap": 12,
     "deferred_optional": 1,
     "excluded_from_required_acceptance": 1
@@ -5769,8 +5769,8 @@
       ],
       "note": "The durable supervisor core is real and tested, and the autonomous catalog now covers both the full role-targeted chain and contact-rooted general-learning discovery, sending, and bounded delayed-feedback follow-through, while richer chat, maintenance, and posting-abandon runtime behavior remain incomplete.",
       "status_counts": {
-        "implemented": 20,
-        "partial": 3,
+        "implemented": 21,
+        "partial": 2,
         "gap": 10,
         "deferred_optional": 0,
         "excluded_from_required_acceptance": 0
@@ -6805,7 +6805,7 @@
         {
           "name": "Expert-interaction resume follows explicit close, explicit resume, or safe idle timeout",
           "scenario_line": 1297,
-          "status": "partial",
+          "status": "implemented",
           "owner_role": "build-lead",
           "epic_ids": [
             "BA-02",
@@ -6838,10 +6838,8 @@
             "tests/test_local_runtime.py",
             "tests/test_runtime_pack.py"
           ],
-          "gap_ids": [
-            "BA10_CHAT_IDLE_TIMEOUT_RESUME"
-          ],
-          "note": "Explicit close and explicit resume paths exist, but automatic idle-timeout recovery after unexpected chat exit is still backlog."
+          "gap_ids": [],
+          "note": "`job_hunt_copilot.local_runtime.execute_supervisor_heartbeat` now auto-resumes the canonical `expert_interaction` pause after an unexpected `jhc-chat` exit has been idle for 15 minutes, while still preserving explicit close and explicit resume behavior."
         },
         {
           "name": "Expert-requested background tasks require explicit handoff summary and exclusive focus",
@@ -9312,17 +9310,9 @@
         "tests/test_acceptance_traceability.py"
       ],
       "slice_ids": [
-        "BA-02-S1",
-        "BA-02-S2",
-        "BA-02-S3",
-        "BA-03-S1",
-        "BA-03-S2",
-        "BA-03-S3",
         "BA-10-S3"
       ],
-      "scenario_names": [
-        "Expert-interaction resume follows explicit close, explicit resume, or safe idle timeout"
-      ]
+      "scenario_names": []
     },
     {
       "gap_id": "BA10_DELAYED_FEEDBACK_SCHEDULING",

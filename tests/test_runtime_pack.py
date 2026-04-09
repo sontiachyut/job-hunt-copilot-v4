@@ -76,7 +76,7 @@ def test_runtime_pack_chat_bootstrap_scaffolds_review_and_control_surfaces(tmp_p
     assert "- pending_review_count: 0" in chat_bootstrap
 
 
-def test_runtime_pack_keeps_maintenance_as_backlog_placeholder(tmp_path):
+def test_runtime_pack_reflects_idle_timeout_resume_closure_and_remaining_chat_backlog(tmp_path):
     project_root = tmp_path / "repo"
     project_root.mkdir()
     create_minimal_project(project_root)
@@ -84,12 +84,16 @@ def test_runtime_pack_keeps_maintenance_as_backlog_placeholder(tmp_path):
     materialize_runtime_pack(project_root=project_root)
     ops_plan = yaml.safe_load((project_root / "ops" / "agent" / "ops-plan.yaml").read_text(encoding="utf-8"))
 
-    assert ops_plan["maintenance_backlog"] == [
+    assert ops_plan["maintenance_backlog"] == []
+    assert ops_plan["weak_areas"] == [
         {
-            "title": "Add idle-timeout expert-interaction auto-resume",
-            "reason": "Unexpected `jhc-chat` exit is recorded canonically, but automatic timeout-based resume is still a later helper slice.",
-            "blocked_by": "future_chat_runtime_followup",
-        }
+            "area": "action_catalog_coverage",
+            "note": "Later pipeline stages beyond lead_handoff are not yet registered; unsupported needs escalate.",
+        },
+        {
+            "area": "chat_review_control_depth",
+            "note": "The runtime now auto-resumes after unexpected chat exit idles safely, but richer in-chat review retrieval, change summaries, and control routing are still backlog.",
+        },
     ]
     assert all(
         priority["scope_type"] != "maintenance_change_batch"

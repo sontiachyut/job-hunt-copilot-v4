@@ -37,7 +37,6 @@ def test_ba10_blocker_audit_reports_are_current_and_reference_real_repo_paths():
     assert current_focus["gap_ids"] == [
         "BA10_MAINTENANCE_AUTOMATION",
         "BA10_CHAT_REVIEW_AND_CONTROL",
-        "BA10_CHAT_IDLE_TIMEOUT_RESUME",
     ]
     assert [command["command_id"] for command in current_focus["validation_commands"]] == [
         "qa_runtime_pack_regressions",

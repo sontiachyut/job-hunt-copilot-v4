@@ -185,7 +185,6 @@ def test_validation_selector_details_include_requested_smoke_gap_blocker_and_cur
     assert details["current_focus"]["gap_ids"] == [
         "BA10_MAINTENANCE_AUTOMATION",
         "BA10_CHAT_REVIEW_AND_CONTROL",
-        "BA10_CHAT_IDLE_TIMEOUT_RESUME",
     ]
     assert details["current_focus"]["validation_command_ids"] == [
         "qa_runtime_pack_regressions",
@@ -197,7 +196,6 @@ def test_validation_selector_details_include_requested_smoke_gap_blocker_and_cur
     assert [gap["gap_id"] for gap in details["current_focus"]["gap_summaries"]] == [
         "BA10_MAINTENANCE_AUTOMATION",
         "BA10_CHAT_REVIEW_AND_CONTROL",
-        "BA10_CHAT_IDLE_TIMEOUT_RESUME",
     ]
     assert details["current_focus"]["gap_summaries"][0]["open_scenarios"][0] == {
         "name": "Maintenance change artifacts exist for every autonomous maintenance batch",
@@ -215,7 +213,7 @@ def test_validation_selector_details_include_requested_smoke_gap_blocker_and_cur
         in details["current_focus"]["reason"]
     )
     assert (
-        "this cycle also closed the posting-abandon control gap"
+        "this cycle closed idle-timeout auto-resume after unexpected chat exit"
         in details["current_focus"]["reason"]
     )
 
@@ -502,7 +500,6 @@ def test_quality_validation_suite_script_dry_run_expands_current_focus():
     assert current_focus["gap_ids"] == [
         "BA10_MAINTENANCE_AUTOMATION",
         "BA10_CHAT_REVIEW_AND_CONTROL",
-        "BA10_CHAT_IDLE_TIMEOUT_RESUME",
     ]
     assert current_focus["validation_command_ids"] == [
         "qa_runtime_pack_regressions",
@@ -514,7 +511,6 @@ def test_quality_validation_suite_script_dry_run_expands_current_focus():
     assert [gap["gap_id"] for gap in current_focus["gap_summaries"]] == [
         "BA10_MAINTENANCE_AUTOMATION",
         "BA10_CHAT_REVIEW_AND_CONTROL",
-        "BA10_CHAT_IDLE_TIMEOUT_RESUME",
     ]
     assert current_focus["validation_suite_command"] == (
         "python3.11 scripts/quality/run_ba10_validation_suite.py "
@@ -525,7 +521,7 @@ def test_quality_validation_suite_script_dry_run_expands_current_focus():
         in current_focus["reason"]
     )
     assert (
-        "this cycle also closed the posting-abandon control gap"
+        "this cycle closed idle-timeout auto-resume after unexpected chat exit"
         in current_focus["reason"]
     )
 
@@ -605,18 +601,17 @@ def test_build_ba10_validation_suite_report_summarizes_results():
             "repo_status": {
                 "acceptance_scenario_count": 214,
                 "acceptance_status_counts": {
-                    "implemented": 197,
-                    "partial": 3,
+                    "implemented": 198,
+                    "partial": 2,
                     "gap": 12,
                     "deferred_optional": 1,
                     "excluded_from_required_acceptance": 1,
                 },
-                "open_acceptance_scenario_count": 15,
-                "open_acceptance_gap_cluster_count": 3,
+                "open_acceptance_scenario_count": 14,
+                "open_acceptance_gap_cluster_count": 2,
                 "open_acceptance_gap_ids": [
                     "BA10_MAINTENANCE_AUTOMATION",
                     "BA10_CHAT_REVIEW_AND_CONTROL",
-                    "BA10_CHAT_IDLE_TIMEOUT_RESUME",
                 ],
                 "open_acceptance_gap_summaries": [
                     {
@@ -627,7 +622,7 @@ def test_build_ba10_validation_suite_report_summarizes_results():
                     {
                         "gap_id": "BA10_CHAT_REVIEW_AND_CONTROL",
                         "title": "Chat review and control remain wrapper-only",
-                        "open_scenario_count": 10,
+                        "open_scenario_count": 8,
                     },
                 ],
                 "open_build_board_blocker_count": 3,
@@ -717,7 +712,6 @@ def test_build_ba10_validation_suite_report_summarizes_results():
                     "gap_ids": [
                         "BA10_MAINTENANCE_AUTOMATION",
                         "BA10_CHAT_REVIEW_AND_CONTROL",
-                        "BA10_CHAT_IDLE_TIMEOUT_RESUME",
                     ],
                     "gap_summaries": [
                         {
@@ -805,18 +799,17 @@ def test_build_ba10_validation_suite_report_summarizes_results():
     assert report["repo_status"] == {
         "acceptance_scenario_count": 214,
         "acceptance_status_counts": {
-            "implemented": 197,
-            "partial": 3,
+            "implemented": 198,
+            "partial": 2,
             "gap": 12,
             "deferred_optional": 1,
             "excluded_from_required_acceptance": 1,
         },
-        "open_acceptance_scenario_count": 15,
-        "open_acceptance_gap_cluster_count": 3,
+        "open_acceptance_scenario_count": 14,
+        "open_acceptance_gap_cluster_count": 2,
         "open_acceptance_gap_ids": [
             "BA10_MAINTENANCE_AUTOMATION",
             "BA10_CHAT_REVIEW_AND_CONTROL",
-            "BA10_CHAT_IDLE_TIMEOUT_RESUME",
         ],
         "open_acceptance_gap_summaries": [
             {
@@ -827,7 +820,7 @@ def test_build_ba10_validation_suite_report_summarizes_results():
             {
                 "gap_id": "BA10_CHAT_REVIEW_AND_CONTROL",
                 "title": "Chat review and control remain wrapper-only",
-                "open_scenario_count": 10,
+                "open_scenario_count": 8,
             },
         ],
         "open_build_board_blocker_count": 3,
@@ -852,7 +845,7 @@ def test_build_ba10_validation_suite_report_summarizes_results():
     )
     assert "- Failed command ids: `qa_host_launchd_validation`" in markdown
     assert "## Open BA-10 Status" in markdown
-    assert "- Open acceptance gap clusters: `3`" in markdown
+    assert "- Open acceptance gap clusters: `2`" in markdown
     assert "- Open acceptance gap summaries:" in markdown
     assert (
         "  - `BA10_MAINTENANCE_AUTOMATION`: Maintenance workflow and artifacts are not implemented (`6` scenarios)"

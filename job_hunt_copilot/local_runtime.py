@@ -78,6 +78,8 @@ CHAT_SESSION_EXIT_MODES = frozenset(
     }
 )
 CHAT_INTERACTION_PAUSE_REASON = "expert_interaction"
+CHAT_IDLE_TIMEOUT_MINUTES = 15
+CHAT_IDLE_TIMEOUT_SECONDS = CHAT_IDLE_TIMEOUT_MINUTES * 60
 PMSET_EVENT_LINE_PATTERN = re.compile(
     r"^(?P<timestamp>\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2} [+-]\d{4})\s+(?P<body>.+)$"
 )
@@ -222,6 +224,45 @@ def detect_sleep_wake_recovery(
 
     snapshot = upsert_control_values(connection, updates, timestamp=current_time)
     return dict(snapshot.values), recovery_context
+
+
+def maybe_resume_after_chat_idle_timeout(
+    connection: sqlite3.Connection,
+    *,
+    current_time: str,
+) -> tuple[dict[str, str], dict[str, Any] | None]:
+    control_state = read_agent_control_state(connection, timestamp=current_time)
+    if not control_state.agent_enabled or control_state.agent_mode != AGENT_MODE_PAUSED:
+        return dict(control_state.values), None
+    if control_state.pause_reason != CHAT_INTERACTION_PAUSE_REASON:
+        return dict(control_state.values), None
+    if control_state.active_chat_session_id:
+        return dict(control_state.values), None
+    if control_state.last_chat_exit_mode != CHAT_SESSION_EXIT_MODE_UNEXPECTED_EXIT:
+        return dict(control_state.values), None
+
+    idle_reference_at = control_state.last_chat_ended_at or control_state.paused_at
+    if not idle_reference_at:
+        return dict(control_state.values), None
+
+    idle_seconds = int((_parse_utc_iso(current_time) - _parse_utc_iso(idle_reference_at)).total_seconds())
+    if idle_seconds < CHAT_IDLE_TIMEOUT_SECONDS:
+        return dict(control_state.values), None
+
+    resumed = resume_agent(
+        connection,
+        manual_command="jhc-chat idle-timeout-auto-resume",
+        timestamp=current_time,
+    )
+    return dict(resumed.values), {
+        "resume_reason": "unexpected_chat_exit_idle_timeout",
+        "resumed_at": current_time,
+        "idle_reference_at": idle_reference_at,
+        "idle_seconds": idle_seconds,
+        "idle_timeout_minutes": CHAT_IDLE_TIMEOUT_MINUTES,
+        "last_chat_exit_mode": control_state.last_chat_exit_mode,
+        "previous_pause_reason": control_state.pause_reason,
+    }
 
 
 def connect_canonical_database(paths: ProjectPaths) -> sqlite3.Connection:
@@ -850,6 +891,10 @@ def execute_supervisor_heartbeat(
             connection,
             current_time=effective_started_at,
         )
+        control_state_values, chat_idle_timeout_resume = maybe_resume_after_chat_idle_timeout(
+            connection,
+            current_time=effective_started_at,
+        )
         execution = run_supervisor_cycle(
             connection,
             paths,
@@ -912,6 +957,7 @@ def execute_supervisor_heartbeat(
         "control_state": dict(execution.control_state.values),
         "pre_cycle_control_state": control_state_values,
         "sleep_wake_recovery_context": sleep_wake_recovery_context,
+        "chat_idle_timeout_resume": chat_idle_timeout_resume,
         "selected_work": selected_work,
         "pipeline_run_id": (
             execution.pipeline_run.pipeline_run_id

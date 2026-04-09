@@ -3,8 +3,8 @@
 - Feature file: `prd/test-spec.feature`
 - Scenario count: `214`
 - Status counts:
-  - `implemented`: `197`
-  - `partial`: `3`
+  - `implemented`: `198`
+  - `partial`: `2`
   - `gap`: `12`
   - `deferred_optional`: `1`
   - `excluded_from_required_acceptance`: `1`
@@ -60,7 +60,7 @@
 | Email Discovery behavior | outreach-engineer | 17 | 0 | 0 | 0 | 0 |
 | Email Drafting and Sending behavior | outreach-engineer | 14 | 0 | 0 | 0 | 0 |
 | Delivery Feedback behavior | outreach-engineer | 11 | 0 | 0 | 0 | 0 |
-| Supervisor Agent behavior | build-lead | 20 | 3 | 10 | 0 | 0 |
+| Supervisor Agent behavior | build-lead | 21 | 2 | 10 | 0 | 0 |
 | Review surfaces and chat-based control | quality-engineer | 6 | 0 | 1 | 0 | 0 |
 | Current-build orchestration remains sequential | build-lead | 22 | 0 | 0 | 0 | 0 |
 | LinkedIn Scraping acceptance | ingestion-engineer | 12 | 0 | 0 | 0 | 0 |
@@ -148,16 +148,6 @@
   - Expert-requested background tasks require explicit handoff summary and exclusive focus
   - Expert-requested background task outcomes return to review appropriately
   - AI agent surfaces the current review queue in chat
-
-### BA10_CHAT_IDLE_TIMEOUT_RESUME: Idle-timeout resume is still backlog
-- Next slice: `BA-10-S3`
-- Supporting slices: `BA-02-S1`, `BA-02-S2`, `BA-02-S3`, `BA-03-S1`, `BA-03-S2`, `BA-03-S3`, `BA-10-S3`
-- Reason: Explicit-close and explicit-resume paths exist, but unexpected `jhc-chat` exits still require a later explicit resume because automatic idle-timeout recovery is not implemented.
-- Evidence summary: Unexpected chat exit is recorded and a later explicit resume works, but no automatic idle-timeout resume helper exists.
-- Evidence code refs: `job_hunt_copilot/local_runtime.py`, `job_hunt_copilot/runtime_pack.py`
-- Evidence test refs: `tests/test_local_runtime.py`, `tests/test_runtime_pack.py`, `tests/test_acceptance_traceability.py`
-- Scenarios: `1`
-  - Expert-interaction resume follows explicit close, explicit resume, or safe idle timeout
 
 ## Epic Validation Ownership
 

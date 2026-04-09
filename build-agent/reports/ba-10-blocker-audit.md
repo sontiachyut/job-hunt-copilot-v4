@@ -1,8 +1,8 @@
 # BA-10 Blocker Audit
 
 - Acceptance scenarios: `214`
-- Open acceptance scenarios: `15`
-- Open acceptance gap clusters: `3`
+- Open acceptance scenarios: `14`
+- Open acceptance gap clusters: `2`
 - Open build-board blockers: `3`
 - Blockers with missing evidence refs: `0`
 
@@ -11,8 +11,8 @@
 - Epic: `BA-10`
 - Slice: `BA-10-S3`
 - Owner role: `quality-engineer`
-- Reason: BA-10-S4 closed the downstream supervisor action-catalog gap and the latest BA-10-S3 hardening pass burned down the `jhc-chat` startup dashboard plus active-runtime-metrics scenarios; this cycle also closed the posting-abandon control gap, so the acceptance matrix now holds at 197 implemented / 3 partial / 12 gap scenarios with maintenance automation, richer chat review/control, and idle-timeout resume still open BA-10-S3 work.
-- Matching gap ids: `BA10_MAINTENANCE_AUTOMATION`, `BA10_CHAT_REVIEW_AND_CONTROL`, `BA10_CHAT_IDLE_TIMEOUT_RESUME`
+- Reason: BA-10-S4 closed the downstream supervisor action-catalog gap, the latest BA-10-S3 hardening passes burned down the `jhc-chat` startup dashboard plus active-runtime-metrics scenarios and posting-abandon control, and this cycle closed idle-timeout auto-resume after unexpected chat exit, so the acceptance matrix now holds at 198 implemented / 2 partial / 12 gap scenarios with maintenance automation and richer chat review/control still open BA-10-S3 work.
+- Matching gap ids: `BA10_MAINTENANCE_AUTOMATION`, `BA10_CHAT_REVIEW_AND_CONTROL`
 - Validation suite: `python3.11 scripts/quality/run_ba10_validation_suite.py --project-root <repo_root> --current-focus`
 
 ## Acceptance Gap Clusters
@@ -96,36 +96,15 @@
     - Evidence refs: `job_hunt_copilot/chat_runtime.py`, `job_hunt_copilot/review_queries.py`, `job_hunt_copilot/local_runtime.py`, `bin/jhc-chat`, `tests/test_review_queries.py`, `tests/test_local_runtime.py`
     - Note: The direct `jhc-chat` wrapper now prints a persisted startup dashboard plus grouped review snapshot, but explicit chat-side review retrieval, control routing, change summaries, and expert-guidance behaviors are still missing.
 
-### BA10_CHAT_IDLE_TIMEOUT_RESUME: Idle-timeout resume is still backlog
-- Next slice: `BA-10-S3`
-- Owner roles: `build-lead`
-- Rules: `Supervisor Agent behavior`
-- Epics: `BA-02`, `BA-03`
-- Supporting slices: `BA-02-S1`, `BA-02-S2`, `BA-02-S3`, `BA-03-S1`, `BA-03-S2`, `BA-03-S3`, `BA-10-S3`
-- Open scenarios: `1` (`partial`: `1`, `gap`: `0`)
-- Reason: Explicit-close and explicit-resume paths exist, but unexpected `jhc-chat` exits still require a later explicit resume because automatic idle-timeout recovery is not implemented.
-- Evidence summary: Unexpected chat exit is recorded and a later explicit resume works, but no automatic idle-timeout resume helper exists.
-- Evidence code refs: `job_hunt_copilot/local_runtime.py`, `job_hunt_copilot/runtime_pack.py`
-- Evidence test refs: `tests/test_local_runtime.py`, `tests/test_runtime_pack.py`, `tests/test_acceptance_traceability.py`
-- Validation suite: `python3.11 scripts/quality/run_ba10_validation_suite.py --project-root <repo_root> --gap-id BA10_CHAT_IDLE_TIMEOUT_RESUME`
-- Confirmation commands:
-  - `python3.11 -m pytest tests/test_local_runtime.py` (automated: Covers launchd plist wiring, control commands, chat lifecycle state, delayed feedback runners, and explicit negative control cases.)
-  - `python3.11 -m pytest tests/test_runtime_pack.py` (automated: Confirms generated runtime scaffolding stays honest about current action-catalog and maintenance placeholder status.)
-  - `python3.11 -m pytest tests/test_acceptance_traceability.py tests/test_blocker_audit.py` (automated: Keeps the committed BA-10 acceptance and blocker reports synchronized with repo code, tests, and state references.)
-- Open scenarios:
-  - `[partial]` Expert-interaction resume follows explicit close, explicit resume, or safe idle timeout (rule: `Supervisor Agent behavior`, line: `1297`)
-    - Evidence refs: `job_hunt_copilot/chat_runtime.py`, `job_hunt_copilot/supervisor.py`, `job_hunt_copilot/local_runtime.py`, `job_hunt_copilot/runtime_pack.py`, `scripts/ops/run_supervisor_cycle.py`, `scripts/ops/control_agent.py`, `scripts/ops/chat_session.py`, `bin/jhc-agent-start`, `bin/jhc-agent-stop`, `bin/jhc-agent-cycle`, `bin/jhc-chat`, `tests/test_supervisor_downstream_actions.py`, `tests/test_supervisor.py`, `tests/test_local_runtime.py`, `tests/test_runtime_pack.py`
-    - Note: Explicit close and explicit resume paths exist, but automatic idle-timeout recovery after unexpected chat exit is still backlog.
-
 ## Build-Board Blockers
 
 ### BA10-TRACE-001
 - Status: `open`
 - Severity: `high`
 - Owner role: `quality-engineer`
-- Summary: The regenerated BA-10 trace matrix now reports 197 implemented / 3 partial / 12 gap scenarios; explicit smoke-coverage targets, implemented-slice traceability, reproducible validation-command mappings, and a durable latest validation-suite report snapshot cover bootstrap, tailoring, discovery, send, feedback, review-query, downstream supervisor follow-through, the persisted `jhc-chat` startup dashboard surface, and the new posting-abandon control path, but richer chat review/control, idle-timeout resume, and maintenance automation themselves remain open.
+- Summary: The regenerated BA-10 trace matrix now reports 198 implemented / 2 partial / 12 gap scenarios; explicit smoke-coverage targets, implemented-slice traceability, reproducible validation-command mappings, and a durable latest validation-suite report snapshot cover bootstrap, tailoring, discovery, send, feedback, review-query, downstream supervisor follow-through, the persisted `jhc-chat` startup dashboard surface, posting-abandon control, and idle-timeout auto-resume after unexpected chat exit, but richer chat review/control and maintenance automation themselves remain open.
 - Impact: Acceptance signoff is more credible now that committed smoke coverage, blocker-specific evidence refs, explicit negative regressions, and exact open-scenario traces exist, but BA-10 still cannot close until the remaining gap clusters are actually burned down or deliberately left open.
-- Next action: Hand the next functional slice to the build lead and the relevant runtime owner for one real remaining BA-10-S3 gap, starting with idle-timeout auto-resume, then richer chat review/control or maintenance automation, and refresh the BA-10 reports plus validation-suite evidence afterward.
+- Next action: Hand the next functional slice to the build lead and the relevant runtime owner for richer `jhc-chat` review/control, starting with persisted read-only review retrieval and default change-summary routing, then tackle maintenance automation and refresh the BA-10 reports plus validation-suite evidence afterward.
 - Evidence refs: `build-agent/reports/ba-10-acceptance-trace-matrix.json`, `build-agent/reports/ba-10-acceptance-trace-matrix.md`, `build-agent/reports/ba-10-blocker-audit.json`, `build-agent/reports/ba-10-blocker-audit.md`, `build-agent/reports/ba-10-validation-suite-latest.json`, `build-agent/reports/ba-10-validation-suite-latest.md`, `job_hunt_copilot/acceptance_traceability.py`, `job_hunt_copilot/blocker_audit.py`, `job_hunt_copilot/quality_validation.py`, `scripts/quality/generate_blocker_audit.py`, `scripts/quality/run_ba10_validation_suite.py`, `scripts/ops/control_agent.py`, `tests/test_acceptance_traceability.py`, `tests/test_blocker_audit.py`, `tests/test_local_runtime.py`, `tests/test_quality_validation.py`, `tests/test_supervisor_downstream_actions.py`, `tests/test_delivery_feedback.py`, `tests/test_schema.py`, `tests/test_smoke_harness.py`, `tests/test_supervisor.py`, `tests/test_runtime_pack.py`, `tests/test_resume_tailoring.py`, `tests/test_outreach.py`, `tests/test_review_queries.py`
 - Validation suite: `python3.11 scripts/quality/run_ba10_validation_suite.py --project-root <repo_root> --blocker-id BA10-TRACE-001`
 - Confirmation commands:

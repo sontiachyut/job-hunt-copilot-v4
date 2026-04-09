@@ -14,7 +14,13 @@ from job_hunt_copilot.chat_runtime import (
 )
 import job_hunt_copilot.local_runtime as local_runtime
 from job_hunt_copilot.delivery_feedback import DeliveryFeedbackSignal
-from job_hunt_copilot.local_runtime import execute_delayed_feedback_sync, execute_supervisor_heartbeat
+from job_hunt_copilot.local_runtime import (
+    begin_chat_operator_session,
+    end_chat_operator_session,
+    execute_delayed_feedback_sync,
+    execute_supervisor_heartbeat,
+    mutate_agent_control_state,
+)
 from tests.support import create_minimal_project
 
 
@@ -1582,6 +1588,81 @@ def test_chat_session_explicit_resume_clears_unexpected_exit_pause(tmp_path):
         "chat_resume_on_close": "false",
         "last_chat_exit_mode": "unexpected_exit",
         "last_manual_command": "resume",
+        "pause_reason": "",
+        "paused_at": "",
+    }
+
+
+def test_supervisor_heartbeat_auto_resumes_after_unexpected_chat_exit_idle_timeout(tmp_path):
+    project_root = tmp_path / "repo"
+    project_root.mkdir()
+    create_minimal_project(project_root)
+
+    mutate_agent_control_state(
+        "start",
+        project_root=project_root,
+        manual_command="jhc-agent-start",
+        timestamp="2026-04-08T00:00:00Z",
+    )
+    begin_report = begin_chat_operator_session(
+        project_root=project_root,
+        started_at="2026-04-08T00:01:00Z",
+    )
+    end_chat_operator_session(
+        project_root=project_root,
+        session_id=begin_report["session_id"],
+        exit_mode="unexpected_exit",
+        ended_at="2026-04-08T00:02:00Z",
+    )
+
+    heartbeat_report = execute_supervisor_heartbeat(
+        project_root=project_root,
+        started_at="2026-04-08T00:18:00Z",
+    )
+
+    connection = connect_database(project_root / "job_hunt_copilot.db")
+    control_rows = connection.execute(
+        """
+        SELECT control_key, control_value
+        FROM agent_control_state
+        WHERE control_key IN (
+            'active_chat_session_id',
+            'agent_enabled',
+            'agent_mode',
+            'chat_resume_on_close',
+            'last_chat_ended_at',
+            'last_chat_exit_mode',
+            'last_manual_command',
+            'pause_reason',
+            'paused_at'
+        )
+        ORDER BY control_key
+        """
+    ).fetchall()
+    connection.close()
+
+    assert heartbeat_report["chat_idle_timeout_resume"] == {
+        "resume_reason": "unexpected_chat_exit_idle_timeout",
+        "resumed_at": "2026-04-08T00:18:00Z",
+        "idle_reference_at": "2026-04-08T00:02:00Z",
+        "idle_seconds": 960,
+        "idle_timeout_minutes": 15,
+        "last_chat_exit_mode": "unexpected_exit",
+        "previous_pause_reason": "expert_interaction",
+    }
+    assert heartbeat_report["pre_cycle_control_state"]["agent_mode"] == "running"
+    assert heartbeat_report["pre_cycle_control_state"]["pause_reason"] == ""
+    assert heartbeat_report["cycle"]["result"] == "no_work"
+    assert heartbeat_report["control_state"]["agent_mode"] == "running"
+    assert heartbeat_report["control_state"]["pause_reason"] == ""
+    assert dict(control_rows) == {
+        "active_chat_session_id": "",
+        "agent_enabled": "true",
+        "agent_mode": "running",
+        "chat_resume_on_close": "false",
+        "last_chat_ended_at": "2026-04-08T00:02:00Z",
+        "last_chat_exit_mode": "unexpected_exit",
+        "last_manual_command": "jhc-chat idle-timeout-auto-resume",
         "pause_reason": "",
         "paused_at": "",
     }

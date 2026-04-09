@@ -920,9 +920,8 @@ _register_override(
 )
 _register_override(
     scenarios=("Expert-interaction resume follows explicit close, explicit resume, or safe idle timeout",),
-    status=STATUS_PARTIAL,
-    gap_ids=("BA10_CHAT_IDLE_TIMEOUT_RESUME",),
-    note="Explicit close and explicit resume paths exist, but automatic idle-timeout recovery after unexpected chat exit is still backlog.",
+    status=STATUS_IMPLEMENTED,
+    note="`job_hunt_copilot.local_runtime.execute_supervisor_heartbeat` now auto-resumes the canonical `expert_interaction` pause after an unexpected `jhc-chat` exit has been idle for 15 minutes, while still preserving explicit close and explicit resume behavior.",
 )
 _register_override(
     scenarios=("Current macOS sleep or wake detection uses pmset logs first and conservative fallback second",),

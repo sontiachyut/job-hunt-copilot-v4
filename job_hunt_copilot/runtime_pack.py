@@ -535,7 +535,7 @@ def render_initial_progress_log(
     local_day = datetime.now().astimezone().date().isoformat()
     blockers = [
         "The current registered action catalog is intentionally narrow; unsupported downstream stages escalate instead of improvising behavior.",
-        "Unexpected `jhc-chat` exit currently preserves the expert-interaction pause until a later idle-timeout helper or an explicit resume clears it.",
+        "Richer `jhc-chat` review retrieval, control routing, and expert-guidance workflows are still narrower than the acceptance target.",
     ]
     return "\n".join(
         [
@@ -634,21 +634,15 @@ def build_initial_ops_plan(runtime_snapshot: dict[str, Any], generated_at: str) 
                 "trigger_condition": "critical_incident in auto_pause_critical_types remains unresolved",
             },
         ],
-        "maintenance_backlog": [
-            {
-                "title": "Add idle-timeout expert-interaction auto-resume",
-                "reason": "Unexpected `jhc-chat` exit is recorded canonically, but automatic timeout-based resume is still a later helper slice.",
-                "blocked_by": "future_chat_runtime_followup",
-            },
-        ],
+        "maintenance_backlog": [],
         "weak_areas": [
             {
                 "area": "action_catalog_coverage",
                 "note": "Later pipeline stages beyond lead_handoff are not yet registered; unsupported needs escalate.",
             },
             {
-                "area": "chat_idle_timeout_recovery",
-                "note": "Explicit-close resume is implemented, but unexpected chat exit still stays paused until explicit resume or a later idle-timeout helper clears it.",
+                "area": "chat_review_control_depth",
+                "note": "The runtime now auto-resumes after unexpected chat exit idles safely, but richer in-chat review retrieval, change summaries, and control routing are still backlog.",
             },
         ],
         "replan": {

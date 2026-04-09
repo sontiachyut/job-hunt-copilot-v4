@@ -1825,3 +1825,30 @@ Use this file as an append-only implementation log for the build agent.
 ### Notes
 - The acceptance matrix now reports `197 implemented / 3 partial / 12 gap` scenarios, and the open BA-10-S3 gap clusters are now `BA10_MAINTENANCE_AUTOMATION`, `BA10_CHAT_REVIEW_AND_CONTROL`, and `BA10_CHAT_IDLE_TIMEOUT_RESUME`.
 - This slice intentionally stayed bounded to posting-abandon control, acceptance closure, and refreshed evidence. It did not claim maintenance automation, richer chat control routing, or idle-timeout recovery itself.
+
+### Session
+- Date: 2026-04-08 20:24:40 MST
+- Slice: BA-10-S3 idle-timeout auto-resume burn-down
+- Goal: Close the unexpected-`jhc-chat`-exit idle-timeout acceptance gap, refresh BA-10 evidence, and keep repo-facing status honest about the remaining blocker surface.
+
+### Work Done
+- Added canonical idle-timeout auto-resume handling in `job_hunt_copilot.local_runtime`, so supervisor heartbeats now clear an `expert_interaction` pause after an unexpected chat exit has been idle for 15 minutes and no active chat session remains.
+- Added focused runtime regressions for the new auto-resume path, updated the runtime-pack backlog messaging to remove the stale idle-timeout placeholder, and refreshed `README.md` plus `docs/ARCHITECTURE.md` so recruiter- and manager-facing surfaces now list only the two real remaining BA-10 gaps.
+- Updated `job_hunt_copilot.acceptance_traceability`, the BA-10 guard tests, and the committed BA-10 reports so the acceptance matrix, blocker audit, and latest validation-suite snapshot now agree that idle-timeout resume is implemented and the remaining BA-10-S3 gaps are maintenance automation plus richer chat review/control.
+- Updated `build-agent/state/build-board.yaml`, `build-agent/state/IMPLEMENTATION_PLAN.md`, `build-agent/state/build-journal.md`, and `build-agent/state/codex-progress.txt` so the persisted handoff state reflects the new blocker surface and the next recommended slice.
+
+### Validation
+- Ran `python3.11 -m py_compile job_hunt_copilot/local_runtime.py job_hunt_copilot/runtime_pack.py job_hunt_copilot/acceptance_traceability.py tests/test_local_runtime.py tests/test_runtime_pack.py tests/test_acceptance_traceability.py tests/test_blocker_audit.py tests/test_quality_validation.py`.
+- Ran `python3.11 -m pytest tests/test_local_runtime.py tests/test_runtime_pack.py` and confirmed all 22 tests passed.
+- Ran `python3.11 -m pytest tests/test_acceptance_traceability.py tests/test_blocker_audit.py tests/test_quality_validation.py` and confirmed all 20 tests passed after updating the stale current-focus expectations.
+- Ran `python3.11 scripts/quality/run_ba10_validation_suite.py --project-root /Users/achyutaramsonti/Projects/job-hunt-copilot-v4 --current-focus` and confirmed all 5 automated checks passed while refreshing `build-agent/reports/ba-10-validation-suite-latest.{json,md}` at `2026-04-09T03:24:34Z`.
+
+### Result
+- `done`
+
+### Next
+- Keep BA-10-S3 open for the next remaining runtime/control burn-down slice. The best next slice is richer `jhc-chat` review/control, starting with persisted read-only review retrieval and default change-summary routing, with maintenance automation after that.
+
+### Notes
+- The acceptance matrix now reports `198 implemented / 2 partial / 12 gap` scenarios, and the open BA-10-S3 gap clusters are now `BA10_MAINTENANCE_AUTOMATION` and `BA10_CHAT_REVIEW_AND_CONTROL`.
+- This slice intentionally stayed bounded to idle-timeout recovery, BA-10 evidence refresh, and repo-surface honesty. It did not claim maintenance automation or broader in-chat control routing.
