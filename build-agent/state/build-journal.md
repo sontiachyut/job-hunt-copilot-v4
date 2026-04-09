@@ -1696,3 +1696,28 @@ Use this file as an append-only implementation log for the build agent.
 ### Notes
 - The acceptance matrix still reports 194 implemented / 4 partial / 14 gap scenarios; this session only strengthened blocker traceability and repo-facing honesty.
 - The remaining open acceptance-gap clusters are still `BA10_MAINTENANCE_AUTOMATION`, `BA10_CHAT_REVIEW_AND_CONTROL`, `BA10_CHAT_IDLE_TIMEOUT_RESUME`, and `BA10_POSTING_ABANDON_CONTROL`, but the blocker audit and current-focus validation snapshot now enumerate their exact open scenarios directly.
+
+### Session
+- Date: 2026-04-08 18:51:19 MST
+- Slice: BA-10-S3 maintenance-gap validation mapping hardening
+- Goal: Keep the remaining maintenance partial backed by direct supervisor-ordering evidence in the BA-10 blocker audit and current-focus replay instead of relying only on report-sync and runtime-pack placeholder checks.
+
+### Work Done
+- Refined `job_hunt_copilot.blocker_audit` so the `BA10_MAINTENANCE_AUTOMATION` gap cluster now routes `qa_supervisor_regressions` alongside the existing runtime-pack and acceptance-report guards, and tightened the supervisor-regression command description to match the remaining selector-order evidence it is proving.
+- Updated `tests/test_blocker_audit.py` and `tests/test_quality_validation.py` so the committed guard suite now expects that stronger maintenance-gap and current-focus command mapping.
+- Re-ran the BA-10 current-focus validation replay and refreshed `build-agent/reports/ba-10-blocker-audit.{json,md}` plus `build-agent/reports/ba-10-validation-suite-latest.{json,md}` so the committed evidence now shows the 5-command BA-10-S3 replay with supervisor downstream coverage included.
+- Updated `build-agent/state/build-board.yaml`, `build-agent/state/IMPLEMENTATION_PLAN.md`, `build-agent/state/build-journal.md`, and `build-agent/state/codex-progress.txt` so the persisted build record captures this BA-10-S3 evidence hardening pass without claiming the four remaining runtime gaps are closed.
+
+### Validation
+- Ran `python3.11 -m pytest tests/test_quality_validation.py tests/test_blocker_audit.py` and confirmed all 19 guard tests passed after the maintenance-gap command mapping changed.
+- Ran `python3.11 scripts/quality/run_ba10_validation_suite.py --project-root /Users/achyutaramsonti/Projects/job-hunt-copilot-v4 --current-focus` and confirmed the refreshed BA-10-S3 replay passed with `qa_runtime_pack_regressions`, `qa_acceptance_reports`, `qa_supervisor_regressions`, `qa_runtime_control_regressions`, and `qa_review_surface_regressions`.
+
+### Result
+- `partial`
+
+### Next
+- Keep BA-10-S3 open for a real runtime/control burn-down slice. The next highest-value functional work is still build-lead ownership with the relevant runtime owner for posting-abandon control or idle-timeout auto-resume, then refresh the BA-10 reports again.
+
+### Notes
+- The acceptance matrix still reports 194 implemented / 4 partial / 14 gap scenarios; this pass only strengthened the evidence chain for the remaining maintenance partial.
+- The latest `build-agent/reports/ba-10-validation-suite-latest.*` snapshot now shows a 5-command current-focus replay instead of the earlier 4-command replay because maintenance confirmation now includes `qa_supervisor_regressions`.

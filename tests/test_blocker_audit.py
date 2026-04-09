@@ -43,6 +43,7 @@ def test_ba10_blocker_audit_reports_are_current_and_reference_real_repo_paths():
     assert [command["command_id"] for command in current_focus["validation_commands"]] == [
         "qa_runtime_pack_regressions",
         "qa_acceptance_reports",
+        "qa_supervisor_regressions",
         "qa_runtime_control_regressions",
         "qa_review_surface_regressions",
     ]
@@ -84,6 +85,11 @@ def test_ba10_blocker_audit_reports_are_current_and_reference_real_repo_paths():
     assert maintenance_cluster["next_slice"] == "BA-10-S3"
     assert maintenance_cluster["status_counts"] == {"partial": 1, "gap": 5}
     assert "BA-10-S3" in maintenance_cluster["slice_ids"]
+    assert [command["command_id"] for command in maintenance_cluster["validation_commands"]] == [
+        "qa_runtime_pack_regressions",
+        "qa_acceptance_reports",
+        "qa_supervisor_regressions",
+    ]
     maintenance_scenario = maintenance_cluster["scenarios"][0]
     assert maintenance_scenario["rule"] == "Machine handoff contracts and canonical state"
     assert (

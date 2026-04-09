@@ -71,7 +71,7 @@ VALIDATION_COMMANDS: dict[str, dict[str, str]] = {
         "title": "Supervisor downstream hardening regressions",
         "kind": "automated",
         "command": "python3.11 -m pytest tests/test_supervisor_downstream_actions.py",
-        "description": "Confirms `lead_handoff` advances into `agent_review`, bounded mandatory review advances into `people_search`, bounded people search advances into `email_discovery`, bounded email discovery advances into `sending`, bounded sending advances into `delivery_feedback`, bounded delivery feedback either stays active until high-level outcomes are due or completes the same durable run with a review packet, and contact-rooted general-learning work now advances through bounded email discovery, sending, and delayed-feedback follow-through without posting review state.",
+        "description": "Confirms incident-first selector ordering, existing-run reuse, bounded role-targeted progression through `delivery_feedback`, and contact-rooted general-learning follow-through while keeping the remaining maintenance-selector gap explicit.",
     },
     "qa_runtime_control_regressions": {
         "title": "Runtime control regressions",
@@ -115,6 +115,7 @@ GAP_VALIDATION_COMMAND_IDS: dict[str, tuple[str, ...]] = {
     "BA10_MAINTENANCE_AUTOMATION": (
         "qa_runtime_pack_regressions",
         "qa_acceptance_reports",
+        "qa_supervisor_regressions",
     ),
     "BA10_CHAT_REVIEW_AND_CONTROL": (
         "qa_runtime_control_regressions",

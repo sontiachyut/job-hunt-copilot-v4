@@ -1,12 +1,12 @@
 # BA-10 Validation Suite Report
 
-- Generated at: `2026-04-09T01:41:54Z`
+- Generated at: `2026-04-09T01:51:07Z`
 - Project root: `/Users/achyutaramsonti/Projects/job-hunt-copilot-v4`
 - Passed: `True`
-- Command count: `4`
-- Passed commands: `4`
+- Command count: `5`
+- Passed commands: `5`
 - Failed commands: `0`
-- Total duration seconds: `5.33`
+- Total duration seconds: `6.377`
 - Requested command ids: none
 - Requested smoke targets: none
 - Requested acceptance gaps: none
@@ -17,7 +17,7 @@
 
 ## Command Kind Counts
 
-- `automated`: `4`
+- `automated`: `5`
 
 ## Refreshed Reports
 
@@ -51,7 +51,7 @@
 - Owner role: `quality-engineer`
 - Reason: BA-10-S4 closed the downstream supervisor action-catalog gap by adding contact-rooted delayed-feedback follow-through, but the acceptance matrix still holds at 194 implemented / 4 partial / 14 gap scenarios because maintenance automation, chat review/control, idle-timeout resume, and posting-abandon behavior remain open BA-10-S3 hardening work.
 - Gap ids: `BA10_MAINTENANCE_AUTOMATION`, `BA10_CHAT_REVIEW_AND_CONTROL`, `BA10_CHAT_IDLE_TIMEOUT_RESUME`, `BA10_POSTING_ABANDON_CONTROL`
-- Validation command ids: `qa_runtime_pack_regressions`, `qa_acceptance_reports`, `qa_runtime_control_regressions`, `qa_review_surface_regressions`
+- Validation command ids: `qa_runtime_pack_regressions`, `qa_acceptance_reports`, `qa_supervisor_regressions`, `qa_runtime_control_regressions`, `qa_review_surface_regressions`
 - Validation suite: `python3.11 scripts/quality/run_ba10_validation_suite.py --project-root <repo_root> --current-focus`
 - Gap summaries:
   - `BA10_MAINTENANCE_AUTOMATION`: Maintenance workflow and artifacts are not implemented (`6` scenarios)
@@ -67,10 +67,11 @@
 
 | Command | Kind | Status | Returncode | Duration (s) |
 | --- | --- | --- | ---: | ---: |
-| qa_runtime_pack_regressions | automated | passed | 0 | 0.206 |
-| qa_acceptance_reports | automated | passed | 0 | 0.328 |
-| qa_runtime_control_regressions | automated | passed | 0 | 4.351 |
-| qa_review_surface_regressions | automated | passed | 0 | 0.445 |
+| qa_runtime_pack_regressions | automated | passed | 0 | 0.205 |
+| qa_acceptance_reports | automated | passed | 0 | 0.324 |
+| qa_supervisor_regressions | automated | passed | 0 | 1.080 |
+| qa_runtime_control_regressions | automated | passed | 0 | 4.300 |
+| qa_review_surface_regressions | automated | passed | 0 | 0.468 |
 
 ## Command Details
 
@@ -78,7 +79,7 @@
 - Kind: `automated`
 - Status: `passed`
 - Returncode: `0`
-- Duration seconds: `0.206`
+- Duration seconds: `0.205`
 - Command: `python3.11 -m pytest tests/test_runtime_pack.py`
 - Description: Confirms generated runtime scaffolding stays honest about current action-catalog and maintenance placeholder status.
 
@@ -86,15 +87,23 @@
 - Kind: `automated`
 - Status: `passed`
 - Returncode: `0`
-- Duration seconds: `0.328`
+- Duration seconds: `0.324`
 - Command: `python3.11 -m pytest tests/test_acceptance_traceability.py tests/test_blocker_audit.py`
 - Description: Keeps the committed BA-10 acceptance and blocker reports synchronized with repo code, tests, and state references.
+
+### qa_supervisor_regressions: Supervisor downstream hardening regressions
+- Kind: `automated`
+- Status: `passed`
+- Returncode: `0`
+- Duration seconds: `1.08`
+- Command: `python3.11 -m pytest tests/test_supervisor_downstream_actions.py`
+- Description: Confirms incident-first selector ordering, existing-run reuse, bounded role-targeted progression through `delivery_feedback`, and contact-rooted general-learning follow-through while keeping the remaining maintenance-selector gap explicit.
 
 ### qa_runtime_control_regressions: Runtime control regressions
 - Kind: `automated`
 - Status: `passed`
 - Returncode: `0`
-- Duration seconds: `4.351`
+- Duration seconds: `4.3`
 - Command: `python3.11 -m pytest tests/test_local_runtime.py`
 - Description: Covers launchd plist wiring, control commands, chat lifecycle state, delayed feedback runners, and explicit negative control cases.
 
@@ -102,6 +111,6 @@
 - Kind: `automated`
 - Status: `passed`
 - Returncode: `0`
-- Duration seconds: `0.445`
+- Duration seconds: `0.468`
 - Command: `python3.11 -m pytest tests/test_review_queries.py`
 - Description: Verifies persisted grouped review surfaces and traceability reads that back the chat/review boundary.

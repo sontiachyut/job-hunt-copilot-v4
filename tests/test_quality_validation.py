@@ -114,6 +114,7 @@ def test_validation_selector_details_include_requested_smoke_gap_blocker_and_cur
         "validation_command_ids": [
             "qa_runtime_pack_regressions",
             "qa_acceptance_reports",
+            "qa_supervisor_regressions",
         ],
         "validation_suite_command": (
             "python3.11 scripts/quality/run_ba10_validation_suite.py "
@@ -190,6 +191,7 @@ def test_validation_selector_details_include_requested_smoke_gap_blocker_and_cur
     assert details["current_focus"]["validation_command_ids"] == [
         "qa_runtime_pack_regressions",
         "qa_acceptance_reports",
+        "qa_supervisor_regressions",
         "qa_runtime_control_regressions",
         "qa_review_surface_regressions",
     ]
@@ -229,6 +231,7 @@ def test_gap_validation_command_resolution_follows_open_gap_command_mapping():
     assert command_ids == [
         "qa_runtime_pack_regressions",
         "qa_acceptance_reports",
+        "qa_supervisor_regressions",
     ]
 
 
@@ -238,6 +241,7 @@ def test_current_focus_validation_command_resolution_follows_active_slice():
     assert command_ids == [
         "qa_runtime_pack_regressions",
         "qa_acceptance_reports",
+        "qa_supervisor_regressions",
         "qa_runtime_control_regressions",
         "qa_review_surface_regressions",
     ]
@@ -328,6 +332,7 @@ def test_quality_validation_suite_script_dry_run_expands_gap_ids():
     assert [command["command_id"] for command in payload["commands"]] == [
         "qa_runtime_pack_regressions",
         "qa_acceptance_reports",
+        "qa_supervisor_regressions",
     ]
     assert payload["selector_details"]["acceptance_gaps"] == [
         {
@@ -342,6 +347,7 @@ def test_quality_validation_suite_script_dry_run_expands_gap_ids():
             "validation_command_ids": [
                 "qa_runtime_pack_regressions",
                 "qa_acceptance_reports",
+                "qa_supervisor_regressions",
             ],
             "validation_suite_command": (
                 "python3.11 scripts/quality/run_ba10_validation_suite.py "
@@ -488,6 +494,7 @@ def test_quality_validation_suite_script_dry_run_expands_current_focus():
     assert [command["command_id"] for command in payload["commands"]] == [
         "qa_runtime_pack_regressions",
         "qa_acceptance_reports",
+        "qa_supervisor_regressions",
         "qa_runtime_control_regressions",
         "qa_review_surface_regressions",
     ]
@@ -504,6 +511,7 @@ def test_quality_validation_suite_script_dry_run_expands_current_focus():
     assert current_focus["validation_command_ids"] == [
         "qa_runtime_pack_regressions",
         "qa_acceptance_reports",
+        "qa_supervisor_regressions",
         "qa_runtime_control_regressions",
         "qa_review_surface_regressions",
     ]
@@ -683,6 +691,7 @@ def test_build_ba10_validation_suite_report_summarizes_results():
                         "validation_command_ids": [
                             "qa_runtime_pack_regressions",
                             "qa_acceptance_reports",
+                            "qa_supervisor_regressions",
                         ],
                         "validation_suite_command": (
                             "python3.11 scripts/quality/run_ba10_validation_suite.py "
@@ -731,6 +740,7 @@ def test_build_ba10_validation_suite_report_summarizes_results():
                             "validation_command_ids": [
                                 "qa_runtime_pack_regressions",
                                 "qa_acceptance_reports",
+                                "qa_supervisor_regressions",
                             ],
                             "validation_suite_command": (
                                 "python3.11 scripts/quality/run_ba10_validation_suite.py "
@@ -750,6 +760,7 @@ def test_build_ba10_validation_suite_report_summarizes_results():
                     "validation_command_ids": [
                         "qa_runtime_pack_regressions",
                         "qa_acceptance_reports",
+                        "qa_supervisor_regressions",
                         "qa_runtime_control_regressions",
                         "qa_review_surface_regressions",
                     ],
