@@ -25,6 +25,7 @@ from job_hunt_copilot.supervisor import (
     RUN_STATUS_COMPLETED,
     RUN_STATUS_ESCALATED,
     RUN_STATUS_IN_PROGRESS,
+    RUN_STATUS_PAUSED,
     SupervisorActionDependencies,
     SUPERVISOR_CYCLE_RESULT_FAILED,
     SUPERVISOR_CYCLE_RESULT_NO_WORK,
@@ -669,6 +670,248 @@ def test_resume_tailoring_stage_advances_sourced_posting_into_agent_review(
         "tailoring_status": "tailored",
         "resume_review_status": "resume_review_pending",
     }
+
+
+def test_resume_tailoring_stage_pauses_once_before_retry_escalation(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    project_root = bootstrap_project(tmp_path)
+    paths = ProjectPaths.from_root(project_root)
+    connection = connect_database(project_root / "job_hunt_copilot.db")
+    lead_id, job_posting_id = seed_role_targeted_posting(
+        connection,
+        posting_status="sourced",
+    )
+    jd_path = paths.lead_workspace_dir("Acme", "Platform Engineer", lead_id) / "jd.md"
+    jd_path.parent.mkdir(parents=True, exist_ok=True)
+    jd_path.write_text("About the job\nBuild platform systems.\n", encoding="utf-8")
+    connection.execute(
+        """
+        UPDATE job_postings
+        SET jd_artifact_path = ?
+        WHERE job_posting_id = ?
+        """,
+        (paths.relative_to_root(jd_path).as_posix(), job_posting_id),
+    )
+    connection.commit()
+    resume_agent(
+        connection,
+        manual_command="jhc-agent-start",
+        timestamp="2026-04-08T00:08:00Z",
+    )
+    pipeline_run, _ = ensure_role_targeted_pipeline_run(
+        connection,
+        lead_id=lead_id,
+        job_posting_id=job_posting_id,
+        current_stage="resume_tailoring",
+        started_at="2026-04-08T00:09:00Z",
+    )
+
+    def fake_generate_tailoring_intelligence(
+        db_connection,
+        _paths,
+        *,
+        job_posting_id: str,
+        timestamp: str | None = None,
+    ):
+        current_time = timestamp or "2026-04-08T00:10:00Z"
+        existing_row = db_connection.execute(
+            """
+            SELECT resume_tailoring_run_id
+            FROM resume_tailoring_runs
+            WHERE job_posting_id = ?
+            ORDER BY created_at DESC, resume_tailoring_run_id DESC
+            LIMIT 1
+            """,
+            (job_posting_id,),
+        ).fetchone()
+        if existing_row is None:
+            db_connection.execute(
+                """
+                INSERT INTO resume_tailoring_runs (
+                  resume_tailoring_run_id, job_posting_id, base_used, tailoring_status,
+                  resume_review_status, workspace_path, verification_outcome,
+                  started_at, created_at, updated_at
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                """,
+                (
+                    "rtr_supervisor_tailoring",
+                    job_posting_id,
+                    "generalist",
+                    "in_progress",
+                    "not_ready",
+                    "resume-tailoring/output/tailored/acme/platform-engineer",
+                    "pass",
+                    current_time,
+                    current_time,
+                    current_time,
+                ),
+            )
+        else:
+            db_connection.execute(
+                """
+                UPDATE resume_tailoring_runs
+                SET tailoring_status = ?, resume_review_status = ?, verification_outcome = ?,
+                    completed_at = NULL, updated_at = ?
+                WHERE resume_tailoring_run_id = ?
+                """,
+                (
+                    "in_progress",
+                    "not_ready",
+                    "pass",
+                    current_time,
+                    existing_row["resume_tailoring_run_id"],
+                ),
+            )
+        db_connection.execute(
+            """
+            UPDATE job_postings
+            SET posting_status = ?, updated_at = ?
+            WHERE job_posting_id = ?
+            """,
+            ("tailoring_in_progress", current_time, job_posting_id),
+        )
+        db_connection.commit()
+        return SimpleNamespace(
+            job_posting_id=job_posting_id,
+            resume_tailoring_run_id="rtr_supervisor_tailoring",
+            track_name="generalist",
+            verification_outcome="pass",
+            blocked_reason_code=None,
+            step_artifact_paths={},
+        )
+
+    def fake_finalize_tailoring_run(
+        db_connection,
+        _paths,
+        *,
+        job_posting_id: str,
+        timestamp: str | None = None,
+    ):
+        current_time = timestamp or "2026-04-08T00:10:30Z"
+        db_connection.execute(
+            """
+            UPDATE resume_tailoring_runs
+            SET tailoring_status = ?, resume_review_status = ?, verification_outcome = ?,
+                completed_at = NULL, updated_at = ?
+            WHERE resume_tailoring_run_id = ?
+            """,
+            (
+                "needs_revision",
+                "not_ready",
+                "needs_revision",
+                current_time,
+                "rtr_supervisor_tailoring",
+            ),
+        )
+        db_connection.execute(
+            """
+            UPDATE job_postings
+            SET posting_status = ?, updated_at = ?
+            WHERE job_posting_id = ?
+            """,
+            ("tailoring_in_progress", current_time, job_posting_id),
+        )
+        db_connection.commit()
+        return SimpleNamespace(
+            job_posting_id=job_posting_id,
+            resume_tailoring_run_id="rtr_supervisor_tailoring",
+            result="needs_revision",
+            reason_code="verification_blocked",
+            run=SimpleNamespace(
+                resume_tailoring_run_id="rtr_supervisor_tailoring",
+                job_posting_id=job_posting_id,
+                base_used="generalist",
+                tailoring_status="needs_revision",
+                resume_review_status="not_ready",
+                workspace_path="resume-tailoring/output/tailored/acme/platform-engineer",
+                meta_yaml_path=None,
+                final_resume_path=None,
+                verification_outcome="needs_revision",
+                started_at="2026-04-08T00:10:00Z",
+                completed_at=None,
+                created_at="2026-04-08T00:10:00Z",
+                updated_at=current_time,
+            ),
+            final_resume_path=None,
+            verification_outcome="needs_revision",
+        )
+
+    monkeypatch.setattr(
+        "job_hunt_copilot.resume_tailoring.generate_tailoring_intelligence",
+        fake_generate_tailoring_intelligence,
+    )
+    monkeypatch.setattr(
+        "job_hunt_copilot.resume_tailoring.finalize_tailoring_run",
+        fake_finalize_tailoring_run,
+    )
+
+    first_execution = run_supervisor_cycle(
+        connection,
+        paths,
+        trigger_type="launchd_heartbeat",
+        scheduler_name="launchd",
+        started_at="2026-04-08T00:10:00Z",
+    )
+    first_updated_run = get_pipeline_run(connection, pipeline_run.pipeline_run_id)
+    first_packets = list_expert_review_packets_for_run(
+        connection,
+        pipeline_run.pipeline_run_id,
+    )
+
+    second_execution = run_supervisor_cycle(
+        connection,
+        paths,
+        trigger_type="launchd_heartbeat",
+        scheduler_name="launchd",
+        started_at="2026-04-08T00:20:00Z",
+    )
+    second_updated_run = get_pipeline_run(connection, pipeline_run.pipeline_run_id)
+    latest_run = connection.execute(
+        """
+        SELECT tailoring_status, resume_review_status
+        FROM resume_tailoring_runs
+        WHERE job_posting_id = ?
+        ORDER BY created_at DESC, resume_tailoring_run_id DESC
+        LIMIT 1
+        """,
+        (job_posting_id,),
+    ).fetchone()
+    stored_packets = list_expert_review_packets_for_run(connection, pipeline_run.pipeline_run_id)
+    connection.close()
+
+    assert first_execution.cycle.result == SUPERVISOR_CYCLE_RESULT_SUCCESS
+    assert first_execution.selected_work is not None
+    assert (
+        first_execution.selected_work.action_id
+        == ACTION_RUN_ROLE_TARGETED_RESUME_TAILORING
+    )
+    assert first_execution.review_packet is None
+    assert first_updated_run is not None
+    assert first_updated_run.run_status == RUN_STATUS_PAUSED
+    assert first_updated_run.current_stage == "resume_tailoring"
+    assert first_updated_run.review_packet_status == "not_ready"
+    assert first_packets == []
+
+    assert second_execution.cycle.result == SUPERVISOR_CYCLE_RESULT_SUCCESS
+    assert second_execution.selected_work is not None
+    assert (
+        second_execution.selected_work.action_id
+        == ACTION_RUN_ROLE_TARGETED_RESUME_TAILORING
+    )
+    assert second_execution.review_packet is not None
+    assert second_execution.review_packet.packet_status == REVIEW_PACKET_STATUS_PENDING
+    assert second_updated_run is not None
+    assert second_updated_run.run_status == RUN_STATUS_ESCALATED
+    assert second_updated_run.current_stage == "resume_tailoring"
+    assert second_updated_run.review_packet_status == REVIEW_PACKET_STATUS_PENDING
+    assert latest_run is not None
+    assert dict(latest_run) == {
+        "tailoring_status": "needs_revision",
+        "resume_review_status": "not_ready",
+    }
+    assert len(stored_packets) == 1
 
 
 def test_agent_review_stage_advances_to_people_search_after_approval(tmp_path: Path) -> None:

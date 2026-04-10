@@ -3727,6 +3727,39 @@ def _execute_selected_work_unit(
         )
         if finalize_result.result != "pass":
             reason = finalize_result.reason_code or finalize_result.result
+            if finalize_result.result == "needs_revision":
+                error_summary = (
+                    "Autonomous resume tailoring did not reach the pending-review gate "
+                    f"for job_posting {job_posting_id!r}: {reason}."
+                )
+                if pipeline_run.run_status == RUN_STATUS_PAUSED:
+                    pipeline_run = escalate_pipeline_run(
+                        connection,
+                        selected_work.work_id,
+                        current_stage="resume_tailoring",
+                        error_summary=error_summary,
+                        run_summary=(
+                            "Supervisor escalated the durable pipeline run at the "
+                            "resume_tailoring boundary because a bounded retry still "
+                            "did not produce a pending-review tailored output."
+                        ),
+                        timestamp=timestamp,
+                    )
+                else:
+                    pipeline_run = pause_pipeline_run(
+                        connection,
+                        selected_work.work_id,
+                        current_stage="resume_tailoring",
+                        error_summary=error_summary,
+                        run_summary=(
+                            "Supervisor paused the durable pipeline run at the "
+                            "resume_tailoring boundary after a revision-required "
+                            "output and will retry the same bounded stage once on "
+                            "the next heartbeat."
+                        ),
+                        timestamp=timestamp,
+                    )
+                return pipeline_run, None, None
             pipeline_run = escalate_pipeline_run(
                 connection,
                 selected_work.work_id,
@@ -4414,6 +4447,39 @@ def _validate_selected_work_result(
                 )
             if not _optional_text(pipeline_run.last_error_summary):
                 return "Resume-tailoring escalation did not persist an error summary."
+            return None
+        if pipeline_run.run_status == RUN_STATUS_PAUSED:
+            if pipeline_run.current_stage != "resume_tailoring":
+                return (
+                    "Resume-tailoring retry pause landed at an unexpected stage; found "
+                    f"{pipeline_run.current_stage!r}."
+                )
+            if pipeline_run.job_posting_id is None:
+                return "Resume-tailoring pause did not preserve the linked job_posting_id."
+            latest_run = connection.execute(
+                """
+                SELECT tailoring_status, resume_review_status
+                FROM resume_tailoring_runs
+                WHERE job_posting_id = ?
+                ORDER BY COALESCE(completed_at, updated_at, created_at, started_at) DESC,
+                         resume_tailoring_run_id DESC
+                LIMIT 1
+                """,
+                (pipeline_run.job_posting_id,),
+            ).fetchone()
+            if latest_run is None:
+                return (
+                    "Resume-tailoring retry pause did not preserve the latest tailoring "
+                    "run for the selected posting."
+                )
+            if latest_run[0] != "needs_revision" or latest_run[1] != "not_ready":
+                return (
+                    "Resume-tailoring retry pause expected a needs_revision/not_ready "
+                    f"tailoring run; found tailoring_status={latest_run[0]!r}, "
+                    f"resume_review_status={latest_run[1]!r}."
+                )
+            if not _optional_text(pipeline_run.last_error_summary):
+                return "Resume-tailoring retry pause did not persist an error summary."
             return None
         return (
             "Resume-tailoring progression left the pipeline_run in an unsupported state "
