@@ -1037,7 +1037,7 @@ def test_role_targeted_draft_batch_persists_messages_artifacts_and_transitions(t
     assert "I'm reaching out to you specifically because" in recruiter_body
     assert "recruiting function close to the target role" in recruiter_body
     assert "Forwardable snippet:" in recruiter_body
-    assert "your role as" in manager_body
+    assert "seem closely tied to this team" in manager_body
     assert "15-minute Zoom" in manager_body
 
     send_result_payload = json.loads(
@@ -1251,9 +1251,99 @@ def test_role_targeted_drafting_stays_grounded_in_stored_inputs_not_raw_source_c
 
     body_text = Path(result.drafted_messages[0].body_text_artifact_path).read_text(encoding="utf-8")
     assert "recruiting function close to the target role" in body_text
-    assert "improving throughput by 50%" in body_text
+    assert "50M+ daily HL7 records" in body_text
     assert "Former teammate of the CEO" not in body_text
     assert "12 years of Rust experience" not in body_text
+
+    connection.close()
+
+
+def test_role_targeted_drafting_filters_jd_boilerplate_from_opening_and_subject(
+    tmp_path: Path,
+):
+    project_root, paths = bootstrap_project(tmp_path)
+    connection = connect_database(project_root / "job_hunt_copilot.db")
+    write_sender_profile(paths)
+    seed_posting(
+        connection,
+        company_name="ASM",
+        role_title='Manager I. Software Engineering- "Scheduler"',
+    )
+    seed_linked_contact(
+        connection,
+        contact_id="ct_mgr",
+        job_posting_contact_id="jpc_mgr",
+        display_name="Bryan Chau",
+        recipient_type=RECIPIENT_TYPE_HIRING_MANAGER,
+        current_working_email="bryan@asm.example",
+        created_at="2026-04-06T20:01:00Z",
+    )
+    seed_approved_tailoring_run(
+        connection,
+        paths,
+        company_name="ASM",
+        role_title='Manager I. Software Engineering- "Scheduler"',
+    )
+    paths.tailoring_step_3_jd_signals_path(
+        "ASM",
+        'Manager I. Software Engineering- "Scheduler"',
+    ).write_text(
+        yaml.safe_dump(
+            {
+                "job_posting_id": "jp_outreach",
+                "resume_tailoring_run_id": "rtr_outreach",
+                "status": "generated",
+                "role_intent_summary": (
+                    "For over 55 years ASM has been ahead of what's next.; "
+                    "As a Manager, Software Engineering for our Scheduling Team, you'll lead a group "
+                    "of talented engineers building advanced scheduling engines that power real-time "
+                    "control systems across global chipmaking fabs."
+                ),
+                "signals_by_priority": {
+                    "must_have": [
+                        {
+                            "signal_id": "signal_must_1",
+                            "priority": "must_have",
+                            "signal": "3+ years relevant experience and a Bachelor’s degree OR any equivalent combination of education and experience.",
+                        }
+                    ],
+                    "core_responsibility": [
+                        {
+                            "signal_id": "signal_core_1",
+                            "priority": "core_responsibility",
+                            "signal": "For over 55 years ASM has been ahead of what's next, at the forefront of innovation.",
+                        },
+                        {
+                            "signal_id": "signal_core_2",
+                            "priority": "core_responsibility",
+                            "signal": "Drive the design, development, testing, and deployment of scheduling engines for multiple platforms.",
+                        },
+                    ],
+                    "nice_to_have": [],
+                    "informational": [],
+                },
+                "signals": [],
+            },
+            sort_keys=False,
+        ),
+        encoding="utf-8",
+    )
+
+    result = generate_role_targeted_send_set_drafts(
+        connection,
+        project_root=project_root,
+        job_posting_id="jp_outreach",
+        current_time="2026-04-06T20:30:00Z",
+        local_timezone=ZoneInfo("UTC"),
+    )
+
+    message = result.drafted_messages[0]
+    body_text = Path(message.body_text_artifact_path).read_text(encoding="utf-8")
+    assert "team's focus on leading a group of talented engineers building advanced scheduling engines that power real-time control systems across global chipmaking fabs" in body_text
+    assert "3+ years relevant experience" not in body_text
+    assert "For over 55 years ASM" not in body_text
+    assert message.subject == 'Interest in the Manager I. Software Engineering- "Scheduler" role at ASM'
+    assert "Impact:" not in message.subject
 
     connection.close()
 

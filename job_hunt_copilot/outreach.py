@@ -86,6 +86,50 @@ PROFILE_FIELD_RE = re.compile(r"^- \*\*(?P<label>[^*]+):\*\* (?P<value>.+?)\s*$"
 MARKDOWN_HEADING_RE = re.compile(r"^(?P<hashes>#{1,6})\s+(?P<title>.+?)\s*$")
 METRIC_RE = re.compile(r"\b(?:\$?\d[\d,.]*\+?%?|\d[\d,.]*\+?(?:\s?(?:TPS|ms|hours?|day|days|hospitals?|users?|microservices?|records(?:/second)?|students?|tests?|bugs?)))\b")
 NAME_SPLIT_RE = re.compile(r"\s+")
+ROLE_SIGNAL_BOILERPLATE_PATTERNS: tuple[re.Pattern[str], ...] = (
+    re.compile(r"\b\d+\+?\s+years?\b", re.IGNORECASE),
+    re.compile(r"\bbachelor", re.IGNORECASE),
+    re.compile(r"\bequal opportunity", re.IGNORECASE),
+    re.compile(r"\bpay range\b", re.IGNORECASE),
+    re.compile(r"\badditional compensation\b", re.IGNORECASE),
+    re.compile(r"\bbenefits\b", re.IGNORECASE),
+    re.compile(r"\bapply today\b", re.IGNORECASE),
+    re.compile(r"\bfind us at\b", re.IGNORECASE),
+    re.compile(r"\bfor over \d+ years\b", re.IGNORECASE),
+    re.compile(r"\bnationalities\b", re.IGNORECASE),
+    re.compile(r"\bdiversity\b", re.IGNORECASE),
+    re.compile(r"\bsustainability\b", re.IGNORECASE),
+    re.compile(r"\bhybrid work model\b", re.IGNORECASE),
+    re.compile(r"\brelocation is not provided\b", re.IGNORECASE),
+    re.compile(r"\breside in\b", re.IGNORECASE),
+    re.compile(r"\bwho we are\b", re.IGNORECASE),
+    re.compile(r"\bthe company\b", re.IGNORECASE),
+    re.compile(r"\bour benefits\b", re.IGNORECASE),
+    re.compile(r"\bcommitment to diversity\b", re.IGNORECASE),
+)
+ROLE_SIGNAL_VERB_PREFIXES = {
+    "deliver": "delivering",
+    "delivers": "delivering",
+    "advise": "advising",
+    "advises": "advising",
+    "guide": "guiding",
+    "guides": "guiding",
+    "operate": "operating",
+    "operates": "operating",
+    "apply": "applying",
+    "applies": "applying",
+    "drive": "driving",
+    "develop": "developing",
+    "design": "designing",
+    "collaborate": "collaborating",
+    "ensure": "ensuring",
+    "review": "reviewing",
+    "evaluate": "evaluating",
+    "lead": "leading",
+    "build": "building",
+    "oversee": "overseeing",
+    "manage": "managing",
+}
 
 
 @dataclass(frozen=True)
@@ -1006,15 +1050,15 @@ class DeterministicOutreachDraftRenderer(OutreachDraftRenderer):
         work_area = context.work_area or context.role_intent_summary or "this team's work"
         opening = (
             f"I came across the {context.role_title} opening at {context.company_name}, and "
-            f"the work this team seems to be doing around {work_area} immediately stood out to me. "
-            f"I've been working on similar backend and distributed-systems problems, so the role felt "
-            "like one where there could be real overlap."
+            f"what stood out to me was the team's focus on {work_area}. "
+            "I've spent the last few years building backend and distributed systems in production, "
+            "so the role felt like one where there could be real overlap."
         )
         why_this_person = _build_role_targeted_why_line(context)
-        proof_point = context.proof_point or (
+        proof_point = (context.proof_point or (
             "one example of that overlap is the distributed systems work I have done across reliability, "
             "performance, and production delivery."
-        )
+        )).rstrip(".")
         education_line = context.sender.education_summary or "I am currently finishing my MS in Computer Science at ASU."
         fit_summary = context.fit_summary or "backend systems, distributed services, and production reliability"
         body_lines = [
@@ -2617,11 +2661,33 @@ def _select_proof_point(step_6_payload: Mapping[str, Any]) -> str | None:
     bullets = list((step_6_payload.get("software_engineer") or {}).get("bullets") or [])
     if not bullets:
         return None
-    texts = [str(entry.get("text") or "").strip() for entry in bullets if str(entry.get("text") or "").strip()]
-    if not texts:
+    candidate_entries = []
+    for entry in bullets:
+        text = str(entry.get("text") or "").strip()
+        if not text:
+            continue
+        candidate_entries.append(
+            (
+                text,
+                _normalize_optional_text(entry.get("purpose")) or "",
+            )
+        )
+    if not candidate_entries:
         return None
-    texts.sort(key=lambda text: (0 if METRIC_RE.search(text) else 1, len(text)))
-    return texts[0]
+    purpose_rank = {
+        "scale-impact": 0,
+        "optimization": 1,
+        "end-to-end-flow": 2,
+        "reliability-operations": 3,
+    }
+    candidate_entries.sort(
+        key=lambda item: (
+            purpose_rank.get(item[1], 99),
+            0 if METRIC_RE.search(item[0]) else 1,
+            len(item[0]),
+        )
+    )
+    return candidate_entries[0][0]
 
 
 def _select_fit_summary(
@@ -2655,57 +2721,88 @@ def _select_fit_summary(
 
 
 def _role_work_area(step_3_payload: Mapping[str, Any], jd_text: str) -> str | None:
-    for priority_key in ("must_have", "core_responsibility", "nice_to_have"):
+    candidate_signals: list[str] = []
+    role_intent_summary = _normalize_optional_text(step_3_payload.get("role_intent_summary"))
+    if role_intent_summary is not None:
+        candidate_signals.extend(
+            part.strip() for part in role_intent_summary.split(";") if part.strip()
+        )
+    for priority_key in ("core_responsibility", "must_have", "nice_to_have"):
         signals = step_3_payload.get("signals_by_priority", {}).get(priority_key) or []
         for signal in signals:
             text = _normalize_optional_text(signal.get("signal"))
-            if text is None:
-                continue
-            return _clean_role_signal(text)
+            if text is not None:
+                candidate_signals.append(text)
+    for raw_signal in candidate_signals:
+        cleaned = _clean_role_signal(raw_signal)
+        if cleaned is not None:
+            return cleaned
     for line in jd_text.splitlines():
         stripped = line.strip()
         if stripped and not stripped.startswith("#"):
-            return _clean_role_signal(stripped)
+            cleaned = _clean_role_signal(stripped)
+            if cleaned is not None:
+                return cleaned
     return None
 
 
-def _clean_role_signal(value: str) -> str:
-    cleaned = value.strip().rstrip(".")
+def _clean_role_signal(value: str) -> str | None:
+    cleaned = re.sub(r"\s+", " ", value.strip().rstrip("."))
+    cleaned = re.sub(
+        r"^As a .*?,\s+you(?:'|’)ll\s+",
+        "",
+        cleaned,
+        flags=re.IGNORECASE,
+    )
     cleaned = re.sub(
         r"^(?:experience with|experience in|experience building|building|build|developing|develop|designing|design|working on|work on)\s+",
         "",
         cleaned,
         flags=re.IGNORECASE,
     )
-    return cleaned[:1].lower() + cleaned[1:] if cleaned else cleaned
+    if not cleaned:
+        return None
+    normalized = cleaned.lower()
+    if any(pattern.search(normalized) for pattern in ROLE_SIGNAL_BOILERPLATE_PATTERNS):
+        return None
+    if len(cleaned) > 220 and cleaned.count(".") + cleaned.count(";") >= 1:
+        return None
+    first_word, _, remainder = cleaned.partition(" ")
+    gerund = ROLE_SIGNAL_VERB_PREFIXES.get(first_word.lower())
+    if gerund is not None:
+        cleaned = f"{gerund} {remainder}".strip()
+    cleaned = cleaned[:1].lower() + cleaned[1:] if cleaned else cleaned
+    return cleaned or None
 
 
 def _build_role_targeted_subject(context: RoleTargetedDraftContext) -> str:
-    proof_point = context.proof_point or ""
-    metric_match = METRIC_RE.search(proof_point)
-    if metric_match is not None:
-        return f"{context.role_title} at {context.company_name} | Impact: {metric_match.group(0)}"
-    return f"{context.role_title} at {context.company_name} | {context.sender.name}"
+    return f"Interest in the {context.role_title} role at {context.company_name}"
 
 
 def _build_role_targeted_why_line(context: RoleTargetedDraftContext) -> str:
     work_signal = _recipient_work_signal(context.recipient_profile)
-    title = context.position_title or "your role"
+    title = _normalize_optional_text(context.position_title)
     if context.recipient_type == RECIPIENT_TYPE_RECRUITER:
         if work_signal:
             return f"I'm reaching out to you specifically because your work on {work_signal} looks close to hiring for this area."
-        return f"I'm reaching out to you specifically because your role as {title} looks close to hiring for this area."
+        if title is not None:
+            return f"I'm reaching out to you specifically because your role as {title} looks close to hiring for this area."
+        return "I'm reaching out to you specifically because you seem close to hiring for this area."
     if context.recipient_type == RECIPIENT_TYPE_HIRING_MANAGER:
         if work_signal:
             return f"I'm reaching out to you specifically because your work on {work_signal} seems closely tied to this team."
-        return f"I'm reaching out to you specifically because your role as {title} seems closely tied to this team."
+        if title is not None:
+            return f"I'm reaching out to you specifically because your role as {title} seems closely tied to this team."
+        return "I'm reaching out to you specifically because you seem closely tied to this team."
     if context.recipient_type == RECIPIENT_TYPE_ALUMNI:
         return (
             "I'm reaching out to you specifically because you seemed like the right fellow Sun Devil to ask for a grounded perspective on this work."
         )
     if work_signal:
         return f"I'm reaching out to you specifically because your work on {work_signal} seems close to the problems this role touches."
-    return f"I'm reaching out to you specifically because your role as {title} seems close to this work area."
+    if title is not None:
+        return f"I'm reaching out to you specifically because your role as {title} seems close to this work area."
+    return "I'm reaching out to you specifically because you seem close to this work area."
 
 
 def _recipient_work_signal(recipient_profile: Mapping[str, Any] | None) -> str | None:
