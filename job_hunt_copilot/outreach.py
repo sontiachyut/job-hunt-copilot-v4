@@ -2871,16 +2871,16 @@ def _signature_lines(sender: SenderIdentity) -> list[str]:
 def _job_hunt_copilot_pitch_lines() -> list[str]:
     return [
         (
-            f"I also built Job Hunt Copilot ({JOB_HUNT_COPILOT_REPO_URL}), a spec-driven autonomous system "
-            "that turns job postings into tailored resumes, contact discovery, and outbound outreach."
+            f"I also built Job Hunt Copilot ({JOB_HUNT_COPILOT_REPO_URL}), a spec-driven AI agent I built "
+            "for my own job search that finds leads for job postings and can reach out automatically."
         ),
         (
-            "This email is one of its live outputs, and building it pushed me to treat applied AI like real "
-            "software engineering instead of a one-off demo."
+            "This email is one of its live outputs, and the AI agent is running the copilot autonomously rather "
+            "than as a one-off demo or a manually stitched workflow."
         ),
         (
-            "If it is useful, I would love to share the repo and talk through the architecture, tradeoffs, "
-            "and what I learned building it."
+            "I monitor the emails personally myself as well, and if it is useful I would love to share the repo "
+            "and talk through the architecture, tradeoffs, and what I learned building it."
         ),
     ]
 
