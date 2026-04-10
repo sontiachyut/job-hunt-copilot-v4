@@ -2,8 +2,10 @@ from __future__ import annotations
 
 import json
 import shlex
+import shutil
 import sqlite3
 import subprocess
+import sys
 import tempfile
 from dataclasses import dataclass
 from datetime import datetime, timezone
@@ -31,6 +33,8 @@ MAINTENANCE_APPROVAL_FAILED_VALIDATION = "failed_validation"
 
 VALIDATION_SCOPE_CHANGE_SCOPED = "change_scoped"
 VALIDATION_SCOPE_FULL_SYSTEM = "full_system"
+
+PYTHON_EXECUTABLE_ALIASES = frozenset({"python", "python3", "python3.11"})
 
 
 class MaintenanceStateError(ValueError):
@@ -707,13 +711,25 @@ def _run_command(
     args: tuple[str, ...],
     cwd: Path,
 ) -> subprocess.CompletedProcess[str]:
+    resolved_args = _resolve_command_args(args)
     return subprocess.run(
-        list(args),
+        list(resolved_args),
         cwd=cwd,
         check=False,
         capture_output=True,
         text=True,
     )
+
+
+def _resolve_command_args(args: tuple[str, ...]) -> tuple[str, ...]:
+    if not args:
+        return args
+    executable = args[0]
+    if "/" in executable:
+        return args
+    if executable in PYTHON_EXECUTABLE_ALIASES and shutil.which(executable) is None:
+        return (sys.executable, *args[1:])
+    return args
 
 
 def _summarize_command_output(completed: subprocess.CompletedProcess[str]) -> str:

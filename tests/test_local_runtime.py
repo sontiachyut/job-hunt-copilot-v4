@@ -12,6 +12,7 @@ from job_hunt_copilot.chat_runtime import (
     build_chat_review_queue,
     build_chat_startup_dashboard,
 )
+import job_hunt_copilot.maintenance as maintenance_runtime
 import job_hunt_copilot.local_runtime as local_runtime
 from job_hunt_copilot.delivery_feedback import DeliveryFeedbackSignal
 from job_hunt_copilot.maintenance import (
@@ -72,6 +73,43 @@ def make_command_result(
         stdout=stdout,
         stderr=stderr,
     )
+
+
+def test_maintenance_run_command_uses_current_python_when_requested_binary_missing(
+    monkeypatch,
+    tmp_path,
+):
+    captured: dict[str, object] = {}
+
+    def fake_run(args, **kwargs):  # type: ignore[no-untyped-def]
+        captured["args"] = list(args)
+        captured["kwargs"] = kwargs
+        return subprocess.CompletedProcess(
+            args=list(args),
+            returncode=0,
+            stdout="ok\n",
+            stderr="",
+        )
+
+    monkeypatch.setattr(
+        maintenance_runtime.shutil,
+        "which",
+        lambda executable: None if executable == "python3.11" else f"/usr/bin/{executable}",
+    )
+    monkeypatch.setattr(maintenance_runtime.subprocess, "run", fake_run)
+
+    result = maintenance_runtime._run_command(
+        ("python3.11", "-m", "pytest", "tests/test_runtime_pack.py"),
+        tmp_path,
+    )
+
+    assert result.returncode == 0
+    assert captured["args"] == [
+        sys.executable,
+        "-m",
+        "pytest",
+        "tests/test_runtime_pack.py",
+    ]
 
 
 def build_test_maintenance_dependencies(
