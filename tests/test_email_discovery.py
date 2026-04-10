@@ -8,9 +8,11 @@ import pytest
 
 from job_hunt_copilot.bootstrap import run_bootstrap
 from job_hunt_copilot.email_discovery import (
+    APOLLO_API_USER_AGENT,
     ApolloResolvedCompany,
     CONTACT_STATUS_EXHAUSTED,
     CONTACT_STATUS_WORKING_EMAIL_FOUND,
+    ConfiguredApolloClient,
     DISCOVERY_OUTCOME_DOMAIN_UNRESOLVED,
     DISCOVERY_OUTCOME_NOT_FOUND,
     EmailDiscoveryError,
@@ -1031,6 +1033,24 @@ def test_apollo_contact_enrichment_removes_terminal_dead_end_shortlist_contacts(
     assert people_search_payload["candidates"][0]["provider_person_id"] == "pp_dead"
 
     connection.close()
+
+
+def test_configured_apollo_client_sends_custom_user_agent(monkeypatch: pytest.MonkeyPatch) -> None:
+    captured_headers: list[dict[str, str]] = []
+
+    def fake_request_json(request, *, timeout_seconds, provider_label, http_error_map):
+        captured_headers.append(dict(request.header_items()))
+        return {}
+
+    monkeypatch.setattr("job_hunt_copilot.email_discovery._request_json", fake_request_json)
+    client = ConfiguredApolloClient(api_key="apollo-key")
+
+    client._post_json("https://api.apollo.io/api/v1/mixed_companies/search", {"page": 1})
+    client._post_query("https://api.apollo.io/api/v1/people/match", {"id": "person_123"})
+
+    assert len(captured_headers) == 2
+    assert captured_headers[0]["User-agent"] == APOLLO_API_USER_AGENT
+    assert captured_headers[1]["User-agent"] == APOLLO_API_USER_AGENT
 
 
 def test_email_discovery_stops_on_first_usable_result_and_persists_budget_state(tmp_path: Path):

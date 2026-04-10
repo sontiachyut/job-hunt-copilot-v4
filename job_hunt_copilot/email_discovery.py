@@ -74,6 +74,7 @@ EMAIL_FINDER_PROVIDER_ORDER = (
 APOLLO_COMPANY_SEARCH_URL = "https://api.apollo.io/api/v1/mixed_companies/search"
 APOLLO_PEOPLE_SEARCH_URL = "https://api.apollo.io/api/v1/mixed_people/api_search"
 APOLLO_PEOPLE_ENRICH_URL = "https://api.apollo.io/api/v1/people/match"
+APOLLO_API_USER_AGENT = "JobHuntCopilot/1.0 (+local-runtime)"
 PROSPEO_ENRICH_URL = "https://api.prospeo.io/enrich-person"
 PROSPEO_ACCOUNT_URL = "https://api.prospeo.io/account-information"
 GETPROSPECT_EMAIL_FINDER_URL = "https://api.getprospect.com/v2/email-finder"
@@ -715,6 +716,7 @@ class ConfiguredApolloClient:
                 "Accept": "application/json",
                 "Content-Type": "application/json",
                 "x-api-key": self.api_key,
+                "User-Agent": APOLLO_API_USER_AGENT,
             },
             method="POST",
         )
@@ -739,6 +741,7 @@ class ConfiguredApolloClient:
                 "Content-Type": "application/json",
                 "Cache-Control": "no-cache",
                 "x-api-key": self.api_key,
+                "User-Agent": APOLLO_API_USER_AGENT,
             },
             method="POST",
         )
