@@ -1037,23 +1037,22 @@ def test_role_targeted_draft_batch_persists_messages_artifacts_and_transitions(t
     recruiter_html = Path(recruiter_message.body_html_artifact_path).read_text(encoding="utf-8")
     assert "I'm reaching out to you specifically because" in recruiter_body
     assert "recruiting function close to the target role" in recruiter_body
-    assert "Job Hunt Copilot (https://github.com/sontiachyut/job-hunt-copilot-v4)" in recruiter_body
-    assert "an AI agent I use for my own job search" in recruiter_body
-    assert "find leads and autonomously send outreach" in recruiter_body
-    assert "running the copilot autonomously" in recruiter_body
-    assert "I personally monitor every email as well" in recruiter_body
+    assert "I built Job Hunt Copilot (https://github.com/sontiachyut/job-hunt-copilot-v4)" in recruiter_body
+    assert "this email is one of its live outputs" in recruiter_body
+    assert "It is an AI agent that finds leads and sends outreach autonomously" in recruiter_body
+    assert "I personally review every email before it goes out" in recruiter_body
     assert "I've included a short snippet below that you can paste into an IM/Email:" in recruiter_body
     assert "[snippet]" in recruiter_body
     assert "[/snippet]" in recruiter_body
-    assert 'AI Agent I Built' in recruiter_html
-    assert 'href="https://github.com/sontiachyut/job-hunt-copilot-v4"' in recruiter_html
+    assert "this email is one of its live outputs" in recruiter_html
+    assert ">Repo</a>" in recruiter_html
     assert "background:#f4f4f4" in recruiter_html
     assert "border-left:4px solid #1a73e8" in recruiter_html
     assert "seem closely tied to this team" in manager_body
     assert "15-minute Zoom" in manager_body
-    assert "Job Hunt Copilot (https://github.com/sontiachyut/job-hunt-copilot-v4)" in manager_body
-    assert "running the copilot autonomously" in manager_body
-    assert "I personally monitor every email as well" in manager_body
+    assert "I built Job Hunt Copilot (https://github.com/sontiachyut/job-hunt-copilot-v4)" in manager_body
+    assert "It is an AI agent that finds leads and sends outreach autonomously" in manager_body
+    assert "I personally review every email before it goes out" in manager_body
     assert "I've included a short snippet below that you can paste into an IM/Email:" in manager_body
     assert "[snippet]" in manager_body
     assert "[/snippet]" in manager_body

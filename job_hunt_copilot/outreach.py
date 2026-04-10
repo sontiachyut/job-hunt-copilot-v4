@@ -2870,16 +2870,15 @@ def _signature_lines(sender: SenderIdentity) -> list[str]:
 def _job_hunt_copilot_pitch_lines() -> list[str]:
     return [
         (
-            f"I also built Job Hunt Copilot ({JOB_HUNT_COPILOT_REPO_URL}), an AI agent I use for my own "
-            "job search to find leads and autonomously send outreach."
+            f"I built Job Hunt Copilot ({JOB_HUNT_COPILOT_REPO_URL}) for my own job search, and this "
+            "email is one of its live outputs."
         ),
         (
-            "This email is one of its live outputs, and the AI agent is running the copilot autonomously rather "
-            "than as a one-off demo or a manually stitched workflow."
+            "It is an AI agent that finds leads and sends outreach autonomously, but I personally review "
+            "every email before it goes out."
         ),
         (
-            "I personally monitor every email as well, and if it is useful I am happy to talk through the "
-            "architecture, tradeoffs, and what I learned building it."
+            "If useful, I am happy to talk through the architecture, tradeoffs, and what I learned building it."
         ),
     ]
 
@@ -3859,24 +3858,19 @@ def _render_markdown_email_html(body_markdown: str) -> str:
 
 
 def _render_job_hunt_copilot_callout_html() -> str:
-    line_two, line_three = _job_hunt_copilot_pitch_lines()[1:]
+    line_one, _, line_three = _job_hunt_copilot_pitch_lines()
     repo_url = html.escape(JOB_HUNT_COPILOT_REPO_URL, quote=True)
     return (
-        '<div style="margin:16px 0;padding:16px 18px;'
-        'border:1px solid #c9dcff;border-radius:14px;'
-        'background:linear-gradient(180deg,#f8fbff 0%,#eef5ff 100%);">'
-        '<div style="margin:0 0 10px 0;font-size:12px;line-height:1.2;'
-        'font-weight:700;letter-spacing:0.08em;text-transform:uppercase;'
-        'color:#2952a3;">AI Agent I Built</div>'
-        '<p style="margin:0 0 10px 0;color:#0f172a;line-height:1.55;">'
-        'I also built '
-        f'<a href="{repo_url}" '
-        'style="color:#1d4ed8;font-weight:700;text-decoration:none;">'
-        'Job Hunt Copilot</a>'
-        ', an AI agent I use for my own job search to find leads and autonomously send outreach.'
+        '<div style="margin:16px 0;padding:14px 16px;'
+        'border-left:3px solid #111827;border-radius:4px;'
+        'background:#f8fafc;">'
+        f'<p style="margin:0 0 8px 0;color:#111827;line-height:1.55;font-weight:600;">{html.escape(line_one)}</p>'
+        '<p style="margin:0 0 8px 0;color:#334155;line-height:1.55;">'
+        'It is an <strong>AI agent</strong> that finds leads and sends outreach autonomously, '
+        'but I personally review every email before it goes out. '
+        f'<a href="{repo_url}" style="color:#1d4ed8;text-decoration:none;font-weight:600;">Repo</a>.'
         '</p>'
-        f'<p style="margin:0 0 10px 0;color:#334155;line-height:1.55;">{html.escape(line_two)}</p>'
-        f'<p style="margin:0;color:#334155;line-height:1.55;">{html.escape(line_three)}</p>'
+        f'<p style="margin:0;color:#475569;line-height:1.55;">{html.escape(line_three)}</p>'
         "</div>"
     )
 
