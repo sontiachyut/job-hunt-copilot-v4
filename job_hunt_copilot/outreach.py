@@ -3824,6 +3824,19 @@ def _render_markdown_email_html(body_markdown: str) -> str:
                     index += 1
                 html_blocks.append(_render_forwardable_snippet_html("\n".join(snippet_lines).strip()))
             continue
+        if stripped == "Best,":
+            flush_paragraph()
+            flush_blockquote()
+            signature_lines = ["Best,"]
+            index += 1
+            while index < len(body_lines):
+                signature_line = body_lines[index].rstrip()
+                if not signature_line:
+                    break
+                signature_lines.append(signature_line)
+                index += 1
+            html_blocks.append(_render_signature_block_html(signature_lines))
+            continue
         if stripped == "[snippet]":
             flush_paragraph()
             flush_blockquote()
@@ -3883,6 +3896,15 @@ def _render_forwardable_snippet_html(snippet_text: str) -> str:
         'line-height:1.5;white-space:pre-wrap;">'
         f"{html.escape(snippet_text)}"
         "</div>"
+    )
+
+
+def _render_signature_block_html(signature_lines: Sequence[str]) -> str:
+    escaped_lines = [html.escape(line) for line in signature_lines]
+    return (
+        '<p style="margin:16px 0 0 0;line-height:1.6;">'
+        + "<br>".join(escaped_lines)
+        + "</p>"
     )
 
 

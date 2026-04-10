@@ -1048,6 +1048,7 @@ def test_role_targeted_draft_batch_persists_messages_artifacts_and_transitions(t
     assert ">Repo</a>" in recruiter_html
     assert "background:#f4f4f4" in recruiter_html
     assert "border-left:4px solid #1a73e8" in recruiter_html
+    assert "Best,<br>Achyutaram Sonti<br>https://www.linkedin.com/in/asonti/<br>602-768-6071<br>asonti1@asu.edu" in recruiter_html
     assert "seem closely tied to this team" in manager_body
     assert "15-minute Zoom" in manager_body
     assert "I built Job Hunt Copilot (https://github.com/sontiachyut/job-hunt-copilot-v4)" in manager_body
