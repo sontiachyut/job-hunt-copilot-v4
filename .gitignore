@@ -11,6 +11,7 @@ job_hunt_copilot.db
 paste/paste.txt
 applications/
 linkedin-scraping/runtime/
+resume-tailoring/input/profile.md
 resume-tailoring/input/job-postings/
 resume-tailoring/output/
 discovery/output/
