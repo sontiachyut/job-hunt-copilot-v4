@@ -1098,6 +1098,58 @@ def test_people_search_stage_executes_and_advances_to_email_discovery(tmp_path: 
     assert (project_root / people_search_artifact_path).exists()
 
 
+def test_people_search_stage_escalates_cleanly_when_no_contacts_are_found(tmp_path: Path) -> None:
+    project_root = bootstrap_project(tmp_path)
+    paths = ProjectPaths.from_root(project_root)
+    connection = connect_database(project_root / "job_hunt_copilot.db")
+    lead_id, job_posting_id = seed_role_targeted_posting(
+        connection,
+        posting_status="requires_contacts",
+    )
+    seed_approved_tailoring_run(connection, job_posting_id=job_posting_id)
+    resume_agent(
+        connection,
+        manual_command="jhc-agent-start",
+        timestamp="2026-04-08T00:10:00Z",
+    )
+    pipeline_run, _ = ensure_role_targeted_pipeline_run(
+        connection,
+        lead_id=lead_id,
+        job_posting_id=job_posting_id,
+        current_stage="people_search",
+        started_at="2026-04-08T00:11:00Z",
+    )
+
+    execution = run_supervisor_cycle(
+        connection,
+        paths,
+        trigger_type="launchd_heartbeat",
+        scheduler_name="launchd",
+        started_at="2026-04-08T00:12:00Z",
+        action_dependencies=SupervisorActionDependencies(
+            apollo_people_search_provider=FakeApolloSearchProvider(candidates=[]),
+            apollo_contact_enrichment_provider=FakeApolloEnrichmentProvider({}),
+        ),
+    )
+    updated_run = get_pipeline_run(connection, pipeline_run.pipeline_run_id)
+    posting_status = connection.execute(
+        """
+        SELECT posting_status
+        FROM job_postings
+        WHERE job_posting_id = ?
+        """,
+        (job_posting_id,),
+    ).fetchone()[0]
+    connection.close()
+
+    assert execution.cycle.result == SUPERVISOR_CYCLE_RESULT_SUCCESS
+    assert updated_run is not None
+    assert updated_run.run_status == RUN_STATUS_ESCALATED
+    assert updated_run.current_stage == "people_search"
+    assert "did not identify any shortlisted internal contacts" in (updated_run.last_error_summary or "")
+    assert posting_status == "requires_contacts"
+
+
 def test_email_discovery_stage_runs_and_stays_active_until_send_set_is_ready(
     tmp_path: Path,
 ) -> None:

@@ -3886,10 +3886,22 @@ def _execute_selected_work_unit(
                     link_level_status="shortlisted",
                 )
                 if shortlisted_count <= 0:
-                    raise SupervisorStateError(
-                        "Bounded people search completed without leaving any shortlisted "
-                        f"contacts for job_posting {job_posting_id!r}."
+                    pipeline_run = escalate_pipeline_run(
+                        connection,
+                        selected_work.work_id,
+                        current_stage="people_search",
+                        error_summary=(
+                            "Bounded people search did not identify any shortlisted "
+                            f"internal contacts for job_posting {job_posting_id!r}."
+                        ),
+                        run_summary=(
+                            "Supervisor escalated the durable pipeline run at the "
+                            "people_search boundary because bounded discovery did "
+                            "not find any viable internal contacts."
+                        ),
+                        timestamp=timestamp,
                     )
+                    return pipeline_run, None, None
                 next_stage = "email_discovery"
             else:  # pragma: no cover - defensive invariant
                 raise SupervisorStateError(
@@ -4548,6 +4560,46 @@ def _validate_selected_work_result(
             return "Supervisor failed to load the selected pipeline_run after people search."
         if pipeline_run.pipeline_run_id != selected_work.work_id:
             return "People search changed the selected pipeline_run identity."
+        if pipeline_run.run_status == RUN_STATUS_ESCALATED:
+            if pipeline_run.current_stage != "people_search":
+                return (
+                    "People search escalation must persist at the people_search "
+                    f"boundary; found {pipeline_run.current_stage!r}."
+                )
+            if not _optional_text(pipeline_run.last_error_summary):
+                return "People search escalation did not persist an error summary."
+            if pipeline_run.job_posting_id is None:
+                return "People search escalation completed without a linked job_posting_id."
+            posting_row = connection.execute(
+                """
+                SELECT posting_status
+                FROM job_postings
+                WHERE job_posting_id = ?
+                """,
+                (pipeline_run.job_posting_id,),
+            ).fetchone()
+            if posting_row is None:
+                return "People search escalation completed without a persisted job_posting row."
+            if posting_row[0] != "requires_contacts":
+                return (
+                    "People search escalation must leave the posting at "
+                    f"requires_contacts; found {posting_row[0]!r}."
+                )
+            people_search_artifact_count = connection.execute(
+                """
+                SELECT COUNT(*)
+                FROM artifact_records
+                WHERE artifact_type = 'people_search_result'
+                  AND job_posting_id = ?
+                """,
+                (pipeline_run.job_posting_id,),
+            ).fetchone()[0]
+            if people_search_artifact_count <= 0:
+                return (
+                    "People search escalation completed without a persisted "
+                    "people_search_result artifact."
+                )
+            return None
         if pipeline_run.run_status != RUN_STATUS_IN_PROGRESS:
             return (
                 "People search left the pipeline_run outside in-progress state; found "

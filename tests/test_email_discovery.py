@@ -205,6 +205,26 @@ class FakeApolloProvider:
         return list(self.candidates)
 
 
+class LocationFallbackApolloProvider(FakeApolloProvider):
+    def search_people(
+        self,
+        *,
+        company_name: str,
+        resolved_company: ApolloResolvedCompany | None,
+        search_filters: dict[str, object],
+    ) -> list[dict[str, object]]:
+        self.search_calls.append(
+            {
+                "company_name": company_name,
+                "resolved_company": resolved_company,
+                "search_filters": search_filters,
+            }
+        )
+        if list(search_filters.get("locations") or []):
+            return []
+        return list(self.candidates)
+
+
 class FakeApolloEnrichmentProvider:
     def __init__(self, responses: dict[str, dict[str, object] | None]) -> None:
         self.responses = responses
@@ -1031,6 +1051,54 @@ def test_apollo_contact_enrichment_removes_terminal_dead_end_shortlist_contacts(
     people_search_payload = json.loads(search_result.artifact_path.read_text(encoding="utf-8"))
     assert people_search_payload["candidate_count"] == 1
     assert people_search_payload["candidates"][0]["provider_person_id"] == "pp_dead"
+
+    connection.close()
+
+
+def test_apollo_people_search_retries_without_location_after_zero_primary_candidates(tmp_path: Path):
+    project_root = bootstrap_project(tmp_path)
+    paths = ProjectPaths.from_root(project_root)
+    connection = connect_database(project_root / "job_hunt_copilot.db")
+    seed_search_ready_posting(connection, paths)
+    connection.execute(
+        """
+        UPDATE job_postings
+        SET location = 'Phoenix, AZ'
+        WHERE job_posting_id = 'jp_search'
+        """
+    )
+    connection.commit()
+
+    provider = LocationFallbackApolloProvider(
+        resolved_company=ApolloResolvedCompany(
+            organization_id="org_acme",
+            organization_name="Acme Robotics",
+            primary_domain="acmerobotics.com",
+        ),
+        candidates=[
+            build_candidate(
+                provider_person_id="pp_relaxed",
+                display_name="Priya Recruiter",
+                title="Technical Recruiter",
+            )
+        ],
+    )
+
+    result = run_apollo_people_search(
+        project_root=project_root,
+        job_posting_id="jp_search",
+        provider=provider,
+    )
+
+    assert len(provider.search_calls) == 2
+    assert provider.search_calls[0]["search_filters"]["locations"] == ["Phoenix, AZ"]
+    assert provider.search_calls[1]["search_filters"]["locations"] == []
+    payload = json.loads(result.artifact_path.read_text(encoding="utf-8"))
+    assert payload["candidate_count"] == 1
+    assert len(payload["attempted_filters"]) == 2
+    assert payload["attempted_filters"][1]["attempt"] == "drop_location_after_zero_primary_candidates"
+    assert payload["applied_filters"]["locations"] == []
+    assert len(result.shortlisted_contact_ids) == 1
 
     connection.close()
 

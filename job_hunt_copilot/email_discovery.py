@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from copy import deepcopy
 import html
 import json
 import re
@@ -1185,17 +1186,39 @@ def run_apollo_people_search(
         company_domain = _derive_company_domain(posting_row)
         company_website = _derive_company_website(posting_row)
         search_provider = provider or ConfiguredApolloClient.from_paths(paths)
+        attempted_filters: list[dict[str, Any]] = []
 
         resolved_company = search_provider.resolve_company(
             company_name=posting_row["company_name"],
             company_domain=company_domain,
             company_website=company_website,
         )
+        attempted_filters.append(
+            {
+                "attempt": "primary",
+                "search_filters": deepcopy(search_filters),
+            }
+        )
         raw_candidates = search_provider.search_people(
             company_name=posting_row["company_name"],
             resolved_company=resolved_company,
             search_filters=search_filters,
         )
+        if not raw_candidates and search_filters.get("locations"):
+            relaxed_filters = deepcopy(search_filters)
+            relaxed_filters["locations"] = []
+            attempted_filters.append(
+                {
+                    "attempt": "drop_location_after_zero_primary_candidates",
+                    "search_filters": deepcopy(relaxed_filters),
+                }
+            )
+            raw_candidates = search_provider.search_people(
+                company_name=posting_row["company_name"],
+                resolved_company=resolved_company,
+                search_filters=relaxed_filters,
+            )
+            search_filters = relaxed_filters
         candidates = tuple(_normalize_candidate_rows(raw_candidates))
         shortlist = select_initial_enrichment_shortlist(candidates, limit=shortlist_limit)
         timestamp = current_time or now_utc_iso()
@@ -1262,6 +1285,7 @@ def run_apollo_people_search(
                     else "company_name_fallback"
                 ),
                 "applied_filters": search_filters,
+                "attempted_filters": attempted_filters,
                 "shortlist_limit": shortlist_limit,
                 "candidate_count": len(candidates),
                 "shortlisted_contact_ids": shortlisted_contact_ids,
