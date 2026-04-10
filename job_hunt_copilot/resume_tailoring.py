@@ -4172,6 +4172,10 @@ def _compile_tailored_resume(
 
 
 def _resolve_latex_binary(binary_name: str) -> Path | None:
+    return _resolve_host_binary(binary_name)
+
+
+def _resolve_host_binary(binary_name: str) -> Path | None:
     resolved = shutil.which(binary_name)
     if resolved:
         return Path(resolved)
@@ -4196,14 +4200,15 @@ def _latex_subprocess_env(*binary_dirs: Path) -> dict[str, str]:
 
 
 def _read_pdf_page_count(pdf_path: Path) -> int:
-    pdfinfo = shutil.which("pdfinfo")
+    pdfinfo = _resolve_host_binary("pdfinfo")
     if pdfinfo is None:
         raise ResumeTailoringError("`pdfinfo` is required to verify the one-page resume constraint.")
     result = subprocess.run(
-        [pdfinfo, str(pdf_path)],
+        [str(pdfinfo), str(pdf_path)],
         capture_output=True,
         text=True,
         check=False,
+        env=_latex_subprocess_env(pdfinfo.parent),
     )
     if result.returncode != 0:
         raise ResumeTailoringError(

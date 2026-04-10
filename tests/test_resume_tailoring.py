@@ -61,8 +61,11 @@ def test_resolve_latex_binary_falls_back_to_known_candidate_dirs(tmp_path, monke
     fake_bin_dir = tmp_path / "texbin"
     fake_bin_dir.mkdir()
     fake_latexmk = fake_bin_dir / "latexmk"
+    fake_pdfinfo = fake_bin_dir / "pdfinfo"
     fake_latexmk.write_text("#!/bin/sh\nexit 0\n", encoding="utf-8")
+    fake_pdfinfo.write_text("#!/bin/sh\nexit 0\n", encoding="utf-8")
     fake_latexmk.chmod(0o755)
+    fake_pdfinfo.chmod(0o755)
 
     monkeypatch.setattr(
         resume_tailoring_module,
@@ -72,9 +75,11 @@ def test_resolve_latex_binary_falls_back_to_known_candidate_dirs(tmp_path, monke
     monkeypatch.setattr(resume_tailoring_module.shutil, "which", lambda _name: None)
 
     resolved = resume_tailoring_module._resolve_latex_binary("latexmk")
+    resolved_pdfinfo = resume_tailoring_module._resolve_host_binary("pdfinfo")
     env = resume_tailoring_module._latex_subprocess_env(fake_bin_dir)
 
     assert resolved == fake_latexmk
+    assert resolved_pdfinfo == fake_pdfinfo
     assert env["PATH"].split(os.pathsep)[0] == str(fake_bin_dir)
 
 
