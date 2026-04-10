@@ -20,6 +20,7 @@ from .gmail_alerts import (
     GmailAlertBatch,
     GmailCollectionResult,
     ingest_gmail_alert_batch,
+    refresh_persisted_gmail_collection,
 )
 from .paths import ProjectPaths, workspace_slug
 from .records import lifecycle_timestamps, new_canonical_id, now_utc_iso
@@ -523,6 +524,54 @@ class GmailLeadMaterializationResult:
             "job_posting_id": self.job_posting_id,
             "job_posting_created": self.job_posting_created,
             "lead_manifest_path": str(self.lead_manifest_path),
+        }
+
+
+@dataclass(frozen=True)
+class GmailBlockedLeadRepairResult:
+    lead_id: str
+    source_reference: str
+    initial_lead_status: str
+    final_lead_status: str
+    refreshed_job_url: str | None
+    jd_recovered: bool
+    materialized: bool
+    reason_code: str | None
+    job_posting_id: str | None
+    lead_manifest_path: Path
+
+    def as_dict(self) -> dict[str, Any]:
+        return {
+            "status": "ok",
+            "lead_id": self.lead_id,
+            "source_reference": self.source_reference,
+            "initial_lead_status": self.initial_lead_status,
+            "final_lead_status": self.final_lead_status,
+            "refreshed_job_url": self.refreshed_job_url,
+            "jd_recovered": self.jd_recovered,
+            "materialized": self.materialized,
+            "reason_code": self.reason_code,
+            "job_posting_id": self.job_posting_id,
+            "lead_manifest_path": str(self.lead_manifest_path),
+        }
+
+
+@dataclass(frozen=True)
+class GmailBlockedLeadRepairBatchResult:
+    leads_considered: int
+    leads_repaired: int
+    still_blocked: int
+    materialized_postings: int
+    repaired_results: tuple[GmailBlockedLeadRepairResult, ...]
+
+    def as_dict(self) -> dict[str, Any]:
+        return {
+            "status": "ok",
+            "leads_considered": self.leads_considered,
+            "leads_repaired": self.leads_repaired,
+            "still_blocked": self.still_blocked,
+            "materialized_postings": self.materialized_postings,
+            "repaired_results": [result.as_dict() for result in self.repaired_results],
         }
 
 
@@ -1438,6 +1487,77 @@ def materialize_gmail_lead_entities(
         job_posting_id=job_posting_id,
         job_posting_created=job_posting_created,
         lead_manifest_path=artifact_paths["lead_manifest_path"],
+    )
+
+
+def repair_stale_blocked_gmail_leads(
+    project_root: Path | str | None = None,
+    *,
+    lead_id: str | None = None,
+    limit: int = 25,
+) -> GmailBlockedLeadRepairBatchResult:
+    if limit <= 0:
+        raise LinkedInScrapingError("limit must be positive.")
+
+    paths = ProjectPaths.from_root(project_root)
+    connection = sqlite3.connect(paths.db_path)
+    connection.row_factory = sqlite3.Row
+    connection.execute("PRAGMA foreign_keys = ON;")
+
+    try:
+        query = """
+            SELECT lead_id, source_reference
+            FROM linkedin_leads
+            WHERE source_mode = ?
+              AND lead_status = ?
+              AND (source_url IS NULL OR TRIM(source_url) = '')
+        """
+        params: list[Any] = [SOURCE_MODE_GMAIL_JOB_ALERT, LEAD_STATUS_BLOCKED_NO_JD]
+        if lead_id is not None:
+            query += " AND lead_id = ?"
+            params.append(lead_id)
+        query += " ORDER BY created_at ASC, lead_id ASC LIMIT ?"
+        params.append(limit)
+        rows = connection.execute(query, tuple(params)).fetchall()
+
+        refreshed_collections: dict[str, Any] = {}
+        repaired_results: list[GmailBlockedLeadRepairResult] = []
+        for row in rows:
+            source_reference = _normalize_required_text(
+                row["source_reference"],
+                field_name="source_reference",
+            )
+            collection_relative_path = _gmail_collection_relative_path_from_source_reference(
+                source_reference
+            )
+            refreshed_collection = refreshed_collections.get(collection_relative_path)
+            if refreshed_collection is None:
+                refreshed_collection = refresh_persisted_gmail_collection(
+                    paths.project_root,
+                    collection_dir=collection_relative_path,
+                )
+                refreshed_collections[collection_relative_path] = refreshed_collection
+            repaired_results.append(
+                _repair_blocked_gmail_lead_from_refresh(
+                    connection,
+                    paths,
+                    lead_id=row["lead_id"],
+                    refreshed_collection=refreshed_collection,
+                )
+            )
+    finally:
+        connection.close()
+
+    return GmailBlockedLeadRepairBatchResult(
+        leads_considered=len(repaired_results),
+        leads_repaired=sum(
+            1 for result in repaired_results if result.final_lead_status != LEAD_STATUS_BLOCKED_NO_JD
+        ),
+        still_blocked=sum(
+            1 for result in repaired_results if result.final_lead_status == LEAD_STATUS_BLOCKED_NO_JD
+        ),
+        materialized_postings=sum(1 for result in repaired_results if result.materialized),
+        repaired_results=tuple(repaired_results),
     )
 
 
@@ -3385,6 +3505,288 @@ def _gmail_lead_artifact_paths(
         "jd_fetch_path": paths.lead_jd_fetch_path(company_name, role_title, lead_id),
         "lead_manifest_path": paths.lead_manifest_path(company_name, role_title, lead_id),
     }
+
+
+def _repair_blocked_gmail_lead_from_refresh(
+    connection: sqlite3.Connection,
+    paths: ProjectPaths,
+    *,
+    lead_id: str,
+    refreshed_collection: Any,
+) -> GmailBlockedLeadRepairResult:
+    lead_row = _load_gmail_lead_row(connection, lead_id=lead_id)
+    existing_artifact_paths = _gmail_lead_artifact_paths(
+        paths,
+        company_name=lead_row["company_name"],
+        role_title=lead_row["role_title"],
+        lead_id=lead_id,
+    )
+    if not existing_artifact_paths["alert_card_path"].exists():
+        raise LinkedInScrapingError(
+            f"Lead `{lead_id}` is missing its Gmail alert card artifact at {existing_artifact_paths['alert_card_path']}."
+        )
+
+    existing_alert_card = json.loads(
+        existing_artifact_paths["alert_card_path"].read_text(encoding="utf-8")
+    )
+    card_index = _gmail_card_index(existing_alert_card)
+    refreshed_card = _find_refreshed_gmail_card(
+        refreshed_collection.cards,
+        card_index=card_index,
+        fallback_company_name=lead_row["company_name"],
+        fallback_role_title=lead_row["role_title"],
+        fallback_location=lead_row["location"],
+    )
+    if refreshed_card is None:
+        raise LinkedInScrapingError(
+            f"Unable to match refreshed Gmail card for lead `{lead_id}` at card_index {card_index}."
+        )
+
+    refreshed_card_payload = refreshed_card.as_dict()
+    artifact_paths = _gmail_lead_artifact_paths(
+        paths,
+        company_name=_gmail_card_company_name(refreshed_card_payload),
+        role_title=_gmail_card_role_title(refreshed_card_payload),
+        lead_id=lead_id,
+    )
+    artifact_paths["workspace_dir"].mkdir(parents=True, exist_ok=True)
+    artifact_paths["alert_email_path"].write_text(
+        refreshed_collection.email_markdown_path.read_text(encoding="utf-8"),
+        encoding="utf-8",
+    )
+    updated_alert_card = _write_gmail_alert_card_artifact(
+        artifact_path=artifact_paths["alert_card_path"],
+        paths=paths,
+        lead_id=lead_id,
+        collection=refreshed_collection.as_collection_result(),
+        message=refreshed_collection.as_message(),
+        card=refreshed_card_payload,
+    )
+
+    jd_recovery = _assemble_gmail_jd_recovery(
+        raw_message={},
+        card=refreshed_card_payload,
+    )
+    jd_text = jd_recovery["merged_jd_text"]
+    jd_recovered = jd_text is not None
+    _write_optional_markdown(
+        artifact_paths["jd_path"],
+        _normalize_markdown_body(jd_text) if jd_text is not None else None,
+    )
+
+    identity_reconciliation = jd_recovery["identity_reconciliation"]
+    if identity_reconciliation["review_required"]:
+        reason_code = MANIFEST_REASON_IDENTITY_MISMATCH_REVIEW_REQUIRED
+    elif jd_recovered:
+        reason_code = None
+    else:
+        reason_code = MANIFEST_REASON_MISSING_JD
+    lead_status = LEAD_STATUS_INCOMPLETE if jd_recovered else LEAD_STATUS_BLOCKED_NO_JD
+
+    jd_fetch_contract = _write_gmail_jd_fetch_artifact(
+        artifact_path=artifact_paths["jd_fetch_path"],
+        lead_id=lead_id,
+        card=refreshed_card_payload,
+        message=refreshed_collection.as_message(),
+        matched_candidates=jd_recovery["matched_candidates"],
+        selected_candidate=jd_recovery["selected_candidate"],
+        merge_outcome=jd_recovery["merge_outcome"],
+        identity_reconciliation=identity_reconciliation,
+        jd_path=artifact_paths["jd_path"],
+        jd_recovered=jd_recovered,
+    )
+
+    updated_lead_row = {
+        "lead_id": lead_id,
+        "source_type": SOURCE_TYPE_GMAIL_LINKEDIN_ALERT,
+        "source_reference": _build_gmail_source_reference(
+            paths,
+            collection=refreshed_collection.as_collection_result(),
+            card_index=card_index,
+        ),
+        "source_mode": SOURCE_MODE_GMAIL_JOB_ALERT,
+        "source_url": _normalize_optional_text(refreshed_card_payload.get("job_url")),
+        "company_name": _gmail_card_company_name(refreshed_card_payload),
+        "role_title": _gmail_card_role_title(refreshed_card_payload),
+        "location": _normalize_optional_text(refreshed_card_payload.get("location")),
+        "work_mode": _infer_work_mode_from_location(
+            _normalize_optional_text(refreshed_card_payload.get("location"))
+        ),
+        "compensation_summary": None,
+        "poster_name": None,
+        "poster_title": None,
+    }
+    handoff_targets = {
+        "posting_materialization": _build_gmail_posting_materialization_target(
+            lead_status=lead_status,
+            jd_path=artifact_paths["jd_path"],
+            blocking_reason_code=reason_code,
+        ),
+        "resume_tailoring": _build_resume_tailoring_target(
+            job_posting_id=None,
+            jd_path=artifact_paths["jd_path"],
+            blocking_reason_code=reason_code,
+        ),
+    }
+    lead_manifest_contract = _write_gmail_lead_manifest(
+        artifact_paths["lead_manifest_path"],
+        lead_row=updated_lead_row,
+        lead_status=lead_status,
+        reason_code=reason_code,
+        artifact_paths=artifact_paths,
+        handoff_targets=handoff_targets,
+        collection=refreshed_collection.as_collection_result(),
+        card=refreshed_card_payload,
+        message=refreshed_collection.as_message(),
+        jd_fetch_contract=jd_fetch_contract,
+    )
+    updated_at = _normalize_required_text(
+        lead_manifest_contract.get("produced_at"),
+        field_name="produced_at",
+    )
+
+    with connection:
+        connection.execute(
+            """
+            UPDATE linkedin_leads
+            SET lead_identity_key = ?,
+                lead_status = ?,
+                source_reference = ?,
+                source_url = ?,
+                company_name = ?,
+                role_title = ?,
+                location = ?,
+                work_mode = ?,
+                updated_at = ?
+            WHERE lead_id = ?
+            """,
+            (
+                _build_gmail_lead_identity_key(refreshed_card_payload),
+                lead_status,
+                updated_lead_row["source_reference"],
+                updated_lead_row["source_url"],
+                updated_lead_row["company_name"],
+                updated_lead_row["role_title"],
+                updated_lead_row["location"],
+                updated_lead_row["work_mode"],
+                updated_at,
+                lead_id,
+            ),
+        )
+        _replace_lead_artifact_record(
+            connection,
+            paths,
+            artifact_type=LEAD_ALERT_EMAIL_ARTIFACT_TYPE,
+            artifact_path=artifact_paths["alert_email_path"],
+            lead_id=lead_id,
+            created_at=updated_alert_card["produced_at"],
+        )
+        _replace_lead_artifact_record(
+            connection,
+            paths,
+            artifact_type=LEAD_ALERT_CARD_ARTIFACT_TYPE,
+            artifact_path=artifact_paths["alert_card_path"],
+            lead_id=lead_id,
+            created_at=updated_alert_card["produced_at"],
+        )
+        _replace_lead_artifact_record(
+            connection,
+            paths,
+            artifact_type=LEAD_JD_FETCH_ARTIFACT_TYPE,
+            artifact_path=artifact_paths["jd_fetch_path"],
+            lead_id=lead_id,
+            created_at=jd_fetch_contract["produced_at"],
+        )
+        _replace_lead_artifact_record(
+            connection,
+            paths,
+            artifact_type=LEAD_MANIFEST_ARTIFACT_TYPE,
+            artifact_path=artifact_paths["lead_manifest_path"],
+            lead_id=lead_id,
+            created_at=lead_manifest_contract["produced_at"],
+        )
+
+    materialized = materialize_gmail_lead_entities(paths.project_root, lead_id=lead_id)
+    return GmailBlockedLeadRepairResult(
+        lead_id=lead_id,
+        source_reference=updated_lead_row["source_reference"],
+        initial_lead_status=lead_row["lead_status"],
+        final_lead_status=materialized.lead_status,
+        refreshed_job_url=_normalize_optional_text(refreshed_card_payload.get("job_url")),
+        jd_recovered=jd_recovered,
+        materialized=materialized.materialized,
+        reason_code=materialized.reason_code,
+        job_posting_id=materialized.job_posting_id,
+        lead_manifest_path=materialized.lead_manifest_path,
+    )
+
+
+def _find_refreshed_gmail_card(
+    cards: Sequence[Any],
+    *,
+    card_index: int,
+    fallback_company_name: str,
+    fallback_role_title: str,
+    fallback_location: str | None,
+) -> Any | None:
+    for card in cards:
+        if getattr(card, "card_index", None) == card_index:
+            return card
+
+    normalized_company = _normalize_company_identity(fallback_company_name)
+    normalized_role = _normalize_role_identity(fallback_role_title)
+    normalized_location = workspace_slug(fallback_location or "unknown")
+    for card in cards:
+        if _normalize_company_identity(card.company_name) != normalized_company:
+            continue
+        if _normalize_role_identity(card.role_title) != normalized_role:
+            continue
+        if workspace_slug(card.location or "unknown") != normalized_location:
+            continue
+        return card
+    return None
+
+
+def _gmail_collection_relative_path_from_source_reference(source_reference: str) -> str:
+    return source_reference.split("#", 1)[0]
+
+
+def _write_gmail_alert_card_artifact(
+    *,
+    artifact_path: Path,
+    paths: ProjectPaths,
+    lead_id: str,
+    collection: GmailCollectionResult,
+    message: Any,
+    card: Mapping[str, Any],
+) -> dict[str, Any]:
+    return write_json_contract(
+        artifact_path,
+        producer_component=LINKEDIN_SCRAPING_COMPONENT,
+        result="success",
+        linkage=ArtifactLinkage(lead_id=lead_id),
+        payload={
+            "source_mode": SOURCE_MODE_GMAIL_JOB_ALERT,
+            "source_type": SOURCE_TYPE_GMAIL_LINKEDIN_ALERT,
+            "gmail_message_id": message.gmail_message_id,
+            "gmail_thread_id": message.gmail_thread_id,
+            "received_at": message.received_at,
+            "collected_at": message.collected_at,
+            "collection_email_path": paths.relative_to_root(collection.email_markdown_path).as_posix(),
+            "collection_email_json_path": paths.relative_to_root(collection.email_json_path).as_posix(),
+            "collection_job_cards_path": paths.relative_to_root(collection.job_cards_path).as_posix(),
+            "card_index": _gmail_card_index(card),
+            "job_url": _normalize_optional_text(card.get("job_url")),
+            "job_id": _normalize_optional_text(card.get("job_id")),
+            "synthetic_identity_key": _gmail_card_synthetic_identity_key(card),
+            "parsed_card": {
+                "role_title": _gmail_card_role_title(card),
+                "company_name": _gmail_card_company_name(card),
+                "location": _normalize_optional_text(card.get("location")),
+                "badge_lines": _gmail_badge_lines(card),
+            },
+        },
+    )
 
 
 def _build_gmail_lead_identity_key(card: Mapping[str, Any]) -> str:

@@ -275,6 +275,58 @@ class GmailAlertBatchIngestionResult:
     review_required_zero_card_messages: int
     collection_results: tuple[GmailCollectionResult, ...]
 
+
+@dataclass(frozen=True)
+class GmailCollectionRefreshResult:
+    gmail_message_id: str
+    gmail_thread_id: str | None
+    received_at: str
+    collected_at: str
+    ingestion_run_id: str
+    collection_dir: Path
+    email_markdown_path: Path
+    email_json_path: Path
+    job_cards_path: Path
+    body_representation_used: str
+    parse_outcome: str
+    parseable_job_card_count: int
+    selected_body_text: str
+    cards: tuple[ParsedGmailAlertCard, ...]
+
+    def as_collection_result(self) -> GmailCollectionResult:
+        return GmailCollectionResult(
+            gmail_message_id=self.gmail_message_id,
+            gmail_thread_id=self.gmail_thread_id,
+            created=False,
+            duplicate=False,
+            collection_dir=self.collection_dir,
+            email_markdown_path=self.email_markdown_path,
+            email_json_path=self.email_json_path,
+            job_cards_path=self.job_cards_path,
+            parse_outcome=self.parse_outcome,
+            parseable_job_card_count=self.parseable_job_card_count,
+            body_representation_used=self.body_representation_used,
+            zero_card_review_required=False,
+            zero_card_trigger_reason=None,
+        )
+
+    def as_message(self) -> GmailAlertMessage:
+        payload = json.loads(self.email_json_path.read_text(encoding="utf-8"))
+        text_html_body = None
+        if isinstance(payload, Mapping):
+            text_html_body = _normalize_optional_body_text(payload.get("text_html_body"))
+        return GmailAlertMessage(
+            gmail_message_id=self.gmail_message_id,
+            gmail_thread_id=self.gmail_thread_id,
+            sender="LinkedIn Job Alerts <jobalerts-noreply@linkedin.com>",
+            subject="LinkedIn job alerts",
+            received_at=self.received_at,
+            ingestion_run_id=self.ingestion_run_id,
+            collected_at=self.collected_at,
+            text_plain_body=self.selected_body_text,
+            text_html_body=text_html_body,
+        )
+
     def as_dict(self) -> dict[str, Any]:
         return {
             "status": "ok",
@@ -816,6 +868,119 @@ def ingest_gmail_alert_batch(
             if result.created and result.parse_outcome == PARSE_OUTCOME_ZERO_CARDS and result.zero_card_review_required
         ),
         collection_results=tuple(collection_results),
+    )
+
+
+def refresh_persisted_gmail_collection(
+    project_root: Path | str | None = None,
+    *,
+    collection_dir: Path | str,
+) -> GmailCollectionRefreshResult:
+    paths = ProjectPaths.from_root(project_root)
+    resolved_collection_dir = paths.resolve_from_root(collection_dir)
+    if resolved_collection_dir.is_file():
+        resolved_collection_dir = resolved_collection_dir.parent
+    email_markdown_path = resolved_collection_dir / "email.md"
+    email_json_path = resolved_collection_dir / "email.json"
+    job_cards_path = resolved_collection_dir / "job-cards.json"
+    if not email_json_path.exists():
+        raise GmailAlertError(
+            f"Persisted Gmail collection is missing email.json at {email_json_path}."
+        )
+    if not email_markdown_path.exists():
+        raise GmailAlertError(
+            f"Persisted Gmail collection is missing email.md at {email_markdown_path}."
+        )
+
+    payload = json.loads(email_json_path.read_text(encoding="utf-8"))
+    if not isinstance(payload, Mapping):
+        raise GmailAlertError(
+            f"Persisted Gmail collection payload at {email_json_path} must be a mapping."
+        )
+
+    gmail_message_id = _normalize_required_text(
+        payload.get("gmail_message_id"),
+        field_name="gmail_message_id",
+    )
+    selected_body_text = _normalize_optional_body_text(payload.get("selected_body_text"))
+    if selected_body_text is None:
+        raise GmailAlertError(
+            f"Persisted Gmail collection at {email_json_path} does not include selected_body_text."
+        )
+
+    body_representation_used = (
+        _normalize_optional_text(payload.get("body_representation_used"))
+        or BODY_REPRESENTATION_TEXT_PLAIN
+    )
+    cards = _parse_cards_from_body(selected_body_text, gmail_message_id=gmail_message_id)
+    parse_outcome = _parse_outcome_for_cards(cards)
+    parseable_job_card_count = len(cards)
+    produced_at = now_utc_iso()
+
+    updated_email_payload = {
+        key: value
+        for key, value in payload.items()
+        if key not in {"contract_version", "produced_at", "producer_component", "result"}
+    }
+    updated_email_payload.update(
+        {
+            "collection_dir": paths.relative_to_root(resolved_collection_dir).as_posix(),
+            "body_representation_used": body_representation_used,
+            "parse_outcome": parse_outcome,
+            "parseable_job_card_count": parseable_job_card_count,
+            "selected_body_text": selected_body_text,
+            "job_cards_path": paths.relative_to_root(job_cards_path).as_posix(),
+            "lead_fanout_ready": parseable_job_card_count > 0,
+        }
+    )
+    write_json_contract(
+        email_json_path,
+        producer_component=LINKEDIN_SCRAPING_COMPONENT,
+        result="success",
+        payload=updated_email_payload,
+        produced_at=produced_at,
+    )
+    write_json_contract(
+        job_cards_path,
+        producer_component=LINKEDIN_SCRAPING_COMPONENT,
+        result="success",
+        payload={
+            "source_mode": SOURCE_MODE_GMAIL_JOB_ALERT,
+            "gmail_message_id": gmail_message_id,
+            "gmail_thread_id": _normalize_optional_text(payload.get("gmail_thread_id")),
+            "ingestion_run_id": _normalize_required_text(
+                payload.get("ingestion_run_id"),
+                field_name="ingestion_run_id",
+            ),
+            "body_representation_used": body_representation_used,
+            "parse_outcome": parse_outcome,
+            "parseable_job_card_count": parseable_job_card_count,
+            "cards": [card.as_dict() for card in cards],
+        },
+        produced_at=produced_at,
+    )
+
+    return GmailCollectionRefreshResult(
+        gmail_message_id=gmail_message_id,
+        gmail_thread_id=_normalize_optional_text(payload.get("gmail_thread_id")),
+        received_at=_normalize_utc_timestamp(payload.get("received_at"), field_name="received_at"),
+        collected_at=_normalize_utc_timestamp(
+            payload.get("collected_at"),
+            field_name="collected_at",
+        ),
+        ingestion_run_id=_normalize_required_text(
+            payload.get("ingestion_run_id"),
+            field_name="ingestion_run_id",
+        ),
+        collection_dir=resolved_collection_dir,
+        email_markdown_path=email_markdown_path,
+        email_json_path=email_json_path,
+        job_cards_path=job_cards_path,
+        body_representation_used=body_representation_used,
+        parse_outcome=parse_outcome,
+        parseable_job_card_count=parseable_job_card_count,
+        selected_body_text=selected_body_text,
+        cards=cards,
     )
 
 

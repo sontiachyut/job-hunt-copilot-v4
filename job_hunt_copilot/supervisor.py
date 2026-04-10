@@ -147,11 +147,13 @@ WORK_TYPE_AGENT_INCIDENT: Final = "agent_incident"
 WORK_TYPE_INCIDENT_CLUSTER: Final = "incident_cluster"
 WORK_TYPE_CONTACT: Final = "contact"
 WORK_TYPE_GMAIL_ALERT_BATCH: Final = "gmail_alert_batch"
+WORK_TYPE_GMAIL_LEAD_REPAIR: Final = "gmail_lead_repair"
 WORK_TYPE_JOB_POSTING: Final = "job_posting"
 WORK_TYPE_MAINTENANCE_CYCLE: Final = "maintenance_cycle"
 WORK_TYPE_PIPELINE_RUN: Final = "pipeline_run"
 
 ACTION_POLL_GMAIL_LINKEDIN_ALERTS: Final = "poll_gmail_linkedin_alerts"
+ACTION_REPAIR_STALE_GMAIL_LEAD: Final = "repair_stale_gmail_lead"
 ACTION_BOOTSTRAP_ROLE_TARGETED_RUN: Final = "bootstrap_role_targeted_run"
 ACTION_CHECKPOINT_PIPELINE_RUN: Final = "checkpoint_pipeline_run"
 ACTION_PERFORM_MANDATORY_AGENT_REVIEW: Final = "perform_mandatory_agent_review"
@@ -585,6 +587,25 @@ SUPERVISOR_ACTION_CATALOG = MappingProxyType(
             validation_references=(
                 "prd/spec.md FR-SYS-38 and current-build Gmail intake requirements",
                 "prd/test-spec.feature bounded supervisor work-unit and Gmail-ingestion scenarios",
+            ),
+        ),
+        ACTION_REPAIR_STALE_GMAIL_LEAD: SupervisorActionCatalogEntry(
+            action_id=ACTION_REPAIR_STALE_GMAIL_LEAD,
+            work_type=WORK_TYPE_GMAIL_LEAD_REPAIR,
+            description="Repair one stale Gmail-derived lead whose original collection artifacts were persisted before the LinkedIn alert parser could recover canonical job URLs.",
+            prerequisites=(
+                "linkedin_lead exists in canonical state",
+                "linkedin_lead.source_mode is `gmail_job_alert` and lead_status is `blocked_no_jd`",
+                "the stale lead is repairable from persisted Gmail collection artifacts without fetching a new mailbox batch",
+            ),
+            expected_outputs=(
+                "the persisted Gmail collection artifacts are refreshed with the current parser",
+                "the selected Gmail lead refreshes its alert card and JD recovery artifacts from the repaired collection",
+                "the repaired lead either materializes into a canonical job_posting or remains honestly blocked for a non-parser reason",
+            ),
+            validation_references=(
+                "prd/spec.md Gmail intake durability and canonical artifact requirements",
+                "prd/test-spec.feature bounded supervisor work-unit and canonical lead repair scenarios",
             ),
         ),
         ACTION_BOOTSTRAP_ROLE_TARGETED_RUN: SupervisorActionCatalogEntry(
@@ -2413,6 +2434,10 @@ def select_next_supervisor_work_unit(
     if gmail_alert_work is not None:
         return gmail_alert_work
 
+    stale_gmail_repair_work = _select_stale_gmail_lead_repair_work_unit(connection)
+    if stale_gmail_repair_work is not None:
+        return stale_gmail_repair_work
+
     pipeline_run_work = _select_open_pipeline_run_work_unit(connection)
     if pipeline_run_work is not None:
         return pipeline_run_work
@@ -2506,6 +2531,35 @@ def _select_gmail_alert_collection_work_unit(
             "Collect a bounded Gmail alert batch of "
             f"{message_count} LinkedIn job-alert message"
             f"{'' if message_count == 1 else 's'} into canonical lead intake."
+        ),
+    )
+
+
+def _select_stale_gmail_lead_repair_work_unit(
+    connection: sqlite3.Connection,
+) -> SupervisorWorkUnit | None:
+    row = connection.execute(
+        """
+        SELECT lead_id, company_name, role_title
+        FROM linkedin_leads
+        WHERE source_mode = 'gmail_job_alert'
+          AND lead_status = 'blocked_no_jd'
+          AND (source_url IS NULL OR TRIM(source_url) = '')
+        ORDER BY created_at ASC, lead_id ASC
+        LIMIT 1
+        """
+    ).fetchone()
+    if row is None:
+        return None
+    return SupervisorWorkUnit(
+        work_type=WORK_TYPE_GMAIL_LEAD_REPAIR,
+        work_id=row["lead_id"],
+        action_id=ACTION_REPAIR_STALE_GMAIL_LEAD,
+        lead_id=row["lead_id"],
+        summary=(
+            "Repair stale Gmail lead artifacts for "
+            f"{row['company_name'] or 'unknown company'} / {row['role_title'] or 'unknown role'} "
+            "so JD recovery can retry with the current parser."
         ),
     )
 
@@ -2867,6 +2921,39 @@ def _validate_selected_work(
             return (
                 "Prepared Gmail alert batch is empty for ingestion_run_id "
                 f"{selected_work.work_id!r}."
+            )
+        return None
+
+    if catalog_entry.action_id == ACTION_REPAIR_STALE_GMAIL_LEAD:
+        if selected_work.work_type != WORK_TYPE_GMAIL_LEAD_REPAIR:
+            return (
+                "Stale Gmail lead repair selected a mismatched work type "
+                f"{selected_work.work_type!r}."
+            )
+        lead_row = connection.execute(
+            """
+            SELECT lead_status, source_mode, source_url
+            FROM linkedin_leads
+            WHERE lead_id = ?
+            """,
+            (selected_work.work_id,),
+        ).fetchone()
+        if lead_row is None:
+            return f"linkedin_lead {selected_work.work_id!r} no longer exists."
+        if lead_row["source_mode"] != "gmail_job_alert":
+            return (
+                f"linkedin_lead {selected_work.work_id!r} is not a Gmail lead; "
+                f"found source_mode={lead_row['source_mode']!r}."
+            )
+        if lead_row["lead_status"] != "blocked_no_jd":
+            return (
+                f"linkedin_lead {selected_work.work_id!r} is no longer blocked_no_jd; "
+                f"found {lead_row['lead_status']!r}."
+            )
+        if _optional_text(lead_row["source_url"]):
+            return (
+                f"linkedin_lead {selected_work.work_id!r} already has a source_url and "
+                "does not match the stale Gmail parser backlog."
             )
         return None
 
@@ -3449,6 +3536,16 @@ def _execute_selected_work_unit(
             materialize_gmail_lead_entities(paths.project_root, lead_id=lead_id)
         return None, None, None
 
+    if catalog_entry.action_id == ACTION_REPAIR_STALE_GMAIL_LEAD:
+        from .linkedin_scraping import repair_stale_blocked_gmail_leads
+
+        repair_stale_blocked_gmail_leads(
+            paths.project_root,
+            lead_id=_require_text(selected_work.work_id, "work_id"),
+            limit=1,
+        )
+        return None, None, None
+
     if catalog_entry.action_id == ACTION_BOOTSTRAP_ROLE_TARGETED_RUN:
         pipeline_run, _ = ensure_role_targeted_pipeline_run(
             connection,
@@ -4008,6 +4105,27 @@ def _validate_selected_work_result(
                 "Supervisor Gmail polling completed without persisting any Gmail "
                 "collection units for ingestion_run_id "
                 f"{selected_work.work_id!r}."
+            )
+        return None
+
+    if catalog_entry.action_id == ACTION_REPAIR_STALE_GMAIL_LEAD:
+        lead_row = connection.execute(
+            """
+            SELECT lead_status, source_url
+            FROM linkedin_leads
+            WHERE lead_id = ?
+            """,
+            (selected_work.work_id,),
+        ).fetchone()
+        if lead_row is None:
+            return (
+                "Supervisor stale Gmail lead repair completed but the selected lead "
+                f"{selected_work.work_id!r} no longer exists."
+            )
+        if not _optional_text(lead_row["source_url"]):
+            return (
+                "Supervisor stale Gmail lead repair completed without restoring a "
+                f"canonical source_url for lead {selected_work.work_id!r}."
             )
         return None
 

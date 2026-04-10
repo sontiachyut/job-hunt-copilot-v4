@@ -16,6 +16,7 @@ from job_hunt_copilot.gmail_alerts import (
 from job_hunt_copilot.linkedin_scraping import (
     ingest_gmail_alert_batch_to_leads,
     materialize_gmail_lead_entities,
+    repair_stale_blocked_gmail_leads,
 )
 from job_hunt_copilot.paths import ProjectPaths
 from tests.support import create_minimal_project
@@ -70,6 +71,46 @@ def build_message(
 
 def _gmail_api_body(text: str) -> str:
     return base64.urlsafe_b64encode(text.encode("utf-8")).decode("ascii").rstrip("=")
+
+
+def _downgrade_gmail_lead_to_stale_parser_state(project_root, lead_result) -> None:
+    alert_card = json.loads(lead_result.alert_card_path.read_text(encoding="utf-8"))
+    collection_job_cards_path = project_root / alert_card["collection_job_cards_path"]
+    job_cards_payload = json.loads(collection_job_cards_path.read_text(encoding="utf-8"))
+    card_index = int(alert_card["card_index"]) - 1
+    job_cards_payload["cards"][card_index]["job_url"] = None
+    job_cards_payload["cards"][card_index]["job_id"] = None
+    job_cards_payload["cards"][card_index]["synthetic_identity_key"] = None
+    collection_job_cards_path.write_text(
+        json.dumps(job_cards_payload, indent=2) + "\n",
+        encoding="utf-8",
+    )
+
+    alert_card["job_url"] = None
+    alert_card["job_id"] = None
+    alert_card["synthetic_identity_key"] = None
+    lead_result.alert_card_path.write_text(
+        json.dumps(alert_card, indent=2) + "\n",
+        encoding="utf-8",
+    )
+
+    manifest = yaml.safe_load(lead_result.lead_manifest_path.read_text(encoding="utf-8"))
+    manifest["source"]["source_url"] = None
+    manifest["source"]["gmail"]["job_url"] = None
+    manifest["source"]["gmail"]["job_id"] = None
+    manifest["source"]["gmail"]["synthetic_identity_key"] = None
+    lead_result.lead_manifest_path.write_text(
+        yaml.safe_dump(manifest, sort_keys=False),
+        encoding="utf-8",
+    )
+
+    connection = connect_database(project_root / "job_hunt_copilot.db")
+    connection.execute(
+        "UPDATE linkedin_leads SET source_url = NULL WHERE lead_id = ?",
+        (lead_result.lead_id,),
+    )
+    connection.commit()
+    connection.close()
 
 
 def test_gmail_collection_persists_plain_text_first_multi_card_artifacts(tmp_path):
@@ -580,6 +621,78 @@ def test_materialize_gmail_lead_entities_creates_job_posting_and_updates_manifes
     assert posting_row["posting_status"] == "sourced"
     assert posting_row["jd_artifact_path"].endswith("/jd.md")
     assert lead_row["lead_status"] == "handed_off"
+
+
+def test_repair_stale_blocked_gmail_leads_reparses_collection_and_materializes(tmp_path, monkeypatch):
+    project_root = bootstrap_project(tmp_path)
+
+    batch = build_batch(
+        build_message(
+            gmail_message_id="gmail-stale-001",
+            received_at="2026-04-06T23:20:00Z",
+            subject="Achyutaram: your job alert for Software Engineer Hiring in Greater Phoenix Area has been created",
+            text_plain_body=(
+                "Your job alert has been created: Software Engineer Hiring in Greater Phoenix Area.\n"
+                "You’ll receive notifications when new jobs are posted that match your search preferences.\n"
+                "-----\n"
+                "Full Stack Engineer\n"
+                "LHH\n"
+                "Phoenix, Arizona, United States\n"
+                "Apply with resume & profile\n"
+                "View job\n"
+                "https://www.linkedin.com/comm/jobs/view/4389508705?trackingId=abc\n"
+            ),
+        ),
+        ingestion_run_id="gmail-stale-run-001",
+    )
+
+    monkeypatch.setattr(
+        "job_hunt_copilot.linkedin_scraping._fetch_live_gmail_jd_recovery_candidate",
+        lambda card: None,
+    )
+    ingestion = ingest_gmail_alert_batch_to_leads(project_root, batch=batch)
+    lead = ingestion.lead_results[0]
+    _downgrade_gmail_lead_to_stale_parser_state(project_root, lead)
+
+    monkeypatch.setattr(
+        "job_hunt_copilot.linkedin_scraping._fetch_live_gmail_jd_recovery_candidate",
+        lambda card: {
+            "job_id": card.get("job_id"),
+            "job_url": card.get("job_url"),
+            "source_type": "linkedin_guest_job_page",
+            "source_url": card.get("job_url"),
+            "company_name": "LHH",
+            "role_title": "Full Stack Engineer",
+            "jd_text": "About the job\nBuild .NET services.\n",
+        },
+    )
+    repair = repair_stale_blocked_gmail_leads(project_root, lead_id=lead.lead_id, limit=1)
+
+    assert repair.leads_considered == 1
+    assert repair.leads_repaired == 1
+    assert repair.materialized_postings == 1
+    repaired = repair.repaired_results[0]
+    assert repaired.refreshed_job_url == "https://www.linkedin.com/jobs/view/4389508705/"
+    assert repaired.final_lead_status == "handed_off"
+    assert repaired.materialized is True
+
+    connection = connect_database(project_root / "job_hunt_copilot.db")
+    lead_row = connection.execute(
+        """
+        SELECT lead_status, source_url
+        FROM linkedin_leads
+        WHERE lead_id = ?
+        """,
+        (lead.lead_id,),
+    ).fetchone()
+    posting_count = connection.execute("SELECT COUNT(*) FROM job_postings").fetchone()[0]
+    connection.close()
+
+    assert dict(lead_row) == {
+        "lead_status": "handed_off",
+        "source_url": "https://www.linkedin.com/jobs/view/4389508705/",
+    }
+    assert posting_count == 1
 
 
 def test_gmail_mailbox_collector_prepares_batch_from_live_api_shape(tmp_path):
