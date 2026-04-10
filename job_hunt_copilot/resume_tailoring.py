@@ -116,6 +116,9 @@ LATEX_BIN_CANDIDATE_DIRS = (
     "/opt/homebrew/bin",
     "/usr/local/bin",
 )
+NON_RESUME_VERIFIABLE_SIGNAL_CATEGORIES = frozenset(
+    {"authorization", "compensation", "location_constraint"}
+)
 
 FRONTEND_AI_TRACK = "frontend_ai"
 DISTRIBUTED_INFRA_TRACK = "distributed_infra"
@@ -234,8 +237,17 @@ COMMON_SIGNAL_STOPWORDS = frozenset(
     {
         "a",
         "an",
+        "any",
         "and",
+        "as",
+        "at",
+        "by",
+        "from",
         "the",
+        "that",
+        "this",
+        "these",
+        "those",
         "to",
         "of",
         "for",
@@ -255,10 +267,13 @@ COMMON_SIGNAL_STOPWORDS = frozenset(
         "build",
         "develop",
         "experience",
+        "more",
+        "please",
+        "visit",
     }
 )
 JD_HEADING_ONLY_PATTERNS = (
-    re.compile(r"^(required skills?(?:\s*&\s*experience)?|key responsibilities|responsibilities|what you(?:['’]ll| will) do|what you bring|qualifications|requirements|preferred qualifications?|nice to have|benefits(?: to support you)?|internal application policy)$", re.IGNORECASE),
+    re.compile(r"^(job description|job description summary|the company|required skills?(?:\s*&\s*experience)?|essential responsibilities|key responsibilities|responsibilities|what you(?:['’]ll| will) do|what you bring|minimum qualifications|qualifications|requirements|required qualifications?|preferred qualifications?|additional responsibilities(?:\s+and\s+preferred qualifications?)?|nice to have|our benefits|benefits(?: to support you)?|who we are|commitment to diversity and inclusion|belonging at .+|internal application policy)$", re.IGNORECASE),
     re.compile(r"^(lead with purpose\.?\s*partner with impact\.?)$", re.IGNORECASE),
 )
 JD_POLICY_LINE_PATTERNS = (
@@ -270,6 +285,11 @@ JD_POLICY_LINE_PATTERNS = (
     re.compile(r"\bequity grade\b", re.IGNORECASE),
     re.compile(r"\bbenefits package\b", re.IGNORECASE),
     re.compile(r"\bremote-first company\b", re.IGNORECASE),
+    re.compile(r"\bpay range\b", re.IGNORECASE),
+    re.compile(r"\bconfidence gap\b", re.IGNORECASE),
+    re.compile(r"\bimposter syndrome\b", re.IGNORECASE),
+    re.compile(r"\btalent community\b", re.IGNORECASE),
+    re.compile(r"\bred flag\b", re.IGNORECASE),
 )
 LOW_SIGNAL_PROFILE_SECTION_TERMS = frozenset(
     {
@@ -592,6 +612,7 @@ class ParsedResumeDocument:
     technical_skills: list[dict[str, Any]]
     software_engineer_stack_line: str
     software_engineer_bullets: list[str]
+    resume_wide_tokens: set[str]
 
 
 def bootstrap_tailoring_run(
@@ -2943,7 +2964,19 @@ def _parse_resume_document(content: str) -> ParsedResumeDocument:
         technical_skills=technical_skills,
         software_engineer_stack_line=software_engineer_match.group("stack").strip(),
         software_engineer_bullets=bullets,
+        resume_wide_tokens=_resume_wide_tokens_from_content(content),
     )
+
+
+def _resume_wide_tokens_from_content(content: str) -> set[str]:
+    plain_text = re.sub(r"\\[A-Za-z]+", " ", content)
+    plain_text = re.sub(r"[{}\\]", " ", plain_text)
+    tokens = _tokenize(plain_text)
+    return {
+        token
+        for token in tokens
+        if token not in {"begin", "end", "document", "section", "textbf", "textit", "vspace"}
+    }
 
 
 def _apply_step_6_payload_to_resume(content: str, step_6_payload: Mapping[str, Any]) -> str:
@@ -3438,8 +3471,9 @@ def _build_step_3_signal_artifact(
         stripped = raw_line.strip()
         if not stripped:
             continue
-        if stripped.startswith("#"):
-            current_heading = stripped.lstrip("#").strip()
+        detected_heading = _jd_heading_from_line(stripped)
+        if detected_heading is not None:
+            current_heading = detected_heading
             continue
         normalized_line = _normalize_jd_line(stripped)
         if not normalized_line:
@@ -3808,6 +3842,7 @@ def _build_step_7_verification_artifact(
             ]
         )
     )
+    combined_resume_tokens.update(resume_doc.resume_wide_tokens)
     signal_coverages: dict[str, float] = {}
     weighted_possible = 0.0
     weighted_covered = 0.0
@@ -3815,8 +3850,13 @@ def _build_step_7_verification_artifact(
     must_covered = 0.0
     uncovered_must: list[str] = []
     uncovered_core: list[str] = []
+    skipped_non_resume_signals: list[str] = []
     for signal in signals:
         signal_id = str(signal["signal_id"])
+        if str(signal.get("category") or "") in NON_RESUME_VERIFIABLE_SIGNAL_CATEGORIES:
+            signal_coverages[signal_id] = 1.0
+            skipped_non_resume_signals.append(signal_id)
+            continue
         weight = float(signal.get("weight") or _signal_priority_weight(str(signal.get("priority") or "informational")))
         weighted_possible += weight
         coverage = 0.0
@@ -3842,6 +3882,10 @@ def _build_step_7_verification_artifact(
     must_have_coverage = 1.0 if must_possible == 0 else must_covered / must_possible
     coverage_notes: list[str] = []
     coverage_status = VERIFICATION_OUTCOME_PASS
+    if skipped_non_resume_signals:
+        coverage_notes.append(
+            "Skipped non-resume-verifiable signal ids: " + ", ".join(skipped_non_resume_signals)
+        )
     if must_have_coverage < 0.15 and uncovered_must:
         coverage_status = VERIFICATION_OUTCOME_NEEDS_REVISION
         coverage_notes.append(
@@ -4413,11 +4457,41 @@ def _select_tailoring_track(step_3_payload: Mapping[str, Any]) -> str:
     return GENERALIST_SWE_TRACK
 
 
+def _jd_heading_from_line(line: str) -> str | None:
+    stripped = line.strip()
+    if not stripped:
+        return None
+    markdown_match = MARKDOWN_HEADING_RE.match(stripped)
+    if markdown_match is not None:
+        return markdown_match.group("title").strip()
+    cleaned = stripped.rstrip(":").strip()
+    if not cleaned:
+        return None
+    if any(pattern.search(cleaned) for pattern in JD_HEADING_ONLY_PATTERNS):
+        return cleaned
+    if len(cleaned) > 80 or cleaned.endswith((".", "!", "?")):
+        return None
+    words = [re.sub(r"[^A-Za-z0-9&()/+-]+", "", word) for word in cleaned.split()]
+    words = [word for word in words if word]
+    if not words or len(words) > 8:
+        return None
+    allowed_lowercase = {"and", "or", "of", "to", "for", "with", "the", "a", "an", "in", "on", "at", "by"}
+    if all(
+        word.isupper()
+        or any(char.isdigit() for char in word)
+        or word.lower() in allowed_lowercase
+        or word[0].isupper()
+        for word in words
+    ):
+        return cleaned
+    return None
+
+
 def _normalize_jd_line(line: str) -> str:
     cleaned = re.sub(r"^\s*[-*]\s*", "", line).strip()
     if len(cleaned) < 8:
         return ""
-    if any(pattern.search(cleaned) for pattern in JD_HEADING_ONLY_PATTERNS):
+    if _jd_heading_from_line(cleaned):
         return ""
     return cleaned
 
@@ -4425,12 +4499,24 @@ def _normalize_jd_line(line: str) -> str:
 def _classify_signal_priority(current_heading: str, line: str) -> str | None:
     heading = current_heading.lower()
     normalized = line.lower()
-    if any(pattern.search(line) for pattern in JD_HEADING_ONLY_PATTERNS):
+    if _jd_heading_from_line(line):
         return None
     if any(pattern.search(line) for pattern in JD_POLICY_LINE_PATTERNS):
         return None
-    if any(term in heading for term in ("internal application policy", "benefits")):
+    if any(term in heading for term in ("internal application policy", "benefits", "the company", "who we are", "commitment to diversity", "belonging at", "job description summary")):
         return None
+    if any(
+        term in normalized
+        for term in (
+            "relocation is not provided",
+            "must reside",
+            "must be located",
+            "must live in",
+            "hybrid work model",
+            "days in the office",
+        )
+    ):
+        return "informational"
     if any(term in heading for term in ("benefits", "salary", "compensation")):
         return "informational"
     if any(term in heading for term in ("nice", "preferred")):
@@ -4458,6 +4544,14 @@ def _categorize_signal(line: str) -> str:
     tokens = _tokenize(line)
     if tokens & {"citizenship", "clearance", "security"}:
         return "authorization"
+    if tokens & {"salary", "compensation", "benefits", "bonus", "equity", "pay"}:
+        return "compensation"
+    if tokens & {"relocation", "reside", "onsite", "hybrid", "remote", "location"}:
+        return "location_constraint"
+    if tokens & {"bachelor", "masters", "master", "degree", "phd"}:
+        return "education_requirement"
+    if tokens & {"years", "year"}:
+        return "experience_requirement"
     if tokens & FRONTEND_AI_TERMS:
         return "frontend_ai"
     if tokens & DISTRIBUTED_INFRA_TERMS:
@@ -4498,7 +4592,7 @@ def _tokenize(text: str) -> set[str]:
     tokens = {
         token
         for token in TOKEN_RE.findall(lowered)
-        if token not in COMMON_SIGNAL_STOPWORDS
+        if token not in COMMON_SIGNAL_STOPWORDS and len(token) > 1
     }
     if "realtime" in lowered:
         tokens.add("real-time")

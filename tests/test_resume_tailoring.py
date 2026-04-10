@@ -905,6 +905,63 @@ def test_generate_tailoring_intelligence_filters_jd_noise_and_scores_ai_resume_f
     assert step_7_payload["jd_coverage_score"] >= 0.55
 
 
+def test_generate_tailoring_intelligence_handles_plain_jd_headings_and_location_constraints(
+    tmp_path,
+):
+    _, paths, connection, _ = prepare_real_tailoring_run(
+        tmp_path,
+        jd_body=(
+            "Essential Responsibilities\n"
+            "Deliver complete solutions spanning design, implementation, testing, delivery and operations.\n"
+            "Build distributed data services in Python and AWS.\n"
+            "Minimum Qualifications\n"
+            "3+ years relevant experience and a Bachelor's degree or equivalent experience.\n"
+            "Additional Responsibilities And Preferred Qualifications\n"
+            "Ability to write and test code in Java, GoLang, Python and/or Springboot.\n"
+            "CDCI Pipelines.\n"
+            "Any hands on experience with cloud-native tools and technologies (primarily GCP).\n"
+            "NOTE- Relocation is not provided for this position. You must reside in Scottsdale, AZ to be considered for this position.\n"
+        ),
+    )
+
+    result = generate_tailoring_intelligence(
+        connection,
+        paths,
+        job_posting_id="jp_test",
+        timestamp="2026-04-06T20:10:00Z",
+    )
+
+    step_3_payload = yaml.safe_load(
+        paths.tailoring_step_3_jd_signals_path("Acme Data Systems", "Software Engineer").read_text(
+            encoding="utf-8"
+        )
+    )
+    step_7_payload = yaml.safe_load(
+        paths.tailoring_step_7_verification_path("Acme Data Systems", "Software Engineer").read_text(
+            encoding="utf-8"
+        )
+    )
+
+    must_have_signals = [
+        str(signal["signal"]).lower()
+        for signal in step_3_payload["signals"]
+        if signal["priority"] == "must_have"
+    ]
+    nice_to_have_signals = [
+        str(signal["signal"]).lower()
+        for signal in step_3_payload["signals"]
+        if signal["priority"] == "nice_to_have"
+    ]
+
+    assert "minimum qualifications" not in must_have_signals
+    assert not any("relocation is not provided" in signal for signal in must_have_signals)
+    assert any("java, golang, python" in signal for signal in nice_to_have_signals)
+    assert any("cdci pipelines" in signal for signal in nice_to_have_signals)
+    assert result.verification_outcome == "pass"
+    assert step_7_payload["verification_outcome"] == "pass"
+    assert step_7_payload["jd_coverage_score"] >= 0.54
+
+
 def test_finalize_tailoring_run_applies_payload_compiles_pdf_and_updates_status(tmp_path):
     _, paths, connection, bootstrap_result = prepare_real_tailoring_run(
         tmp_path,
