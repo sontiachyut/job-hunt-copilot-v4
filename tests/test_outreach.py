@@ -1036,9 +1036,12 @@ def test_role_targeted_draft_batch_persists_messages_artifacts_and_transitions(t
     manager_body = Path(manager_message.body_text_artifact_path).read_text(encoding="utf-8")
     assert "I'm reaching out to you specifically because" in recruiter_body
     assert "recruiting function close to the target role" in recruiter_body
+    assert "Job Hunt Copilot (https://github.com/sontiachyut/job-hunt-copilot-v4)" in recruiter_body
+    assert "spec-driven autonomous system" in recruiter_body
     assert "Forwardable snippet:" in recruiter_body
     assert "seem closely tied to this team" in manager_body
     assert "15-minute Zoom" in manager_body
+    assert "Job Hunt Copilot (https://github.com/sontiachyut/job-hunt-copilot-v4)" in manager_body
     assert "Forwardable snippet:" in manager_body
 
     send_result_payload = json.loads(

@@ -51,6 +51,7 @@ AUTOMATIC_SEND_SET_LIMIT = 3
 AUTOMATIC_COMPANY_DAILY_SEND_CAP = 3
 MIN_INTER_SEND_GAP_MINUTES = 6
 MAX_INTER_SEND_GAP_MINUTES = 10
+JOB_HUNT_COPILOT_REPO_URL = "https://github.com/sontiachyut/job-hunt-copilot-v4"
 
 SEND_SET_PRIMARY_SLOTS: tuple[tuple[str, tuple[str, ...]], ...] = (
     ("recruiter", (RECIPIENT_TYPE_RECRUITER,)),
@@ -1071,6 +1072,8 @@ class DeterministicOutreachDraftRenderer(OutreachDraftRenderer):
                 f"The role feels like a strong fit for both my background and the kind of systems work "
                 "I want to keep growing in."
             ),
+            "",
+            *_job_hunt_copilot_pitch_lines(),
             "",
             (
                 "If it makes sense, would you be open to a short 15-minute Zoom sometime this or next week? "
@@ -2863,6 +2866,23 @@ def _signature_lines(sender: SenderIdentity) -> list[str]:
     if sender.email:
         lines.append(sender.email)
     return lines
+
+
+def _job_hunt_copilot_pitch_lines() -> list[str]:
+    return [
+        (
+            f"I also built Job Hunt Copilot ({JOB_HUNT_COPILOT_REPO_URL}), a spec-driven autonomous system "
+            "that turns job postings into tailored resumes, contact discovery, and outbound outreach."
+        ),
+        (
+            "This email is one of its live outputs, and building it pushed me to treat applied AI like real "
+            "software engineering instead of a one-off demo."
+        ),
+        (
+            "If it is useful, I would love to share the repo and talk through the architecture, tradeoffs, "
+            "and what I learned building it."
+        ),
+    ]
 
 
 def _persist_rendered_draft(
