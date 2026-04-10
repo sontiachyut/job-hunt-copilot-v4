@@ -1036,24 +1036,27 @@ def test_role_targeted_draft_batch_persists_messages_artifacts_and_transitions(t
     manager_body = Path(manager_message.body_text_artifact_path).read_text(encoding="utf-8")
     recruiter_html = Path(recruiter_message.body_html_artifact_path).read_text(encoding="utf-8")
     assert "I'm reaching out to you specifically because" in recruiter_body
-    assert "recruiting function close to the target role" in recruiter_body
-    assert "I built Job Hunt Copilot (https://github.com/sontiachyut/job-hunt-copilot-v4)" in recruiter_body
-    assert "this email is one of its live outputs" in recruiter_body
-    assert "It is an AI agent that finds leads and sends outreach autonomously" in recruiter_body
-    assert "I personally review every email before it goes out" in recruiter_body
+    assert "hiring loop for this role" in recruiter_body
+    assert "Lately, I have also been spending time sharpening my Agentic AI skills." in recruiter_body
+    assert "One example is Job Hunt Copilot (https://github.com/sontiachyut/job-hunt-copilot-v4)" in recruiter_body
+    assert "This email is one of its live outputs, and I personally review every email before it goes out." in recruiter_body
+    assert "strong fit" not in recruiter_body
+    assert "15-minute Zoom" not in recruiter_body
+    assert "worth considering?" in recruiter_body
     assert "I've included a short snippet below that you can paste into an IM/Email:" in recruiter_body
     assert "[snippet]" in recruiter_body
     assert "[/snippet]" in recruiter_body
-    assert "this email is one of its live outputs" in recruiter_html
-    assert ">Repo</a>" in recruiter_html
+    assert "Agentic AI skills" in recruiter_html
+    assert 'href="https://github.com/sontiachyut/job-hunt-copilot-v4"' in recruiter_html
     assert "background:#f4f4f4" in recruiter_html
     assert "border-left:4px solid #1a73e8" in recruiter_html
     assert "Best,<br>Achyutaram Sonti<br>https://www.linkedin.com/in/asonti/<br>602-768-6071<br>asonti1@asu.edu" in recruiter_html
-    assert "seem closely tied to this team" in manager_body
-    assert "15-minute Zoom" in manager_body
-    assert "I built Job Hunt Copilot (https://github.com/sontiachyut/job-hunt-copilot-v4)" in manager_body
-    assert "It is an AI agent that finds leads and sends outreach autonomously" in manager_body
-    assert "I personally review every email before it goes out" in manager_body
+    assert "the team behind this role" in manager_body
+    assert "15-minute Zoom" not in manager_body
+    assert "Lately, I have also been spending time sharpening my Agentic AI skills." in manager_body
+    assert "One example is Job Hunt Copilot (https://github.com/sontiachyut/job-hunt-copilot-v4)" in manager_body
+    assert "This email is one of its live outputs, and I personally review every email before it goes out." in manager_body
+    assert "strong fit" not in manager_body
     assert "I've included a short snippet below that you can paste into an IM/Email:" in manager_body
     assert "[snippet]" in manager_body
     assert "[/snippet]" in manager_body
@@ -1357,7 +1360,11 @@ def test_role_targeted_drafting_filters_jd_boilerplate_from_opening_and_subject(
 
     message = result.drafted_messages[0]
     body_text = Path(message.body_text_artifact_path).read_text(encoding="utf-8")
-    assert "team's focus on leading a group of talented engineers building advanced scheduling engines that power real-time control systems across global chipmaking fabs" in body_text
+    assert (
+        "what stood out to me was the chance to work on leading a group of talented engineers building "
+        "advanced scheduling engines that power real-time control systems across global chipmaking fabs"
+        in body_text
+    )
     assert "3+ years relevant experience" not in body_text
     assert "For over 55 years ASM" not in body_text
     assert message.subject == 'Interest in the Manager I. Software Engineering- "Scheduler" role at ASM'

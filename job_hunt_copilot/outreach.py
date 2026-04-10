@@ -1048,35 +1048,34 @@ def _is_usable_email(value: str | None) -> bool:
 
 class DeterministicOutreachDraftRenderer(OutreachDraftRenderer):
     def render_role_targeted(self, context: RoleTargetedDraftContext) -> RenderedDraft:
-        work_area = context.work_area or context.role_intent_summary or "this team's work"
+        work_area = _role_work_area_phrase(context.work_area or context.role_intent_summary)
         opening = (
             f"I came across the {context.role_title} opening at {context.company_name}, and "
-            f"what stood out to me was the team's focus on {work_area}. "
+            f"what stood out to me was {_role_work_area_opening(work_area)}. "
             "I've spent the last few years building backend and distributed systems in production, "
-            "so the role felt like one where there could be real overlap."
+            "so it seemed like the kind of work I wanted to learn more about."
         )
         why_this_person = _build_role_targeted_why_line(context)
-        proof_point = (context.proof_point or (
-            "one example of that overlap is the distributed systems work I have done across reliability, "
-            "performance, and production delivery."
-        )).rstrip(".")
+        proof_point = context.proof_point or (
+            "the distributed systems work I have done across reliability, performance, and production delivery"
+        )
         education_line = context.sender.education_summary or "I am currently finishing my MS in Computer Science at ASU."
-        fit_summary = context.fit_summary or "backend systems, distributed services, and production reliability"
         body_lines = [
             f"Hi {_first_name(context.display_name)},",
             "",
             opening,
             "",
             (
-                f"{why_this_person} {education_line} One example of that overlap is {proof_point}. "
-                f"The role feels like a strong fit for both my background and the kind of systems work "
-                "I want to keep growing in."
+                f"{why_this_person} {_ensure_sentence(education_line)} "
+                f"{_proof_point_sentence(proof_point)} That overlap is what prompted me to reach out."
             ),
             "",
             *_job_hunt_copilot_pitch_lines(),
             "",
             (
-                "If it makes sense, would you be open to a short 15-minute Zoom sometime this or next week? "
+                "If it makes sense, would you be open to a short 15-minute conversation sometime this or next week "
+                "so I can learn a bit more about the role and get your perspective on whether my background is "
+                "worth considering? "
                 "If you're not the right person, I'd also really appreciate it if you could point me to the "
                 "right person or forward my resume internally."
             ),
@@ -2785,26 +2784,44 @@ def _build_role_targeted_why_line(context: RoleTargetedDraftContext) -> str:
     work_signal = _recipient_work_signal(context.recipient_profile)
     title = _normalize_optional_text(context.position_title)
     if context.recipient_type == RECIPIENT_TYPE_RECRUITER:
-        if work_signal:
-            return f"I'm reaching out to you specifically because your work on {work_signal} looks close to hiring for this area."
         if title is not None:
-            return f"I'm reaching out to you specifically because your role as {title} looks close to hiring for this area."
-        return "I'm reaching out to you specifically because you seem close to hiring for this area."
+            return (
+                f"I'm reaching out to you specifically because your role as {title} seems close to "
+                "the hiring loop for this role."
+            )
+        if work_signal:
+            return (
+                f"I'm reaching out to you specifically because the work you do around "
+                f"{_role_work_area_phrase(work_signal)} seems close to the hiring loop for this role."
+            )
+        return "I'm reaching out to you specifically because you seem close to the hiring loop for this role."
     if context.recipient_type == RECIPIENT_TYPE_HIRING_MANAGER:
-        if work_signal:
-            return f"I'm reaching out to you specifically because your work on {work_signal} seems closely tied to this team."
         if title is not None:
-            return f"I'm reaching out to you specifically because your role as {title} seems closely tied to this team."
-        return "I'm reaching out to you specifically because you seem closely tied to this team."
+            return (
+                f"I'm reaching out to you specifically because your role as {title} seems close to "
+                "the team behind this role."
+            )
+        if work_signal:
+            return (
+                f"I'm reaching out to you specifically because the work you do around "
+                f"{_role_work_area_phrase(work_signal)} seems close to the team behind this role."
+            )
+        return "I'm reaching out to you specifically because you seem close to the team behind this role."
     if context.recipient_type == RECIPIENT_TYPE_ALUMNI:
         return (
             "I'm reaching out to you specifically because you seemed like the right fellow Sun Devil to ask for a grounded perspective on this work."
         )
-    if work_signal:
-        return f"I'm reaching out to you specifically because your work on {work_signal} seems close to the problems this role touches."
     if title is not None:
-        return f"I'm reaching out to you specifically because your role as {title} seems close to this work area."
-    return "I'm reaching out to you specifically because you seem close to this work area."
+        return (
+            f"I'm reaching out to you specifically because your role as {title} seems close to "
+            "the work behind this role."
+        )
+    if work_signal:
+        return (
+            f"I'm reaching out to you specifically because the work you do around "
+            f"{_role_work_area_phrase(work_signal)} seems close to the work behind this role."
+        )
+    return "I'm reaching out to you specifically because you seem close to the work behind this role."
 
 
 def _recipient_work_signal(recipient_profile: Mapping[str, Any] | None) -> str | None:
@@ -2850,6 +2867,121 @@ def _snippet_stage(sender: SenderIdentity) -> str:
     return "Software Engineer"
 
 
+def _role_work_area_phrase(value: str | None) -> str:
+    normalized = _normalize_optional_text(value)
+    if normalized is None:
+        return "backend and distributed systems work"
+    cleaned = normalized.strip(" .,:;")
+    lowered = cleaned.lower()
+    for prefix in ("and ", "to ", "help ", "able to "):
+        if lowered.startswith(prefix):
+            cleaned = cleaned[len(prefix):].strip(" .,:;")
+            lowered = cleaned.lower()
+    for marker in (
+        ", based on definitions from more senior roles",
+        " based on definitions from more senior roles",
+        "; based on definitions from more senior roles",
+    ):
+        position = lowered.find(marker)
+        if position >= 0:
+            cleaned = cleaned[:position].strip(" .,:;")
+            lowered = cleaned.lower()
+    if ";" in cleaned:
+        parts = [part.strip(" .,:;") for part in cleaned.split(";") if part.strip(" .,:;")]
+        if parts:
+            cleaned = parts[-1]
+            lowered = cleaned.lower()
+    return cleaned or "backend and distributed systems work"
+
+
+def _role_work_area_opening(work_area: str) -> str:
+    lowered = work_area.lower()
+    base_action_prefixes = (
+        "build ",
+        "design ",
+        "develop ",
+        "implement ",
+        "improve ",
+        "optimize ",
+        "scale ",
+        "modernize ",
+        "create ",
+        "lead ",
+        "support ",
+        "maintain ",
+        "drive ",
+        "own ",
+        "extract ",
+        "enrich ",
+        "process ",
+    )
+    gerund_action_prefixes = (
+        "building ",
+        "designing ",
+        "developing ",
+        "implementing ",
+        "improving ",
+        "optimizing ",
+        "scaling ",
+        "modernizing ",
+        "creating ",
+        "leading ",
+        "supporting ",
+        "maintaining ",
+        "driving ",
+        "owning ",
+        "extracting ",
+        "enriching ",
+        "processing ",
+        "delivering ",
+    )
+    if lowered.startswith(base_action_prefixes):
+        return f"the chance to {work_area}"
+    if lowered.startswith(gerund_action_prefixes):
+        return f"the chance to work on {work_area}"
+    return f"the work around {work_area}"
+
+
+def _ensure_sentence(text: str) -> str:
+    stripped = text.strip()
+    if not stripped:
+        return ""
+    if stripped.endswith((".", "!", "?")):
+        return stripped
+    return stripped + "."
+
+
+def _proof_point_sentence(proof_point: str) -> str:
+    stripped = proof_point.strip().rstrip(".")
+    if not stripped:
+        return "For example, I have worked on backend and distributed systems in production."
+    lowered = stripped.lower()
+    if lowered.startswith("i "):
+        return f"For example, {stripped}."
+    verb_prefixes = (
+        "built ",
+        "designed ",
+        "developed ",
+        "implemented ",
+        "optimized ",
+        "led ",
+        "created ",
+        "improved ",
+        "shipped ",
+        "migrated ",
+        "automated ",
+        "scaled ",
+        "reduced ",
+        "owned ",
+        "processed ",
+        "ran ",
+        "delivered ",
+    )
+    if lowered.startswith(verb_prefixes):
+        return f"For example, I {stripped[0].lower()}{stripped[1:]}."
+    return f"For example, {stripped}."
+
+
 def _compact_linkedin(value: str | None) -> str:
     if value is None:
         return "LinkedIn available on request"
@@ -2869,15 +3001,13 @@ def _signature_lines(sender: SenderIdentity) -> list[str]:
 
 def _job_hunt_copilot_pitch_lines() -> list[str]:
     return [
+        "Lately, I have also been spending time sharpening my Agentic AI skills.",
         (
-            f"I built Job Hunt Copilot ({JOB_HUNT_COPILOT_REPO_URL}) for my own job search, and this "
-            "email is one of its live outputs."
+            f"One example is Job Hunt Copilot ({JOB_HUNT_COPILOT_REPO_URL}), which I built for my own "
+            "job search and now use to find leads and send outreach autonomously."
         ),
         (
-            "It is an AI agent that finds leads and sends outreach autonomously, but I personally review "
-            "every email before it goes out."
-        ),
-        (
+            "This email is one of its live outputs, and I personally review every email before it goes out. "
             "If useful, I am happy to talk through the architecture, tradeoffs, and what I learned building it."
         ),
     ]
@@ -2891,7 +3021,7 @@ def _render_forwardable_snippet_text(context: RoleTargetedDraftContext) -> str:
     return (
         f"Hi, I see you have a {context.role_title} role open at {context.company_name}. "
         f"Here is a candidate for your consideration. He is {stage} with {experience}. "
-        f"{impact}. His background seems like a strong fit. "
+        f"{impact}. I thought his background might be worth a look. "
         f"Here's his profile: {linkedin}"
     )
 
@@ -3871,18 +4001,19 @@ def _render_markdown_email_html(body_markdown: str) -> str:
 
 
 def _render_job_hunt_copilot_callout_html() -> str:
-    line_one, _, line_three = _job_hunt_copilot_pitch_lines()
+    line_one, line_two, line_three = _job_hunt_copilot_pitch_lines()
     repo_url = html.escape(JOB_HUNT_COPILOT_REPO_URL, quote=True)
+    escaped_repo_text = html.escape(JOB_HUNT_COPILOT_REPO_URL)
+    line_two_html = html.escape(line_two).replace(
+        escaped_repo_text,
+        f'<a href="{repo_url}" style="color:#1d4ed8;text-decoration:none;font-weight:600;">{escaped_repo_text}</a>',
+    )
     return (
         '<div style="margin:16px 0;padding:14px 16px;'
         'border-left:3px solid #111827;border-radius:4px;'
         'background:#f8fafc;">'
         f'<p style="margin:0 0 8px 0;color:#111827;line-height:1.55;font-weight:600;">{html.escape(line_one)}</p>'
-        '<p style="margin:0 0 8px 0;color:#334155;line-height:1.55;">'
-        'It is an <strong>AI agent</strong> that finds leads and sends outreach autonomously, '
-        'but I personally review every email before it goes out. '
-        f'<a href="{repo_url}" style="color:#1d4ed8;text-decoration:none;font-weight:600;">Repo</a>.'
-        '</p>'
+        f'<p style="margin:0 0 8px 0;color:#334155;line-height:1.55;">{line_two_html}</p>'
         f'<p style="margin:0;color:#475569;line-height:1.55;">{html.escape(line_three)}</p>'
         "</div>"
     )
