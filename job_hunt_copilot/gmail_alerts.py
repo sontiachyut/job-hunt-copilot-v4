@@ -1,9 +1,12 @@
 from __future__ import annotations
 
+import base64
 import json
 import re
+from collections.abc import Callable
 from dataclasses import dataclass
 from datetime import datetime, timezone
+from email.utils import parsedate_to_datetime
 from html import unescape
 from pathlib import Path
 from typing import Any, Mapping, Sequence
@@ -13,6 +16,7 @@ from .artifacts import write_json_contract
 from .contracts import CONTRACT_VERSION
 from .paths import ProjectPaths, workspace_slug
 from .records import now_utc_iso
+from .secrets import GMAIL_CLIENT_SECRET_FILENAME, GMAIL_TOKEN_FILENAME
 
 
 LINKEDIN_SCRAPING_COMPONENT = "linkedin_scraping"
@@ -27,10 +31,21 @@ PARSE_OUTCOME_PARSED_CARDS = "parsed_cards"
 PARSE_OUTCOME_ZERO_CARDS = "zero_cards"
 
 ZERO_CARD_REVIEW_THRESHOLD = 3
+DEFAULT_GMAIL_POLL_SENDERS = ("jobalerts-noreply@linkedin.com",)
+DEFAULT_GMAIL_POLL_WINDOW_DAYS = 30
+DEFAULT_GMAIL_POLL_MAX_NEW_MESSAGES = 10
+DEFAULT_GMAIL_POLL_PAGE_SIZE = 25
+DEFAULT_GMAIL_POLL_MAX_SCAN_PAGES = 4
 
 CARD_SEPARATOR_RE = re.compile(r"(?m)^\s*[-_]{3,}\s*$")
-JOB_URL_RE = re.compile(r"https?://(?:www\.)?linkedin\.com/jobs/view/[^\s<>()]+", re.IGNORECASE)
-JOB_ID_FROM_URL_RE = re.compile(r"/jobs/view/(?:[^/?#]*/)?(?P<job_id>\d+)(?:[/?#]|$)", re.IGNORECASE)
+JOB_URL_RE = re.compile(
+    r"https?://(?:www\.)?linkedin\.com/(?:comm/)?jobs/view/[^\s<>()]+",
+    re.IGNORECASE,
+)
+JOB_ID_FROM_URL_RE = re.compile(
+    r"/(?:comm/)?jobs/view/(?:[^/?#]*/)?(?P<job_id>\d+)(?:[/?#]|$)",
+    re.IGNORECASE,
+)
 ANCHOR_RE = re.compile(
     r'(?is)<a\b[^>]*href=["\'](?P<href>[^"\']+)["\'][^>]*>(?P<label>.*?)</a>'
 )
@@ -72,6 +87,10 @@ CARD_NOISE_LINES = frozenset(
 
 class GmailAlertError(ValueError):
     """Raised when Gmail alert ingestion input is invalid."""
+
+
+class GmailMailboxPollingError(RuntimeError):
+    """Raised when the live Gmail mailbox collector cannot prepare a bounded batch."""
 
 
 @dataclass(frozen=True)
@@ -269,6 +288,72 @@ class GmailAlertBatchIngestionResult:
         }
 
 
+class GmailLinkedInAlertMailboxCollector:
+    def __init__(
+        self,
+        paths: ProjectPaths,
+        *,
+        service_factory: Callable[[], Any] | None = None,
+        senders: Sequence[str] = DEFAULT_GMAIL_POLL_SENDERS,
+        window_days: int = DEFAULT_GMAIL_POLL_WINDOW_DAYS,
+        max_new_messages: int = DEFAULT_GMAIL_POLL_MAX_NEW_MESSAGES,
+        page_size: int = DEFAULT_GMAIL_POLL_PAGE_SIZE,
+        max_scan_pages: int = DEFAULT_GMAIL_POLL_MAX_SCAN_PAGES,
+    ) -> None:
+        self._paths = paths
+        self._service_factory = service_factory or (lambda: _build_gmail_service(paths))
+        self._senders = tuple(
+            sender.strip().lower()
+            for sender in senders
+            if isinstance(sender, str) and sender.strip()
+        )
+        self._window_days = max(1, int(window_days))
+        self._max_new_messages = max(1, int(max_new_messages))
+        self._page_size = max(1, int(page_size))
+        self._max_scan_pages = max(1, int(max_scan_pages))
+        self._prepared_batches: dict[str, GmailAlertBatch] = {}
+
+    def prepare_batch(self, *, current_time: str) -> GmailAlertBatch | None:
+        ingestion_run_id = _gmail_auto_ingestion_run_id(current_time)
+        prepared_batch = self._prepared_batches.get(ingestion_run_id)
+        if prepared_batch is not None:
+            return prepared_batch
+
+        existing_index = _existing_collection_index(self._paths)
+        service = self._service_factory()
+        message_refs = _list_uncollected_gmail_message_refs(
+            service,
+            senders=self._senders,
+            existing_message_ids=set(existing_index.keys()),
+            window_days=self._window_days,
+            max_new_messages=self._max_new_messages,
+            page_size=self._page_size,
+            max_scan_pages=self._max_scan_pages,
+        )
+        if not message_refs:
+            return None
+
+        messages = [
+            _fetch_gmail_alert_message(
+                service,
+                gmail_message_id=ref["id"],
+                ingestion_run_id=ingestion_run_id,
+                collected_at=current_time,
+            )
+            for ref in message_refs
+        ]
+        messages.sort(key=lambda message: (message.received_at, message.gmail_message_id))
+        batch = GmailAlertBatch(ingestion_run_id=ingestion_run_id, messages=tuple(messages))
+        self._prepared_batches[ingestion_run_id] = batch
+        return batch
+
+    def peek_prepared_batch(self, ingestion_run_id: str) -> GmailAlertBatch | None:
+        return self._prepared_batches.get(ingestion_run_id)
+
+    def pop_prepared_batch(self, ingestion_run_id: str) -> GmailAlertBatch | None:
+        return self._prepared_batches.pop(ingestion_run_id, None)
+
+
 @dataclass(frozen=True)
 class _ExistingCollectionMetadata:
     gmail_message_id: str
@@ -292,6 +377,263 @@ class _PendingCollection:
     email_markdown_path: Path
     email_json_path: Path
     job_cards_path: Path
+
+
+def gmail_mailbox_polling_configured(paths: ProjectPaths) -> bool:
+    return (
+        (paths.secrets_dir / GMAIL_CLIENT_SECRET_FILENAME).exists()
+        and (paths.secrets_dir / GMAIL_TOKEN_FILENAME).exists()
+    )
+
+
+def _gmail_auto_ingestion_run_id(current_time: str) -> str:
+    return "gmail-auto-" + _collection_timestamp_key(current_time)
+
+
+def _build_gmail_service(paths: ProjectPaths) -> Any:
+    try:
+        from googleapiclient.discovery import build
+    except ModuleNotFoundError as exc:  # pragma: no cover - bootstrap guards this in runtime
+        raise GmailMailboxPollingError(
+            "google-api-python-client is required for autonomous Gmail polling."
+        ) from exc
+
+    credentials = _load_gmail_credentials(paths)
+    return build("gmail", "v1", credentials=credentials, cache_discovery=False)
+
+
+def _load_gmail_credentials(paths: ProjectPaths) -> Any:
+    try:
+        from google.auth.transport.requests import Request
+        from google.oauth2.credentials import Credentials
+    except ModuleNotFoundError as exc:  # pragma: no cover - bootstrap guards this in runtime
+        raise GmailMailboxPollingError(
+            "google-auth is required for autonomous Gmail polling."
+        ) from exc
+
+    client_secret_path = paths.secrets_dir / GMAIL_CLIENT_SECRET_FILENAME
+    token_path = paths.secrets_dir / GMAIL_TOKEN_FILENAME
+    if not client_secret_path.exists():
+        raise GmailMailboxPollingError(
+            f"Gmail client secret file is missing: {client_secret_path}"
+        )
+    if not token_path.exists():
+        raise GmailMailboxPollingError(
+            f"Gmail token file is missing: {token_path}"
+        )
+
+    client_secret_payload = json.loads(client_secret_path.read_text(encoding="utf-8"))
+    token_payload = json.loads(token_path.read_text(encoding="utf-8"))
+    if not isinstance(client_secret_payload, Mapping):
+        raise GmailMailboxPollingError("Gmail client secret JSON must be an object.")
+    if not isinstance(token_payload, Mapping):
+        raise GmailMailboxPollingError("Gmail token JSON must be an object.")
+
+    client_config = client_secret_payload.get("installed") or client_secret_payload.get("web")
+    if not isinstance(client_config, Mapping):
+        raise GmailMailboxPollingError(
+            "Gmail client secret JSON must contain an `installed` or `web` OAuth client block."
+        )
+
+    authorized_user_info = dict(token_payload)
+    for key in ("client_id", "client_secret", "token_uri"):
+        if key not in authorized_user_info and client_config.get(key):
+            authorized_user_info[key] = client_config[key]
+    scopes = token_payload.get("scopes")
+    if not isinstance(scopes, Sequence) or isinstance(scopes, (str, bytes)):
+        scopes = ("https://www.googleapis.com/auth/gmail.readonly",)
+
+    credentials = Credentials.from_authorized_user_info(
+        authorized_user_info,
+        scopes=list(scopes),
+    )
+    if credentials.expired and credentials.refresh_token:
+        credentials.refresh(Request())
+    if not credentials.valid:
+        raise GmailMailboxPollingError(
+            "Gmail credentials are invalid or expired and could not be refreshed."
+        )
+    return credentials
+
+
+def _list_uncollected_gmail_message_refs(
+    service: Any,
+    *,
+    senders: Sequence[str],
+    existing_message_ids: set[str],
+    window_days: int,
+    max_new_messages: int,
+    page_size: int,
+    max_scan_pages: int,
+) -> list[dict[str, str]]:
+    selected: list[dict[str, str]] = []
+    seen_message_ids = set(existing_message_ids)
+
+    for sender in senders:
+        next_page_token: str | None = None
+        scanned_pages = 0
+        query = f"from:{sender} newer_than:{window_days}d"
+        while scanned_pages < max_scan_pages and len(selected) < max_new_messages:
+            response = (
+                service.users()
+                .messages()
+                .list(
+                    userId="me",
+                    q=query,
+                    maxResults=page_size,
+                    pageToken=next_page_token,
+                    includeSpamTrash=False,
+                )
+                .execute()
+            )
+            for raw_message in response.get("messages", []) or []:
+                if not isinstance(raw_message, Mapping):
+                    continue
+                gmail_message_id = _normalize_optional_text(raw_message.get("id"))
+                if gmail_message_id is None or gmail_message_id in seen_message_ids:
+                    continue
+                seen_message_ids.add(gmail_message_id)
+                selected.append(
+                    {
+                        "id": gmail_message_id,
+                        "threadId": _normalize_optional_text(raw_message.get("threadId")) or "",
+                    }
+                )
+                if len(selected) >= max_new_messages:
+                    break
+            next_page_token = _normalize_optional_text(response.get("nextPageToken"))
+            scanned_pages += 1
+            if next_page_token is None:
+                break
+    return selected
+
+
+def _fetch_gmail_alert_message(
+    service: Any,
+    *,
+    gmail_message_id: str,
+    ingestion_run_id: str,
+    collected_at: str,
+) -> GmailAlertMessage:
+    payload = (
+        service.users()
+        .messages()
+        .get(userId="me", id=gmail_message_id, format="full")
+        .execute()
+    )
+    if not isinstance(payload, Mapping):
+        raise GmailMailboxPollingError(
+            f"Gmail API returned a malformed payload for message {gmail_message_id!r}."
+        )
+
+    headers = _gmail_headers(payload.get("payload"))
+    text_plain_body, text_html_body = _extract_gmail_message_bodies(payload.get("payload"))
+    subject = headers.get("subject") or "LinkedIn job alerts"
+    sender = headers.get("from") or "jobalerts-noreply@linkedin.com"
+    received_at = _gmail_received_at(payload, headers=headers, fallback=collected_at)
+    return GmailAlertMessage.from_mapping(
+        {
+            "gmail_message_id": gmail_message_id,
+            "gmail_thread_id": _normalize_optional_text(payload.get("threadId")),
+            "sender": sender,
+            "subject": subject,
+            "received_at": received_at,
+            "ingestion_run_id": ingestion_run_id,
+            "collected_at": collected_at,
+            "text_plain_body": text_plain_body,
+            "text_html_body": text_html_body,
+        }
+    )
+
+
+def _gmail_headers(payload: Any) -> dict[str, str]:
+    if not isinstance(payload, Mapping):
+        return {}
+    raw_headers = payload.get("headers")
+    if not isinstance(raw_headers, Sequence) or isinstance(raw_headers, (str, bytes)):
+        return {}
+
+    headers: dict[str, str] = {}
+    for raw_header in raw_headers:
+        if not isinstance(raw_header, Mapping):
+            continue
+        name = _normalize_optional_text(raw_header.get("name"))
+        value = _normalize_optional_text(raw_header.get("value"))
+        if name is None or value is None:
+            continue
+        headers[name.lower()] = value
+    return headers
+
+
+def _gmail_received_at(
+    payload: Mapping[str, Any],
+    *,
+    headers: Mapping[str, str],
+    fallback: str,
+) -> str:
+    internal_date = _normalize_optional_text(payload.get("internalDate"))
+    if internal_date is not None:
+        try:
+            epoch_millis = int(internal_date)
+        except ValueError:
+            epoch_millis = -1
+        if epoch_millis >= 0:
+            return (
+                datetime.fromtimestamp(epoch_millis / 1000, tz=timezone.utc)
+                .replace(microsecond=0)
+                .isoformat()
+                .replace("+00:00", "Z")
+            )
+
+    date_header = headers.get("date")
+    if date_header:
+        try:
+            parsed = parsedate_to_datetime(date_header)
+            if parsed.tzinfo is None:
+                parsed = parsed.replace(tzinfo=timezone.utc)
+            return (
+                parsed.astimezone(timezone.utc)
+                .replace(microsecond=0)
+                .isoformat()
+                .replace("+00:00", "Z")
+            )
+        except (TypeError, ValueError):
+            pass
+    return _normalize_utc_timestamp(fallback, field_name="collected_at")
+
+
+def _extract_gmail_message_bodies(payload: Any) -> tuple[str | None, str | None]:
+    plain_parts: list[str] = []
+    html_parts: list[str] = []
+
+    def visit(part: Any) -> None:
+        if not isinstance(part, Mapping):
+            return
+        mime_type = _normalize_optional_text(part.get("mimeType")) or ""
+        body = part.get("body")
+        if isinstance(body, Mapping):
+            data = _normalize_optional_text(body.get("data"))
+            if data:
+                decoded = _decode_gmail_body_data(data)
+                if mime_type == "text/plain":
+                    plain_parts.append(decoded)
+                elif mime_type == "text/html":
+                    html_parts.append(decoded)
+        raw_parts = part.get("parts")
+        if isinstance(raw_parts, Sequence) and not isinstance(raw_parts, (str, bytes)):
+            for child in raw_parts:
+                visit(child)
+
+    visit(payload)
+    plain_text = "\n\n".join(part.strip() for part in plain_parts if part.strip()) or None
+    html_text = "\n\n".join(part.strip() for part in html_parts if part.strip()) or None
+    return plain_text, html_text
+
+
+def _decode_gmail_body_data(data: str) -> str:
+    padding = "=" * (-len(data) % 4)
+    decoded = base64.urlsafe_b64decode(data + padding)
+    return decoded.decode("utf-8", errors="replace")
 
 
 def load_gmail_alert_batch(batch_path: Path | str) -> GmailAlertBatch:
@@ -847,9 +1189,20 @@ def _looks_like_location(line: str) -> bool:
 
 def _trim_leading_noise_lines(lines: Sequence[str]) -> list[str]:
     trimmed = list(lines)
-    while trimmed and trimmed[0].lower() in GLOBAL_NOISE_LINES:
+    while trimmed and (
+        trimmed[0].lower() in GLOBAL_NOISE_LINES
+        or _looks_like_alert_intro_line(trimmed[0])
+    ):
         trimmed.pop(0)
     return trimmed
+
+
+def _looks_like_alert_intro_line(line: str) -> bool:
+    normalized = line.lower()
+    return (
+        "job alert has been created" in normalized
+        or "receive notifications when new jobs are posted" in normalized
+    )
 
 
 def _clean_card_line(line: str) -> str:

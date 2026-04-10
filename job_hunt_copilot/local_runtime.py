@@ -20,6 +20,10 @@ from .delivery_feedback import (
     MailboxFeedbackObserver,
     sync_delivery_feedback,
 )
+from .gmail_alerts import (
+    GmailLinkedInAlertMailboxCollector,
+    gmail_mailbox_polling_configured,
+)
 from .maintenance import (
     MaintenanceStateError,
     MaintenanceDependencies,
@@ -175,21 +179,39 @@ def _default_maintenance_dependencies(
         return None
 
 
+def _default_gmail_alert_collector(
+    paths: ProjectPaths,
+) -> GmailLinkedInAlertMailboxCollector | None:
+    if not gmail_mailbox_polling_configured(paths):
+        return None
+    return GmailLinkedInAlertMailboxCollector(paths)
+
+
 def _resolve_supervisor_action_dependencies(
     paths: ProjectPaths,
     action_dependencies: SupervisorActionDependencies | None,
 ) -> SupervisorActionDependencies:
+    default_gmail_alert_collector = _default_gmail_alert_collector(paths)
     default_maintenance_dependencies = _default_maintenance_dependencies(paths)
     if action_dependencies is None:
         return SupervisorActionDependencies(
+            gmail_alert_collector=default_gmail_alert_collector,
             maintenance_dependencies=default_maintenance_dependencies
         )
+    resolved_gmail_alert_collector = action_dependencies.gmail_alert_collector
+    if resolved_gmail_alert_collector is None:
+        resolved_gmail_alert_collector = default_gmail_alert_collector
+
+    resolved_maintenance_dependencies = action_dependencies.maintenance_dependencies
+    if resolved_maintenance_dependencies is None:
+        resolved_maintenance_dependencies = default_maintenance_dependencies
     if (
-        action_dependencies.maintenance_dependencies is not None
-        or default_maintenance_dependencies is None
+        resolved_gmail_alert_collector is action_dependencies.gmail_alert_collector
+        and resolved_maintenance_dependencies is action_dependencies.maintenance_dependencies
     ):
         return action_dependencies
     return SupervisorActionDependencies(
+        gmail_alert_collector=resolved_gmail_alert_collector,
         apollo_people_search_provider=action_dependencies.apollo_people_search_provider,
         apollo_contact_enrichment_provider=action_dependencies.apollo_contact_enrichment_provider,
         recipient_profile_extractor=action_dependencies.recipient_profile_extractor,
@@ -197,7 +219,7 @@ def _resolve_supervisor_action_dependencies(
         outreach_sender=action_dependencies.outreach_sender,
         feedback_observer=action_dependencies.feedback_observer,
         local_timezone=action_dependencies.local_timezone,
-        maintenance_dependencies=default_maintenance_dependencies,
+        maintenance_dependencies=resolved_maintenance_dependencies,
     )
 
 

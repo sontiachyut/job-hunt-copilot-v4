@@ -146,10 +146,12 @@ AUTO_PAUSE_CRITICAL_INCIDENT_TYPES = frozenset(
 WORK_TYPE_AGENT_INCIDENT: Final = "agent_incident"
 WORK_TYPE_INCIDENT_CLUSTER: Final = "incident_cluster"
 WORK_TYPE_CONTACT: Final = "contact"
+WORK_TYPE_GMAIL_ALERT_BATCH: Final = "gmail_alert_batch"
 WORK_TYPE_JOB_POSTING: Final = "job_posting"
 WORK_TYPE_MAINTENANCE_CYCLE: Final = "maintenance_cycle"
 WORK_TYPE_PIPELINE_RUN: Final = "pipeline_run"
 
+ACTION_POLL_GMAIL_LINKEDIN_ALERTS: Final = "poll_gmail_linkedin_alerts"
 ACTION_BOOTSTRAP_ROLE_TARGETED_RUN: Final = "bootstrap_role_targeted_run"
 ACTION_CHECKPOINT_PIPELINE_RUN: Final = "checkpoint_pipeline_run"
 ACTION_PERFORM_MANDATORY_AGENT_REVIEW: Final = "perform_mandatory_agent_review"
@@ -545,6 +547,7 @@ class SupervisorCycleExecution:
 
 @dataclass(frozen=True)
 class SupervisorActionDependencies:
+    gmail_alert_collector: object | None = None
     apollo_people_search_provider: object | None = None
     apollo_contact_enrichment_provider: object | None = None
     recipient_profile_extractor: object | None = None
@@ -565,6 +568,25 @@ class AutoPauseDecision:
 
 SUPERVISOR_ACTION_CATALOG = MappingProxyType(
     {
+        ACTION_POLL_GMAIL_LINKEDIN_ALERTS: SupervisorActionCatalogEntry(
+            action_id=ACTION_POLL_GMAIL_LINKEDIN_ALERTS,
+            work_type=WORK_TYPE_GMAIL_ALERT_BATCH,
+            description="Poll Gmail for a bounded batch of new LinkedIn job-alert emails, ingest them into canonical lead state, and materialize any ready job postings.",
+            prerequisites=(
+                "a Gmail alert collector is configured for the current runtime",
+                "at least one uncollected LinkedIn job-alert email is currently visible in Gmail",
+                "the batch remains bounded so one supervisor cycle only ingests a small number of messages",
+            ),
+            expected_outputs=(
+                "one bounded Gmail alert batch is persisted under linkedin-scraping/runtime/gmail",
+                "new Gmail-derived linkedin_leads rows are created or safely deduplicated by gmail_message_id and lead identity",
+                "ready Gmail-derived leads materialize into canonical job_postings for downstream pipeline bootstrap on later cycles",
+            ),
+            validation_references=(
+                "prd/spec.md FR-SYS-38 and current-build Gmail intake requirements",
+                "prd/test-spec.feature bounded supervisor work-unit and Gmail-ingestion scenarios",
+            ),
+        ),
         ACTION_BOOTSTRAP_ROLE_TARGETED_RUN: SupervisorActionCatalogEntry(
             action_id=ACTION_BOOTSTRAP_ROLE_TARGETED_RUN,
             work_type=WORK_TYPE_JOB_POSTING,
@@ -2384,6 +2406,13 @@ def select_next_supervisor_work_unit(
     if incident_work is not None:
         return incident_work
 
+    gmail_alert_work = _select_gmail_alert_collection_work_unit(
+        current_time=current_time,
+        gmail_alert_collector=action_dependencies.gmail_alert_collector,
+    )
+    if gmail_alert_work is not None:
+        return gmail_alert_work
+
     pipeline_run_work = _select_open_pipeline_run_work_unit(connection)
     if pipeline_run_work is not None:
         return pipeline_run_work
@@ -2450,6 +2479,35 @@ def _detect_auto_pause_condition(
                 selected_work_id=cluster_key,
             )
     return None
+
+
+def _select_gmail_alert_collection_work_unit(
+    *,
+    current_time: str,
+    gmail_alert_collector: object | None,
+) -> SupervisorWorkUnit | None:
+    if gmail_alert_collector is None:
+        return None
+    prepare_batch = getattr(gmail_alert_collector, "prepare_batch", None)
+    if not callable(prepare_batch):
+        return None
+    try:
+        prepared_batch = prepare_batch(current_time=current_time)
+    except Exception:
+        return None
+    if prepared_batch is None:
+        return None
+    message_count = len(prepared_batch.messages)
+    return SupervisorWorkUnit(
+        work_type=WORK_TYPE_GMAIL_ALERT_BATCH,
+        work_id=prepared_batch.ingestion_run_id,
+        action_id=ACTION_POLL_GMAIL_LINKEDIN_ALERTS,
+        summary=(
+            "Collect a bounded Gmail alert batch of "
+            f"{message_count} LinkedIn job-alert message"
+            f"{'' if message_count == 1 else 's'} into canonical lead intake."
+        ),
+    )
 
 
 def _select_active_incident_work_unit(
@@ -2786,6 +2844,31 @@ def _validate_selected_work(
             f"Selected work type {selected_work.work_type!r} does not match "
             f"catalog action {catalog_entry.action_id!r}."
         )
+
+    if catalog_entry.action_id == ACTION_POLL_GMAIL_LINKEDIN_ALERTS:
+        if selected_work.work_type != WORK_TYPE_GMAIL_ALERT_BATCH:
+            return (
+                "Gmail alert polling selected a mismatched work type "
+                f"{selected_work.work_type!r}."
+            )
+        collector = action_dependencies.gmail_alert_collector
+        if collector is None:
+            return "Autonomous Gmail polling is not enabled for the current runtime."
+        peek_prepared_batch = getattr(collector, "peek_prepared_batch", None)
+        if not callable(peek_prepared_batch):
+            return "Configured Gmail alert collector does not expose peek_prepared_batch()."
+        prepared_batch = peek_prepared_batch(selected_work.work_id)
+        if prepared_batch is None:
+            return (
+                "Selected Gmail alert batch is no longer prepared for ingestion_run_id "
+                f"{selected_work.work_id!r}."
+            )
+        if not prepared_batch.messages:
+            return (
+                "Prepared Gmail alert batch is empty for ingestion_run_id "
+                f"{selected_work.work_id!r}."
+            )
+        return None
 
     if catalog_entry.action_id == ACTION_BOOTSTRAP_ROLE_TARGETED_RUN:
         posting_row = connection.execute(
@@ -3325,6 +3408,47 @@ def _execute_selected_work_unit(
     timestamp: str,
     action_dependencies: SupervisorActionDependencies,
 ) -> tuple[PipelineRunRecord | None, AgentIncidentRecord | None, str | None]:
+    if catalog_entry.action_id == ACTION_POLL_GMAIL_LINKEDIN_ALERTS:
+        from .linkedin_scraping import (
+            ingest_gmail_alert_batch_to_leads,
+            materialize_gmail_lead_entities,
+        )
+
+        collector = _require_dependency(
+            action_dependencies.gmail_alert_collector,
+            "Supervisor Gmail polling requires an injected Gmail alert collector.",
+        )
+        pop_prepared_batch = getattr(collector, "pop_prepared_batch", None)
+        if not callable(pop_prepared_batch):
+            raise SupervisorStateError(
+                "Configured Gmail alert collector does not expose pop_prepared_batch()."
+            )
+        prepared_batch = pop_prepared_batch(selected_work.work_id)
+        if prepared_batch is None:
+            prepare_batch = getattr(collector, "prepare_batch", None)
+            if callable(prepare_batch):
+                prepared_batch = prepare_batch(current_time=timestamp)
+        if prepared_batch is None or prepared_batch.ingestion_run_id != selected_work.work_id:
+            raise SupervisorStateError(
+                "Supervisor lost the prepared Gmail alert batch before execution for "
+                f"ingestion_run_id {selected_work.work_id!r}."
+            )
+
+        ingestion_result = ingest_gmail_alert_batch_to_leads(
+            paths.project_root,
+            batch=prepared_batch,
+        )
+        lead_ids = sorted(
+            {
+                lead_result.lead_id
+                for lead_result in ingestion_result.lead_results
+                if lead_result.lead_id
+            }
+        )
+        for lead_id in lead_ids:
+            materialize_gmail_lead_entities(paths.project_root, lead_id=lead_id)
+        return None, None, None
+
     if catalog_entry.action_id == ACTION_BOOTSTRAP_ROLE_TARGETED_RUN:
         pipeline_run, _ = ensure_role_targeted_pipeline_run(
             connection,
@@ -3868,6 +3992,25 @@ def _validate_selected_work_result(
     incident: AgentIncidentRecord | None,
     maintenance_batch_id: str | None,
 ) -> str | None:
+    if catalog_entry.action_id == ACTION_POLL_GMAIL_LINKEDIN_ALERTS:
+        matching_batches = 0
+        for email_json_path in sorted(paths.gmail_runtime_dir.glob("*/email.json")):
+            try:
+                payload = json.loads(email_json_path.read_text(encoding="utf-8"))
+            except json.JSONDecodeError:
+                continue
+            if not isinstance(payload, dict):
+                continue
+            if payload.get("ingestion_run_id") == selected_work.work_id:
+                matching_batches += 1
+        if matching_batches <= 0:
+            return (
+                "Supervisor Gmail polling completed without persisting any Gmail "
+                "collection units for ingestion_run_id "
+                f"{selected_work.work_id!r}."
+            )
+        return None
+
     if catalog_entry.action_id == ACTION_BOOTSTRAP_ROLE_TARGETED_RUN:
         if pipeline_run is None:
             return "Supervisor failed to create a pipeline_run for the selected job_posting."

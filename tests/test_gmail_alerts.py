@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import base64
 import json
 import sqlite3
 
@@ -9,9 +10,13 @@ from job_hunt_copilot.bootstrap import run_bootstrap
 from job_hunt_copilot.gmail_alerts import (
     BODY_REPRESENTATION_TEXT_HTML_DERIVED,
     BODY_REPRESENTATION_TEXT_PLAIN,
+    GmailLinkedInAlertMailboxCollector,
     ingest_gmail_alert_batch,
 )
-from job_hunt_copilot.linkedin_scraping import ingest_gmail_alert_batch_to_leads
+from job_hunt_copilot.linkedin_scraping import (
+    ingest_gmail_alert_batch_to_leads,
+    materialize_gmail_lead_entities,
+)
 from job_hunt_copilot.paths import ProjectPaths
 from tests.support import create_minimal_project
 
@@ -61,6 +66,10 @@ def build_message(
         payload["text_html_body"] = text_html_body
     payload.update(extra_fields)
     return payload
+
+
+def _gmail_api_body(text: str) -> str:
+    return base64.urlsafe_b64encode(text.encode("utf-8")).decode("ascii").rstrip("=")
 
 
 def test_gmail_collection_persists_plain_text_first_multi_card_artifacts(tmp_path):
@@ -212,6 +221,46 @@ def test_gmail_collection_is_idempotent_by_message_id_and_does_not_collapse_same
     ]
     assert duplicate_result.collection_results[0].duplicate is True
     assert duplicate_result.collection_results[0].parseable_job_card_count == 1
+
+
+def test_gmail_parser_handles_alert_creation_intro_and_comm_job_urls(tmp_path):
+    project_root = bootstrap_project(tmp_path)
+
+    result = ingest_gmail_alert_batch(
+        project_root,
+        batch=build_batch(
+            build_message(
+                gmail_message_id="gmail-message-comm-001",
+                received_at="2026-04-06T23:30:00Z",
+                text_plain_body=(
+                    "Your job alert has been created: Software Engineer Hiring in Greater Phoenix Area.\n"
+                    "You’ll receive notifications when new jobs are posted that match your search preferences.\n"
+                    "Software Application Development Engineer\n"
+                    "Intel\n"
+                    "Phoenix, Arizona, United States\n"
+                    "825 company alumni\n"
+                    "View job: https://www.linkedin.com/comm/jobs/view/4386830282?trk=email_digest\n"
+                ),
+            )
+        ),
+    )
+
+    collection = result.collection_results[0]
+    cards_payload = json.loads(collection.job_cards_path.read_text(encoding="utf-8"))
+    assert collection.parseable_job_card_count == 1
+    assert cards_payload["cards"] == [
+        {
+            "card_index": 1,
+            "role_title": "Software Application Development Engineer",
+            "company_name": "Intel",
+            "location": "Phoenix, Arizona, United States",
+            "badge_lines": ["825 company alumni"],
+            "job_url": "https://www.linkedin.com/jobs/view/4386830282/",
+            "job_id": "4386830282",
+            "gmail_message_id": "gmail-message-comm-001",
+            "synthetic_identity_key": None,
+        }
+    ]
 
 
 def test_gmail_parser_falls_back_to_html_only_when_plain_text_is_unusable(tmp_path):
@@ -458,6 +507,159 @@ def test_gmail_batch_fanout_creates_incomplete_lead_workspace_with_jd_provenance
         "lead_jd_fetch",
         "lead_manifest",
     }.issubset(artifact_types)
+
+
+def test_materialize_gmail_lead_entities_creates_job_posting_and_updates_manifest(tmp_path):
+    project_root = bootstrap_project(tmp_path)
+
+    batch = build_batch(
+        build_message(
+            gmail_message_id="gmail-materialize-001",
+            received_at="2026-04-06T23:10:00Z",
+            text_plain_body=(
+                "-----\n"
+                "Senior Software Engineer\n"
+                "Guidewire Software\n"
+                "Boston, MA (Hybrid)\n"
+                "Actively recruiting\n"
+                "View job\n"
+                "https://www.linkedin.com/jobs/view/1234567890/?trackingId=abc\n"
+            ),
+            jd_recovery=[
+                {
+                    "job_id": "1234567890",
+                    "source_type": "linkedin_guest_job_payload",
+                    "source_url": "https://www.linkedin.com/jobs/view/1234567890/",
+                    "company_name": "Guidewire Software",
+                    "role_title": "Senior Software Engineer",
+                    "jd_text": "About the job\nBuild backend systems.\n",
+                }
+            ],
+        ),
+        ingestion_run_id="gmail-materialize-run-001",
+    )
+
+    ingestion = ingest_gmail_alert_batch_to_leads(project_root, batch=batch)
+    lead = ingestion.lead_results[0]
+
+    materialized = materialize_gmail_lead_entities(project_root, lead_id=lead.lead_id)
+
+    assert materialized.materialized is True
+    assert materialized.job_posting_created is True
+    assert materialized.reason_code is None
+
+    manifest = yaml.safe_load(materialized.lead_manifest_path.read_text(encoding="utf-8"))
+    assert manifest["lead_status"] == "handed_off"
+    assert manifest["created_entities"]["job_posting_id"] == materialized.job_posting_id
+    assert manifest["handoff_targets"]["posting_materialization"]["created_entities"] == {
+        "job_posting_id": materialized.job_posting_id
+    }
+    assert manifest["handoff_targets"]["resume_tailoring"]["ready"] is True
+
+    connection = connect_database(project_root / "job_hunt_copilot.db")
+    posting_row = connection.execute(
+        """
+        SELECT lead_id, posting_status, jd_artifact_path
+        FROM job_postings
+        WHERE job_posting_id = ?
+        """,
+        (materialized.job_posting_id,),
+    ).fetchone()
+    lead_row = connection.execute(
+        """
+        SELECT lead_status
+        FROM linkedin_leads
+        WHERE lead_id = ?
+        """,
+        (lead.lead_id,),
+    ).fetchone()
+    connection.close()
+
+    assert posting_row is not None
+    assert posting_row["lead_id"] == lead.lead_id
+    assert posting_row["posting_status"] == "sourced"
+    assert posting_row["jd_artifact_path"].endswith("/jd.md")
+    assert lead_row["lead_status"] == "handed_off"
+
+
+def test_gmail_mailbox_collector_prepares_batch_from_live_api_shape(tmp_path):
+    project_root = bootstrap_project(tmp_path)
+    paths = ProjectPaths.from_root(project_root)
+
+    class FakeMessagesResource:
+        def list(self, **kwargs):  # type: ignore[no-untyped-def]
+            class _Request:
+                def execute(self_inner):  # type: ignore[no-untyped-def]
+                    assert kwargs["q"] == "from:jobalerts-noreply@linkedin.com newer_than:30d"
+                    return {"messages": [{"id": "gmail-api-001", "threadId": "thread-001"}]}
+
+            return _Request()
+
+        def get(self, **kwargs):  # type: ignore[no-untyped-def]
+            class _Request:
+                def execute(self_inner):  # type: ignore[no-untyped-def]
+                    assert kwargs["id"] == "gmail-api-001"
+                    return {
+                        "id": "gmail-api-001",
+                        "threadId": "thread-001",
+                        "internalDate": "1775518200000",
+                        "payload": {
+                            "mimeType": "multipart/alternative",
+                            "headers": [
+                                {"name": "From", "value": "LinkedIn <jobalerts-noreply@linkedin.com>"},
+                                {"name": "Subject", "value": "LinkedIn job alerts"},
+                            ],
+                            "parts": [
+                                {
+                                    "mimeType": "text/plain",
+                                    "body": {
+                                        "data": _gmail_api_body(
+                                            "-----\n"
+                                            "Senior Software Engineer\n"
+                                            "Guidewire Software\n"
+                                            "Boston, MA (Hybrid)\n"
+                                            "View job\n"
+                                            "https://www.linkedin.com/jobs/view/1234567890/\n"
+                                        )
+                                    },
+                                }
+                            ],
+                        },
+                    }
+
+            return _Request()
+
+    class FakeUsersResource:
+        def __init__(self) -> None:
+            self._messages = FakeMessagesResource()
+
+        def messages(self) -> FakeMessagesResource:
+            return self._messages
+
+    class FakeGmailService:
+        def __init__(self) -> None:
+            self._users = FakeUsersResource()
+
+        def users(self) -> FakeUsersResource:
+            return self._users
+
+    collector = GmailLinkedInAlertMailboxCollector(
+        paths,
+        service_factory=FakeGmailService,
+        max_new_messages=1,
+    )
+
+    batch = collector.prepare_batch(current_time="2026-04-09T00:20:00Z")
+
+    assert batch is not None
+    assert batch.ingestion_run_id == "gmail-auto-20260409T002000Z"
+    assert len(batch.messages) == 1
+    message = batch.messages[0]
+    assert message.gmail_message_id == "gmail-api-001"
+    assert message.gmail_thread_id == "thread-001"
+    assert message.subject == "LinkedIn job alerts"
+    assert message.received_at == "2026-04-06T23:30:00Z"
+    assert "Senior Software Engineer" in (message.text_plain_body or "")
 
 
 def test_gmail_batch_fanout_dedupes_existing_leads_by_job_id(tmp_path):

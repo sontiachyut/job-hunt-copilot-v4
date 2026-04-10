@@ -8,6 +8,7 @@ from pathlib import Path
 import pytest
 
 from job_hunt_copilot.bootstrap import run_bootstrap
+from job_hunt_copilot.gmail_alerts import GmailAlertBatch
 from job_hunt_copilot.maintenance import (
     MaintenanceDependencies,
     MaintenancePlan,
@@ -140,6 +141,28 @@ def build_test_maintenance_dependencies(
             command_runner=run_validation,
         ),
     )
+
+
+class FakeGmailAlertCollector:
+    def __init__(self, *batches: GmailAlertBatch) -> None:
+        self._pending_batches = list(batches)
+        self._prepared_batches: dict[str, GmailAlertBatch] = {}
+
+    def prepare_batch(self, *, current_time: str) -> GmailAlertBatch | None:
+        del current_time
+        if self._prepared_batches:
+            return next(iter(self._prepared_batches.values()))
+        if not self._pending_batches:
+            return None
+        batch = self._pending_batches.pop(0)
+        self._prepared_batches[batch.ingestion_run_id] = batch
+        return batch
+
+    def peek_prepared_batch(self, ingestion_run_id: str) -> GmailAlertBatch | None:
+        return self._prepared_batches.get(ingestion_run_id)
+
+    def pop_prepared_batch(self, ingestion_run_id: str) -> GmailAlertBatch | None:
+        return self._prepared_batches.pop(ingestion_run_id, None)
 
 
 def seed_role_targeted_posting(
@@ -837,6 +860,113 @@ def test_run_supervisor_cycle_bootstraps_new_posting_run_and_persists_snapshot(t
     assert snapshot["pipeline_run"]["pipeline_run_id"] == execution.pipeline_run.pipeline_run_id
     assert snapshot["control_state"]["agent_mode"] == "running"
     assert final_lease is None
+
+
+def test_run_supervisor_cycle_polls_gmail_alerts_and_materializes_ready_postings(
+    tmp_path,
+    monkeypatch,
+):
+    project_root = bootstrap_project(tmp_path)
+    paths = ProjectPaths.from_root(project_root)
+    connection = connect_database(project_root / "job_hunt_copilot.db")
+    resume_agent(
+        connection,
+        manual_command="jhc-agent-start",
+        timestamp="2026-04-06T00:00:00Z",
+    )
+    gmail_collector = FakeGmailAlertCollector(
+        GmailAlertBatch.from_mapping(
+            {
+                "ingestion_run_id": "gmail-auto-20260406T000100Z",
+                "messages": [
+                    {
+                        "gmail_message_id": "gmail-supervisor-001",
+                        "gmail_thread_id": "gmail-thread-supervisor-001",
+                        "sender": "jobalerts-noreply@linkedin.com",
+                        "subject": "LinkedIn job alerts",
+                        "received_at": "2026-04-06T00:00:30Z",
+                        "text_plain_body": (
+                            "-----\n"
+                            "Senior Software Engineer\n"
+                            "Guidewire Software\n"
+                            "Boston, MA (Hybrid)\n"
+                            "Actively recruiting\n"
+                            "View job\n"
+                            "https://www.linkedin.com/jobs/view/1234567890/\n"
+                        ),
+                        "jd_recovery": [
+                            {
+                                "job_id": "1234567890",
+                                "source_type": "linkedin_guest_job_payload",
+                                "source_url": "https://www.linkedin.com/jobs/view/1234567890/",
+                                "company_name": "Guidewire Software",
+                                "role_title": "Senior Software Engineer",
+                                "jd_text": "About the job\nBuild backend systems.\n",
+                            }
+                        ],
+                    }
+                ],
+            }
+        )
+    )
+    monkeypatch.setattr(
+        "job_hunt_copilot.linkedin_scraping._fetch_live_gmail_jd_recovery_candidate",
+        lambda card: {
+            "job_id": card.get("job_id"),
+            "job_url": card.get("job_url"),
+            "source_type": "linkedin_guest_job_page",
+            "source_url": card.get("job_url"),
+            "company_name": "Guidewire Software",
+            "role_title": "Senior Software Engineer",
+            "jd_text": "About the job\nBuild backend systems.\n",
+        },
+    )
+
+    execution = run_supervisor_cycle(
+        connection,
+        paths,
+        trigger_type="launchd_heartbeat",
+        scheduler_name="launchd",
+        started_at="2026-04-06T00:01:00Z",
+        action_dependencies=SupervisorActionDependencies(
+            gmail_alert_collector=gmail_collector,
+            local_timezone="UTC",
+        ),
+    )
+    lead_row = connection.execute(
+        """
+        SELECT lead_id, lead_status, source_mode
+        FROM linkedin_leads
+        ORDER BY created_at ASC, lead_id ASC
+        LIMIT 1
+        """
+    ).fetchone()
+    posting_row = connection.execute(
+        """
+        SELECT lead_id, posting_status
+        FROM job_postings
+        ORDER BY created_at ASC, job_posting_id ASC
+        LIMIT 1
+        """
+    ).fetchone()
+    run_count = int(connection.execute("SELECT COUNT(*) FROM pipeline_runs").fetchone()[0])
+    connection.close()
+
+    assert execution.cycle.result == SUPERVISOR_CYCLE_RESULT_SUCCESS
+    assert execution.selected_work is not None
+    assert execution.selected_work.work_type == "gmail_alert_batch"
+    assert execution.selected_work.work_id == "gmail-auto-20260406T000100Z"
+    assert execution.action_id == "poll_gmail_linkedin_alerts"
+    assert lead_row is not None
+    assert dict(lead_row) == {
+        "lead_id": lead_row["lead_id"],
+        "lead_status": "handed_off",
+        "source_mode": "gmail_job_alert",
+    }
+    assert posting_row is not None
+    assert posting_row["lead_id"] == lead_row["lead_id"]
+    assert posting_row["posting_status"] == "sourced"
+    assert run_count == 0
 
 
 def test_run_supervisor_cycle_reuses_existing_pipeline_run_without_duplicate_history(tmp_path):

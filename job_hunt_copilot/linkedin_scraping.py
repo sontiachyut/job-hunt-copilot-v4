@@ -6,8 +6,11 @@ import json
 import re
 import sqlite3
 from dataclasses import dataclass
+from html import unescape
 from pathlib import Path
 from typing import Any, Mapping, Sequence
+
+import yaml
 
 from .artifacts import ArtifactLinkage, register_artifact_record, write_json_contract, write_yaml_contract
 from .contracts import CONTRACT_VERSION
@@ -77,6 +80,17 @@ LEAD_SPLIT_METHOD_RULE_BASED_FIRST_PASS = "rule_based_first_pass"
 
 TEXT_CAPTURE_MODES = frozenset({"selected_text", "full_page", "manual_paste"})
 PAGE_TYPES = frozenset({"post", "job", "profile", "unknown"})
+LINKEDIN_GUEST_JOB_JSONLD_RE = re.compile(
+    r'(?is)<script[^>]+type=["\']application/ld\+json["\'][^>]*>(?P<payload>.*?)</script>'
+)
+LINKEDIN_GUEST_JOB_DESCRIPTION_RE = re.compile(
+    r'(?is)<div[^>]+class=["\'][^"\']*show-more-less-html__markup[^"\']*["\'][^>]*>(?P<body>.*?)</div>'
+)
+HTML_TAG_RE = re.compile(r"(?is)<[^>]+>")
+HTML_BLOCK_TAG_RE = re.compile(
+    r"(?i)</?(?:br|p|div|li|tr|td|table|section|article|ul|ol|h[1-6])\b[^>]*>"
+)
+MULTILINE_BLANKS_RE = re.compile(r"\n{3,}")
 
 POST_MARKER_RE = re.compile(r"\b(?:#hiring|we(?:'|’)re hiring|we are hiring|hiring at)\b", re.IGNORECASE)
 NETWORKING_HINT_RE = re.compile(r"\balumni\b", re.IGNORECASE)
@@ -486,6 +500,29 @@ class GmailLeadIngestionResult:
             "jd_fetch_path": str(self.jd_fetch_path) if self.jd_fetch_path else None,
             "lead_manifest_path": str(self.lead_manifest_path) if self.lead_manifest_path else None,
             "duplicate_lead_id": self.duplicate_lead_id,
+        }
+
+
+@dataclass(frozen=True)
+class GmailLeadMaterializationResult:
+    lead_id: str
+    lead_status: str
+    materialized: bool
+    reason_code: str | None
+    job_posting_id: str | None
+    job_posting_created: bool
+    lead_manifest_path: Path
+
+    def as_dict(self) -> dict[str, Any]:
+        return {
+            "status": "ok",
+            "lead_id": self.lead_id,
+            "lead_status": self.lead_status,
+            "materialized": self.materialized,
+            "reason_code": self.reason_code,
+            "job_posting_id": self.job_posting_id,
+            "job_posting_created": self.job_posting_created,
+            "lead_manifest_path": str(self.lead_manifest_path),
         }
 
 
@@ -1272,6 +1309,134 @@ def materialize_manual_lead_entities(
         contact_created=contact_created,
         linkedin_lead_contact_id=(materialized_contact or {}).get("linkedin_lead_contact_id"),
         job_posting_contact_id=(materialized_contact or {}).get("job_posting_contact_id"),
+        lead_manifest_path=artifact_paths["lead_manifest_path"],
+    )
+
+
+def materialize_gmail_lead_entities(
+    project_root: Path | str | None = None,
+    *,
+    lead_id: str,
+) -> GmailLeadMaterializationResult:
+    paths = ProjectPaths.from_root(project_root)
+    connection = sqlite3.connect(paths.db_path)
+    connection.row_factory = sqlite3.Row
+    connection.execute("PRAGMA foreign_keys = ON;")
+
+    try:
+        lead_row = _load_gmail_lead_row(connection, lead_id=lead_id)
+        artifact_paths = _gmail_lead_artifact_paths(
+            paths,
+            company_name=lead_row["company_name"],
+            role_title=lead_row["role_title"],
+            lead_id=lead_id,
+        )
+        if not artifact_paths["lead_manifest_path"].exists():
+            raise LinkedInScrapingError(
+                f"Lead `{lead_id}` is missing its Gmail lead manifest at {artifact_paths['lead_manifest_path']}."
+            )
+
+        existing_posting = _find_existing_posting_for_lead(connection, lead_id=lead_id)
+        lead_state = dict(lead_row)
+        manifest_contract = _load_yaml_contract(artifact_paths["lead_manifest_path"])
+        current_reason_code = _gmail_manifest_reason_code(
+            manifest_contract,
+            lead_state=lead_state,
+            jd_path=artifact_paths["jd_path"],
+        )
+
+        job_posting_id = (
+            existing_posting["job_posting_id"] if existing_posting is not None else None
+        )
+        job_posting_created = False
+        materialization_ready = (
+            lead_state["lead_status"] == LEAD_STATUS_INCOMPLETE
+            and artifact_paths["jd_path"].exists()
+            and current_reason_code is None
+        )
+        if materialization_ready:
+            job_posting_id, job_posting_created = _upsert_job_posting(
+                connection,
+                paths,
+                lead_row=lead_state,
+                jd_path=artifact_paths["jd_path"],
+            )
+
+        created_entities = _collect_created_entities(
+            connection,
+            lead_id=lead_id,
+            job_posting_id=job_posting_id,
+        )
+        if created_entities["job_posting_id"] is not None:
+            lead_status = LEAD_STATUS_HANDED_OFF
+            reason_code = None
+            job_posting_id = created_entities["job_posting_id"]
+        else:
+            lead_status = lead_state["lead_status"]
+            if current_reason_code is not None:
+                reason_code = current_reason_code
+            elif artifact_paths["jd_path"].exists():
+                reason_code = MANIFEST_REASON_POSTING_NOT_MATERIALIZED
+            else:
+                reason_code = MANIFEST_REASON_MISSING_JD
+
+        handoff_targets = {
+            "posting_materialization": _build_gmail_posting_materialization_target(
+                lead_status=lead_status,
+                jd_path=artifact_paths["jd_path"],
+                job_posting_id=job_posting_id,
+                blocking_reason_code=reason_code,
+            ),
+            "resume_tailoring": _build_resume_tailoring_target(
+                job_posting_id=job_posting_id,
+                jd_path=artifact_paths["jd_path"],
+                blocking_reason_code=reason_code,
+            ),
+        }
+
+        updated_at = now_utc_iso()
+        with connection:
+            connection.execute(
+                """
+                UPDATE linkedin_leads
+                SET lead_status = ?, lead_shape = ?, updated_at = ?
+                WHERE lead_id = ?
+                """,
+                (
+                    lead_status,
+                    LEAD_SHAPE_POSTING_ONLY,
+                    updated_at,
+                    lead_id,
+                ),
+            )
+            contract = _write_updated_gmail_lead_manifest(
+                artifact_paths["lead_manifest_path"],
+                manifest_contract=manifest_contract,
+                lead_id=lead_id,
+                lead_status=lead_status,
+                created_entities=created_entities,
+                handoff_targets=handoff_targets,
+                reason_code=reason_code,
+                produced_at=updated_at,
+            )
+            _replace_lead_artifact_record(
+                connection,
+                paths,
+                artifact_type=LEAD_MANIFEST_ARTIFACT_TYPE,
+                artifact_path=artifact_paths["lead_manifest_path"],
+                lead_id=lead_id,
+                created_at=contract["produced_at"],
+            )
+    finally:
+        connection.close()
+
+    return GmailLeadMaterializationResult(
+        lead_id=lead_id,
+        lead_status=lead_status,
+        materialized=job_posting_id is not None,
+        reason_code=reason_code,
+        job_posting_id=job_posting_id,
+        job_posting_created=job_posting_created,
         lead_manifest_path=artifact_paths["lead_manifest_path"],
     )
 
@@ -2303,9 +2468,14 @@ def _upsert_job_posting(
 def _build_posting_identity_key(lead_row: Mapping[str, Any], *, jd_path: Path) -> str:
     normalized_jd = " ".join(jd_path.read_text(encoding="utf-8").split())
     jd_fingerprint = hashlib.sha256(normalized_jd.encode("utf-8")).hexdigest()[:16]
+    source_prefix = (
+        "gmail_lead"
+        if lead_row.get("source_mode") == SOURCE_MODE_GMAIL_JOB_ALERT
+        else "manual_lead"
+    )
     return "|".join(
         [
-            "manual_lead",
+            source_prefix,
             workspace_slug(lead_row["company_name"] or "unknown"),
             workspace_slug(lead_row["role_title"] or "unknown"),
             workspace_slug(lead_row["location"] or "unknown"),
@@ -2728,6 +2898,113 @@ def _load_manual_lead_row(connection: sqlite3.Connection, *, lead_id: str) -> sq
             f"Lead `{lead_id}` is not a manual lead and cannot use the manual lead-materialization pipeline."
         )
     return lead_row
+
+
+def _load_gmail_lead_row(connection: sqlite3.Connection, *, lead_id: str) -> sqlite3.Row:
+    lead_row = connection.execute(
+        """
+        SELECT lead_id, lead_status, lead_shape, split_review_status, source_type, source_reference,
+               source_mode, source_url, company_name, role_title, location, work_mode,
+               compensation_summary, poster_name, poster_title
+        FROM linkedin_leads
+        WHERE lead_id = ?
+        """,
+        (lead_id,),
+    ).fetchone()
+    if lead_row is None:
+        raise LinkedInScrapingError(f"Lead `{lead_id}` was not found.")
+    if lead_row["source_mode"] != SOURCE_MODE_GMAIL_JOB_ALERT:
+        raise LinkedInScrapingError(
+            f"Lead `{lead_id}` is not a Gmail alert lead and cannot use the Gmail materialization pipeline."
+        )
+    return lead_row
+
+
+def _load_yaml_contract(artifact_path: Path) -> dict[str, Any]:
+    payload = yaml.safe_load(artifact_path.read_text(encoding="utf-8"))
+    if not isinstance(payload, Mapping):
+        raise LinkedInScrapingError(
+            f"Expected YAML contract payload at {artifact_path}, found {type(payload).__name__}."
+        )
+    return dict(payload)
+
+
+def _gmail_manifest_reason_code(
+    manifest_contract: Mapping[str, Any],
+    *,
+    lead_state: Mapping[str, Any],
+    jd_path: Path,
+) -> str | None:
+    reason_code = _normalize_optional_text(manifest_contract.get("reason_code"))
+    if reason_code is not None:
+        return reason_code
+    handoff_targets = manifest_contract.get("handoff_targets")
+    if isinstance(handoff_targets, Mapping):
+        posting_materialization = handoff_targets.get("posting_materialization")
+        if isinstance(posting_materialization, Mapping):
+            handoff_reason = _normalize_optional_text(
+                posting_materialization.get("reason_code")
+            )
+            if handoff_reason is not None:
+                return handoff_reason
+    if lead_state["lead_status"] == LEAD_STATUS_BLOCKED_NO_JD or not jd_path.exists():
+        return MANIFEST_REASON_MISSING_JD
+    return None
+
+
+def _gmail_manifest_message_for_reason_code(reason_code: str | None) -> str | None:
+    if reason_code == MANIFEST_REASON_MISSING_JD:
+        return "No usable JD candidate was available for this autonomous Gmail alert lead."
+    if reason_code == MANIFEST_REASON_IDENTITY_MISMATCH_REVIEW_REQUIRED:
+        return (
+            "Autonomous Gmail lead requires review because the parsed card identity materially "
+            "disagrees with the recovered JD identity."
+        )
+    return None
+
+
+def _write_updated_gmail_lead_manifest(
+    lead_manifest_path: Path,
+    *,
+    manifest_contract: Mapping[str, Any],
+    lead_id: str,
+    lead_status: str,
+    created_entities: Mapping[str, Any],
+    handoff_targets: Mapping[str, Any],
+    reason_code: str | None,
+    produced_at: str,
+) -> dict[str, Any]:
+    payload = {
+        key: value
+        for key, value in manifest_contract.items()
+        if key
+        not in {
+            "contract_version",
+            "produced_at",
+            "producer_component",
+            "result",
+            "reason_code",
+            "message",
+            "lead_id",
+            "job_posting_id",
+            "contact_id",
+            "outreach_message_id",
+        }
+    }
+    payload["lead_status"] = lead_status
+    payload["lead_shape"] = LEAD_SHAPE_POSTING_ONLY
+    payload["created_entities"] = dict(created_entities)
+    payload["handoff_targets"] = dict(handoff_targets)
+    return write_yaml_contract(
+        lead_manifest_path,
+        producer_component=LINKEDIN_SCRAPING_COMPONENT,
+        result="blocked" if reason_code is not None else "success",
+        linkage=ArtifactLinkage(lead_id=lead_id),
+        payload=payload,
+        produced_at=produced_at,
+        reason_code=reason_code,
+        message=_gmail_manifest_message_for_reason_code(reason_code),
+    )
 
 
 def _find_existing_posting_for_lead(
@@ -3176,10 +3453,17 @@ def _select_gmail_jd_recovery_candidate(
     card: Mapping[str, Any],
 ) -> tuple[Mapping[str, Any] | None, list[Mapping[str, Any]]]:
     raw_candidates = raw_message.get("jd_recovery")
-    if not isinstance(raw_candidates, Sequence) or isinstance(raw_candidates, (str, bytes)):
+    valid_candidates: list[Mapping[str, Any]] = []
+    if isinstance(raw_candidates, Sequence) and not isinstance(raw_candidates, (str, bytes)):
+        valid_candidates.extend(
+            candidate for candidate in raw_candidates if isinstance(candidate, Mapping)
+        )
+    live_candidate = _fetch_live_gmail_jd_recovery_candidate(card)
+    if live_candidate is not None:
+        valid_candidates.append(live_candidate)
+    if not valid_candidates:
         return None, []
 
-    valid_candidates = [candidate for candidate in raw_candidates if isinstance(candidate, Mapping)]
     matched_candidates = [
         candidate
         for candidate in valid_candidates
@@ -3226,6 +3510,130 @@ def _gmail_recovery_candidate_matches_card(candidate: Mapping[str, Any], card: M
             return False
 
     return selectors_checked
+
+
+def _fetch_live_gmail_jd_recovery_candidate(
+    card: Mapping[str, Any],
+) -> Mapping[str, Any] | None:
+    job_url = _normalize_job_url_reference(card.get("job_url"))
+    if job_url is None:
+        job_id = _normalize_optional_text(card.get("job_id"))
+        if job_id is None:
+            return None
+        job_url = f"https://www.linkedin.com/jobs/view/{job_id}/"
+
+    try:
+        import requests
+    except ModuleNotFoundError:  # pragma: no cover - bootstrap guards this in runtime
+        return None
+
+    try:
+        response = requests.get(
+            job_url,
+            timeout=15,
+            headers={
+                "User-Agent": (
+                    "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) "
+                    "AppleWebKit/537.36 (KHTML, like Gecko) "
+                    "Chrome/124.0.0.0 Safari/537.36"
+                ),
+                "Accept-Language": "en-US,en;q=0.9",
+            },
+        )
+    except requests.RequestException:
+        return None
+
+    if response.status_code >= 400 or not response.text.strip():
+        return None
+
+    html = response.text
+    metadata = _extract_linkedin_guest_job_metadata(html)
+    jd_text = _extract_linkedin_guest_job_description_markdown(html)
+    if jd_text is None:
+        return None
+
+    return {
+        "job_id": _normalize_optional_text(card.get("job_id")),
+        "job_url": job_url,
+        "source_type": "linkedin_guest_job_page",
+        "source_url": job_url,
+        "company_name": metadata.get("company_name") or _gmail_card_company_name(card),
+        "role_title": metadata.get("role_title") or _gmail_card_role_title(card),
+        "jd_text": jd_text,
+    }
+
+
+def _extract_linkedin_guest_job_metadata(html: str) -> dict[str, str | None]:
+    for candidate in _linkedin_guest_job_jsonld_candidates(html):
+        role_title = _normalize_optional_text(candidate.get("title"))
+        hiring_org = candidate.get("hiringOrganization")
+        company_name = None
+        if isinstance(hiring_org, Mapping):
+            company_name = _normalize_optional_text(hiring_org.get("name"))
+        if role_title or company_name:
+            return {
+                "role_title": role_title,
+                "company_name": company_name,
+            }
+    return {
+        "role_title": None,
+        "company_name": None,
+    }
+
+
+def _extract_linkedin_guest_job_description_markdown(html: str) -> str | None:
+    for candidate in _linkedin_guest_job_jsonld_candidates(html):
+        description = _normalize_optional_text(
+            candidate.get("description"),
+            preserve_whitespace=True,
+        )
+        if description:
+            return _normalize_markdown_body(_html_fragment_to_text(description))
+
+    match = LINKEDIN_GUEST_JOB_DESCRIPTION_RE.search(html)
+    if match is None:
+        return None
+    body = _html_fragment_to_text(match.group("body"))
+    if not body.strip():
+        return None
+    return _normalize_markdown_body(body)
+
+
+def _linkedin_guest_job_jsonld_candidates(html: str) -> list[Mapping[str, Any]]:
+    candidates: list[Mapping[str, Any]] = []
+    for match in LINKEDIN_GUEST_JOB_JSONLD_RE.finditer(html):
+        payload = unescape(match.group("payload")).strip()
+        if not payload:
+            continue
+        try:
+            decoded = json.loads(payload)
+        except json.JSONDecodeError:
+            continue
+        if isinstance(decoded, Mapping) and _jsonld_job_posting_candidate(decoded):
+            candidates.append(decoded)
+        elif isinstance(decoded, Sequence) and not isinstance(decoded, (str, bytes)):
+            for item in decoded:
+                if isinstance(item, Mapping) and _jsonld_job_posting_candidate(item):
+                    candidates.append(item)
+    return candidates
+
+
+def _jsonld_job_posting_candidate(payload: Mapping[str, Any]) -> bool:
+    raw_type = payload.get("@type")
+    if isinstance(raw_type, str):
+        return raw_type.lower() == "jobposting"
+    if isinstance(raw_type, Sequence) and not isinstance(raw_type, (str, bytes)):
+        return any(isinstance(item, str) and item.lower() == "jobposting" for item in raw_type)
+    return False
+
+
+def _html_fragment_to_text(html_fragment: str) -> str:
+    rendered = HTML_BLOCK_TAG_RE.sub("\n", html_fragment)
+    rendered = HTML_TAG_RE.sub("", rendered)
+    rendered = unescape(rendered)
+    rendered = rendered.replace("\r\n", "\n").replace("\r", "\n")
+    rendered = MULTILINE_BLANKS_RE.sub("\n\n", rendered)
+    return rendered.strip()
 
 
 def _gmail_recovery_candidate_sort_key(candidate: Mapping[str, Any]) -> tuple[int, str]:
@@ -3635,18 +4043,26 @@ def _build_gmail_posting_materialization_target(
     *,
     lead_status: str,
     jd_path: Path,
+    job_posting_id: str | None = None,
     blocking_reason_code: str | None = None,
 ) -> dict[str, Any]:
     ready = lead_status == LEAD_STATUS_INCOMPLETE and jd_path.exists() and blocking_reason_code is None
+    if job_posting_id is not None:
+        ready = True
     if blocking_reason_code is not None:
         reason_code = blocking_reason_code
+    elif job_posting_id is not None:
+        reason_code = None
     else:
         reason_code = None if ready else MANIFEST_REASON_MISSING_JD
-    return {
+    target = {
         "ready": ready,
         "reason_code": reason_code,
         "required_artifacts": [str(jd_path.resolve())] if jd_path.exists() else [],
     }
+    if job_posting_id is not None:
+        target["created_entities"] = {"job_posting_id": job_posting_id}
+    return target
 
 
 def _write_gmail_lead_manifest(
