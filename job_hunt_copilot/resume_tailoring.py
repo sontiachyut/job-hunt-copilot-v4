@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import os
 import re
 import shutil
 import sqlite3
@@ -110,6 +111,11 @@ STEP_6_BULLET_TARGET_MIN = 210
 STEP_6_BULLET_TARGET_MAX = 255
 STEP_6_BULLET_HARD_MIN = 100
 STEP_6_BULLET_HARD_MAX = 275
+LATEX_BIN_CANDIDATE_DIRS = (
+    "/Library/TeX/texbin",
+    "/opt/homebrew/bin",
+    "/usr/local/bin",
+)
 
 FRONTEND_AI_TRACK = "frontend_ai"
 DISTRIBUTED_INFRA_TRACK = "distributed_infra"
@@ -4055,13 +4061,13 @@ def _compile_tailored_resume(
     role_title: str,
 ) -> dict[str, Any]:
     workspace_dir = paths.tailoring_workspace_dir(company_name, role_title)
-    latexmk = shutil.which("latexmk")
-    pdflatex = shutil.which("pdflatex")
+    latexmk = _resolve_latex_binary("latexmk")
+    pdflatex = _resolve_latex_binary("pdflatex")
     resume_filename = paths.tailoring_resume_tex_path(company_name, role_title).name
     command: list[str]
     if latexmk:
         command = [
-            latexmk,
+            str(latexmk),
             "-pdf",
             "-interaction=nonstopmode",
             "-halt-on-error",
@@ -4070,7 +4076,7 @@ def _compile_tailored_resume(
         ]
     elif pdflatex:
         command = [
-            pdflatex,
+            str(pdflatex),
             "-interaction=nonstopmode",
             "-halt-on-error",
             "-file-line-error",
@@ -4088,6 +4094,9 @@ def _compile_tailored_resume(
         capture_output=True,
         text=True,
         check=False,
+        env=_latex_subprocess_env(
+            *(path.parent for path in (latexmk, pdflatex) if path is not None)
+        ),
     )
     pdf_path = workspace_dir / "resume.pdf"
     final_pdf_path = paths.tailoring_pdf_path(company_name, role_title)
@@ -4116,6 +4125,30 @@ def _compile_tailored_resume(
         "final_pdf_relative_path": paths.relative_to_root(final_pdf_path).as_posix(),
         "page_count": page_count,
     }
+
+
+def _resolve_latex_binary(binary_name: str) -> Path | None:
+    resolved = shutil.which(binary_name)
+    if resolved:
+        return Path(resolved)
+    for candidate_dir in LATEX_BIN_CANDIDATE_DIRS:
+        candidate_path = Path(candidate_dir) / binary_name
+        if candidate_path.is_file() and os.access(candidate_path, os.X_OK):
+            return candidate_path
+    return None
+
+
+def _latex_subprocess_env(*binary_dirs: Path) -> dict[str, str]:
+    env = dict(os.environ)
+    existing_entries = [entry for entry in env.get("PATH", "").split(os.pathsep) if entry]
+    desired_entries = [str(path) for path in binary_dirs if str(path)]
+    desired_entries.extend(LATEX_BIN_CANDIDATE_DIRS)
+    merged_entries: list[str] = []
+    for entry in desired_entries + existing_entries:
+        if entry and entry not in merged_entries:
+            merged_entries.append(entry)
+    env["PATH"] = os.pathsep.join(merged_entries)
+    return env
 
 
 def _read_pdf_page_count(pdf_path: Path) -> int:

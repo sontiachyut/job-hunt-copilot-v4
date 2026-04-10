@@ -1,11 +1,13 @@
 from __future__ import annotations
 
+import os
 import shutil
 import sqlite3
 from pathlib import Path
 
 import yaml
 
+from job_hunt_copilot import resume_tailoring as resume_tailoring_module
 from job_hunt_copilot.bootstrap import run_bootstrap
 from job_hunt_copilot.paths import ProjectPaths
 from job_hunt_copilot.resume_tailoring import (
@@ -53,6 +55,27 @@ def bootstrap_project(tmp_path):
     create_minimal_project(project_root)
     run_bootstrap(project_root=project_root)
     return project_root
+
+
+def test_resolve_latex_binary_falls_back_to_known_candidate_dirs(tmp_path, monkeypatch):
+    fake_bin_dir = tmp_path / "texbin"
+    fake_bin_dir.mkdir()
+    fake_latexmk = fake_bin_dir / "latexmk"
+    fake_latexmk.write_text("#!/bin/sh\nexit 0\n", encoding="utf-8")
+    fake_latexmk.chmod(0o755)
+
+    monkeypatch.setattr(
+        resume_tailoring_module,
+        "LATEX_BIN_CANDIDATE_DIRS",
+        (str(fake_bin_dir),),
+    )
+    monkeypatch.setattr(resume_tailoring_module.shutil, "which", lambda _name: None)
+
+    resolved = resume_tailoring_module._resolve_latex_binary("latexmk")
+    env = resume_tailoring_module._latex_subprocess_env(fake_bin_dir)
+
+    assert resolved == fake_latexmk
+    assert env["PATH"].split(os.pathsep)[0] == str(fake_bin_dir)
 
 
 def bootstrap_project_with_real_tailoring_assets(tmp_path):
