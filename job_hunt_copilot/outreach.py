@@ -1078,7 +1078,7 @@ class DeterministicOutreachDraftRenderer(OutreachDraftRenderer):
                 "right person or forward my resume internally."
             ),
         ]
-        include_snippet = context.recipient_type != RECIPIENT_TYPE_HIRING_MANAGER
+        include_snippet = True
         if include_snippet:
             body_lines.extend(
                 [

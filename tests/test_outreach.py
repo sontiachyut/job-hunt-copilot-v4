@@ -1039,6 +1039,7 @@ def test_role_targeted_draft_batch_persists_messages_artifacts_and_transitions(t
     assert "Forwardable snippet:" in recruiter_body
     assert "seem closely tied to this team" in manager_body
     assert "15-minute Zoom" in manager_body
+    assert "Forwardable snippet:" in manager_body
 
     send_result_payload = json.loads(
         Path(recruiter_message.send_result_artifact_path).read_text(encoding="utf-8")
