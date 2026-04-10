@@ -831,6 +831,57 @@ def test_generate_tailoring_intelligence_keeps_unsupported_requirements_as_expli
     )
 
 
+def test_generate_tailoring_intelligence_filters_jd_noise_and_scores_ai_resume_fit(tmp_path):
+    _, paths, connection, _ = prepare_real_tailoring_run(
+        tmp_path,
+        jd_body=(
+            "Key Responsibilities\n"
+            "Build Python-based cloud-native services with LLMs, embeddings, and agentic workflows.\n"
+            "Implement RAG-style retrieval flows and automate user-facing operational analysis.\n"
+            "Required Skills & Experience\n"
+            "3+ years of software engineering experience.\n"
+            "Strong proficiency in Python and AWS.\n"
+            "Internal Application Policy\n"
+            "Internal applicants must be in good standing.\n"
+            "It is the policy of Example Corp to ensure equal employment opportunity without discrimination.\n"
+        ),
+    )
+
+    result = generate_tailoring_intelligence(
+        connection,
+        paths,
+        job_posting_id="jp_test",
+        timestamp="2026-04-06T20:10:00Z",
+    )
+
+    step_3_payload = yaml.safe_load(
+        paths.tailoring_step_3_jd_signals_path("Acme Data Systems", "Software Engineer").read_text(
+            encoding="utf-8"
+        )
+    )
+    step_6_payload = yaml.safe_load(
+        paths.tailoring_step_6_candidate_bullets_path("Acme Data Systems", "Software Engineer").read_text(
+            encoding="utf-8"
+        )
+    )
+    step_7_payload = yaml.safe_load(
+        paths.tailoring_step_7_verification_path("Acme Data Systems", "Software Engineer").read_text(
+            encoding="utf-8"
+        )
+    )
+
+    signals = [str(signal["signal"]).lower() for signal in step_3_payload["signals"]]
+    assert "required skills & experience" not in signals
+    assert not any("internal applicants must" in signal for signal in signals)
+    assert not any("equal employment opportunity" in signal for signal in signals)
+    assert step_6_payload["selected_focus"] == "ai_application"
+    assert "agentic ai projects" in step_6_payload["summary"].lower()
+    assert result.verification_outcome == "pass"
+    assert step_7_payload["verification_outcome"] == "pass"
+    assert step_7_payload["agent_score"] >= 60
+    assert step_7_payload["jd_coverage_score"] >= 0.55
+
+
 def test_finalize_tailoring_run_applies_payload_compiles_pdf_and_updates_status(tmp_path):
     _, paths, connection, bootstrap_result = prepare_real_tailoring_run(
         tmp_path,
@@ -958,6 +1009,8 @@ def test_mandatory_agent_review_approval_moves_posting_to_requires_contacts(tmp_
     )
     assert review_payload["reviewer_type"] == MANDATORY_REVIEWER_AGENT
     assert review_payload["decision_type"] == RESUME_REVIEW_STATUS_APPROVED
+    assert review_payload["agent_review_score"] >= 0
+    assert review_payload["jd_coverage_score"] >= 0
     assert review_payload["outreach_handoff"]["ready_for_outreach"] is False
     assert review_payload["new_posting_status"] == JOB_POSTING_STATUS_REQUIRES_CONTACTS
 
