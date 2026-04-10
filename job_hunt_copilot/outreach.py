@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import base64
 import html
 import hashlib
 import json
@@ -7,6 +8,7 @@ import re
 import sqlite3
 from dataclasses import dataclass
 from datetime import UTC, date, datetime, time, timedelta, tzinfo
+from email.message import EmailMessage
 from pathlib import Path
 from typing import Any, Mapping, Protocol, Sequence
 from zoneinfo import ZoneInfo
@@ -356,6 +358,98 @@ class SendAttemptOutcome:
 class OutreachMessageSender(Protocol):
     def send(self, message: OutboundOutreachMessage) -> SendAttemptOutcome:
         raise NotImplementedError
+
+
+class GmailApiOutreachSender:
+    def __init__(
+        self,
+        paths: ProjectPaths,
+        *,
+        service_factory: object | None = None,
+    ) -> None:
+        self._paths = paths
+        self._service_factory = service_factory
+
+    def send(self, message: OutboundOutreachMessage) -> SendAttemptOutcome:
+        try:
+            service = self._build_service()
+            mime_message = self._build_mime_message(message)
+            raw_payload = base64.urlsafe_b64encode(mime_message.as_bytes()).decode("ascii")
+            response = (
+                service.users()
+                .messages()
+                .send(userId="me", body={"raw": raw_payload})
+                .execute()
+            )
+        except FileNotFoundError as exc:
+            return SendAttemptOutcome(
+                outcome=SEND_OUTCOME_FAILED,
+                reason_code="missing_resume_attachment",
+                message=str(exc),
+            )
+        except Exception as exc:
+            return SendAttemptOutcome(
+                outcome=SEND_OUTCOME_FAILED,
+                reason_code="gmail_send_failed",
+                message=str(exc),
+            )
+
+        delivery_tracking_id = _normalize_optional_text(response.get("id"))
+        if delivery_tracking_id is None:
+            return SendAttemptOutcome(
+                outcome=SEND_OUTCOME_AMBIGUOUS,
+                reason_code="gmail_missing_message_id",
+                message="Gmail send succeeded without returning a message id.",
+            )
+        sent_at = _gmail_sent_at_from_response(response)
+        return SendAttemptOutcome(
+            outcome=SEND_OUTCOME_SENT,
+            thread_id=_normalize_optional_text(response.get("threadId")),
+            delivery_tracking_id=delivery_tracking_id,
+            sent_at=sent_at,
+        )
+
+    def _build_service(self) -> Any:
+        if self._service_factory is not None:
+            return self._service_factory()
+        from .gmail_alerts import _build_gmail_service
+
+        return _build_gmail_service(self._paths)
+
+    def _build_mime_message(self, message: OutboundOutreachMessage) -> EmailMessage:
+        mime_message = EmailMessage()
+        mime_message["To"] = message.recipient_email
+        mime_message["Subject"] = message.subject
+        mime_message.set_content(message.body_text)
+        if message.body_html:
+            mime_message.add_alternative(message.body_html, subtype="html")
+        if message.resume_attachment_path:
+            attachment_path = Path(message.resume_attachment_path)
+            attachment_bytes = attachment_path.read_bytes()
+            mime_message.add_attachment(
+                attachment_bytes,
+                maintype="application",
+                subtype="pdf",
+                filename=attachment_path.name,
+            )
+        return mime_message
+
+
+def _gmail_sent_at_from_response(response: Mapping[str, Any]) -> str:
+    internal_date = _normalize_optional_text(response.get("internalDate"))
+    if internal_date:
+        try:
+            internal_date_ms = int(internal_date)
+        except ValueError:
+            internal_date_ms = 0
+        if internal_date_ms > 0:
+            return (
+                datetime.fromtimestamp(internal_date_ms / 1000, tz=UTC)
+                .replace(microsecond=0)
+                .isoformat()
+                .replace("+00:00", "Z")
+            )
+    return datetime.now(tz=UTC).replace(microsecond=0).isoformat().replace("+00:00", "Z")
 
 
 @dataclass(frozen=True)

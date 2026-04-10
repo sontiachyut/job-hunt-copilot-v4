@@ -8,6 +8,7 @@ import sys
 from datetime import timedelta, timezone
 from pathlib import Path
 
+from job_hunt_copilot.bootstrap import run_bootstrap
 from job_hunt_copilot.chat_runtime import (
     build_chat_review_queue,
     build_chat_startup_dashboard,
@@ -21,6 +22,7 @@ from job_hunt_copilot.maintenance import (
     MaintenanceValidationCommand,
     run_daily_maintenance_cycle,
 )
+from job_hunt_copilot.outreach import GmailApiOutreachSender
 from job_hunt_copilot.paths import ProjectPaths
 from job_hunt_copilot.local_runtime import (
     begin_chat_operator_session,
@@ -110,6 +112,20 @@ def test_maintenance_run_command_uses_current_python_when_requested_binary_missi
         "pytest",
         "tests/test_runtime_pack.py",
     ]
+
+
+def test_supervisor_dependencies_default_to_gmail_outreach_sender_when_available(
+    tmp_path: Path,
+):
+    project_root = tmp_path / "repo"
+    project_root.mkdir()
+    create_minimal_project(project_root)
+    run_bootstrap(project_root=project_root)
+    paths = ProjectPaths.from_root(project_root)
+
+    resolved = local_runtime._resolve_supervisor_action_dependencies(paths, None)
+
+    assert isinstance(resolved.outreach_sender, GmailApiOutreachSender)
 
 
 def build_test_maintenance_dependencies(

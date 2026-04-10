@@ -1,7 +1,10 @@
 from __future__ import annotations
 
+import base64
 import json
 import sqlite3
+from email import policy
+from email.parser import BytesParser
 from pathlib import Path
 from zoneinfo import ZoneInfo
 
@@ -22,6 +25,8 @@ from job_hunt_copilot.outreach import (
     MESSAGE_STATUS_FAILED,
     MESSAGE_STATUS_GENERATED,
     MESSAGE_STATUS_SENT,
+    GmailApiOutreachSender,
+    OutboundOutreachMessage,
     OutreachDraftingError,
     SendAttemptOutcome,
     POSTING_CONTACT_STATUS_EXHAUSTED,
@@ -617,6 +622,91 @@ def test_send_set_prefers_ready_contacts_for_each_primary_class(tmp_path: Path):
     assert all(contact.readiness_state == "ready" for contact in plan.selected_contacts)
 
     connection.close()
+
+
+def test_gmail_api_outreach_sender_builds_message_and_attachment(tmp_path: Path):
+    project_root, _ = bootstrap_project(tmp_path)
+    attachment_path = project_root / "resume.pdf"
+    attachment_path.write_bytes(b"%PDF-1.4 test resume\n")
+
+    class FakeSendRequest:
+        def __init__(self, response, capture):  # type: ignore[no-untyped-def]
+            self._response = response
+            self._capture = capture
+
+        def execute(self):  # type: ignore[no-untyped-def]
+            return self._response
+
+    class FakeMessagesResource:
+        def __init__(self, response, capture):  # type: ignore[no-untyped-def]
+            self._response = response
+            self._capture = capture
+
+        def send(self, *, userId, body):  # type: ignore[no-untyped-def]
+            self._capture["userId"] = userId
+            self._capture["body"] = body
+            return FakeSendRequest(self._response, self._capture)
+
+    class FakeUsersResource:
+        def __init__(self, response, capture):  # type: ignore[no-untyped-def]
+            self._response = response
+            self._capture = capture
+
+        def messages(self):  # type: ignore[no-untyped-def]
+            return FakeMessagesResource(self._response, self._capture)
+
+    class FakeGmailService:
+        def __init__(self, response, capture):  # type: ignore[no-untyped-def]
+            self._response = response
+            self._capture = capture
+
+        def users(self):  # type: ignore[no-untyped-def]
+            return FakeUsersResource(self._response, self._capture)
+
+    capture: dict[str, object] = {}
+    sender = GmailApiOutreachSender(
+        ProjectPaths.from_root(project_root),
+        service_factory=lambda: FakeGmailService(
+            {
+                "id": "gmail-message-123",
+                "threadId": "gmail-thread-456",
+                "internalDate": "1770000000000",
+            },
+            capture,
+        ),
+    )
+
+    result = sender.send(
+        message=OutboundOutreachMessage(
+            outreach_message_id="om_123",
+            contact_id="ct_123",
+            job_posting_id="jp_123",
+            job_posting_contact_id="jpc_123",
+            outreach_mode="role_targeted",
+            recipient_email="target@example.com",
+            subject="Tailored intro",
+            body_text="Plain text body",
+            body_html="<p>HTML body</p>",
+            resume_attachment_path=str(attachment_path),
+        )
+    )
+    assert result.outcome == "sent"
+    assert result.thread_id == "gmail-thread-456"
+    assert result.delivery_tracking_id == "gmail-message-123"
+    assert capture["userId"] == "me"
+
+    raw_payload = str(capture["body"]["raw"])
+    parsed = BytesParser(policy=policy.default).parsebytes(
+        base64.urlsafe_b64decode(raw_payload.encode("ascii"))
+    )
+    assert parsed["To"] == "target@example.com"
+    assert parsed["Subject"] == "Tailored intro"
+    body_parts = list(parsed.walk())
+    assert any(part.get_content_type() == "text/plain" for part in body_parts)
+    assert any(part.get_content_type() == "text/html" for part in body_parts)
+    attachment_parts = [part for part in body_parts if part.get_content_disposition() == "attachment"]
+    assert len(attachment_parts) == 1
+    assert attachment_parts[0].get_filename() == "resume.pdf"
 
 
 def test_send_set_waits_for_selected_contact_without_usable_email(tmp_path: Path):

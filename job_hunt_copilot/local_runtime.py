@@ -30,6 +30,7 @@ from .maintenance import (
     build_default_maintenance_plan,
     review_maintenance_change_batch as review_persisted_maintenance_change_batch,
 )
+from .outreach import GmailApiOutreachSender
 from .paths import ProjectPaths
 from .records import new_canonical_id, now_utc_iso
 from .resume_tailoring import (
@@ -187,15 +188,25 @@ def _default_gmail_alert_collector(
     return GmailLinkedInAlertMailboxCollector(paths)
 
 
+def _default_outreach_sender(
+    paths: ProjectPaths,
+) -> GmailApiOutreachSender | None:
+    if not gmail_mailbox_polling_configured(paths):
+        return None
+    return GmailApiOutreachSender(paths)
+
+
 def _resolve_supervisor_action_dependencies(
     paths: ProjectPaths,
     action_dependencies: SupervisorActionDependencies | None,
 ) -> SupervisorActionDependencies:
     default_gmail_alert_collector = _default_gmail_alert_collector(paths)
+    default_outreach_sender = _default_outreach_sender(paths)
     default_maintenance_dependencies = _default_maintenance_dependencies(paths)
     if action_dependencies is None:
         return SupervisorActionDependencies(
             gmail_alert_collector=default_gmail_alert_collector,
+            outreach_sender=default_outreach_sender,
             maintenance_dependencies=default_maintenance_dependencies
         )
     resolved_gmail_alert_collector = action_dependencies.gmail_alert_collector
@@ -205,8 +216,12 @@ def _resolve_supervisor_action_dependencies(
     resolved_maintenance_dependencies = action_dependencies.maintenance_dependencies
     if resolved_maintenance_dependencies is None:
         resolved_maintenance_dependencies = default_maintenance_dependencies
+    resolved_outreach_sender = action_dependencies.outreach_sender
+    if resolved_outreach_sender is None:
+        resolved_outreach_sender = default_outreach_sender
     if (
         resolved_gmail_alert_collector is action_dependencies.gmail_alert_collector
+        and resolved_outreach_sender is action_dependencies.outreach_sender
         and resolved_maintenance_dependencies is action_dependencies.maintenance_dependencies
     ):
         return action_dependencies
@@ -216,7 +231,7 @@ def _resolve_supervisor_action_dependencies(
         apollo_contact_enrichment_provider=action_dependencies.apollo_contact_enrichment_provider,
         recipient_profile_extractor=action_dependencies.recipient_profile_extractor,
         email_finder_providers=action_dependencies.email_finder_providers,
-        outreach_sender=action_dependencies.outreach_sender,
+        outreach_sender=resolved_outreach_sender,
         feedback_observer=action_dependencies.feedback_observer,
         local_timezone=action_dependencies.local_timezone,
         maintenance_dependencies=resolved_maintenance_dependencies,
