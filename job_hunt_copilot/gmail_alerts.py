@@ -877,9 +877,7 @@ def refresh_persisted_gmail_collection(
     collection_dir: Path | str,
 ) -> GmailCollectionRefreshResult:
     paths = ProjectPaths.from_root(project_root)
-    resolved_collection_dir = paths.resolve_from_root(collection_dir)
-    if resolved_collection_dir.is_file():
-        resolved_collection_dir = resolved_collection_dir.parent
+    resolved_collection_dir = _resolve_gmail_collection_dir_reference(paths, collection_dir)
     email_markdown_path = resolved_collection_dir / "email.md"
     email_json_path = resolved_collection_dir / "email.json"
     job_cards_path = resolved_collection_dir / "job-cards.json"
@@ -982,6 +980,16 @@ def refresh_persisted_gmail_collection(
         selected_body_text=selected_body_text,
         cards=cards,
     )
+
+
+def _resolve_gmail_collection_dir_reference(paths: ProjectPaths, collection_dir: Path | str) -> Path:
+    normalized_ref = str(collection_dir).split("#", 1)[0]
+    resolved = paths.resolve_from_root(normalized_ref)
+    if resolved.name in {"job-cards.json", "email.json"}:
+        return resolved.parent
+    if resolved.is_file():
+        return resolved.parent
+    return resolved
 
 
 def _persist_collection_unit(

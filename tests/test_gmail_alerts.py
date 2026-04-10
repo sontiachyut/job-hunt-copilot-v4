@@ -11,6 +11,7 @@ from job_hunt_copilot.gmail_alerts import (
     BODY_REPRESENTATION_TEXT_HTML_DERIVED,
     BODY_REPRESENTATION_TEXT_PLAIN,
     GmailLinkedInAlertMailboxCollector,
+    refresh_persisted_gmail_collection,
     ingest_gmail_alert_batch,
 )
 from job_hunt_copilot.linkedin_scraping import (
@@ -693,6 +694,40 @@ def test_repair_stale_blocked_gmail_leads_reparses_collection_and_materializes(t
         "source_url": "https://www.linkedin.com/jobs/view/4389508705/",
     }
     assert posting_count == 1
+
+
+def test_refresh_persisted_gmail_collection_accepts_job_cards_source_reference(tmp_path):
+    project_root = bootstrap_project(tmp_path)
+
+    batch = build_batch(
+        build_message(
+            gmail_message_id="gmail-refresh-001",
+            subject="Achyutaram: your job alert for Software Engineer Hiring in Greater Phoenix Area has been created",
+            text_plain_body=(
+                "Software Engineer\n"
+                "GitKraken\n"
+                "Scottsdale, Arizona, United States\n"
+                "View job\n"
+                "https://www.linkedin.com/comm/jobs/view/4378687782?trackingId=abc\n"
+            ),
+        ),
+        ingestion_run_id="gmail-refresh-run-001",
+    )
+
+    result = ingest_gmail_alert_batch(project_root, batch=batch)
+    collection = result.collection_results[0]
+
+    refreshed = refresh_persisted_gmail_collection(
+        project_root,
+        collection_dir=(
+            f"{ProjectPaths.from_root(project_root).relative_to_root(collection.job_cards_path).as_posix()}#card_index=1"
+        ),
+    )
+
+    assert refreshed.collection_dir == collection.collection_dir
+    assert refreshed.email_json_path == collection.email_json_path
+    assert refreshed.job_cards_path == collection.job_cards_path
+    assert refreshed.parseable_job_card_count == 1
 
 
 def test_gmail_mailbox_collector_prepares_batch_from_live_api_shape(tmp_path):
