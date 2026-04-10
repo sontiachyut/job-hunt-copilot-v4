@@ -3767,6 +3767,7 @@ def _render_markdown_email_html(body_markdown: str) -> str:
     html_blocks: list[str] = []
     paragraph_lines: list[str] = []
     blockquote_lines: list[str] = []
+    pitch_lines = _job_hunt_copilot_pitch_lines()
 
     def flush_paragraph() -> None:
         nonlocal paragraph_lines
@@ -3784,21 +3785,56 @@ def _render_markdown_email_html(body_markdown: str) -> str:
             )
             blockquote_lines = []
 
-    for raw_line in body_markdown.splitlines():
+    body_lines = body_markdown.splitlines()
+    index = 0
+    while index < len(body_lines):
+        raw_line = body_lines[index]
         stripped = raw_line.rstrip()
         if not stripped:
             flush_paragraph()
             flush_blockquote()
+            index += 1
+            continue
+        if body_lines[index : index + len(pitch_lines)] == pitch_lines:
+            flush_paragraph()
+            flush_blockquote()
+            html_blocks.append(_render_job_hunt_copilot_callout_html())
+            index += len(pitch_lines)
             continue
         if stripped.startswith("> "):
             flush_paragraph()
             blockquote_lines.append(stripped[2:])
+            index += 1
             continue
         flush_blockquote()
         paragraph_lines.append(stripped)
+        index += 1
     flush_paragraph()
     flush_blockquote()
     return "<html><body>" + "".join(html_blocks) + "</body></html>\n"
+
+
+def _render_job_hunt_copilot_callout_html() -> str:
+    line_two, line_three = _job_hunt_copilot_pitch_lines()[1:]
+    repo_url = html.escape(JOB_HUNT_COPILOT_REPO_URL, quote=True)
+    return (
+        '<div style="margin:16px 0;padding:16px 18px;'
+        'border:1px solid #c9dcff;border-radius:14px;'
+        'background:linear-gradient(180deg,#f8fbff 0%,#eef5ff 100%);">'
+        '<div style="margin:0 0 10px 0;font-size:12px;line-height:1.2;'
+        'font-weight:700;letter-spacing:0.08em;text-transform:uppercase;'
+        'color:#2952a3;">AI Agent I Built</div>'
+        '<p style="margin:0 0 10px 0;color:#0f172a;line-height:1.55;">'
+        'I also built '
+        f'<a href="{repo_url}" '
+        'style="color:#1d4ed8;font-weight:700;text-decoration:none;">'
+        'Job Hunt Copilot</a>'
+        ', an AI agent I use for my own job search to find leads and autonomously send outreach.'
+        '</p>'
+        f'<p style="margin:0 0 10px 0;color:#334155;line-height:1.55;">{html.escape(line_two)}</p>'
+        f'<p style="margin:0;color:#334155;line-height:1.55;">{html.escape(line_three)}</p>'
+        "</div>"
+    )
 
 
 def _read_yaml_file(path: Path) -> Mapping[str, Any]:

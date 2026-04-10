@@ -1034,6 +1034,7 @@ def test_role_targeted_draft_batch_persists_messages_artifacts_and_transitions(t
     )
     recruiter_body = Path(recruiter_message.body_text_artifact_path).read_text(encoding="utf-8")
     manager_body = Path(manager_message.body_text_artifact_path).read_text(encoding="utf-8")
+    recruiter_html = Path(recruiter_message.body_html_artifact_path).read_text(encoding="utf-8")
     assert "I'm reaching out to you specifically because" in recruiter_body
     assert "recruiting function close to the target role" in recruiter_body
     assert "Job Hunt Copilot (https://github.com/sontiachyut/job-hunt-copilot-v4)" in recruiter_body
@@ -1042,6 +1043,8 @@ def test_role_targeted_draft_batch_persists_messages_artifacts_and_transitions(t
     assert "running the copilot autonomously" in recruiter_body
     assert "I personally monitor every email as well" in recruiter_body
     assert "Forwardable snippet:" in recruiter_body
+    assert 'AI Agent I Built' in recruiter_html
+    assert 'href="https://github.com/sontiachyut/job-hunt-copilot-v4"' in recruiter_html
     assert "seem closely tied to this team" in manager_body
     assert "15-minute Zoom" in manager_body
     assert "Job Hunt Copilot (https://github.com/sontiachyut/job-hunt-copilot-v4)" in manager_body
