@@ -1086,11 +1086,10 @@ class DeterministicOutreachDraftRenderer(OutreachDraftRenderer):
             body_lines.extend(
                 [
                     "",
-                    "Forwardable snippet:",
-                    f"> Candidate: {context.sender.name} | {_snippet_stage(context.sender)} | {_compact_linkedin(context.sender.linkedin_url)}",
-                    f"> Experience: {_experience_summary_line(context)}",
-                    f"> Impact: {_impact_summary_line(context)}",
-                    f"> Fit: {fit_summary}",
+                    "I've included a short snippet below that you can paste into an IM/Email:",
+                    "[snippet]",
+                    _render_forwardable_snippet_text(context),
+                    "[/snippet]",
                 ]
             )
         body_lines.extend(
@@ -2885,6 +2884,19 @@ def _job_hunt_copilot_pitch_lines() -> list[str]:
     ]
 
 
+def _render_forwardable_snippet_text(context: RoleTargetedDraftContext) -> str:
+    stage = _snippet_stage(context.sender)
+    experience = _experience_summary_line(context)
+    impact = _impact_summary_line(context)
+    linkedin = _compact_linkedin(context.sender.linkedin_url)
+    return (
+        f"Hi, I see you have a {context.role_title} role open at {context.company_name}. "
+        f"Here is a candidate for your consideration. He is {stage} with {experience}. "
+        f"{impact}. His background seems like a strong fit. "
+        f"Here's his profile: {linkedin}"
+    )
+
+
 def _persist_rendered_draft(
     connection: sqlite3.Connection,
     paths: ProjectPaths,
@@ -3768,6 +3780,7 @@ def _render_markdown_email_html(body_markdown: str) -> str:
     paragraph_lines: list[str] = []
     blockquote_lines: list[str] = []
     pitch_lines = _job_hunt_copilot_pitch_lines()
+    snippet_intro_line = "I've included a short snippet below that you can paste into an IM/Email:"
 
     def flush_paragraph() -> None:
         nonlocal paragraph_lines
@@ -3794,6 +3807,37 @@ def _render_markdown_email_html(body_markdown: str) -> str:
             flush_paragraph()
             flush_blockquote()
             index += 1
+            continue
+        if stripped == snippet_intro_line:
+            flush_paragraph()
+            flush_blockquote()
+            html_blocks.append(f"<p>{html.escape(snippet_intro_line)}</p>")
+            index += 1
+            if index < len(body_lines) and body_lines[index].strip() == "[snippet]":
+                snippet_lines: list[str] = []
+                index += 1
+                while index < len(body_lines):
+                    snippet_line = body_lines[index].rstrip()
+                    if snippet_line.strip() == "[/snippet]":
+                        index += 1
+                        break
+                    snippet_lines.append(snippet_line)
+                    index += 1
+                html_blocks.append(_render_forwardable_snippet_html("\n".join(snippet_lines).strip()))
+            continue
+        if stripped == "[snippet]":
+            flush_paragraph()
+            flush_blockquote()
+            snippet_lines: list[str] = []
+            index += 1
+            while index < len(body_lines):
+                snippet_line = body_lines[index].rstrip()
+                if snippet_line.strip() == "[/snippet]":
+                    index += 1
+                    break
+                snippet_lines.append(snippet_line)
+                index += 1
+            html_blocks.append(_render_forwardable_snippet_html("\n".join(snippet_lines).strip()))
             continue
         if body_lines[index : index + len(pitch_lines)] == pitch_lines:
             flush_paragraph()
@@ -3833,6 +3877,17 @@ def _render_job_hunt_copilot_callout_html() -> str:
         '</p>'
         f'<p style="margin:0 0 10px 0;color:#334155;line-height:1.55;">{html.escape(line_two)}</p>'
         f'<p style="margin:0;color:#334155;line-height:1.55;">{html.escape(line_three)}</p>'
+        "</div>"
+    )
+
+
+def _render_forwardable_snippet_html(snippet_text: str) -> str:
+    return (
+        '<div style="background:#f4f4f4;border-left:4px solid #1a73e8;'
+        "padding:12px 16px;margin:12px 0;border-radius:4px;"
+        "font-family:Arial,sans-serif;font-size:13px;color:#333;"
+        'line-height:1.5;white-space:pre-wrap;">'
+        f"{html.escape(snippet_text)}"
         "</div>"
     )
 

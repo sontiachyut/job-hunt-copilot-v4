@@ -1042,15 +1042,21 @@ def test_role_targeted_draft_batch_persists_messages_artifacts_and_transitions(t
     assert "find leads and autonomously send outreach" in recruiter_body
     assert "running the copilot autonomously" in recruiter_body
     assert "I personally monitor every email as well" in recruiter_body
-    assert "Forwardable snippet:" in recruiter_body
+    assert "I've included a short snippet below that you can paste into an IM/Email:" in recruiter_body
+    assert "[snippet]" in recruiter_body
+    assert "[/snippet]" in recruiter_body
     assert 'AI Agent I Built' in recruiter_html
     assert 'href="https://github.com/sontiachyut/job-hunt-copilot-v4"' in recruiter_html
+    assert "background:#f4f4f4" in recruiter_html
+    assert "border-left:4px solid #1a73e8" in recruiter_html
     assert "seem closely tied to this team" in manager_body
     assert "15-minute Zoom" in manager_body
     assert "Job Hunt Copilot (https://github.com/sontiachyut/job-hunt-copilot-v4)" in manager_body
     assert "running the copilot autonomously" in manager_body
     assert "I personally monitor every email as well" in manager_body
-    assert "Forwardable snippet:" in manager_body
+    assert "I've included a short snippet below that you can paste into an IM/Email:" in manager_body
+    assert "[snippet]" in manager_body
+    assert "[/snippet]" in manager_body
 
     send_result_payload = json.loads(
         Path(recruiter_message.send_result_artifact_path).read_text(encoding="utf-8")
