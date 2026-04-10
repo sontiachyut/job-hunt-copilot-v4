@@ -156,6 +156,9 @@ ACTION_POLL_GMAIL_LINKEDIN_ALERTS: Final = "poll_gmail_linkedin_alerts"
 ACTION_REPAIR_STALE_GMAIL_LEAD: Final = "repair_stale_gmail_lead"
 ACTION_BOOTSTRAP_ROLE_TARGETED_RUN: Final = "bootstrap_role_targeted_run"
 ACTION_CHECKPOINT_PIPELINE_RUN: Final = "checkpoint_pipeline_run"
+ACTION_RUN_ROLE_TARGETED_RESUME_TAILORING: Final = (
+    "run_role_targeted_resume_tailoring"
+)
 ACTION_PERFORM_MANDATORY_AGENT_REVIEW: Final = "perform_mandatory_agent_review"
 ACTION_RUN_ROLE_TARGETED_PEOPLE_SEARCH: Final = "run_role_targeted_people_search"
 ACTION_RUN_ROLE_TARGETED_EMAIL_DISCOVERY: Final = "run_role_targeted_email_discovery"
@@ -179,11 +182,14 @@ TERMINAL_DELIVERY_FEEDBACK_EVENT_STATES = frozenset(
     {"bounced", "not_bounced", "replied"}
 )
 
-ELIGIBLE_POSTING_STATUSES_FOR_NEW_RUN = frozenset({"resume_review_pending"})
-SUPPORTED_PIPELINE_CHECKPOINT_STAGES = frozenset({"agent_review", "lead_handoff"})
+ELIGIBLE_POSTING_STATUSES_FOR_NEW_RUN = frozenset({"resume_review_pending", "sourced"})
+SUPPORTED_PIPELINE_CHECKPOINT_STAGES = frozenset(
+    {"agent_review", "lead_handoff", "resume_tailoring"}
+)
 ROLE_TARGETED_PIPELINE_STAGE_ACTIONS = MappingProxyType(
     {
         "lead_handoff": ACTION_CHECKPOINT_PIPELINE_RUN,
+        "resume_tailoring": ACTION_RUN_ROLE_TARGETED_RESUME_TAILORING,
         "agent_review": ACTION_PERFORM_MANDATORY_AGENT_REVIEW,
         "people_search": ACTION_RUN_ROLE_TARGETED_PEOPLE_SEARCH,
         "email_discovery": ACTION_RUN_ROLE_TARGETED_EMAIL_DISCOVERY,
@@ -630,7 +636,7 @@ SUPERVISOR_ACTION_CATALOG = MappingProxyType(
         ACTION_CHECKPOINT_PIPELINE_RUN: SupervisorActionCatalogEntry(
             action_id=ACTION_CHECKPOINT_PIPELINE_RUN,
             work_type=WORK_TYPE_PIPELINE_RUN,
-            description="Advance a durable role-targeted pipeline run from lead handoff into mandatory agent review.",
+            description="Advance a durable role-targeted pipeline run from lead handoff toward the next resume-tailoring boundary.",
             prerequisites=(
                 "pipeline_run exists and is non-terminal",
                 "pipeline_run.current_stage is `lead_handoff`",
@@ -639,12 +645,32 @@ SUPERVISOR_ACTION_CATALOG = MappingProxyType(
             expected_outputs=(
                 "the existing pipeline_run is reused instead of creating a duplicate run",
                 "the pipeline_run remains canonical in_progress state after the checkpoint",
-                "the durable run advances into the `agent_review` stage",
+                "the durable run advances into `resume_tailoring` unless the posting already has a tailored pending-review handoff, in which case it advances into `agent_review`",
                 "the cycle summary points at exactly one selected pipeline_run",
             ),
             validation_references=(
                 "prd/spec.md §12.5A items 3, 4, 41, and 42",
                 "prd/test-spec.feature durable pipeline-run resume scenario",
+            ),
+        ),
+        ACTION_RUN_ROLE_TARGETED_RESUME_TAILORING: SupervisorActionCatalogEntry(
+            action_id=ACTION_RUN_ROLE_TARGETED_RESUME_TAILORING,
+            work_type=WORK_TYPE_PIPELINE_RUN,
+            description="Run the bounded role-targeted resume-tailoring boundary and advance the durable run into mandatory agent review when tailoring reaches the pending-review gate.",
+            prerequisites=(
+                "pipeline_run exists and is non-terminal",
+                "pipeline_run.current_stage is `resume_tailoring`",
+                "job_posting exists in canonical state",
+                "the linked posting still has a persisted JD artifact and a base resume track can be resolved for autonomous tailoring",
+            ),
+            expected_outputs=(
+                "the existing pipeline_run is reused instead of creating a duplicate run",
+                "resume_tailoring state refreshes for the selected posting inside one bounded supervisor cycle",
+                "the durable run advances to `agent_review` when tailoring reaches `resume_review_pending`, or exits terminally with honest escalation/hard-ineligible state when autonomous tailoring cannot continue",
+            ),
+            validation_references=(
+                "prd/spec.md FR-SYS-17G, FR-SYS-17H, FR-SYS-38, and FR-OPS-03",
+                "prd/test-spec.feature dependency-order and bounded supervisor work-unit scenarios",
             ),
         ),
         ACTION_PERFORM_MANDATORY_AGENT_REVIEW: SupervisorActionCatalogEntry(
@@ -3001,6 +3027,39 @@ def _validate_selected_work(
             return f"pipeline_run {selected_work.work_id!r} is missing job_posting_id."
         return None
 
+    if catalog_entry.action_id == ACTION_RUN_ROLE_TARGETED_RESUME_TAILORING:
+        pipeline_run = get_pipeline_run(connection, selected_work.work_id)
+        if pipeline_run is None:
+            return f"pipeline_run {selected_work.work_id!r} no longer exists."
+        if pipeline_run.run_status not in {RUN_STATUS_IN_PROGRESS, RUN_STATUS_PAUSED}:
+            return (
+                f"pipeline_run {selected_work.work_id!r} is not non-terminal; "
+                f"found {pipeline_run.run_status!r}."
+            )
+        if pipeline_run.current_stage != "resume_tailoring":
+            return (
+                f"pipeline_run {selected_work.work_id!r} is at unsupported resume-tailoring "
+                f"stage {pipeline_run.current_stage!r}."
+            )
+        if not pipeline_run.job_posting_id:
+            return f"pipeline_run {selected_work.work_id!r} is missing job_posting_id."
+        posting_row = connection.execute(
+            """
+            SELECT posting_status, jd_artifact_path
+            FROM job_postings
+            WHERE job_posting_id = ?
+            """,
+            (pipeline_run.job_posting_id,),
+        ).fetchone()
+        if posting_row is None:
+            return f"job_posting {pipeline_run.job_posting_id!r} no longer exists."
+        if not _optional_text(posting_row["jd_artifact_path"]):
+            return (
+                f"job_posting {pipeline_run.job_posting_id!r} is missing jd_artifact_path "
+                "for autonomous resume tailoring."
+            )
+        return None
+
     if catalog_entry.action_id == ACTION_PERFORM_MANDATORY_AGENT_REVIEW:
         pipeline_run = get_pipeline_run(connection, selected_work.work_id)
         if pipeline_run is None:
@@ -3560,13 +3619,138 @@ def _execute_selected_work_unit(
         return pipeline_run, None, None
 
     if catalog_entry.action_id == ACTION_CHECKPOINT_PIPELINE_RUN:
+        pipeline_run = _require_pipeline_run(connection, selected_work.work_id)
+        next_stage = "resume_tailoring"
+        run_summary = (
+            "Supervisor advanced the durable pipeline run from lead_handoff into the "
+            "bounded resume_tailoring boundary."
+        )
+        if pipeline_run.job_posting_id is not None:
+            latest_run = connection.execute(
+                """
+                SELECT tailoring_status, resume_review_status
+                FROM resume_tailoring_runs
+                WHERE job_posting_id = ?
+                ORDER BY COALESCE(completed_at, updated_at, created_at, started_at) DESC,
+                         resume_tailoring_run_id DESC
+                LIMIT 1
+                """,
+                (pipeline_run.job_posting_id,),
+            ).fetchone()
+            posting_row = connection.execute(
+                """
+                SELECT posting_status
+                FROM job_postings
+                WHERE job_posting_id = ?
+                """,
+                (pipeline_run.job_posting_id,),
+            ).fetchone()
+            if (
+                posting_row is not None
+                and posting_row[0] == "resume_review_pending"
+                and latest_run is not None
+                and latest_run[0] == "tailored"
+                and latest_run[1] == "resume_review_pending"
+            ):
+                next_stage = "agent_review"
+                run_summary = (
+                    "Supervisor advanced the durable pipeline run from lead_handoff into "
+                    "mandatory agent review without creating duplicate work."
+                )
+        pipeline_run = advance_pipeline_run(
+            connection,
+            selected_work.work_id,
+            current_stage=next_stage,
+            run_summary=run_summary,
+            timestamp=timestamp,
+        )
+        return pipeline_run, None, None
+
+    if catalog_entry.action_id == ACTION_RUN_ROLE_TARGETED_RESUME_TAILORING:
+        from .resume_tailoring import (
+            generate_tailoring_intelligence,
+            finalize_tailoring_run,
+        )
+
+        pipeline_run = _require_pipeline_run(connection, selected_work.work_id)
+        job_posting_id = _require_text(pipeline_run.job_posting_id, "job_posting_id")
+        intelligence_result = generate_tailoring_intelligence(
+            connection,
+            paths,
+            job_posting_id=job_posting_id,
+            timestamp=timestamp,
+        )
+        posting_row = connection.execute(
+            """
+            SELECT posting_status
+            FROM job_postings
+            WHERE job_posting_id = ?
+            """,
+            (job_posting_id,),
+        ).fetchone()
+        posting_status = _optional_text(posting_row[0]) if posting_row is not None else None
+        if intelligence_result.resume_tailoring_run_id is None:
+            if posting_status == "hard_ineligible":
+                pipeline_run = complete_pipeline_run(
+                    connection,
+                    selected_work.work_id,
+                    current_stage="hard_ineligible",
+                    run_summary=(
+                        "Supervisor completed the durable pipeline run because the posting "
+                        "was marked hard_ineligible during autonomous resume-tailoring bootstrap."
+                    ),
+                    timestamp=timestamp,
+                )
+            else:
+                reason = intelligence_result.blocked_reason_code or "resume_tailoring_unavailable"
+                pipeline_run = escalate_pipeline_run(
+                    connection,
+                    selected_work.work_id,
+                    current_stage="resume_tailoring",
+                    error_summary=(
+                        "Autonomous resume tailoring could not start for the selected "
+                        f"job_posting because {reason}."
+                    ),
+                    run_summary=(
+                        "Supervisor escalated the durable pipeline run at the "
+                        "resume_tailoring boundary because bootstrap could not continue."
+                    ),
+                    timestamp=timestamp,
+                )
+            return pipeline_run, None, None
+
+        finalize_result = finalize_tailoring_run(
+            connection,
+            paths,
+            job_posting_id=job_posting_id,
+            timestamp=timestamp,
+        )
+        if finalize_result.result != "pass":
+            reason = finalize_result.reason_code or finalize_result.result
+            pipeline_run = escalate_pipeline_run(
+                connection,
+                selected_work.work_id,
+                current_stage="resume_tailoring",
+                error_summary=(
+                    "Autonomous resume tailoring did not reach the pending-review gate "
+                    f"for job_posting {job_posting_id!r}: {reason}."
+                ),
+                run_summary=(
+                    "Supervisor escalated the durable pipeline run at the "
+                    "resume_tailoring boundary because finalize did not produce a "
+                    "pending-review tailored output."
+                ),
+                timestamp=timestamp,
+            )
+            return pipeline_run, None, None
+
         pipeline_run = advance_pipeline_run(
             connection,
             selected_work.work_id,
             current_stage="agent_review",
             run_summary=(
-                "Supervisor advanced the durable pipeline run from lead_handoff into "
-                "mandatory agent review without creating duplicate work."
+                "Supervisor completed the bounded resume_tailoring boundary and "
+                "advanced the durable pipeline run into mandatory agent review."
             ),
             timestamp=timestamp,
         )
@@ -4154,12 +4338,87 @@ def _validate_selected_work_result(
                 "Checkpointed pipeline_run is not in progress after resume; found "
                 f"{pipeline_run.run_status!r}."
             )
-        if pipeline_run.current_stage != "agent_review":
+        if pipeline_run.current_stage not in {"agent_review", "resume_tailoring"}:
             return (
-                "Lead handoff progression did not advance into agent_review; found "
-                f"{pipeline_run.current_stage!r}."
+                "Lead handoff progression did not advance into the expected next "
+                f"boundary; found {pipeline_run.current_stage!r}."
             )
         return None
+
+    if catalog_entry.action_id == ACTION_RUN_ROLE_TARGETED_RESUME_TAILORING:
+        if pipeline_run is None:
+            return (
+                "Supervisor failed to load the selected pipeline_run after running the "
+                "resume-tailoring boundary."
+            )
+        if pipeline_run.pipeline_run_id != selected_work.work_id:
+            return "Resume-tailoring progression changed the selected pipeline_run identity."
+        if pipeline_run.run_status == RUN_STATUS_IN_PROGRESS:
+            if pipeline_run.current_stage != "agent_review":
+                return (
+                    "Resume-tailoring progression did not advance into agent_review; "
+                    f"found {pipeline_run.current_stage!r}."
+                )
+            if pipeline_run.job_posting_id is None:
+                return (
+                    "Resume-tailoring progression completed without a linked job_posting_id."
+                )
+            latest_run = connection.execute(
+                """
+                SELECT tailoring_status, resume_review_status
+                FROM resume_tailoring_runs
+                WHERE job_posting_id = ?
+                ORDER BY COALESCE(completed_at, updated_at, created_at, started_at) DESC,
+                         resume_tailoring_run_id DESC
+                LIMIT 1
+                """,
+                (pipeline_run.job_posting_id,),
+            ).fetchone()
+            if latest_run is None:
+                return (
+                    "Resume-tailoring progression did not persist a resume_tailoring_run "
+                    "for the selected posting."
+                )
+            if latest_run[0] != "tailored" or latest_run[1] != "resume_review_pending":
+                return (
+                    "Resume-tailoring progression did not reach the pending-review gate; "
+                    f"found tailoring_status={latest_run[0]!r}, "
+                    f"resume_review_status={latest_run[1]!r}."
+                )
+            posting_row = connection.execute(
+                """
+                SELECT posting_status
+                FROM job_postings
+                WHERE job_posting_id = ?
+                """,
+                (pipeline_run.job_posting_id,),
+            ).fetchone()
+            if posting_row is None or posting_row[0] != "resume_review_pending":
+                return (
+                    "Resume-tailoring progression did not update the posting to "
+                    f"resume_review_pending; found {None if posting_row is None else posting_row[0]!r}."
+                )
+            return None
+        if pipeline_run.run_status == RUN_STATUS_COMPLETED:
+            if pipeline_run.current_stage != "hard_ineligible":
+                return (
+                    "Resume-tailoring completed terminally at an unexpected stage; "
+                    f"found {pipeline_run.current_stage!r}."
+                )
+            return None
+        if pipeline_run.run_status == RUN_STATUS_ESCALATED:
+            if pipeline_run.current_stage != "resume_tailoring":
+                return (
+                    "Resume-tailoring escalated at an unexpected stage; found "
+                    f"{pipeline_run.current_stage!r}."
+                )
+            if not _optional_text(pipeline_run.last_error_summary):
+                return "Resume-tailoring escalation did not persist an error summary."
+            return None
+        return (
+            "Resume-tailoring progression left the pipeline_run in an unsupported state "
+            f"{pipeline_run.run_status!r}."
+        )
 
     if catalog_entry.action_id == ACTION_PERFORM_MANDATORY_AGENT_REVIEW:
         if pipeline_run is None:

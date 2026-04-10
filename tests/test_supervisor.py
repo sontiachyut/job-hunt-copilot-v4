@@ -1141,13 +1141,13 @@ def test_run_supervisor_cycle_reuses_existing_pipeline_run_without_duplicate_his
     assert execution.pipeline_run is not None
     assert execution.pipeline_run.pipeline_run_id == pipeline_run.pipeline_run_id
     assert execution.pipeline_run.run_status == RUN_STATUS_IN_PROGRESS
-    assert execution.pipeline_run.current_stage == "agent_review"
+    assert execution.pipeline_run.current_stage == "resume_tailoring"
     assert len(stored_runs) == 1
     assert stored_runs[0]["pipeline_run_id"] == pipeline_run.pipeline_run_id
-    assert stored_runs[0]["current_stage"] == "agent_review"
+    assert stored_runs[0]["current_stage"] == "resume_tailoring"
     assert stored_runs[0]["run_summary"] == (
-        "Supervisor advanced the durable pipeline run from lead_handoff into mandatory "
-        "agent review without creating duplicate work."
+        "Supervisor advanced the durable pipeline run from lead_handoff into the "
+        "bounded resume_tailoring boundary."
     )
 
 
@@ -1534,7 +1534,7 @@ def test_run_supervisor_cycle_does_not_interrupt_active_pipeline_run_for_due_mai
     assert execution.selected_work.work_type == "pipeline_run"
     assert execution.pipeline_run is not None
     assert execution.pipeline_run.pipeline_run_id == active_run.pipeline_run_id
-    assert execution.pipeline_run.current_stage == "agent_review"
+    assert execution.pipeline_run.current_stage == "resume_tailoring"
     assert maintenance_count == 0
 
 
