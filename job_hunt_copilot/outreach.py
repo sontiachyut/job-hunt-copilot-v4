@@ -108,8 +108,60 @@ ROLE_SIGNAL_BOILERPLATE_PATTERNS: tuple[re.Pattern[str], ...] = (
     re.compile(r"\bour benefits\b", re.IGNORECASE),
     re.compile(r"\bcommitment to diversity\b", re.IGNORECASE),
 )
+ROLE_SIGNAL_NONTECHNICAL_PATTERNS: tuple[re.Pattern[str], ...] = (
+    re.compile(
+        r"^contribute to design of new functionality and expand existing functionality$",
+        re.IGNORECASE,
+    ),
+    re.compile(r"^communicat", re.IGNORECASE),
+    re.compile(r"^manage (?:a number of )?projects?", re.IGNORECASE),
+    re.compile(r"^learn and become proficient", re.IGNORECASE),
+    re.compile(r"^effective communication", re.IGNORECASE),
+    re.compile(r"^team player", re.IGNORECASE),
+    re.compile(r"^well-rounded", re.IGNORECASE),
+    re.compile(r"^strong analytical and problem-solving skills", re.IGNORECASE),
+    re.compile(r"^thrives in a fast-paced", re.IGNORECASE),
+    re.compile(r"^ability and desire", re.IGNORECASE),
+    re.compile(r"^willing to work extended hours", re.IGNORECASE),
+    re.compile(r"^passionate about building great software", re.IGNORECASE),
+)
+ROLE_SIGNAL_TECHNICAL_PRIORITY_PATTERNS: tuple[tuple[re.Pattern[str], int], ...] = (
+    (re.compile(r"\b(?:rest apis?|microservices?)\b", re.IGNORECASE), 7),
+    (re.compile(r"\b(?:spring boot|jakarta ee)\b", re.IGNORECASE), 6),
+    (re.compile(r"\b(?:java(?:\s*17\+?)?|python|scala|golang|go|c\+\+|c#)\b", re.IGNORECASE), 5),
+    (re.compile(r"\b(?:distributed|event-driven|backend|platform|infrastructure)\b", re.IGNORECASE), 5),
+    (re.compile(r"\b(?:concurrency|stream processing|relational databases?)\b", re.IGNORECASE), 5),
+    (re.compile(r"\b(?:aws|gcp|azure|cloud)\b", re.IGNORECASE), 4),
+    (re.compile(r"\b(?:jenkins|circleci|github actions|ci/cd)\b", re.IGNORECASE), 4),
+    (re.compile(r"\b(?:object-oriented design|design patterns?)\b", re.IGNORECASE), 4),
+    (re.compile(r"\b(?:security|payment systems?|real-time|scheduling|metadata|documents?|high-throughput|enterprise-scale)\b", re.IGNORECASE), 3),
+)
+ROLE_SIGNAL_SOURCE_PRIORITY: dict[str, int] = {
+    "role_intent": 2,
+    "must_have": 4,
+    "core_responsibility": 3,
+    "nice_to_have": 2,
+    "jd_fallback": 1,
+}
+ROLE_SIGNAL_LEADING_CASE_EXCEPTIONS: frozenset[str] = frozenset(
+    {
+        "java",
+        "python",
+        "scala",
+        "golang",
+        "go",
+        "aws",
+        "gcp",
+        "azure",
+        "spring",
+        "jakarta",
+        "kubernetes",
+        "docker",
+    }
+)
 ROLE_TARGETED_DRAFT_BLOCK_PATTERNS: tuple[re.Pattern[str], ...] = (
     re.compile(r"\bwork around identifies\b", re.IGNORECASE),
+    re.compile(r"\brole's focus on (?:contribute|communicat|manage|learn)\b", re.IGNORECASE),
     re.compile(r"\byour role as .+ seems close to\b", re.IGNORECASE),
     re.compile(r"\bteam behind this role\b", re.IGNORECASE),
     re.compile(r"\bwork behind this role\b", re.IGNORECASE),
@@ -2738,33 +2790,54 @@ def _select_fit_summary(
 
 
 def _role_work_area(step_3_payload: Mapping[str, Any], jd_text: str) -> str | None:
-    candidate_signals: list[str] = []
+    candidate_signals: list[tuple[str, str]] = []
     role_intent_summary = _normalize_optional_text(step_3_payload.get("role_intent_summary"))
     if role_intent_summary is not None:
         candidate_signals.extend(
-            part.strip() for part in role_intent_summary.split(";") if part.strip()
+            ("role_intent", part.strip())
+            for part in role_intent_summary.split(";")
+            if part.strip()
         )
-    for priority_key in ("core_responsibility", "must_have", "nice_to_have"):
+    for priority_key in ("must_have", "core_responsibility", "nice_to_have"):
         signals = step_3_payload.get("signals_by_priority", {}).get(priority_key) or []
         for signal in signals:
             text = _normalize_optional_text(signal.get("signal"))
             if text is not None:
-                candidate_signals.append(text)
-    for raw_signal in candidate_signals:
+                candidate_signals.append((priority_key, text))
+    scored_candidates: list[tuple[int, int, str]] = []
+    fallback_candidates: list[str] = []
+    for index, (source_kind, raw_signal) in enumerate(candidate_signals):
         cleaned = _clean_role_signal(raw_signal)
         if cleaned is not None:
-            return cleaned
+            fallback_candidates.append(cleaned)
+            score = _score_role_signal_for_opener(cleaned, source_kind=source_kind)
+            if score > 0:
+                scored_candidates.append((score, -index, cleaned))
+    if scored_candidates:
+        return max(scored_candidates)[2]
+    if fallback_candidates:
+        return fallback_candidates[0]
     for line in jd_text.splitlines():
         stripped = line.strip()
         if stripped and not stripped.startswith("#"):
             cleaned = _clean_role_signal(stripped)
             if cleaned is not None:
+                scored = _score_role_signal_for_opener(cleaned, source_kind="jd_fallback")
+                if scored > 0:
+                    return cleaned
                 return cleaned
     return None
 
 
 def _clean_role_signal(value: str) -> str | None:
     cleaned = re.sub(r"\s+", " ", value.strip().rstrip("."))
+    cleaned = re.sub(
+        r"^\d+\+?(?:\s*[-–]\s*\d+)?\s+years?\s+of\s+"
+        r"(?:(?:professional|hands-on)\s+)*experience(?:\s+(?:with|in|building))?\s+",
+        "",
+        cleaned,
+        flags=re.IGNORECASE,
+    )
     cleaned = re.sub(
         r"^As a .*?,\s+you(?:'|’)ll\s+",
         "",
@@ -2777,10 +2850,18 @@ def _clean_role_signal(value: str) -> str | None:
         cleaned,
         flags=re.IGNORECASE,
     )
+    cleaned = re.sub(
+        r"^(?:strong proficiency in|solid understanding of|hands-on experience with|proficiency in|understanding of)\s+",
+        "",
+        cleaned,
+        flags=re.IGNORECASE,
+    )
     if not cleaned:
         return None
     normalized = cleaned.lower()
     if any(pattern.search(normalized) for pattern in ROLE_SIGNAL_BOILERPLATE_PATTERNS):
+        return None
+    if any(pattern.search(normalized) for pattern in ROLE_SIGNAL_NONTECHNICAL_PATTERNS):
         return None
     if len(cleaned) > 220 and cleaned.count(".") + cleaned.count(";") >= 1:
         return None
@@ -2788,8 +2869,29 @@ def _clean_role_signal(value: str) -> str | None:
     gerund = ROLE_SIGNAL_VERB_PREFIXES.get(first_word.lower())
     if gerund is not None:
         cleaned = f"{gerund} {remainder}".strip()
-    cleaned = cleaned[:1].lower() + cleaned[1:] if cleaned else cleaned
+    if (
+        cleaned
+        and not (len(cleaned) > 1 and cleaned[:2].isupper())
+        and first_word.lower() not in ROLE_SIGNAL_LEADING_CASE_EXCEPTIONS
+    ):
+        cleaned = cleaned[:1].lower() + cleaned[1:]
     return cleaned or None
+
+
+def _score_role_signal_for_opener(
+    cleaned_signal: str,
+    *,
+    source_kind: str,
+) -> int:
+    lowered = cleaned_signal.lower()
+    technical_score = sum(
+        weight
+        for pattern, weight in ROLE_SIGNAL_TECHNICAL_PRIORITY_PATTERNS
+        if pattern.search(lowered)
+    )
+    if technical_score <= 0:
+        return 0
+    return technical_score * 10 + ROLE_SIGNAL_SOURCE_PRIORITY.get(source_kind, 0) * 10
 
 
 def _build_role_targeted_subject(context: RoleTargetedDraftContext) -> str:

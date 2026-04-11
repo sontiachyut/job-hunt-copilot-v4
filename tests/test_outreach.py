@@ -1396,12 +1396,9 @@ def test_role_targeted_drafting_filters_jd_boilerplate_from_opening_and_subject(
 
     message = result.drafted_messages[0]
     body_text = Path(message.body_text_artifact_path).read_text(encoding="utf-8")
-    assert (
-        'I\'m reaching out about the Manager I. Software Engineering- "Scheduler" role at ASM because I was '
-        "interested in the role's focus on engineering leadership and real-time scheduling systems. "
-        "That is close to the kind of systems and leadership work I want to keep leaning into."
-        in body_text
-    )
+    assert 'I\'m reaching out about the Manager I. Software Engineering- "Scheduler" role at ASM because I was ' in body_text
+    assert "scheduling engines" in body_text
+    assert "That is close to the kind of systems and leadership work I want to keep leaning into." in body_text
     assert "3+ years relevant experience" not in body_text
     assert "For over 55 years ASM" not in body_text
     assert message.subject == 'Interest in the Manager I. Software Engineering- "Scheduler" role at ASM'
@@ -1563,6 +1560,112 @@ def test_role_targeted_composition_uses_specific_work_area_in_opener_when_availa
         "That is close to the kind of systems work I have been doing in production over the last few years."
         in body_text
     )
+
+    connection.close()
+
+
+def test_role_targeted_composition_prefers_technical_jd_signals_over_generic_responsibilities(
+    tmp_path: Path,
+):
+    project_root, paths = bootstrap_project(tmp_path)
+    connection = connect_database(project_root / "job_hunt_copilot.db")
+    write_sender_profile(paths)
+    seed_posting(
+        connection,
+        company_name="KUBRA",
+        role_title="Software Engineer -Java",
+    )
+    seed_linked_contact(
+        connection,
+        contact_id="ct_kubra",
+        job_posting_contact_id="jpc_kubra",
+        display_name="Suganthi Cidambaram",
+        recipient_type=RECIPIENT_TYPE_ENGINEER,
+        current_working_email="suganthi@kubra.example",
+        created_at="2026-04-06T20:01:00Z",
+    )
+    connection.execute(
+        "UPDATE contacts SET position_title = ? WHERE contact_id = ?",
+        ("Senior Software Engineer, Product Engineering", "ct_kubra"),
+    )
+    connection.commit()
+    seed_approved_tailoring_run(
+        connection,
+        paths,
+        company_name="KUBRA",
+        role_title="Software Engineer -Java",
+    )
+    paths.tailoring_step_3_jd_signals_path(
+        "KUBRA",
+        "Software Engineer -Java",
+    ).write_text(
+        yaml.safe_dump(
+            {
+                "job_posting_id": "jp_outreach",
+                "resume_tailoring_run_id": "rtr_outreach",
+                "status": "generated",
+                "role_intent_summary": (
+                    "KUBRA is looking for a Software Developer, Java to join our Payments Engineering "
+                    "team. In this role, you will help design, build, and enhance enterprise-scale "
+                    "software solutions that support exceptional customer experiences and high-performance "
+                    "payment systems.; You will work closely with engineers, team leads, and designers "
+                    "to turn business and client requirements into scalable product features."
+                ),
+                "signals_by_priority": {
+                    "must_have": [
+                        {
+                            "signal": "3-5 years of professional software development experience in Java-based environments"
+                        },
+                        {
+                            "signal": "2+ years of hands-on experience building REST APIs or microservices"
+                        },
+                    ],
+                    "core_responsibility": [
+                        {
+                            "signal": "Contribute to design of new functionality and expand existing functionality"
+                        },
+                        {
+                            "signal": "Communicate with Software Engineers, Team Lead, and designers"
+                        },
+                    ],
+                    "nice_to_have": [
+                        {
+                            "signal": "Experience with frameworks such as Spring Boot or Jakarta EE"
+                        },
+                        {
+                            "signal": "Solid understanding of Java concurrency, relational databases, and stream processing"
+                        },
+                    ],
+                    "informational": [],
+                },
+                "signals": [],
+            },
+            sort_keys=False,
+        ),
+        encoding="utf-8",
+    )
+
+    result = generate_role_targeted_send_set_drafts(
+        connection,
+        project_root=project_root,
+        job_posting_id="jp_outreach",
+        current_time="2026-04-06T20:30:00Z",
+        local_timezone=ZoneInfo("UTC"),
+    )
+
+    body_text = Path(result.drafted_messages[0].body_text_artifact_path).read_text(encoding="utf-8")
+    assert any(
+        signal in body_text
+        for signal in (
+            "REST APIs or microservices",
+            "Java concurrency, relational databases, and stream processing",
+            "Spring Boot or Jakarta EE",
+            "enterprise-scale software solutions",
+            "high-performance payment systems",
+        )
+    )
+    assert "role's focus on contribute to design of new functionality" not in body_text
+    assert "Communicate with Software Engineers" not in body_text
 
     connection.close()
 
