@@ -2613,7 +2613,7 @@ def _normalize_education_line(value: str | None) -> str | None:
         return None
     normalized = re.sub(r"\*\*", "", value).strip()
     if "Arizona State University" in normalized and "MS" in normalized:
-        return "I am currently finishing my MS in Computer Science at ASU."
+        return None
     return normalized
 
 
