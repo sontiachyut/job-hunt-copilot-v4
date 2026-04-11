@@ -2946,9 +2946,28 @@ def _experience_summary_line(context: RoleTargetedDraftContext) -> str:
     return "3+ years building backend and distributed systems"
 
 
-def _snippet_stage(sender: SenderIdentity) -> str:
-    del sender
-    return "a software engineer by background"
+def _snippet_intro_sentence(context: RoleTargetedDraftContext) -> str:
+    if context.recipient_type in {RECIPIENT_TYPE_HIRING_MANAGER, RECIPIENT_TYPE_FOUNDER}:
+        return (
+            f"Hi, passing along a candidate who may be worth a look for the "
+            f"{context.role_title} role at {context.company_name}."
+        )
+    return (
+        f"Hi, sharing a candidate who may be relevant for the "
+        f"{context.role_title} role at {context.company_name}."
+    )
+
+
+def _snippet_background_sentence(context: RoleTargetedDraftContext) -> str:
+    experience = _experience_summary_line(context)
+    if context.recipient_type in {RECIPIENT_TYPE_HIRING_MANAGER, RECIPIENT_TYPE_ENGINEER}:
+        return f"His background includes {experience}."
+    return f"He has {experience}."
+
+
+def _snippet_proof_sentence(context: RoleTargetedDraftContext) -> str:
+    impact = _impact_summary_line(context)
+    return f"One relevant example: {impact}."
 
 
 def _role_work_area_phrase(value: str | None) -> str:
@@ -3195,16 +3214,14 @@ def _job_hunt_copilot_pitch_lines() -> list[str]:
 
 
 def _render_forwardable_snippet_text(context: RoleTargetedDraftContext) -> str:
-    stage = _snippet_stage(context.sender)
-    experience = _experience_summary_line(context)
-    impact = _impact_summary_line(context)
     linkedin = _compact_linkedin(context.sender.linkedin_url)
-    return (
-        f"Hi, I noticed the {context.role_title} opening at {context.company_name}. "
-        "I wanted to share a candidate who may be worth a look. "
-        f"He is {stage} and has {experience}. "
-        f"One relevant example: {impact}. "
-        f"Here's his profile: {linkedin}"
+    return " ".join(
+        [
+            _snippet_intro_sentence(context),
+            _snippet_background_sentence(context),
+            _snippet_proof_sentence(context),
+            f"Profile: {linkedin}",
+        ]
     )
 
 

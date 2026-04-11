@@ -1057,6 +1057,16 @@ def test_role_targeted_draft_batch_persists_messages_artifacts_and_transitions(t
     assert "I've included a short snippet below that you can paste into an IM/Email:" in recruiter_body
     assert "[snippet]" in recruiter_body
     assert "[/snippet]" in recruiter_body
+    assert (
+        "Hi, sharing a candidate who may be relevant for the Staff Software Engineer / AI role at Acme Robotics."
+        in recruiter_body
+    )
+    assert "He has 3+ years across Python, Spark, AWS, Kubernetes." in recruiter_body
+    assert (
+        "One relevant example: Built distributed Python and Scala data services processing 50M+ daily HL7 records at roughly 580 TPS for real-time analytics."
+        in recruiter_body
+    )
+    assert "Profile: www.linkedin.com/in/asonti" in recruiter_body
     assert "Lately, I have been spending time sharpening my Agentic AI skills." in recruiter_html
     assert "I built Job Hunt Copilot" in recruiter_html
     assert 'href="https://github.com/sontiachyut/job-hunt-copilot-v4"' in recruiter_html
@@ -1077,6 +1087,11 @@ def test_role_targeted_draft_batch_persists_messages_artifacts_and_transitions(t
     assert "I've included a short snippet below that you can paste into an IM/Email:" in manager_body
     assert "[snippet]" in manager_body
     assert "[/snippet]" in manager_body
+    assert (
+        "Hi, passing along a candidate who may be worth a look for the Staff Software Engineer / AI role at Acme Robotics."
+        in manager_body
+    )
+    assert "His background includes 3+ years across Python, Spark, AWS, Kubernetes." in manager_body
 
     send_result_payload = json.loads(
         Path(recruiter_message.send_result_artifact_path).read_text(encoding="utf-8")
