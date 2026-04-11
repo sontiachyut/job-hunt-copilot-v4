@@ -3165,10 +3165,6 @@ def _find_existing_lead(
     ).fetchall()
     if not rows:
         return None
-    if len(rows) > 1:
-        raise LinkedInScrapingError(
-            f"Multiple leads already exist for lead_identity_key `{lead_identity_key}`."
-        )
     return rows[0]
 
 

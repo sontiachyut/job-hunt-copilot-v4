@@ -935,6 +935,117 @@ def test_gmail_batch_fanout_blocks_no_jd_when_no_identifier_or_jd_recovery_exist
     }
 
 
+def test_gmail_batch_fanout_reuses_oldest_existing_duplicate_identity_row(tmp_path):
+    project_root = bootstrap_project(tmp_path)
+
+    initial_batch = build_batch(
+        build_message(
+            gmail_message_id="gmail-identity-dupe-001",
+            received_at="2026-04-06T23:54:00Z",
+            text_plain_body=(
+                "-----\n"
+                "Software Engineer\n"
+                "Recruiting from Scratch\n"
+                "Remote\n"
+                "View job\n"
+                "https://www.linkedin.com/jobs/view/4383146518/\n"
+            ),
+            jd_recovery=[
+                {
+                    "job_id": "4383146518",
+                    "source_type": "linkedin_guest_job_payload",
+                    "source_url": "https://www.linkedin.com/jobs/view/4383146518/",
+                    "company_name": "Recruiting from Scratch",
+                    "role_title": "Software Engineer",
+                    "jd_text": "About the job\nBuild backend services.\n",
+                }
+            ],
+        ),
+        ingestion_run_id="gmail-identity-dupe-run-001",
+    )
+
+    initial_result = ingest_gmail_alert_batch_to_leads(project_root, batch=initial_batch)
+    original_lead = initial_result.lead_results[0]
+
+    connection = connect_database(project_root / "job_hunt_copilot.db")
+    connection.execute(
+        """
+        INSERT INTO linkedin_leads (
+          lead_id, lead_identity_key, lead_status, lead_shape, split_review_status,
+          source_type, source_reference, source_mode, company_name, role_title,
+          source_url, created_at, updated_at
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        """,
+        (
+            "ld_duplicate_existing_identity",
+            original_lead.lead_identity_key,
+            "handed_off",
+            "posting_plus_contacts",
+            "confident",
+            "gmail_alert",
+            "linkedin-scraping/runtime/gmail/duplicate.json#card_index=1",
+            "gmail_job_alert",
+            "Recruiting from Scratch",
+            "Software Engineer",
+            "https://www.linkedin.com/jobs/view/4383146518/",
+            "2030-04-06T23:55:00Z",
+            "2030-04-06T23:55:00Z",
+        ),
+    )
+    connection.commit()
+    connection.close()
+
+    duplicate_batch = build_batch(
+        build_message(
+            gmail_message_id="gmail-identity-dupe-002",
+            received_at="2026-04-06T23:56:00Z",
+            text_plain_body=(
+                "-----\n"
+                "Software Engineer\n"
+                "Recruiting from Scratch\n"
+                "Remote\n"
+                "View job\n"
+                "https://www.linkedin.com/jobs/view/4383146518/?trackingId=followup\n"
+            ),
+            jd_recovery=[
+                {
+                    "job_id": "4383146518",
+                    "source_type": "linkedin_guest_job_payload",
+                    "source_url": "https://www.linkedin.com/jobs/view/4383146518/",
+                    "company_name": "Recruiting from Scratch",
+                    "role_title": "Software Engineer",
+                    "jd_text": "About the job\nBuild backend services.\n",
+                }
+            ],
+        ),
+        ingestion_run_id="gmail-identity-dupe-run-002",
+    )
+
+    duplicate_result = ingest_gmail_alert_batch_to_leads(project_root, batch=duplicate_batch)
+    duplicate_lead = duplicate_result.lead_results[0]
+
+    connection = connect_database(project_root / "job_hunt_copilot.db")
+    stored_rows = connection.execute(
+        """
+        SELECT lead_id
+        FROM linkedin_leads
+        WHERE lead_identity_key = ?
+        ORDER BY created_at ASC, lead_id ASC
+        """,
+        (original_lead.lead_identity_key,),
+    ).fetchall()
+    connection.close()
+
+    assert duplicate_result.leads_created == 0
+    assert duplicate_result.lead_duplicates_ignored == 1
+    assert duplicate_lead.duplicate is True
+    assert duplicate_lead.duplicate_lead_id == original_lead.lead_id
+    assert [str(row[0]) for row in stored_rows] == [
+        original_lead.lead_id,
+        "ld_duplicate_existing_identity",
+    ]
+
+
 def test_gmail_batch_fanout_merges_multiple_jd_sources_and_prefers_linkedin_conflicts(tmp_path):
     project_root = bootstrap_project(tmp_path)
 
