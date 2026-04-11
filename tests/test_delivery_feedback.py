@@ -12,6 +12,8 @@ from job_hunt_copilot.delivery_feedback import (
     EVENT_STATE_REPLIED,
     OBSERVATION_SCOPE_DELAYED,
     DeliveryFeedbackSignal,
+    GmailMailboxFeedbackObserver,
+    ObservedOutreachMessage,
     sync_delivery_feedback,
 )
 from job_hunt_copilot.paths import ProjectPaths
@@ -194,6 +196,100 @@ class FakeMailboxFeedbackObserver:
             }
         )
         return list(self.signals)
+
+
+def test_gmail_mailbox_feedback_observer_detects_real_bounce_formats(tmp_path: Path):
+    project_root, paths = bootstrap_project(tmp_path)
+
+    def gmail_api_body(text: str) -> str:
+        import base64
+
+        return base64.urlsafe_b64encode(text.encode("utf-8")).decode("ascii").rstrip("=")
+
+    bounce_payload = {
+        "id": "gmail-bounce-001",
+        "threadId": "thread-bounce-001",
+        "internalDate": "1775923668000",
+        "payload": {
+            "headers": [
+                {"name": "From", "value": "Mail Delivery Subsystem <mailer-daemon@googlemail.com>"},
+                {"name": "To", "value": "asonti1@asu.edu"},
+                {"name": "Subject", "value": "Delivery Status Notification (Failure)"},
+                {"name": "Date", "value": "Sat, 11 Apr 2026 11:47:48 -0700 (PDT)"},
+            ],
+            "parts": [
+                {
+                    "mimeType": "text/plain",
+                    "body": {
+                        "data": gmail_api_body(
+                            "** Address not found **\n\n"
+                            "Your message wasn't delivered to brittany.grey@addisongroup.com because the address couldn't be found.\n\n"
+                            "Final-Recipient: rfc822; brittany.grey@addisongroup.com\n"
+                            "Action: failed\n"
+                            "Status: 5.4.1\n"
+                        )
+                    },
+                }
+            ],
+        },
+    }
+
+    class FakeRequest:
+        def __init__(self, payload):  # type: ignore[no-untyped-def]
+            self._payload = payload
+
+        def execute(self):  # type: ignore[no-untyped-def]
+            return self._payload
+
+    class FakeMessagesResource:
+        def list(self, **kwargs):  # type: ignore[no-untyped-def]
+            return FakeRequest({"messages": [{"id": "gmail-bounce-001"}]})
+
+        def get(self, **kwargs):  # type: ignore[no-untyped-def]
+            return FakeRequest(bounce_payload)
+
+    class FakeUsersResource:
+        def messages(self):  # type: ignore[no-untyped-def]
+            return FakeMessagesResource()
+
+    class FakeGmailService:
+        def users(self):  # type: ignore[no-untyped-def]
+            return FakeUsersResource()
+
+    observer = GmailMailboxFeedbackObserver(
+        paths,
+        service_factory=FakeGmailService,
+    )
+
+    signals = observer.poll(
+        (
+            ObservedOutreachMessage(
+                outreach_message_id="msg_feedback",
+                contact_id="ct_feedback",
+                job_posting_id="jp_feedback",
+                lead_id="ld_feedback",
+                outreach_mode="role_targeted",
+                recipient_email="brittany.grey@addisongroup.com",
+                thread_id="outbound-thread-001",
+                delivery_tracking_id="outbound-msg-001",
+                sent_at="2026-04-11T18:47:44Z",
+                company_name="Addison Group",
+                role_title="Software Engineer",
+                bounce_observation_ends_at="2026-04-11T19:17:44Z",
+                has_bounced=False,
+                has_not_bounced=False,
+                has_replied=False,
+            ),
+        ),
+        current_time="2026-04-11T18:59:39Z",
+        observation_scope=OBSERVATION_SCOPE_DELAYED,
+    )
+
+    assert len(signals) == 1
+    signal = signals[0]
+    assert signal.signal_type == EVENT_STATE_BOUNCED
+    assert signal.recipient_email == "brittany.grey@addisongroup.com"
+    assert signal.provider_message_id == "gmail-bounce-001"
 
 
 def test_sync_delivery_feedback_persists_bounce_and_reply_events(tmp_path: Path):

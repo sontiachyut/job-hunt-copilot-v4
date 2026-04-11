@@ -7,6 +7,7 @@ import subprocess
 import sys
 from datetime import timedelta, timezone
 from pathlib import Path
+from unittest.mock import patch
 
 from job_hunt_copilot.bootstrap import run_bootstrap
 from job_hunt_copilot.chat_runtime import (
@@ -15,7 +16,7 @@ from job_hunt_copilot.chat_runtime import (
 )
 import job_hunt_copilot.maintenance as maintenance_runtime
 import job_hunt_copilot.local_runtime as local_runtime
-from job_hunt_copilot.delivery_feedback import DeliveryFeedbackSignal
+from job_hunt_copilot.delivery_feedback import DeliveryFeedbackSignal, GmailMailboxFeedbackObserver
 from job_hunt_copilot.maintenance import (
     MaintenanceDependencies,
     MaintenancePlan,
@@ -126,6 +127,7 @@ def test_supervisor_dependencies_default_to_gmail_outreach_sender_when_available
     resolved = local_runtime._resolve_supervisor_action_dependencies(paths, None)
 
     assert isinstance(resolved.outreach_sender, GmailApiOutreachSender)
+    assert isinstance(resolved.feedback_observer, GmailMailboxFeedbackObserver)
 
 
 def build_test_maintenance_dependencies(
@@ -2490,6 +2492,50 @@ def test_execute_delayed_feedback_sync_persists_bounce_after_send_session_end(tm
         "result": "success",
         "bounce_events_written": 1,
     }
+
+
+def test_execute_delayed_feedback_sync_uses_default_feedback_observer(tmp_path):
+    project_root = tmp_path / "repo"
+    project_root.mkdir()
+    create_minimal_project(project_root)
+
+    run_script(
+        "scripts/ops/control_agent.py",
+        "start",
+        "--project-root",
+        str(project_root),
+        "--manual-command",
+        "jhc-agent-start",
+    )
+    connection = connect_database(project_root / "job_hunt_copilot.db")
+    seed_feedback_candidate(connection)
+    observer = FakeMailboxFeedbackObserver(
+        signals=[
+            DeliveryFeedbackSignal(
+                signal_type="bounced",
+                event_timestamp="2026-04-07T10:08:00Z",
+                delivery_tracking_id="delivery-msg_feedback",
+            )
+        ]
+    )
+
+    with patch.object(local_runtime, "_default_feedback_observer", return_value=observer):
+        report = execute_delayed_feedback_sync(
+            project_root=project_root,
+            current_time="2026-04-07T10:10:00Z",
+        )
+
+    connection.close()
+
+    assert observer.poll_calls == [
+        {
+            "message_ids": ["msg_feedback"],
+            "current_time": "2026-04-07T10:10:00Z",
+            "observation_scope": "delayed_feedback_sync",
+        }
+    ]
+    assert report["status"] == "completed"
+    assert report["feedback_sync"]["bounce_events_written"] == 1
 
 
 def test_chat_session_script_pauses_running_agent_and_explicit_close_resumes_it(tmp_path):

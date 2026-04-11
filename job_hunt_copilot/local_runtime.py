@@ -16,6 +16,7 @@ from .contracts import CONTRACT_VERSION
 from .db import initialize_database
 from .delivery_feedback import (
     DELAYED_FEEDBACK_POLL_INTERVAL_MINUTES,
+    GmailMailboxFeedbackObserver,
     OBSERVATION_SCOPE_DELAYED,
     MailboxFeedbackObserver,
     sync_delivery_feedback,
@@ -196,17 +197,27 @@ def _default_outreach_sender(
     return GmailApiOutreachSender(paths)
 
 
+def _default_feedback_observer(
+    paths: ProjectPaths,
+) -> GmailMailboxFeedbackObserver | None:
+    if not gmail_mailbox_polling_configured(paths):
+        return None
+    return GmailMailboxFeedbackObserver(paths)
+
+
 def _resolve_supervisor_action_dependencies(
     paths: ProjectPaths,
     action_dependencies: SupervisorActionDependencies | None,
 ) -> SupervisorActionDependencies:
     default_gmail_alert_collector = _default_gmail_alert_collector(paths)
     default_outreach_sender = _default_outreach_sender(paths)
+    default_feedback_observer = _default_feedback_observer(paths)
     default_maintenance_dependencies = _default_maintenance_dependencies(paths)
     if action_dependencies is None:
         return SupervisorActionDependencies(
             gmail_alert_collector=default_gmail_alert_collector,
             outreach_sender=default_outreach_sender,
+            feedback_observer=default_feedback_observer,
             maintenance_dependencies=default_maintenance_dependencies
         )
     resolved_gmail_alert_collector = action_dependencies.gmail_alert_collector
@@ -219,9 +230,13 @@ def _resolve_supervisor_action_dependencies(
     resolved_outreach_sender = action_dependencies.outreach_sender
     if resolved_outreach_sender is None:
         resolved_outreach_sender = default_outreach_sender
+    resolved_feedback_observer = action_dependencies.feedback_observer
+    if resolved_feedback_observer is None:
+        resolved_feedback_observer = default_feedback_observer
     if (
         resolved_gmail_alert_collector is action_dependencies.gmail_alert_collector
         and resolved_outreach_sender is action_dependencies.outreach_sender
+        and resolved_feedback_observer is action_dependencies.feedback_observer
         and resolved_maintenance_dependencies is action_dependencies.maintenance_dependencies
     ):
         return action_dependencies
@@ -232,7 +247,7 @@ def _resolve_supervisor_action_dependencies(
         recipient_profile_extractor=action_dependencies.recipient_profile_extractor,
         email_finder_providers=action_dependencies.email_finder_providers,
         outreach_sender=resolved_outreach_sender,
-        feedback_observer=action_dependencies.feedback_observer,
+        feedback_observer=resolved_feedback_observer,
         local_timezone=action_dependencies.local_timezone,
         maintenance_dependencies=resolved_maintenance_dependencies,
     )
@@ -2435,6 +2450,7 @@ def execute_delayed_feedback_sync(
     paths = ProjectPaths.from_root(project_root)
     migration = initialize_database(paths.db_path)
     effective_time = current_time or now_utc_iso()
+    resolved_observer = observer or _default_feedback_observer(paths)
 
     with connect_canonical_database(paths) as connection:
         control_state = read_agent_control_state(connection, timestamp=effective_time)
@@ -2460,7 +2476,7 @@ def execute_delayed_feedback_sync(
             scheduler_name=FEEDBACK_SYNC_SCHEDULER_NAME,
             scheduler_type=FEEDBACK_SYNC_SCHEDULER_TYPE,
             observation_scope=OBSERVATION_SCOPE_DELAYED,
-            observer=observer,
+            observer=resolved_observer,
         )
 
     return {

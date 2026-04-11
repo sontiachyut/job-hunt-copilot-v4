@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import re
 import sqlite3
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
@@ -34,6 +35,23 @@ OBSERVATION_SCOPE_DELAYED = "delayed_feedback_sync"
 
 BOUNCE_OBSERVATION_WINDOW_MINUTES = 30
 DELAYED_FEEDBACK_POLL_INTERVAL_MINUTES = 5
+DEFAULT_GMAIL_FEEDBACK_SCAN_PAGE_SIZE = 25
+DEFAULT_GMAIL_FEEDBACK_MAX_SCAN_PAGES = 4
+BOUNCE_SENDER_PATTERN = re.compile(r"\b(?:mailer-daemon|postmaster)\b", re.IGNORECASE)
+BOUNCE_SUBJECT_PATTERN = re.compile(
+    r"\b(?:delivery status notification|undeliverable|delivery failure|mail delivery)\b",
+    re.IGNORECASE,
+)
+BOUNCE_BODY_HINT_PATTERN = re.compile(
+    r"\b(?:final-recipient:|message wasn't delivered to|was undeliverable|delivery to the following recipient)\b",
+    re.IGNORECASE,
+)
+BOUNCE_RECIPIENT_PATTERNS: tuple[re.Pattern[str], ...] = (
+    re.compile(r"Final-Recipient:\s*rfc822;\s*<?(?P<email>[A-Z0-9._%+\-]+@[A-Z0-9.\-]+\.[A-Z]{2,})>?", re.IGNORECASE),
+    re.compile(r"message wasn't delivered to\s*<?(?P<email>[A-Z0-9._%+\-]+@[A-Z0-9.\-]+\.[A-Z]{2,})>?", re.IGNORECASE),
+    re.compile(r"following message to\s*<?(?P<email>[A-Z0-9._%+\-]+@[A-Z0-9.\-]+\.[A-Z]{2,})>?\s*was undeliverable", re.IGNORECASE),
+    re.compile(r"delivery to the following recipient(?:s)? failed(?: permanently)?:\s*<?(?P<email>[A-Z0-9._%+\-]+@[A-Z0-9.\-]+\.[A-Z]{2,})>?", re.IGNORECASE),
+)
 
 
 @dataclass(frozen=True)
@@ -150,6 +168,139 @@ class MailboxFeedbackObserver(Protocol):
         observation_scope: str,
     ) -> Sequence[DeliveryFeedbackSignal]:
         raise NotImplementedError
+
+
+class GmailMailboxFeedbackObserver:
+    def __init__(
+        self,
+        paths: ProjectPaths,
+        *,
+        service_factory: object | None = None,
+        page_size: int = DEFAULT_GMAIL_FEEDBACK_SCAN_PAGE_SIZE,
+        max_scan_pages: int = DEFAULT_GMAIL_FEEDBACK_MAX_SCAN_PAGES,
+    ) -> None:
+        self._paths = paths
+        self._service_factory = service_factory
+        self._page_size = max(1, int(page_size))
+        self._max_scan_pages = max(1, int(max_scan_pages))
+
+    def poll(
+        self,
+        messages: Sequence[ObservedOutreachMessage],
+        *,
+        current_time: str,
+        observation_scope: str,
+    ) -> Sequence[DeliveryFeedbackSignal]:
+        del observation_scope
+        if not messages:
+            return ()
+        service = self._build_service()
+        return tuple(
+            self._poll_bounce_signals(
+                service,
+                messages,
+                current_time=current_time,
+            )
+        )
+
+    def _build_service(self) -> Any:
+        if self._service_factory is not None:
+            return self._service_factory()
+        from .gmail_alerts import _build_gmail_service
+
+        return _build_gmail_service(self._paths)
+
+    def _poll_bounce_signals(
+        self,
+        service: Any,
+        messages: Sequence[ObservedOutreachMessage],
+        *,
+        current_time: str,
+    ) -> list[DeliveryFeedbackSignal]:
+        earliest_sent_at = min(_parse_iso_datetime(message.sent_at) for message in messages)
+        current_dt = _parse_iso_datetime(current_time)
+        window_days = max(1, (current_dt.date() - earliest_sent_at.date()).days + 1)
+        candidate_recipient_emails = {
+            normalized
+            for normalized in (_normalize_email(message.recipient_email) for message in messages)
+            if normalized is not None
+        }
+        if not candidate_recipient_emails:
+            return []
+
+        from .gmail_alerts import _extract_gmail_message_bodies, _gmail_headers, _gmail_received_at
+
+        queries = (
+            f"from:(mailer-daemon OR postmaster) newer_than:{window_days}d",
+            f'subject:("Delivery Status Notification" OR Undeliverable OR Failure) newer_than:{window_days}d',
+        )
+        seen_message_ids: set[str] = set()
+        signals: list[DeliveryFeedbackSignal] = []
+
+        for query in queries:
+            next_page_token: str | None = None
+            scanned_pages = 0
+            while scanned_pages < self._max_scan_pages:
+                response = (
+                    service.users()
+                    .messages()
+                    .list(
+                        userId="me",
+                        q=query,
+                        maxResults=self._page_size,
+                        pageToken=next_page_token,
+                        includeSpamTrash=True,
+                    )
+                    .execute()
+                )
+                for raw_message in response.get("messages", []) or []:
+                    if not isinstance(raw_message, dict):
+                        continue
+                    gmail_message_id = _normalize_optional_text(raw_message.get("id"))
+                    if gmail_message_id is None or gmail_message_id in seen_message_ids:
+                        continue
+                    seen_message_ids.add(gmail_message_id)
+                    payload = (
+                        service.users()
+                        .messages()
+                        .get(userId="me", id=gmail_message_id, format="full")
+                        .execute()
+                    )
+                    if not isinstance(payload, dict):
+                        continue
+                    headers = _gmail_headers(payload.get("payload"))
+                    plain_text, html_text = _extract_gmail_message_bodies(payload.get("payload"))
+                    recipient_email = _extract_bounce_recipient_email(
+                        headers=headers,
+                        plain_text=plain_text,
+                        html_text=html_text,
+                    )
+                    if recipient_email not in candidate_recipient_emails:
+                        continue
+                    if not _looks_like_bounce_message(
+                        headers=headers,
+                        plain_text=plain_text,
+                        html_text=html_text,
+                    ):
+                        continue
+                    event_timestamp = _gmail_received_at(
+                        payload,
+                        headers=headers,
+                        fallback=current_time,
+                    )
+                    signals.append(
+                        DeliveryFeedbackSignal(
+                            signal_type=EVENT_STATE_BOUNCED,
+                            event_timestamp=event_timestamp,
+                            recipient_email=recipient_email,
+                            provider_message_id=gmail_message_id,
+                        )
+                    )
+                next_page_token = _normalize_optional_text(response.get("nextPageToken"))
+                scanned_pages += 1
+                if next_page_token is None:
+                    break
+        return signals
 
 
 @dataclass(frozen=True)
@@ -1175,3 +1326,44 @@ def _prefer_richer_text(existing_value: str | None, new_value: str | None) -> st
 def _write_text_file(path: Path, content: str) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(content, encoding="utf-8")
+
+
+def _extract_bounce_recipient_email(
+    *,
+    headers: dict[str, str],
+    plain_text: str | None,
+    html_text: str | None,
+) -> str | None:
+    combined_text = "\n".join(
+        part
+        for part in (
+            plain_text,
+            html_text,
+            headers.get("subject"),
+        )
+        if part
+    )
+    for pattern in BOUNCE_RECIPIENT_PATTERNS:
+        match = pattern.search(combined_text)
+        if match is None:
+            continue
+        recipient_email = _normalize_email(match.group("email"))
+        if recipient_email is not None:
+            return recipient_email
+    return None
+
+
+def _looks_like_bounce_message(
+    *,
+    headers: dict[str, str],
+    plain_text: str | None,
+    html_text: str | None,
+) -> bool:
+    sender = headers.get("from") or ""
+    subject = headers.get("subject") or ""
+    combined_text = "\n".join(part for part in (plain_text, html_text) if part)
+    if BOUNCE_SENDER_PATTERN.search(sender):
+        return True
+    if BOUNCE_SUBJECT_PATTERN.search(subject):
+        return True
+    return bool(BOUNCE_BODY_HINT_PATTERN.search(combined_text))
