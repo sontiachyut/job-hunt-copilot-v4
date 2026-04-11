@@ -29,6 +29,7 @@ from job_hunt_copilot.supervisor import (
     REVIEW_PACKET_STATUS_NOT_READY,
     REVIEW_PACKET_STATUS_PENDING,
     REVIEW_PACKET_STATUS_REVIEWED,
+    REVIEW_PACKET_STATUS_SUPERSEDED,
     RUN_STATUS_COMPLETED,
     RUN_STATUS_ESCALATED,
     RUN_STATUS_IN_PROGRESS,
@@ -51,6 +52,7 @@ from job_hunt_copilot.supervisor import (
     ensure_role_targeted_pipeline_run,
     finalize_review_worthy_pipeline_run,
     finish_supervisor_cycle,
+    generate_expert_review_packet,
     get_agent_incident,
     get_expert_review_decision,
     get_expert_review_packet,
@@ -64,6 +66,7 @@ from job_hunt_copilot.supervisor import (
     pause_agent,
     pause_pipeline_run,
     read_agent_control_state,
+    record_expert_review_decision,
     record_expert_override_decision,
     release_runtime_lease,
     resume_agent,
@@ -852,6 +855,69 @@ def test_record_expert_override_decision_persists_lineage_and_marks_packet_revie
     )
     assert json.loads(stored_override.new_value)["posting_status"] == "requires_contacts"
     assert override_history == [stored_override]
+
+
+def test_generate_expert_review_packet_reuses_existing_superseded_packet_history(tmp_path):
+    project_root = bootstrap_project(tmp_path)
+    paths = ProjectPaths.from_root(project_root)
+    connection = connect_database(project_root / "job_hunt_copilot.db")
+    lead_id, job_posting_id = seed_role_targeted_posting(connection)
+    pipeline_run, _ = ensure_role_targeted_pipeline_run(
+        connection,
+        lead_id=lead_id,
+        job_posting_id=job_posting_id,
+        current_stage="agent_review",
+        started_at="2026-04-06T00:44:00Z",
+    )
+    finalized_run, packet = finalize_review_worthy_pipeline_run(
+        connection,
+        paths,
+        pipeline_run.pipeline_run_id,
+        final_status=RUN_STATUS_ESCALATED,
+        current_stage="agent_review",
+        error_summary="expert clarification required before outreach proceeds",
+        run_summary="Escalated after agent review requested an explicit owner decision.",
+        timestamp="2026-04-06T00:45:00Z",
+    )
+    record_expert_review_decision(
+        connection,
+        packet.expert_review_packet_id,
+        decision_type="owner_acknowledged",
+        decided_at="2026-04-06T00:46:00Z",
+    )
+    connection.execute(
+        """
+        UPDATE expert_review_packets
+        SET packet_status = ?, reviewed_at = ?
+        WHERE expert_review_packet_id = ?
+        """,
+        (
+            REVIEW_PACKET_STATUS_SUPERSEDED,
+            "2026-04-06T00:47:00Z",
+            packet.expert_review_packet_id,
+        ),
+    )
+    connection.commit()
+    superseded_run = set_pipeline_run_review_packet_status(
+        connection,
+        finalized_run.pipeline_run_id,
+        REVIEW_PACKET_STATUS_SUPERSEDED,
+        timestamp="2026-04-06T00:47:00Z",
+    )
+
+    reused_packet = generate_expert_review_packet(
+        connection,
+        paths,
+        finalized_run.pipeline_run_id,
+        created_at="2026-04-06T00:48:00Z",
+    )
+    packet_history = list_expert_review_packets_for_run(connection, finalized_run.pipeline_run_id)
+    connection.close()
+
+    assert superseded_run.review_packet_status == REVIEW_PACKET_STATUS_SUPERSEDED
+    assert reused_packet.expert_review_packet_id == packet.expert_review_packet_id
+    assert reused_packet.packet_status == REVIEW_PACKET_STATUS_SUPERSEDED
+    assert len(packet_history) == 1
 
 
 def test_run_supervisor_cycle_bootstraps_new_posting_run_and_persists_snapshot(tmp_path):

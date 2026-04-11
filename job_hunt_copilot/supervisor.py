@@ -1894,9 +1894,7 @@ def generate_expert_review_packet(
     if existing_pending is not None:
         return existing_pending
     if existing_packets:
-        raise InvalidLifecycleTransition(
-            f"pipeline_run {pipeline_run_id!r} already has expert review packet history."
-        )
+        return existing_packets[0]
 
     current_timestamp = created_at or now_utc_iso()
     packet_payload = _build_review_packet_payload(
