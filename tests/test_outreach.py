@@ -1054,6 +1054,8 @@ def test_role_targeted_draft_batch_persists_messages_artifacts_and_transitions(t
     assert "seems close to" not in recruiter_body
     assert "I came across the" not in recruiter_body
     assert "The emphasis on" not in recruiter_body
+    assert "That is what prompted me to reach out." not in recruiter_body
+    assert "which is what prompted me to reach out." not in recruiter_body
     assert "I've included a short snippet below that you can paste into an IM/Email:" in recruiter_body
     assert "[snippet]" in recruiter_body
     assert "[/snippet]" in recruiter_body
@@ -1084,6 +1086,8 @@ def test_role_targeted_draft_batch_persists_messages_artifacts_and_transitions(t
     assert "seems close to" not in manager_body
     assert "I came across the" not in manager_body
     assert "The emphasis on" not in manager_body
+    assert "That is what prompted me to reach out." not in manager_body
+    assert "which is what prompted me to reach out." not in manager_body
     assert "I've included a short snippet below that you can paste into an IM/Email:" in manager_body
     assert "[snippet]" in manager_body
     assert "[/snippet]" in manager_body
@@ -1395,8 +1399,7 @@ def test_role_targeted_drafting_filters_jd_boilerplate_from_opening_and_subject(
     assert (
         'I\'m reaching out about the Manager I. Software Engineering- "Scheduler" role at ASM because I was '
         "interested in the role's focus on engineering leadership and real-time scheduling systems. "
-        "That is close to the kind of systems and leadership work I want to keep leaning into, which is "
-        "what prompted me to reach out."
+        "That is close to the kind of systems and leadership work I want to keep leaning into."
         in body_text
     )
     assert "3+ years relevant experience" not in body_text
@@ -1475,8 +1478,7 @@ def test_role_targeted_composition_rewrites_security_jd_into_natural_theme(tmp_p
     assert (
         "I'm reaching out about the Government Information Security Engineer role at Intel because I was "
         "interested in the role's focus on enterprise security systems, secure infrastructure, and "
-        "government-focused security work. That is an area where I want to keep building depth, which is "
-        "what prompted me to reach out."
+        "government-focused security work. That is an area where I want to keep building depth."
         in body_text
     )
     assert "identifies, develops, plans, implements" not in body_text.lower()
@@ -1558,8 +1560,7 @@ def test_role_targeted_composition_uses_specific_work_area_in_opener_when_availa
         in body_text
     )
     assert (
-        "That is close to the kind of systems work I have been doing in production over the last few years, "
-        "which is what prompted me to reach out."
+        "That is close to the kind of systems work I have been doing in production over the last few years."
         in body_text
     )
 

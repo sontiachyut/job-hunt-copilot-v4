@@ -119,6 +119,7 @@ ROLE_TARGETED_DRAFT_BLOCK_PATTERNS: tuple[re.Pattern[str], ...] = (
     re.compile(r"\bThe emphasis on\b", re.IGNORECASE),
     re.compile(r"\bMS in Computer Science at ASU\b", re.IGNORECASE),
     re.compile(r"\bArizona State University\b", re.IGNORECASE),
+    re.compile(r"\b(?:which is )?what prompted me to reach out\b", re.IGNORECASE),
 )
 ROLE_SIGNAL_VERB_PREFIXES = {
     "deliver": "delivering",
@@ -2806,8 +2807,7 @@ def _compose_role_targeted_composition_plan(
         opener_paragraph=_render_role_targeted_opener(opener_inputs),
         background_paragraph=(
             f"{_build_role_targeted_why_line(context)} "
-            f"{_proof_point_sentence(proof_point)} "
-            "That is what prompted me to reach out."
+            f"{_proof_point_sentence(proof_point)}"
         ),
         copilot_paragraphs=tuple(_job_hunt_copilot_pitch_lines()),
         ask_paragraph=(
@@ -2835,7 +2835,7 @@ def _compose_role_targeted_opener_inputs(
             role_theme=role_theme,
             technical_focus=technical_focus,
             overlap_sentence=(
-                "That is an area where I want to keep building depth, which is what prompted me to reach out."
+                "That is an area where I want to keep building depth."
             ),
         )
     if "leadership" in lowered or "scheduling" in lowered:
@@ -2845,8 +2845,7 @@ def _compose_role_targeted_opener_inputs(
             role_theme=role_theme,
             technical_focus=technical_focus,
             overlap_sentence=(
-                "That is close to the kind of systems and leadership work I want to keep leaning into, "
-                "which is what prompted me to reach out."
+                "That is close to the kind of systems and leadership work I want to keep leaning into."
             ),
         )
     if "platform" in lowered or "cloud" in lowered:
@@ -2856,8 +2855,7 @@ def _compose_role_targeted_opener_inputs(
             role_theme=role_theme,
             technical_focus=technical_focus,
             overlap_sentence=(
-                "That is close to the kind of platform and infrastructure work I want to keep growing in, "
-                "which is what prompted me to reach out."
+                "That is close to the kind of platform and infrastructure work I want to keep growing in."
             ),
         )
     if "python" in lowered:
@@ -2868,7 +2866,7 @@ def _compose_role_targeted_opener_inputs(
             technical_focus=technical_focus,
             overlap_sentence=(
                 "That is close to the kind of systems work I have been doing in production over the last "
-                "few years, which is what prompted me to reach out."
+                "few years."
             ),
         )
     return RoleTargetedOpenerInputs(
@@ -2878,7 +2876,7 @@ def _compose_role_targeted_opener_inputs(
         technical_focus=technical_focus,
         overlap_sentence=(
             "That is close to the kind of systems work I have been doing in production over the last few "
-            "years, which is what prompted me to reach out."
+            "years."
         ),
     )
 
