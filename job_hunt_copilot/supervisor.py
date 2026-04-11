@@ -3957,16 +3957,34 @@ def _execute_selected_work_unit(
                 "for outreach and advanced the durable pipeline run directly to sending."
             )
         elif current_posting_status == JOB_POSTING_STATUS_REQUIRES_CONTACTS:
+            def _escalate_exhausted_email_discovery() -> tuple[PipelineRunRecord, None, None]:
+                return (
+                    escalate_pipeline_run(
+                        connection,
+                        selected_work.work_id,
+                        current_stage="email_discovery",
+                        error_summary=(
+                            "Bounded email discovery exhausted the current send set "
+                            f"without a usable email for job_posting {job_posting_id!r}."
+                        ),
+                        run_summary=(
+                            "Supervisor escalated the durable pipeline run at the "
+                            "email_discovery boundary because bounded discovery "
+                            "exhausted the current send set without a usable email."
+                        ),
+                        timestamp=timestamp,
+                    ),
+                    None,
+                    None,
+                )
+
             send_set_plan = evaluate_role_targeted_send_set(
                 connection,
                 job_posting_id=job_posting_id,
                 current_time=timestamp,
             )
             if not send_set_plan.selected_contacts:
-                raise SupervisorStateError(
-                    "Bounded email discovery found no current send-set contacts for "
-                    f"job_posting {job_posting_id!r}."
-                )
+                return _escalate_exhausted_email_discovery()
             target_contact = next(
                 (
                     contact
@@ -3990,6 +4008,13 @@ def _execute_selected_work_unit(
                     "sending once the current send set became ready."
                 )
             elif discovery_result.posting_status == JOB_POSTING_STATUS_REQUIRES_CONTACTS:
+                refreshed_send_set_plan = evaluate_role_targeted_send_set(
+                    connection,
+                    job_posting_id=job_posting_id,
+                    current_time=timestamp,
+                )
+                if not refreshed_send_set_plan.selected_contacts:
+                    return _escalate_exhausted_email_discovery()
                 next_stage = "email_discovery"
                 run_summary = (
                     "Supervisor ran bounded email discovery for "
@@ -4659,12 +4684,14 @@ def _validate_selected_work_result(
             return "Supervisor failed to load the selected pipeline_run after email discovery."
         if pipeline_run.pipeline_run_id != selected_work.work_id:
             return "Email discovery changed the selected pipeline_run identity."
-        if pipeline_run.run_status != RUN_STATUS_IN_PROGRESS:
+        if pipeline_run.run_status not in {RUN_STATUS_IN_PROGRESS, RUN_STATUS_ESCALATED}:
             return (
-                "Email discovery left the pipeline_run outside in-progress state; found "
+                "Email discovery left the pipeline_run outside the expected active/terminal state; found "
                 f"{pipeline_run.run_status!r}."
             )
-        if pipeline_run.current_stage not in {"email_discovery", "sending"}:
+        if pipeline_run.current_stage != "email_discovery" and not (
+            pipeline_run.run_status == RUN_STATUS_IN_PROGRESS and pipeline_run.current_stage == "sending"
+        ):
             return (
                 "Email discovery did not keep the durable pipeline run at the current "
                 f"boundary or advance it to sending; found {pipeline_run.current_stage!r}."
@@ -4696,6 +4723,8 @@ def _validate_selected_work_result(
                     "Email discovery should stay at email_discovery when "
                     f"posting_status=requires_contacts, but found {pipeline_run.current_stage!r}."
                 )
+            if pipeline_run.run_status == RUN_STATUS_ESCALATED:
+                return None
             if discovery_artifact_count <= 0:
                 return (
                     "Email discovery kept the run active without persisting a "
@@ -4703,6 +4732,11 @@ def _validate_selected_work_result(
                 )
             return None
         if posting_row[0] == "ready_for_outreach":
+            if pipeline_run.run_status != RUN_STATUS_IN_PROGRESS:
+                return (
+                    "Email discovery should remain in-progress when "
+                    f"posting_status=ready_for_outreach, but found {pipeline_run.run_status!r}."
+                )
             if pipeline_run.current_stage != "sending":
                 return (
                     "Email discovery should advance to sending when "

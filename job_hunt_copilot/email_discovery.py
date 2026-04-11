@@ -2866,10 +2866,11 @@ def _all_email_finder_providers_exhausted(
         SELECT DISTINCT provider_name
         FROM provider_budget_events
         WHERE related_contact_id = ?
-          AND event_type IN (?, ?, ?, ?, ?, ?)
+          AND event_type IN (?, ?, ?, ?, ?, ?, ?)
         """,
         (
             contact_id,
+            DISCOVERY_OUTCOME_DOMAIN_UNRESOLVED,
             DISCOVERY_OUTCOME_NOT_FOUND,
             DISCOVERY_OUTCOME_RATE_LIMITED,
             DISCOVERY_OUTCOME_QUOTA_EXHAUSTED,

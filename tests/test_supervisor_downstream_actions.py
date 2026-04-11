@@ -1343,6 +1343,105 @@ def test_email_discovery_stage_advances_to_sending_when_send_set_becomes_ready(
     }
 
 
+def test_email_discovery_stage_escalates_when_bounded_send_set_is_exhausted(
+    tmp_path: Path,
+) -> None:
+    project_root = bootstrap_project(tmp_path)
+    paths = ProjectPaths.from_root(project_root)
+    connection = connect_database(project_root / "job_hunt_copilot.db")
+    lead_id, job_posting_id = seed_role_targeted_posting(
+        connection,
+        posting_status="requires_contacts",
+    )
+    seed_approved_tailoring_run(connection, job_posting_id=job_posting_id)
+    seed_shortlisted_contact(
+        connection,
+        contact_id="ct_exhausted",
+        job_posting_contact_id="jpc_exhausted",
+        job_posting_id=job_posting_id,
+        display_name="Priya Recruiter",
+        recipient_type="recruiter",
+        position_title="Technical Recruiter",
+        provider_person_id="pp_exhausted",
+    )
+    resume_agent(
+        connection,
+        manual_command="jhc-agent-start",
+        timestamp="2026-04-08T00:17:30Z",
+    )
+    pipeline_run, _ = ensure_role_targeted_pipeline_run(
+        connection,
+        lead_id=lead_id,
+        job_posting_id=job_posting_id,
+        current_stage="email_discovery",
+        started_at="2026-04-08T00:18:00Z",
+    )
+
+    execution = run_supervisor_cycle(
+        connection,
+        paths,
+        trigger_type="launchd_heartbeat",
+        scheduler_name="launchd",
+        started_at="2026-04-08T00:19:00Z",
+        action_dependencies=SupervisorActionDependencies(
+            email_finder_providers=(
+                FakeEmailFinderProvider(
+                    provider_name="prospeo",
+                    requires_domain=True,
+                    responses=[],
+                ),
+                FakeEmailFinderProvider(
+                    provider_name="getprospect",
+                    requires_domain=True,
+                    responses=[],
+                ),
+                FakeEmailFinderProvider(
+                    provider_name="hunter",
+                    responses=[{"outcome": "rate_limited"}],
+                ),
+            ),
+        ),
+    )
+    updated_run = get_pipeline_run(connection, pipeline_run.pipeline_run_id)
+    posting_status = connection.execute(
+        """
+        SELECT posting_status
+        FROM job_postings
+        WHERE job_posting_id = ?
+        """,
+        (job_posting_id,),
+    ).fetchone()[0]
+    contact_row = connection.execute(
+        """
+        SELECT contact_status, discovery_summary
+        FROM contacts
+        WHERE contact_id = 'ct_exhausted'
+        """
+    ).fetchone()
+    link_row = connection.execute(
+        """
+        SELECT link_level_status
+        FROM job_posting_contacts
+        WHERE job_posting_contact_id = 'jpc_exhausted'
+        """
+    ).fetchone()
+    connection.close()
+
+    assert execution.cycle.result == SUPERVISOR_CYCLE_RESULT_SUCCESS
+    assert execution.selected_work is not None
+    assert execution.selected_work.action_id == ACTION_RUN_ROLE_TARGETED_EMAIL_DISCOVERY
+    assert updated_run is not None
+    assert updated_run.run_status == RUN_STATUS_ESCALATED
+    assert updated_run.current_stage == "email_discovery"
+    assert "exhausted the current send set" in (updated_run.last_error_summary or "")
+    assert posting_status == "requires_contacts"
+    assert dict(contact_row) == {
+        "contact_status": "exhausted",
+        "discovery_summary": "all_providers_exhausted",
+    }
+    assert link_row["link_level_status"] == "exhausted"
+
+
 def test_sending_stage_drafts_ready_send_set_and_stays_active_while_more_sends_are_delayed(
     tmp_path: Path,
 ) -> None:

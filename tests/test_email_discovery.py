@@ -1375,7 +1375,7 @@ def test_email_discovery_records_domain_unresolved_but_continues_hunter(tmp_path
         provider_name="hunter",
         responses=[
             {
-                "outcome": "not_found",
+                "outcome": "network_error",
                 "remaining_credits": 12,
                 "credit_limit": 50,
             }
@@ -1429,6 +1429,74 @@ def test_email_discovery_records_domain_unresolved_but_continues_hunter(tmp_path
         """
     ).fetchone()
     assert unresolved_row["unresolved_reason"] == "latest_outcome_domain_unresolved"
+
+    connection.close()
+
+
+def test_email_discovery_treats_domain_unresolved_as_provider_exhaustion(tmp_path: Path):
+    project_root = bootstrap_project(tmp_path)
+    paths = ProjectPaths.from_root(project_root)
+    connection = connect_database(project_root / "job_hunt_copilot.db")
+    seed_search_ready_posting(
+        connection,
+        paths,
+        source_url="https://www.linkedin.com/jobs/view/123",
+    )
+    seed_linked_contact(connection, linkedin_url=None, provider_person_id=None, identity_key="manual|maya")
+
+    providers = (
+        FakeEmailFinderProvider(provider_name="prospeo", requires_domain=True, responses=[]),
+        FakeEmailFinderProvider(provider_name="getprospect", requires_domain=True, responses=[]),
+        FakeEmailFinderProvider(
+            provider_name="hunter",
+            responses=[
+                {
+                    "outcome": "rate_limited",
+                    "remaining_credits": 0,
+                    "credit_limit": 50,
+                }
+            ],
+        ),
+    )
+
+    result = run_email_discovery_for_contact(
+        project_root=project_root,
+        job_posting_id="jp_search",
+        contact_id="ct_target",
+        providers=providers,
+        current_time="2026-04-06T21:47:30Z",
+    )
+
+    assert result.outcome == DISCOVERY_OUTCOME_DOMAIN_UNRESOLVED
+    contact_row = connection.execute(
+        """
+        SELECT contact_status, discovery_summary
+        FROM contacts
+        WHERE contact_id = 'ct_target'
+        """
+    ).fetchone()
+    assert dict(contact_row) == {
+        "contact_status": CONTACT_STATUS_EXHAUSTED,
+        "discovery_summary": "all_providers_exhausted",
+    }
+
+    link_row = connection.execute(
+        """
+        SELECT link_level_status
+        FROM job_posting_contacts
+        WHERE job_posting_contact_id = 'jpc_target'
+        """
+    ).fetchone()
+    assert link_row["link_level_status"] == POSTING_CONTACT_STATUS_EXHAUSTED
+
+    unresolved_row = connection.execute(
+        """
+        SELECT unresolved_reason
+        FROM unresolved_contacts_review
+        WHERE contact_id = 'ct_target'
+        """
+    ).fetchone()
+    assert unresolved_row["unresolved_reason"] == "contact_exhausted"
 
     connection.close()
 
