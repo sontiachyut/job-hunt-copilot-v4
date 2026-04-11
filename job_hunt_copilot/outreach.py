@@ -3183,14 +3183,14 @@ def _signature_lines(sender: SenderIdentity) -> list[str]:
 
 def _job_hunt_copilot_pitch_lines() -> list[str]:
     return [
-        "Lately, I have also been spending time sharpening my Agentic AI skills.",
+        "Lately, I have been spending time sharpening my Agentic AI skills.",
         (
-            f"One example is Job Hunt Copilot ({JOB_HUNT_COPILOT_REPO_URL}), which I built for my own "
-            "job search and now use to find leads and send outreach autonomously."
+            f"I built Job Hunt Copilot ({JOB_HUNT_COPILOT_REPO_URL}) for my own job search, "
+            "and this email is one of its live outputs."
         ),
         (
-            "This email is one of its live outputs, and I personally review every email before it goes out. "
-            "If useful, I am happy to talk through the architecture, tradeoffs, and what I learned building it."
+            "It is an AI agent I use for my own job search to find leads and send outreach autonomously, "
+            "and I personally review every email before it goes out."
         ),
     ]
 
@@ -4212,8 +4212,8 @@ def _render_job_hunt_copilot_callout_html() -> str:
         '<div style="margin:16px 0;padding:14px 16px;'
         'border-left:3px solid #111827;border-radius:4px;'
         'background:#f8fafc;">'
-        f'<p style="margin:0 0 8px 0;color:#111827;line-height:1.55;font-weight:600;">{html.escape(line_one)}</p>'
-        f'<p style="margin:0 0 8px 0;color:#334155;line-height:1.55;">{line_two_html}</p>'
+        f'<p style="margin:0 0 8px 0;color:#334155;line-height:1.55;">{html.escape(line_one)}</p>'
+        f'<p style="margin:0 0 8px 0;color:#111827;line-height:1.55;font-weight:600;">{line_two_html}</p>'
         f'<p style="margin:0;color:#475569;line-height:1.55;">{html.escape(line_three)}</p>'
         "</div>"
     )
