@@ -1644,6 +1644,44 @@ def test_role_targeted_composition_prefers_technical_jd_signals_over_generic_res
         ),
         encoding="utf-8",
     )
+    paths.tailoring_step_4_evidence_map_path(
+        "KUBRA",
+        "Software Engineer -Java",
+    ).write_text(
+        yaml.safe_dump(
+            {
+                "matches": [
+                    {
+                        "jd_signal": "2+ years of hands-on experience building REST APIs or microservices",
+                        "confidence": "medium",
+                        "source_excerpt": "Cloud Meraki tracked 200+ microservices and exposed backend APIs in Golang and Java",
+                    },
+                    {
+                        "jd_signal": "2+ years of hands-on experience building REST APIs or microservices",
+                        "confidence": "medium",
+                        "source_excerpt": "The optimizer engine and backend APIs in Golang and Java",
+                    },
+                    {
+                        "jd_signal": "Strong proficiency in Java 17+, object-oriented design, and design patterns",
+                        "confidence": "high",
+                        "source_excerpt": "Cloud Meraki tracked resource usage patterns across the 200+ microservice fleet on Kubernetes",
+                    },
+                    {
+                        "jd_signal": "Strong proficiency in Java 17+, object-oriented design, and design patterns",
+                        "confidence": "high",
+                        "source_excerpt": "Observed usage patterns across services",
+                    },
+                    {
+                        "jd_signal": "Solid understanding of Java concurrency, relational databases, and stream processing",
+                        "confidence": "low",
+                        "source_excerpt": "some weak database overlap",
+                    },
+                ]
+            },
+            sort_keys=False,
+        ),
+        encoding="utf-8",
+    )
 
     result = generate_role_targeted_send_set_drafts(
         connection,
@@ -1654,16 +1692,7 @@ def test_role_targeted_composition_prefers_technical_jd_signals_over_generic_res
     )
 
     body_text = Path(result.drafted_messages[0].body_text_artifact_path).read_text(encoding="utf-8")
-    assert any(
-        signal in body_text
-        for signal in (
-            "REST APIs or microservices",
-            "Java concurrency, relational databases, and stream processing",
-            "Spring Boot or Jakarta EE",
-            "enterprise-scale software solutions",
-            "high-performance payment systems",
-        )
-    )
+    assert "role's focus on REST APIs or microservices" in body_text
     assert "role's focus on contribute to design of new functionality" not in body_text
     assert "Communicate with Software Engineers" not in body_text
 

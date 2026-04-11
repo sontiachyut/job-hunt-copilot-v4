@@ -126,15 +126,15 @@ ROLE_SIGNAL_NONTECHNICAL_PATTERNS: tuple[re.Pattern[str], ...] = (
     re.compile(r"^passionate about building great software", re.IGNORECASE),
 )
 ROLE_SIGNAL_TECHNICAL_PRIORITY_PATTERNS: tuple[tuple[re.Pattern[str], int], ...] = (
-    (re.compile(r"\b(?:rest apis?|microservices?)\b", re.IGNORECASE), 7),
-    (re.compile(r"\b(?:spring boot|jakarta ee)\b", re.IGNORECASE), 6),
-    (re.compile(r"\b(?:java(?:\s*17\+?)?|python|scala|golang|go|c\+\+|c#)\b", re.IGNORECASE), 5),
-    (re.compile(r"\b(?:distributed|event-driven|backend|platform|infrastructure)\b", re.IGNORECASE), 5),
+    (re.compile(r"\b(?:rest apis?|microservices?)\b", re.IGNORECASE), 10),
+    (re.compile(r"\b(?:high-throughput|enterprise-scale|payment systems?)\b", re.IGNORECASE), 9),
+    (re.compile(r"\b(?:distributed|event-driven|backend)\b", re.IGNORECASE), 8),
+    (re.compile(r"\b(?:spring boot|jakarta ee)\b", re.IGNORECASE), 7),
+    (re.compile(r"\b(?:aws|gcp|azure|cloud|ci/cd|jenkins|circleci|github actions)\b", re.IGNORECASE), 6),
     (re.compile(r"\b(?:concurrency|stream processing|relational databases?)\b", re.IGNORECASE), 5),
-    (re.compile(r"\b(?:aws|gcp|azure|cloud)\b", re.IGNORECASE), 4),
-    (re.compile(r"\b(?:jenkins|circleci|github actions|ci/cd)\b", re.IGNORECASE), 4),
+    (re.compile(r"\b(?:java(?:\s*17\+?)?|python|scala|golang|go|c\+\+|c#)\b", re.IGNORECASE), 5),
     (re.compile(r"\b(?:object-oriented design|design patterns?)\b", re.IGNORECASE), 4),
-    (re.compile(r"\b(?:security|payment systems?|real-time|scheduling|metadata|documents?|high-throughput|enterprise-scale)\b", re.IGNORECASE), 3),
+    (re.compile(r"\b(?:security|real-time|scheduling|metadata|documents?|platform|infrastructure)\b", re.IGNORECASE), 4),
 )
 ROLE_SIGNAL_SOURCE_PRIORITY: dict[str, int] = {
     "role_intent": 2,
@@ -1301,9 +1301,10 @@ def generate_role_targeted_send_set_drafts(
                 tailoring_inputs["step_6_payload"],
                 tailoring_inputs["step_3_payload"],
             ),
-            work_area=_role_work_area(
+            work_area=_select_role_work_area(
                 tailoring_inputs["step_3_payload"],
                 tailoring_inputs["jd_text"],
+                step_4_payload=tailoring_inputs["step_4_payload"],
             ),
             sender=sender,
             tailored_resume_path=str(tailoring_inputs["resume_path"]),
@@ -2600,6 +2601,7 @@ def _load_tailoring_draft_inputs(
     company_name = str(posting_row["company_name"])
     role_title = str(posting_row["role_title"])
     step_3_path = paths.tailoring_step_3_jd_signals_path(company_name, role_title)
+    step_4_path = paths.tailoring_step_4_evidence_map_path(company_name, role_title)
     step_6_path = paths.tailoring_step_6_candidate_bullets_path(company_name, role_title)
     if not step_3_path.exists() or not step_6_path.exists():
         raise OutreachDraftingError(
@@ -2611,6 +2613,7 @@ def _load_tailoring_draft_inputs(
         "resume_path": resume_path,
         "jd_text": jd_text,
         "step_3_payload": _read_yaml_file(step_3_path),
+        "step_4_payload": _read_yaml_file(step_4_path) if step_4_path.exists() else {},
         "step_6_payload": _read_yaml_file(step_6_path),
         "role_intent_summary": _normalize_optional_text(
             _read_yaml_file(step_3_path).get("role_intent_summary")
@@ -2790,6 +2793,15 @@ def _select_fit_summary(
 
 
 def _role_work_area(step_3_payload: Mapping[str, Any], jd_text: str) -> str | None:
+    return _select_role_work_area(step_3_payload, jd_text, step_4_payload=None)
+
+
+def _select_role_work_area(
+    step_3_payload: Mapping[str, Any],
+    jd_text: str,
+    *,
+    step_4_payload: Mapping[str, Any] | None,
+) -> str | None:
     candidate_signals: list[tuple[str, str]] = []
     role_intent_summary = _normalize_optional_text(step_3_payload.get("role_intent_summary"))
     if role_intent_summary is not None:
@@ -2810,7 +2822,12 @@ def _role_work_area(step_3_payload: Mapping[str, Any], jd_text: str) -> str | No
         cleaned = _clean_role_signal(raw_signal)
         if cleaned is not None:
             fallback_candidates.append(cleaned)
-            score = _score_role_signal_for_opener(cleaned, source_kind=source_kind)
+            score = _score_role_signal_for_opener(
+                cleaned,
+                raw_signal=raw_signal,
+                source_kind=source_kind,
+                step_4_payload=step_4_payload,
+            )
             if score > 0:
                 scored_candidates.append((score, -index, cleaned))
     if scored_candidates:
@@ -2822,7 +2839,12 @@ def _role_work_area(step_3_payload: Mapping[str, Any], jd_text: str) -> str | No
         if stripped and not stripped.startswith("#"):
             cleaned = _clean_role_signal(stripped)
             if cleaned is not None:
-                scored = _score_role_signal_for_opener(cleaned, source_kind="jd_fallback")
+                scored = _score_role_signal_for_opener(
+                    cleaned,
+                    raw_signal=stripped,
+                    source_kind="jd_fallback",
+                    step_4_payload=step_4_payload,
+                )
                 if scored > 0:
                     return cleaned
                 return cleaned
@@ -2881,17 +2903,59 @@ def _clean_role_signal(value: str) -> str | None:
 def _score_role_signal_for_opener(
     cleaned_signal: str,
     *,
+    raw_signal: str,
     source_kind: str,
+    step_4_payload: Mapping[str, Any] | None,
 ) -> int:
     lowered = cleaned_signal.lower()
-    technical_score = sum(
+    technical_score = max(
         weight
         for pattern, weight in ROLE_SIGNAL_TECHNICAL_PRIORITY_PATTERNS
         if pattern.search(lowered)
-    )
+    ) if any(pattern.search(lowered) for pattern, _ in ROLE_SIGNAL_TECHNICAL_PRIORITY_PATTERNS) else 0
     if technical_score <= 0:
         return 0
-    return technical_score * 10 + ROLE_SIGNAL_SOURCE_PRIORITY.get(source_kind, 0) * 10
+    evidence_score = _score_jd_signal_evidence_overlap(raw_signal, step_4_payload)
+    return technical_score * 100 + ROLE_SIGNAL_SOURCE_PRIORITY.get(source_kind, 0) * 10 + evidence_score
+
+
+def _score_jd_signal_evidence_overlap(
+    raw_signal: str,
+    step_4_payload: Mapping[str, Any] | None,
+) -> int:
+    if step_4_payload is None:
+        return 0
+    matches = step_4_payload.get("matches")
+    if not isinstance(matches, list):
+        return 0
+    confidence_weight = {"high": 4, "medium": 2, "low": 1}
+    score = 0
+    normalized_raw_signal = raw_signal.strip()
+    for match in matches:
+        if not isinstance(match, Mapping):
+            continue
+        if _normalize_optional_text(match.get("jd_signal")) != normalized_raw_signal:
+            continue
+        confidence = (_normalize_optional_text(match.get("confidence")) or "").lower()
+        score += confidence_weight.get(confidence, 1)
+        source_excerpt = (_normalize_optional_text(match.get("source_excerpt")) or "").lower()
+        if METRIC_RE.search(source_excerpt):
+            score += 2
+        if any(
+            token in source_excerpt
+            for token in (
+                "microservice",
+                "backend api",
+                "distributed",
+                "throughput",
+                "uptime",
+                "java",
+                "aws",
+                "kubernetes",
+            )
+        ):
+            score += 1
+    return score
 
 
 def _build_role_targeted_subject(context: RoleTargetedDraftContext) -> str:
