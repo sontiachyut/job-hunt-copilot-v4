@@ -1456,6 +1456,81 @@ def test_role_targeted_composition_rewrites_security_jd_into_natural_theme(tmp_p
     connection.close()
 
 
+def test_role_targeted_composition_does_not_overclassify_generic_backend_roles_as_security(
+    tmp_path: Path,
+):
+    project_root, paths = bootstrap_project(tmp_path)
+    connection = connect_database(project_root / "job_hunt_copilot.db")
+    write_sender_profile(paths)
+    seed_posting(
+        connection,
+        company_name="PayPal",
+        role_title="Sr Software Engineer",
+    )
+    seed_linked_contact(
+        connection,
+        contact_id="ct_paypal",
+        job_posting_contact_id="jpc_paypal",
+        display_name="Courtney Ngai",
+        recipient_type=RECIPIENT_TYPE_ENGINEER,
+        current_working_email="courtney@paypal.example",
+        created_at="2026-04-06T20:01:00Z",
+    )
+    connection.execute(
+        "UPDATE contacts SET position_title = ? WHERE contact_id = ?",
+        ("Senior Software Engineer", "ct_paypal"),
+    )
+    connection.commit()
+    seed_approved_tailoring_run(
+        connection,
+        paths,
+        company_name="PayPal",
+        role_title="Sr Software Engineer",
+    )
+    paths.tailoring_step_3_jd_signals_path(
+        "PayPal",
+        "Sr Software Engineer",
+    ).write_text(
+        yaml.safe_dump(
+            {
+                "job_posting_id": "jp_outreach",
+                "resume_tailoring_run_id": "rtr_outreach",
+                "status": "generated",
+                "role_intent_summary": (
+                    "Build secure, highly available backend services and distributed systems "
+                    "that support product delivery across the software lifecycle."
+                ),
+                "signals_by_priority": {
+                    "must_have": [],
+                    "core_responsibility": [],
+                    "nice_to_have": [],
+                    "informational": [],
+                },
+                "signals": [],
+            },
+            sort_keys=False,
+        ),
+        encoding="utf-8",
+    )
+
+    result = generate_role_targeted_send_set_drafts(
+        connection,
+        project_root=project_root,
+        job_posting_id="jp_outreach",
+        current_time="2026-04-06T20:30:00Z",
+        local_timezone=ZoneInfo("UTC"),
+    )
+
+    body_text = Path(result.drafted_messages[0].body_text_artifact_path).read_text(encoding="utf-8")
+    assert (
+        "I'm reaching out about the Sr Software Engineer role at PayPal because the mix of backend systems, distributed services, and production delivery is the kind of backend and distributed systems work I want to keep growing in."
+        in body_text
+    )
+    assert "government-focused security work" not in body_text
+
+    connection.close()
+
+
 def test_role_targeted_draft_batch_surfaces_failed_contact_without_losing_successes(tmp_path: Path):
     project_root, paths = bootstrap_project(tmp_path)
     connection = connect_database(project_root / "job_hunt_copilot.db")

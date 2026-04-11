@@ -2981,7 +2981,22 @@ def _compose_role_targeted_role_theme(context: RoleTargetedDraftContext) -> str:
         )
         if value
     ).lower()
-    if any(token in source for token in ("security", "secure", "compliance", "intel federal", "government")):
+    if any(
+        token in source
+        for token in (
+            "information security",
+            "security engineer",
+            "enterprise security",
+            "application security",
+            "cloud security",
+            "cybersecurity",
+            "cyber security",
+            "secure infrastructure",
+            "intel federal",
+            "government information security",
+            "government-focused security",
+        )
+    ):
         return "enterprise security systems, secure infrastructure, and government-focused security work"
     if any(token in source for token in ("scheduler", "scheduling", "scheduling engines")):
         return "engineering leadership and real-time scheduling systems"
