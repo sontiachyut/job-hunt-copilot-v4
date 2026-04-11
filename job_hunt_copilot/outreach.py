@@ -117,6 +117,8 @@ ROLE_TARGETED_DRAFT_BLOCK_PATTERNS: tuple[re.Pattern[str], ...] = (
     re.compile(r"\bOne example of that overlap is\b", re.IGNORECASE),
     re.compile(r"\bI came across the\b", re.IGNORECASE),
     re.compile(r"\bThe emphasis on\b", re.IGNORECASE),
+    re.compile(r"\bMS in Computer Science at ASU\b", re.IGNORECASE),
+    re.compile(r"\bArizona State University\b", re.IGNORECASE),
 )
 ROLE_SIGNAL_VERB_PREFIXES = {
     "deliver": "delivering",
@@ -1134,8 +1136,8 @@ class DeterministicOutreachDraftRenderer(OutreachDraftRenderer):
             "",
             (
                 f"{opening}, and it stood out to me because I have been trying to learn from people working close to "
-                f"{role_hint.lower()}. I am currently finishing my MS in Computer Science at ASU and have been "
-                "gravitating toward backend, distributed-systems, and AI-adjacent engineering work."
+                f"{role_hint.lower()}. I have been gravitating toward backend, distributed-systems, and "
+                "AI-adjacent engineering work."
             ),
             "",
             (
@@ -2799,13 +2801,11 @@ def _compose_role_targeted_composition_plan(
     proof_point = context.proof_point or (
         "the distributed systems work I have done across reliability, performance, and production delivery"
     )
-    education_line = context.sender.education_summary or "I am currently finishing my MS in Computer Science at ASU."
     opener_inputs = _compose_role_targeted_opener_inputs(context)
     plan = RoleTargetedCompositionPlan(
         opener_paragraph=_render_role_targeted_opener(opener_inputs),
         background_paragraph=(
             f"{_build_role_targeted_why_line(context)} "
-            f"{_ensure_sentence(education_line)} "
             f"{_proof_point_sentence(proof_point)} "
             "That is what prompted me to reach out."
         ),
@@ -2947,8 +2947,7 @@ def _experience_summary_line(context: RoleTargetedDraftContext) -> str:
 
 
 def _snippet_stage(sender: SenderIdentity) -> str:
-    if sender.education_summary and "ASU" in sender.education_summary:
-        return "currently finishing an MS in Computer Science at ASU"
+    del sender
     return "a software engineer by background"
 
 

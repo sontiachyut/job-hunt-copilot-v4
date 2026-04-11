@@ -1036,6 +1036,8 @@ def test_role_targeted_draft_batch_persists_messages_artifacts_and_transitions(t
     manager_body = Path(manager_message.body_text_artifact_path).read_text(encoding="utf-8")
     recruiter_html = Path(recruiter_message.body_html_artifact_path).read_text(encoding="utf-8")
     assert "I thought you might have useful perspective on the hiring context for this opening." in recruiter_body
+    assert "MS in Computer Science at ASU" not in recruiter_body
+    assert "Arizona State University" not in recruiter_body
     assert "Lately, I have been spending time sharpening my Agentic AI skills." in recruiter_body
     assert "I built Job Hunt Copilot (https://github.com/sontiachyut/job-hunt-copilot-v4) for my own job search, and this email is one of its live outputs." in recruiter_body
     assert "It is an AI agent I use for my own job search to find leads and send outreach autonomously, and I personally review every email before it goes out." in recruiter_body
@@ -1055,6 +1057,8 @@ def test_role_targeted_draft_batch_persists_messages_artifacts_and_transitions(t
     assert "border-left:4px solid #1a73e8" in recruiter_html
     assert "Best,<br>Achyutaram Sonti<br>https://www.linkedin.com/in/asonti/<br>602-768-6071<br>asonti1@asu.edu" in recruiter_html
     assert "I thought you might have useful perspective on the team and the problems this role is meant to solve." in manager_body
+    assert "MS in Computer Science at ASU" not in manager_body
+    assert "Arizona State University" not in manager_body
     assert "15-minute Zoom" not in manager_body
     assert "Lately, I have been spending time sharpening my Agentic AI skills." in manager_body
     assert "I built Job Hunt Copilot (https://github.com/sontiachyut/job-hunt-copilot-v4) for my own job search, and this email is one of its live outputs." in manager_body
@@ -1747,6 +1751,8 @@ def test_general_learning_draft_persists_without_posting_or_resume(tmp_path: Pat
     body_text = Path(drafted.body_text_artifact_path).read_text(encoding="utf-8")
     assert "learning-first mode" in body_text
     assert "direct role ask" in body_text
+    assert "MS in Computer Science at ASU" not in body_text
+    assert "Arizona State University" not in body_text
 
     row = connection.execute(
         """
