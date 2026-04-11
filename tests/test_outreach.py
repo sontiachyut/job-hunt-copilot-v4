@@ -1366,9 +1366,10 @@ def test_role_targeted_drafting_filters_jd_boilerplate_from_opening_and_subject(
     message = result.drafted_messages[0]
     body_text = Path(message.body_text_artifact_path).read_text(encoding="utf-8")
     assert (
-        'I wanted to reach out about the Manager I. Software Engineering- "Scheduler" role at ASM '
-        "because it looks like a chance to work on engineering leadership and real-time scheduling systems, "
-        "which is the kind of systems and leadership work I want to keep leaning into."
+        'I\'m reaching out about the Manager I. Software Engineering- "Scheduler" role at ASM because I was '
+        "interested in the role's focus on engineering leadership and real-time scheduling systems. "
+        "That is close to the kind of systems and leadership work I want to keep leaning into, which is "
+        "what prompted me to reach out."
         in body_text
     )
     assert "3+ years relevant experience" not in body_text
@@ -1445,13 +1446,95 @@ def test_role_targeted_composition_rewrites_security_jd_into_natural_theme(tmp_p
 
     body_text = Path(result.drafted_messages[0].body_text_artifact_path).read_text(encoding="utf-8")
     assert (
-        "The Government Information Security Engineer opening at Intel caught my attention because it sits "
-        "close to enterprise security systems, secure infrastructure, and government-focused security work, "
-        "which is where I want to keep building depth."
+        "I'm reaching out about the Government Information Security Engineer role at Intel because I was "
+        "interested in the role's focus on enterprise security systems, secure infrastructure, and "
+        "government-focused security work. That is an area where I want to keep building depth, which is "
+        "what prompted me to reach out."
         in body_text
     )
     assert "identifies, develops, plans, implements" not in body_text.lower()
     assert "Given your role as Director of Engineering, I thought you might have useful perspective on the team and the problems this role is meant to solve." in body_text
+
+    connection.close()
+
+
+def test_role_targeted_composition_uses_specific_work_area_in_opener_when_available(
+    tmp_path: Path,
+):
+    project_root, paths = bootstrap_project(tmp_path)
+    connection = connect_database(project_root / "job_hunt_copilot.db")
+    write_sender_profile(paths)
+    seed_posting(
+        connection,
+        company_name="Scribd, Inc.",
+        role_title="Software Engineer - Backend (Python)",
+    )
+    seed_linked_contact(
+        connection,
+        contact_id="ct_scribd",
+        job_posting_contact_id="jpc_scribd",
+        display_name="Ashod Nakashian",
+        recipient_type=RECIPIENT_TYPE_ENGINEER,
+        current_working_email="ashod@scribd.example",
+        created_at="2026-04-06T20:01:00Z",
+    )
+    connection.execute(
+        "UPDATE contacts SET position_title = ? WHERE contact_id = ?",
+        ("Software Engineer", "ct_scribd"),
+    )
+    connection.commit()
+    seed_approved_tailoring_run(
+        connection,
+        paths,
+        company_name="Scribd, Inc.",
+        role_title="Software Engineer - Backend (Python)",
+    )
+    paths.tailoring_step_3_jd_signals_path(
+        "Scribd, Inc.",
+        "Software Engineer - Backend (Python)",
+    ).write_text(
+        yaml.safe_dump(
+            {
+                "job_posting_id": "jp_outreach",
+                "resume_tailoring_run_id": "rtr_outreach",
+                "status": "generated",
+                "role_intent_summary": (
+                    "Implement event-driven, distributed systems to extract, enrich, and "
+                    "process metadata from large-scale document and media datasets."
+                ),
+                "signals_by_priority": {
+                    "must_have": [],
+                    "core_responsibility": [],
+                    "nice_to_have": [],
+                    "informational": [],
+                },
+                "signals": [],
+            },
+            sort_keys=False,
+        ),
+        encoding="utf-8",
+    )
+
+    result = generate_role_targeted_send_set_drafts(
+        connection,
+        project_root=project_root,
+        job_posting_id="jp_outreach",
+        current_time="2026-04-06T20:30:00Z",
+        local_timezone=ZoneInfo("UTC"),
+    )
+
+    body_text = Path(result.drafted_messages[0].body_text_artifact_path).read_text(encoding="utf-8")
+    assert (
+        "I'm reaching out about the Software Engineer - Backend (Python) role at Scribd, Inc. because I was "
+        "interested in the role's focus on implementing event-driven, distributed systems to extract, enrich, "
+        "and process metadata from large-scale document and media datasets."
+        in body_text
+    )
+    assert (
+        "That is close to the kind of systems work I have been doing in production over the last few years, "
+        "which is what prompted me to reach out."
+        in body_text
+    )
 
     connection.close()
 
@@ -1523,7 +1606,9 @@ def test_role_targeted_composition_does_not_overclassify_generic_backend_roles_a
 
     body_text = Path(result.drafted_messages[0].body_text_artifact_path).read_text(encoding="utf-8")
     assert (
-        "I'm reaching out about the Sr Software Engineer role at PayPal because the mix of backend systems, distributed services, and production delivery is the kind of backend and distributed systems work I want to keep growing in."
+        "I'm reaching out about the Sr Software Engineer role at PayPal because I was interested in the role's "
+        "focus on secure, highly available backend services and distributed systems that support product "
+        "delivery across the software lifecycle."
         in body_text
     )
     assert "government-focused security work" not in body_text

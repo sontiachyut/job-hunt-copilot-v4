@@ -132,12 +132,17 @@ ROLE_SIGNAL_VERB_PREFIXES = {
     "drive": "driving",
     "develop": "developing",
     "design": "designing",
+    "implement": "implementing",
     "collaborate": "collaborating",
     "ensure": "ensuring",
     "review": "reviewing",
     "evaluate": "evaluating",
     "lead": "leading",
     "build": "building",
+    "extract": "extracting",
+    "enrich": "enriching",
+    "process": "processing",
+    "support": "supporting",
     "oversee": "overseeing",
     "manage": "managing",
 }
@@ -310,8 +315,8 @@ class RoleTargetedOpenerInputs:
     company_name: str
     role_title: str
     role_theme: str
-    opener_style: str
-    growth_phrase: str
+    technical_focus: str
+    overlap_sentence: str
 
 
 @dataclass(frozen=True)
@@ -2821,62 +2826,67 @@ def _compose_role_targeted_opener_inputs(
     context: RoleTargetedDraftContext,
 ) -> RoleTargetedOpenerInputs:
     role_theme = _compose_role_targeted_role_theme(context)
+    technical_focus = _compose_role_targeted_technical_focus(context, role_theme)
     lowered = role_theme.lower()
     if "security" in lowered or "government" in lowered:
         return RoleTargetedOpenerInputs(
             company_name=context.company_name,
             role_title=context.role_title,
             role_theme=role_theme,
-            opener_style="caught_attention",
-            growth_phrase="where I want to keep building depth",
+            technical_focus=technical_focus,
+            overlap_sentence=(
+                "That is an area where I want to keep building depth, which is what prompted me to reach out."
+            ),
         )
     if "leadership" in lowered or "scheduling" in lowered:
         return RoleTargetedOpenerInputs(
             company_name=context.company_name,
             role_title=context.role_title,
             role_theme=role_theme,
-            opener_style="chance_to_work_on",
-            growth_phrase="the kind of systems and leadership work I want to keep leaning into",
+            technical_focus=technical_focus,
+            overlap_sentence=(
+                "That is close to the kind of systems and leadership work I want to keep leaning into, "
+                "which is what prompted me to reach out."
+            ),
         )
     if "platform" in lowered or "cloud" in lowered:
         return RoleTargetedOpenerInputs(
             company_name=context.company_name,
             role_title=context.role_title,
             role_theme=role_theme,
-            opener_style="chance_to_work_on",
-            growth_phrase="the kind of platform and infrastructure work I want to keep growing in",
+            technical_focus=technical_focus,
+            overlap_sentence=(
+                "That is close to the kind of platform and infrastructure work I want to keep growing in, "
+                "which is what prompted me to reach out."
+            ),
         )
     if "python" in lowered:
         return RoleTargetedOpenerInputs(
             company_name=context.company_name,
             role_title=context.role_title,
             role_theme=role_theme,
-            opener_style="mix",
-            growth_phrase="the kind of production Python and backend work I want to keep growing in",
+            technical_focus=technical_focus,
+            overlap_sentence=(
+                "That is close to the kind of systems work I have been doing in production over the last "
+                "few years, which is what prompted me to reach out."
+            ),
         )
     return RoleTargetedOpenerInputs(
         company_name=context.company_name,
         role_title=context.role_title,
         role_theme=role_theme,
-        opener_style="mix",
-        growth_phrase="the kind of backend and distributed systems work I want to keep growing in",
+        technical_focus=technical_focus,
+        overlap_sentence=(
+            "That is close to the kind of systems work I have been doing in production over the last few "
+            "years, which is what prompted me to reach out."
+        ),
     )
 
 
 def _render_role_targeted_opener(inputs: RoleTargetedOpenerInputs) -> str:
-    if inputs.opener_style == "caught_attention":
-        return (
-            f"The {inputs.role_title} opening at {inputs.company_name} caught my attention because it sits "
-            f"close to {inputs.role_theme}, which is {inputs.growth_phrase}."
-        )
-    if inputs.opener_style == "chance_to_work_on":
-        return (
-            f"I wanted to reach out about the {inputs.role_title} role at {inputs.company_name} because it "
-            f"looks like a chance to work on {inputs.role_theme}, which is {inputs.growth_phrase}."
-        )
     return (
-        f"I'm reaching out about the {inputs.role_title} role at {inputs.company_name} because the mix of "
-        f"{inputs.role_theme} is {inputs.growth_phrase}."
+        f"I'm reaching out about the {inputs.role_title} role at {inputs.company_name} because I was "
+        f"interested in the role's focus on {inputs.technical_focus}. {inputs.overlap_sentence}"
     )
 
 
@@ -3010,6 +3020,60 @@ def _compose_role_targeted_role_theme(context: RoleTargetedDraftContext) -> str:
     if len(candidate.split()) <= 8 and " " in candidate:
         return candidate
     return "backend systems, distributed services, and production engineering"
+
+
+def _compose_role_targeted_technical_focus(
+    context: RoleTargetedDraftContext,
+    role_theme: str,
+) -> str:
+    for raw_value in (context.work_area, context.role_intent_summary):
+        normalized_focus = _normalize_technical_focus_phrase(raw_value)
+        if normalized_focus is not None:
+            return normalized_focus
+    return role_theme
+
+
+def _normalize_technical_focus_phrase(value: str | None) -> str | None:
+    normalized = _normalize_optional_text(value)
+    if normalized is None:
+        return None
+    candidate = _clean_role_signal(normalized)
+    if candidate is None:
+        candidate = _role_work_area_phrase(normalized)
+    candidate = _role_work_area_phrase(candidate)
+    first_word, _, remainder = candidate.partition(" ")
+    gerund = ROLE_SIGNAL_VERB_PREFIXES.get(first_word.lower())
+    if gerund is not None:
+        candidate = f"{gerund} {remainder}".strip()
+    candidate = re.sub(
+        r"\busing agile methodologies and devops principles\b.*$",
+        "",
+        candidate,
+        flags=re.IGNORECASE,
+    )
+    candidate = re.sub(
+        r"\bto improve and grow\b.*$",
+        "",
+        candidate,
+        flags=re.IGNORECASE,
+    )
+    candidate = re.sub(
+        r"\bwith a constant focus on security\b.*$",
+        "",
+        candidate,
+        flags=re.IGNORECASE,
+    )
+    candidate = re.sub(r"\s+", " ", candidate).strip(" ,.;")
+    if not candidate:
+        return None
+    lowered = candidate.lower()
+    if any(pattern.search(lowered) for pattern in ROLE_SIGNAL_BOILERPLATE_PATTERNS):
+        return None
+    if len(candidate.split()) > 18:
+        return None
+    if re.search(r"\b(?:identifies|develops|plans|implements|supports),\s", lowered):
+        return None
+    return candidate
 
 
 def _role_work_area_opening(work_area: str) -> str:
