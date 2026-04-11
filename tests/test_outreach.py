@@ -1035,14 +1035,14 @@ def test_role_targeted_draft_batch_persists_messages_artifacts_and_transitions(t
     recruiter_body = Path(recruiter_message.body_text_artifact_path).read_text(encoding="utf-8")
     manager_body = Path(manager_message.body_text_artifact_path).read_text(encoding="utf-8")
     recruiter_html = Path(recruiter_message.body_html_artifact_path).read_text(encoding="utf-8")
-    assert "I'm reaching out to you specifically because" in recruiter_body
-    assert "hiring loop for this role" in recruiter_body
+    assert "I thought you might have useful perspective on the hiring context for this opening." in recruiter_body
     assert "Lately, I have also been spending time sharpening my Agentic AI skills." in recruiter_body
     assert "One example is Job Hunt Copilot (https://github.com/sontiachyut/job-hunt-copilot-v4)" in recruiter_body
     assert "This email is one of its live outputs, and I personally review every email before it goes out." in recruiter_body
     assert "strong fit" not in recruiter_body
     assert "15-minute Zoom" not in recruiter_body
-    assert "worth considering?" in recruiter_body
+    assert "whether my background could be relevant." in recruiter_body
+    assert "seems close to" not in recruiter_body
     assert "I've included a short snippet below that you can paste into an IM/Email:" in recruiter_body
     assert "[snippet]" in recruiter_body
     assert "[/snippet]" in recruiter_body
@@ -1051,12 +1051,13 @@ def test_role_targeted_draft_batch_persists_messages_artifacts_and_transitions(t
     assert "background:#f4f4f4" in recruiter_html
     assert "border-left:4px solid #1a73e8" in recruiter_html
     assert "Best,<br>Achyutaram Sonti<br>https://www.linkedin.com/in/asonti/<br>602-768-6071<br>asonti1@asu.edu" in recruiter_html
-    assert "the team behind this role" in manager_body
+    assert "I thought you might have useful perspective on the team and the problems this role is meant to solve." in manager_body
     assert "15-minute Zoom" not in manager_body
     assert "Lately, I have also been spending time sharpening my Agentic AI skills." in manager_body
     assert "One example is Job Hunt Copilot (https://github.com/sontiachyut/job-hunt-copilot-v4)" in manager_body
     assert "This email is one of its live outputs, and I personally review every email before it goes out." in manager_body
     assert "strong fit" not in manager_body
+    assert "seems close to" not in manager_body
     assert "I've included a short snippet below that you can paste into an IM/Email:" in manager_body
     assert "[snippet]" in manager_body
     assert "[/snippet]" in manager_body
@@ -1271,7 +1272,7 @@ def test_role_targeted_drafting_stays_grounded_in_stored_inputs_not_raw_source_c
     )
 
     body_text = Path(result.drafted_messages[0].body_text_artifact_path).read_text(encoding="utf-8")
-    assert "recruiting function close to the target role" in body_text
+    assert "I thought you might have useful perspective on the hiring context for this opening." in body_text
     assert "50M+ daily HL7 records" in body_text
     assert "Former teammate of the CEO" not in body_text
     assert "12 years of Rust experience" not in body_text
@@ -1360,15 +1361,83 @@ def test_role_targeted_drafting_filters_jd_boilerplate_from_opening_and_subject(
 
     message = result.drafted_messages[0]
     body_text = Path(message.body_text_artifact_path).read_text(encoding="utf-8")
-    assert (
-        "what stood out to me was the chance to work on leading a group of talented engineers building "
-        "advanced scheduling engines that power real-time control systems across global chipmaking fabs"
-        in body_text
-    )
+    assert "The emphasis on engineering leadership and real-time scheduling systems stood out to me." in body_text
     assert "3+ years relevant experience" not in body_text
     assert "For over 55 years ASM" not in body_text
     assert message.subject == 'Interest in the Manager I. Software Engineering- "Scheduler" role at ASM'
     assert "Impact:" not in message.subject
+
+    connection.close()
+
+
+def test_role_targeted_composition_rewrites_security_jd_into_natural_theme(tmp_path: Path):
+    project_root, paths = bootstrap_project(tmp_path)
+    connection = connect_database(project_root / "job_hunt_copilot.db")
+    write_sender_profile(paths)
+    seed_posting(
+        connection,
+        company_name="Intel",
+        role_title="Government Information Security Engineer",
+    )
+    seed_linked_contact(
+        connection,
+        contact_id="ct_intel",
+        job_posting_contact_id="jpc_intel",
+        display_name="Jason Allsburg",
+        recipient_type=RECIPIENT_TYPE_HIRING_MANAGER,
+        current_working_email="jason@intel.example",
+        created_at="2026-04-06T20:01:00Z",
+    )
+    connection.execute(
+        "UPDATE contacts SET position_title = ? WHERE contact_id = ?",
+        ("Director of Engineering", "ct_intel"),
+    )
+    connection.commit()
+    seed_approved_tailoring_run(
+        connection,
+        paths,
+        company_name="Intel",
+        role_title="Government Information Security Engineer",
+    )
+    paths.tailoring_step_3_jd_signals_path(
+        "Intel",
+        "Government Information Security Engineer",
+    ).write_text(
+        yaml.safe_dump(
+            {
+                "job_posting_id": "jp_outreach",
+                "resume_tailoring_run_id": "rtr_outreach",
+                "status": "generated",
+                "role_intent_summary": (
+                    "Identifies, develops, plans, implements, and supports enterprise security systems "
+                    "using Agile methodologies and DevOps principles to improve and grow secure solutions "
+                    "for Intel Federal with a constant focus on security."
+                ),
+                "signals_by_priority": {
+                    "must_have": [],
+                    "core_responsibility": [],
+                    "nice_to_have": [],
+                    "informational": [],
+                },
+                "signals": [],
+            },
+            sort_keys=False,
+        ),
+        encoding="utf-8",
+    )
+
+    result = generate_role_targeted_send_set_drafts(
+        connection,
+        project_root=project_root,
+        job_posting_id="jp_outreach",
+        current_time="2026-04-06T20:30:00Z",
+        local_timezone=ZoneInfo("UTC"),
+    )
+
+    body_text = Path(result.drafted_messages[0].body_text_artifact_path).read_text(encoding="utf-8")
+    assert "The emphasis on enterprise security systems, secure infrastructure, and government-focused security work stood out to me." in body_text
+    assert "identifies, develops, plans, implements" not in body_text.lower()
+    assert "Given your role as Director of Engineering, I thought you might have useful perspective on the team and the problems this role is meant to solve." in body_text
 
     connection.close()
 

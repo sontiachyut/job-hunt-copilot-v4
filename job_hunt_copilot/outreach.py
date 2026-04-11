@@ -108,6 +108,14 @@ ROLE_SIGNAL_BOILERPLATE_PATTERNS: tuple[re.Pattern[str], ...] = (
     re.compile(r"\bour benefits\b", re.IGNORECASE),
     re.compile(r"\bcommitment to diversity\b", re.IGNORECASE),
 )
+ROLE_TARGETED_DRAFT_BLOCK_PATTERNS: tuple[re.Pattern[str], ...] = (
+    re.compile(r"\bwork around identifies\b", re.IGNORECASE),
+    re.compile(r"\byour role as .+ seems close to\b", re.IGNORECASE),
+    re.compile(r"\bteam behind this role\b", re.IGNORECASE),
+    re.compile(r"\bwork behind this role\b", re.IGNORECASE),
+    re.compile(r"\bstrong fit\b", re.IGNORECASE),
+    re.compile(r"\bOne example of that overlap is\b", re.IGNORECASE),
+)
 ROLE_SIGNAL_VERB_PREFIXES = {
     "deliver": "delivering",
     "delivers": "delivering",
@@ -284,6 +292,15 @@ class RoleTargetedDraftContext:
     work_area: str | None
     sender: SenderIdentity
     tailored_resume_path: str
+
+
+@dataclass(frozen=True)
+class RoleTargetedCompositionPlan:
+    opener_paragraph: str
+    background_paragraph: str
+    copilot_paragraphs: tuple[str, str, str]
+    ask_paragraph: str
+    snippet_text: str
 
 
 @dataclass(frozen=True)
@@ -1048,37 +1065,17 @@ def _is_usable_email(value: str | None) -> bool:
 
 class DeterministicOutreachDraftRenderer(OutreachDraftRenderer):
     def render_role_targeted(self, context: RoleTargetedDraftContext) -> RenderedDraft:
-        work_area = _role_work_area_phrase(context.work_area or context.role_intent_summary)
-        opening = (
-            f"I came across the {context.role_title} opening at {context.company_name}, and "
-            f"what stood out to me was {_role_work_area_opening(work_area)}. "
-            "I've spent the last few years building backend and distributed systems in production, "
-            "so it seemed like the kind of work I wanted to learn more about."
-        )
-        why_this_person = _build_role_targeted_why_line(context)
-        proof_point = context.proof_point or (
-            "the distributed systems work I have done across reliability, performance, and production delivery"
-        )
-        education_line = context.sender.education_summary or "I am currently finishing my MS in Computer Science at ASU."
+        plan = _compose_role_targeted_composition_plan(context)
         body_lines = [
             f"Hi {_first_name(context.display_name)},",
             "",
-            opening,
+            plan.opener_paragraph,
             "",
-            (
-                f"{why_this_person} {_ensure_sentence(education_line)} "
-                f"{_proof_point_sentence(proof_point)} That overlap is what prompted me to reach out."
-            ),
+            plan.background_paragraph,
             "",
-            *_job_hunt_copilot_pitch_lines(),
+            *plan.copilot_paragraphs,
             "",
-            (
-                "If it makes sense, would you be open to a short 15-minute conversation sometime this or next week "
-                "so I can learn a bit more about the role and get your perspective on whether my background is "
-                "worth considering? "
-                "If you're not the right person, I'd also really appreciate it if you could point me to the "
-                "right person or forward my resume internally."
-            ),
+            plan.ask_paragraph,
         ]
         include_snippet = True
         if include_snippet:
@@ -1087,7 +1084,7 @@ class DeterministicOutreachDraftRenderer(OutreachDraftRenderer):
                     "",
                     "I've included a short snippet below that you can paste into an IM/Email:",
                     "[snippet]",
-                    _render_forwardable_snippet_text(context),
+                    plan.snippet_text,
                     "[/snippet]",
                 ]
             )
@@ -2780,48 +2777,57 @@ def _build_role_targeted_subject(context: RoleTargetedDraftContext) -> str:
     return f"Interest in the {context.role_title} role at {context.company_name}"
 
 
+def _compose_role_targeted_composition_plan(
+    context: RoleTargetedDraftContext,
+) -> RoleTargetedCompositionPlan:
+    role_theme = _compose_role_targeted_role_theme(context)
+    proof_point = context.proof_point or (
+        "the distributed systems work I have done across reliability, performance, and production delivery"
+    )
+    education_line = context.sender.education_summary or "I am currently finishing my MS in Computer Science at ASU."
+    plan = RoleTargetedCompositionPlan(
+        opener_paragraph=(
+            f"I came across the {context.role_title} opening at {context.company_name}. "
+            f"The emphasis on {role_theme} stood out to me. "
+            "I've spent the last few years building backend and distributed systems in production, "
+            "so it felt like the kind of work I wanted to learn more about."
+        ),
+        background_paragraph=(
+            f"{_build_role_targeted_why_line(context)} "
+            f"{_ensure_sentence(education_line)} "
+            f"{_proof_point_sentence(proof_point)} "
+            "That is what prompted me to reach out."
+        ),
+        copilot_paragraphs=tuple(_job_hunt_copilot_pitch_lines()),
+        ask_paragraph=(
+            "If it would be useful, I would welcome a short 15-minute conversation sometime this or next week "
+            "to learn a bit more about the role and get your perspective on whether my background could be relevant. "
+            "If you're not the right person, I'd also really appreciate it if you could point me to the right "
+            "person or forward my resume internally."
+        ),
+        snippet_text=_render_forwardable_snippet_text(context),
+    )
+    _validate_role_targeted_composition_plan(plan)
+    return plan
+
+
 def _build_role_targeted_why_line(context: RoleTargetedDraftContext) -> str:
-    work_signal = _recipient_work_signal(context.recipient_profile)
     title = _normalize_optional_text(context.position_title)
     if context.recipient_type == RECIPIENT_TYPE_RECRUITER:
         if title is not None:
-            return (
-                f"I'm reaching out to you specifically because your role as {title} seems close to "
-                "the hiring loop for this role."
-            )
-        if work_signal:
-            return (
-                f"I'm reaching out to you specifically because the work you do around "
-                f"{_role_work_area_phrase(work_signal)} seems close to the hiring loop for this role."
-            )
-        return "I'm reaching out to you specifically because you seem close to the hiring loop for this role."
+            return f"Given your role as {title}, I thought you might have useful perspective on the hiring context for this opening."
+        return "I thought you might have useful perspective on the hiring context for this opening."
     if context.recipient_type == RECIPIENT_TYPE_HIRING_MANAGER:
         if title is not None:
-            return (
-                f"I'm reaching out to you specifically because your role as {title} seems close to "
-                "the team behind this role."
-            )
-        if work_signal:
-            return (
-                f"I'm reaching out to you specifically because the work you do around "
-                f"{_role_work_area_phrase(work_signal)} seems close to the team behind this role."
-            )
-        return "I'm reaching out to you specifically because you seem close to the team behind this role."
+            return f"Given your role as {title}, I thought you might have useful perspective on the team and the problems this role is meant to solve."
+        return "I thought you might have useful perspective on the team and the problems this role is meant to solve."
     if context.recipient_type == RECIPIENT_TYPE_ALUMNI:
         return (
             "I'm reaching out to you specifically because you seemed like the right fellow Sun Devil to ask for a grounded perspective on this work."
         )
     if title is not None:
-        return (
-            f"I'm reaching out to you specifically because your role as {title} seems close to "
-            "the work behind this role."
-        )
-    if work_signal:
-        return (
-            f"I'm reaching out to you specifically because the work you do around "
-            f"{_role_work_area_phrase(work_signal)} seems close to the work behind this role."
-        )
-    return "I'm reaching out to you specifically because you seem close to the work behind this role."
+        return f"Given your role as {title}, I thought you might have useful perspective on the day-to-day work this role touches."
+    return "I thought you might have useful perspective on the day-to-day work this role touches."
 
 
 def _recipient_work_signal(recipient_profile: Mapping[str, Any] | None) -> str | None:
@@ -2863,8 +2869,8 @@ def _experience_summary_line(context: RoleTargetedDraftContext) -> str:
 
 def _snippet_stage(sender: SenderIdentity) -> str:
     if sender.education_summary and "ASU" in sender.education_summary:
-        return "MS CS at ASU"
-    return "Software Engineer"
+        return "currently finishing an MS in Computer Science at ASU"
+    return "a software engineer by background"
 
 
 def _role_work_area_phrase(value: str | None) -> str:
@@ -2892,6 +2898,34 @@ def _role_work_area_phrase(value: str | None) -> str:
             cleaned = parts[-1]
             lowered = cleaned.lower()
     return cleaned or "backend and distributed systems work"
+
+
+def _compose_role_targeted_role_theme(context: RoleTargetedDraftContext) -> str:
+    source = " ".join(
+        value
+        for value in (
+            context.role_title,
+            _normalize_optional_text(context.fit_summary),
+            _normalize_optional_text(context.work_area),
+            _normalize_optional_text(context.role_intent_summary),
+            context.jd_text[:2000],
+        )
+        if value
+    ).lower()
+    if any(token in source for token in ("security", "secure", "compliance", "intel federal", "government")):
+        return "enterprise security systems, secure infrastructure, and government-focused security work"
+    if any(token in source for token in ("scheduler", "scheduling", "scheduling engines")):
+        return "engineering leadership and real-time scheduling systems"
+    if any(token in source for token in ("backend", "distributed", "grpc", "load balancing")):
+        return "backend systems, distributed services, and production delivery"
+    if any(token in source for token in ("event-driven", "metadata", "documents", "document", "python")):
+        return "production Python services, backend systems, and distributed processing"
+    if any(token in source for token in ("platform", "cloud", "infrastructure")):
+        return "cloud infrastructure, platform systems, and production engineering"
+    candidate = _role_work_area_phrase(context.work_area or context.role_intent_summary)
+    if len(candidate.split()) <= 8 and " " in candidate:
+        return candidate
+    return "backend systems, distributed services, and production engineering"
 
 
 def _role_work_area_opening(work_area: str) -> str:
@@ -2957,7 +2991,7 @@ def _proof_point_sentence(proof_point: str) -> str:
         return "For example, I have worked on backend and distributed systems in production."
     lowered = stripped.lower()
     if lowered.startswith("i "):
-        return f"For example, {stripped}."
+        return f"In one recent role, {stripped}."
     verb_prefixes = (
         "built ",
         "designed ",
@@ -2978,7 +3012,7 @@ def _proof_point_sentence(proof_point: str) -> str:
         "delivered ",
     )
     if lowered.startswith(verb_prefixes):
-        return f"For example, I {stripped[0].lower()}{stripped[1:]}."
+        return f"In one recent role, I {stripped[0].lower()}{stripped[1:]}."
     return f"For example, {stripped}."
 
 
@@ -3019,11 +3053,29 @@ def _render_forwardable_snippet_text(context: RoleTargetedDraftContext) -> str:
     impact = _impact_summary_line(context)
     linkedin = _compact_linkedin(context.sender.linkedin_url)
     return (
-        f"Hi, I see you have a {context.role_title} role open at {context.company_name}. "
-        f"Here is a candidate for your consideration. He is {stage} with {experience}. "
-        f"{impact}. I thought his background might be worth a look. "
+        f"Hi, I noticed the {context.role_title} opening at {context.company_name}. "
+        "I wanted to share a candidate who may be worth a look. "
+        f"He is {stage} and has {experience}. "
+        f"One relevant example: {impact}. "
         f"Here's his profile: {linkedin}"
     )
+
+
+def _validate_role_targeted_composition_plan(plan: RoleTargetedCompositionPlan) -> None:
+    combined_text = " ".join(
+        [
+            plan.opener_paragraph,
+            plan.background_paragraph,
+            *plan.copilot_paragraphs,
+            plan.ask_paragraph,
+            plan.snippet_text,
+        ]
+    )
+    for pattern in ROLE_TARGETED_DRAFT_BLOCK_PATTERNS:
+        if pattern.search(combined_text):
+            raise OutreachDraftingError(
+                f"Role-targeted composition failed quality validation for pattern `{pattern.pattern}`."
+            )
 
 
 def _persist_rendered_draft(
