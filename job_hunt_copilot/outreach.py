@@ -115,6 +115,8 @@ ROLE_TARGETED_DRAFT_BLOCK_PATTERNS: tuple[re.Pattern[str], ...] = (
     re.compile(r"\bwork behind this role\b", re.IGNORECASE),
     re.compile(r"\bstrong fit\b", re.IGNORECASE),
     re.compile(r"\bOne example of that overlap is\b", re.IGNORECASE),
+    re.compile(r"\bI came across the\b", re.IGNORECASE),
+    re.compile(r"\bThe emphasis on\b", re.IGNORECASE),
 )
 ROLE_SIGNAL_VERB_PREFIXES = {
     "deliver": "delivering",
@@ -301,6 +303,15 @@ class RoleTargetedCompositionPlan:
     copilot_paragraphs: tuple[str, str, str]
     ask_paragraph: str
     snippet_text: str
+
+
+@dataclass(frozen=True)
+class RoleTargetedOpenerInputs:
+    company_name: str
+    role_title: str
+    role_theme: str
+    opener_style: str
+    growth_phrase: str
 
 
 @dataclass(frozen=True)
@@ -2780,18 +2791,13 @@ def _build_role_targeted_subject(context: RoleTargetedDraftContext) -> str:
 def _compose_role_targeted_composition_plan(
     context: RoleTargetedDraftContext,
 ) -> RoleTargetedCompositionPlan:
-    role_theme = _compose_role_targeted_role_theme(context)
     proof_point = context.proof_point or (
         "the distributed systems work I have done across reliability, performance, and production delivery"
     )
     education_line = context.sender.education_summary or "I am currently finishing my MS in Computer Science at ASU."
+    opener_inputs = _compose_role_targeted_opener_inputs(context)
     plan = RoleTargetedCompositionPlan(
-        opener_paragraph=(
-            f"I came across the {context.role_title} opening at {context.company_name}. "
-            f"The emphasis on {role_theme} stood out to me. "
-            "I've spent the last few years building backend and distributed systems in production, "
-            "so it felt like the kind of work I wanted to learn more about."
-        ),
+        opener_paragraph=_render_role_targeted_opener(opener_inputs),
         background_paragraph=(
             f"{_build_role_targeted_why_line(context)} "
             f"{_ensure_sentence(education_line)} "
@@ -2809,6 +2815,69 @@ def _compose_role_targeted_composition_plan(
     )
     _validate_role_targeted_composition_plan(plan)
     return plan
+
+
+def _compose_role_targeted_opener_inputs(
+    context: RoleTargetedDraftContext,
+) -> RoleTargetedOpenerInputs:
+    role_theme = _compose_role_targeted_role_theme(context)
+    lowered = role_theme.lower()
+    if "security" in lowered or "government" in lowered:
+        return RoleTargetedOpenerInputs(
+            company_name=context.company_name,
+            role_title=context.role_title,
+            role_theme=role_theme,
+            opener_style="caught_attention",
+            growth_phrase="where I want to keep building depth",
+        )
+    if "leadership" in lowered or "scheduling" in lowered:
+        return RoleTargetedOpenerInputs(
+            company_name=context.company_name,
+            role_title=context.role_title,
+            role_theme=role_theme,
+            opener_style="chance_to_work_on",
+            growth_phrase="the kind of systems and leadership work I want to keep leaning into",
+        )
+    if "platform" in lowered or "cloud" in lowered:
+        return RoleTargetedOpenerInputs(
+            company_name=context.company_name,
+            role_title=context.role_title,
+            role_theme=role_theme,
+            opener_style="chance_to_work_on",
+            growth_phrase="the kind of platform and infrastructure work I want to keep growing in",
+        )
+    if "python" in lowered:
+        return RoleTargetedOpenerInputs(
+            company_name=context.company_name,
+            role_title=context.role_title,
+            role_theme=role_theme,
+            opener_style="mix",
+            growth_phrase="the kind of production Python and backend work I want to keep growing in",
+        )
+    return RoleTargetedOpenerInputs(
+        company_name=context.company_name,
+        role_title=context.role_title,
+        role_theme=role_theme,
+        opener_style="mix",
+        growth_phrase="the kind of backend and distributed systems work I want to keep growing in",
+    )
+
+
+def _render_role_targeted_opener(inputs: RoleTargetedOpenerInputs) -> str:
+    if inputs.opener_style == "caught_attention":
+        return (
+            f"The {inputs.role_title} opening at {inputs.company_name} caught my attention because it sits "
+            f"close to {inputs.role_theme}, which is {inputs.growth_phrase}."
+        )
+    if inputs.opener_style == "chance_to_work_on":
+        return (
+            f"I wanted to reach out about the {inputs.role_title} role at {inputs.company_name} because it "
+            f"looks like a chance to work on {inputs.role_theme}, which is {inputs.growth_phrase}."
+        )
+    return (
+        f"I'm reaching out about the {inputs.role_title} role at {inputs.company_name} because the mix of "
+        f"{inputs.role_theme} is {inputs.growth_phrase}."
+    )
 
 
 def _build_role_targeted_why_line(context: RoleTargetedDraftContext) -> str:

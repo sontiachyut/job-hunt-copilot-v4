@@ -1043,6 +1043,8 @@ def test_role_targeted_draft_batch_persists_messages_artifacts_and_transitions(t
     assert "15-minute Zoom" not in recruiter_body
     assert "whether my background could be relevant." in recruiter_body
     assert "seems close to" not in recruiter_body
+    assert "I came across the" not in recruiter_body
+    assert "The emphasis on" not in recruiter_body
     assert "I've included a short snippet below that you can paste into an IM/Email:" in recruiter_body
     assert "[snippet]" in recruiter_body
     assert "[/snippet]" in recruiter_body
@@ -1058,6 +1060,8 @@ def test_role_targeted_draft_batch_persists_messages_artifacts_and_transitions(t
     assert "This email is one of its live outputs, and I personally review every email before it goes out." in manager_body
     assert "strong fit" not in manager_body
     assert "seems close to" not in manager_body
+    assert "I came across the" not in manager_body
+    assert "The emphasis on" not in manager_body
     assert "I've included a short snippet below that you can paste into an IM/Email:" in manager_body
     assert "[snippet]" in manager_body
     assert "[/snippet]" in manager_body
@@ -1361,7 +1365,12 @@ def test_role_targeted_drafting_filters_jd_boilerplate_from_opening_and_subject(
 
     message = result.drafted_messages[0]
     body_text = Path(message.body_text_artifact_path).read_text(encoding="utf-8")
-    assert "The emphasis on engineering leadership and real-time scheduling systems stood out to me." in body_text
+    assert (
+        'I wanted to reach out about the Manager I. Software Engineering- "Scheduler" role at ASM '
+        "because it looks like a chance to work on engineering leadership and real-time scheduling systems, "
+        "which is the kind of systems and leadership work I want to keep leaning into."
+        in body_text
+    )
     assert "3+ years relevant experience" not in body_text
     assert "For over 55 years ASM" not in body_text
     assert message.subject == 'Interest in the Manager I. Software Engineering- "Scheduler" role at ASM'
@@ -1435,7 +1444,12 @@ def test_role_targeted_composition_rewrites_security_jd_into_natural_theme(tmp_p
     )
 
     body_text = Path(result.drafted_messages[0].body_text_artifact_path).read_text(encoding="utf-8")
-    assert "The emphasis on enterprise security systems, secure infrastructure, and government-focused security work stood out to me." in body_text
+    assert (
+        "The Government Information Security Engineer opening at Intel caught my attention because it sits "
+        "close to enterprise security systems, secure infrastructure, and government-focused security work, "
+        "which is where I want to keep building depth."
+        in body_text
+    )
     assert "identifies, develops, plans, implements" not in body_text.lower()
     assert "Given your role as Director of Engineering, I thought you might have useful perspective on the team and the problems this role is meant to solve." in body_text
 
