@@ -19,6 +19,7 @@ from .gmail_alerts import (
     SOURCE_TYPE_GMAIL_LINKEDIN_ALERT,
     GmailAlertBatch,
     GmailCollectionResult,
+    _looks_like_digest_summary_line,
     ingest_gmail_alert_batch,
     refresh_persisted_gmail_collection,
 )
@@ -3250,7 +3251,23 @@ def _load_gmail_collection_cards(job_cards_path: Path) -> list[dict[str, Any]]:
     raw_cards = payload.get("cards") if isinstance(payload, Mapping) else None
     if not isinstance(raw_cards, Sequence) or isinstance(raw_cards, (str, bytes)):
         return []
-    return [dict(card) for card in raw_cards if isinstance(card, Mapping)]
+    materializable_cards: list[dict[str, Any]] = []
+    for card in raw_cards:
+        if not isinstance(card, Mapping):
+            continue
+        normalized_card = dict(card)
+        if _gmail_collection_card_is_digest_summary(normalized_card):
+            continue
+        materializable_cards.append(normalized_card)
+    return materializable_cards
+
+
+def _gmail_collection_card_is_digest_summary(card: Mapping[str, Any]) -> bool:
+    role_title = _normalize_optional_text(card.get("role_title"))
+    company_name = _normalize_optional_text(card.get("company_name"))
+    if role_title is None or company_name is None:
+        return False
+    return _looks_like_digest_summary_line(role_title) or _looks_like_digest_summary_line(company_name)
 
 
 def _materialize_gmail_card_lead(

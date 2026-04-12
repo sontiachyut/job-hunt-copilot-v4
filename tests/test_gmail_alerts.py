@@ -382,6 +382,100 @@ def test_gmail_parser_falls_back_to_html_only_when_plain_text_is_unusable(tmp_pa
     assert cards_payload["cards"][0]["job_url"] == "https://www.linkedin.com/jobs/view/5555555555/"
 
 
+def test_gmail_batch_fanout_skips_stale_digest_summary_cards_in_persisted_collection(
+    tmp_path, monkeypatch
+):
+    project_root = bootstrap_project(tmp_path)
+
+    batch = build_batch(
+        build_message(
+            gmail_message_id="gmail-stale-digest-001",
+            received_at="2026-04-12T17:26:25Z",
+            text_plain_body=(
+                "Your job alert for software engineer hiring in Greater Phoenix Area\n"
+                "30+ new jobs match your preferences.\n"
+                "Results from the new AI-powered job search\n"
+                "AI Data Engineer - Consultant\n"
+                "Deloitte\n"
+                "Tempe, AZ\n"
+                "168 company alumni\n"
+                "View job\n"
+                "https://www.linkedin.com/jobs/view/4388336874/?trackingId=digest\n"
+            ),
+            jd_recovery=[
+                {
+                    "job_id": "4388336874",
+                    "source_type": "linkedin_guest_job_payload",
+                    "source_url": "https://www.linkedin.com/jobs/view/4388336874/",
+                    "company_name": "Deloitte",
+                    "role_title": "AI Data Engineer - Consultant",
+                    "jd_text": "About the job\nBuild data pipelines.\n",
+                }
+            ],
+        ),
+        ingestion_run_id="gmail-stale-digest-run-001",
+    )
+
+    collection_result = ingest_gmail_alert_batch(project_root, batch=batch)
+    collection = collection_result.collection_results[0]
+    collection_payload = json.loads(collection.job_cards_path.read_text(encoding="utf-8"))
+    collection_payload["cards"] = [
+        {
+            "card_index": 1,
+            "role_title": "Your job alert for software engineer hiring in Greater Phoenix Area",
+            "company_name": "30+ new jobs match your preferences.",
+            "location": None,
+            "badge_lines": [
+                "Results from the new AI-powered job search",
+                "AI Data Engineer - Consultant",
+                "Deloitte",
+                "Tempe, AZ",
+            ],
+            "job_url": "https://www.linkedin.com/jobs/view/4388336874/",
+            "job_id": "4388336874",
+            "gmail_message_id": "gmail-stale-digest-001",
+            "synthetic_identity_key": None,
+        },
+        {
+            "card_index": 2,
+            "role_title": "AI Data Engineer - Consultant",
+            "company_name": "Deloitte",
+            "location": "Tempe, AZ",
+            "badge_lines": ["168 company alumni"],
+            "job_url": "https://www.linkedin.com/jobs/view/4388336874/",
+            "job_id": "4388336874",
+            "gmail_message_id": "gmail-stale-digest-001",
+            "synthetic_identity_key": None,
+        },
+    ]
+    collection.job_cards_path.write_text(json.dumps(collection_payload, indent=2) + "\n", encoding="utf-8")
+
+    monkeypatch.setattr(
+        "job_hunt_copilot.linkedin_scraping.ingest_gmail_alert_batch",
+        lambda project_root_arg, *, batch: collection_result,
+    )
+
+    result = ingest_gmail_alert_batch_to_leads(project_root, batch=batch)
+
+    assert result.leads_created == 1
+    assert len(result.lead_results) == 1
+
+    connection = connect_database(project_root / "job_hunt_copilot.db")
+    lead_row = connection.execute(
+        """
+        SELECT company_name, role_title, source_url
+        FROM linkedin_leads
+        """,
+    ).fetchone()
+    connection.close()
+
+    assert dict(lead_row) == {
+        "company_name": "Deloitte",
+        "role_title": "AI Data Engineer - Consultant",
+        "source_url": "https://www.linkedin.com/jobs/view/4388336874/",
+    }
+
+
 def test_zero_card_gmail_collection_retains_artifacts_and_flags_run_threshold_review(tmp_path):
     project_root = bootstrap_project(tmp_path)
     paths = ProjectPaths.from_root(project_root)
