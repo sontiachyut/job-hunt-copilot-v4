@@ -176,8 +176,6 @@ ACTION_RUN_GENERAL_LEARNING_DELIVERY_FEEDBACK: Final = (
 ACTION_RUN_DAILY_MAINTENANCE: Final = "run_daily_maintenance"
 ACTION_ESCALATE_OPEN_INCIDENT: Final = "escalate_open_incident"
 
-SUPERVISOR_DELIVERY_FEEDBACK_SCHEDULER_NAME: Final = "supervisor_delivery_feedback"
-SUPERVISOR_DELIVERY_FEEDBACK_SCHEDULER_TYPE: Final = "supervisor"
 TERMINAL_DELIVERY_FEEDBACK_EVENT_STATES = frozenset(
     {"bounced", "not_bounced", "replied"}
 )
@@ -759,7 +757,7 @@ SUPERVISOR_ACTION_CATALOG = MappingProxyType(
         ACTION_RUN_ROLE_TARGETED_DELIVERY_FEEDBACK: SupervisorActionCatalogEntry(
             action_id=ACTION_RUN_ROLE_TARGETED_DELIVERY_FEEDBACK,
             work_type=WORK_TYPE_PIPELINE_RUN,
-            description="Run one bounded delayed feedback-sync step for the selected role-targeted posting and complete the durable run once each sent message has a high-level feedback outcome.",
+            description="Inspect persisted delayed feedback for the selected role-targeted posting and complete the durable run once each sent message has a high-level feedback outcome.",
             prerequisites=(
                 "pipeline_run exists and is non-terminal",
                 "pipeline_run.current_stage is `delivery_feedback`",
@@ -769,8 +767,7 @@ SUPERVISOR_ACTION_CATALOG = MappingProxyType(
             ),
             expected_outputs=(
                 "the existing pipeline_run is reused instead of creating a duplicate run",
-                "the shared delayed feedback sync logic runs for the selected posting's sent messages",
-                "delivery_feedback_events and feedback_sync_runs refresh when mailbox-observed or observation-window outcomes are due",
+                "the supervisor reads canonical delivery_feedback_events that the separate feedback-sync worker persists",
                 "the durable run stays at `delivery_feedback` while high-level feedback outcomes remain pending and completes with review artifacts once every sent message has reached a high-level feedback state",
             ),
             validation_references=(
@@ -821,16 +818,14 @@ SUPERVISOR_ACTION_CATALOG = MappingProxyType(
         ACTION_RUN_GENERAL_LEARNING_DELIVERY_FEEDBACK: SupervisorActionCatalogEntry(
             action_id=ACTION_RUN_GENERAL_LEARNING_DELIVERY_FEEDBACK,
             work_type=WORK_TYPE_CONTACT,
-            description="Run one bounded delayed feedback-sync step for a sent contact-rooted general-learning outreach and keep that contact rooted in canonical feedback history.",
+            description="Reserved legacy supervisor action for contact-rooted delayed feedback; active mailbox polling is handled by the separate feedback-sync worker.",
             prerequisites=(
                 "contact exists in canonical state",
                 "the selected contact is not tied to a current job_posting contact link",
                 "at least one sent contact-rooted general-learning outreach_message still lacks a terminal feedback outcome",
             ),
             expected_outputs=(
-                "the supervisor reuses the shared delayed feedback sync logic for the selected contact's sent general-learning messages",
-                "feedback_sync_runs and delivery_feedback_events refresh without introducing pipeline-run or posting linkage",
-                "the contact-rooted feedback follow-through stops only once each sent general-learning message has a bounced, not_bounced, or replied outcome",
+                "the feedback-sync worker persists mailbox-observed delivery feedback without introducing pipeline-run or posting linkage",
             ),
             validation_references=(
                 "prd/spec.md FR-SYS-38A, FR-SYS-38D2, FR-EF-01J through FR-EF-01P, and FR-OPS-17K",
@@ -2643,29 +2638,45 @@ def _select_open_pipeline_run_work_unit(
         FROM pipeline_runs
         WHERE run_status IN (?, ?)
         ORDER BY updated_at ASC, started_at ASC
-        LIMIT 1
         """,
         (
             RUN_STATUS_IN_PROGRESS,
             RUN_STATUS_PAUSED,
         ),
     ).fetchall()
-    if not rows:
-        return None
-    pipeline_run = _pipeline_run_from_row(rows[0])
-    action_id = ROLE_TARGETED_PIPELINE_STAGE_ACTIONS.get(pipeline_run.current_stage)
-    return SupervisorWorkUnit(
-        work_type=WORK_TYPE_PIPELINE_RUN,
-        work_id=pipeline_run.pipeline_run_id,
-        action_id=action_id,
-        summary=(
-            "Resume the existing durable pipeline run without creating duplicate work."
-        ),
-        lead_id=pipeline_run.lead_id,
-        job_posting_id=pipeline_run.job_posting_id,
-        pipeline_run_id=pipeline_run.pipeline_run_id,
-        current_stage=pipeline_run.current_stage,
-    )
+    for row in rows:
+        pipeline_run = _pipeline_run_from_row(row)
+        if pipeline_run.current_stage == "delivery_feedback":
+            job_posting_id = _optional_text(pipeline_run.job_posting_id)
+            if job_posting_id:
+                sent_message_ids = _list_posting_sent_outreach_message_ids(
+                    connection,
+                    job_posting_id=job_posting_id,
+                )
+                if sent_message_ids:
+                    pending_feedback_message_ids = (
+                        _list_posting_sent_outreach_message_ids_without_terminal_feedback(
+                            connection,
+                            job_posting_id=job_posting_id,
+                        )
+                    )
+                    if pending_feedback_message_ids:
+                        continue
+
+        action_id = ROLE_TARGETED_PIPELINE_STAGE_ACTIONS.get(pipeline_run.current_stage)
+        return SupervisorWorkUnit(
+            work_type=WORK_TYPE_PIPELINE_RUN,
+            work_id=pipeline_run.pipeline_run_id,
+            action_id=action_id,
+            summary=(
+                "Resume the existing durable pipeline run without creating duplicate work."
+            ),
+            lead_id=pipeline_run.lead_id,
+            job_posting_id=pipeline_run.job_posting_id,
+            pipeline_run_id=pipeline_run.pipeline_run_id,
+            current_stage=pipeline_run.current_stage,
+        )
+    return None
 
 
 def _select_new_posting_work_unit(
@@ -2710,46 +2721,6 @@ def _select_new_posting_work_unit(
 def _select_general_learning_priority_work_unit(
     connection: sqlite3.Connection,
 ) -> SupervisorWorkUnit | None:
-    delayed_feedback_row = connection.execute(
-        f"""
-        SELECT c.contact_id, c.display_name, c.company_name
-        FROM contacts c
-        WHERE NOT EXISTS (
-                SELECT 1
-                FROM job_posting_contacts jpc
-                WHERE jpc.contact_id = c.contact_id
-              )
-          AND EXISTS (
-                SELECT 1
-                FROM outreach_messages om
-                WHERE om.contact_id = c.contact_id
-                  AND om.outreach_mode = 'general_learning'
-                  AND om.message_status = 'sent'
-                  AND NOT EXISTS (
-                    SELECT 1
-                    FROM delivery_feedback_events dfe
-                    WHERE dfe.outreach_message_id = om.outreach_message_id
-                      AND dfe.event_state IN ({", ".join("?" for _ in TERMINAL_DELIVERY_FEEDBACK_EVENT_STATES)})
-                  )
-              )
-        ORDER BY c.created_at ASC, c.contact_id ASC
-        LIMIT 1
-        """,
-        tuple(sorted(TERMINAL_DELIVERY_FEEDBACK_EVENT_STATES)),
-    ).fetchone()
-    if delayed_feedback_row is not None:
-        display_name = _optional_text(delayed_feedback_row[1]) or delayed_feedback_row[0]
-        company_name = _optional_text(delayed_feedback_row[2]) or "unknown-company"
-        return SupervisorWorkUnit(
-            work_type=WORK_TYPE_CONTACT,
-            work_id=delayed_feedback_row[0],
-            action_id=ACTION_RUN_GENERAL_LEARNING_DELIVERY_FEEDBACK,
-            summary=(
-                "Run one bounded contact-rooted delayed feedback sync for "
-                f"{display_name} at {company_name}."
-            ),
-        )
-
     send_ready_row = connection.execute(
         """
         SELECT c.contact_id, c.display_name, c.company_name,
@@ -4159,11 +4130,6 @@ def _execute_selected_work_unit(
         return pipeline_run, None, None
 
     if catalog_entry.action_id == ACTION_RUN_ROLE_TARGETED_DELIVERY_FEEDBACK:
-        from .delivery_feedback import (
-            OBSERVATION_SCOPE_DELAYED,
-            sync_delivery_feedback,
-        )
-
         job_posting_id = _require_text(selected_work.job_posting_id, "job_posting_id")
         sent_message_ids = _list_posting_sent_outreach_message_ids(
             connection,
@@ -4175,16 +4141,6 @@ def _execute_selected_work_unit(
                 "sent outreach messages."
             )
 
-        feedback_result = sync_delivery_feedback(
-            connection,
-            project_root=paths.project_root,
-            current_time=timestamp,
-            scheduler_name=SUPERVISOR_DELIVERY_FEEDBACK_SCHEDULER_NAME,
-            scheduler_type=SUPERVISOR_DELIVERY_FEEDBACK_SCHEDULER_TYPE,
-            observation_scope=OBSERVATION_SCOPE_DELAYED,
-            observer=action_dependencies.feedback_observer,
-            target_outreach_message_ids=sent_message_ids,
-        )
         pending_feedback_message_ids = _list_posting_sent_outreach_message_ids_without_terminal_feedback(
             connection,
             job_posting_id=job_posting_id,
@@ -4195,14 +4151,10 @@ def _execute_selected_work_unit(
                 selected_work.work_id,
                 current_stage="delivery_feedback",
                 run_summary=(
-                    "Supervisor ran the bounded delayed feedback step across "
-                    f"{feedback_result.messages_examined} sent messages, persisted "
-                    f"{feedback_result.bounce_events_written} bounced, "
-                    f"{feedback_result.not_bounced_events_written} not_bounced, and "
-                    f"{feedback_result.reply_events_written} replied events in this cycle, "
-                    "and kept the durable pipeline run at delivery_feedback while "
+                    "Supervisor inspected persisted delivery-feedback state and kept "
+                    "the durable pipeline run at delivery_feedback while "
                     f"{len(pending_feedback_message_ids)} sent messages still await a "
-                    "high-level feedback outcome."
+                    "high-level feedback outcome from the separate feedback-sync worker."
                 ),
                 timestamp=timestamp,
             )
@@ -4213,13 +4165,10 @@ def _execute_selected_work_unit(
             selected_work.work_id,
             current_stage="completed",
             run_summary=(
-                "Supervisor ran the bounded delayed feedback step across "
-                f"{feedback_result.messages_examined} sent messages, persisted "
-                f"{feedback_result.bounce_events_written} bounced, "
-                f"{feedback_result.not_bounced_events_written} not_bounced, and "
-                f"{feedback_result.reply_events_written} replied events in this cycle, "
-                "and completed the durable pipeline run once every sent message had a "
-                "high-level delivery-feedback outcome."
+                "Supervisor inspected persisted delivery-feedback state and "
+                "completed the durable pipeline run once every sent message had a "
+                "high-level delivery-feedback outcome recorded by the separate "
+                "feedback-sync worker."
             ),
             timestamp=timestamp,
         )
@@ -4269,32 +4218,8 @@ def _execute_selected_work_unit(
         )
 
     if catalog_entry.action_id == ACTION_RUN_GENERAL_LEARNING_DELIVERY_FEEDBACK:
-        from .delivery_feedback import (
-            OBSERVATION_SCOPE_DELAYED,
-            sync_delivery_feedback,
-        )
-
-        pending_feedback_message_ids = (
-            _list_contact_rooted_general_learning_sent_outreach_message_ids_without_terminal_feedback(
-                connection,
-                contact_id=selected_work.work_id,
-            )
-        )
-        if not pending_feedback_message_ids:
-            raise SupervisorStateError(
-                f"contact {selected_work.work_id!r} has no sent general-learning "
-                "messages that still require delayed feedback follow-through."
-            )
-        sync_delivery_feedback(
-            connection,
-            project_root=paths.project_root,
-            current_time=timestamp,
-            scheduler_name=SUPERVISOR_DELIVERY_FEEDBACK_SCHEDULER_NAME,
-            scheduler_type=SUPERVISOR_DELIVERY_FEEDBACK_SCHEDULER_TYPE,
-            observation_scope=OBSERVATION_SCOPE_DELAYED,
-            observer=action_dependencies.feedback_observer,
-            target_outreach_message_ids=pending_feedback_message_ids,
-        )
+        # The separate feedback-sync worker owns delayed mailbox polling for
+        # contact-rooted general-learning outreach.
         return None, None, None
 
     if catalog_entry.action_id == ACTION_RUN_DAILY_MAINTENANCE:
@@ -4849,26 +4774,6 @@ def _validate_selected_work_result(
                 "Delivery feedback should preserve the terminal completed posting status, "
                 f"but found {posting_status!r}."
             )
-        feedback_sync_row = connection.execute(
-            """
-            SELECT scheduler_name, scheduler_type, observation_scope, result
-            FROM feedback_sync_runs
-            ORDER BY started_at DESC, feedback_sync_run_id DESC
-            LIMIT 1
-            """
-        ).fetchone()
-        if feedback_sync_row is None:
-            return "Delivery feedback completed without a persisted feedback_sync_run."
-        if dict(feedback_sync_row) != {
-            "scheduler_name": SUPERVISOR_DELIVERY_FEEDBACK_SCHEDULER_NAME,
-            "scheduler_type": SUPERVISOR_DELIVERY_FEEDBACK_SCHEDULER_TYPE,
-            "observation_scope": "delayed_feedback_sync",
-            "result": "success",
-        }:
-            return (
-                "Delivery feedback did not persist the expected supervisor-owned sync "
-                f"run metadata; found {dict(feedback_sync_row)!r}."
-            )
         sent_message_ids = _list_posting_sent_outreach_message_ids(
             connection,
             job_posting_id=pipeline_run.job_posting_id,
@@ -5061,29 +4966,6 @@ def _validate_selected_work_result(
             return (
                 "General-learning delayed feedback completed without any sent "
                 "general-learning outreach messages for the selected contact."
-            )
-        feedback_sync_row = connection.execute(
-            """
-            SELECT scheduler_name, scheduler_type, observation_scope, result
-            FROM feedback_sync_runs
-            ORDER BY started_at DESC, feedback_sync_run_id DESC
-            LIMIT 1
-            """
-        ).fetchone()
-        if feedback_sync_row is None:
-            return (
-                "General-learning delayed feedback completed without a persisted "
-                "feedback_sync_run."
-            )
-        if dict(feedback_sync_row) != {
-            "scheduler_name": SUPERVISOR_DELIVERY_FEEDBACK_SCHEDULER_NAME,
-            "scheduler_type": SUPERVISOR_DELIVERY_FEEDBACK_SCHEDULER_TYPE,
-            "observation_scope": "delayed_feedback_sync",
-            "result": "success",
-        }:
-            return (
-                "General-learning delayed feedback did not persist the expected "
-                f"supervisor-owned sync metadata; found {dict(feedback_sync_row)!r}."
             )
         message_row = connection.execute(
             """
