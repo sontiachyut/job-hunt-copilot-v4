@@ -3073,10 +3073,23 @@ def test_sending_run_waiting_for_next_day_quota_does_not_block_new_posting_boots
         position_title="Senior Software Engineer",
         created_at="2026-04-08T00:05:00Z",
     )
+    seed_shortlisted_contact(
+        connection,
+        contact_id="ct_cap_5",
+        job_posting_contact_id="jpc_cap_5",
+        job_posting_id=job_posting_id,
+        company_name="Acme Robotics",
+        display_name="Cap Five",
+        recipient_type="other_internal",
+        current_working_email="cap5@acme.example",
+        position_title="Senior Software Engineer",
+        created_at="2026-04-08T00:06:00Z",
+    )
     for outreach_message_id, contact_id, job_posting_contact_id, sent_at in [
         ("msg_cap_1", "ct_cap_1", "jpc_cap_1", "2026-04-08T12:00:00Z"),
         ("msg_cap_2", "ct_cap_2", "jpc_cap_2", "2026-04-08T13:00:00Z"),
         ("msg_cap_3", "ct_cap_3", "jpc_cap_3", "2026-04-08T14:00:00Z"),
+        ("msg_cap_4", "ct_cap_4", "jpc_cap_4", "2026-04-08T14:05:00Z"),
     ]:
         connection.execute(
             """
@@ -3099,15 +3112,15 @@ def test_sending_run_waiting_for_next_day_quota_does_not_block_new_posting_boots
     connection.execute(
         """
         UPDATE contacts
-        SET contact_status = 'sent', updated_at = '2026-04-08T14:00:00Z'
-        WHERE contact_id IN ('ct_cap_1', 'ct_cap_2', 'ct_cap_3')
+        SET contact_status = 'sent', updated_at = '2026-04-08T14:05:00Z'
+        WHERE contact_id IN ('ct_cap_1', 'ct_cap_2', 'ct_cap_3', 'ct_cap_4')
         """
     )
     connection.execute(
         """
         UPDATE job_posting_contacts
-        SET link_level_status = 'outreach_done', updated_at = '2026-04-08T14:00:00Z'
-        WHERE job_posting_contact_id IN ('jpc_cap_1', 'jpc_cap_2', 'jpc_cap_3')
+        SET link_level_status = 'outreach_done', updated_at = '2026-04-08T14:05:00Z'
+        WHERE job_posting_contact_id IN ('jpc_cap_1', 'jpc_cap_2', 'jpc_cap_3', 'jpc_cap_4')
         """
     )
     connection.commit()

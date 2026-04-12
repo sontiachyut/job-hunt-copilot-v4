@@ -875,7 +875,7 @@ def test_send_set_pacing_reports_global_gap_and_posting_daily_cap(tmp_path: Path
     )
 
     assert gap_plan.posting_sent_today == 1
-    assert gap_plan.remaining_posting_daily_capacity == 2
+    assert gap_plan.remaining_posting_daily_capacity == 3
     assert gap_plan.global_gap_minutes in {6, 7, 8, 9, 10}
     assert gap_plan.pacing_allowed_now is False
     assert gap_plan.pacing_block_reason == "global_inter_send_gap"
@@ -898,6 +898,15 @@ def test_send_set_pacing_reports_global_gap_and_posting_daily_cap(tmp_path: Path
         current_working_email="cap2@acme.example",
         created_at="2026-04-06T20:10:00Z",
     )
+    seed_linked_contact(
+        connection,
+        contact_id="ct_cap_3",
+        job_posting_contact_id="jpc_cap_3",
+        display_name="Cap Three",
+        recipient_type=RECIPIENT_TYPE_ENGINEER,
+        current_working_email="cap3@acme.example",
+        created_at="2026-04-06T20:11:00Z",
+    )
     seed_sent_message(
         connection,
         outreach_message_id="msg_cap_1",
@@ -914,6 +923,14 @@ def test_send_set_pacing_reports_global_gap_and_posting_daily_cap(tmp_path: Path
         job_posting_contact_id="jpc_cap_2",
         sent_at="2026-04-06T13:00:00Z",
     )
+    seed_sent_message(
+        connection,
+        outreach_message_id="msg_cap_3",
+        contact_id="ct_cap_3",
+        recipient_email="cap3@acme.example",
+        job_posting_contact_id="jpc_cap_3",
+        sent_at="2026-04-06T14:00:00Z",
+    )
 
     cap_plan = evaluate_role_targeted_send_set(
         connection,
@@ -922,7 +939,7 @@ def test_send_set_pacing_reports_global_gap_and_posting_daily_cap(tmp_path: Path
         local_timezone=ZoneInfo("UTC"),
     )
 
-    assert cap_plan.posting_sent_today == 3
+    assert cap_plan.posting_sent_today == 4
     assert cap_plan.remaining_posting_daily_capacity == 0
     assert cap_plan.pacing_allowed_now is False
     assert cap_plan.pacing_block_reason == "posting_daily_cap"
@@ -2792,7 +2809,7 @@ def test_send_execution_keeps_posting_ready_for_later_waves_when_untouched_conta
 
     assert [message.contact_id for message in result.sent_messages] == ["ct_r1"]
     assert [message.contact_id for message in result.delayed_messages] == ["ct_a1"]
-    assert result.delayed_messages[0].pacing_block_reason == "posting_daily_cap"
+    assert result.delayed_messages[0].pacing_block_reason == "global_inter_send_gap"
     assert result.posting_status_after_execution == JOB_POSTING_STATUS_OUTREACH_IN_PROGRESS
     assert posting_status == JOB_POSTING_STATUS_OUTREACH_IN_PROGRESS
     assert next_wave_plan.selected_contacts == ()
