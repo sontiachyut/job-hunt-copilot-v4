@@ -3554,7 +3554,7 @@ def _job_hunt_copilot_pitch_lines() -> list[str]:
             "to help me identify relevant roles and the right people to reach out to."
         ),
         (
-            "It runs autonomously with human-in-the-loop review, and I personally review "
+            "It runs autonomously with human-in-the-loop (HITL) review, and I personally review "
             "every email before it goes out. This email is a live example of that workflow."
         ),
     ]
