@@ -916,6 +916,33 @@ def _load_candidate_rows(
     ]
 
 
+def _load_role_targeted_draftable_contacts(
+    connection: sqlite3.Connection,
+    *,
+    job_posting_id: str,
+) -> tuple[_CandidateRow, ...]:
+    draftable: list[_CandidateRow] = []
+    for candidate in _load_candidate_rows(connection, job_posting_id=job_posting_id):
+        if candidate.selection_state != _CANDIDATE_STATE_READY:
+            continue
+        existing_message_count = int(
+            connection.execute(
+                """
+                SELECT COUNT(*)
+                FROM outreach_messages
+                WHERE job_posting_id = ?
+                  AND contact_id = ?
+                """,
+                (job_posting_id, candidate.contact_id),
+            ).fetchone()[0]
+            or 0
+        )
+        if existing_message_count > 0:
+            continue
+        draftable.append(candidate)
+    return tuple(draftable)
+
+
 def _select_send_set_candidates(
     candidates: Sequence[_CandidateRow],
 ) -> list[tuple[str, str, _CandidateRow]]:
@@ -1229,19 +1256,17 @@ def generate_role_targeted_send_set_drafts(
 ) -> RoleTargetedDraftBatchResult:
     paths = ProjectPaths.from_root(project_root)
     posting_row = _load_role_targeted_draft_posting_row(connection, job_posting_id=job_posting_id)
-    send_set_plan = evaluate_role_targeted_send_set(
-        connection,
-        job_posting_id=job_posting_id,
-        current_time=current_time,
-        local_timezone=local_timezone,
-    )
     if posting_row["posting_status"] != JOB_POSTING_STATUS_READY_FOR_OUTREACH:
         raise OutreachDraftingError(
             f"Job posting `{job_posting_id}` is `{posting_row['posting_status']}`; drafting starts only from `ready_for_outreach`."
         )
-    if not send_set_plan.ready_for_outreach or not send_set_plan.selected_contacts:
+    draftable_contacts = _load_role_targeted_draftable_contacts(
+        connection,
+        job_posting_id=job_posting_id,
+    )
+    if not draftable_contacts:
         raise OutreachDraftingError(
-            f"Job posting `{job_posting_id}` does not have a fully ready current send set."
+            f"Job posting `{job_posting_id}` does not have any untouched ready contacts for drafting."
         )
 
     sender = _load_sender_identity(paths)
@@ -1256,7 +1281,7 @@ def generate_role_targeted_send_set_drafts(
     failed_contacts: list[DraftFailure] = []
     posting_promoted = False
 
-    for contact_plan in send_set_plan.selected_contacts:
+    for contact_plan in draftable_contacts:
         contact_row = _load_draft_contact_row(
             connection,
             job_posting_id=job_posting_id,
@@ -1350,7 +1375,7 @@ def generate_role_targeted_send_set_drafts(
 
     return RoleTargetedDraftBatchResult(
         job_posting_id=job_posting_id,
-        selected_contact_ids=tuple(contact.contact_id for contact in send_set_plan.selected_contacts),
+        selected_contact_ids=tuple(contact.contact_id for contact in draftable_contacts),
         drafted_messages=tuple(drafted_messages),
         failed_contacts=tuple(failed_contacts),
         posting_status_after_drafting=JOB_POSTING_STATUS_OUTREACH_IN_PROGRESS,

@@ -2791,10 +2791,12 @@ def test_send_execution_keeps_posting_ready_for_later_waves_when_untouched_conta
     )
 
     assert [message.contact_id for message in result.sent_messages] == ["ct_r1"]
-    assert result.delayed_messages == ()
-    assert result.posting_status_after_execution == JOB_POSTING_STATUS_READY_FOR_OUTREACH
-    assert posting_status == JOB_POSTING_STATUS_READY_FOR_OUTREACH
-    assert [contact.contact_id for contact in next_wave_plan.selected_contacts] == ["ct_a1"]
+    assert [message.contact_id for message in result.delayed_messages] == ["ct_a1"]
+    assert result.delayed_messages[0].pacing_block_reason == "posting_daily_cap"
+    assert result.posting_status_after_execution == JOB_POSTING_STATUS_OUTREACH_IN_PROGRESS
+    assert posting_status == JOB_POSTING_STATUS_OUTREACH_IN_PROGRESS
+    assert next_wave_plan.selected_contacts == ()
+    assert next_wave_plan.ready_for_outreach is False
 
     connection.close()
 
