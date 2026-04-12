@@ -3550,12 +3550,12 @@ def _job_hunt_copilot_pitch_lines() -> list[str]:
     return [
         "Lately, I have been spending time sharpening my Agentic AI skills.",
         (
-            f"I built Job Hunt Copilot ({JOB_HUNT_COPILOT_REPO_URL}) for my own job search, "
-            "and this email is one of its live outputs."
+            f"I built Job Hunt Copilot ({JOB_HUNT_COPILOT_REPO_URL}) for my own job search "
+            "to help me identify relevant roles and the right people to reach out to."
         ),
         (
-            "It is an AI agent I use for my own job search to find leads and send outreach autonomously, "
-            "and I personally review every email before it goes out."
+            "It runs autonomously with human-in-the-loop review, and I personally review "
+            "every email before it goes out. This note is a live example of that workflow."
         ),
     ]
 
