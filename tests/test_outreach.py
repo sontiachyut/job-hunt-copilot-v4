@@ -1802,6 +1802,166 @@ def test_role_targeted_composition_filters_generic_join_our_team_role_intro(
     connection.close()
 
 
+def test_role_targeted_composition_prefers_jd_faithful_backend_focus_over_fit_summary_drift(
+    tmp_path: Path,
+):
+    project_root, paths = bootstrap_project(tmp_path)
+    connection = connect_database(project_root / "job_hunt_copilot.db")
+    write_sender_profile(paths)
+    seed_posting(
+        connection,
+        company_name="Garmin",
+        role_title="Software Engineer - Full Stack (Java/Angular)",
+    )
+    seed_linked_contact(
+        connection,
+        contact_id="ct_garmin",
+        job_posting_contact_id="jpc_garmin",
+        company_name="Garmin",
+        display_name="Robert Sorensen",
+        recipient_type=RECIPIENT_TYPE_HIRING_MANAGER,
+        current_working_email="robert.sorensen@example.com",
+        created_at="2026-04-06T20:01:00Z",
+    )
+    connection.execute(
+        "UPDATE contacts SET position_title = ? WHERE contact_id = ?",
+        ("Software Engineering Manager", "ct_garmin"),
+    )
+    connection.commit()
+    seed_approved_tailoring_run(
+        connection,
+        paths,
+        company_name="Garmin",
+        role_title="Software Engineer - Full Stack (Java/Angular)",
+    )
+    paths.tailoring_workspace_jd_path(
+        "Garmin",
+        "Software Engineer - Full Stack (Java/Angular)",
+    ).write_text(
+        "\n".join(
+            [
+                "# Software Engineer - Full Stack (Java/Angular)",
+                "",
+                "## Desired Qualifications",
+                "- Frontend work will include project heavily using Angular, as well as HTML, CSS, JavaScript and Bootstrap.",
+                "- Backend work will include technologies such as Java, Scala, Kotlin, RESTful, Oracle, Postgres, Spring and containerization technologies such as Docker, Podman, CRI-O, Kubernetes and PCF.",
+            ]
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+    paths.tailoring_step_3_jd_signals_path(
+        "Garmin",
+        "Software Engineer - Full Stack (Java/Angular)",
+    ).write_text(
+        yaml.safe_dump(
+            {
+                "job_posting_id": "jp_outreach",
+                "resume_tailoring_run_id": "rtr_outreach",
+                "status": "generated",
+                "role_intent_summary": (
+                    "We are seeking a full-time Software Engineer - Full Stack (Java/Angular) in our Chandler, AZ location."
+                ),
+                "signals_by_priority": {
+                    "must_have": [
+                        {
+                            "signal_id": "signal_must_backend",
+                            "priority": "must_have",
+                            "signal": (
+                                "Backend work will include technologies such as Java, Scala, Kotlin, RESTful, Oracle, Postgres, "
+                                "Spring and containerization technologies such as Docker, Podman, CRI-O, Kubernetes and PCF"
+                            ),
+                        }
+                    ],
+                    "core_responsibility": [],
+                    "nice_to_have": [],
+                    "informational": [],
+                },
+                "signals": [],
+            },
+            sort_keys=False,
+        ),
+        encoding="utf-8",
+    )
+    paths.tailoring_step_4_evidence_map_path(
+        "Garmin",
+        "Software Engineer - Full Stack (Java/Angular)",
+    ).write_text(
+        yaml.safe_dump(
+            {
+                "matches": [
+                    {
+                        "jd_signal": (
+                            "Backend work will include technologies such as Java, Scala, Kotlin, RESTful, Oracle, Postgres, "
+                            "Spring and containerization technologies such as Docker, Podman, CRI-O, Kubernetes and PCF"
+                        ),
+                        "confidence": "high",
+                        "source_excerpt": "The optimizer engine and backend APIs in Golang and Java",
+                    },
+                    {
+                        "jd_signal": (
+                            "Backend work will include technologies such as Java, Scala, Kotlin, RESTful, Oracle, Postgres, "
+                            "Spring and containerization technologies such as Docker, Podman, CRI-O, Kubernetes and PCF"
+                        ),
+                        "confidence": "high",
+                        "source_excerpt": "Built backend APIs in Golang and Java for production services",
+                    },
+                ]
+            },
+            sort_keys=False,
+        ),
+        encoding="utf-8",
+    )
+    paths.tailoring_step_6_candidate_bullets_path(
+        "Garmin",
+        "Software Engineer - Full Stack (Java/Angular)",
+    ).write_text(
+        yaml.safe_dump(
+            {
+                "job_posting_id": "jp_outreach",
+                "resume_tailoring_run_id": "rtr_outreach",
+                "status": "generated",
+                "summary": "MS CS candidate with 3+ years building backend data services and distributed systems.",
+                "technical_skills": [
+                    {
+                        "category": "Infrastructure & Systems",
+                        "items": ["Distributed Systems", "System Design", "gRPC", "Load Balancing"],
+                        "matched_signal_ids": ["signal_must_backend"],
+                    }
+                ],
+                "software_engineer": {
+                    "bullets": [
+                        {
+                            "text": "Built high-availability Python and Scala backend data services on AWS (EMR, S3), processing 50M+ daily HL7 records (~580 TPS) for real-time analytics across 1,500+ hospitals with 24/7 uptime",
+                            "purpose": "scale-impact",
+                            "support_pointers": ["match_1"],
+                            "covered_signal_ids": ["signal_must_backend"],
+                            "char_count": 190,
+                        }
+                    ]
+                },
+            },
+            sort_keys=False,
+        ),
+        encoding="utf-8",
+    )
+
+    result = generate_role_targeted_send_set_drafts(
+        connection,
+        project_root=project_root,
+        job_posting_id="jp_outreach",
+        current_time="2026-04-06T20:30:00Z",
+        local_timezone=ZoneInfo("UTC"),
+    )
+
+    body_text = Path(result.drafted_messages[0].body_text_artifact_path).read_text(encoding="utf-8")
+    assert "role's focus on Java, Scala, RESTful services, and Spring" in body_text
+    assert "distributed services" not in body_text
+    assert "production delivery" not in body_text
+
+    connection.close()
+
+
 def test_role_targeted_composition_strips_weak_requirement_prefixes_from_opener_hooks(
     tmp_path: Path,
 ):

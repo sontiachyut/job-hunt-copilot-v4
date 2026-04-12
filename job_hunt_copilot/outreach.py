@@ -3177,7 +3177,6 @@ def _compose_role_targeted_role_theme(context: RoleTargetedDraftContext) -> str:
         value
         for value in (
             context.role_title,
-            _normalize_optional_text(context.fit_summary),
             _normalize_optional_text(context.work_area),
             _normalize_optional_text(context.role_intent_summary),
             context.jd_text[:2000],
@@ -3203,8 +3202,10 @@ def _compose_role_targeted_role_theme(context: RoleTargetedDraftContext) -> str:
         return "enterprise security systems, secure infrastructure, and government-focused security work"
     if any(token in source for token in ("scheduler", "scheduling", "scheduling engines")):
         return "engineering leadership and real-time scheduling systems"
-    if any(token in source for token in ("backend", "distributed", "grpc", "load balancing")):
+    if any(token in source for token in ("distributed", "grpc", "load balancing")):
         return "backend systems, distributed services, and production delivery"
+    if "backend" in source:
+        return "backend services and application delivery"
     if any(token in source for token in ("event-driven", "metadata", "documents", "document", "python")):
         return "production Python services, backend systems, and distributed processing"
     if any(token in source for token in ("platform", "cloud", "infrastructure")):
@@ -3224,6 +3225,114 @@ def _compose_role_targeted_technical_focus(
         if normalized_focus is not None:
             return normalized_focus
     return role_theme
+
+
+def _join_focus_phrases(parts: Sequence[str]) -> str:
+    cleaned = [part.strip(" ,.;") for part in parts if part.strip(" ,.;")]
+    if not cleaned:
+        return ""
+    if len(cleaned) == 1:
+        return cleaned[0]
+    if len(cleaned) == 2:
+        return f"{cleaned[0]} and {cleaned[1]}"
+    return ", ".join(cleaned[:-1]) + f", and {cleaned[-1]}"
+
+
+def _looks_like_technology_focus_list(value: str) -> bool:
+    lowered = value.lower()
+    if any(
+        marker in lowered
+        for marker in (
+            "backend work will include",
+            "frontend work will include",
+            "technologies such as",
+            "as well as html",
+            "as well as css",
+            "as well as javascript",
+            "as well as bootstrap",
+        )
+    ):
+        return True
+    tech_term_hits = sum(
+        1
+        for term in (
+            "java",
+            "scala",
+            "kotlin",
+            "restful",
+            "spring",
+            "angular",
+            "html",
+            "css",
+            "javascript",
+            "bootstrap",
+            "docker",
+            "kubernetes",
+            "aws",
+            "gcp",
+            "azure",
+        )
+        if term in lowered
+    )
+    return value.count(",") >= 3 and tech_term_hits >= 3
+
+
+def _summarize_technical_focus_enumeration(candidate: str) -> str:
+    normalized = re.sub(r"\band\b", ",", candidate, flags=re.IGNORECASE)
+    raw_parts = [part.strip(" ,.;") for part in normalized.split(",") if part.strip(" ,.;")]
+    if len(raw_parts) <= 4:
+        return candidate
+
+    selected: list[str] = []
+    for part in raw_parts:
+        lowered = part.lower()
+        if lowered in {"backend work will include", "frontend work will include", "technologies such as"}:
+            continue
+        if lowered.startswith("containerization technologies"):
+            part = "containerization technologies"
+        elif lowered == "restful":
+            part = "RESTful services"
+        if part not in selected:
+            selected.append(part)
+
+    if not selected:
+        return candidate
+
+    preferred_order = [
+        "angular",
+        "html",
+        "css",
+        "javascript",
+        "bootstrap",
+        "java",
+        "scala",
+        "restful services",
+        "spring",
+        "kotlin",
+        "aws",
+        "gcp",
+        "azure",
+        "docker",
+        "kubernetes",
+        "containerization technologies",
+    ]
+    preferred: list[str] = []
+    for term in preferred_order:
+        for part in selected:
+            if part.lower() == term and part not in preferred:
+                preferred.append(part)
+    if preferred:
+        selected = preferred + [part for part in selected if part not in preferred]
+
+    if "containerization technologies" in selected and len(selected) > 4:
+        selected = [part for part in selected if part != "containerization technologies"][:3] + [
+            "containerization technologies"
+        ]
+    else:
+        selected = selected[:4]
+
+    summary = _join_focus_phrases(selected)
+    return summary or candidate
 
 
 def _normalize_technical_focus_phrase(value: str | None) -> str | None:
@@ -3256,7 +3365,45 @@ def _normalize_technical_focus_phrase(value: str | None) -> str | None:
         candidate,
         flags=re.IGNORECASE,
     )
+    candidate = re.sub(
+        r"^(?:backend|frontend)\s+work\s+will\s+include(?:\s+project\s+heavily\s+using|\s+technologies\s+such\s+as)?\s+",
+        "",
+        candidate,
+        flags=re.IGNORECASE,
+    )
+    candidate = re.sub(
+        r"\btechnologies such as\b",
+        "",
+        candidate,
+        flags=re.IGNORECASE,
+    )
+    candidate = re.sub(
+        r"\bas well as\b",
+        ",",
+        candidate,
+        flags=re.IGNORECASE,
+    )
+    candidate = re.sub(
+        r"\bto deliver\b.*$",
+        "",
+        candidate,
+        flags=re.IGNORECASE,
+    )
+    candidate = re.sub(
+        r"\bwith an emphasis on\b.*$",
+        "",
+        candidate,
+        flags=re.IGNORECASE,
+    )
+    candidate = re.sub(
+        r"\bRESTful\b(?!\s+services)",
+        "RESTful services",
+        candidate,
+        flags=re.IGNORECASE,
+    )
     candidate = re.sub(r"\s+", " ", candidate).strip(" ,.;")
+    if _looks_like_technology_focus_list(candidate):
+        candidate = _summarize_technical_focus_enumeration(candidate)
     if not candidate:
         return None
     lowered = candidate.lower()
