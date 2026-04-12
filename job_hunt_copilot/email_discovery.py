@@ -13,6 +13,11 @@ from urllib.parse import urlencode
 from urllib.request import Request, urlopen
 
 from .artifacts import ArtifactLinkage, publish_json_artifact
+from .company_keys import (
+    ensure_missing_posting_company_keys,
+    posting_company_key_from_row,
+    promote_company_group_to_provider_key,
+)
 from .delivery_feedback import (
     DISCOVERY_REUSE_STATE_BLOCKED_BOUNCED,
     DISCOVERY_REUSE_STATE_ELIGIBLE_NOT_BOUNCED,
@@ -1193,6 +1198,9 @@ def run_apollo_people_search(
     connection.execute("PRAGMA foreign_keys = ON;")
 
     try:
+        timestamp = current_time or now_utc_iso()
+        with connection:
+            ensure_missing_posting_company_keys(connection, current_time=timestamp)
         posting_row = _load_search_ready_posting(connection, job_posting_id=job_posting_id)
         jd_text = _load_posting_jd(paths, posting_row)
         search_filters = _build_apollo_search_filters(posting_row, jd_text=jd_text, shortlist_limit=shortlist_limit)
@@ -1206,6 +1214,16 @@ def run_apollo_people_search(
             company_domain=company_domain,
             company_website=company_website,
         )
+        if resolved_company is not None and resolved_company.organization_id:
+            with connection:
+                promote_company_group_to_provider_key(
+                    connection,
+                    company_name=_normalize_optional_text(posting_row["company_name"]),
+                    provider_name=PROVIDER_NAME_APOLLO,
+                    provider_company_id=resolved_company.organization_id,
+                    current_time=timestamp,
+                )
+            posting_row = _load_search_ready_posting(connection, job_posting_id=job_posting_id)
         attempted_filters.append(
             {
                 "attempt": "primary",
@@ -1233,8 +1251,12 @@ def run_apollo_people_search(
             )
             search_filters = relaxed_filters
         candidates = tuple(_normalize_candidate_rows(raw_candidates))
-        shortlist = select_initial_enrichment_shortlist(candidates, limit=shortlist_limit)
-        timestamp = current_time or now_utc_iso()
+        shortlist = select_initial_enrichment_shortlist(
+            candidates,
+            limit=shortlist_limit,
+            connection=connection,
+            posting_row=posting_row,
+        )
 
         shortlisted_contact_ids: list[str] = []
         shortlisted_job_posting_contact_ids: list[str] = []
@@ -1461,18 +1483,37 @@ def replay_historical_people_search_shortlist(
     job_posting_id: str,
     shortlist_limit: int = DEFAULT_SHORTLIST_LIMIT,
     current_time: str | None = None,
+    connection: sqlite3.Connection | None = None,
 ) -> HistoricalPeopleSearchReplayResult:
     if shortlist_limit <= 0:
         raise EmailDiscoveryError("shortlist_limit must be greater than zero.")
 
     paths = ProjectPaths.from_root(project_root)
-    connection = sqlite3.connect(paths.db_path)
-    connection.row_factory = sqlite3.Row
-    connection.execute("PRAGMA foreign_keys = ON;")
+    owns_connection = connection is None
+    if connection is None:
+        connection = sqlite3.connect(paths.db_path)
+        connection.row_factory = sqlite3.Row
+        connection.execute("PRAGMA foreign_keys = ON;")
 
     try:
+        timestamp = current_time or now_utc_iso()
+        with connection:
+            ensure_missing_posting_company_keys(connection, current_time=timestamp)
         posting_row = _load_existing_posting_for_people_search(connection, job_posting_id=job_posting_id)
         people_search_payload = _load_people_search_payload(paths, posting_row)
+        resolved_company_payload = people_search_payload.get("resolved_company")
+        if isinstance(resolved_company_payload, Mapping):
+            provider_company_id = _normalize_optional_text(resolved_company_payload.get("organization_id"))
+            if provider_company_id:
+                with connection:
+                    promote_company_group_to_provider_key(
+                        connection,
+                        company_name=_normalize_optional_text(posting_row["company_name"]),
+                        provider_name=PROVIDER_NAME_APOLLO,
+                        provider_company_id=provider_company_id,
+                        current_time=timestamp,
+                    )
+                posting_row = _load_existing_posting_for_people_search(connection, job_posting_id=job_posting_id)
         raw_candidates = people_search_payload.get("candidates")
         if not isinstance(raw_candidates, Sequence) or isinstance(raw_candidates, (str, bytes)):
             raise EmailDiscoveryError(
@@ -1480,8 +1521,12 @@ def replay_historical_people_search_shortlist(
             )
 
         candidates = tuple(_normalize_candidate_rows(raw_candidates))
-        shortlist = select_initial_enrichment_shortlist(candidates, limit=shortlist_limit)
-        timestamp = current_time or now_utc_iso()
+        shortlist = select_initial_enrichment_shortlist(
+            candidates,
+            limit=shortlist_limit,
+            connection=connection,
+            posting_row=posting_row,
+        )
 
         shortlisted_contact_ids: list[str] = []
         shortlisted_job_posting_contact_ids: list[str] = []
@@ -1568,7 +1613,8 @@ def replay_historical_people_search_shortlist(
             shortlisted_job_posting_contact_ids=tuple(shortlisted_job_posting_contact_ids),
         )
     finally:
-        connection.close()
+        if owns_connection:
+            connection.close()
 
 
 def run_email_discovery_for_contact(
@@ -2013,9 +2059,23 @@ def select_initial_enrichment_shortlist(
     candidates: Sequence[PeopleSearchCandidate],
     *,
     limit: int = DEFAULT_SHORTLIST_LIMIT,
+    connection: sqlite3.Connection | None = None,
+    posting_row: Mapping[str, Any] | None = None,
 ) -> tuple[PeopleSearchCandidate, ...]:
     if limit <= 0:
         raise EmailDiscoveryError("Shortlist limit must be greater than zero.")
+
+    excluded_indices: set[int] = set()
+    if connection is not None and posting_row is not None:
+        excluded_indices = {
+            index
+            for index, candidate in enumerate(candidates)
+            if _candidate_has_prior_same_company_send(
+                connection,
+                posting_row=posting_row,
+                candidate=candidate,
+            )
+        }
 
     selected_indices: list[int] = []
     selected_lookup: set[int] = set()
@@ -2023,7 +2083,11 @@ def select_initial_enrichment_shortlist(
     for _, recipient_types, bucket_limit in SHORTLIST_BUCKETS:
         bucket_count = 0
         for index, candidate in enumerate(candidates):
-            if index in selected_lookup or candidate.recipient_type not in recipient_types:
+            if (
+                index in selected_lookup
+                or index in excluded_indices
+                or candidate.recipient_type not in recipient_types
+            ):
                 continue
             selected_indices.append(index)
             selected_lookup.add(index)
@@ -2035,7 +2099,7 @@ def select_initial_enrichment_shortlist(
 
     if len(selected_indices) < limit:
         for index, candidate in enumerate(candidates):
-            if index in selected_lookup:
+            if index in selected_lookup or index in excluded_indices:
                 continue
             selected_indices.append(index)
             selected_lookup.add(index)
@@ -2057,6 +2121,145 @@ def _normalize_candidate_rows(
         else:
             raise EmailDiscoveryError("Apollo candidate rows must be mappings or PeopleSearchCandidate values.")
     return normalized
+
+
+def _candidate_has_prior_same_company_send(
+    connection: sqlite3.Connection,
+    *,
+    posting_row: Mapping[str, Any],
+    candidate: PeopleSearchCandidate,
+) -> bool:
+    existing_contact = _find_reusable_contact(connection, candidate)
+    if existing_contact is None:
+        return False
+    return _contact_has_prior_same_company_send(
+        connection,
+        posting_row=posting_row,
+        contact_id=str(existing_contact["contact_id"]),
+    )
+
+
+def _contact_has_prior_same_company_send(
+    connection: sqlite3.Connection,
+    *,
+    posting_row: Mapping[str, Any],
+    contact_id: str,
+) -> bool:
+    current_company_key = posting_company_key_from_row(posting_row)
+    row = connection.execute(
+        """
+        SELECT COUNT(*)
+        FROM outreach_messages om
+        JOIN job_postings prior_jp
+          ON prior_jp.job_posting_id = om.job_posting_id
+        WHERE om.contact_id = ?
+          AND om.job_posting_id <> ?
+          AND om.outreach_mode = 'role_targeted'
+          AND (
+            om.sent_at IS NOT NULL
+            OR om.message_status = 'sent'
+          )
+          AND prior_jp.canonical_company_key = ?
+        """,
+        (
+            contact_id,
+            str(posting_row["job_posting_id"]),
+            current_company_key,
+        ),
+    ).fetchone()
+    return bool(int(row[0] or 0))
+
+
+def _exclude_same_company_repeat_links(
+    connection: sqlite3.Connection,
+    *,
+    posting_row: Mapping[str, Any],
+    current_time: str,
+) -> list[str]:
+    current_company_key = posting_company_key_from_row(posting_row)
+    rows = connection.execute(
+        """
+        SELECT DISTINCT jpc.job_posting_contact_id, jpc.contact_id, jpc.link_level_status
+        FROM job_posting_contacts jpc
+        JOIN outreach_messages om
+          ON om.contact_id = jpc.contact_id
+        JOIN job_postings prior_jp
+          ON prior_jp.job_posting_id = om.job_posting_id
+        WHERE jpc.job_posting_id = ?
+          AND jpc.link_level_status IN (?, ?)
+          AND om.job_posting_id <> ?
+          AND om.outreach_mode = 'role_targeted'
+          AND (
+            om.sent_at IS NOT NULL
+            OR om.message_status = 'sent'
+          )
+          AND prior_jp.canonical_company_key = ?
+        ORDER BY jpc.job_posting_contact_id ASC
+        """,
+        (
+            str(posting_row["job_posting_id"]),
+            POSTING_CONTACT_STATUS_IDENTIFIED,
+            POSTING_CONTACT_STATUS_SHORTLISTED,
+            str(posting_row["job_posting_id"]),
+            current_company_key,
+        ),
+    ).fetchall()
+
+    excluded: list[str] = []
+    for row in rows:
+        job_posting_contact_id = str(row["job_posting_contact_id"])
+        previous_status = str(row["link_level_status"])
+        connection.execute(
+            """
+            UPDATE job_posting_contacts
+            SET link_level_status = ?, updated_at = ?
+            WHERE job_posting_contact_id = ?
+            """,
+            (
+                POSTING_CONTACT_STATUS_EXHAUSTED,
+                current_time,
+                job_posting_contact_id,
+            ),
+        )
+        _record_state_transition(
+            connection,
+            object_type="job_posting_contacts",
+            object_id=job_posting_contact_id,
+            stage="link_level_status",
+            previous_state=previous_status,
+            new_state=POSTING_CONTACT_STATUS_EXHAUSTED,
+            transition_timestamp=current_time,
+            transition_reason=(
+                "Same-company automatic outreach already sent to this canonical contact "
+                "for another posting, so the later posting excluded this pair."
+            ),
+            lead_id=str(posting_row["lead_id"]),
+            job_posting_id=str(posting_row["job_posting_id"]),
+            contact_id=str(row["contact_id"]),
+        )
+        excluded.append(job_posting_contact_id)
+    return excluded
+
+
+def _count_active_shortlisted_contacts(
+    connection: sqlite3.Connection,
+    *,
+    job_posting_id: str,
+) -> int:
+    row = connection.execute(
+        """
+        SELECT COUNT(*)
+        FROM job_posting_contacts
+        WHERE job_posting_id = ?
+          AND link_level_status IN (?, ?)
+        """,
+        (
+            job_posting_id,
+            POSTING_CONTACT_STATUS_IDENTIFIED,
+            POSTING_CONTACT_STATUS_SHORTLISTED,
+        ),
+    ).fetchone()
+    return int(row[0] or 0)
 
 
 def _load_search_ready_posting(
@@ -2094,7 +2297,8 @@ def _load_existing_posting_for_people_search(
 ) -> sqlite3.Row:
     posting_row = connection.execute(
         """
-        SELECT jp.job_posting_id, jp.lead_id, jp.company_name, jp.role_title, jp.posting_status,
+        SELECT jp.job_posting_id, jp.lead_id, jp.canonical_company_key, jp.provider_company_key,
+               jp.company_key_source, jp.company_name, jp.role_title, jp.posting_status,
                jp.location, jp.jd_artifact_path, ll.source_url
         FROM job_postings jp
         JOIN linkedin_leads ll
@@ -2106,6 +2310,68 @@ def _load_existing_posting_for_people_search(
     if posting_row is None:
         raise EmailDiscoveryError(f"Job posting `{job_posting_id}` was not found.")
     return posting_row
+
+
+def refresh_same_company_contact_frontier(
+    *,
+    project_root: Path | str,
+    job_posting_id: str,
+    shortlist_limit: int = DEFAULT_SHORTLIST_LIMIT,
+    current_time: str | None = None,
+    connection: sqlite3.Connection | None = None,
+) -> dict[str, Any]:
+    if shortlist_limit <= 0:
+        raise EmailDiscoveryError("shortlist_limit must be greater than zero.")
+
+    paths = ProjectPaths.from_root(project_root)
+    owns_connection = connection is None
+    if connection is None:
+        connection = sqlite3.connect(paths.db_path)
+        connection.row_factory = sqlite3.Row
+        connection.execute("PRAGMA foreign_keys = ON;")
+    timestamp = current_time or now_utc_iso()
+
+    try:
+        with connection:
+            ensure_missing_posting_company_keys(connection, current_time=timestamp)
+            posting_row = _load_existing_posting_for_people_search(connection, job_posting_id=job_posting_id)
+            excluded_links = _exclude_same_company_repeat_links(
+                connection,
+                posting_row=posting_row,
+                current_time=timestamp,
+            )
+
+        replay_result: HistoricalPeopleSearchReplayResult | None = None
+        if excluded_links:
+            posting_row = _load_existing_posting_for_people_search(connection, job_posting_id=job_posting_id)
+            active_shortlist_count = _count_active_shortlisted_contacts(
+                connection,
+                job_posting_id=job_posting_id,
+            )
+            if active_shortlist_count < shortlist_limit:
+                replay_result = replay_historical_people_search_shortlist(
+                    project_root=project_root,
+                    job_posting_id=job_posting_id,
+                    shortlist_limit=shortlist_limit,
+                    current_time=timestamp,
+                    connection=connection,
+                )
+
+        return {
+            "job_posting_id": job_posting_id,
+            "excluded_job_posting_contact_ids": tuple(excluded_links),
+            "excluded_count": len(excluded_links),
+            "replayed": replay_result is not None,
+            "replay_materialized_contact_ids": (
+                replay_result.materialized_contact_ids if replay_result is not None else tuple()
+            ),
+            "replay_materialized_job_posting_contact_ids": (
+                replay_result.materialized_job_posting_contact_ids if replay_result is not None else tuple()
+            ),
+        }
+    finally:
+        if owns_connection:
+            connection.close()
 
 
 def _publish_people_search_artifact(

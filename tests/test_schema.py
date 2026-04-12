@@ -77,6 +77,7 @@ EXPECTED_INDEXES = {
     "idx_job_posting_contacts_pair",
     "idx_job_posting_contacts_recipient_type",
     "idx_job_posting_contacts_status",
+    "idx_job_postings_company_key",
     "idx_job_postings_identity_key",
     "idx_job_postings_lead_id",
     "idx_job_postings_status",
@@ -145,7 +146,7 @@ def test_bootstrap_materializes_canonical_schema_objects(tmp_path):
     assert EXPECTED_TABLES <= tables
     assert EXPECTED_VIEWS <= views
     assert EXPECTED_INDEXES <= indexes
-    assert user_version == 2
+    assert user_version == 3
 
 
 def test_review_views_are_queryable_from_canonical_state(tmp_path):

@@ -13,6 +13,7 @@ from typing import Any, Mapping, Sequence
 import yaml
 
 from .artifacts import ArtifactLinkage, register_artifact_record, write_json_contract, write_yaml_contract
+from .company_keys import derive_company_key_values
 from .contracts import CONTRACT_VERSION
 from .gmail_alerts import (
     SOURCE_MODE_GMAIL_JOB_ALERT,
@@ -2538,12 +2539,15 @@ def _upsert_job_posting(
     posting_identity_key = _build_posting_identity_key(lead_row, jd_path=jd_path)
     jd_artifact_path = paths.relative_to_root(jd_path).as_posix()
     updated_at = now_utc_iso()
+    canonical_company_key, _, company_key_source = derive_company_key_values(lead_row["company_name"])
     if existing_posting is not None:
         connection.execute(
             """
             UPDATE job_postings
             SET posting_identity_key = ?, company_name = ?, role_title = ?, location = ?,
-                jd_artifact_path = ?, updated_at = ?
+                jd_artifact_path = ?, canonical_company_key = COALESCE(NULLIF(TRIM(canonical_company_key), ''), ?),
+                company_key_source = COALESCE(NULLIF(TRIM(company_key_source), ''), ?),
+                updated_at = ?
             WHERE job_posting_id = ?
             """,
             (
@@ -2552,6 +2556,8 @@ def _upsert_job_posting(
                 lead_row["role_title"],
                 lead_row["location"],
                 jd_artifact_path,
+                canonical_company_key,
+                company_key_source,
                 updated_at,
                 existing_posting["job_posting_id"],
             ),
@@ -2563,17 +2569,20 @@ def _upsert_job_posting(
     connection.execute(
         """
         INSERT INTO job_postings (
-          job_posting_id, lead_id, posting_identity_key, company_name, role_title, posting_status,
-          location, employment_type, posted_at, jd_artifact_path, archived_at, created_at, updated_at
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+          job_posting_id, lead_id, posting_identity_key, canonical_company_key, company_name, role_title,
+          posting_status, company_key_source, location, employment_type, posted_at, jd_artifact_path,
+          archived_at, created_at, updated_at
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         """,
         (
             job_posting_id,
             lead_row["lead_id"],
             posting_identity_key,
+            canonical_company_key,
             lead_row["company_name"],
             lead_row["role_title"],
             JOB_POSTING_STATUS_SOURCED,
+            company_key_source,
             lead_row["location"],
             None,
             None,

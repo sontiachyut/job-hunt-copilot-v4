@@ -20,6 +20,7 @@ from job_hunt_copilot.email_discovery import (
     FEEDBACK_REUSE_PROVIDER_NAME,
     POSTING_CONTACT_STATUS_EXHAUSTED,
     POSTING_CONTACT_STATUS_IDENTIFIED,
+    POSTING_CONTACT_STATUS_OUTREACH_DONE,
     POSTING_CONTACT_STATUS_SHORTLISTED,
     PROVIDER_NAME_APOLLO,
     RECIPIENT_TYPE_ENGINEER,
@@ -29,6 +30,7 @@ from job_hunt_copilot.email_discovery import (
     _normalize_hunter_discovery_result,
     _normalize_prospeo_discovery_result,
     load_provider_budget_summary,
+    refresh_same_company_contact_frontier,
     replay_historical_people_search_shortlist,
     run_apollo_contact_enrichment,
     run_apollo_people_search,
@@ -59,6 +61,7 @@ def seed_search_ready_posting(
     paths: ProjectPaths,
     *,
     job_posting_id: str = "jp_search",
+    resume_tailoring_run_id: str | None = None,
     lead_id: str = "ld_search",
     company_name: str = "Acme Robotics",
     role_title: str = "Staff Software Engineer / AI",
@@ -67,6 +70,8 @@ def seed_search_ready_posting(
     source_url: str = "https://careers.acmerobotics.com/jobs/123",
     timestamp: str = "2026-04-06T21:00:00Z",
 ) -> None:
+    if resume_tailoring_run_id is None:
+        resume_tailoring_run_id = f"rtr_{job_posting_id}"
     lead_workspace = paths.lead_workspace_dir(company_name, role_title, lead_id)
     jd_path = lead_workspace / "jd.md"
     jd_path.parent.mkdir(parents=True, exist_ok=True)
@@ -126,7 +131,7 @@ def seed_search_ready_posting(
         ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
         """,
         (
-            "rtr_search",
+            resume_tailoring_run_id,
             job_posting_id,
             "distributed-infra",
             "tailored",
@@ -796,9 +801,135 @@ def test_replay_historical_people_search_shortlist_materializes_missing_candidat
     assert len([candidate for candidate in artifact_payload["candidates"] if candidate.get("contact_id")]) == 5
 
     connection.close()
+
+
+def test_refresh_same_company_contact_frontier_exhausts_reused_contact_and_backfills_from_saved_artifact(
+    tmp_path: Path,
+):
+    project_root = bootstrap_project(tmp_path)
+    paths = ProjectPaths.from_root(project_root)
+    connection = connect_database(project_root / "job_hunt_copilot.db")
+    seed_search_ready_posting(connection, paths, job_posting_id="jp_primary", lead_id="ld_primary")
+    seed_search_ready_posting(
+        connection,
+        paths,
+        job_posting_id="jp_other",
+        lead_id="ld_other",
+        role_title="Backend Platform Engineer",
+    )
+
+    provider = FakeApolloProvider(
+        resolved_company=ApolloResolvedCompany(
+            organization_id="org_acme",
+            organization_name="Acme Robotics",
+            primary_domain="acmerobotics.com",
+        ),
+        candidates=[
+            build_candidate(provider_person_id="pp_r1", display_name="Taylor Recruiter", title="Recruiter"),
+            build_candidate(provider_person_id="pp_m1", display_name="Morgan Manager", title="Engineering Manager"),
+            build_candidate(provider_person_id="pp_e1", display_name="Jamie Engineer", title="Senior Software Engineer"),
+            build_candidate(provider_person_id="pp_e2", display_name="Casey Engineer", title="Software Engineer"),
+        ],
+    )
+
+    initial = run_apollo_people_search(
+        project_root=project_root,
+        job_posting_id="jp_primary",
+        provider=provider,
+        shortlist_limit=3,
+        current_time="2026-04-06T21:00:00Z",
+    )
+    assert len(initial.shortlisted_contact_ids) == 3
+
+    recruiter_contact_id = connection.execute(
+        """
+        SELECT contact_id
+        FROM contacts
+        WHERE provider_person_id = 'pp_r1'
+        """
+    ).fetchone()["contact_id"]
+    connection.execute(
+        """
+        INSERT INTO job_posting_contacts (
+          job_posting_contact_id, job_posting_id, contact_id, recipient_type, relevance_reason,
+          link_level_status, created_at, updated_at
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+        """,
+        (
+            "jpc_other_r1",
+            "jp_other",
+            recruiter_contact_id,
+            RECIPIENT_TYPE_RECRUITER,
+            "Previously used on another posting.",
+            POSTING_CONTACT_STATUS_OUTREACH_DONE,
+            "2026-04-05T18:00:00Z",
+            "2026-04-05T18:00:00Z",
+        ),
+    )
+    connection.execute(
+        """
+        INSERT INTO outreach_messages (
+          outreach_message_id, contact_id, outreach_mode, recipient_email, message_status,
+          job_posting_id, job_posting_contact_id, subject, body_text, sent_at, created_at, updated_at
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        """,
+        (
+            "msg_other_r1",
+            recruiter_contact_id,
+            "role_targeted",
+            "taylor@acmerobotics.com",
+            "sent",
+            "jp_other",
+            "jpc_other_r1",
+            "Hello",
+            "Hello",
+            "2026-04-05T18:05:00Z",
+            "2026-04-05T18:05:00Z",
+            "2026-04-05T18:05:00Z",
+        ),
+    )
+    connection.commit()
+    connection.close()
+
+    refresh_result = refresh_same_company_contact_frontier(
+        project_root=project_root,
+        job_posting_id="jp_primary",
+        shortlist_limit=3,
+        current_time="2026-04-06T22:00:00Z",
+    )
+
+    assert refresh_result["excluded_count"] == 1
+    assert refresh_result["replayed"] is True
+    assert len(refresh_result["replay_materialized_contact_ids"]) == 1
+
+    connection = connect_database(project_root / "job_hunt_copilot.db")
+    primary_links = connection.execute(
+        """
+        SELECT c.provider_person_id, jpc.link_level_status
+        FROM job_posting_contacts jpc
+        JOIN contacts c
+          ON c.contact_id = jpc.contact_id
+        WHERE jpc.job_posting_id = 'jp_primary'
+        ORDER BY jpc.created_at ASC, jpc.job_posting_contact_id ASC
+        """
+    ).fetchall()
+    statuses_by_provider = {str(row["provider_person_id"]): str(row["link_level_status"]) for row in primary_links}
+    assert statuses_by_provider["pp_r1"] == POSTING_CONTACT_STATUS_EXHAUSTED
+    assert "pp_e2" in statuses_by_provider
+    active_count = connection.execute(
+        """
+        SELECT COUNT(*)
+        FROM job_posting_contacts
+        WHERE job_posting_id = 'jp_primary'
+          AND link_level_status IN ('identified', 'shortlisted')
+        """
+    ).fetchone()[0]
+    assert active_count == 3
+
+    connection.close()
     connection = connect_database(project_root / "job_hunt_copilot.db")
     assert connection.execute("SELECT COUNT(*) FROM job_posting_contacts").fetchone()[0] == 5
-    assert connection.execute("SELECT COUNT(*) FROM contacts").fetchone()[0] == 5
+    assert connection.execute("SELECT COUNT(*) FROM contacts").fetchone()[0] == 4
 
     connection.close()
 

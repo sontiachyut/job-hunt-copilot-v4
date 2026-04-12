@@ -16,6 +16,7 @@ from zoneinfo import ZoneInfo
 import yaml
 
 from .artifacts import ArtifactLinkage, publish_json_artifact, register_artifact_record
+from .company_keys import ensure_missing_posting_company_keys, posting_company_key_from_row
 from .delivery_feedback import MailboxFeedbackObserver, run_immediate_delivery_feedback_poll
 from .paths import ProjectPaths
 from .records import lifecycle_timestamps, new_canonical_id
@@ -70,6 +71,7 @@ SEND_SET_FALLBACK_TYPE_ORDER = (
 _CANDIDATE_STATE_READY = "ready"
 _CANDIDATE_STATE_NEEDS_EMAIL = "needs_email"
 _CANDIDATE_STATE_REPEAT_REVIEW = "repeat_review"
+_CANDIDATE_STATE_SAME_COMPANY_SENT = "same_company_sent"
 _CANDIDATE_STATE_UNAVAILABLE = "unavailable"
 
 OUTREACH_MODE_ROLE_TARGETED = "role_targeted"
@@ -727,6 +729,7 @@ class _CandidateRow:
     contact_status: str
     link_level_status: str
     prior_outreach_count: int
+    prior_same_company_outreach_count: int
     link_created_at: str
 
     @property
@@ -735,6 +738,8 @@ class _CandidateRow:
 
     @property
     def selection_state(self) -> str:
+        if self.prior_same_company_outreach_count > 0:
+            return _CANDIDATE_STATE_SAME_COMPANY_SENT
         if self.prior_outreach_count > 0:
             return _CANDIDATE_STATE_REPEAT_REVIEW
         if self.link_level_status in {
@@ -762,21 +767,14 @@ def evaluate_role_targeted_send_set(
     current_time: str,
     local_timezone: tzinfo | str | None = None,
 ) -> RoleTargetedSendSetPlan:
+    ensure_missing_posting_company_keys(connection, current_time=current_time)
     posting_row = _load_posting_row(connection, job_posting_id=job_posting_id)
-    candidates = _load_candidate_rows(connection, job_posting_id=job_posting_id)
-    selected_candidates = _select_send_set_candidates(candidates)
-    repeat_review_contacts = tuple(
-        RepeatOutreachReviewContact(
-            contact_id=candidate.contact_id,
-            job_posting_contact_id=candidate.job_posting_contact_id,
-            recipient_type=candidate.recipient_type,
-            display_name=candidate.display_name,
-            prior_outreach_count=candidate.prior_outreach_count,
-        )
-        for candidate in candidates
-        if candidate.selection_state == _CANDIDATE_STATE_REPEAT_REVIEW
+    candidates = _load_candidate_rows(
+        connection,
+        job_posting_id=job_posting_id,
+        posting_company_key=posting_company_key_from_row(posting_row),
     )
-
+    selected_candidates = _select_send_set_candidates(candidates)
     selected_contacts = tuple(
         SendSetContactPlan(
             slot_name=slot_name,
@@ -798,6 +796,31 @@ def evaluate_role_targeted_send_set(
         )
         for slot_name, selection_kind, candidate in selected_candidates
     )
+    same_company_repeat_candidates = [
+        candidate for candidate in candidates if candidate.selection_state == _CANDIDATE_STATE_SAME_COMPANY_SENT
+    ]
+    repeat_review_contacts = tuple(
+        RepeatOutreachReviewContact(
+            contact_id=candidate.contact_id,
+            job_posting_contact_id=candidate.job_posting_contact_id,
+            recipient_type=candidate.recipient_type,
+            display_name=candidate.display_name,
+            prior_outreach_count=candidate.prior_outreach_count,
+        )
+        for candidate in candidates
+        if candidate.selection_state == _CANDIDATE_STATE_REPEAT_REVIEW
+    )
+    if not selected_contacts and same_company_repeat_candidates:
+        repeat_review_contacts = repeat_review_contacts + tuple(
+            RepeatOutreachReviewContact(
+                contact_id=candidate.contact_id,
+                job_posting_contact_id=candidate.job_posting_contact_id,
+                recipient_type=candidate.recipient_type,
+                display_name=candidate.display_name,
+                prior_outreach_count=candidate.prior_outreach_count,
+            )
+            for candidate in same_company_repeat_candidates
+        )
     ready_for_outreach = bool(selected_contacts) and all(
         contact.readiness_state == _CANDIDATE_STATE_READY for contact in selected_contacts
     )
@@ -861,7 +884,7 @@ def _load_posting_row(
 ) -> sqlite3.Row:
     posting_row = connection.execute(
         """
-        SELECT job_posting_id, lead_id, company_name, role_title
+        SELECT job_posting_id, lead_id, canonical_company_key, company_name, role_title
         FROM job_postings
         WHERE job_posting_id = ?
         """,
@@ -876,19 +899,32 @@ def _load_candidate_rows(
     connection: sqlite3.Connection,
     *,
     job_posting_id: str,
+    posting_company_key: str,
 ) -> list[_CandidateRow]:
     rows = connection.execute(
         """
         WITH outreach_history AS (
-          SELECT contact_id, COUNT(*) AS prior_outreach_count
-          FROM outreach_messages
-          WHERE sent_at IS NOT NULL
-             OR message_status = ?
-          GROUP BY contact_id
+          SELECT om.contact_id,
+                 COUNT(*) AS prior_outreach_count,
+                 SUM(
+                   CASE
+                     WHEN om.job_posting_id <> ?
+                      AND jp.canonical_company_key = ?
+                     THEN 1
+                     ELSE 0
+                   END
+                 ) AS prior_same_company_outreach_count
+          FROM outreach_messages om
+          JOIN job_postings jp
+            ON jp.job_posting_id = om.job_posting_id
+          WHERE om.sent_at IS NOT NULL
+             OR om.message_status = ?
+          GROUP BY om.contact_id
         )
         SELECT jpc.job_posting_contact_id, jpc.contact_id, jpc.recipient_type, jpc.link_level_status,
                jpc.created_at AS link_created_at, c.display_name, c.current_working_email,
-               c.contact_status, COALESCE(oh.prior_outreach_count, 0) AS prior_outreach_count
+               c.contact_status, COALESCE(oh.prior_outreach_count, 0) AS prior_outreach_count,
+               COALESCE(oh.prior_same_company_outreach_count, 0) AS prior_same_company_outreach_count
         FROM job_posting_contacts jpc
         JOIN contacts c
           ON c.contact_id = jpc.contact_id
@@ -897,7 +933,7 @@ def _load_candidate_rows(
         WHERE jpc.job_posting_id = ?
         ORDER BY jpc.created_at ASC, jpc.job_posting_contact_id ASC
         """,
-        (MESSAGE_STATUS_SENT, job_posting_id),
+        (job_posting_id, posting_company_key, MESSAGE_STATUS_SENT, job_posting_id),
     ).fetchall()
     return [
         _CandidateRow(
@@ -909,6 +945,7 @@ def _load_candidate_rows(
             contact_status=str(row["contact_status"]).strip(),
             link_level_status=str(row["link_level_status"]).strip(),
             prior_outreach_count=int(row["prior_outreach_count"] or 0),
+            prior_same_company_outreach_count=int(row["prior_same_company_outreach_count"] or 0),
             link_created_at=str(row["link_created_at"]).strip(),
         )
         for row in rows
@@ -922,7 +959,12 @@ def _load_role_targeted_draftable_contacts(
     job_posting_id: str,
 ) -> tuple[_CandidateRow, ...]:
     draftable: list[_CandidateRow] = []
-    for candidate in _load_candidate_rows(connection, job_posting_id=job_posting_id):
+    posting_row = _load_posting_row(connection, job_posting_id=job_posting_id)
+    for candidate in _load_candidate_rows(
+        connection,
+        job_posting_id=job_posting_id,
+        posting_company_key=posting_company_key_from_row(posting_row),
+    ):
         if candidate.selection_state != _CANDIDATE_STATE_READY:
             continue
         existing_message_count = int(
@@ -1024,6 +1066,8 @@ def _selection_state_rank(selection_state: str) -> int:
         return 1
     if selection_state == _CANDIDATE_STATE_REPEAT_REVIEW:
         return 2
+    if selection_state == _CANDIDATE_STATE_SAME_COMPANY_SENT:
+        return 3
     return 3
 
 

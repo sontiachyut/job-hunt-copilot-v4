@@ -290,6 +290,20 @@ Feature: Job Hunt Copilot next-build acceptance
       When those posting-contact relationships are created
       Then the system may reuse one canonical contact record across those postings
       And each posting relationship is tracked separately through `job_posting_contacts`
+      But automatic role-targeted outreach does not send a second same-company message to that canonical contact without user review
+
+    Scenario: Same-company grouping begins from a provisional company key before provider resolution
+      Given a newly materialized posting has not yet resolved a provider-backed company identifier
+      When the posting is created in canonical state
+      Then the posting still receives a provisional canonical company-grouping key derived from the normalized company name
+      And same-company repeat-outreach protections may already use that provisional key
+
+    Scenario: Provider-backed company resolution strengthens an existing same-company grouping
+      Given a posting already has a provisional canonical company-grouping key
+      And later company-scoped people search resolves a stable provider-backed company identifier
+      When canonical posting state is updated from that resolution
+      Then the posting may be reconciled into the stronger provider-backed same-company grouping
+      And same-company repeat-outreach protections continue without requiring a reset
 
     Scenario: Source metadata is owned by the lead rather than the posting
       Given a role-targeted lead has been ingested
@@ -923,12 +937,26 @@ Feature: Job Hunt Copilot next-build acceptance
       Then the system does not auto-send a new message
       And the case is surfaced for user review
 
-    Scenario: Autonomous role-targeted sending respects company-level pacing
-      Given multiple contacts across one or more companies become ready for autonomous role-targeted outreach
+    Scenario: Autonomous role-targeted sending respects per-posting pacing
+      Given multiple contacts across one or more postings become ready for autonomous role-targeted outreach
       When send scheduling evaluates those contacts
-      Then no more than 3 emails are sent for that company on the same day
-      And additional same-company sends are delayed or queued for a later allowed send window
+      Then no more than 4 emails are sent for the same posting on the same day
+      And additional same-posting sends are delayed or queued for a later allowed send window
       And any two automatic sends are separated by the current randomized 6-to-10-minute pacing gap rather than sent back-to-back
+
+    Scenario: Later postings at the same company proactively skip an already-contacted person
+      Given one posting at a company has already sent automatic outreach to a canonical contact
+      And a later posting at that same company links that same canonical contact plus other eligible company contacts
+      When orchestration evaluates the later posting for automatic outreach
+      Then the already-contacted canonical contact is excluded from automatic send-set selection for the later posting
+      And orchestration continues with alternate eligible contacts from that company when they exist
+
+    Scenario: Later postings with no alternate same-company contacts do not auto-send a second email
+      Given one posting at a company has already sent automatic outreach to a canonical contact
+      And a later posting at that same company has no alternate automatically eligible contacts left after exclusions
+      When orchestration evaluates the later posting for automatic outreach
+      Then the system does not auto-send a second role-targeted email to that same canonical contact
+      And the later posting is surfaced for review instead
 
     Scenario: Current autonomous send set prefers recruiter, manager-adjacent, and engineer coverage without a global daily cap
       Given a company has enough viable contacts across multiple recipient classes
@@ -1499,9 +1527,9 @@ Feature: Job Hunt Copilot next-build acceptance
       And the posting-contact relationship advances to `outreach_in_progress`
       And the related posting remains at least `outreach_in_progress`
 
-    Scenario: Posting reaches completed when the intended outreach set has been sent
+    Scenario: Posting reaches completed when no untouched automatically eligible contacts remain
       Given a posting is currently `outreach_in_progress`
-      When the intended current outreach set has been sent
+      When the remaining shortlisted contact pool has either been sent, exhausted, or excluded by repeat-contact rules
       Then the posting transitions to `completed`
       And bounced-message review items may still exist afterward
       But those review items do not block posting completion

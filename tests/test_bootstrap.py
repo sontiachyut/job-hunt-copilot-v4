@@ -47,8 +47,9 @@ def test_bootstrap_materializes_support_dirs_secrets_and_db(tmp_path):
     assert migrations == [
         ("0001_runtime_bootstrap.sql",),
         ("0002_canonical_schema.sql",),
+        ("0003_company_grouping_keys.sql",),
     ]
-    assert user_version == 2
+    assert user_version == 3
 
 
 def test_bootstrap_is_idempotent(tmp_path):
@@ -62,6 +63,7 @@ def test_bootstrap_is_idempotent(tmp_path):
     assert first_report["database"]["applied_migrations"] == [
         "0001_runtime_bootstrap.sql",
         "0002_canonical_schema.sql",
+        "0003_company_grouping_keys.sql",
     ]
     assert second_report["database"]["applied_migrations"] == []
     assert second_report["directories"]["created_paths"] == []

@@ -3192,8 +3192,6 @@ def _validate_selected_work(
         return None
 
     if catalog_entry.action_id == ACTION_RUN_ROLE_TARGETED_EMAIL_DISCOVERY:
-        from .outreach import evaluate_role_targeted_send_set
-
         pipeline_run = get_pipeline_run(connection, selected_work.work_id)
         if pipeline_run is None:
             return f"pipeline_run {selected_work.work_id!r} no longer exists."
@@ -3240,16 +3238,6 @@ def _validate_selected_work(
             return (
                 f"job_posting {job_posting_id!r} is not backed by an approved tailoring "
                 "review for email discovery."
-            )
-        send_set_plan = evaluate_role_targeted_send_set(
-            connection,
-            job_posting_id=job_posting_id,
-            current_time=now_utc_iso(),
-        )
-        if not send_set_plan.selected_contacts:
-            return (
-                f"job_posting {job_posting_id!r} has no current send-set contacts available "
-                "for bounded email discovery."
             )
         return None
 
@@ -3995,6 +3983,7 @@ def _execute_selected_work_unit(
         from .email_discovery import (
             JOB_POSTING_STATUS_READY_FOR_OUTREACH,
             JOB_POSTING_STATUS_REQUIRES_CONTACTS,
+            refresh_same_company_contact_frontier,
             run_email_discovery_for_contact,
         )
         from .outreach import evaluate_role_targeted_send_set
@@ -4014,6 +4003,12 @@ def _execute_selected_work_unit(
         current_posting_status = _require_text(
             _optional_text(posting_row[0]),
             "posting_status",
+        )
+        refresh_same_company_contact_frontier(
+            project_root=paths.project_root,
+            job_posting_id=job_posting_id,
+            current_time=timestamp,
+            connection=connection,
         )
         def _load_pending_email_discovery_contact_ids() -> list[str]:
             rows = connection.execute(
@@ -4143,6 +4138,7 @@ def _execute_selected_work_unit(
         return pipeline_run, None, None
 
     if catalog_entry.action_id == ACTION_RUN_ROLE_TARGETED_SENDING:
+        from .email_discovery import refresh_same_company_contact_frontier
         from .outreach import (
             JOB_POSTING_STATUS_COMPLETED,
             JOB_POSTING_STATUS_OUTREACH_IN_PROGRESS,
@@ -4168,6 +4164,12 @@ def _execute_selected_work_unit(
         current_posting_status = _require_text(
             _optional_text(posting_row[0]),
             "posting_status",
+        )
+        refresh_same_company_contact_frontier(
+            project_root=paths.project_root,
+            job_posting_id=job_posting_id,
+            current_time=timestamp,
+            connection=connection,
         )
         drafted_count = 0
         sent_count = 0

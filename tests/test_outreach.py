@@ -89,7 +89,7 @@ def seed_posting(
         """,
         (
             lead_id,
-            "acme-robotics|staff-software-engineer-ai",
+            f"{lead_id}|acme-robotics|staff-software-engineer-ai",
             "handed_off",
             "posting_only",
             "not_applicable",
@@ -821,6 +821,160 @@ def test_send_set_excludes_repeat_outreach_and_uses_next_best_contact(tmp_path: 
 
     assert plan.ready_for_outreach is True
     assert [contact.contact_id for contact in plan.selected_contacts] == ["ct_r2", "ct_m1", "ct_e1"]
+    assert [contact.contact_id for contact in plan.repeat_outreach_review_contacts] == ["ct_r1"]
+
+    connection.close()
+
+
+def test_send_set_silently_skips_same_company_prior_send_when_alternate_exists(tmp_path: Path):
+    project_root, _ = bootstrap_project(tmp_path)
+    connection = connect_database(project_root / "job_hunt_copilot.db")
+    seed_posting(connection, lead_id="ld_primary", job_posting_id="jp_primary")
+    seed_posting(
+        connection,
+        lead_id="ld_other",
+        job_posting_id="jp_other",
+        role_title="Backend Platform Engineer",
+    )
+    seed_linked_contact(
+        connection,
+        contact_id="ct_r1",
+        job_posting_contact_id="jpc_r1",
+        job_posting_id="jp_primary",
+        display_name="Priya Recruiter",
+        recipient_type=RECIPIENT_TYPE_RECRUITER,
+        current_working_email="priya@acme.example",
+        created_at="2026-04-06T20:01:00Z",
+    )
+    connection.execute(
+        """
+        INSERT INTO job_posting_contacts (
+          job_posting_contact_id, job_posting_id, contact_id, recipient_type, relevance_reason,
+          link_level_status, created_at, updated_at
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+        """,
+        (
+            "jpc_other_r1",
+            "jp_other",
+            "ct_r1",
+            RECIPIENT_TYPE_RECRUITER,
+            "Previously used on another posting.",
+            POSTING_CONTACT_STATUS_OUTREACH_DONE,
+            "2026-04-05T18:00:00Z",
+            "2026-04-05T18:00:00Z",
+        ),
+    )
+    seed_linked_contact(
+        connection,
+        contact_id="ct_r2",
+        job_posting_contact_id="jpc_r2",
+        job_posting_id="jp_primary",
+        display_name="Taylor Recruiter",
+        recipient_type=RECIPIENT_TYPE_RECRUITER,
+        current_working_email="taylor@acme.example",
+        created_at="2026-04-06T20:02:00Z",
+    )
+    seed_linked_contact(
+        connection,
+        contact_id="ct_m1",
+        job_posting_contact_id="jpc_m1",
+        job_posting_id="jp_primary",
+        display_name="Morgan Manager",
+        recipient_type=RECIPIENT_TYPE_HIRING_MANAGER,
+        current_working_email="morgan@acme.example",
+        created_at="2026-04-06T20:03:00Z",
+    )
+    seed_linked_contact(
+        connection,
+        contact_id="ct_e1",
+        job_posting_contact_id="jpc_e1",
+        job_posting_id="jp_primary",
+        display_name="Jamie Engineer",
+        recipient_type=RECIPIENT_TYPE_ENGINEER,
+        current_working_email="jamie@acme.example",
+        created_at="2026-04-06T20:04:00Z",
+    )
+    seed_sent_message(
+        connection,
+        outreach_message_id="msg_prior_same_company",
+        contact_id="ct_r1",
+        recipient_email="priya@acme.example",
+        job_posting_id="jp_other",
+        job_posting_contact_id="jpc_other_r1",
+        sent_at="2026-04-05T18:05:00Z",
+    )
+
+    plan = evaluate_role_targeted_send_set(
+        connection,
+        job_posting_id="jp_primary",
+        current_time="2026-04-06T20:10:00Z",
+        local_timezone=ZoneInfo("UTC"),
+    )
+
+    assert plan.ready_for_outreach is True
+    assert [contact.contact_id for contact in plan.selected_contacts] == ["ct_r2", "ct_m1", "ct_e1"]
+    assert plan.repeat_outreach_review_contacts == ()
+
+    connection.close()
+
+
+def test_send_set_surfaces_same_company_prior_send_when_no_alternate_exists(tmp_path: Path):
+    project_root, _ = bootstrap_project(tmp_path)
+    connection = connect_database(project_root / "job_hunt_copilot.db")
+    seed_posting(connection, lead_id="ld_primary", job_posting_id="jp_primary")
+    seed_posting(
+        connection,
+        lead_id="ld_other",
+        job_posting_id="jp_other",
+        role_title="Backend Platform Engineer",
+    )
+    seed_linked_contact(
+        connection,
+        contact_id="ct_r1",
+        job_posting_contact_id="jpc_r1",
+        job_posting_id="jp_primary",
+        display_name="Priya Recruiter",
+        recipient_type=RECIPIENT_TYPE_RECRUITER,
+        current_working_email="priya@acme.example",
+        created_at="2026-04-06T20:01:00Z",
+    )
+    connection.execute(
+        """
+        INSERT INTO job_posting_contacts (
+          job_posting_contact_id, job_posting_id, contact_id, recipient_type, relevance_reason,
+          link_level_status, created_at, updated_at
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+        """,
+        (
+            "jpc_other_r1",
+            "jp_other",
+            "ct_r1",
+            RECIPIENT_TYPE_RECRUITER,
+            "Previously used on another posting.",
+            POSTING_CONTACT_STATUS_OUTREACH_DONE,
+            "2026-04-05T18:00:00Z",
+            "2026-04-05T18:00:00Z",
+        ),
+    )
+    seed_sent_message(
+        connection,
+        outreach_message_id="msg_prior_same_company",
+        contact_id="ct_r1",
+        recipient_email="priya@acme.example",
+        job_posting_id="jp_other",
+        job_posting_contact_id="jpc_other_r1",
+        sent_at="2026-04-05T18:05:00Z",
+    )
+
+    plan = evaluate_role_targeted_send_set(
+        connection,
+        job_posting_id="jp_primary",
+        current_time="2026-04-06T20:10:00Z",
+        local_timezone=ZoneInfo("UTC"),
+    )
+
+    assert plan.ready_for_outreach is False
+    assert plan.selected_contacts == ()
     assert [contact.contact_id for contact in plan.repeat_outreach_review_contacts] == ["ct_r1"]
 
     connection.close()

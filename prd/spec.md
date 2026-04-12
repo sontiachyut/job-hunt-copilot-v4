@@ -496,6 +496,13 @@ This is the agreed vocabulary for design discussions.
 - **FR-SYS-15H (Sent-to-Replied Transition):** A `contact` shall transition from `sent` to `replied` when a reply is detected for that contact's outreach.
 - **FR-SYS-15I (Post-Send-to-Exhausted Transition):** A `contact` may transition to `exhausted` after send when no further automatic discovery or outreach path remains for that contact in the current flow, such as when prior messages already exist and repeat outreach requires user review, or when bounce/retry paths have been exhausted.
 - **FR-SYS-16 (Multi-Posting Contact Reuse):** A single contact may link to multiple `job_postings`. The system shall support contact reuse across multiple role or outreach contexts without requiring duplicate contact records for the same person.
+- **FR-SYS-16A (Single Automatic Company Touch per Canonical Contact):** A canonical contact may be reused across multiple postings at the same canonical company, but automatic role-targeted outreach shall treat that person as a single automatic company touch. Once one posting at that company has already sent automatic outreach to that contact, later postings at that company shall not automatically send a second role-targeted email to the same canonical contact.
+- **FR-SYS-16B (Same-Company Alternate Contact Continuation):** When a later posting at the same company excludes an already-contacted canonical contact from automatic outreach, the system shall continue with other eligible contacts from that company's remaining contact pool rather than stalling the posting immediately.
+- **FR-SYS-16C (Same-Company No-Alternate Review Escalation):** If no alternate automatically eligible same-company contacts remain after the repeat-contact exclusion is applied, the system shall leave the posting unresolved and surface the case for review rather than auto-sending a second message to the already-contacted person.
+- **FR-SYS-16D (Canonical Company Grouping Key):** Each `job_posting` shall carry a canonical company-grouping key used for same-company orchestration rules such as no-repeat automatic outreach across multiple postings.
+- **FR-SYS-16E (Immediate Provisional Company Key):** The canonical company-grouping key shall exist immediately when the posting is materialized, even before external company resolution is available. The initial provisional form should be derived deterministically from the posting's normalized company name, such as `name:<normalized-company-name>`.
+- **FR-SYS-16F (Provider-Backed Company Key Preference):** When a stable provider-backed company identifier becomes available, such as Apollo `organization_id`, the system should prefer a provider-backed canonical company-grouping key such as `apollo_org:<organization_id>` for same-company orchestration.
+- **FR-SYS-16G (Provisional-to-Provider Reconciliation):** The same-company no-repeat policy shall begin working immediately from the provisional company-grouping key and remain continuous after provider resolution. When a provider-backed company identifier later becomes available, the system shall reconcile the posting into that stronger grouping rather than requiring same-company protections to wait until provider resolution.
 - **FR-SYS-17 (Multi-Contact Job Posting Coverage):** A single `job_posting` may link to multiple contacts. The system shall support multiple outreach targets for the same posting, such as hiring managers, recruiters, engineers, and alumni-connected contacts.
 - **FR-SYS-17A (Job-Posting Status Set):** For this build, `job_postings` should support a lightweight top-level status set such as:
   1. `sourced`
@@ -520,7 +527,7 @@ This is the agreed vocabulary for design discussions.
   3. the posting has the required linked contacts for the current intended outreach set
   4. at least the intended current outreach set has discovered usable email addresses
 - **FR-SYS-17D (Outreach-in-Progress Meaning):** A `job_posting` shall be considered `outreach_in_progress` once drafting and/or sending is actively occurring for the current outreach set tied to that posting.
-- **FR-SYS-17E (Completed Meaning):** A `job_posting` shall be considered `completed` when the intended current outreach set for that posting has been sent. Bounced contacts or bounced messages may still surface separately for review and corrective action, but those review items do not block the posting from reaching `completed`.
+- **FR-SYS-17E (Completed Meaning):** A `job_posting` shall be considered `completed` when no untouched automatically eligible contacts remain for that posting after the current shortlisted contact pool, repeat-contact exclusions, and automatic discovery outcomes have been applied. Bounced contacts or bounced messages may still surface separately for review and corrective action, but those review items do not by themselves block the posting from reaching `completed`.
 - **FR-SYS-17F (Sourced-to-Hard-Ineligible Transition):** A `job_posting` shall transition from `sourced` to `hard_ineligible` when the hard-disqualifier gate is triggered.
 - **FR-SYS-17G (Sourced-to-Tailoring Transition):** A `job_posting` shall transition from `sourced` to `tailoring_in_progress` when the posting passes the hard-disqualifier gate and Resume Tailoring begins.
 - **FR-SYS-17H (Tailoring-to-Review Transition):** A `job_posting` shall transition from `tailoring_in_progress` to `resume_review_pending` when tailoring/finalize work is complete and the tailored resume is ready for the mandatory agent review gate.
@@ -528,7 +535,7 @@ This is the agreed vocabulary for design discussions.
 - **FR-SYS-17J (Review-to-Ready Transition):** A `job_posting` shall transition from `resume_review_pending` directly to `ready_for_outreach` when the agent review approves the tailoring output and the posting already satisfies the contact-linking and usable-email prerequisites for the intended outreach set.
 - **FR-SYS-17K (Requires-Contacts-to-Ready Transition):** A `job_posting` shall transition from `requires_contacts` to `ready_for_outreach` when the required linked contacts exist and the intended current outreach set has discovered usable email addresses.
 - **FR-SYS-17L (Ready-to-Outreach-In-Progress Transition):** A `job_posting` shall transition from `ready_for_outreach` to `outreach_in_progress` when the first contact in the intended current outreach set enters drafting or sending.
-- **FR-SYS-17M (Outreach-In-Progress-to-Completed Transition):** A `job_posting` shall transition from `outreach_in_progress` to `completed` when the intended current outreach set has been sent.
+- **FR-SYS-17M (Outreach-In-Progress-to-Completed Transition):** A `job_posting` shall transition from `outreach_in_progress` to `completed` when no untouched automatically eligible contacts remain for that posting after the current shortlisted contact pool, repeat-contact exclusions, and automatic discovery outcomes have been applied.
 - **FR-SYS-17N (Abandon Transition):** A `job_posting` may transition to `abandoned` from any non-terminal active status when the user explicitly decides to stop pursuing that posting.
 - **FR-SYS-18 (Dedicated Posting-Contact Link Table):** The many-to-many relationship between `job_postings` and `contacts` shall be represented through a dedicated linking table, `job_posting_contacts`, rather than only through direct foreign-key fields on one side.
 - **FR-SYS-19 (Relationship-Specific Link Records):** `job_posting_contacts` shall be allowed to store relationship-specific context for a given posting-contact pair rather than acting as a pure two-column join table only.
@@ -628,7 +635,7 @@ This is the agreed vocabulary for design discussions.
   5. `other_internal`
 - **FR-SYS-38B1A (Current Guide Recipient Groups):** The current outreach guide should explicitly cover these working recipient groups: recruiting managers who post openings on LinkedIn, people who may be working on that team or adjacent area, ASU alumni connections, and previous job connections.
 - **FR-SYS-38B1B (Current Guide Focus Profiles):** The current deepest drafting guidance is optimized first for recruiting-manager posters and team-adjacent engineers. Alumni and previous-job-connection outreach remain supported, but their more detailed playbooks may stay lighter until later refinement.
-- **FR-SYS-38B1C (Autonomous Enrichment Shortlist Size):** In the autonomous role-targeted flow, the first shortlist taken from the broad people-search result should contain at most 6 contacts for enrichment unless the user explicitly overrides that limit.
+- **FR-SYS-38B1C (Autonomous Enrichment Shortlist Size):** In the autonomous role-targeted flow, the first shortlist taken from the broad people-search result should contain at most 30 contacts for enrichment unless the user explicitly overrides that limit.
 - **FR-SYS-38B1D (Autonomous Shortlist Composition):** The autonomous enrichment shortlist should aim for role coverage in this order:
   1. up to 2 recruiter or recruiting-manager-adjacent contacts
   2. up to 2 hiring-manager, engineering-manager, or engineering-director contacts
@@ -637,8 +644,8 @@ This is the agreed vocabulary for design discussions.
 - **FR-SYS-38B1E (Current Autonomous Send Set Size):** After enrichment and any required email discovery, the current autonomous send set for one company on one day should contain at most 3 contacts unless the user explicitly overrides that limit.
 - **FR-SYS-38B1F (Current Autonomous Send Set Composition):** The default autonomous send set should prefer one recruiter, one hiring-manager-or-manager-adjacent contact, and one team-adjacent engineer when those contact classes are available. If one class is unavailable, the next-best shortlisted contact may fill the slot.
 - **FR-SYS-38B2 (Pacing-Aware Wave Progression):** Priority waves define outreach order, but send execution shall still respect the active pacing rules. A later recipient wave may therefore continue in a later send window rather than blasting every wave immediately.
-- **FR-SYS-38B3 (Per-Company Daily Send Cap):** In the autonomous role-targeted flow, the system shall not send more than 3 emails for the same company within the same calendar day unless the user explicitly overrides that cap.
-- **FR-SYS-38B3A (No Global Daily Send Cap):** In this build, the autonomous role-targeted flow does not need a separate cross-company daily send cap. The active pacing rules are a global randomized inter-send gap plus the per-company daily cap rather than one overall global daily-send ceiling.
+- **FR-SYS-38B3 (Per-Posting Daily Send Cap):** In the autonomous role-targeted flow, the system shall not send more than 4 emails for the same posting within the same calendar day unless the user explicitly overrides that cap.
+- **FR-SYS-38B3A (No Global Daily Send Cap):** In this build, the autonomous role-targeted flow does not need a separate cross-company daily send cap. The active pacing rules are a global randomized inter-send gap plus the per-posting daily cap rather than one overall global daily-send ceiling.
 - **FR-SYS-38B4 (Global Inter-Send Gap Rule):** Between any two automatically sent outreach emails, the system shall enforce a randomized pacing gap of 6 to 10 minutes rather than using a fixed cadence.
 - **FR-SYS-38C (Sequential Interactive Execution Rule):** In this build, the interactive discovery, drafting, and sending stages shall run sequentially rather than as parallel fan-out. Delivery Feedback for already-sent messages may still begin immediately per message, and delayed background feedback sync may continue independently of the interactive send flow.
 - **FR-SYS-38C1 (No Concurrency Tuning Requirement):** Because this build is intentionally sequential, the specification does not require configurable concurrency settings for discovery, drafting, sending, or scheduled feedback sync.
@@ -652,11 +659,15 @@ This is the agreed vocabulary for design discussions.
 - **FR-SYS-38D7 (Session-Independent Feedback Continuity):** Delayed feedback capture shall not require the interactive chat session or the original send process to remain running. Once send metadata has been persisted, later feedback detection should be able to proceed independently.
 - **FR-SYS-38D8 (Current Scheduled Polling Interval):** During the active 30-minute bounce-observation window, the delayed feedback-sync process should run every 5 minutes.
 - **FR-SYS-38D9 (Current Bounce-Observation Completion Rule):** If no bounce signal is detected for a sent message by the end of the 30-minute bounce-observation window, the system may record the current high-level outcome as `not_bounced` for that observation window while still allowing later reply detection to continue through mailbox observation.
-- **FR-SYS-38E (No Automatic Contact Expansion):** After the current selected contact set or outreach wave has been sent for a posting, the system shall not automatically go back and discover or add more contacts for that posting unless the user explicitly asks for more outreach expansion.
+- **FR-SYS-38E (Automatic Continuation Across Remaining Shortlisted Contacts):** After one daily send slice or current send set has been sent for a posting, the system shall continue automatic discovery, drafting, and later-day sending across the remaining untouched shortlisted contacts for that posting until the automatically eligible contact pool has been exhausted. It shall not require explicit user reactivation to continue through the already materialized shortlist.
+- **FR-SYS-38E1 (Broad-Search Refresh Is Separate):** Automatic continuation across the remaining shortlisted contact pool does not by itself require rerunning broad company-scoped people search. Refreshing or expanding the broad-search result beyond the current materialized shortlist remains a separate action.
 - **FR-SYS-38F (Reply Does Not Retroactively Cancel Active Wave):** Because replies may arrive later than send time, a reply from one contact shall not retroactively cancel outreach already issued to other contacts in the same active wave.
 - **FR-SYS-38G (Single-Contact Failure Does Not Stall Wave):** If discovery, drafting, or sending fails for one contact within an active wave, the remaining independent contacts in that wave may continue through the pipeline as long as their own prerequisites are satisfied.
 - **FR-SYS-38H (Known-Working-Email Shortcut):** If a contact in the active outreach flow already has a known working email and the identity match is clear, that contact may skip fresh discovery and count as discovery-ready for the current send set. Drafting and sending shall still follow the current send-set readiness and batch-drafting rules for that run.
 - **FR-SYS-38I (Prior-Outreach Review Gate):** If a contact already has prior outreach history, the system shall not automatically send a new outreach message to that contact in a later run. It shall skip automatic repeat outreach and surface the contact to the user for review.
+- **FR-SYS-38I1 (Same-Company Multi-Posting Automatic Exclusion):** If a canonical contact has already received automatic role-targeted outreach for one posting at a canonical company, later postings at that same company shall proactively exclude that contact from automatic send-set selection rather than waiting until final send time to block the repeat touch.
+- **FR-SYS-38I2 (Same-Company Alternate-Contact Search Rule):** When same-company repeat-contact exclusion removes a candidate from a later posting, orchestration shall continue searching, enriching, discovering, drafting, and later sending against the posting's remaining eligible company contacts when they exist.
+- **FR-SYS-38I3 (Same-Company Repeat-Contact Review Rule):** If a later posting at the same company has no alternate automatically eligible contacts after same-company repeat-contact exclusions are applied, the system shall surface the posting for review rather than auto-sending a second role-targeted email to the already-contacted person.
 - **FR-SYS-39 (Dependency-Gated Execution):** A downstream stage shall not proceed until its required upstream stage has produced the required status and handoff data. Components may assume persisted upstream outputs exist rather than recomputing missing prerequisites on the fly.
 - **FR-SYS-40 (Agent Review as Outreach Gate):** In the current role-targeted flow, Outreach-side work shall not begin until the linked `job_posting` has completed tailoring/finalize successfully and the active tailoring run is marked `resume_review_status = approved` by the mandatory agent review step.
 - **FR-SYS-41 (Posting-Contact Linking Before Per-Contact Progression):** In a role-targeted flow, broad company-scoped people search may run before canonical posting-contact links exist. However, before person-scoped email discovery, drafting, or sending begins for a specific shortlisted contact, the system shall establish the relevant posting-contact relationship in `job_posting_contacts`.
@@ -856,12 +867,15 @@ This section defines the next-build logical schema shape for `job_hunt_copilot.d
   - `job_posting_id`
   - `lead_id`
   - `posting_identity_key`
+  - `canonical_company_key`
   - `company_name`
   - `role_title`
   - `posting_status`
   - `created_at`
   - `updated_at`
 - Optional columns:
+  - `provider_company_key`
+  - `company_key_source`
   - `location`
   - `employment_type`
   - `posted_at`
@@ -869,6 +883,9 @@ This section defines the next-build logical schema shape for `job_hunt_copilot.d
   - `archived_at`
 - Notes:
   - `posting_identity_key` is the normalized dedupe key used for conservative posting matching.
+  - `canonical_company_key` is the operational same-company grouping key used for multi-posting contact reuse and repeat-outreach exclusion.
+  - `provider_company_key` may retain a stronger provider-backed company identifier such as Apollo `organization_id` when available.
+  - `company_key_source` records whether the current grouping key came from provisional normalized-name derivation or a provider-backed resolution.
   - `posting_status` stores the posting-level lifecycle state such as `sourced`, `resume_review_pending`, `requires_contacts`, or `completed`.
   - `lead_id` points back to the originating upstream lead.
 
@@ -1450,9 +1467,12 @@ CREATE TABLE IF NOT EXISTS job_postings (
   job_posting_id TEXT PRIMARY KEY,
   lead_id TEXT NOT NULL,
   posting_identity_key TEXT NOT NULL,
+  canonical_company_key TEXT NOT NULL,
   company_name TEXT NOT NULL,
   role_title TEXT NOT NULL,
   posting_status TEXT NOT NULL,
+  provider_company_key TEXT,
+  company_key_source TEXT,
   location TEXT,
   employment_type TEXT,
   posted_at TEXT,
@@ -4147,15 +4167,16 @@ Current imported guidance should include, at minimum:
 8. Draft can include a forwardable summary snippet/block for internal sharing when useful.
 9. `email_draft.md` is available as the human-readable companion artifact, while `send_result.json` is produced as the machine handoff artifact with the shared contract envelope and relevant IDs.
 10. Repeat-outreach cases that require interpretation of prior outreach are not auto-sent and instead surface for user review.
-11. In the autonomous LinkedIn-alert mode, the default outreach objective is to ask discovered contacts for connection or routing help to the right hiring person rather than assuming the discovered recipient is already the exact target.
-12. Autonomous role-targeted sending respects the company-level cap of at most 3 emails per company per day, and uses a randomized 6 to 10 minute gap between any two automatic sends rather than a fixed interval.
-13. Autonomous role-targeted sending does not impose a separate global cross-company daily send cap in this build.
-14. The default autonomous send set for one company/day prefers one recruiter, one manager-adjacent contact, and one team-adjacent engineer when those recipient classes are available.
-15. The system preserves enough outreach tracking state to support manual follow-up decisions, including recipient type, outreach mode, last touch date, next follow-up date, follow-up state, and notes.
-16. The current imported playbook supports at least the core one-step recruiter / team-adjacent style plus the imported hiring-manager and ASU-alumni legacy prompt styles.
-17. When the imported legacy playbook is selected, the draft can use the imported metric-led evidence logic, exact-skill-overlap grounding, and markdown-like forwardable snippet formatting without inventing skills or raw HTML.
-18. The current v4 default shared role-targeted template opens from the role / team / work area rather than requiring recipient-background hooks, includes an explicit `why I am reaching out to you` line, includes one proof point of fit, uses one 15-minute Zoom ask, and places the forwardable snippet directly below the routing-help line.
-19. In the current v4 default shared role-targeted template, the forwardable snippet remains factual and compact and includes candidate identity, concise experience summary, impact summary, and fit summary.
+11. If the same canonical contact appears on multiple postings at the same company, automatic role-targeted outreach uses that person at most once and later postings must continue with alternate company contacts when available.
+12. In the autonomous LinkedIn-alert mode, the default outreach objective is to ask discovered contacts for connection or routing help to the right hiring person rather than assuming the discovered recipient is already the exact target.
+13. Autonomous role-targeted sending respects the per-posting cap of at most 4 emails per posting per day, and uses a randomized 6 to 10 minute gap between any two automatic sends rather than a fixed interval.
+14. Autonomous role-targeted sending does not impose a separate global cross-company daily send cap in this build.
+15. The default autonomous send set for one company/day prefers one recruiter, one manager-adjacent contact, and one team-adjacent engineer when those recipient classes are available.
+16. The system preserves enough outreach tracking state to support manual follow-up decisions, including recipient type, outreach mode, last touch date, next follow-up date, follow-up state, and notes.
+17. The current imported playbook supports at least the core one-step recruiter / team-adjacent style plus the imported hiring-manager and ASU-alumni legacy prompt styles.
+18. When the imported legacy playbook is selected, the draft can use the imported metric-led evidence logic, exact-skill-overlap grounding, and markdown-like forwardable snippet formatting without inventing skills or raw HTML.
+19. The current v4 default shared role-targeted template opens from the role / team / work area rather than requiring recipient-background hooks, includes an explicit `why I am reaching out to you` line, includes one proof point of fit, uses one 15-minute Zoom ask, and places the forwardable snippet directly below the routing-help line.
+20. In the current v4 default shared role-targeted template, the forwardable snippet remains factual and compact and includes candidate identity, concise experience summary, impact summary, and fit summary.
 
 ## 12.4 Delivery Feedback
 1. Post-send outcomes are persisted into the central SQLite database as event history rather than only a latest overwritten status.
