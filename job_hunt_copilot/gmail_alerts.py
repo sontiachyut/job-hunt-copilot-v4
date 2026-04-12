@@ -57,6 +57,7 @@ LOCATION_HINT_RE = re.compile(
 HTML_BLOCK_TAG_RE = re.compile(r"(?i)</?(?:br|p|div|li|tr|td|table|section|article|ul|ol|h[1-6])\b[^>]*>")
 MULTILINE_BLANKS_RE = re.compile(r"\n{3,}")
 LEADING_BULLET_RE = re.compile(r"^[\s\u2022\-*]+")
+DIGEST_MATCH_COUNT_RE = re.compile(r"^\d+\+?\s+new jobs match your preferences\.?$", re.IGNORECASE)
 
 GLOBAL_NOISE_LINES = frozenset(
     {
@@ -1457,6 +1458,8 @@ def _parse_card_block(block_text: str, *, gmail_message_id: str) -> ParsedGmailA
 
     role_title = data_lines[0]
     company_name = data_lines[1]
+    if _looks_like_digest_summary_line(role_title) or _looks_like_digest_summary_line(company_name):
+        return None
     remaining = data_lines[2:]
     location = None
     if remaining and _looks_like_location(remaining[0]):
@@ -1582,6 +1585,7 @@ def _trim_leading_noise_lines(lines: Sequence[str]) -> list[str]:
     while trimmed and (
         trimmed[0].lower() in GLOBAL_NOISE_LINES
         or _looks_like_alert_intro_line(trimmed[0])
+        or _looks_like_digest_summary_line(trimmed[0])
     ):
         trimmed.pop(0)
     return trimmed
@@ -1592,6 +1596,16 @@ def _looks_like_alert_intro_line(line: str) -> bool:
     return (
         "job alert has been created" in normalized
         or "receive notifications when new jobs are posted" in normalized
+    )
+
+
+def _looks_like_digest_summary_line(line: str) -> bool:
+    normalized = line.strip()
+    lowered = normalized.lower()
+    return (
+        lowered.startswith("your job alert for ")
+        or DIGEST_MATCH_COUNT_RE.match(normalized) is not None
+        or lowered == "results from the new ai-powered job search"
     )
 
 

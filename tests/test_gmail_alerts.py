@@ -305,6 +305,49 @@ def test_gmail_parser_handles_alert_creation_intro_and_comm_job_urls(tmp_path):
     ]
 
 
+def test_gmail_parser_skips_digest_summary_header_and_parses_first_real_job(tmp_path):
+    project_root = bootstrap_project(tmp_path)
+
+    result = ingest_gmail_alert_batch(
+        project_root,
+        batch=build_batch(
+            build_message(
+                gmail_message_id="gmail-message-digest-summary-001",
+                received_at="2026-04-12T17:26:25Z",
+                text_plain_body=(
+                    "Your job alert for software engineer hiring in Greater Phoenix Area\n"
+                    "30+ new jobs match your preferences.\n"
+                    "Results from the new AI-powered job search\n"
+                    "Software Engineer - Full Stack (Java/Angular)\n"
+                    "Garmin\n"
+                    "Chandler, AZ\n"
+                    "47 company alumni\n"
+                    "View job\n"
+                    "https://www.linkedin.com/jobs/view/4342044245/?trackingId=digest\n"
+                ),
+            )
+        ),
+    )
+
+    collection = result.collection_results[0]
+    cards_payload = json.loads(collection.job_cards_path.read_text(encoding="utf-8"))
+
+    assert collection.parseable_job_card_count == 1
+    assert cards_payload["cards"] == [
+        {
+            "card_index": 1,
+            "role_title": "Software Engineer - Full Stack (Java/Angular)",
+            "company_name": "Garmin",
+            "location": "Chandler, AZ",
+            "badge_lines": ["47 company alumni"],
+            "job_url": "https://www.linkedin.com/jobs/view/4342044245/",
+            "job_id": "4342044245",
+            "gmail_message_id": "gmail-message-digest-summary-001",
+            "synthetic_identity_key": None,
+        }
+    ]
+
+
 def test_gmail_parser_falls_back_to_html_only_when_plain_text_is_unusable(tmp_path):
     project_root = bootstrap_project(tmp_path)
 
