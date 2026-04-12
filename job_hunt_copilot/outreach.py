@@ -3098,8 +3098,8 @@ def _build_role_targeted_why_line(context: RoleTargetedDraftContext) -> str:
         return "I thought you might have useful perspective on the hiring context for this opening."
     if context.recipient_type == RECIPIENT_TYPE_HIRING_MANAGER:
         if title is not None:
-            return f"Given your role as {title}, I thought you might be a reasonable person to reach out to for some perspective on this opening."
-        return "I thought you might be a reasonable person to reach out to for some perspective on this opening."
+            return f"Given your role as {title}, I thought you might be a good person to reach out to for some perspective on this opening."
+        return "I thought you might be a good person to reach out to for some perspective on this opening."
     if context.recipient_type == RECIPIENT_TYPE_ALUMNI:
         return (
             "I'm reaching out to you specifically because you seemed like the right fellow Sun Devil to ask for a grounded perspective on this work."
