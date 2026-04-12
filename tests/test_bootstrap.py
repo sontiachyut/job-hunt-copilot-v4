@@ -99,7 +99,7 @@ def test_bootstrap_runtime_pack_uses_absolute_paths_and_expected_runtime_shapes(
         entry.action_id for entry in registered_supervisor_action_catalog().values()
     ]
     assert service_goals["deployment"]["scheduler"] == "launchd"
-    assert service_goals["deployment"]["heartbeat_interval_seconds"] == 180
+    assert service_goals["deployment"]["heartbeat_interval_seconds"] == 5
     assert ops_plan["agent_mode"] == "stopped"
     assert str(project_root) in chat_bootstrap
     assert str(paths.ops_agent_identity_path) in chat_bootstrap

@@ -360,7 +360,7 @@ def build_service_goals_payload(generated_at: str) -> dict[str, Any]:
         "generated_at": generated_at,
         "deployment": {
             "scheduler": "launchd",
-            "heartbeat_interval_seconds": 180,
+            "heartbeat_interval_seconds": 5,
             "run_at_load": True,
             "keep_alive": False,
             "sleep_wake_primary_detection": "pmset_log",

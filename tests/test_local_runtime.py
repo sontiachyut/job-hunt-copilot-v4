@@ -1109,7 +1109,7 @@ def test_materialize_supervisor_plist_script_renders_required_launchd_shape(tmp_
     assert report["plist_path"] == str(plist_path)
     assert payload["Label"] == "com.jobhuntcopilot.supervisor"
     assert payload["RunAtLoad"] is True
-    assert payload["StartInterval"] == 180
+    assert payload["StartInterval"] == 5
     assert payload["KeepAlive"] is False
     assert payload["WorkingDirectory"] == str(project_root)
     assert payload["ProgramArguments"] == [str(project_root / "bin" / "jhc-agent-cycle")]
