@@ -1047,7 +1047,7 @@ def test_role_targeted_draft_batch_persists_messages_artifacts_and_transitions(t
     assert "Arizona State University" not in recruiter_body
     assert "Lately, I have been spending time sharpening my Agentic AI skills." in recruiter_body
     assert "I built Job Hunt Copilot (https://github.com/sontiachyut/job-hunt-copilot-v4) for my own job search to help me identify relevant roles and the right people to reach out to." in recruiter_body
-    assert "It runs autonomously with human-in-the-loop review, and I personally review every email before it goes out. This note is a live example of that workflow." in recruiter_body
+    assert "It runs autonomously with human-in-the-loop review, and I personally review every email before it goes out. This email is a live example of that workflow." in recruiter_body
     assert "strong fit" not in recruiter_body
     assert "15-minute Zoom" not in recruiter_body
     assert "whether my background could be relevant." in recruiter_body
@@ -1081,7 +1081,7 @@ def test_role_targeted_draft_batch_persists_messages_artifacts_and_transitions(t
     assert "15-minute Zoom" not in manager_body
     assert "Lately, I have been spending time sharpening my Agentic AI skills." in manager_body
     assert "I built Job Hunt Copilot (https://github.com/sontiachyut/job-hunt-copilot-v4) for my own job search to help me identify relevant roles and the right people to reach out to." in manager_body
-    assert "It runs autonomously with human-in-the-loop review, and I personally review every email before it goes out. This note is a live example of that workflow." in manager_body
+    assert "It runs autonomously with human-in-the-loop review, and I personally review every email before it goes out. This email is a live example of that workflow." in manager_body
     assert "strong fit" not in manager_body
     assert "seems close to" not in manager_body
     assert "I came across the" not in manager_body
