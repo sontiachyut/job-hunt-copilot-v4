@@ -288,6 +288,19 @@ class PeopleSearchRunResult:
 
 
 @dataclass(frozen=True)
+class HistoricalPeopleSearchReplayResult:
+    job_posting_id: str
+    lead_id: str
+    artifact_path: Path
+    candidate_count: int
+    shortlist_limit: int
+    materialized_contact_ids: tuple[str, ...]
+    materialized_job_posting_contact_ids: tuple[str, ...]
+    shortlisted_contact_ids: tuple[str, ...]
+    shortlisted_job_posting_contact_ids: tuple[str, ...]
+
+
+@dataclass(frozen=True)
 class ApolloEnrichedPerson:
     provider_person_id: str | None
     display_name: str
@@ -1252,29 +1265,11 @@ def run_apollo_people_search(
                 candidate.as_artifact_dict(contact_id=shortlisted_candidate_ids.get(lookup_key))
             )
 
-        with connection:
-            connection.execute(
-                """
-                DELETE FROM artifact_records
-                WHERE artifact_type = ? AND job_posting_id = ?
-                """,
-                (
-                    PEOPLE_SEARCH_ARTIFACT_TYPE,
-                    posting_row["job_posting_id"],
-                ),
-            )
-
-        publish_json_artifact(
+        _publish_people_search_artifact(
             connection,
             paths,
-            artifact_type=PEOPLE_SEARCH_ARTIFACT_TYPE,
+            posting_row=posting_row,
             artifact_path=artifact_path,
-            producer_component=EMAIL_DISCOVERY_COMPONENT,
-            result="success",
-            linkage=ArtifactLinkage(
-                lead_id=posting_row["lead_id"],
-                job_posting_id=posting_row["job_posting_id"],
-            ),
             payload={
                 "company_name": posting_row["company_name"],
                 "provider_name": PROVIDER_NAME_APOLLO,
@@ -1455,6 +1450,122 @@ def run_apollo_contact_enrichment(
             removed_contact_ids=tuple(removed_contact_ids),
             removed_job_posting_contact_ids=tuple(removed_job_posting_contact_ids),
             posting_status=posting_status,
+        )
+    finally:
+        connection.close()
+
+
+def replay_historical_people_search_shortlist(
+    *,
+    project_root: Path | str,
+    job_posting_id: str,
+    shortlist_limit: int = DEFAULT_SHORTLIST_LIMIT,
+    current_time: str | None = None,
+) -> HistoricalPeopleSearchReplayResult:
+    if shortlist_limit <= 0:
+        raise EmailDiscoveryError("shortlist_limit must be greater than zero.")
+
+    paths = ProjectPaths.from_root(project_root)
+    connection = sqlite3.connect(paths.db_path)
+    connection.row_factory = sqlite3.Row
+    connection.execute("PRAGMA foreign_keys = ON;")
+
+    try:
+        posting_row = _load_existing_posting_for_people_search(connection, job_posting_id=job_posting_id)
+        people_search_payload = _load_people_search_payload(paths, posting_row)
+        raw_candidates = people_search_payload.get("candidates")
+        if not isinstance(raw_candidates, Sequence) or isinstance(raw_candidates, (str, bytes)):
+            raise EmailDiscoveryError(
+                f"Job posting `{job_posting_id}` does not have a usable saved people_search_result artifact."
+            )
+
+        candidates = tuple(_normalize_candidate_rows(raw_candidates))
+        shortlist = select_initial_enrichment_shortlist(candidates, limit=shortlist_limit)
+        timestamp = current_time or now_utc_iso()
+
+        shortlisted_contact_ids: list[str] = []
+        shortlisted_job_posting_contact_ids: list[str] = []
+        newly_materialized_contact_ids: list[str] = []
+        newly_materialized_job_posting_contact_ids: list[str] = []
+        shortlisted_candidate_ids: dict[str, str] = {}
+        existing_shortlisted_contact_ids = {
+            str(row["contact_id"])
+            for row in _load_shortlisted_contact_rows(connection, job_posting_id=job_posting_id)
+        }
+
+        with connection:
+            for candidate in shortlist:
+                materialized = _materialize_shortlisted_candidate(
+                    connection,
+                    posting_row=posting_row,
+                    candidate=candidate,
+                    current_time=timestamp,
+                )
+                contact_id = materialized["contact_id"]
+                job_posting_contact_id = materialized["job_posting_contact_id"]
+                shortlisted_contact_ids.append(contact_id)
+                shortlisted_job_posting_contact_ids.append(job_posting_contact_id)
+                if contact_id not in existing_shortlisted_contact_ids:
+                    newly_materialized_contact_ids.append(contact_id)
+                    newly_materialized_job_posting_contact_ids.append(job_posting_contact_id)
+                    existing_shortlisted_contact_ids.add(contact_id)
+                if candidate.provider_person_id:
+                    shortlisted_candidate_ids[candidate.provider_person_id] = contact_id
+                else:
+                    shortlisted_candidate_ids[candidate.identity_key()] = contact_id
+
+        candidate_payload: list[dict[str, Any]] = []
+        for candidate in candidates:
+            lookup_key = candidate.provider_person_id or candidate.identity_key()
+            candidate_payload.append(
+                candidate.as_artifact_dict(contact_id=shortlisted_candidate_ids.get(lookup_key))
+            )
+
+        artifact_path = (
+            paths.discovery_workspace_dir(posting_row["company_name"], posting_row["role_title"])
+            / "people_search_result.json"
+        )
+        _publish_people_search_artifact(
+            connection,
+            paths,
+            posting_row=posting_row,
+            artifact_path=artifact_path,
+            payload={
+                "company_name": posting_row["company_name"],
+                "provider_name": _normalize_optional_text(people_search_payload.get("provider_name"))
+                or PROVIDER_NAME_APOLLO,
+                "resolved_company": (
+                    dict(people_search_payload.get("resolved_company"))
+                    if isinstance(people_search_payload.get("resolved_company"), Mapping)
+                    else None
+                ),
+                "search_anchor": _normalize_optional_text(people_search_payload.get("search_anchor"))
+                or "artifact_replay",
+                "applied_filters": (
+                    dict(people_search_payload.get("applied_filters"))
+                    if isinstance(people_search_payload.get("applied_filters"), Mapping)
+                    else {}
+                ),
+                "attempted_filters": list(people_search_payload.get("attempted_filters") or []),
+                "shortlist_limit": shortlist_limit,
+                "candidate_count": len(candidates),
+                "shortlisted_contact_ids": shortlisted_contact_ids,
+                "shortlisted_job_posting_contact_ids": shortlisted_job_posting_contact_ids,
+                "candidates": candidate_payload,
+            },
+            produced_at=timestamp,
+        )
+
+        return HistoricalPeopleSearchReplayResult(
+            job_posting_id=str(posting_row["job_posting_id"]),
+            lead_id=str(posting_row["lead_id"]),
+            artifact_path=artifact_path,
+            candidate_count=len(candidates),
+            shortlist_limit=shortlist_limit,
+            materialized_contact_ids=tuple(newly_materialized_contact_ids),
+            materialized_job_posting_contact_ids=tuple(newly_materialized_job_posting_contact_ids),
+            shortlisted_contact_ids=tuple(shortlisted_contact_ids),
+            shortlisted_job_posting_contact_ids=tuple(shortlisted_job_posting_contact_ids),
         )
     finally:
         connection.close()
@@ -1953,20 +2064,7 @@ def _load_search_ready_posting(
     *,
     job_posting_id: str,
 ) -> sqlite3.Row:
-    posting_row = connection.execute(
-        """
-        SELECT jp.job_posting_id, jp.lead_id, jp.company_name, jp.role_title, jp.posting_status,
-               jp.location, jp.jd_artifact_path, ll.source_url
-        FROM job_postings jp
-        JOIN linkedin_leads ll
-          ON ll.lead_id = jp.lead_id
-        WHERE jp.job_posting_id = ?
-        """,
-        (job_posting_id,),
-    ).fetchone()
-    if posting_row is None:
-        raise EmailDiscoveryError(f"Job posting `{job_posting_id}` was not found.")
-
+    posting_row = _load_existing_posting_for_people_search(connection, job_posting_id=job_posting_id)
     if posting_row["posting_status"] != JOB_POSTING_STATUS_REQUIRES_CONTACTS:
         raise EmailDiscoveryError(
             f"Job posting `{job_posting_id}` is `{posting_row['posting_status']}`; people search starts only from `requires_contacts`."
@@ -1987,6 +2085,64 @@ def _load_search_ready_posting(
             f"Job posting `{job_posting_id}` is not backed by an approved tailoring review."
         )
     return posting_row
+
+
+def _load_existing_posting_for_people_search(
+    connection: sqlite3.Connection,
+    *,
+    job_posting_id: str,
+) -> sqlite3.Row:
+    posting_row = connection.execute(
+        """
+        SELECT jp.job_posting_id, jp.lead_id, jp.company_name, jp.role_title, jp.posting_status,
+               jp.location, jp.jd_artifact_path, ll.source_url
+        FROM job_postings jp
+        JOIN linkedin_leads ll
+          ON ll.lead_id = jp.lead_id
+        WHERE jp.job_posting_id = ?
+        """,
+        (job_posting_id,),
+    ).fetchone()
+    if posting_row is None:
+        raise EmailDiscoveryError(f"Job posting `{job_posting_id}` was not found.")
+    return posting_row
+
+
+def _publish_people_search_artifact(
+    connection: sqlite3.Connection,
+    paths: ProjectPaths,
+    *,
+    posting_row: Mapping[str, Any],
+    artifact_path: Path,
+    payload: Mapping[str, Any],
+    produced_at: str,
+) -> None:
+    with connection:
+        connection.execute(
+            """
+            DELETE FROM artifact_records
+            WHERE artifact_type = ? AND job_posting_id = ?
+            """,
+            (
+                PEOPLE_SEARCH_ARTIFACT_TYPE,
+                posting_row["job_posting_id"],
+            ),
+        )
+
+    publish_json_artifact(
+        connection,
+        paths,
+        artifact_type=PEOPLE_SEARCH_ARTIFACT_TYPE,
+        artifact_path=artifact_path,
+        producer_component=EMAIL_DISCOVERY_COMPONENT,
+        result="success",
+        linkage=ArtifactLinkage(
+            lead_id=posting_row["lead_id"],
+            job_posting_id=posting_row["job_posting_id"],
+        ),
+        payload=dict(payload),
+        produced_at=produced_at,
+    )
 
 
 def _load_posting_jd(paths: ProjectPaths, posting_row: sqlite3.Row) -> str:

@@ -29,6 +29,7 @@ from job_hunt_copilot.email_discovery import (
     _normalize_hunter_discovery_result,
     _normalize_prospeo_discovery_result,
     load_provider_budget_summary,
+    replay_historical_people_search_shortlist,
     run_apollo_contact_enrichment,
     run_apollo_people_search,
     run_email_discovery_for_contact,
@@ -738,6 +739,66 @@ def test_apollo_people_search_reuses_existing_contact_and_promotes_identified_li
     assert transition["previous_state"] == POSTING_CONTACT_STATUS_IDENTIFIED
     assert transition["new_state"] == POSTING_CONTACT_STATUS_SHORTLISTED
     assert transition["caused_by"] == "email_discovery"
+
+    connection.close()
+
+
+def test_replay_historical_people_search_shortlist_materializes_missing_candidates(tmp_path: Path):
+    project_root = bootstrap_project(tmp_path)
+    paths = ProjectPaths.from_root(project_root)
+    connection = connect_database(project_root / "job_hunt_copilot.db")
+    seed_search_ready_posting(connection, paths)
+
+    provider = FakeApolloProvider(
+        resolved_company=ApolloResolvedCompany(
+            organization_id="org_acme",
+            organization_name="Acme Robotics",
+            primary_domain="acmerobotics.com",
+        ),
+        candidates=[
+            build_candidate(provider_person_id="pp_r1", display_name="Taylor Recruiter", title="Recruiter"),
+            build_candidate(provider_person_id="pp_m1", display_name="Morgan Manager", title="Engineering Manager"),
+            build_candidate(provider_person_id="pp_e1", display_name="Jamie Engineer", title="Senior Software Engineer"),
+            build_candidate(provider_person_id="pp_e2", display_name="Casey Engineer", title="Software Engineer", has_email=True, email="casey@acmerobotics.com"),
+            build_candidate(provider_person_id="pp_o1", display_name="Pat Internal", title="Platform Architect"),
+        ],
+    )
+
+    initial = run_apollo_people_search(
+        project_root=project_root,
+        job_posting_id="jp_search",
+        provider=provider,
+        shortlist_limit=2,
+    )
+    assert len(initial.shortlisted_contact_ids) == 2
+
+    connection.execute(
+        "UPDATE job_postings SET posting_status = ?, updated_at = ? WHERE job_posting_id = ?",
+        ("completed", "2026-04-07T01:00:00Z", "jp_search"),
+    )
+    connection.commit()
+
+    replay = replay_historical_people_search_shortlist(
+        project_root=project_root,
+        job_posting_id="jp_search",
+        shortlist_limit=5,
+        current_time="2026-04-07T02:00:00Z",
+    )
+
+    assert replay.candidate_count == 5
+    assert replay.shortlist_limit == 5
+    assert len(replay.materialized_contact_ids) == 3
+    assert len(replay.shortlisted_contact_ids) == 5
+
+    artifact_payload = json.loads(replay.artifact_path.read_text(encoding="utf-8"))
+    assert artifact_payload["shortlist_limit"] == 5
+    assert len(artifact_payload["shortlisted_contact_ids"]) == 5
+    assert len([candidate for candidate in artifact_payload["candidates"] if candidate.get("contact_id")]) == 5
+
+    connection.close()
+    connection = connect_database(project_root / "job_hunt_copilot.db")
+    assert connection.execute("SELECT COUNT(*) FROM job_posting_contacts").fetchone()[0] == 5
+    assert connection.execute("SELECT COUNT(*) FROM contacts").fetchone()[0] == 5
 
     connection.close()
 
