@@ -4577,7 +4577,7 @@ def _render_job_hunt_copilot_callout_html() -> str:
         'background:#f8fafc;">'
         f'<p style="margin:0 0 8px 0;color:#334155;line-height:1.55;">{html.escape(line_one)}</p>'
         f'<p style="margin:0 0 8px 0;color:#111827;line-height:1.55;font-weight:600;">{line_two_html}</p>'
-        f'<p style="margin:0;color:#475569;line-height:1.55;">{html.escape(line_three)}</p>'
+        f'<p style="margin:0;color:#111827;line-height:1.55;font-weight:600;">{html.escape(line_three)}</p>'
         "</div>"
     )
 

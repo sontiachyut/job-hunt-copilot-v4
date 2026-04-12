@@ -1072,6 +1072,11 @@ def test_role_targeted_draft_batch_persists_messages_artifacts_and_transitions(t
     assert "Lately, I have been spending time sharpening my Agentic AI skills." in recruiter_html
     assert "I built Job Hunt Copilot" in recruiter_html
     assert 'href="https://github.com/sontiachyut/job-hunt-copilot-v4"' in recruiter_html
+    assert (
+        '<p style="margin:0;color:#111827;line-height:1.55;font-weight:600;">'
+        "It runs autonomously with human-in-the-loop review, and I personally review every email before it goes out. "
+        "This email is a live example of that workflow.</p>"
+    ) in recruiter_html
     assert "background:#f4f4f4" in recruiter_html
     assert "border-left:4px solid #1a73e8" in recruiter_html
     assert "Best,<br>Achyutaram Sonti<br>https://www.linkedin.com/in/asonti/<br>602-768-6071<br>asonti1@asu.edu" in recruiter_html
