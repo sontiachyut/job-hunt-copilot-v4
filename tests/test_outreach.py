@@ -1079,7 +1079,7 @@ def test_role_targeted_draft_batch_persists_messages_artifacts_and_transitions(t
     assert "background:#f4f4f4" in recruiter_html
     assert "border-left:4px solid #1a73e8" in recruiter_html
     assert "Best,<br>Achyutaram Sonti<br>https://www.linkedin.com/in/asonti/<br>602-768-6071<br>asonti1@asu.edu" in recruiter_html
-    assert "I thought you might have useful perspective on the team and the problems this role is meant to solve." in manager_body
+    assert "I thought you might be a reasonable person to reach out to for some perspective on this opening." in manager_body
     assert "MS in Computer Science at ASU" not in manager_body
     assert "Arizona State University" not in manager_body
     assert "15-minute Zoom" not in manager_body
@@ -1486,7 +1486,7 @@ def test_role_targeted_composition_rewrites_security_jd_into_natural_theme(tmp_p
         in body_text
     )
     assert "identifies, develops, plans, implements" not in body_text.lower()
-    assert "Given your role as Director of Engineering, I thought you might have useful perspective on the team and the problems this role is meant to solve." in body_text
+    assert "Given your role as Director of Engineering, I thought you might be a reasonable person to reach out to for some perspective on this opening." in body_text
 
     connection.close()
 
