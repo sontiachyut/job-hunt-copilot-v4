@@ -784,6 +784,14 @@ def test_gmail_mailbox_collector_prepares_batch_from_live_api_shape(tmp_path):
         def messages(self) -> FakeMessagesResource:
             return self._messages
 
+        def getProfile(self, **kwargs):  # type: ignore[no-untyped-def]
+            class _Request:
+                def execute(self_inner):  # type: ignore[no-untyped-def]
+                    assert kwargs["userId"] == "me"
+                    return {"historyId": "history-collector-001"}
+
+            return _Request()
+
     class FakeGmailService:
         def __init__(self) -> None:
             self._users = FakeUsersResource()
@@ -808,6 +816,174 @@ def test_gmail_mailbox_collector_prepares_batch_from_live_api_shape(tmp_path):
     assert message.subject == "LinkedIn job alerts"
     assert message.received_at == "2026-04-06T23:30:00Z"
     assert "Senior Software Engineer" in (message.text_plain_body or "")
+    assert batch.mailbox_history_id_after == "history-collector-001"
+    assert batch.poll_strategy == "recent_search_bootstrap"
+
+
+def test_gmail_mailbox_collector_uses_history_checkpoint_for_incremental_polling(tmp_path):
+    project_root = bootstrap_project(tmp_path)
+    paths = ProjectPaths.from_root(project_root)
+
+    class FakeHistoryResource:
+        def list(self, **kwargs):  # type: ignore[no-untyped-def]
+            class _Request:
+                def execute(self_inner):  # type: ignore[no-untyped-def]
+                    assert kwargs["startHistoryId"] == "history-prev-001"
+                    return {
+                        "history": [
+                            {
+                                "messagesAdded": [
+                                    {
+                                        "message": {
+                                            "id": "gmail-history-001",
+                                            "threadId": "thread-history-001",
+                                        }
+                                    }
+                                ]
+                            }
+                        ]
+                    }
+
+            return _Request()
+
+    class FakeMessagesResource:
+        def list(self, **kwargs):  # type: ignore[no-untyped-def]
+            raise AssertionError("incremental history polling should not fall back to recent search")
+
+        def get(self, **kwargs):  # type: ignore[no-untyped-def]
+            class _Request:
+                def execute(self_inner):  # type: ignore[no-untyped-def]
+                    if kwargs.get("format") == "metadata":
+                        return {
+                            "id": "gmail-history-001",
+                            "threadId": "thread-history-001",
+                            "payload": {
+                                "headers": [
+                                    {"name": "From", "value": "LinkedIn <jobalerts-noreply@linkedin.com>"},
+                                ]
+                            },
+                        }
+                    return {
+                        "id": "gmail-history-001",
+                        "threadId": "thread-history-001",
+                        "internalDate": "1775518200000",
+                        "payload": {
+                            "mimeType": "multipart/alternative",
+                            "headers": [
+                                {"name": "From", "value": "LinkedIn <jobalerts-noreply@linkedin.com>"},
+                                {"name": "Subject", "value": "LinkedIn job alerts"},
+                            ],
+                            "parts": [
+                                {
+                                    "mimeType": "text/plain",
+                                    "body": {
+                                        "data": _gmail_api_body(
+                                            "-----\n"
+                                            "Backend Engineer\n"
+                                            "Northwind\n"
+                                            "Remote\n"
+                                            "View job\n"
+                                            "https://www.linkedin.com/jobs/view/9876543210/\n"
+                                        )
+                                    },
+                                }
+                            ],
+                        },
+                    }
+
+            return _Request()
+
+    class FakeUsersResource:
+        def __init__(self) -> None:
+            self._messages = FakeMessagesResource()
+            self._history = FakeHistoryResource()
+
+        def messages(self) -> FakeMessagesResource:
+            return self._messages
+
+        def history(self) -> FakeHistoryResource:
+            return self._history
+
+        def getProfile(self, **kwargs):  # type: ignore[no-untyped-def]
+            class _Request:
+                def execute(self_inner):  # type: ignore[no-untyped-def]
+                    assert kwargs["userId"] == "me"
+                    return {"historyId": "history-current-002"}
+
+            return _Request()
+
+    class FakeGmailService:
+        def __init__(self) -> None:
+            self._users = FakeUsersResource()
+
+        def users(self) -> FakeUsersResource:
+            return self._users
+
+    collector = GmailLinkedInAlertMailboxCollector(
+        paths,
+        service_factory=FakeGmailService,
+        max_new_messages=1,
+    )
+
+    batch = collector.prepare_batch(
+        current_time="2026-04-09T00:20:00Z",
+        mailbox_history_checkpoint="history-prev-001",
+    )
+
+    assert batch is not None
+    assert batch.mailbox_history_id_before == "history-prev-001"
+    assert batch.mailbox_history_id_after == "history-current-002"
+    assert batch.poll_strategy == "history_checkpoint"
+    assert [message.gmail_message_id for message in batch.messages] == ["gmail-history-001"]
+
+
+def test_gmail_mailbox_collector_seeds_history_checkpoint_when_bootstrap_finds_no_messages(tmp_path):
+    project_root = bootstrap_project(tmp_path)
+    paths = ProjectPaths.from_root(project_root)
+
+    class FakeMessagesResource:
+        def list(self, **kwargs):  # type: ignore[no-untyped-def]
+            class _Request:
+                def execute(self_inner):  # type: ignore[no-untyped-def]
+                    return {"messages": []}
+
+            return _Request()
+
+    class FakeUsersResource:
+        def __init__(self) -> None:
+            self._messages = FakeMessagesResource()
+
+        def messages(self) -> FakeMessagesResource:
+            return self._messages
+
+        def getProfile(self, **kwargs):  # type: ignore[no-untyped-def]
+            class _Request:
+                def execute(self_inner):  # type: ignore[no-untyped-def]
+                    assert kwargs["userId"] == "me"
+                    return {"historyId": "history-seed-001"}
+
+            return _Request()
+
+    class FakeGmailService:
+        def __init__(self) -> None:
+            self._users = FakeUsersResource()
+
+        def users(self) -> FakeUsersResource:
+            return self._users
+
+    collector = GmailLinkedInAlertMailboxCollector(
+        paths,
+        service_factory=FakeGmailService,
+        max_new_messages=1,
+    )
+
+    batch = collector.prepare_batch(current_time="2026-04-09T00:20:00Z")
+
+    assert batch is not None
+    assert batch.messages == ()
+    assert batch.mailbox_history_id_before is None
+    assert batch.mailbox_history_id_after == "history-seed-001"
+    assert batch.poll_strategy == "history_checkpoint_seed"
 
 
 def test_gmail_batch_fanout_dedupes_existing_leads_by_job_id(tmp_path):

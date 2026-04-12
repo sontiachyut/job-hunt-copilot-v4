@@ -93,6 +93,10 @@ class GmailMailboxPollingError(RuntimeError):
     """Raised when the live Gmail mailbox collector cannot prepare a bounded batch."""
 
 
+class GmailMailboxHistoryCheckpointError(GmailMailboxPollingError):
+    """Raised when the persisted Gmail mailbox history checkpoint can no longer be used."""
+
+
 @dataclass(frozen=True)
 class GmailAlertMessage:
     gmail_message_id: str
@@ -170,6 +174,9 @@ class GmailAlertMessage:
 class GmailAlertBatch:
     ingestion_run_id: str
     messages: tuple[GmailAlertMessage, ...]
+    mailbox_history_id_before: str | None = None
+    mailbox_history_id_after: str | None = None
+    poll_strategy: str = "recent_search"
 
     @classmethod
     def from_mapping(cls, payload: Mapping[str, Any]) -> "GmailAlertBatch":
@@ -189,7 +196,13 @@ class GmailAlertBatch:
         )
         if not messages:
             raise GmailAlertError("messages must contain at least one Gmail message payload.")
-        return cls(ingestion_run_id=ingestion_run_id, messages=messages)
+        return cls(
+            ingestion_run_id=ingestion_run_id,
+            messages=messages,
+            mailbox_history_id_before=_normalize_optional_text(payload.get("mailbox_history_id_before")),
+            mailbox_history_id_after=_normalize_optional_text(payload.get("mailbox_history_id_after")),
+            poll_strategy=_normalize_optional_text(payload.get("poll_strategy")) or "recent_search",
+        )
 
 
 @dataclass(frozen=True)
@@ -365,7 +378,12 @@ class GmailLinkedInAlertMailboxCollector:
         self._max_scan_pages = max(1, int(max_scan_pages))
         self._prepared_batches: dict[str, GmailAlertBatch] = {}
 
-    def prepare_batch(self, *, current_time: str) -> GmailAlertBatch | None:
+    def prepare_batch(
+        self,
+        *,
+        current_time: str,
+        mailbox_history_checkpoint: str | None = None,
+    ) -> GmailAlertBatch | None:
         ingestion_run_id = _gmail_auto_ingestion_run_id(current_time)
         prepared_batch = self._prepared_batches.get(ingestion_run_id)
         if prepared_batch is not None:
@@ -373,16 +391,53 @@ class GmailLinkedInAlertMailboxCollector:
 
         existing_index = _existing_collection_index(self._paths)
         service = self._service_factory()
-        message_refs = _list_uncollected_gmail_message_refs(
-            service,
-            senders=self._senders,
-            existing_message_ids=set(existing_index.keys()),
-            window_days=self._window_days,
-            max_new_messages=self._max_new_messages,
-            page_size=self._page_size,
-            max_scan_pages=self._max_scan_pages,
-        )
+        checkpoint_before = _normalize_optional_text(mailbox_history_checkpoint)
+        checkpoint_after = _gmail_current_mailbox_history_id(service)
+        poll_strategy = "recent_search_bootstrap"
+        if checkpoint_before:
+            try:
+                message_refs = _list_incremental_uncollected_gmail_message_refs(
+                    service,
+                    start_history_id=checkpoint_before,
+                    senders=self._senders,
+                    existing_message_ids=set(existing_index.keys()),
+                    max_new_messages=self._max_new_messages,
+                    page_size=self._page_size,
+                    max_scan_pages=self._max_scan_pages,
+                )
+                poll_strategy = "history_checkpoint"
+            except GmailMailboxHistoryCheckpointError:
+                message_refs = _list_uncollected_gmail_message_refs(
+                    service,
+                    senders=self._senders,
+                    existing_message_ids=set(existing_index.keys()),
+                    window_days=self._window_days,
+                    max_new_messages=self._max_new_messages,
+                    page_size=self._page_size,
+                    max_scan_pages=self._max_scan_pages,
+                )
+                poll_strategy = "history_checkpoint_reset_recent_search"
+        else:
+            message_refs = _list_uncollected_gmail_message_refs(
+                service,
+                senders=self._senders,
+                existing_message_ids=set(existing_index.keys()),
+                window_days=self._window_days,
+                max_new_messages=self._max_new_messages,
+                page_size=self._page_size,
+                max_scan_pages=self._max_scan_pages,
+            )
         if not message_refs:
+            if checkpoint_before is None and checkpoint_after is not None:
+                batch = GmailAlertBatch(
+                    ingestion_run_id=ingestion_run_id,
+                    messages=(),
+                    mailbox_history_id_before=None,
+                    mailbox_history_id_after=checkpoint_after,
+                    poll_strategy="history_checkpoint_seed",
+                )
+                self._prepared_batches[ingestion_run_id] = batch
+                return batch
             return None
 
         messages = [
@@ -395,7 +450,13 @@ class GmailLinkedInAlertMailboxCollector:
             for ref in message_refs
         ]
         messages.sort(key=lambda message: (message.received_at, message.gmail_message_id))
-        batch = GmailAlertBatch(ingestion_run_id=ingestion_run_id, messages=tuple(messages))
+        batch = GmailAlertBatch(
+            ingestion_run_id=ingestion_run_id,
+            messages=tuple(messages),
+            mailbox_history_id_before=checkpoint_before,
+            mailbox_history_id_after=checkpoint_after,
+            poll_strategy=poll_strategy,
+        )
         self._prepared_batches[ingestion_run_id] = batch
         return batch
 
@@ -508,6 +569,16 @@ def _load_gmail_credentials(paths: ProjectPaths) -> Any:
     return credentials
 
 
+def _gmail_current_mailbox_history_id(service: Any) -> str | None:
+    try:
+        payload = service.users().getProfile(userId="me").execute()
+    except Exception as exc:  # pragma: no cover - depends on live Gmail API surfaces
+        raise GmailMailboxPollingError("Gmail API failed to load mailbox profile historyId.") from exc
+    if not isinstance(payload, Mapping):
+        raise GmailMailboxPollingError("Gmail mailbox profile payload is malformed.")
+    return _normalize_optional_text(payload.get("historyId"))
+
+
 def _list_uncollected_gmail_message_refs(
     service: Any,
     *,
@@ -558,6 +629,128 @@ def _list_uncollected_gmail_message_refs(
             if next_page_token is None:
                 break
     return selected
+
+
+def _list_incremental_uncollected_gmail_message_refs(
+    service: Any,
+    *,
+    start_history_id: str,
+    senders: Sequence[str],
+    existing_message_ids: set[str],
+    max_new_messages: int,
+    page_size: int,
+    max_scan_pages: int,
+) -> list[dict[str, str]]:
+    selected: list[dict[str, str]] = []
+    seen_message_ids = set(existing_message_ids)
+    next_page_token: str | None = None
+    scanned_pages = 0
+
+    while scanned_pages < max_scan_pages and len(selected) < max_new_messages:
+        try:
+            response = (
+                service.users()
+                .history()
+                .list(
+                    userId="me",
+                    startHistoryId=start_history_id,
+                    historyTypes=["messageAdded"],
+                    maxResults=page_size,
+                    pageToken=next_page_token,
+                )
+                .execute()
+            )
+        except Exception as exc:  # pragma: no cover - depends on live Gmail API surfaces
+            if _is_stale_gmail_history_checkpoint_error(exc):
+                raise GmailMailboxHistoryCheckpointError(
+                    f"Gmail mailbox history checkpoint {start_history_id!r} is stale."
+                ) from exc
+            raise GmailMailboxPollingError(
+                f"Gmail history polling failed for checkpoint {start_history_id!r}."
+            ) from exc
+
+        if not isinstance(response, Mapping):
+            raise GmailMailboxPollingError("Gmail history response payload is malformed.")
+
+        for raw_history in response.get("history", []) or []:
+            for raw_message in _history_added_messages(raw_history):
+                gmail_message_id = _normalize_optional_text(raw_message.get("id"))
+                if gmail_message_id is None or gmail_message_id in seen_message_ids:
+                    continue
+                if not _gmail_message_sender_matches(service, gmail_message_id=gmail_message_id, senders=senders):
+                    continue
+                seen_message_ids.add(gmail_message_id)
+                selected.append(
+                    {
+                        "id": gmail_message_id,
+                        "threadId": _normalize_optional_text(raw_message.get("threadId")) or "",
+                    }
+                )
+                if len(selected) >= max_new_messages:
+                    break
+            if len(selected) >= max_new_messages:
+                break
+
+        next_page_token = _normalize_optional_text(response.get("nextPageToken"))
+        scanned_pages += 1
+        if next_page_token is None:
+            break
+    return selected
+
+
+def _history_added_messages(history_row: Any) -> tuple[Mapping[str, Any], ...]:
+    if not isinstance(history_row, Mapping):
+        return ()
+    messages_added = history_row.get("messagesAdded")
+    if isinstance(messages_added, Sequence) and not isinstance(messages_added, (str, bytes)):
+        extracted: list[Mapping[str, Any]] = []
+        for item in messages_added:
+            if not isinstance(item, Mapping):
+                continue
+            message = item.get("message")
+            if isinstance(message, Mapping):
+                extracted.append(message)
+        if extracted:
+            return tuple(extracted)
+
+    raw_messages = history_row.get("messages")
+    if not isinstance(raw_messages, Sequence) or isinstance(raw_messages, (str, bytes)):
+        return ()
+    return tuple(item for item in raw_messages if isinstance(item, Mapping))
+
+
+def _gmail_message_sender_matches(
+    service: Any,
+    *,
+    gmail_message_id: str,
+    senders: Sequence[str],
+) -> bool:
+    if not senders:
+        return True
+    payload = (
+        service.users()
+        .messages()
+        .get(
+            userId="me",
+            id=gmail_message_id,
+            format="metadata",
+            metadataHeaders=["From"],
+        )
+        .execute()
+    )
+    headers = _gmail_headers(payload.get("payload")) if isinstance(payload, Mapping) else {}
+    sender_value = (headers.get("from") or "").strip().lower()
+    return any(expected_sender in sender_value for expected_sender in senders)
+
+
+def _is_stale_gmail_history_checkpoint_error(exc: Exception) -> bool:
+    status = getattr(getattr(exc, "resp", None), "status", None)
+    if status == 404:
+        return True
+    message = str(exc).lower()
+    return "starthistoryid" in message and (
+        "too old" in message or "invalid" in message or "not found" in message
+    )
 
 
 def _fetch_gmail_alert_message(

@@ -152,9 +152,20 @@ class FakeGmailAlertCollector:
     def __init__(self, *batches: GmailAlertBatch) -> None:
         self._pending_batches = list(batches)
         self._prepared_batches: dict[str, GmailAlertBatch] = {}
+        self.prepare_calls: list[dict[str, str | None]] = []
 
-    def prepare_batch(self, *, current_time: str) -> GmailAlertBatch | None:
-        del current_time
+    def prepare_batch(
+        self,
+        *,
+        current_time: str,
+        mailbox_history_checkpoint: str | None = None,
+    ) -> GmailAlertBatch | None:
+        self.prepare_calls.append(
+            {
+                "current_time": current_time,
+                "mailbox_history_checkpoint": mailbox_history_checkpoint,
+            }
+        )
         if self._prepared_batches:
             return next(iter(self._prepared_batches.values()))
         if not self._pending_batches:
@@ -985,6 +996,9 @@ def test_run_supervisor_cycle_polls_gmail_alerts_and_materializes_ready_postings
         GmailAlertBatch.from_mapping(
             {
                 "ingestion_run_id": "gmail-auto-20260406T000100Z",
+                "mailbox_history_id_before": "history-before-001",
+                "mailbox_history_id_after": "history-after-001",
+                "poll_strategy": "history_checkpoint",
                 "messages": [
                     {
                         "gmail_message_id": "gmail-supervisor-001",
@@ -1057,6 +1071,7 @@ def test_run_supervisor_cycle_polls_gmail_alerts_and_materializes_ready_postings
         """
     ).fetchone()
     run_count = int(connection.execute("SELECT COUNT(*) FROM pipeline_runs").fetchone()[0])
+    control_state = read_agent_control_state(connection, timestamp="2026-04-06T00:01:00Z")
     connection.close()
 
     assert execution.cycle.result == SUPERVISOR_CYCLE_RESULT_SUCCESS
@@ -1074,6 +1089,9 @@ def test_run_supervisor_cycle_polls_gmail_alerts_and_materializes_ready_postings
     assert posting_row["lead_id"] == lead_row["lead_id"]
     assert posting_row["posting_status"] == "sourced"
     assert run_count == 0
+    assert control_state.gmail_poll_last_history_id == "history-after-001"
+    assert control_state.gmail_poll_last_checkpoint_at == "2026-04-06T00:01:00Z"
+    assert control_state.gmail_poll_last_strategy == "history_checkpoint"
 
 
 def test_run_supervisor_cycle_repairs_stale_blocked_gmail_lead(tmp_path, monkeypatch):

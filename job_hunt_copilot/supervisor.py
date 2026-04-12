@@ -216,6 +216,9 @@ CONTROL_DEFAULTS = MappingProxyType(
         "last_chat_exit_mode": "",
         "active_background_task_run_id": "",
         "background_task_resume_on_finish": "false",
+        "gmail_poll_last_history_id": "",
+        "gmail_poll_last_checkpoint_at": "",
+        "gmail_poll_last_strategy": "",
     }
 )
 
@@ -434,6 +437,18 @@ class ControlStateSnapshot:
     @property
     def background_task_resume_on_finish(self) -> bool:
         return self.values["background_task_resume_on_finish"] == "true"
+
+    @property
+    def gmail_poll_last_history_id(self) -> str | None:
+        return _optional_text(self.values["gmail_poll_last_history_id"])
+
+    @property
+    def gmail_poll_last_checkpoint_at(self) -> str | None:
+        return _optional_text(self.values["gmail_poll_last_checkpoint_at"])
+
+    @property
+    def gmail_poll_last_strategy(self) -> str | None:
+        return _optional_text(self.values["gmail_poll_last_strategy"])
 
     @property
     def allows_new_pipeline_progression(self) -> bool:
@@ -2442,6 +2457,7 @@ def select_next_supervisor_work_unit(
     current_time: str,
     action_dependencies: SupervisorActionDependencies,
 ) -> SupervisorWorkUnit | None:
+    control_state = read_agent_control_state(connection, timestamp=current_time)
     incident_work = _select_active_incident_work_unit(connection)
     if incident_work is not None:
         return incident_work
@@ -2449,6 +2465,7 @@ def select_next_supervisor_work_unit(
     gmail_alert_work = _select_gmail_alert_collection_work_unit(
         current_time=current_time,
         gmail_alert_collector=action_dependencies.gmail_alert_collector,
+        gmail_history_checkpoint=control_state.gmail_poll_last_history_id,
     )
     if gmail_alert_work is not None:
         return gmail_alert_work
@@ -2529,6 +2546,7 @@ def _select_gmail_alert_collection_work_unit(
     *,
     current_time: str,
     gmail_alert_collector: object | None,
+    gmail_history_checkpoint: str | None,
 ) -> SupervisorWorkUnit | None:
     if gmail_alert_collector is None:
         return None
@@ -2536,12 +2554,22 @@ def _select_gmail_alert_collection_work_unit(
     if not callable(prepare_batch):
         return None
     try:
-        prepared_batch = prepare_batch(current_time=current_time)
+        prepared_batch = prepare_batch(
+            current_time=current_time,
+            mailbox_history_checkpoint=gmail_history_checkpoint,
+        )
     except Exception:
         return None
     if prepared_batch is None:
         return None
     message_count = len(prepared_batch.messages)
+    if message_count == 0 and prepared_batch.mailbox_history_id_after:
+        return SupervisorWorkUnit(
+            work_type=WORK_TYPE_GMAIL_ALERT_BATCH,
+            work_id=prepared_batch.ingestion_run_id,
+            action_id=ACTION_POLL_GMAIL_LINKEDIN_ALERTS,
+            summary="Seed the Gmail mailbox history checkpoint for future incremental lead polling.",
+        )
     return SupervisorWorkUnit(
         work_type=WORK_TYPE_GMAIL_ALERT_BATCH,
         work_id=prepared_batch.ingestion_run_id,
@@ -2912,7 +2940,7 @@ def _validate_selected_work(
                 "Selected Gmail alert batch is no longer prepared for ingestion_run_id "
                 f"{selected_work.work_id!r}."
             )
-        if not prepared_batch.messages:
+        if not prepared_batch.messages and not prepared_batch.mailbox_history_id_after:
             return (
                 "Prepared Gmail alert batch is empty for ingestion_run_id "
                 f"{selected_work.work_id!r}."
@@ -3542,12 +3570,35 @@ def _execute_selected_work_unit(
         if prepared_batch is None:
             prepare_batch = getattr(collector, "prepare_batch", None)
             if callable(prepare_batch):
-                prepared_batch = prepare_batch(current_time=timestamp)
+                prepared_batch = prepare_batch(
+                    current_time=timestamp,
+                    mailbox_history_checkpoint=read_agent_control_state(
+                        connection,
+                        timestamp=timestamp,
+                    ).gmail_poll_last_history_id,
+                )
         if prepared_batch is None or prepared_batch.ingestion_run_id != selected_work.work_id:
             raise SupervisorStateError(
                 "Supervisor lost the prepared Gmail alert batch before execution for "
                 f"ingestion_run_id {selected_work.work_id!r}."
             )
+
+        if not prepared_batch.messages:
+            if not prepared_batch.mailbox_history_id_after:
+                raise SupervisorStateError(
+                    "Supervisor cannot seed a Gmail mailbox checkpoint from an empty batch "
+                    f"without mailbox_history_id_after for ingestion_run_id {selected_work.work_id!r}."
+                )
+            upsert_control_values(
+                connection,
+                {
+                    "gmail_poll_last_history_id": prepared_batch.mailbox_history_id_after,
+                    "gmail_poll_last_checkpoint_at": timestamp,
+                    "gmail_poll_last_strategy": prepared_batch.poll_strategy,
+                },
+                timestamp=timestamp,
+            )
+            return None, None, None
 
         ingestion_result = ingest_gmail_alert_batch_to_leads(
             paths.project_root,
@@ -3562,6 +3613,16 @@ def _execute_selected_work_unit(
         )
         for lead_id in lead_ids:
             materialize_gmail_lead_entities(paths.project_root, lead_id=lead_id)
+        if prepared_batch.mailbox_history_id_after:
+            upsert_control_values(
+                connection,
+                {
+                    "gmail_poll_last_history_id": prepared_batch.mailbox_history_id_after,
+                    "gmail_poll_last_checkpoint_at": timestamp,
+                    "gmail_poll_last_strategy": prepared_batch.poll_strategy,
+                },
+                timestamp=timestamp,
+            )
         return None, None, None
 
     if catalog_entry.action_id == ACTION_REPAIR_STALE_GMAIL_LEAD:
