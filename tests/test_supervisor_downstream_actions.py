@@ -1660,6 +1660,300 @@ def test_sending_stage_advances_to_delivery_feedback_after_terminal_sent_wave(
     }
 
 
+def test_sending_stage_returns_to_sending_when_future_untouched_contacts_remain(
+    tmp_path: Path,
+) -> None:
+    project_root = bootstrap_project(tmp_path)
+    paths = ProjectPaths.from_root(project_root)
+    write_sender_profile(paths)
+    connection = connect_database(project_root / "job_hunt_copilot.db")
+    lead_id, job_posting_id = seed_role_targeted_posting(
+        connection,
+        company_name="Acme Robotics",
+        role_title="Staff Software Engineer / AI",
+        posting_status="ready_for_outreach",
+        timestamp="2026-04-08T00:31:00Z",
+    )
+    seed_outreach_ready_tailoring_run(
+        connection,
+        paths,
+        company_name="Acme Robotics",
+        role_title="Staff Software Engineer / AI",
+        job_posting_id=job_posting_id,
+        current_time="2026-04-08T00:32:00Z",
+    )
+    seed_shortlisted_contact(
+        connection,
+        contact_id="ct_send_r1",
+        job_posting_contact_id="jpc_send_r1",
+        job_posting_id=job_posting_id,
+        company_name="Acme Robotics",
+        display_name="Priya Recruiter",
+        recipient_type="recruiter",
+        current_working_email="priya@acme.example",
+        position_title="Technical Recruiter",
+        created_at="2026-04-08T00:33:00Z",
+    )
+    seed_shortlisted_contact(
+        connection,
+        contact_id="ct_send_m1",
+        job_posting_contact_id="jpc_send_m1",
+        job_posting_id=job_posting_id,
+        company_name="Acme Robotics",
+        display_name="Morgan Manager",
+        recipient_type="hiring_manager",
+        current_working_email="morgan@acme.example",
+        position_title="Engineering Manager",
+        created_at="2026-04-08T00:34:00Z",
+    )
+    seed_shortlisted_contact(
+        connection,
+        contact_id="ct_send_e1",
+        job_posting_contact_id="jpc_send_e1",
+        job_posting_id=job_posting_id,
+        company_name="Acme Robotics",
+        display_name="Jamie Engineer",
+        recipient_type="engineer",
+        current_working_email="jamie@acme.example",
+        position_title="Staff Software Engineer",
+        created_at="2026-04-08T00:35:00Z",
+    )
+    seed_shortlisted_contact(
+        connection,
+        contact_id="ct_send_a1",
+        job_posting_contact_id="jpc_send_a1",
+        job_posting_id=job_posting_id,
+        company_name="Acme Robotics",
+        display_name="Alex Alumni",
+        recipient_type="alumni",
+        current_working_email="alex@acme.example",
+        position_title="Senior Software Engineer",
+        created_at="2026-04-08T00:36:00Z",
+    )
+    draft_batch = generate_role_targeted_send_set_drafts(
+        connection,
+        project_root=project_root,
+        job_posting_id=job_posting_id,
+        current_time="2026-04-08T00:37:00Z",
+        local_timezone="UTC",
+    )
+    drafted_ids = {message.contact_id: message.outreach_message_id for message in draft_batch.drafted_messages}
+    connection.execute(
+        """
+        UPDATE outreach_messages
+        SET message_status = 'sent', sent_at = ?, thread_id = ?, delivery_tracking_id = ?, updated_at = ?
+        WHERE outreach_message_id IN (?, ?)
+        """,
+        (
+            "2026-04-08T00:38:00Z",
+            "thread-preseeded",
+            "delivery-preseeded",
+            "2026-04-08T00:38:00Z",
+            drafted_ids["ct_send_m1"],
+            drafted_ids["ct_send_e1"],
+        ),
+    )
+    connection.execute(
+        """
+        UPDATE contacts
+        SET contact_status = 'sent', updated_at = ?
+        WHERE contact_id IN (?, ?)
+        """,
+        ("2026-04-08T00:38:00Z", "ct_send_m1", "ct_send_e1"),
+    )
+    connection.execute(
+        """
+        UPDATE job_posting_contacts
+        SET link_level_status = 'outreach_done', updated_at = ?
+        WHERE job_posting_contact_id IN (?, ?)
+        """,
+        ("2026-04-08T00:38:00Z", "jpc_send_m1", "jpc_send_e1"),
+    )
+    connection.commit()
+    resume_agent(
+        connection,
+        manual_command="jhc-agent-start",
+        timestamp="2026-04-08T00:39:00Z",
+    )
+    pipeline_run, _ = ensure_role_targeted_pipeline_run(
+        connection,
+        lead_id=lead_id,
+        job_posting_id=job_posting_id,
+        current_stage="sending",
+        started_at="2026-04-08T00:40:00Z",
+    )
+
+    execution = run_supervisor_cycle(
+        connection,
+        paths,
+        trigger_type="launchd_heartbeat",
+        scheduler_name="launchd",
+        started_at="2026-04-08T00:50:00Z",
+        action_dependencies=SupervisorActionDependencies(
+            outreach_sender=OutreachRecordingSender(),
+            local_timezone="UTC",
+        ),
+    )
+    updated_run = get_pipeline_run(connection, pipeline_run.pipeline_run_id)
+    posting_status = connection.execute(
+        "SELECT posting_status FROM job_postings WHERE job_posting_id = ?",
+        (job_posting_id,),
+    ).fetchone()[0]
+    connection.close()
+
+    assert execution.cycle.result == SUPERVISOR_CYCLE_RESULT_SUCCESS
+    assert updated_run is not None
+    assert updated_run.current_stage == "sending"
+    assert posting_status == "ready_for_outreach"
+
+
+def test_sending_stage_returns_to_email_discovery_when_later_contacts_need_email(
+    tmp_path: Path,
+) -> None:
+    project_root = bootstrap_project(tmp_path)
+    paths = ProjectPaths.from_root(project_root)
+    write_sender_profile(paths)
+    connection = connect_database(project_root / "job_hunt_copilot.db")
+    lead_id, job_posting_id = seed_role_targeted_posting(
+        connection,
+        company_name="Acme Robotics",
+        role_title="Staff Software Engineer / AI",
+        posting_status="ready_for_outreach",
+        timestamp="2026-04-08T00:42:00Z",
+    )
+    seed_outreach_ready_tailoring_run(
+        connection,
+        paths,
+        company_name="Acme Robotics",
+        role_title="Staff Software Engineer / AI",
+        job_posting_id=job_posting_id,
+        current_time="2026-04-08T00:43:00Z",
+    )
+    seed_shortlisted_contact(
+        connection,
+        contact_id="ct_send_r1",
+        job_posting_contact_id="jpc_send_r1",
+        job_posting_id=job_posting_id,
+        company_name="Acme Robotics",
+        display_name="Priya Recruiter",
+        recipient_type="recruiter",
+        current_working_email="priya@acme.example",
+        position_title="Technical Recruiter",
+        created_at="2026-04-08T00:44:00Z",
+    )
+    seed_shortlisted_contact(
+        connection,
+        contact_id="ct_send_m1",
+        job_posting_contact_id="jpc_send_m1",
+        job_posting_id=job_posting_id,
+        company_name="Acme Robotics",
+        display_name="Morgan Manager",
+        recipient_type="hiring_manager",
+        current_working_email="morgan@acme.example",
+        position_title="Engineering Manager",
+        created_at="2026-04-08T00:45:00Z",
+    )
+    seed_shortlisted_contact(
+        connection,
+        contact_id="ct_send_e1",
+        job_posting_contact_id="jpc_send_e1",
+        job_posting_id=job_posting_id,
+        company_name="Acme Robotics",
+        display_name="Jamie Engineer",
+        recipient_type="engineer",
+        current_working_email="jamie@acme.example",
+        position_title="Staff Software Engineer",
+        created_at="2026-04-08T00:46:00Z",
+    )
+    seed_shortlisted_contact(
+        connection,
+        contact_id="ct_send_a1",
+        job_posting_contact_id="jpc_send_a1",
+        job_posting_id=job_posting_id,
+        company_name="Acme Robotics",
+        display_name="Alex Alumni",
+        recipient_type="alumni",
+        current_working_email=None,
+        position_title="Senior Software Engineer",
+        created_at="2026-04-08T00:47:00Z",
+    )
+    draft_batch = generate_role_targeted_send_set_drafts(
+        connection,
+        project_root=project_root,
+        job_posting_id=job_posting_id,
+        current_time="2026-04-08T00:48:00Z",
+        local_timezone="UTC",
+    )
+    drafted_ids = {message.contact_id: message.outreach_message_id for message in draft_batch.drafted_messages}
+    connection.execute(
+        """
+        UPDATE outreach_messages
+        SET message_status = 'sent', sent_at = ?, thread_id = ?, delivery_tracking_id = ?, updated_at = ?
+        WHERE outreach_message_id IN (?, ?)
+        """,
+        (
+            "2026-04-08T00:49:00Z",
+            "thread-preseeded",
+            "delivery-preseeded",
+            "2026-04-08T00:49:00Z",
+            drafted_ids["ct_send_m1"],
+            drafted_ids["ct_send_e1"],
+        ),
+    )
+    connection.execute(
+        """
+        UPDATE contacts
+        SET contact_status = 'sent', updated_at = ?
+        WHERE contact_id IN (?, ?)
+        """,
+        ("2026-04-08T00:49:00Z", "ct_send_m1", "ct_send_e1"),
+    )
+    connection.execute(
+        """
+        UPDATE job_posting_contacts
+        SET link_level_status = 'outreach_done', updated_at = ?
+        WHERE job_posting_contact_id IN (?, ?)
+        """,
+        ("2026-04-08T00:49:00Z", "jpc_send_m1", "jpc_send_e1"),
+    )
+    connection.commit()
+    resume_agent(
+        connection,
+        manual_command="jhc-agent-start",
+        timestamp="2026-04-08T00:50:00Z",
+    )
+    pipeline_run, _ = ensure_role_targeted_pipeline_run(
+        connection,
+        lead_id=lead_id,
+        job_posting_id=job_posting_id,
+        current_stage="sending",
+        started_at="2026-04-08T00:51:00Z",
+    )
+
+    execution = run_supervisor_cycle(
+        connection,
+        paths,
+        trigger_type="launchd_heartbeat",
+        scheduler_name="launchd",
+        started_at="2026-04-08T01:00:00Z",
+        action_dependencies=SupervisorActionDependencies(
+            outreach_sender=OutreachRecordingSender(),
+            local_timezone="UTC",
+        ),
+    )
+    updated_run = get_pipeline_run(connection, pipeline_run.pipeline_run_id)
+    posting_status = connection.execute(
+        "SELECT posting_status FROM job_postings WHERE job_posting_id = ?",
+        (job_posting_id,),
+    ).fetchone()[0]
+    connection.close()
+
+    assert execution.cycle.result == SUPERVISOR_CYCLE_RESULT_SUCCESS
+    assert updated_run is not None
+    assert updated_run.current_stage == "email_discovery"
+    assert posting_status == "requires_contacts"
+
+
 def test_sending_stage_completes_review_worthy_run_when_terminal_wave_has_no_sent_messages(
     tmp_path: Path,
 ) -> None:
@@ -2593,6 +2887,154 @@ def test_pending_delivery_feedback_run_does_not_block_new_posting_bootstrap(
     connection.close()
 
     assert execution.cycle.result == SUPERVISOR_CYCLE_RESULT_SUCCESS
+
+
+def test_sending_run_waiting_for_next_day_quota_does_not_block_new_posting_bootstrap(
+    tmp_path: Path,
+) -> None:
+    project_root = bootstrap_project(tmp_path)
+    paths = ProjectPaths.from_root(project_root)
+    write_sender_profile(paths)
+    connection = connect_database(project_root / "job_hunt_copilot.db")
+    lead_id, job_posting_id = seed_role_targeted_posting(
+        connection,
+        company_name="Acme Robotics",
+        role_title="Staff Software Engineer / AI",
+        posting_status="ready_for_outreach",
+        timestamp="2026-04-08T00:00:00Z",
+    )
+    seed_outreach_ready_tailoring_run(
+        connection,
+        paths,
+        company_name="Acme Robotics",
+        role_title="Staff Software Engineer / AI",
+        job_posting_id=job_posting_id,
+        current_time="2026-04-08T00:01:00Z",
+    )
+    seed_shortlisted_contact(
+        connection,
+        contact_id="ct_cap_1",
+        job_posting_contact_id="jpc_cap_1",
+        job_posting_id=job_posting_id,
+        company_name="Acme Robotics",
+        display_name="Cap One",
+        recipient_type="recruiter",
+        current_working_email="cap1@acme.example",
+        position_title="Technical Recruiter",
+        created_at="2026-04-08T00:02:00Z",
+    )
+    seed_shortlisted_contact(
+        connection,
+        contact_id="ct_cap_2",
+        job_posting_contact_id="jpc_cap_2",
+        job_posting_id=job_posting_id,
+        company_name="Acme Robotics",
+        display_name="Cap Two",
+        recipient_type="hiring_manager",
+        current_working_email="cap2@acme.example",
+        position_title="Engineering Manager",
+        created_at="2026-04-08T00:03:00Z",
+    )
+    seed_shortlisted_contact(
+        connection,
+        contact_id="ct_cap_3",
+        job_posting_contact_id="jpc_cap_3",
+        job_posting_id=job_posting_id,
+        company_name="Acme Robotics",
+        display_name="Cap Three",
+        recipient_type="engineer",
+        current_working_email="cap3@acme.example",
+        position_title="Staff Software Engineer",
+        created_at="2026-04-08T00:04:00Z",
+    )
+    seed_shortlisted_contact(
+        connection,
+        contact_id="ct_cap_4",
+        job_posting_contact_id="jpc_cap_4",
+        job_posting_id=job_posting_id,
+        company_name="Acme Robotics",
+        display_name="Cap Four",
+        recipient_type="alumni",
+        current_working_email="cap4@acme.example",
+        position_title="Senior Software Engineer",
+        created_at="2026-04-08T00:05:00Z",
+    )
+    for outreach_message_id, contact_id, job_posting_contact_id, sent_at in [
+        ("msg_cap_1", "ct_cap_1", "jpc_cap_1", "2026-04-08T12:00:00Z"),
+        ("msg_cap_2", "ct_cap_2", "jpc_cap_2", "2026-04-08T13:00:00Z"),
+        ("msg_cap_3", "ct_cap_3", "jpc_cap_3", "2026-04-08T14:00:00Z"),
+    ]:
+        connection.execute(
+            """
+            INSERT INTO outreach_messages (
+              outreach_message_id, contact_id, outreach_mode, recipient_email, message_status,
+              job_posting_id, job_posting_contact_id, subject, body_text, sent_at, created_at, updated_at
+            ) VALUES (?, ?, 'role_targeted', ?, 'sent', ?, ?, 'hello', 'body', ?, ?, ?)
+            """,
+            (
+                outreach_message_id,
+                contact_id,
+                f"{contact_id}@acme.example",
+                job_posting_id,
+                job_posting_contact_id,
+                sent_at,
+                sent_at,
+                sent_at,
+            ),
+        )
+    connection.execute(
+        """
+        UPDATE contacts
+        SET contact_status = 'sent', updated_at = '2026-04-08T14:00:00Z'
+        WHERE contact_id IN ('ct_cap_1', 'ct_cap_2', 'ct_cap_3')
+        """
+    )
+    connection.execute(
+        """
+        UPDATE job_posting_contacts
+        SET link_level_status = 'outreach_done', updated_at = '2026-04-08T14:00:00Z'
+        WHERE job_posting_contact_id IN ('jpc_cap_1', 'jpc_cap_2', 'jpc_cap_3')
+        """
+    )
+    connection.commit()
+    resume_agent(
+        connection,
+        manual_command="jhc-agent-start",
+        timestamp="2026-04-08T14:05:00Z",
+    )
+    ensure_role_targeted_pipeline_run(
+        connection,
+        lead_id=lead_id,
+        job_posting_id=job_posting_id,
+        current_stage="sending",
+        started_at="2026-04-08T14:06:00Z",
+    )
+    _, next_job_posting_id = seed_role_targeted_posting(
+        connection,
+        lead_id="ld_downstream_next_send_wait",
+        job_posting_id="jp_downstream_next_send_wait",
+        lead_identity_key="next-wave-systems|platform-engineer",
+        posting_identity_key="next-wave-systems|platform-engineer|remote",
+        company_name="Next Wave Systems",
+        role_title="Platform Engineer",
+        posting_status="sourced",
+        timestamp="2026-04-08T14:07:00Z",
+    )
+
+    execution = run_supervisor_cycle(
+        connection,
+        paths,
+        trigger_type="launchd_heartbeat",
+        scheduler_name="launchd",
+        started_at="2026-04-08T14:10:00Z",
+        action_dependencies=SupervisorActionDependencies(local_timezone="UTC"),
+    )
+    connection.close()
+
+    assert execution.cycle.result == SUPERVISOR_CYCLE_RESULT_SUCCESS
+    assert execution.selected_work is not None
+    assert execution.selected_work.action_id == ACTION_BOOTSTRAP_ROLE_TARGETED_RUN
+    assert execution.selected_work.work_id == next_job_posting_id
     assert execution.selected_work is not None
     assert execution.selected_work.action_id == ACTION_BOOTSTRAP_ROLE_TARGETED_RUN
     assert execution.selected_work.job_posting_id == next_job_posting_id

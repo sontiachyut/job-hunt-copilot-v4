@@ -2645,7 +2645,7 @@ def test_send_execution_completes_posting_when_last_message_is_sent(tmp_path: Pa
         connection,
         project_root=project_root,
         job_posting_id="jp_outreach",
-        current_time="2026-04-06T20:40:00Z",
+        current_time="2026-04-06T20:50:00Z",
         local_timezone=ZoneInfo("UTC"),
         sender=RecordingOutreachSender(),
     )
@@ -2661,6 +2661,260 @@ def test_send_execution_completes_posting_when_last_message_is_sent(tmp_path: Pa
         ("jp_outreach",),
     ).fetchone()[0]
     assert posting_status == JOB_POSTING_STATUS_COMPLETED
+
+    connection.close()
+
+
+def test_send_execution_keeps_posting_ready_for_later_waves_when_untouched_contacts_remain(
+    tmp_path: Path,
+):
+    project_root, paths = bootstrap_project(tmp_path)
+    connection = connect_database(project_root / "job_hunt_copilot.db")
+    write_sender_profile(paths)
+    seed_posting(connection)
+    seed_linked_contact(
+        connection,
+        contact_id="ct_r1",
+        job_posting_contact_id="jpc_r1",
+        display_name="Priya Recruiter",
+        recipient_type=RECIPIENT_TYPE_RECRUITER,
+        current_working_email="priya@acme.example",
+        created_at="2026-04-06T20:01:00Z",
+    )
+    seed_linked_contact(
+        connection,
+        contact_id="ct_m1",
+        job_posting_contact_id="jpc_m1",
+        display_name="Morgan Manager",
+        recipient_type=RECIPIENT_TYPE_HIRING_MANAGER,
+        current_working_email="morgan@acme.example",
+        created_at="2026-04-06T20:02:00Z",
+    )
+    seed_linked_contact(
+        connection,
+        contact_id="ct_e1",
+        job_posting_contact_id="jpc_e1",
+        display_name="Jamie Engineer",
+        recipient_type=RECIPIENT_TYPE_ENGINEER,
+        current_working_email="jamie@acme.example",
+        created_at="2026-04-06T20:03:00Z",
+    )
+    seed_linked_contact(
+        connection,
+        contact_id="ct_a1",
+        job_posting_contact_id="jpc_a1",
+        display_name="Alex Alumni",
+        recipient_type=RECIPIENT_TYPE_ALUMNI,
+        current_working_email="alex@acme.example",
+        created_at="2026-04-06T20:04:00Z",
+    )
+    seed_approved_tailoring_run(connection, paths)
+    draft_batch = generate_role_targeted_send_set_drafts(
+        connection,
+        project_root=project_root,
+        job_posting_id="jp_outreach",
+        current_time="2026-04-06T20:30:00Z",
+        local_timezone=ZoneInfo("UTC"),
+    )
+    drafted_ids_by_contact = {
+        message.contact_id: message.outreach_message_id for message in draft_batch.drafted_messages
+    }
+    connection.execute(
+        """
+        UPDATE outreach_messages
+        SET message_status = ?, sent_at = ?, thread_id = ?, delivery_tracking_id = ?, updated_at = ?
+        WHERE outreach_message_id IN (?, ?)
+        """,
+        (
+            MESSAGE_STATUS_SENT,
+            "2026-04-06T20:35:00Z",
+            "thread-preseeded",
+            "delivery-preseeded",
+            "2026-04-06T20:35:00Z",
+            drafted_ids_by_contact["ct_m1"],
+            drafted_ids_by_contact["ct_e1"],
+        ),
+    )
+    connection.execute(
+        """
+        UPDATE contacts
+        SET contact_status = ?, updated_at = ?
+        WHERE contact_id IN (?, ?)
+        """,
+        (
+            CONTACT_STATUS_SENT,
+            "2026-04-06T20:35:00Z",
+            "ct_m1",
+            "ct_e1",
+        ),
+    )
+    connection.execute(
+        """
+        UPDATE job_posting_contacts
+        SET link_level_status = ?, updated_at = ?
+        WHERE job_posting_contact_id IN (?, ?)
+        """,
+        (
+            POSTING_CONTACT_STATUS_OUTREACH_DONE,
+            "2026-04-06T20:35:00Z",
+            "jpc_m1",
+            "jpc_e1",
+        ),
+    )
+    connection.commit()
+
+    result = execute_role_targeted_send_set(
+        connection,
+        project_root=project_root,
+        job_posting_id="jp_outreach",
+        current_time="2026-04-06T20:50:00Z",
+        local_timezone=ZoneInfo("UTC"),
+        sender=RecordingOutreachSender(),
+    )
+
+    posting_status = connection.execute(
+        "SELECT posting_status FROM job_postings WHERE job_posting_id = ?",
+        ("jp_outreach",),
+    ).fetchone()[0]
+    next_wave_plan = evaluate_role_targeted_send_set(
+        connection,
+        job_posting_id="jp_outreach",
+        current_time="2026-04-06T20:50:00Z",
+        local_timezone=ZoneInfo("UTC"),
+    )
+
+    assert [message.contact_id for message in result.sent_messages] == ["ct_r1"]
+    assert result.delayed_messages == ()
+    assert result.posting_status_after_execution == JOB_POSTING_STATUS_READY_FOR_OUTREACH
+    assert posting_status == JOB_POSTING_STATUS_READY_FOR_OUTREACH
+    assert [contact.contact_id for contact in next_wave_plan.selected_contacts] == ["ct_a1"]
+
+    connection.close()
+
+
+def test_send_execution_returns_posting_to_requires_contacts_when_later_wave_needs_email(
+    tmp_path: Path,
+):
+    project_root, paths = bootstrap_project(tmp_path)
+    connection = connect_database(project_root / "job_hunt_copilot.db")
+    write_sender_profile(paths)
+    seed_posting(connection)
+    seed_linked_contact(
+        connection,
+        contact_id="ct_r1",
+        job_posting_contact_id="jpc_r1",
+        display_name="Priya Recruiter",
+        recipient_type=RECIPIENT_TYPE_RECRUITER,
+        current_working_email="priya@acme.example",
+        created_at="2026-04-06T20:01:00Z",
+    )
+    seed_linked_contact(
+        connection,
+        contact_id="ct_m1",
+        job_posting_contact_id="jpc_m1",
+        display_name="Morgan Manager",
+        recipient_type=RECIPIENT_TYPE_HIRING_MANAGER,
+        current_working_email="morgan@acme.example",
+        created_at="2026-04-06T20:02:00Z",
+    )
+    seed_linked_contact(
+        connection,
+        contact_id="ct_e1",
+        job_posting_contact_id="jpc_e1",
+        display_name="Jamie Engineer",
+        recipient_type=RECIPIENT_TYPE_ENGINEER,
+        current_working_email="jamie@acme.example",
+        created_at="2026-04-06T20:03:00Z",
+    )
+    seed_linked_contact(
+        connection,
+        contact_id="ct_a1",
+        job_posting_contact_id="jpc_a1",
+        display_name="Alex Alumni",
+        recipient_type=RECIPIENT_TYPE_ALUMNI,
+        current_working_email=None,
+        created_at="2026-04-06T20:04:00Z",
+    )
+    seed_approved_tailoring_run(connection, paths)
+    draft_batch = generate_role_targeted_send_set_drafts(
+        connection,
+        project_root=project_root,
+        job_posting_id="jp_outreach",
+        current_time="2026-04-06T20:30:00Z",
+        local_timezone=ZoneInfo("UTC"),
+    )
+    drafted_ids_by_contact = {
+        message.contact_id: message.outreach_message_id for message in draft_batch.drafted_messages
+    }
+    connection.execute(
+        """
+        UPDATE outreach_messages
+        SET message_status = ?, sent_at = ?, thread_id = ?, delivery_tracking_id = ?, updated_at = ?
+        WHERE outreach_message_id IN (?, ?)
+        """,
+        (
+            MESSAGE_STATUS_SENT,
+            "2026-04-06T20:35:00Z",
+            "thread-preseeded",
+            "delivery-preseeded",
+            "2026-04-06T20:35:00Z",
+            drafted_ids_by_contact["ct_m1"],
+            drafted_ids_by_contact["ct_e1"],
+        ),
+    )
+    connection.execute(
+        """
+        UPDATE contacts
+        SET contact_status = ?, updated_at = ?
+        WHERE contact_id IN (?, ?)
+        """,
+        (
+            CONTACT_STATUS_SENT,
+            "2026-04-06T20:35:00Z",
+            "ct_m1",
+            "ct_e1",
+        ),
+    )
+    connection.execute(
+        """
+        UPDATE job_posting_contacts
+        SET link_level_status = ?, updated_at = ?
+        WHERE job_posting_contact_id IN (?, ?)
+        """,
+        (
+            POSTING_CONTACT_STATUS_OUTREACH_DONE,
+            "2026-04-06T20:35:00Z",
+            "jpc_m1",
+            "jpc_e1",
+        ),
+    )
+    connection.commit()
+
+    result = execute_role_targeted_send_set(
+        connection,
+        project_root=project_root,
+        job_posting_id="jp_outreach",
+        current_time="2026-04-06T20:50:00Z",
+        local_timezone=ZoneInfo("UTC"),
+        sender=RecordingOutreachSender(),
+    )
+
+    posting_status = connection.execute(
+        "SELECT posting_status FROM job_postings WHERE job_posting_id = ?",
+        ("jp_outreach",),
+    ).fetchone()[0]
+    next_wave_plan = evaluate_role_targeted_send_set(
+        connection,
+        job_posting_id="jp_outreach",
+        current_time="2026-04-06T20:50:00Z",
+        local_timezone=ZoneInfo("UTC"),
+    )
+
+    assert [message.contact_id for message in result.sent_messages] == ["ct_r1"]
+    assert result.posting_status_after_execution == JOB_POSTING_STATUS_REQUIRES_CONTACTS
+    assert posting_status == JOB_POSTING_STATUS_REQUIRES_CONTACTS
+    assert [contact.contact_id for contact in next_wave_plan.selected_contacts] == ["ct_a1"]
+    assert next_wave_plan.ready_for_outreach is False
 
     connection.close()
 

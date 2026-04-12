@@ -2474,7 +2474,11 @@ def select_next_supervisor_work_unit(
     if stale_gmail_repair_work is not None:
         return stale_gmail_repair_work
 
-    pipeline_run_work = _select_open_pipeline_run_work_unit(connection)
+    pipeline_run_work = _select_open_pipeline_run_work_unit(
+        connection,
+        current_time=current_time,
+        local_timezone=action_dependencies.local_timezone,
+    )
     if pipeline_run_work is not None:
         return pipeline_run_work
 
@@ -2659,7 +2663,12 @@ def _select_active_incident_work_unit(
 
 def _select_open_pipeline_run_work_unit(
     connection: sqlite3.Connection,
+    *,
+    current_time: str,
+    local_timezone: object | str | None = None,
 ) -> SupervisorWorkUnit | None:
+    from .outreach import evaluate_role_targeted_send_set
+
     rows = connection.execute(
         """
         SELECT pipeline_run_id, run_scope_type, run_status, current_stage, lead_id,
@@ -2691,6 +2700,22 @@ def _select_open_pipeline_run_work_unit(
                         )
                     )
                     if pending_feedback_message_ids:
+                        continue
+        if pipeline_run.current_stage == "sending":
+            job_posting_id = _optional_text(pipeline_run.job_posting_id)
+            if job_posting_id:
+                posting_status = _load_posting_status(
+                    connection,
+                    job_posting_id=job_posting_id,
+                )
+                if posting_status == "ready_for_outreach":
+                    send_set_plan = evaluate_role_targeted_send_set(
+                        connection,
+                        job_posting_id=job_posting_id,
+                        current_time=current_time,
+                        local_timezone=local_timezone,
+                    )
+                    if send_set_plan.selected_contacts and not send_set_plan.pacing_allowed_now:
                         continue
 
         action_id = ROLE_TARGETED_PIPELINE_STAGE_ACTIONS.get(pipeline_run.current_stage)
@@ -4087,7 +4112,9 @@ def _execute_selected_work_unit(
             JOB_POSTING_STATUS_COMPLETED,
             JOB_POSTING_STATUS_OUTREACH_IN_PROGRESS,
             JOB_POSTING_STATUS_READY_FOR_OUTREACH,
+            JOB_POSTING_STATUS_REQUIRES_CONTACTS,
             execute_role_targeted_send_set,
+            evaluate_role_targeted_send_set,
             generate_role_targeted_send_set_drafts,
         )
 
@@ -4113,38 +4140,52 @@ def _execute_selected_work_unit(
         failed_count = 0
         delayed_count = 0
 
+        latest_posting_status = current_posting_status
         if current_posting_status == JOB_POSTING_STATUS_READY_FOR_OUTREACH:
-            draft_batch = generate_role_targeted_send_set_drafts(
+            send_set_plan = evaluate_role_targeted_send_set(
                 connection,
-                project_root=paths.project_root,
                 job_posting_id=job_posting_id,
                 current_time=timestamp,
                 local_timezone=action_dependencies.local_timezone,
             )
-            drafted_count = len(draft_batch.drafted_messages)
+            if send_set_plan.selected_contacts and send_set_plan.pacing_allowed_now:
+                draft_batch = generate_role_targeted_send_set_drafts(
+                    connection,
+                    project_root=paths.project_root,
+                    job_posting_id=job_posting_id,
+                    current_time=timestamp,
+                    local_timezone=action_dependencies.local_timezone,
+                )
+                drafted_count = len(draft_batch.drafted_messages)
 
         latest_posting_status = _load_posting_status(connection, job_posting_id=job_posting_id)
         if latest_posting_status in {
             JOB_POSTING_STATUS_READY_FOR_OUTREACH,
             JOB_POSTING_STATUS_OUTREACH_IN_PROGRESS,
         }:
-            send_result = execute_role_targeted_send_set(
+            active_generated_count = _count_posting_outreach_messages_with_status(
                 connection,
-                project_root=paths.project_root,
                 job_posting_id=job_posting_id,
-                current_time=timestamp,
-                sender=_require_dependency(
-                    action_dependencies.outreach_sender,
-                    "Supervisor sending requires an injected outreach sender.",
-                ),
-                local_timezone=action_dependencies.local_timezone,
-                feedback_observer=action_dependencies.feedback_observer,
+                message_status="generated",
             )
-            latest_posting_status = send_result.posting_status_after_execution
-            sent_count = len(send_result.sent_messages)
-            blocked_count = len(send_result.blocked_messages)
-            failed_count = len(send_result.failed_messages)
-            delayed_count = len(send_result.delayed_messages)
+            if active_generated_count > 0:
+                send_result = execute_role_targeted_send_set(
+                    connection,
+                    project_root=paths.project_root,
+                    job_posting_id=job_posting_id,
+                    current_time=timestamp,
+                    sender=_require_dependency(
+                        action_dependencies.outreach_sender,
+                        "Supervisor sending requires an injected outreach sender.",
+                    ),
+                    local_timezone=action_dependencies.local_timezone,
+                    feedback_observer=action_dependencies.feedback_observer,
+                )
+                latest_posting_status = send_result.posting_status_after_execution
+                sent_count = len(send_result.sent_messages)
+                blocked_count = len(send_result.blocked_messages)
+                failed_count = len(send_result.failed_messages)
+                delayed_count = len(send_result.delayed_messages)
 
         if latest_posting_status == JOB_POSTING_STATUS_COMPLETED:
             if _count_posting_outreach_messages_with_status(
@@ -4178,7 +4219,24 @@ def _execute_selected_work_unit(
                 )
             return pipeline_run, None, None
 
-        if latest_posting_status != JOB_POSTING_STATUS_OUTREACH_IN_PROGRESS:
+        if latest_posting_status == JOB_POSTING_STATUS_REQUIRES_CONTACTS:
+            pipeline_run = advance_pipeline_run(
+                connection,
+                selected_work.work_id,
+                current_stage="email_discovery",
+                run_summary=(
+                    "Supervisor finished the current outreach wave and moved the durable "
+                    "pipeline run back to email_discovery because later untouched "
+                    "contacts still need usable emails."
+                ),
+                timestamp=timestamp,
+            )
+            return pipeline_run, None, None
+
+        if latest_posting_status not in {
+            JOB_POSTING_STATUS_READY_FOR_OUTREACH,
+            JOB_POSTING_STATUS_OUTREACH_IN_PROGRESS,
+        }:
             raise SupervisorStateError(
                 "Sending advanced the posting to an unsupported status "
                 f"{latest_posting_status!r}."
@@ -4792,11 +4850,37 @@ def _validate_selected_work_result(
             job_posting_id=pipeline_run.job_posting_id,
             message_status="sent",
         )
-        if message_row_count <= 0 or send_result_artifact_count <= 0:
+        if posting_status != "ready_for_outreach" and (
+            message_row_count <= 0 or send_result_artifact_count <= 0
+        ):
             return (
                 "Sending completed without persisting outreach messages and send_result "
                 "artifacts for the selected posting."
             )
+        if posting_status == "ready_for_outreach":
+            if pipeline_run.run_status != RUN_STATUS_IN_PROGRESS:
+                return (
+                    "Sending should keep the pipeline_run in-progress while the next "
+                    f"wave is pending future pacing; found {pipeline_run.run_status!r}."
+                )
+            if pipeline_run.current_stage != "sending":
+                return (
+                    "Sending should remain at the sending stage when the next wave is "
+                    f"still queued for later, but found {pipeline_run.current_stage!r}."
+                )
+            return None
+        if posting_status == "requires_contacts":
+            if pipeline_run.run_status != RUN_STATUS_IN_PROGRESS:
+                return (
+                    "Sending should keep the pipeline_run in-progress when later-wave "
+                    f"contacts still need email discovery; found {pipeline_run.run_status!r}."
+                )
+            if pipeline_run.current_stage != "email_discovery":
+                return (
+                    "Sending should return to email_discovery when later untouched "
+                    f"contacts still need emails, but found {pipeline_run.current_stage!r}."
+                )
+            return None
         if posting_status == "outreach_in_progress":
             if pipeline_run.run_status != RUN_STATUS_IN_PROGRESS:
                 return (

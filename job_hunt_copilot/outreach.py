@@ -2436,6 +2436,31 @@ def _complete_posting_if_wave_finished(
     )
     if current_status == JOB_POSTING_STATUS_COMPLETED:
         return
+    next_send_set_plan = evaluate_role_targeted_send_set(
+        connection,
+        job_posting_id=str(posting_row["job_posting_id"]),
+        current_time=current_time,
+    )
+    if next_send_set_plan.selected_contacts:
+        next_status = next_send_set_plan.posting_status_after_evaluation
+        if next_status == JOB_POSTING_STATUS_READY_FOR_OUTREACH:
+            transition_reason = (
+                "The active drafted outreach wave reached terminal states, and untouched "
+                "contacts remain ready for the next automatic send wave."
+            )
+        else:
+            transition_reason = (
+                "The active drafted outreach wave reached terminal states, and untouched "
+                "contacts remain but still need usable email discovery before the next wave."
+            )
+    else:
+        next_status = JOB_POSTING_STATUS_COMPLETED
+        transition_reason = (
+            "The active drafted outreach wave reached terminal sent or review-blocked "
+            "states and no untouched automatic outreach contacts remain."
+        )
+    if current_status == next_status:
+        return
     with connection:
         connection.execute(
             """
@@ -2444,7 +2469,7 @@ def _complete_posting_if_wave_finished(
             WHERE job_posting_id = ?
             """,
             (
-                JOB_POSTING_STATUS_COMPLETED,
+                next_status,
                 current_time,
                 posting_row["job_posting_id"],
             ),
@@ -2455,9 +2480,9 @@ def _complete_posting_if_wave_finished(
             object_id=str(posting_row["job_posting_id"]),
             stage="posting_status",
             previous_state=current_status,
-            new_state=JOB_POSTING_STATUS_COMPLETED,
+            new_state=next_status,
             transition_timestamp=current_time,
-            transition_reason="The active drafted outreach wave reached terminal sent or review-blocked states.",
+            transition_reason=transition_reason,
             lead_id=str(posting_row["lead_id"]),
             job_posting_id=str(posting_row["job_posting_id"]),
             contact_id=None,
