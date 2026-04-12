@@ -1247,6 +1247,30 @@ def _persist_collection_unit(
     )
 
 
+def persist_gmail_checkpoint_seed(
+    paths: ProjectPaths,
+    *,
+    prepared_batch: GmailAlertBatch,
+    collected_at: str,
+) -> Path:
+    seed_path = paths.gmail_runtime_dir / "_checkpoint-seeds" / f"{prepared_batch.ingestion_run_id}.json"
+    write_json_contract(
+        seed_path,
+        producer_component=LINKEDIN_SCRAPING_COMPONENT,
+        result="success",
+        payload={
+            "source_mode": SOURCE_MODE_GMAIL_JOB_ALERT,
+            "ingestion_run_id": prepared_batch.ingestion_run_id,
+            "mailbox_history_id_before": prepared_batch.mailbox_history_id_before,
+            "mailbox_history_id_after": prepared_batch.mailbox_history_id_after,
+            "poll_strategy": prepared_batch.poll_strategy,
+            "seeded_without_messages": True,
+        },
+        produced_at=collected_at,
+    )
+    return seed_path
+
+
 def _existing_collection_index(paths: ProjectPaths) -> dict[str, _ExistingCollectionMetadata]:
     index: dict[str, _ExistingCollectionMetadata] = {}
     for email_json_path in sorted(paths.gmail_runtime_dir.glob("*/email.json")):

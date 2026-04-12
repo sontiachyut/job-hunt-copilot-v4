@@ -1094,6 +1094,101 @@ def test_run_supervisor_cycle_polls_gmail_alerts_and_materializes_ready_postings
     assert control_state.gmail_poll_last_strategy == "history_checkpoint"
 
 
+def test_run_supervisor_cycle_seeds_gmail_history_checkpoint_without_collection_units(
+    tmp_path,
+):
+    project_root = bootstrap_project(tmp_path)
+    paths = ProjectPaths.from_root(project_root)
+    connection = connect_database(project_root / "job_hunt_copilot.db")
+    resume_agent(
+        connection,
+        manual_command="jhc-agent-start",
+        timestamp="2026-04-06T00:00:00Z",
+    )
+    gmail_collector = FakeGmailAlertCollector(
+        GmailAlertBatch(
+            ingestion_run_id="gmail-auto-20260406T000100Z",
+            messages=(),
+            mailbox_history_id_before=None,
+            mailbox_history_id_after="history-after-seed-001",
+            poll_strategy="history_checkpoint_seed",
+        )
+    )
+
+    execution = run_supervisor_cycle(
+        connection,
+        paths,
+        trigger_type="launchd_heartbeat",
+        scheduler_name="launchd",
+        started_at="2026-04-06T00:01:00Z",
+        action_dependencies=SupervisorActionDependencies(
+            gmail_alert_collector=gmail_collector,
+            local_timezone="UTC",
+        ),
+    )
+    control_state = read_agent_control_state(connection, timestamp="2026-04-06T00:01:00Z")
+    lead_count = int(connection.execute("SELECT COUNT(*) FROM linkedin_leads").fetchone()[0] or 0)
+    posting_count = int(connection.execute("SELECT COUNT(*) FROM job_postings").fetchone()[0] or 0)
+    connection.close()
+
+    seed_path = paths.gmail_runtime_dir / "_checkpoint-seeds" / "gmail-auto-20260406T000100Z.json"
+    assert execution.cycle.result == SUPERVISOR_CYCLE_RESULT_SUCCESS
+    assert execution.selected_work is not None
+    assert execution.selected_work.work_type == "gmail_alert_batch"
+    assert execution.selected_work.work_id == "gmail-auto-20260406T000100Z"
+    assert lead_count == 0
+    assert posting_count == 0
+    assert control_state.gmail_poll_last_history_id == "history-after-seed-001"
+    assert control_state.gmail_poll_last_checkpoint_at == "2026-04-06T00:01:00Z"
+    assert control_state.gmail_poll_last_strategy == "history_checkpoint_seed"
+    assert seed_path.exists()
+    seed_payload = json.loads(seed_path.read_text(encoding="utf-8"))
+    assert seed_payload["ingestion_run_id"] == "gmail-auto-20260406T000100Z"
+    assert seed_payload["mailbox_history_id_after"] == "history-after-seed-001"
+    assert seed_payload["seeded_without_messages"] is True
+
+
+def test_run_supervisor_cycle_ignores_empty_gmail_batch_without_checkpoint(
+    tmp_path,
+):
+    project_root = bootstrap_project(tmp_path)
+    paths = ProjectPaths.from_root(project_root)
+    connection = connect_database(project_root / "job_hunt_copilot.db")
+    resume_agent(
+        connection,
+        manual_command="jhc-agent-start",
+        timestamp="2026-04-06T00:00:00Z",
+    )
+    gmail_collector = FakeGmailAlertCollector(
+        GmailAlertBatch(
+            ingestion_run_id="gmail-auto-20260406T000100Z",
+            messages=(),
+            mailbox_history_id_before=None,
+            mailbox_history_id_after=None,
+            poll_strategy="recent_search_bootstrap",
+        )
+    )
+
+    execution = run_supervisor_cycle(
+        connection,
+        paths,
+        trigger_type="launchd_heartbeat",
+        scheduler_name="launchd",
+        started_at="2026-04-06T00:01:00Z",
+        action_dependencies=SupervisorActionDependencies(
+            gmail_alert_collector=gmail_collector,
+            local_timezone="UTC",
+        ),
+    )
+    incident_count = int(connection.execute("SELECT COUNT(*) FROM agent_incidents").fetchone()[0] or 0)
+    connection.close()
+
+    assert execution.cycle.result == "no_work"
+    assert execution.selected_work is None
+    assert incident_count == 0
+    assert not (paths.gmail_runtime_dir / "_checkpoint-seeds" / "gmail-auto-20260406T000100Z.json").exists()
+
+
 def test_run_supervisor_cycle_repairs_stale_blocked_gmail_lead(tmp_path, monkeypatch):
     project_root = bootstrap_project(tmp_path)
     paths = ProjectPaths.from_root(project_root)

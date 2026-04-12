@@ -2563,13 +2563,15 @@ def _select_gmail_alert_collection_work_unit(
     if prepared_batch is None:
         return None
     message_count = len(prepared_batch.messages)
-    if message_count == 0 and prepared_batch.mailbox_history_id_after:
-        return SupervisorWorkUnit(
-            work_type=WORK_TYPE_GMAIL_ALERT_BATCH,
-            work_id=prepared_batch.ingestion_run_id,
-            action_id=ACTION_POLL_GMAIL_LINKEDIN_ALERTS,
-            summary="Seed the Gmail mailbox history checkpoint for future incremental lead polling.",
-        )
+    if message_count == 0:
+        if prepared_batch.mailbox_history_id_after:
+            return SupervisorWorkUnit(
+                work_type=WORK_TYPE_GMAIL_ALERT_BATCH,
+                work_id=prepared_batch.ingestion_run_id,
+                action_id=ACTION_POLL_GMAIL_LINKEDIN_ALERTS,
+                summary="Seed the Gmail mailbox history checkpoint for future incremental lead polling.",
+            )
+        return None
     return SupervisorWorkUnit(
         work_type=WORK_TYPE_GMAIL_ALERT_BATCH,
         work_id=prepared_batch.ingestion_run_id,
@@ -3556,6 +3558,7 @@ def _execute_selected_work_unit(
             ingest_gmail_alert_batch_to_leads,
             materialize_gmail_lead_entities,
         )
+        from .gmail_alerts import persist_gmail_checkpoint_seed
 
         collector = _require_dependency(
             action_dependencies.gmail_alert_collector,
@@ -3589,6 +3592,11 @@ def _execute_selected_work_unit(
                     "Supervisor cannot seed a Gmail mailbox checkpoint from an empty batch "
                     f"without mailbox_history_id_after for ingestion_run_id {selected_work.work_id!r}."
                 )
+            persist_gmail_checkpoint_seed(
+                paths,
+                prepared_batch=prepared_batch,
+                collected_at=timestamp,
+            )
             upsert_control_values(
                 connection,
                 {
@@ -4338,13 +4346,21 @@ def _validate_selected_work_result(
                 continue
             if payload.get("ingestion_run_id") == selected_work.work_id:
                 matching_batches += 1
-        if matching_batches <= 0:
-            return (
-                "Supervisor Gmail polling completed without persisting any Gmail "
-                "collection units for ingestion_run_id "
-                f"{selected_work.work_id!r}."
-            )
-        return None
+        if matching_batches > 0:
+            return None
+        checkpoint_seed_path = paths.gmail_runtime_dir / "_checkpoint-seeds" / f"{selected_work.work_id}.json"
+        if checkpoint_seed_path.exists():
+            try:
+                payload = json.loads(checkpoint_seed_path.read_text(encoding="utf-8"))
+            except json.JSONDecodeError:
+                payload = None
+            if isinstance(payload, dict) and payload.get("ingestion_run_id") == selected_work.work_id:
+                return None
+        return (
+            "Supervisor Gmail polling completed without persisting any Gmail "
+            "collection units for ingestion_run_id "
+            f"{selected_work.work_id!r}."
+        )
 
     if catalog_entry.action_id == ACTION_REPAIR_STALE_GMAIL_LEAD:
         lead_row = connection.execute(
