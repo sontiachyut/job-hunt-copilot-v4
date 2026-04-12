@@ -3139,11 +3139,100 @@ def _impact_summary_line(context: RoleTargetedDraftContext) -> str:
     return proof_point.rstrip(".")
 
 
-def _experience_summary_line(context: RoleTargetedDraftContext) -> str:
-    summary = _normalize_optional_text(context.fit_summary)
-    if summary is not None:
-        return f"3+ years across {summary}"
-    return "3+ years building backend and distributed systems"
+def _snippet_focus_phrase(context: RoleTargetedDraftContext) -> str:
+    role_theme = _compose_role_targeted_role_theme(context)
+    technical_focus = _compose_role_targeted_technical_focus(context, role_theme)
+    focus = _normalize_optional_text(technical_focus) or role_theme
+    lowered_focus = focus.lower()
+    lowered_role = context.role_title.lower()
+
+    if any(token in lowered_focus for token in ("security", "government", "intel federal")):
+        return "secure infrastructure and enterprise security systems"
+    if any(token in lowered_focus for token in ("scheduler", "scheduling", "real-time")):
+        return "real-time scheduling and production systems"
+    if any(token in lowered_focus for token in ("rest api", "restful", "webapi", "swagger", "postman", "microservice")):
+        return "backend services and APIs"
+    if "full stack" in lowered_role:
+        return "full-stack services and backend APIs"
+    if "ai" in lowered_focus and any(
+        token in lowered_focus for token in ("backend", "distributed", "platform", "data")
+    ):
+        return "AI platform and backend systems"
+    if "ai" in lowered_focus:
+        return "production AI and data systems"
+    if "backend" in lowered_focus and "distributed" in lowered_focus:
+        return "backend and distributed systems"
+    if any(token in lowered_focus for token in ("cloud", "platform", "infrastructure")):
+        return "cloud-based production systems"
+    if len(focus.split()) <= 8 and " " in focus:
+        return focus
+    return role_theme
+
+
+def _snippet_focus_preposition(focus: str) -> str:
+    lowered = focus.lower()
+    if "," in focus:
+        return "with"
+    if any(
+        lowered.startswith(prefix)
+        for prefix in (
+            "java",
+            "python",
+            "scala",
+            "kotlin",
+            "c#",
+            ".net",
+            "aws",
+            "azure",
+            "gcp",
+            "spring",
+            "angular",
+            "react",
+            "restful",
+            "backend services and apis",
+            "full-stack services and backend apis",
+        )
+    ):
+        return "with"
+    return "in"
+
+
+def _snippet_proof_fragment(context: RoleTargetedDraftContext) -> str | None:
+    proof = _normalize_optional_text(context.proof_point)
+    if proof is None:
+        return None
+    candidate = proof.rstrip(".")
+    candidate = re.sub(
+        r"\band automating high-volume clinical data flows that powered\b",
+        "supporting",
+        candidate,
+        flags=re.IGNORECASE,
+    )
+    candidate = re.sub(r"\s+", " ", candidate).strip(" ,.;")
+    first_word, _, remainder = candidate.partition(" ")
+    gerund = ROLE_SIGNAL_VERB_PREFIXES.get(first_word.lower())
+    if gerund is None:
+        gerund = {
+            "built": "building",
+            "designed": "designing",
+            "developed": "developing",
+            "implemented": "implementing",
+            "optimized": "optimizing",
+            "led": "leading",
+            "created": "creating",
+            "improved": "improving",
+            "shipped": "shipping",
+            "migrated": "migrating",
+            "automated": "automating",
+            "scaled": "scaling",
+            "owned": "owning",
+            "processed": "processing",
+            "ran": "running",
+            "delivered": "delivering",
+        }.get(first_word.lower())
+    if gerund is not None:
+        candidate = f"{gerund} {remainder}".strip()
+    return candidate or None
 
 
 def _snippet_intro_sentence(context: RoleTargetedDraftContext) -> str:
@@ -3159,15 +3248,26 @@ def _snippet_intro_sentence(context: RoleTargetedDraftContext) -> str:
 
 
 def _snippet_background_sentence(context: RoleTargetedDraftContext) -> str:
-    experience = _experience_summary_line(context)
-    if context.recipient_type in {RECIPIENT_TYPE_HIRING_MANAGER, RECIPIENT_TYPE_ENGINEER}:
-        return f"His background includes {experience}."
-    return f"He has {experience}."
-
-
-def _snippet_proof_sentence(context: RoleTargetedDraftContext) -> str:
-    impact = _impact_summary_line(context)
-    return f"One relevant example: {impact}."
+    focus = _snippet_focus_phrase(context)
+    preposition = _snippet_focus_preposition(focus)
+    proof_fragment = _snippet_proof_fragment(context)
+    if context.recipient_type in {
+        RECIPIENT_TYPE_HIRING_MANAGER,
+        RECIPIENT_TYPE_ENGINEER,
+        RECIPIENT_TYPE_FOUNDER,
+    }:
+        if preposition == "with":
+            prefix = "His background includes work with"
+        else:
+            prefix = "His background is in"
+    else:
+        if preposition == "with":
+            prefix = "He has experience with"
+        else:
+            prefix = "He has experience in"
+    if proof_fragment is not None:
+        return f"{prefix} {focus}, including {proof_fragment}."
+    return f"{prefix} {focus}."
 
 
 def _role_work_area_phrase(value: str | None) -> str:
@@ -3566,7 +3666,6 @@ def _render_forwardable_snippet_text(context: RoleTargetedDraftContext) -> str:
         [
             _snippet_intro_sentence(context),
             _snippet_background_sentence(context),
-            _snippet_proof_sentence(context),
             f"Profile: {linkedin}",
         ]
     )

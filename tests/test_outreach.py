@@ -1063,9 +1063,8 @@ def test_role_targeted_draft_batch_persists_messages_artifacts_and_transitions(t
         "Hi, sharing a candidate who may be relevant for the Staff Software Engineer / AI role at Acme Robotics."
         in recruiter_body
     )
-    assert "He has 3+ years across Python, Spark, AWS, Kubernetes." in recruiter_body
     assert (
-        "One relevant example: Built distributed Python and Scala data services processing 50M+ daily HL7 records at roughly 580 TPS for real-time analytics."
+        "He has experience in AI platform and backend systems, including building distributed Python and Scala data services processing 50M+ daily HL7 records at roughly 580 TPS for real-time analytics."
         in recruiter_body
     )
     assert "Profile: www.linkedin.com/in/asonti" in recruiter_body
@@ -1100,7 +1099,10 @@ def test_role_targeted_draft_batch_persists_messages_artifacts_and_transitions(t
         "Hi, passing along a candidate who may be worth a look for the Staff Software Engineer / AI role at Acme Robotics."
         in manager_body
     )
-    assert "His background includes 3+ years across Python, Spark, AWS, Kubernetes." in manager_body
+    assert (
+        "His background is in AI platform and backend systems, including building distributed Python and Scala data services processing 50M+ daily HL7 records at roughly 580 TPS for real-time analytics."
+        in manager_body
+    )
 
     send_result_payload = json.loads(
         Path(recruiter_message.send_result_artifact_path).read_text(encoding="utf-8")
