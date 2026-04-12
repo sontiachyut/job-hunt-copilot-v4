@@ -107,12 +107,17 @@ ROLE_SIGNAL_BOILERPLATE_PATTERNS: tuple[re.Pattern[str], ...] = (
     re.compile(r"\bthe company\b", re.IGNORECASE),
     re.compile(r"\bour benefits\b", re.IGNORECASE),
     re.compile(r"\bcommitment to diversity\b", re.IGNORECASE),
+    re.compile(r"\bjoin our team\b", re.IGNORECASE),
+    re.compile(r"\bthis role is ideal for\b", re.IGNORECASE),
+    re.compile(r"\beager to learn\b", re.IGNORECASE),
 )
 ROLE_SIGNAL_NONTECHNICAL_PATTERNS: tuple[re.Pattern[str], ...] = (
+    re.compile(r"^seeking an? .+ to join our team", re.IGNORECASE),
     re.compile(
         r"^contribute to design of new functionality and expand existing functionality$",
         re.IGNORECASE,
     ),
+    re.compile(r"^you will help build and drive solutions", re.IGNORECASE),
     re.compile(r"^communicat", re.IGNORECASE),
     re.compile(r"^manage (?:a number of )?projects?", re.IGNORECASE),
     re.compile(r"^learn and become proficient", re.IGNORECASE),
@@ -128,18 +133,23 @@ ROLE_SIGNAL_NONTECHNICAL_PATTERNS: tuple[re.Pattern[str], ...] = (
 ROLE_SIGNAL_TECHNICAL_PRIORITY_PATTERNS: tuple[tuple[re.Pattern[str], int], ...] = (
     (re.compile(r"\b(?:rest apis?|microservices?)\b", re.IGNORECASE), 10),
     (re.compile(r"\b(?:high-throughput|enterprise-scale|payment systems?)\b", re.IGNORECASE), 9),
+    (re.compile(r"\b(?:webapi|restful services?|swagger|postman)\b", re.IGNORECASE), 9),
+    (re.compile(r"\b(?:web-based client-server|client-server applications?)\b", re.IGNORECASE), 8),
     (re.compile(r"\b(?:distributed|event-driven|backend)\b", re.IGNORECASE), 8),
     (re.compile(r"\b(?:spring boot|jakarta ee)\b", re.IGNORECASE), 7),
+    (re.compile(r"\b(?:\.net(?: framework| core)?|asp\.net|c#)\b", re.IGNORECASE), 6),
+    (re.compile(r"\b(?:sql server|mongodb|postgresql|mysql|relational databases?)\b", re.IGNORECASE), 6),
     (re.compile(r"\b(?:aws|gcp|azure|cloud|ci/cd|jenkins|circleci|github actions)\b", re.IGNORECASE), 6),
+    (re.compile(r"\b(?:docker|kubernetes)\b", re.IGNORECASE), 6),
     (re.compile(r"\b(?:concurrency|stream processing|relational databases?)\b", re.IGNORECASE), 5),
     (re.compile(r"\b(?:java(?:\s*17\+?)?|python|scala|golang|go|c\+\+|c#)\b", re.IGNORECASE), 5),
     (re.compile(r"\b(?:object-oriented design|design patterns?)\b", re.IGNORECASE), 4),
     (re.compile(r"\b(?:security|real-time|scheduling|metadata|documents?|platform|infrastructure)\b", re.IGNORECASE), 4),
 )
 ROLE_SIGNAL_SOURCE_PRIORITY: dict[str, int] = {
-    "role_intent": 2,
+    "role_intent": 1,
     "must_have": 4,
-    "core_responsibility": 3,
+    "core_responsibility": 5,
     "nice_to_have": 2,
     "jd_fallback": 1,
 }
@@ -161,6 +171,8 @@ ROLE_SIGNAL_LEADING_CASE_EXCEPTIONS: frozenset[str] = frozenset(
 )
 ROLE_TARGETED_DRAFT_BLOCK_PATTERNS: tuple[re.Pattern[str], ...] = (
     re.compile(r"\bwork around identifies\b", re.IGNORECASE),
+    re.compile(r"\brole's focus on seeking\b", re.IGNORECASE),
+    re.compile(r"\brole's focus on basic understanding of\b", re.IGNORECASE),
     re.compile(r"\brole's focus on (?:contribute|communicat|manage|learn)\b", re.IGNORECASE),
     re.compile(r"\byour role as .+ seems close to\b", re.IGNORECASE),
     re.compile(r"\bteam behind this role\b", re.IGNORECASE),
@@ -2854,6 +2866,11 @@ def _select_role_work_area(
 def _clean_role_signal(value: str) -> str | None:
     cleaned = re.sub(r"\s+", " ", value.strip().rstrip("."))
     cleaned = re.sub(
+        r"^[A-Za-z][A-Za-z0-9 &/()+.\-]{0,40}:\s+",
+        "",
+        cleaned,
+    )
+    cleaned = re.sub(
         r"^\d+\+?(?:\s*[-–]\s*\d+)?\s+years?\s+of\s+"
         r"(?:(?:professional|hands-on)\s+)*experience(?:\s+(?:with|in|building))?\s+",
         "",
@@ -2873,7 +2890,7 @@ def _clean_role_signal(value: str) -> str | None:
         flags=re.IGNORECASE,
     )
     cleaned = re.sub(
-        r"^(?:strong proficiency in|solid understanding of|hands-on experience with|proficiency in|understanding of)\s+",
+        r"^(?:strong proficiency in|solid understanding of|hands-on experience with|proficiency in|understanding of|basic understanding of|basic knowledge of|working knowledge of|knowledge of|familiarity with)\s+",
         "",
         cleaned,
         flags=re.IGNORECASE,
@@ -2916,7 +2933,7 @@ def _score_role_signal_for_opener(
     if technical_score <= 0:
         return 0
     evidence_score = _score_jd_signal_evidence_overlap(raw_signal, step_4_payload)
-    return technical_score * 100 + ROLE_SIGNAL_SOURCE_PRIORITY.get(source_kind, 0) * 10 + evidence_score
+    return technical_score * 100 + ROLE_SIGNAL_SOURCE_PRIORITY.get(source_kind, 0) * 10 + evidence_score * 5
 
 
 def _score_jd_signal_evidence_overlap(

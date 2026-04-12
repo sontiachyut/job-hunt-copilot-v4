@@ -1699,6 +1699,211 @@ def test_role_targeted_composition_prefers_technical_jd_signals_over_generic_res
     connection.close()
 
 
+def test_role_targeted_composition_filters_generic_join_our_team_role_intro(
+    tmp_path: Path,
+):
+    project_root, paths = bootstrap_project(tmp_path)
+    connection = connect_database(project_root / "job_hunt_copilot.db")
+    write_sender_profile(paths)
+    seed_posting(
+        connection,
+        company_name="Valore Partners",
+        role_title="Software Engineer",
+    )
+    seed_linked_contact(
+        connection,
+        contact_id="ct_valore",
+        job_posting_contact_id="jpc_valore",
+        display_name="Paul Example",
+        recipient_type=RECIPIENT_TYPE_ENGINEER,
+        current_working_email="paul@valore.example",
+        created_at="2026-04-06T20:01:00Z",
+    )
+    connection.execute(
+        "UPDATE contacts SET position_title = ? WHERE contact_id = ?",
+        ("Sr. Software Engineer", "ct_valore"),
+    )
+    connection.commit()
+    seed_approved_tailoring_run(
+        connection,
+        paths,
+        company_name="Valore Partners",
+        role_title="Software Engineer",
+    )
+    paths.tailoring_step_3_jd_signals_path(
+        "Valore Partners",
+        "Software Engineer",
+    ).write_text(
+        yaml.safe_dump(
+            {
+                "job_posting_id": "jp_outreach",
+                "resume_tailoring_run_id": "rtr_outreach",
+                "status": "generated",
+                "role_intent_summary": (
+                    "Seeking a Software Engineer to join our team; you will help build and drive solutions "
+                    "in a team member capacity, solving complex business problems, using some of the newest "
+                    "technologies available."
+                ),
+                "signals_by_priority": {
+                    "must_have": [],
+                    "core_responsibility": [
+                        {
+                            "signal": "Design, develop, and test secure, high-performing, web-based client-server applications with an emphasis on user experience and quality"
+                        },
+                        {
+                            "signal": "API Development & Testing: RESTful services, Swagger, Postman"
+                        },
+                    ],
+                    "nice_to_have": [],
+                    "informational": [],
+                },
+                "signals": [],
+            },
+            sort_keys=False,
+        ),
+        encoding="utf-8",
+    )
+    paths.tailoring_step_4_evidence_map_path(
+        "Valore Partners",
+        "Software Engineer",
+    ).write_text(
+        yaml.safe_dump(
+            {
+                "matches": [
+                    {
+                        "jd_signal": "API Development & Testing: RESTful services, Swagger, Postman",
+                        "confidence": "high",
+                        "source_excerpt": "The optimizer engine and backend APIs in Golang and Java",
+                    },
+                    {
+                        "jd_signal": "API Development & Testing: RESTful services, Swagger, Postman",
+                        "confidence": "high",
+                        "source_excerpt": "Built backend APIs in Golang and Java for production services",
+                    },
+                ]
+            },
+            sort_keys=False,
+        ),
+        encoding="utf-8",
+    )
+
+    result = generate_role_targeted_send_set_drafts(
+        connection,
+        project_root=project_root,
+        job_posting_id="jp_outreach",
+        current_time="2026-04-06T20:30:00Z",
+        local_timezone=ZoneInfo("UTC"),
+    )
+
+    body_text = Path(result.drafted_messages[0].body_text_artifact_path).read_text(encoding="utf-8")
+    assert "role's focus on RESTful services, Swagger, Postman" in body_text
+    assert "role's focus on seeking a Software Engineer to join our team" not in body_text
+
+    connection.close()
+
+
+def test_role_targeted_composition_strips_weak_requirement_prefixes_from_opener_hooks(
+    tmp_path: Path,
+):
+    project_root, paths = bootstrap_project(tmp_path)
+    connection = connect_database(project_root / "job_hunt_copilot.db")
+    write_sender_profile(paths)
+    seed_posting(
+        connection,
+        company_name="Universal Background Screening",
+        role_title="Jr Software Engineer (Remote Available)",
+    )
+    seed_linked_contact(
+        connection,
+        contact_id="ct_universal",
+        job_posting_contact_id="jpc_universal",
+        display_name="Francisco Example",
+        recipient_type=RECIPIENT_TYPE_ENGINEER,
+        current_working_email="francisco@universal.example",
+        created_at="2026-04-06T20:01:00Z",
+    )
+    connection.execute(
+        "UPDATE contacts SET position_title = ? WHERE contact_id = ?",
+        ("Senior Software Engineer", "ct_universal"),
+    )
+    connection.commit()
+    seed_approved_tailoring_run(
+        connection,
+        paths,
+        company_name="Universal Background Screening",
+        role_title="Jr Software Engineer (Remote Available)",
+    )
+    paths.tailoring_step_3_jd_signals_path(
+        "Universal Background Screening",
+        "Jr Software Engineer (Remote Available)",
+    ).write_text(
+        yaml.safe_dump(
+            {
+                "job_posting_id": "jp_outreach",
+                "resume_tailoring_run_id": "rtr_outreach",
+                "status": "generated",
+                "role_intent_summary": (
+                    "The Junior Software Engineer supports the development and maintenance of software applications."
+                ),
+                "signals_by_priority": {
+                    "must_have": [
+                        {
+                            "signal": "Basic understanding of cloud platforms (AWS or Azure)"
+                        },
+                    ],
+                    "core_responsibility": [
+                        {
+                            "signal": "Support cloud-based applications and services on AWS or Azure platforms"
+                        },
+                    ],
+                    "nice_to_have": [],
+                    "informational": [],
+                },
+                "signals": [],
+            },
+            sort_keys=False,
+        ),
+        encoding="utf-8",
+    )
+    paths.tailoring_step_4_evidence_map_path(
+        "Universal Background Screening",
+        "Jr Software Engineer (Remote Available)",
+    ).write_text(
+        yaml.safe_dump(
+            {
+                "matches": [
+                    {
+                        "jd_signal": "Support cloud-based applications and services on AWS or Azure platforms",
+                        "confidence": "high",
+                        "source_excerpt": "Built distributed, high-availability data services in Python and Scala on AWS (EMR, S3)",
+                    },
+                    {
+                        "jd_signal": "Support cloud-based applications and services on AWS or Azure platforms",
+                        "confidence": "high",
+                        "source_excerpt": "Optimized Apache Spark jobs on AWS EMR and improved throughput by 50%",
+                    },
+                ]
+            },
+            sort_keys=False,
+        ),
+        encoding="utf-8",
+    )
+
+    result = generate_role_targeted_send_set_drafts(
+        connection,
+        project_root=project_root,
+        job_posting_id="jp_outreach",
+        current_time="2026-04-06T20:30:00Z",
+        local_timezone=ZoneInfo("UTC"),
+    )
+
+    body_text = Path(result.drafted_messages[0].body_text_artifact_path).read_text(encoding="utf-8")
+    assert "role's focus on supporting cloud-based applications and services on AWS or Azure platforms" in body_text
+    assert "role's focus on basic understanding of cloud platforms" not in body_text
+
+    connection.close()
+
+
 def test_role_targeted_composition_does_not_overclassify_generic_backend_roles_as_security(
     tmp_path: Path,
 ):
