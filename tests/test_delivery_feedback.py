@@ -223,8 +223,8 @@ def test_gmail_mailbox_feedback_observer_detects_real_bounce_formats(tmp_path: P
                     "body": {
                         "data": gmail_api_body(
                             "** Address not found **\n\n"
-                            "Your message wasn't delivered to brittany.grey@addisongroup.com because the address couldn't be found.\n\n"
-                            "Final-Recipient: rfc822; brittany.grey@addisongroup.com\n"
+                            "Your message wasn't delivered to brittany.grey@addisongroup.example because the address couldn't be found.\n\n"
+                            "Final-Recipient: rfc822; brittany.grey@addisongroup.example\n"
                             "Action: failed\n"
                             "Status: 5.4.1\n"
                         )
@@ -269,7 +269,7 @@ def test_gmail_mailbox_feedback_observer_detects_real_bounce_formats(tmp_path: P
                 job_posting_id="jp_feedback",
                 lead_id="ld_feedback",
                 outreach_mode="role_targeted",
-                recipient_email="brittany.grey@addisongroup.com",
+                recipient_email="brittany.grey@addisongroup.example",
                 thread_id="outbound-thread-001",
                 delivery_tracking_id="outbound-msg-001",
                 sent_at="2026-04-11T18:47:44Z",
@@ -288,7 +288,7 @@ def test_gmail_mailbox_feedback_observer_detects_real_bounce_formats(tmp_path: P
     assert len(signals) == 1
     signal = signals[0]
     assert signal.signal_type == EVENT_STATE_BOUNCED
-    assert signal.recipient_email == "brittany.grey@addisongroup.com"
+    assert signal.recipient_email == "brittany.grey@addisongroup.example"
     assert signal.provider_message_id == "gmail-bounce-001"
 
 
