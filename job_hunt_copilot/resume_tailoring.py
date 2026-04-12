@@ -1959,10 +1959,10 @@ def _apply_tailoring_review_outcome(
                 "blocking_contact_ids": [],
                 "repeat_outreach_review_contact_ids": [],
                 "repeat_outreach_review_contacts": [],
-                "company_pacing": {
+                "posting_pacing": {
                     "daily_send_cap": 3,
-                    "company_sent_today": 0,
-                    "remaining_company_daily_capacity": 3,
+                    "posting_sent_today": 0,
+                    "remaining_posting_daily_capacity": 3,
                     "global_gap_minutes": 6,
                     "earliest_allowed_send_at": now_utc_iso(),
                     "pacing_allowed_now": True,
@@ -2858,10 +2858,10 @@ def record_tailoring_review_override(
             "blocking_contact_ids": [],
             "repeat_outreach_review_contact_ids": [],
             "repeat_outreach_review_contacts": [],
-            "company_pacing": {
+            "posting_pacing": {
                 "daily_send_cap": 3,
-                "company_sent_today": 0,
-                "remaining_company_daily_capacity": 3,
+                "posting_sent_today": 0,
+                "remaining_posting_daily_capacity": 3,
                 "global_gap_minutes": 6,
                 "earliest_allowed_send_at": now_utc_iso(),
                 "pacing_allowed_now": True,

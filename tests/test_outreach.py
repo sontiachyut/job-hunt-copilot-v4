@@ -826,7 +826,7 @@ def test_send_set_excludes_repeat_outreach_and_uses_next_best_contact(tmp_path: 
     connection.close()
 
 
-def test_send_set_pacing_reports_global_gap_and_company_daily_cap(tmp_path: Path):
+def test_send_set_pacing_reports_global_gap_and_posting_daily_cap(tmp_path: Path):
     project_root, _ = bootstrap_project(tmp_path)
     connection = connect_database(project_root / "job_hunt_copilot.db")
     seed_posting(connection)
@@ -874,8 +874,8 @@ def test_send_set_pacing_reports_global_gap_and_company_daily_cap(tmp_path: Path
         local_timezone=ZoneInfo("UTC"),
     )
 
-    assert gap_plan.company_sent_today == 1
-    assert gap_plan.remaining_company_daily_capacity == 2
+    assert gap_plan.posting_sent_today == 1
+    assert gap_plan.remaining_posting_daily_capacity == 2
     assert gap_plan.global_gap_minutes in {6, 7, 8, 9, 10}
     assert gap_plan.pacing_allowed_now is False
     assert gap_plan.pacing_block_reason == "global_inter_send_gap"
@@ -922,10 +922,10 @@ def test_send_set_pacing_reports_global_gap_and_company_daily_cap(tmp_path: Path
         local_timezone=ZoneInfo("UTC"),
     )
 
-    assert cap_plan.company_sent_today == 3
-    assert cap_plan.remaining_company_daily_capacity == 0
+    assert cap_plan.posting_sent_today == 3
+    assert cap_plan.remaining_posting_daily_capacity == 0
     assert cap_plan.pacing_allowed_now is False
-    assert cap_plan.pacing_block_reason == "company_daily_cap"
+    assert cap_plan.pacing_block_reason == "posting_daily_cap"
     assert cap_plan.earliest_allowed_send_at == "2026-04-07T00:00:00Z"
 
     connection.close()

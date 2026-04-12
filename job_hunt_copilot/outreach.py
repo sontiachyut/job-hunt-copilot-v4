@@ -48,7 +48,7 @@ RECIPIENT_TYPE_OTHER_INTERNAL = "other_internal"
 RECIPIENT_TYPE_FOUNDER = "founder"
 
 AUTOMATIC_SEND_SET_LIMIT = 3
-AUTOMATIC_COMPANY_DAILY_SEND_CAP = 3
+AUTOMATIC_POSTING_DAILY_SEND_CAP = 3
 MIN_INTER_SEND_GAP_MINUTES = 6
 MAX_INTER_SEND_GAP_MINUTES = 10
 JOB_HUNT_COPILOT_REPO_URL = "https://github.com/sontiachyut/job-hunt-copilot-v4"
@@ -277,8 +277,8 @@ class RoleTargetedSendSetPlan:
     repeat_outreach_review_contacts: tuple[RepeatOutreachReviewContact, ...]
     max_send_set_size: int
     current_send_set_size: int
-    company_sent_today: int
-    remaining_company_daily_capacity: int
+    posting_sent_today: int
+    remaining_posting_daily_capacity: int
     global_gap_minutes: int
     earliest_allowed_send_at: str
     pacing_allowed_now: bool
@@ -307,10 +307,10 @@ class RoleTargetedSendSetPlan:
             "repeat_outreach_review_contacts": [
                 contact.as_dict() for contact in self.repeat_outreach_review_contacts
             ],
-            "company_pacing": {
-                "daily_send_cap": AUTOMATIC_COMPANY_DAILY_SEND_CAP,
-                "company_sent_today": self.company_sent_today,
-                "remaining_company_daily_capacity": self.remaining_company_daily_capacity,
+            "posting_pacing": {
+                "daily_send_cap": AUTOMATIC_POSTING_DAILY_SEND_CAP,
+                "posting_sent_today": self.posting_sent_today,
+                "remaining_posting_daily_capacity": self.remaining_posting_daily_capacity,
                 "global_gap_minutes": self.global_gap_minutes,
                 "earliest_allowed_send_at": self.earliest_allowed_send_at,
                 "pacing_allowed_now": self.pacing_allowed_now,
@@ -804,15 +804,15 @@ def evaluate_role_targeted_send_set(
 
     current_dt = _parse_iso_datetime(current_time)
     resolved_timezone = _resolve_local_timezone(current_dt, local_timezone)
-    company_sent_today = _count_company_sends_today(
+    posting_sent_today = _count_posting_sends_today(
         connection,
-        company_name=str(posting_row["company_name"]),
+        job_posting_id=str(posting_row["job_posting_id"]),
         current_dt=current_dt,
         local_timezone=resolved_timezone,
     )
-    remaining_company_daily_capacity = max(
+    remaining_posting_daily_capacity = max(
         0,
-        AUTOMATIC_COMPANY_DAILY_SEND_CAP - company_sent_today,
+        AUTOMATIC_POSTING_DAILY_SEND_CAP - posting_sent_today,
     )
     global_gap_minutes = _determine_global_gap_minutes(
         job_posting_id=job_posting_id,
@@ -824,9 +824,9 @@ def evaluate_role_targeted_send_set(
         connection,
         current_dt=current_dt,
         local_timezone=resolved_timezone,
-        company_name=str(posting_row["company_name"]),
-        company_sent_today=company_sent_today,
-        remaining_company_daily_capacity=remaining_company_daily_capacity,
+        job_posting_id=str(posting_row["job_posting_id"]),
+        posting_sent_today=posting_sent_today,
+        remaining_posting_daily_capacity=remaining_posting_daily_capacity,
         global_gap_minutes=global_gap_minutes,
     )
 
@@ -845,8 +845,8 @@ def evaluate_role_targeted_send_set(
         repeat_outreach_review_contacts=repeat_review_contacts,
         max_send_set_size=AUTOMATIC_SEND_SET_LIMIT,
         current_send_set_size=len(selected_contacts),
-        company_sent_today=company_sent_today,
-        remaining_company_daily_capacity=remaining_company_daily_capacity,
+        posting_sent_today=posting_sent_today,
+        remaining_posting_daily_capacity=remaining_posting_daily_capacity,
         global_gap_minutes=global_gap_minutes,
         earliest_allowed_send_at=pacing["earliest_allowed_send_at"],
         pacing_allowed_now=pacing["pacing_allowed_now"],
@@ -1007,33 +1007,27 @@ def _fallback_type_rank(recipient_type: str) -> int:
         return len(SEND_SET_FALLBACK_TYPE_ORDER)
 
 
-def _count_company_sends_today(
+def _count_posting_sends_today(
     connection: sqlite3.Connection,
     *,
-    company_name: str,
+    job_posting_id: str,
     current_dt: datetime,
     local_timezone: tzinfo,
 ) -> int:
     rows = connection.execute(
         """
-        SELECT om.sent_at, jp.company_name AS posting_company_name, c.company_name AS contact_company_name
+        SELECT om.sent_at
         FROM outreach_messages om
-        LEFT JOIN job_postings jp
-          ON jp.job_posting_id = om.job_posting_id
-        LEFT JOIN contacts c
-          ON c.contact_id = om.contact_id
         WHERE om.sent_at IS NOT NULL
           AND TRIM(om.sent_at) <> ''
+          AND om.job_posting_id = ?
         """
+        ,
+        (job_posting_id,),
     ).fetchall()
     current_local_day = current_dt.astimezone(local_timezone).date()
     send_count = 0
     for row in rows:
-        row_company_name = _normalize_optional_text(row["posting_company_name"]) or _normalize_optional_text(
-            row["contact_company_name"]
-        )
-        if row_company_name != company_name:
-            continue
         sent_at = _normalize_optional_text(row["sent_at"])
         if sent_at is None:
             continue
@@ -1066,19 +1060,19 @@ def _build_pacing_plan(
     *,
     current_dt: datetime,
     local_timezone: tzinfo,
-    company_name: str,
-    company_sent_today: int,
-    remaining_company_daily_capacity: int,
+    job_posting_id: str,
+    posting_sent_today: int,
+    remaining_posting_daily_capacity: int,
     global_gap_minutes: int,
 ) -> dict[str, Any]:
     constraint_times = [current_dt]
     pacing_block_reason: str | None = None
 
-    if remaining_company_daily_capacity <= 0 or company_sent_today >= AUTOMATIC_COMPANY_DAILY_SEND_CAP:
+    if remaining_posting_daily_capacity <= 0 or posting_sent_today >= AUTOMATIC_POSTING_DAILY_SEND_CAP:
         next_day = current_dt.astimezone(local_timezone).date() + timedelta(days=1)
-        company_window_start = datetime.combine(next_day, time.min, tzinfo=local_timezone).astimezone(UTC)
-        constraint_times.append(company_window_start)
-        pacing_block_reason = "company_daily_cap"
+        posting_window_start = datetime.combine(next_day, time.min, tzinfo=local_timezone).astimezone(UTC)
+        constraint_times.append(posting_window_start)
+        pacing_block_reason = "posting_daily_cap"
 
     latest_sent_at = _load_latest_sent_at(connection)
     if latest_sent_at is not None:
@@ -1092,7 +1086,7 @@ def _build_pacing_plan(
         "earliest_allowed_send_at": _isoformat_utc(earliest_allowed_send_at),
         "pacing_allowed_now": earliest_allowed_send_at <= current_dt,
         "pacing_block_reason": pacing_block_reason,
-        "company_name": company_name,
+        "job_posting_id": job_posting_id,
     }
 
 
@@ -1884,23 +1878,23 @@ def _build_role_targeted_send_pacing_plan(
     local_timezone: tzinfo,
     global_gap_minutes: int,
 ) -> dict[str, Any]:
-    company_sent_today = _count_company_sends_today(
+    posting_sent_today = _count_posting_sends_today(
         connection,
-        company_name=str(posting_row["company_name"]),
+        job_posting_id=str(posting_row["job_posting_id"]),
         current_dt=current_dt,
         local_timezone=local_timezone,
     )
-    remaining_company_daily_capacity = max(
+    remaining_posting_daily_capacity = max(
         0,
-        AUTOMATIC_COMPANY_DAILY_SEND_CAP - company_sent_today,
+        AUTOMATIC_POSTING_DAILY_SEND_CAP - posting_sent_today,
     )
     return _build_pacing_plan(
         connection,
         current_dt=current_dt,
         local_timezone=local_timezone,
-        company_name=str(posting_row["company_name"]),
-        company_sent_today=company_sent_today,
-        remaining_company_daily_capacity=remaining_company_daily_capacity,
+        job_posting_id=str(posting_row["job_posting_id"]),
+        posting_sent_today=posting_sent_today,
+        remaining_posting_daily_capacity=remaining_posting_daily_capacity,
         global_gap_minutes=global_gap_minutes,
     )
 
