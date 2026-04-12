@@ -550,22 +550,32 @@ def test_apollo_people_search_persists_broad_result_and_shortlists_only_selected
     assert payload["resolved_company"]["organization_id"] == "org_acme"
     assert payload["search_anchor"] == "organization_id"
     assert payload["candidate_count"] == 9
-    assert len(payload["shortlisted_contact_ids"]) == 6
+    assert len(payload["shortlisted_contact_ids"]) == 9
 
     shortlist_candidates = [candidate for candidate in payload["candidates"] if candidate.get("contact_id")]
     shortlist_provider_ids = {candidate["provider_person_id"] for candidate in shortlist_candidates}
-    assert shortlist_provider_ids == {"pp_r1", "pp_r2", "pp_m1", "pp_m2", "pp_e1", "pp_e2"}
+    assert shortlist_provider_ids == {
+        "pp_r1",
+        "pp_r2",
+        "pp_r3",
+        "pp_m1",
+        "pp_m2",
+        "pp_m3",
+        "pp_e1",
+        "pp_e2",
+        "pp_o1",
+    }
 
     sparse_candidate = next(candidate for candidate in payload["candidates"] if candidate["provider_person_id"] == "pp_r1")
     assert sparse_candidate["display_name"] == "Isaiah Lo***e"
     assert sparse_candidate["full_name"] is None
     assert sparse_candidate["name_quality"] == "provider_obfuscated"
 
-    assert connection.execute("SELECT COUNT(*) FROM contacts").fetchone()[0] == 6
-    assert connection.execute("SELECT COUNT(*) FROM job_posting_contacts").fetchone()[0] == 6
+    assert connection.execute("SELECT COUNT(*) FROM contacts").fetchone()[0] == 9
+    assert connection.execute("SELECT COUNT(*) FROM job_posting_contacts").fetchone()[0] == 9
     assert connection.execute(
         "SELECT COUNT(*) FROM contacts WHERE provider_person_id = 'pp_o1'"
-    ).fetchone()[0] == 0
+    ).fetchone()[0] == 1
 
     recipient_counts = {
         row["recipient_type"]: row["count"]
@@ -579,8 +589,8 @@ def test_apollo_people_search_persists_broad_result_and_shortlists_only_selected
     }
     assert recipient_counts == {
         RECIPIENT_TYPE_ENGINEER: 2,
-        RECIPIENT_TYPE_HIRING_MANAGER: 2,
-        RECIPIENT_TYPE_RECRUITER: 2,
+        RECIPIENT_TYPE_HIRING_MANAGER: 4,
+        RECIPIENT_TYPE_RECRUITER: 3,
     }
     assert all(
         row["link_level_status"] == POSTING_CONTACT_STATUS_SHORTLISTED
@@ -935,8 +945,7 @@ def test_apollo_contact_enrichment_only_runs_for_shortlisted_contacts_and_persis
         recipient_profile_extractor=profile_extractor,
     )
 
-    assert set(call["provider_person_id"] for call in enrichment_provider.calls) == {"pp_r1", "pp_m1"}
-    assert all(call["provider_person_id"] != "pp_o1" for call in enrichment_provider.calls)
+    assert set(call["provider_person_id"] for call in enrichment_provider.calls) == {"pp_r1", "pp_m1", "pp_o1"}
 
     isaiah_row = connection.execute(
         """
