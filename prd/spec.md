@@ -518,6 +518,7 @@ This is the agreed vocabulary for design discussions.
   7. `outreach_in_progress`
   8. `completed`
   9. `abandoned`
+  10. `closed_by_user`
   These values summarize posting-level lifecycle only. Detailed contact, discovery, draft/send, and delivery progress shall remain in their own linked records.
 - **FR-SYS-17B (No-Contact Ready State):** If a `job_posting` has cleared tailoring and mandatory agent review but does not yet have the required linked contacts and discovered outreach-ready emails for the current role-targeted flow, its posting-level status shall remain `requires_contacts` rather than advancing to `ready_for_outreach`.
 - **FR-SYS-17B1 (Required Linked Contacts Meaning):** For this build, `required linked contacts` should mean at least one actionable linked contact in the best currently available priority tier for that posting. In practice:
@@ -541,6 +542,8 @@ This is the agreed vocabulary for design discussions.
 - **FR-SYS-17L (Ready-to-Outreach-In-Progress Transition):** A `job_posting` shall transition from `ready_for_outreach` to `outreach_in_progress` when the first contact in the intended current outreach set enters drafting or sending.
 - **FR-SYS-17M (Outreach-In-Progress-to-Completed Transition):** A `job_posting` shall transition from `outreach_in_progress` to `completed` when no untouched automatically eligible contacts remain for that posting after the current shortlisted contact pool, repeat-contact exclusions, and automatic discovery outcomes have been applied.
 - **FR-SYS-17N (Abandon Transition):** A `job_posting` may transition to `abandoned` from any non-terminal active status when the user explicitly decides to stop pursuing that posting.
+- **FR-SYS-17N1 (Manual Review Close Transition):** A `job_posting` may transition to `closed_by_user` when the user explicitly closes an unresolved escalated review item from expert review rather than leaving the posting in unresolved backlog.
+- **FR-SYS-17N2 (Manual Review Close Eligibility and Audit Rule):** Manual review close shall be allowed only for unresolved `job_postings` backed by an `escalated` `pipeline_run` and an `expert_review_packet` whose `packet_status` is either `pending_expert_review` or `reviewed`. The close action shall require a non-empty expert comment, shall record an expert-review decision and an override event, shall move the posting to `closed_by_user`, and shall remove the item from normal pending-attention queues while keeping it queryable in history.
 - **FR-SYS-18 (Dedicated Posting-Contact Link Table):** The many-to-many relationship between `job_postings` and `contacts` shall be represented through a dedicated linking table, `job_posting_contacts`, rather than only through direct foreign-key fields on one side.
 - **FR-SYS-19 (Relationship-Specific Link Records):** `job_posting_contacts` shall be allowed to store relationship-specific context for a given posting-contact pair rather than acting as a pure two-column join table only.
 - **FR-SYS-20 (Minimum Link-Table Fields):** For this build, `job_posting_contacts` should at minimum support:
@@ -1102,6 +1105,7 @@ This section defines the next-build logical schema shape for `job_hunt_copilot.d
   - `current_stage` should support the major durable boundaries of the current flow, such as `lead_handoff`, `resume_tailoring`, `agent_review`, `people_search`, `enrichment`, `email_discovery`, `drafting`, `sending`, `feedback_started`, `completed`, and `failed`.
   - `review_packet_status` should support at least `not_ready`, `pending_expert_review`, `reviewed`, and `superseded`.
   - A terminal or otherwise review-worthy run should later link to an expert review packet rather than disappearing into raw logs.
+  - An unresolved escalated run that is manually closed from expert review should become `completed` with `current_stage = completed` rather than staying open indefinitely.
 
 **`supervisor_cycles`**
 - Primary key:
@@ -1211,7 +1215,7 @@ This section defines the next-build logical schema shape for `job_hunt_copilot.d
   - `override_event_id`
 - Notes:
   - This table stores expert course-correction decisions applied after reviewing a terminal or otherwise review-worthy run packet.
-  - `decision_type` should support at least `approved`, `override_applied`, `course_correction`, `pause_requested`, and `resume_allowed`.
+  - `decision_type` should support at least `approved`, `override_applied`, `course_correction`, `pause_requested`, `resume_allowed`, and `closed_by_user`.
 
 **`maintenance_change_batches`**
 - Primary key:
@@ -3675,13 +3679,13 @@ Current imported guidance should include, at minimum:
   2. `paused` when global or local pause conditions stop further automatic progression
   3. `escalated` when safe automatic progression stops because expert attention is required
   4. `failed` when the run reaches a terminal unresolved state for the current build
-  5. `completed` when the current end-to-end boundary is reached and the review packet has been generated
+  5. `completed` when the current end-to-end boundary is reached and the review packet has been generated, or when the expert manually closes an unresolved escalated review item
 - **FR-OPS-17D (Pipeline-Run Resume Rule):** A paused or escalated `pipeline_run` may return to `in_progress` after the relevant pause or escalation condition has been cleared and canonical prerequisites are again satisfied.
-- **FR-OPS-17E (Terminal-Run Immutability Rule):** A terminal `pipeline_run`, including `completed`, `failed`, or `escalated` outcomes, should remain part of immutable operational history. If the expert later wants a fresh attempt after review, the system should create a new run rather than mutating the older terminal run back into an active state.
+- **FR-OPS-17E (Terminal-Run Immutability Rule):** A terminal `pipeline_run`, including `completed`, `failed`, or `escalated` outcomes, should remain part of immutable operational history. The current build may still finalize an unresolved `escalated` run to `completed` when the expert explicitly closes that exact review-backed run from expert review. Outside that narrow closure path, if the expert later wants a fresh attempt after review, the system should create a new run rather than mutating the older terminal run back into an active state.
 - **FR-OPS-17F (Review-Packet State Transition Rule):** `pipeline_runs.review_packet_status` should transition:
   1. `not_ready` while the run is still active
   2. `pending_expert_review` when the run reaches a terminal or expert-review-worthy outcome and the review packet is generated
-  3. `reviewed` when expert review is finished
+  3. `reviewed` when expert review is finished, including expert-driven manual closure from review
   4. `superseded` only when a newer packet replaces the older packet for the same terminal or otherwise review-worthy run outcome
 - **FR-OPS-17G (Agent-Control-State Semantics):** The current `agent_control_state` semantics should be:
   1. `agent_enabled = true` and `agent_mode = running` for normal autonomous operation
@@ -3696,6 +3700,13 @@ Current imported guidance should include, at minimum:
   4. `escalated` when expert attention is required
   5. `suppressed` when the expert intentionally acknowledges but chooses no further action
 - **FR-OPS-17J (Expert-Review-Packet State Transition Rule):** `expert_review_packets.packet_status` should transition from `pending_expert_review` to `reviewed` when the expert has finished with the packet, or to `superseded` if a replacement packet for the same terminal or otherwise review-worthy run outcome is generated later.
+- **FR-OPS-17J1A (Manual Review Close Rule):** The current build shall support an explicit expert-review close action for unresolved escalated posting runs. When the expert closes such a packet with a non-empty comment:
+  1. the comment shall be stored as an `expert_review_decisions` record linked to that packet
+  2. the associated `job_posting.posting_status` shall become `closed_by_user`
+  3. the associated `pipeline_run.run_status` shall become `completed`
+  4. the associated `pipeline_run.current_stage` shall become `completed`
+  5. a posting-status override event shall be recorded
+  6. the item shall no longer appear in normal pending expert-review queues
 - **FR-OPS-17J1 (Rolling Progress-Log Rule):** The Supervisor Agent shall maintain `ops/agent/progress-log.md` as a concise rolling handoff note that highlights the latest significant work completed, current blockers, the next likely action, and any replan or maintenance note worth surfacing to a fresh session.
 - **FR-OPS-17J2 (Progress-Log Update Rule):** The progress log should be updated after each materially meaningful supervisor cycle, after each replan, and after each maintenance change batch outcome. It should remain compact and summarize recent state rather than trying to duplicate the full canonical history.
 - **FR-OPS-17J2A (Current Progress-Log Retention Rule):** In the current build, `ops/agent/progress-log.md` should keep:

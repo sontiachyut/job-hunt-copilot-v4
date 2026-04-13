@@ -9,6 +9,8 @@ from datetime import timedelta, timezone
 from pathlib import Path
 from unittest.mock import patch
 
+import pytest
+
 from job_hunt_copilot.bootstrap import run_bootstrap
 from job_hunt_copilot.chat_runtime import (
     build_chat_review_queue,
@@ -378,6 +380,103 @@ def seed_posting_for_abandon(
                 "2026-04-08T12:05:00Z",
             ),
         )
+    connection.commit()
+
+
+def seed_close_review_candidate(
+    connection: sqlite3.Connection,
+    *,
+    posting_status: str = "requires_contacts",
+    run_status: str = "escalated",
+    current_stage: str = "people_search",
+    packet_status: str = "pending_expert_review",
+) -> None:
+    reviewed_at = "2026-04-08T12:40:00Z" if packet_status == "reviewed" else None
+    review_packet_status = "reviewed" if packet_status == "reviewed" else "pending_expert_review"
+    connection.execute(
+        """
+        INSERT INTO linkedin_leads (
+          lead_id, lead_identity_key, lead_status, lead_shape, split_review_status,
+          source_type, source_reference, source_mode, source_url, company_name, role_title,
+          created_at, updated_at
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        """,
+        (
+            "ld_close_review",
+            "acme-robotics|staff-software-engineer-platform",
+            "handed_off",
+            "posting_only",
+            "not_applicable",
+            "manual_capture",
+            "paste/lead-close-review",
+            "manual_capture",
+            "https://careers.acme.example/jobs/close-review",
+            "Acme Robotics",
+            "Staff Software Engineer / Platform",
+            "2026-04-08T12:00:00Z",
+            "2026-04-08T12:00:00Z",
+        ),
+    )
+    connection.execute(
+        """
+        INSERT INTO job_postings (
+          job_posting_id, lead_id, posting_identity_key, company_name, role_title,
+          posting_status, created_at, updated_at
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+        """,
+        (
+            "jp_close_review",
+            "ld_close_review",
+            "acme-robotics|staff-software-engineer-platform",
+            "Acme Robotics",
+            "Staff Software Engineer / Platform",
+            posting_status,
+            "2026-04-08T12:00:00Z",
+            "2026-04-08T12:00:00Z",
+        ),
+    )
+    connection.execute(
+        """
+        INSERT INTO pipeline_runs (
+          pipeline_run_id, run_scope_type, run_status, current_stage, lead_id,
+          job_posting_id, completed_at, last_error_summary, review_packet_status,
+          run_summary, started_at, created_at, updated_at
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        """,
+        (
+            "pr_close_review",
+            "role_targeted_posting",
+            run_status,
+            current_stage,
+            "ld_close_review",
+            "jp_close_review",
+            None,
+            "People search exhausted without a viable internal contact path.",
+            review_packet_status,
+            "Escalated review item before manual close.",
+            "2026-04-08T12:05:00Z",
+            "2026-04-08T12:05:00Z",
+            "2026-04-08T12:05:00Z",
+        ),
+    )
+    connection.execute(
+        """
+        INSERT INTO expert_review_packets (
+          expert_review_packet_id, pipeline_run_id, packet_status, packet_path,
+          job_posting_id, reviewed_at, summary_excerpt, created_at
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+        """,
+        (
+            "erp_close_review",
+            "pr_close_review",
+            packet_status,
+            "ops/review-packets/pr_close_review/review_packet.md",
+            "jp_close_review",
+            reviewed_at,
+            "People search exhausted without a viable internal contact path.",
+            "2026-04-08T12:35:00Z",
+        ),
+    )
     connection.commit()
 
 
@@ -1379,6 +1478,217 @@ def test_control_agent_script_override_routes_posting_abandon_through_generic_in
     ]
 
 
+def test_control_agent_script_close_review_closes_pending_review_item(tmp_path):
+    project_root = tmp_path / "repo"
+    project_root.mkdir()
+    create_minimal_project(project_root)
+    run_script(
+        "scripts/ops/control_agent.py",
+        "status",
+        "--project-root",
+        str(project_root),
+    )
+    connection = connect_database(project_root / "job_hunt_copilot.db")
+    seed_close_review_candidate(connection, packet_status="pending_expert_review")
+    connection.close()
+
+    report = json.loads(
+        run_script(
+            "scripts/ops/control_agent.py",
+            "close-review",
+            "--project-root",
+            str(project_root),
+            "--expert-review-packet-id",
+            "erp_close_review",
+            "--reason",
+            "Apollo returned no viable internal contacts; closing this review item.",
+        ).stdout
+    )
+
+    assert report["command"] == "close-review"
+    assert report["status"] == "closed_by_user"
+    assert report["expert_review_packet"] == {
+        "expert_review_packet_id": "erp_close_review",
+        "pipeline_run_id": "pr_close_review",
+        "previous_status": "pending_expert_review",
+        "packet_status": "reviewed",
+        "reviewed_at": report["pipeline_run"]["completed_at"],
+    }
+    assert report["job_posting"]["posting_status"] == "closed_by_user"
+    assert report["pipeline_run"] == {
+        "pipeline_run_id": "pr_close_review",
+        "previous_run_status": "escalated",
+        "new_run_status": "completed",
+        "previous_stage": "people_search",
+        "new_stage": "completed",
+        "review_packet_status": "reviewed",
+        "completed_at": report["job_posting"]["updated_at"],
+    }
+    assert report["expert_review_decision"]["decision_type"] == "closed_by_user"
+    assert (
+        report["expert_review_decision"]["decision_notes"]
+        == "Apollo returned no viable internal contacts; closing this review item."
+    )
+    assert report["state_transition_event_id"]
+    assert report["override_event_id"]
+
+    connection = connect_database(project_root / "job_hunt_copilot.db")
+    posting_row = connection.execute(
+        """
+        SELECT posting_status, updated_at
+        FROM job_postings
+        WHERE job_posting_id = ?
+        """,
+        ("jp_close_review",),
+    ).fetchone()
+    pipeline_row = connection.execute(
+        """
+        SELECT run_status, current_stage, review_packet_status, completed_at, run_summary
+        FROM pipeline_runs
+        WHERE pipeline_run_id = ?
+        """,
+        ("pr_close_review",),
+    ).fetchone()
+    packet_row = connection.execute(
+        """
+        SELECT packet_status, reviewed_at
+        FROM expert_review_packets
+        WHERE expert_review_packet_id = ?
+        """,
+        ("erp_close_review",),
+    ).fetchone()
+    decision_row = connection.execute(
+        """
+        SELECT decision_type, decision_notes, override_event_id
+        FROM expert_review_decisions
+        WHERE expert_review_packet_id = ?
+        ORDER BY decided_at DESC, expert_review_decision_id DESC
+        LIMIT 1
+        """,
+        ("erp_close_review",),
+    ).fetchone()
+    transition_row = connection.execute(
+        """
+        SELECT object_type, object_id, stage, previous_state, new_state, transition_reason
+        FROM state_transition_events
+        WHERE object_id = ?
+        ORDER BY transition_timestamp DESC, state_transition_event_id DESC
+        LIMIT 1
+        """,
+        ("jp_close_review",),
+    ).fetchone()
+    override_row = connection.execute(
+        """
+        SELECT object_type, object_id, component_stage, previous_value, new_value, override_reason
+        FROM override_events
+        WHERE override_event_id = ?
+        """,
+        (report["override_event_id"],),
+    ).fetchone()
+    pending_queue_count = connection.execute(
+        """
+        SELECT COUNT(*)
+        FROM expert_review_queue
+        WHERE expert_review_packet_id = ?
+        """,
+        ("erp_close_review",),
+    ).fetchone()[0]
+    connection.close()
+
+    assert dict(posting_row) == {
+        "posting_status": "closed_by_user",
+        "updated_at": report["job_posting"]["updated_at"],
+    }
+    assert dict(pipeline_row) == {
+        "run_status": "completed",
+        "current_stage": "completed",
+        "review_packet_status": "reviewed",
+        "completed_at": report["pipeline_run"]["completed_at"],
+        "run_summary": (
+            "The expert closed this unresolved review item with the comment: "
+            "Apollo returned no viable internal contacts; closing this review item."
+        ),
+    }
+    assert dict(packet_row) == {
+        "packet_status": "reviewed",
+        "reviewed_at": report["expert_review_packet"]["reviewed_at"],
+    }
+    assert dict(decision_row) == {
+        "decision_type": "closed_by_user",
+        "decision_notes": "Apollo returned no viable internal contacts; closing this review item.",
+        "override_event_id": report["override_event_id"],
+    }
+    assert dict(transition_row) == {
+        "object_type": "job_postings",
+        "object_id": "jp_close_review",
+        "stage": "posting_status",
+        "previous_state": "requires_contacts",
+        "new_state": "closed_by_user",
+        "transition_reason": "Apollo returned no viable internal contacts; closing this review item.",
+    }
+    assert dict(override_row) == {
+        "object_type": "job_postings",
+        "object_id": "jp_close_review",
+        "component_stage": "posting_status",
+        "previous_value": "requires_contacts",
+        "new_value": "closed_by_user",
+        "override_reason": "Apollo returned no viable internal contacts; closing this review item.",
+    }
+    assert pending_queue_count == 0
+
+
+def test_control_agent_script_close_review_accepts_already_reviewed_packet(tmp_path):
+    project_root = tmp_path / "repo"
+    project_root.mkdir()
+    create_minimal_project(project_root)
+    run_script(
+        "scripts/ops/control_agent.py",
+        "status",
+        "--project-root",
+        str(project_root),
+    )
+    connection = connect_database(project_root / "job_hunt_copilot.db")
+    seed_close_review_candidate(connection, packet_status="reviewed")
+    connection.close()
+
+    report = json.loads(
+        run_script(
+            "scripts/ops/control_agent.py",
+            "close-review",
+            "--project-root",
+            str(project_root),
+            "--expert-review-packet-id",
+            "erp_close_review",
+            "--reason",
+            "Reviewed and confirmed there is no further contact path.",
+        ).stdout
+    )
+
+    assert report["status"] == "closed_by_user"
+    assert report["expert_review_packet"]["previous_status"] == "reviewed"
+    assert report["expert_review_packet"]["packet_status"] == "reviewed"
+    assert report["pipeline_run"]["new_run_status"] == "completed"
+    assert report["pipeline_run"]["new_stage"] == "completed"
+
+    connection = connect_database(project_root / "job_hunt_copilot.db")
+    decision_row = connection.execute(
+        """
+        SELECT decision_type, decision_notes
+        FROM expert_review_decisions
+        WHERE expert_review_packet_id = ?
+        ORDER BY decided_at DESC, expert_review_decision_id DESC
+        LIMIT 1
+        """,
+        ("erp_close_review",),
+    ).fetchone()
+    connection.close()
+
+    assert dict(decision_row) == {
+        "decision_type": "closed_by_user",
+        "decision_notes": "Reviewed and confirmed there is no further contact path.",
+    }
+
+
 def test_control_agent_script_abandon_is_idempotent_for_existing_abandoned_posting(tmp_path):
     project_root = tmp_path / "repo"
     project_root.mkdir()
@@ -1424,6 +1734,35 @@ def test_control_agent_script_abandon_is_idempotent_for_existing_abandoned_posti
 
     assert transition_count == 0
     assert override_count == 0
+
+
+def test_close_review_item_rejects_terminal_posting_state(tmp_path):
+    project_root = tmp_path / "repo"
+    project_root.mkdir()
+    create_minimal_project(project_root)
+    run_script(
+        "scripts/ops/control_agent.py",
+        "status",
+        "--project-root",
+        str(project_root),
+    )
+    connection = connect_database(project_root / "job_hunt_copilot.db")
+    seed_close_review_candidate(
+        connection,
+        posting_status="completed",
+        packet_status="reviewed",
+    )
+    connection.close()
+
+    with pytest.raises(
+        ValueError,
+        match="Only unresolved active postings may be closed from expert review",
+    ):
+        local_runtime.close_review_item(
+            "erp_close_review",
+            project_root=project_root,
+            reason="No further work remains.",
+        )
 
 
 def test_control_agent_script_override_routes_tailoring_review_override(tmp_path):

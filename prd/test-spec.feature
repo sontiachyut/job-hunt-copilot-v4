@@ -1599,6 +1599,18 @@ Feature: Job Hunt Copilot next-build acceptance
       Then the posting may transition to `abandoned`
       And the abandoned state is reflected in canonical posting status
 
+    Scenario: The user may close an unresolved escalated review item from expert review
+      Given a posting remains unresolved
+      And its current `pipeline_run` is `escalated`
+      And an `expert_review_packet` for that run is `pending_expert_review` or `reviewed`
+      When the user closes the item from review with a non-empty comment
+      Then the posting transitions to `closed_by_user`
+      And the pipeline run becomes `completed`
+      And the pipeline run stage becomes `completed`
+      And the close comment is stored as an `expert_review_decisions` record for that packet
+      And a posting-status override event is recorded
+      And the item no longer appears in normal pending expert-review queues
+
     Scenario: General learning outreach bypasses the role-targeted agent-review requirement
       Given outreach is contact-rooted and not tied to a specific job posting
       When the build runs that general learning outreach flow

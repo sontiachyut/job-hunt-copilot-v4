@@ -46,6 +46,8 @@ from .supervisor import (
     AGENT_MODE_RUNNING,
     AGENT_MODE_STOPPED,
     NON_TERMINAL_RUN_STATUSES,
+    RUN_STATUS_COMPLETED,
+    RUN_STATUS_ESCALATED,
     begin_replanning,
     complete_pipeline_run,
     create_agent_incident,
@@ -56,9 +58,11 @@ from .supervisor import (
     pause_agent,
     pause_pipeline_run,
     read_agent_control_state,
+    record_expert_review_followup_decision,
     record_override_event,
     REVIEW_PACKET_STATUS_NOT_READY,
     REVIEW_PACKET_STATUS_PENDING,
+    REVIEW_PACKET_STATUS_REVIEWED,
     resume_agent,
     run_supervisor_cycle,
     set_pipeline_run_review_packet_status,
@@ -88,6 +92,7 @@ JOB_POSTING_STATUS_REQUIRES_CONTACTS = "requires_contacts"
 JOB_POSTING_STATUS_READY_FOR_OUTREACH = "ready_for_outreach"
 JOB_POSTING_STATUS_OUTREACH_IN_PROGRESS = "outreach_in_progress"
 JOB_POSTING_STATUS_ABANDONED = "abandoned"
+JOB_POSTING_STATUS_CLOSED_BY_USER = "closed_by_user"
 ABANDONABLE_POSTING_STATUSES = frozenset(
     {
         JOB_POSTING_STATUS_SOURCED,
@@ -98,6 +103,7 @@ ABANDONABLE_POSTING_STATUSES = frozenset(
         JOB_POSTING_STATUS_OUTREACH_IN_PROGRESS,
     }
 )
+USER_CLOSABLE_REVIEW_POSTING_STATUSES = ABANDONABLE_POSTING_STATUSES
 CHAT_SESSION_EXIT_MODE_EXPLICIT_CLOSE = "explicit_close"
 CHAT_SESSION_EXIT_MODE_UNEXPECTED_EXIT = "unexpected_exit"
 CHAT_SESSION_EXIT_MODES = frozenset(
@@ -1733,6 +1739,263 @@ def abandon_job_posting(
         "retired_pipeline_runs": retired_pipeline_runs,
         "state_transition_event_id": state_transition_event_id,
         "override_event_id": None if override_event is None else override_event.override_event_id,
+        "manual_command": manual_command,
+        "control_state": dict(control_state.values),
+    }
+
+
+def close_review_item(
+    expert_review_packet_id: str,
+    *,
+    project_root: Path | str | None = None,
+    reason: str | None = None,
+    manual_command: str | None = None,
+    timestamp: str | None = None,
+) -> dict[str, Any]:
+    normalized_packet_id = expert_review_packet_id.strip()
+    if not normalized_packet_id:
+        raise ValueError("expert_review_packet_id is required for the close-review command.")
+
+    reason_text = (reason or "").strip()
+    if not reason_text:
+        raise ValueError("A non-empty close comment is required for the close-review command.")
+
+    paths = ProjectPaths.from_root(project_root)
+    migration = initialize_database(paths.db_path)
+    current_timestamp = timestamp or now_utc_iso()
+
+    with connect_canonical_database(paths) as connection:
+        packet = get_expert_review_packet(connection, normalized_packet_id)
+        if packet is None:
+            raise ValueError(
+                f"expert_review_packet {normalized_packet_id!r} does not exist."
+            )
+        if packet.packet_status not in {REVIEW_PACKET_STATUS_PENDING, REVIEW_PACKET_STATUS_REVIEWED}:
+            raise ValueError(
+                "Only review packets in 'pending_expert_review' or 'reviewed' may be "
+                f"closed by the user; found packet_status={packet.packet_status!r}."
+            )
+
+        pipeline_run = get_pipeline_run(connection, packet.pipeline_run_id)
+        if pipeline_run is None:
+            raise ValueError(
+                f"pipeline_run {packet.pipeline_run_id!r} linked from "
+                f"expert_review_packet {normalized_packet_id!r} does not exist."
+            )
+        if pipeline_run.run_status == RUN_STATUS_COMPLETED:
+            posting_id = packet.job_posting_id or pipeline_run.job_posting_id
+            posting_row = (
+                connection.execute(
+                    """
+                    SELECT lead_id, posting_status, updated_at
+                    FROM job_postings
+                    WHERE job_posting_id = ?
+                    """,
+                    (posting_id,),
+                ).fetchone()
+                if posting_id
+                else None
+            )
+            if (
+                posting_row is not None
+                and str(posting_row["posting_status"] or "").strip()
+                == JOB_POSTING_STATUS_CLOSED_BY_USER
+            ):
+                control_state = read_agent_control_state(connection, timestamp=current_timestamp)
+                return {
+                    "contract_version": CONTRACT_VERSION,
+                    "produced_at": now_utc_iso(),
+                    "project_root": str(paths.project_root),
+                    "database": {
+                        "db_path": str(migration.db_path),
+                        "applied_migrations": migration.applied_migrations,
+                        "user_version": migration.user_version,
+                    },
+                    "command": "close-review",
+                    "status": "already_closed_by_user",
+                    "expert_review_packet": {
+                        "expert_review_packet_id": normalized_packet_id,
+                        "pipeline_run_id": pipeline_run.pipeline_run_id,
+                        "previous_status": packet.packet_status,
+                        "packet_status": packet.packet_status,
+                    },
+                    "job_posting": {
+                        "job_posting_id": posting_id,
+                        "lead_id": str(posting_row["lead_id"]) if posting_row["lead_id"] else None,
+                        "previous_status": JOB_POSTING_STATUS_CLOSED_BY_USER,
+                        "posting_status": JOB_POSTING_STATUS_CLOSED_BY_USER,
+                        "updated_at": str(posting_row["updated_at"]),
+                    },
+                    "pipeline_run": {
+                        "pipeline_run_id": pipeline_run.pipeline_run_id,
+                        "previous_run_status": pipeline_run.run_status,
+                        "new_run_status": pipeline_run.run_status,
+                        "previous_stage": pipeline_run.current_stage,
+                        "new_stage": pipeline_run.current_stage,
+                        "review_packet_status": pipeline_run.review_packet_status,
+                    },
+                    "expert_review_decision": None,
+                    "state_transition_event_id": None,
+                    "override_event_id": None,
+                    "manual_command": manual_command,
+                    "control_state": dict(control_state.values),
+                }
+        if pipeline_run.run_status != RUN_STATUS_ESCALATED:
+            raise ValueError(
+                "Only escalated review-backed pipeline runs may be closed by the user; "
+                f"pipeline_run {pipeline_run.pipeline_run_id!r} is at "
+                f"run_status={pipeline_run.run_status!r}."
+            )
+
+        normalized_job_posting_id = packet.job_posting_id or pipeline_run.job_posting_id
+        if not normalized_job_posting_id:
+            raise ValueError(
+                f"expert_review_packet {normalized_packet_id!r} is not linked to a job_posting."
+            )
+
+        posting_row = connection.execute(
+            """
+            SELECT lead_id, posting_status, updated_at
+            FROM job_postings
+            WHERE job_posting_id = ?
+            """,
+            (normalized_job_posting_id,),
+        ).fetchone()
+        if posting_row is None:
+            raise ValueError(
+                f"job_posting {normalized_job_posting_id!r} linked from "
+                f"expert_review_packet {normalized_packet_id!r} does not exist."
+            )
+
+        lead_id = str(posting_row["lead_id"]) if posting_row["lead_id"] else None
+        previous_status = str(posting_row["posting_status"] or "").strip()
+        if previous_status not in USER_CLOSABLE_REVIEW_POSTING_STATUSES:
+            raise ValueError(
+                "Only unresolved active postings may be closed from expert review; "
+                f"job_posting {normalized_job_posting_id!r} is at "
+                f"posting_status={previous_status!r}."
+            )
+
+        control_state = read_agent_control_state(connection, timestamp=current_timestamp)
+        previous_run_status = pipeline_run.run_status
+        previous_stage = pipeline_run.current_stage
+        previous_packet_status = packet.packet_status
+
+        with connection:
+            connection.execute(
+                """
+                UPDATE job_postings
+                SET posting_status = ?, updated_at = ?
+                WHERE job_posting_id = ?
+                """,
+                (
+                    JOB_POSTING_STATUS_CLOSED_BY_USER,
+                    current_timestamp,
+                    normalized_job_posting_id,
+                ),
+            )
+            state_transition_event_id = _record_state_transition(
+                connection,
+                object_type="job_postings",
+                object_id=normalized_job_posting_id,
+                stage="posting_status",
+                previous_state=previous_status,
+                new_state=JOB_POSTING_STATUS_CLOSED_BY_USER,
+                transition_timestamp=current_timestamp,
+                transition_reason=reason_text,
+                lead_id=lead_id,
+                job_posting_id=normalized_job_posting_id,
+            )
+            override_event = record_override_event(
+                connection,
+                object_type="job_postings",
+                object_id=normalized_job_posting_id,
+                component_stage="posting_status",
+                previous_value=previous_status,
+                new_value=JOB_POSTING_STATUS_CLOSED_BY_USER,
+                override_reason=reason_text,
+                override_by="owner",
+                lead_id=lead_id,
+                job_posting_id=normalized_job_posting_id,
+                override_timestamp=current_timestamp,
+            )
+            decision = record_expert_review_followup_decision(
+                connection,
+                normalized_packet_id,
+                decision_type=JOB_POSTING_STATUS_CLOSED_BY_USER,
+                decision_notes=reason_text,
+                override_event_id=override_event.override_event_id,
+                decided_at=current_timestamp,
+                applied_at=current_timestamp,
+            )
+            completed_run = complete_pipeline_run(
+                connection,
+                pipeline_run.pipeline_run_id,
+                current_stage="completed",
+                run_summary=(
+                    "The expert closed this unresolved review item with the comment: "
+                    f"{reason_text}"
+                ),
+                timestamp=current_timestamp,
+            )
+
+        current_posting = connection.execute(
+            """
+            SELECT lead_id, posting_status, updated_at
+            FROM job_postings
+            WHERE job_posting_id = ?
+            """,
+            (normalized_job_posting_id,),
+        ).fetchone()
+        current_packet = get_expert_review_packet(connection, normalized_packet_id)
+        current_run = get_pipeline_run(connection, pipeline_run.pipeline_run_id)
+        if current_posting is None or current_packet is None or current_run is None:
+            raise ValueError("Manual close did not persist cleanly.")
+
+    return {
+        "contract_version": CONTRACT_VERSION,
+        "produced_at": now_utc_iso(),
+        "project_root": str(paths.project_root),
+        "database": {
+            "db_path": str(migration.db_path),
+            "applied_migrations": migration.applied_migrations,
+            "user_version": migration.user_version,
+        },
+        "command": "close-review",
+        "status": JOB_POSTING_STATUS_CLOSED_BY_USER,
+        "expert_review_packet": {
+            "expert_review_packet_id": normalized_packet_id,
+            "pipeline_run_id": pipeline_run.pipeline_run_id,
+            "previous_status": previous_packet_status,
+            "packet_status": current_packet.packet_status,
+            "reviewed_at": current_packet.reviewed_at,
+        },
+        "job_posting": {
+            "job_posting_id": normalized_job_posting_id,
+            "lead_id": str(current_posting["lead_id"]) if current_posting["lead_id"] else None,
+            "previous_status": previous_status,
+            "posting_status": str(current_posting["posting_status"]),
+            "updated_at": str(current_posting["updated_at"]),
+        },
+        "pipeline_run": {
+            "pipeline_run_id": current_run.pipeline_run_id,
+            "previous_run_status": previous_run_status,
+            "new_run_status": current_run.run_status,
+            "previous_stage": previous_stage,
+            "new_stage": current_run.current_stage,
+            "review_packet_status": current_run.review_packet_status,
+            "completed_at": current_run.completed_at,
+        },
+        "expert_review_decision": {
+            "expert_review_decision_id": decision.expert_review_decision_id,
+            "decision_type": decision.decision_type,
+            "decision_notes": decision.decision_notes,
+            "override_event_id": decision.override_event_id,
+            "decided_at": decision.decided_at,
+            "applied_at": decision.applied_at,
+        },
+        "state_transition_event_id": state_transition_event_id,
+        "override_event_id": override_event.override_event_id,
         "manual_command": manual_command,
         "control_state": dict(control_state.values),
     }

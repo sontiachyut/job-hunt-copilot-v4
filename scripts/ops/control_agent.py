@@ -14,6 +14,7 @@ if str(PROJECT_ROOT) not in sys.path:
 from job_hunt_copilot.local_runtime import (
     abandon_job_posting,
     apply_object_override,
+    close_review_item,
     handoff_background_task,
     mutate_agent_control_state,
     persist_expert_guidance,
@@ -35,6 +36,7 @@ def main() -> int:
             "replan",
             "status",
             "abandon",
+            "close-review",
             "override",
             "guidance",
             "clarify-guidance",
@@ -47,6 +49,7 @@ def main() -> int:
     parser.add_argument("--reason")
     parser.add_argument("--manual-command")
     parser.add_argument("--job-posting-id")
+    parser.add_argument("--expert-review-packet-id")
     parser.add_argument("--maintenance-change-batch-id")
     parser.add_argument("--object-type")
     parser.add_argument("--object-id")
@@ -92,6 +95,19 @@ def main() -> int:
                 project_root=Path(args.project_root),
                 reason=args.reason,
                 manual_command=args.manual_command or "abandon",
+            )
+        elif args.command == "close-review":
+            if not args.expert_review_packet_id:
+                parser.error(
+                    "--expert-review-packet-id is required for the close-review command."
+                )
+            if not args.reason:
+                parser.error("--reason is required for the close-review command.")
+            report = close_review_item(
+                args.expert_review_packet_id,
+                project_root=Path(args.project_root),
+                reason=args.reason,
+                manual_command=args.manual_command or "close-review",
             )
         elif args.command == "override":
             if not args.object_type:

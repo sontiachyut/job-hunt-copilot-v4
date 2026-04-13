@@ -2050,13 +2050,66 @@ def record_expert_review_decision(
     applied_at: str | None = None,
     expert_review_decision_id: str | None = None,
 ) -> ExpertReviewDecisionRecord:
+    return _record_expert_review_decision_with_allowed_packet_statuses(
+        connection,
+        expert_review_packet_id,
+        decision_type=decision_type,
+        decision_notes=decision_notes,
+        override_event_id=override_event_id,
+        decided_at=decided_at,
+        applied_at=applied_at,
+        expert_review_decision_id=expert_review_decision_id,
+        allowed_packet_statuses=frozenset({REVIEW_PACKET_STATUS_PENDING}),
+    )
+
+
+def record_expert_review_followup_decision(
+    connection: sqlite3.Connection,
+    expert_review_packet_id: str,
+    *,
+    decision_type: str,
+    decision_notes: str | None = None,
+    override_event_id: str | None = None,
+    decided_at: str | None = None,
+    applied_at: str | None = None,
+    expert_review_decision_id: str | None = None,
+) -> ExpertReviewDecisionRecord:
+    return _record_expert_review_decision_with_allowed_packet_statuses(
+        connection,
+        expert_review_packet_id,
+        decision_type=decision_type,
+        decision_notes=decision_notes,
+        override_event_id=override_event_id,
+        decided_at=decided_at,
+        applied_at=applied_at,
+        expert_review_decision_id=expert_review_decision_id,
+        allowed_packet_statuses=frozenset(
+            {REVIEW_PACKET_STATUS_PENDING, REVIEW_PACKET_STATUS_REVIEWED}
+        ),
+    )
+
+
+def _record_expert_review_decision_with_allowed_packet_statuses(
+    connection: sqlite3.Connection,
+    expert_review_packet_id: str,
+    *,
+    decision_type: str,
+    decision_notes: str | None = None,
+    override_event_id: str | None = None,
+    decided_at: str | None = None,
+    applied_at: str | None = None,
+    expert_review_decision_id: str | None = None,
+    allowed_packet_statuses: frozenset[str],
+) -> ExpertReviewDecisionRecord:
     if not decision_type.strip():
         raise SupervisorStateError("decision_type is required for expert review decisions.")
 
     packet = _require_expert_review_packet(connection, expert_review_packet_id)
-    if packet.packet_status != REVIEW_PACKET_STATUS_PENDING:
+    if packet.packet_status not in allowed_packet_statuses:
+        allowed_text = ", ".join(sorted(allowed_packet_statuses))
         raise InvalidLifecycleTransition(
-            f"expert_review_packet {expert_review_packet_id!r} is not pending expert review."
+            f"expert_review_packet {expert_review_packet_id!r} must be in one of "
+            f"{allowed_text!r}; found {packet.packet_status!r}."
         )
     if override_event_id is not None and get_override_event(connection, override_event_id) is None:
         raise SupervisorStateError(
@@ -2085,18 +2138,19 @@ def record_expert_review_decision(
                 applied_at,
             ),
         )
-    _update_expert_review_packet_status(
-        connection,
-        expert_review_packet_id,
-        packet_status=REVIEW_PACKET_STATUS_REVIEWED,
-        reviewed_at=current_timestamp,
-    )
-    set_pipeline_run_review_packet_status(
-        connection,
-        packet.pipeline_run_id,
-        REVIEW_PACKET_STATUS_REVIEWED,
-        timestamp=current_timestamp,
-    )
+    if packet.packet_status == REVIEW_PACKET_STATUS_PENDING:
+        _update_expert_review_packet_status(
+            connection,
+            expert_review_packet_id,
+            packet_status=REVIEW_PACKET_STATUS_REVIEWED,
+            reviewed_at=current_timestamp,
+        )
+        set_pipeline_run_review_packet_status(
+            connection,
+            packet.pipeline_run_id,
+            REVIEW_PACKET_STATUS_REVIEWED,
+            timestamp=current_timestamp,
+        )
     decision = get_expert_review_decision(connection, expert_review_decision_id)
     if decision is None:  # pragma: no cover - defensive invariant
         raise SupervisorStateError(
@@ -5937,7 +5991,7 @@ def _validate_run_status_transition(current_status: str, new_status: str) -> Non
         if new_status in {RUN_STATUS_IN_PROGRESS, RUN_STATUS_ESCALATED, RUN_STATUS_FAILED, RUN_STATUS_COMPLETED}:
             return
     if current_status == RUN_STATUS_ESCALATED:
-        if new_status == RUN_STATUS_IN_PROGRESS:
+        if new_status in {RUN_STATUS_IN_PROGRESS, RUN_STATUS_COMPLETED}:
             return
     raise InvalidLifecycleTransition(
         f"Cannot transition pipeline_run from {current_status!r} to {new_status!r}."
