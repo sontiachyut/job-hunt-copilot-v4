@@ -3240,8 +3240,8 @@ def _compose_role_targeted_opener_inputs(
         role_theme=role_theme,
         technical_focus=technical_focus,
         overlap_sentence=(
-            "That overlaps closely with the kind of systems work I have been doing in production over the last few "
-            "years."
+            "There is strong overlap between that and the kind of systems work I have been doing in production over "
+            "the last few years."
         ),
     )
 

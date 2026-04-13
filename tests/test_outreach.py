@@ -1735,7 +1735,7 @@ def test_role_targeted_composition_uses_specific_work_area_in_opener_when_availa
         in body_text
     )
     assert (
-        "That overlaps closely with the kind of systems work I have been doing in production over the last few years."
+        "There is strong overlap between that and the kind of systems work I have been doing in production over the last few years."
         in body_text
     )
 
