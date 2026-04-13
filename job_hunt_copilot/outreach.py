@@ -3490,7 +3490,7 @@ def _compose_role_targeted_opener_inputs(
             role_theme=role_theme,
             technical_focus=technical_focus,
             overlap_sentence=(
-                "That is an area where I see strong overlap with my background and want to keep building depth."
+                "That is an area I want to keep building depth in."
             ),
         )
     if "security" in opener_signal_source or "government" in opener_signal_source:
@@ -3500,7 +3500,7 @@ def _compose_role_targeted_opener_inputs(
             role_theme=role_theme,
             technical_focus=technical_focus,
             overlap_sentence=(
-                "That is an area where I see strong overlap with my background and want to keep building depth."
+                "That is an area I want to keep building depth in."
             ),
         )
     if "leadership" in opener_signal_source or "scheduling" in opener_signal_source:
@@ -3510,7 +3510,7 @@ def _compose_role_targeted_opener_inputs(
             role_theme=role_theme,
             technical_focus=technical_focus,
             overlap_sentence=(
-                "That overlaps well with the kind of systems and leadership work I want to keep leaning into."
+                "That is the kind of systems and leadership work I want to keep leaning into."
             ),
         )
     if "platform" in opener_signal_source or "cloud" in opener_signal_source:
@@ -3520,7 +3520,7 @@ def _compose_role_targeted_opener_inputs(
             role_theme=role_theme,
             technical_focus=technical_focus,
             overlap_sentence=(
-                "That overlaps well with the platform and infrastructure work I want to keep growing in."
+                "That is the kind of platform and infrastructure work I want to keep growing in."
             ),
         )
     return RoleTargetedOpenerInputs(
@@ -3529,8 +3529,7 @@ def _compose_role_targeted_opener_inputs(
         role_theme=role_theme,
         technical_focus=technical_focus,
         overlap_sentence=(
-            "There is strong overlap between that and the kind of systems work I have been doing in production over "
-            "the last few years."
+            "That is the kind of systems work I want to keep growing in."
         ),
     )
 
