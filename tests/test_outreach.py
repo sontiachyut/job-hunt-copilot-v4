@@ -1742,6 +1742,119 @@ def test_role_targeted_composition_uses_specific_work_area_in_opener_when_availa
     connection.close()
 
 
+def test_role_targeted_composition_prefers_full_cycle_ai_ml_delivery_over_uat_style_hooks(
+    tmp_path: Path,
+):
+    project_root, paths = bootstrap_project(tmp_path)
+    connection = connect_database(project_root / "job_hunt_copilot.db")
+    write_sender_profile(paths)
+    seed_posting(
+        connection,
+        company_name="Honeywell",
+        role_title="Advanced AI Engineer (Generative AI)",
+    )
+    seed_linked_contact(
+        connection,
+        contact_id="ct_honeywell",
+        job_posting_contact_id="jpc_honeywell",
+        display_name="Salvador Dominguez",
+        recipient_type=RECIPIENT_TYPE_ENGINEER,
+        current_working_email="salvador@honeywell.example",
+        created_at="2026-04-06T20:01:00Z",
+    )
+    connection.execute(
+        "UPDATE contacts SET position_title = ? WHERE contact_id = ?",
+        ("Advanced AI Engineer", "ct_honeywell"),
+    )
+    connection.commit()
+    seed_approved_tailoring_run(
+        connection,
+        paths,
+        company_name="Honeywell",
+        role_title="Advanced AI Engineer (Generative AI)",
+    )
+    paths.tailoring_step_3_jd_signals_path(
+        "Honeywell",
+        "Advanced AI Engineer (Generative AI)",
+    ).write_text(
+        yaml.safe_dump(
+            {
+                "job_posting_id": "jp_outreach",
+                "resume_tailoring_run_id": "rtr_outreach",
+                "status": "generated",
+                "role_intent_summary": (
+                    "Join a company that is transforming from a traditional industrial company to a contemporary digital industrial business, harnessing the power of cloud, big data, analytics, Internet of Things, AI/ML (Machine Learning), Automation and design thinking."
+                ),
+                "signals_by_priority": {
+                    "must_have": [],
+                    "core_responsibility": [
+                        {
+                            "signal": (
+                                "You will be part of the IT Information Management & Analytics team and in this role, you will at the forefront of implementing state-of-the-art Generative AI, Machine Learning and AI Cognitive Services enhanced business use cases. This Advanced AI Engineer role will work with the business stakeholders, IT business partners, functional consultants, and infrastructure/technology teams to deliver innovative AI technology solutions that accelerate digital transformation and drive operational efficiency as well as business growth. You will focus primarily on the full cycle delivery of AI/ML use cases from requirements/design to release, driving the evolution of AI/ML infrastructure/process, and enabling Intelligent Apps & Automation, next generation of AI Copilots/Assistants, etc."
+                            )
+                        },
+                        {
+                            "signal": "Collaborate with data scientists and data engineers to build production-level models and pipelines, including any required preprocessing of input datasets and postprocessing after model inference."
+                        },
+                        {
+                            "signal": "Help develop standard operation practices and support the Operations Teams through UAT and after go-live."
+                        },
+                    ],
+                    "nice_to_have": [],
+                    "informational": [],
+                },
+                "signals": [],
+            },
+            sort_keys=False,
+        ),
+        encoding="utf-8",
+    )
+    paths.tailoring_step_4_evidence_map_path(
+        "Honeywell",
+        "Advanced AI Engineer (Generative AI)",
+    ).write_text(
+        yaml.safe_dump(
+            {
+                "matches": [
+                    {
+                        "jd_signal": (
+                            "You will be part of the IT Information Management & Analytics team and in this role, you will at the forefront of implementing state-of-the-art Generative AI, Machine Learning and AI Cognitive Services enhanced business use cases. This Advanced AI Engineer role will work with the business stakeholders, IT business partners, functional consultants, and infrastructure/technology teams to deliver innovative AI technology solutions that accelerate digital transformation and drive operational efficiency as well as business growth. You will focus primarily on the full cycle delivery of AI/ML use cases from requirements/design to release, driving the evolution of AI/ML infrastructure/process, and enabling Intelligent Apps & Automation, next generation of AI Copilots/Assistants, etc."
+                        ),
+                        "confidence": "high",
+                        "source_excerpt": "Built and maintained distributed, high-availability data services in Python and Scala on AWS, processing 50M+ daily HL7 records (~580 TPS).",
+                    },
+                    {
+                        "jd_signal": "Collaborate with data scientists and data engineers to build production-level models and pipelines, including any required preprocessing of input datasets and postprocessing after model inference.",
+                        "confidence": "high",
+                        "source_excerpt": "Developed ETL pipelines using Python and Apache Spark, reducing processing time by 40% on 2TB+ daily data.",
+                    },
+                ]
+            },
+            sort_keys=False,
+        ),
+        encoding="utf-8",
+    )
+
+    result = generate_role_targeted_send_set_drafts(
+        connection,
+        project_root=project_root,
+        job_posting_id="jp_outreach",
+        current_time="2026-04-06T20:30:00Z",
+        local_timezone=ZoneInfo("UTC"),
+    )
+
+    body_text = Path(result.drafted_messages[0].body_text_artifact_path).read_text(encoding="utf-8")
+    assert (
+        "I'm reaching out about the Advanced AI Engineer (Generative AI) role at Honeywell because I was "
+        "interested in the role's focus on full-cycle AI/ML delivery and AI/ML infrastructure evolution."
+        in body_text
+    )
+    assert "UAT and after go-live" not in body_text
+    assert "standard operation practices" not in body_text
+
+    connection.close()
+
+
 def test_role_targeted_composition_prefers_technical_jd_signals_over_generic_responsibilities(
     tmp_path: Path,
 ):

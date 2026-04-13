@@ -133,18 +133,40 @@ ROLE_SIGNAL_NONTECHNICAL_PATTERNS: tuple[re.Pattern[str], ...] = (
     re.compile(r"^passionate about building great software", re.IGNORECASE),
 )
 ROLE_SIGNAL_TECHNICAL_PRIORITY_PATTERNS: tuple[tuple[re.Pattern[str], int], ...] = (
+    (
+        re.compile(
+            r"\b(?:generative ai|machine learning|deep learning|large language models?|llm(?:ops)?|ai/ml|ai cognitive services?|ai copilots?|ai assistants?)\b",
+            re.IGNORECASE,
+        ),
+        10,
+    ),
     (re.compile(r"\b(?:rest apis?|microservices?)\b", re.IGNORECASE), 10),
+    (re.compile(r"\b(?:full cycle delivery|requirements/design to release)\b", re.IGNORECASE), 11),
+    (
+        re.compile(
+            r"\b(?:production-level models? and pipelines?|production-ready solutions?)\b",
+            re.IGNORECASE,
+        ),
+        9,
+    ),
     (re.compile(r"\b(?:high-throughput|enterprise-scale|payment systems?)\b", re.IGNORECASE), 9),
     (re.compile(r"\b(?:webapi|restful services?|swagger|postman)\b", re.IGNORECASE), 9),
     (re.compile(r"\b(?:web-based client-server|client-server applications?)\b", re.IGNORECASE), 8),
     (re.compile(r"\b(?:distributed|event-driven|backend)\b", re.IGNORECASE), 8),
+    (
+        re.compile(
+            r"\b(?:models?|pipelines?|databricks|airflow|langchain|llamaindex|vector databases?|vector index)\b",
+            re.IGNORECASE,
+        ),
+        8,
+    ),
     (re.compile(r"\b(?:spring boot|jakarta ee)\b", re.IGNORECASE), 7),
     (re.compile(r"\b(?:\.net(?: framework| core)?|asp\.net|c#)\b", re.IGNORECASE), 6),
     (re.compile(r"\b(?:sql server|mongodb|postgresql|mysql|relational databases?)\b", re.IGNORECASE), 6),
     (re.compile(r"\b(?:aws|gcp|azure|cloud|ci/cd|jenkins|circleci|github actions)\b", re.IGNORECASE), 6),
     (re.compile(r"\b(?:docker|kubernetes)\b", re.IGNORECASE), 6),
     (re.compile(r"\b(?:concurrency|stream processing|relational databases?)\b", re.IGNORECASE), 5),
-    (re.compile(r"\b(?:java(?:\s*17\+?)?|python|scala|golang|go|c\+\+|c#)\b", re.IGNORECASE), 5),
+    (re.compile(r"\b(?:java(?:\s*17\+?)?|python|scala|golang|go(?!-)|c\+\+|c#)\b", re.IGNORECASE), 5),
     (re.compile(r"\b(?:object-oriented design|design patterns?)\b", re.IGNORECASE), 4),
     (re.compile(r"\b(?:security|real-time|scheduling|metadata|documents?|platform|infrastructure)\b", re.IGNORECASE), 4),
 )
@@ -2994,6 +3016,15 @@ def _select_role_work_area(
 
 def _clean_role_signal(value: str) -> str | None:
     cleaned = re.sub(r"\s+", " ", value.strip().rstrip("."))
+    stripped_original = cleaned
+    focus_marker = re.search(
+        r"\b(?:you will focus primarily on|focus primarily on|will focus on)\b",
+        cleaned,
+        flags=re.IGNORECASE,
+    )
+    if focus_marker is not None:
+        cleaned = cleaned[focus_marker.end():].strip()
+        stripped_original = cleaned
     cleaned = re.sub(
         r"^[A-Za-z][A-Za-z0-9 &/()+.\-]{0,40}:\s+",
         "",
@@ -3018,6 +3049,8 @@ def _clean_role_signal(value: str) -> str | None:
         cleaned,
         flags=re.IGNORECASE,
     )
+    if cleaned.lower().startswith(("and ", "or ")):
+        cleaned = stripped_original
     cleaned = re.sub(
         r"^(?:strong proficiency in|solid understanding of|hands-on experience with|proficiency in|understanding of|basic understanding of|basic knowledge of|working knowledge of|knowledge of|familiarity with)\s+",
         "",
@@ -3637,6 +3670,9 @@ def _normalize_technical_focus_phrase(value: str | None) -> str | None:
         flags=re.IGNORECASE,
     )
     candidate = re.sub(r"\s+", " ", candidate).strip(" ,.;")
+    rewritten_ai_ml_focus = _rewrite_ai_ml_focus_phrase(candidate)
+    if rewritten_ai_ml_focus is not None:
+        candidate = rewritten_ai_ml_focus
     if _looks_like_technology_focus_list(candidate):
         candidate = _summarize_technical_focus_enumeration(candidate)
     if not candidate:
@@ -3649,6 +3685,22 @@ def _normalize_technical_focus_phrase(value: str | None) -> str | None:
     if re.search(r"\b(?:identifies|develops|plans|implements|supports),\s", lowered):
         return None
     return candidate
+
+
+def _rewrite_ai_ml_focus_phrase(candidate: str) -> str | None:
+    lowered = candidate.lower()
+    if (
+        ("full cycle delivery" in lowered or "requirements/design to release" in lowered)
+        and "ai/ml" in lowered
+    ):
+        return "full-cycle AI/ML delivery and AI/ML infrastructure evolution"
+    if "production-level models and pipelines" in lowered:
+        return "production-level AI/ML models and pipelines"
+    if any(token in lowered for token in ("generative ai", "large language models", "llm")):
+        return "production-ready generative AI and machine learning solutions"
+    if "ai/ml operations" in lowered and "monitor" in lowered:
+        return "AI/ML operations and model monitoring"
+    return None
 
 
 def _role_work_area_opening(work_area: str) -> str:
