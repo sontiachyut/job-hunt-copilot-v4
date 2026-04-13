@@ -1576,7 +1576,7 @@ def test_role_targeted_drafting_filters_jd_boilerplate_from_opening_and_subject(
     body_text = Path(message.body_text_artifact_path).read_text(encoding="utf-8")
     assert 'I\'m reaching out about the Manager I. Software Engineering- "Scheduler" role at ASM because I was ' in body_text
     assert "scheduling engines" in body_text
-    assert "That is close to the kind of systems and leadership work I want to keep leaning into." in body_text
+    assert "That overlaps well with the kind of systems and leadership work I want to keep leaning into." in body_text
     assert "3+ years relevant experience" not in body_text
     assert "For over 55 years ASM" not in body_text
     assert message.subject == 'Interest in the Manager I. Software Engineering- "Scheduler" role at ASM'
@@ -1653,7 +1653,7 @@ def test_role_targeted_composition_rewrites_security_jd_into_natural_theme(tmp_p
     assert (
         "I'm reaching out about the Government Information Security Engineer role at Intel because I was "
         "interested in the role's focus on enterprise security systems, secure infrastructure, and "
-        "government-focused security work. That is an area where I want to keep building depth."
+        "government-focused security work. That is an area where I see strong overlap with my background and want to keep building depth."
         in body_text
     )
     assert "identifies, develops, plans, implements" not in body_text.lower()
@@ -1735,7 +1735,7 @@ def test_role_targeted_composition_uses_specific_work_area_in_opener_when_availa
         in body_text
     )
     assert (
-        "That is close to the kind of systems work I have been doing in production over the last few years."
+        "That overlaps closely with the kind of systems work I have been doing in production over the last few years."
         in body_text
     )
 
@@ -1847,6 +1847,10 @@ def test_role_targeted_composition_prefers_full_cycle_ai_ml_delivery_over_uat_st
     assert (
         "I'm reaching out about the Advanced AI Engineer (Generative AI) role at Honeywell because I was "
         "interested in the role's focus on full-cycle AI/ML delivery and AI/ML infrastructure evolution."
+        in body_text
+    )
+    assert (
+        "That is an area where I see strong overlap with my background and want to keep building depth."
         in body_text
     )
     assert "UAT and after go-live" not in body_text

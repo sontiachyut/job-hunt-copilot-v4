@@ -3172,46 +3172,66 @@ def _compose_role_targeted_opener_inputs(
 ) -> RoleTargetedOpenerInputs:
     role_theme = _compose_role_targeted_role_theme(context)
     technical_focus = _compose_role_targeted_technical_focus(context, role_theme)
-    lowered = role_theme.lower()
-    if "security" in lowered or "government" in lowered:
+    opener_signal_source = " ".join(
+        value
+        for value in (
+            context.role_title,
+            role_theme,
+            technical_focus,
+            _normalize_optional_text(context.role_intent_summary),
+        )
+        if value
+    ).lower()
+    if any(
+        token in opener_signal_source
+        for token in (
+            "generative ai",
+            "machine learning",
+            "ai/ml",
+            "llm",
+            "large language model",
+            "large language models",
+            "copilot",
+            "cognitive service",
+        )
+    ):
         return RoleTargetedOpenerInputs(
             company_name=context.company_name,
             role_title=context.role_title,
             role_theme=role_theme,
             technical_focus=technical_focus,
             overlap_sentence=(
-                "That is an area where I want to keep building depth."
+                "That is an area where I see strong overlap with my background and want to keep building depth."
             ),
         )
-    if "leadership" in lowered or "scheduling" in lowered:
+    if "security" in opener_signal_source or "government" in opener_signal_source:
         return RoleTargetedOpenerInputs(
             company_name=context.company_name,
             role_title=context.role_title,
             role_theme=role_theme,
             technical_focus=technical_focus,
             overlap_sentence=(
-                "That is close to the kind of systems and leadership work I want to keep leaning into."
+                "That is an area where I see strong overlap with my background and want to keep building depth."
             ),
         )
-    if "platform" in lowered or "cloud" in lowered:
+    if "leadership" in opener_signal_source or "scheduling" in opener_signal_source:
         return RoleTargetedOpenerInputs(
             company_name=context.company_name,
             role_title=context.role_title,
             role_theme=role_theme,
             technical_focus=technical_focus,
             overlap_sentence=(
-                "That is close to the kind of platform and infrastructure work I want to keep growing in."
+                "That overlaps well with the kind of systems and leadership work I want to keep leaning into."
             ),
         )
-    if "python" in lowered:
+    if "platform" in opener_signal_source or "cloud" in opener_signal_source:
         return RoleTargetedOpenerInputs(
             company_name=context.company_name,
             role_title=context.role_title,
             role_theme=role_theme,
             technical_focus=technical_focus,
             overlap_sentence=(
-                "That is close to the kind of systems work I have been doing in production over the last "
-                "few years."
+                "That overlaps well with the platform and infrastructure work I want to keep growing in."
             ),
         )
     return RoleTargetedOpenerInputs(
@@ -3220,7 +3240,7 @@ def _compose_role_targeted_opener_inputs(
         role_theme=role_theme,
         technical_focus=technical_focus,
         overlap_sentence=(
-            "That is close to the kind of systems work I have been doing in production over the last few "
+            "That overlaps closely with the kind of systems work I have been doing in production over the last few "
             "years."
         ),
     )
