@@ -583,6 +583,22 @@ Feature: Job Hunt Copilot next-build acceptance
       Then it does not automatically resend when a prior successful send cannot be ruled out
       And the case is surfaced for review rather than risking a duplicate outreach
 
+    Scenario: Transient Gmail send failures are blocked and retried later
+      Given a role-targeted automatic send hits a clearly transient Gmail auth or transport failure
+      When the system persists that send outcome
+      Then it marks that same message `blocked` instead of terminal `failed`
+      And it keeps the posting `outreach_in_progress`
+      And it keeps the durable run at `sending`
+      And it stops the rest of the current posting wave immediately
+
+    Scenario: Transient send retries wait for cooldown and stay bounded
+      Given a role-targeted message is `blocked` because of a transient Gmail auth or transport failure
+      When less than 15 minutes have passed since the latest blocked attempt
+      Then the supervisor does not treat that sending run as currently runnable
+      When the cooldown expires
+      Then the supervisor may retry that same message
+      And after 3 automatic retries are exhausted the message remains `blocked` and reviewable rather than becoming terminal `failed`
+
     Scenario: Feedback delay is not treated as pipeline failure
       Given an outreach message has been sent
       And no immediate bounce or reply is observed yet

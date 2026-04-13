@@ -44,6 +44,7 @@ from job_hunt_copilot.outreach import (
     evaluate_role_targeted_send_set,
     generate_general_learning_draft,
     generate_role_targeted_send_set_drafts,
+    is_role_targeted_sending_actionable_now,
 )
 from job_hunt_copilot.paths import ProjectPaths
 from tests.support import create_minimal_project
@@ -525,6 +526,21 @@ class RecordingOutreachSender:
             thread_id=f"thread-{message.outreach_message_id}",
             delivery_tracking_id=f"delivery-{message.outreach_message_id}",
         )
+
+
+class SequencedOutreachSender:
+    def __init__(self, outcomes_by_message_id):  # type: ignore[no-untyped-def]
+        self.outcomes_by_message_id = {
+            key: list(value) for key, value in outcomes_by_message_id.items()
+        }
+        self.attempted_message_ids: list[str] = []
+
+    def send(self, message):  # type: ignore[no-untyped-def]
+        self.attempted_message_ids.append(message.outreach_message_id)
+        sequence = self.outcomes_by_message_id.get(message.outreach_message_id)
+        if not sequence:
+            raise AssertionError(f"Unexpected send for {message.outreach_message_id}")
+        return sequence.pop(0)
 
 
 class ImmediateBounceObserver:
@@ -3293,5 +3309,215 @@ def test_send_execution_blocks_repeat_outreach_without_resend(tmp_path: Path):
     assert send_result_payload["result"] == "blocked"
     assert send_result_payload["send_status"] == MESSAGE_STATUS_BLOCKED
     assert send_result_payload["reason_code"] == "repeat_outreach_review_required"
+
+    connection.close()
+
+
+def test_send_execution_blocks_transient_gmail_failure_and_retries_same_message_after_cooldown(
+    tmp_path: Path,
+):
+    project_root, paths = bootstrap_project(tmp_path)
+    connection = connect_database(project_root / "job_hunt_copilot.db")
+    write_sender_profile(paths)
+    seed_posting(connection)
+    seed_linked_contact(
+        connection,
+        contact_id="ct_r1",
+        job_posting_contact_id="jpc_r1",
+        display_name="Priya Recruiter",
+        recipient_type=RECIPIENT_TYPE_RECRUITER,
+        current_working_email="priya@acme.example",
+        created_at="2026-04-06T20:01:00Z",
+    )
+    seed_approved_tailoring_run(connection, paths)
+    draft_batch = generate_role_targeted_send_set_drafts(
+        connection,
+        project_root=project_root,
+        job_posting_id="jp_outreach",
+        current_time="2026-04-06T20:30:00Z",
+        local_timezone=ZoneInfo("UTC"),
+    )
+    message_id = draft_batch.drafted_messages[0].outreach_message_id
+    sender = SequencedOutreachSender(
+        {
+            message_id: [
+                SendAttemptOutcome(
+                    outcome="failed",
+                    reason_code="gmail_send_failed",
+                    message=(
+                        "HTTPSConnectionPool(host='oauth2.googleapis.com', port=443): "
+                        "Max retries exceeded with url: /token "
+                        "(Caused by NameResolutionError(\"Failed to resolve "
+                        "'oauth2.googleapis.com'\"))"
+                    ),
+                ),
+                SendAttemptOutcome(
+                    outcome="sent",
+                    thread_id="thread-retried",
+                    delivery_tracking_id="delivery-retried",
+                ),
+            ]
+        }
+    )
+
+    first_result = execute_role_targeted_send_set(
+        connection,
+        project_root=project_root,
+        job_posting_id="jp_outreach",
+        current_time="2026-04-06T20:40:00Z",
+        local_timezone=ZoneInfo("UTC"),
+        sender=sender,
+    )
+
+    blocked_row = connection.execute(
+        """
+        SELECT message_status, sent_at, thread_id, delivery_tracking_id
+        FROM outreach_messages
+        WHERE outreach_message_id = ?
+        """,
+        (message_id,),
+    ).fetchone()
+    blocked_payload = json.loads(
+        paths.outreach_message_send_result_path(
+            "Acme Robotics",
+            "Staff Software Engineer / AI",
+            message_id,
+        ).read_text(encoding="utf-8")
+    )
+
+    assert first_result.sent_messages == ()
+    assert first_result.failed_messages == ()
+    assert [issue.outreach_message_id for issue in first_result.blocked_messages] == [message_id]
+    assert [message.outreach_message_id for message in first_result.delayed_messages] == [message_id]
+    assert first_result.delayed_messages[0].pacing_block_reason == "transient_send_retry_cooldown"
+    assert first_result.posting_status_after_execution == JOB_POSTING_STATUS_OUTREACH_IN_PROGRESS
+    assert dict(blocked_row) == {
+        "message_status": MESSAGE_STATUS_BLOCKED,
+        "sent_at": None,
+        "thread_id": None,
+        "delivery_tracking_id": None,
+    }
+    assert blocked_payload["result"] == "blocked"
+    assert blocked_payload["send_status"] == MESSAGE_STATUS_BLOCKED
+    assert blocked_payload["reason_code"] == "gmail_send_failed"
+    assert is_role_targeted_sending_actionable_now(
+        connection,
+        project_root=project_root,
+        job_posting_id="jp_outreach",
+        current_time="2026-04-06T20:50:00Z",
+        local_timezone=ZoneInfo("UTC"),
+    ) is False
+    assert is_role_targeted_sending_actionable_now(
+        connection,
+        project_root=project_root,
+        job_posting_id="jp_outreach",
+        current_time="2026-04-06T20:56:00Z",
+        local_timezone=ZoneInfo("UTC"),
+    ) is True
+
+    second_result = execute_role_targeted_send_set(
+        connection,
+        project_root=project_root,
+        job_posting_id="jp_outreach",
+        current_time="2026-04-06T20:56:00Z",
+        local_timezone=ZoneInfo("UTC"),
+        sender=sender,
+    )
+
+    sent_row = connection.execute(
+        """
+        SELECT message_status, sent_at, thread_id, delivery_tracking_id
+        FROM outreach_messages
+        WHERE outreach_message_id = ?
+        """,
+        (message_id,),
+    ).fetchone()
+    assert [message.outreach_message_id for message in second_result.sent_messages] == [message_id]
+    assert second_result.blocked_messages == ()
+    assert second_result.failed_messages == ()
+    assert second_result.posting_status_after_execution == JOB_POSTING_STATUS_COMPLETED
+    assert dict(sent_row) == {
+        "message_status": MESSAGE_STATUS_SENT,
+        "sent_at": "2026-04-06T20:56:00Z",
+        "thread_id": "thread-retried",
+        "delivery_tracking_id": "delivery-retried",
+    }
+
+    connection.close()
+
+
+def test_transient_send_retry_exhaustion_leaves_message_blocked_and_not_actionable(
+    tmp_path: Path,
+):
+    project_root, paths = bootstrap_project(tmp_path)
+    connection = connect_database(project_root / "job_hunt_copilot.db")
+    write_sender_profile(paths)
+    seed_posting(connection)
+    seed_linked_contact(
+        connection,
+        contact_id="ct_r1",
+        job_posting_contact_id="jpc_r1",
+        display_name="Priya Recruiter",
+        recipient_type=RECIPIENT_TYPE_RECRUITER,
+        current_working_email="priya@acme.example",
+        created_at="2026-04-06T20:01:00Z",
+    )
+    seed_approved_tailoring_run(connection, paths)
+    draft_batch = generate_role_targeted_send_set_drafts(
+        connection,
+        project_root=project_root,
+        job_posting_id="jp_outreach",
+        current_time="2026-04-06T20:30:00Z",
+        local_timezone=ZoneInfo("UTC"),
+    )
+    message_id = draft_batch.drafted_messages[0].outreach_message_id
+    transient_failure = SendAttemptOutcome(
+        outcome="failed",
+        reason_code="gmail_send_failed",
+        message=(
+            "HTTPSConnectionPool(host='oauth2.googleapis.com', port=443): "
+            "Max retries exceeded with url: /token "
+            "(Caused by NameResolutionError(\"Failed to resolve "
+            "'oauth2.googleapis.com'\"))"
+        ),
+    )
+    sender = SequencedOutreachSender(
+        {message_id: [transient_failure, transient_failure, transient_failure, transient_failure]}
+    )
+
+    for current_time in (
+        "2026-04-06T20:40:00Z",
+        "2026-04-06T20:56:00Z",
+        "2026-04-06T21:12:00Z",
+        "2026-04-06T21:28:00Z",
+    ):
+        result = execute_role_targeted_send_set(
+            connection,
+            project_root=project_root,
+            job_posting_id="jp_outreach",
+            current_time=current_time,
+            local_timezone=ZoneInfo("UTC"),
+            sender=sender,
+        )
+        assert result.sent_messages == ()
+        assert result.failed_messages == ()
+        assert [issue.outreach_message_id for issue in result.blocked_messages] == [message_id]
+
+    blocked_row = connection.execute(
+        """
+        SELECT message_status
+        FROM outreach_messages
+        WHERE outreach_message_id = ?
+        """,
+        (message_id,),
+    ).fetchone()
+    assert blocked_row["message_status"] == MESSAGE_STATUS_BLOCKED
+    assert is_role_targeted_sending_actionable_now(
+        connection,
+        project_root=project_root,
+        job_posting_id="jp_outreach",
+        current_time="2026-04-06T21:44:00Z",
+        local_timezone=ZoneInfo("UTC"),
+    ) is False
 
     connection.close()

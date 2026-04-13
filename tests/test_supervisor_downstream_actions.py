@@ -1678,6 +1678,161 @@ def test_sending_stage_drafts_ready_send_set_and_stays_active_while_more_sends_a
     ]
 
 
+def test_sending_stage_retries_transient_gmail_failures_only_after_cooldown(
+    tmp_path: Path,
+) -> None:
+    class FirstTransientThenSuccessSender:
+        def __init__(self) -> None:
+            self.attempted_message_ids: list[str] = []
+            self.attempt_counts: dict[str, int] = {}
+
+        def send(self, message):  # type: ignore[no-untyped-def]
+            self.attempted_message_ids.append(message.outreach_message_id)
+            attempts = self.attempt_counts.get(message.outreach_message_id, 0)
+            self.attempt_counts[message.outreach_message_id] = attempts + 1
+            if attempts == 0:
+                return SimpleNamespace(
+                    outcome="failed",
+                    reason_code="gmail_send_failed",
+                    message=(
+                        "HTTPSConnectionPool(host='oauth2.googleapis.com', port=443): "
+                        "Max retries exceeded with url: /token "
+                        "(Caused by NameResolutionError(\"Failed to resolve "
+                        "'oauth2.googleapis.com'\"))"
+                    ),
+                )
+            return SimpleNamespace(
+                outcome="sent",
+                sent_at=None,
+                thread_id=f"thread-{message.outreach_message_id}",
+                delivery_tracking_id=f"delivery-{message.outreach_message_id}",
+                reason_code=None,
+                message=None,
+            )
+
+    project_root = bootstrap_project(tmp_path)
+    paths = ProjectPaths.from_root(project_root)
+    write_sender_profile(paths)
+    connection = connect_database(project_root / "job_hunt_copilot.db")
+    lead_id, job_posting_id = seed_role_targeted_posting(
+        connection,
+        company_name="Acme Robotics",
+        role_title="Staff Software Engineer / AI",
+        posting_status="ready_for_outreach",
+        timestamp="2026-04-08T00:18:00Z",
+    )
+    seed_outreach_ready_tailoring_run(
+        connection,
+        paths,
+        company_name="Acme Robotics",
+        role_title="Staff Software Engineer / AI",
+        job_posting_id=job_posting_id,
+        current_time="2026-04-08T00:19:00Z",
+    )
+    seed_shortlisted_contact(
+        connection,
+        contact_id="ct_send_r1",
+        job_posting_contact_id="jpc_send_r1",
+        job_posting_id=job_posting_id,
+        company_name="Acme Robotics",
+        display_name="Priya Recruiter",
+        recipient_type="recruiter",
+        current_working_email="priya@acme.example",
+        position_title="Technical Recruiter",
+        created_at="2026-04-08T00:20:00Z",
+    )
+    resume_agent(
+        connection,
+        manual_command="jhc-agent-start",
+        timestamp="2026-04-08T00:23:00Z",
+    )
+    pipeline_run, _ = ensure_role_targeted_pipeline_run(
+        connection,
+        lead_id=lead_id,
+        job_posting_id=job_posting_id,
+        current_stage="sending",
+        started_at="2026-04-08T00:24:00Z",
+    )
+    sender = FirstTransientThenSuccessSender()
+
+    first_execution = run_supervisor_cycle(
+        connection,
+        paths,
+        trigger_type="launchd_heartbeat",
+        scheduler_name="launchd",
+        started_at="2026-04-08T00:25:00Z",
+        action_dependencies=SupervisorActionDependencies(
+            outreach_sender=sender,
+            local_timezone="UTC",
+        ),
+    )
+    updated_run = get_pipeline_run(connection, pipeline_run.pipeline_run_id)
+    posting_status = connection.execute(
+        "SELECT posting_status FROM job_postings WHERE job_posting_id = ?",
+        (job_posting_id,),
+    ).fetchone()[0]
+    blocked_row = connection.execute(
+        """
+        SELECT outreach_message_id, message_status
+        FROM outreach_messages
+        WHERE job_posting_id = ?
+        """,
+        (job_posting_id,),
+    ).fetchone()
+    assert first_execution.cycle.result == SUPERVISOR_CYCLE_RESULT_SUCCESS
+    assert updated_run is not None
+    assert updated_run.current_stage == "sending"
+    assert posting_status == "outreach_in_progress"
+    assert dict(blocked_row) == {
+        "outreach_message_id": blocked_row["outreach_message_id"],
+        "message_status": "blocked",
+    }
+    assert sender.attempted_message_ids == [str(blocked_row["outreach_message_id"])]
+
+    cooldown_execution = run_supervisor_cycle(
+        connection,
+        paths,
+        trigger_type="launchd_heartbeat",
+        scheduler_name="launchd",
+        started_at="2026-04-08T00:35:00Z",
+        action_dependencies=SupervisorActionDependencies(
+            outreach_sender=sender,
+            local_timezone="UTC",
+        ),
+    )
+    assert cooldown_execution.cycle.result == SUPERVISOR_CYCLE_RESULT_NO_WORK
+    assert cooldown_execution.selected_work is None
+
+    retry_execution = run_supervisor_cycle(
+        connection,
+        paths,
+        trigger_type="launchd_heartbeat",
+        scheduler_name="launchd",
+        started_at="2026-04-08T00:41:00Z",
+        action_dependencies=SupervisorActionDependencies(
+            outreach_sender=sender,
+            local_timezone="UTC",
+        ),
+    )
+    updated_run = get_pipeline_run(connection, pipeline_run.pipeline_run_id)
+    final_status = connection.execute(
+        """
+        SELECT message_status
+        FROM outreach_messages
+        WHERE job_posting_id = ?
+        """,
+        (job_posting_id,),
+    ).fetchone()[0]
+    connection.close()
+
+    assert retry_execution.cycle.result == SUPERVISOR_CYCLE_RESULT_SUCCESS
+    assert retry_execution.selected_work is not None
+    assert retry_execution.selected_work.action_id == ACTION_RUN_ROLE_TARGETED_SENDING
+    assert updated_run is not None
+    assert updated_run.current_stage == "delivery_feedback"
+    assert final_status == "sent"
+
+
 def test_sending_stage_advances_to_delivery_feedback_after_terminal_sent_wave(
     tmp_path: Path,
 ) -> None:

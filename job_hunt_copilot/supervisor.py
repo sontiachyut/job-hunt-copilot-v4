@@ -4,6 +4,7 @@ import json
 import sqlite3
 from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
+from pathlib import Path
 from types import MappingProxyType
 from typing import Final
 
@@ -2296,6 +2297,7 @@ def run_supervisor_cycle(
             else:
                 selected_work = select_next_supervisor_work_unit(
                     connection,
+                    project_root=paths.project_root,
                     current_time=cycle_started_at,
                     action_dependencies=resolved_action_dependencies,
                 )
@@ -2508,6 +2510,7 @@ def run_supervisor_cycle(
 def select_next_supervisor_work_unit(
     connection: sqlite3.Connection,
     *,
+    project_root: Path | str,
     current_time: str,
     action_dependencies: SupervisorActionDependencies,
 ) -> SupervisorWorkUnit | None:
@@ -2530,6 +2533,7 @@ def select_next_supervisor_work_unit(
 
     pipeline_run_work = _select_open_pipeline_run_work_unit(
         connection,
+        project_root=project_root,
         current_time=current_time,
         local_timezone=action_dependencies.local_timezone,
     )
@@ -2718,6 +2722,7 @@ def _select_active_incident_work_unit(
 def _select_open_pipeline_run_work_unit(
     connection: sqlite3.Connection,
     *,
+    project_root: Path | str,
     current_time: str,
     local_timezone: object | str | None = None,
 ) -> SupervisorWorkUnit | None:
@@ -2765,6 +2770,7 @@ def _select_open_pipeline_run_work_unit(
                 if posting_status in {"ready_for_outreach", "outreach_in_progress"}:
                     if not is_role_targeted_sending_actionable_now(
                         connection,
+                        project_root=project_root,
                         job_posting_id=job_posting_id,
                         current_time=current_time,
                         local_timezone=local_timezone,
@@ -4200,6 +4206,7 @@ def _execute_selected_work_unit(
             execute_role_targeted_send_set,
             evaluate_role_targeted_send_set,
             generate_role_targeted_send_set_drafts,
+            is_role_targeted_sending_actionable_now,
         )
 
         job_posting_id = _require_text(selected_work.job_posting_id, "job_posting_id")
@@ -4253,12 +4260,13 @@ def _execute_selected_work_unit(
             JOB_POSTING_STATUS_READY_FOR_OUTREACH,
             JOB_POSTING_STATUS_OUTREACH_IN_PROGRESS,
         }:
-            active_generated_count = _count_posting_outreach_messages_with_status(
+            if is_role_targeted_sending_actionable_now(
                 connection,
+                project_root=paths.project_root,
                 job_posting_id=job_posting_id,
-                message_status="generated",
-            )
-            if active_generated_count > 0:
+                current_time=timestamp,
+                local_timezone=action_dependencies.local_timezone,
+            ):
                 send_result = execute_role_targeted_send_set(
                     connection,
                     project_root=paths.project_root,

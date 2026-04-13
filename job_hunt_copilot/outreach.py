@@ -85,6 +85,23 @@ SEND_OUTCOME_SENT = "sent"
 SEND_OUTCOME_FAILED = "failed"
 SEND_OUTCOME_AMBIGUOUS = "ambiguous"
 
+TRANSIENT_SEND_RETRY_COOLDOWN_MINUTES = 15
+MAX_AUTOMATIC_TRANSIENT_SEND_RETRIES = 3
+TRANSIENT_SEND_RETRY_PACING_REASON = "transient_send_retry_cooldown"
+TRANSIENT_SEND_FAILURE_PATTERNS: tuple[re.Pattern[str], ...] = (
+    re.compile(r"nameresolutionerror", re.IGNORECASE),
+    re.compile(r"failed to resolve", re.IGNORECASE),
+    re.compile(r"temporary failure in name resolution", re.IGNORECASE),
+    re.compile(r"max retries exceeded", re.IGNORECASE),
+    re.compile(r"newconnectionerror", re.IGNORECASE),
+    re.compile(r"connecttimeout", re.IGNORECASE),
+    re.compile(r"read timed out", re.IGNORECASE),
+    re.compile(r"connection reset", re.IGNORECASE),
+    re.compile(r"connection aborted", re.IGNORECASE),
+    re.compile(r"remotedisconnected", re.IGNORECASE),
+    re.compile(r"temporar(?:ily|y) unavailable", re.IGNORECASE),
+)
+
 PROFILE_FIELD_RE = re.compile(r"^- \*\*(?P<label>[^*]+):\*\* (?P<value>.+?)\s*$")
 MARKDOWN_HEADING_RE = re.compile(r"^(?P<hashes>#{1,6})\s+(?P<title>.+?)\s*$")
 METRIC_RE = re.compile(r"\b(?:\$?\d[\d,.]*\+?%?|\d[\d,.]*\+?(?:\s?(?:TPS|ms|hours?|day|days|hospitals?|users?|microservices?|records(?:/second)?|students?|tests?|bugs?)))\b")
@@ -682,6 +699,18 @@ class DelayedOutreachMessage:
 
 
 @dataclass(frozen=True)
+class RetryableBlockedSendState:
+    is_retryable: bool
+    retry_allowed_now: bool
+    retry_exhausted: bool
+    attempt_count: int
+    automatic_retry_count: int
+    earliest_retry_at: str | None
+    reason_code: str | None
+    message: str | None
+
+
+@dataclass(frozen=True)
 class RoleTargetedSendExecutionResult:
     job_posting_id: str
     selected_contact_ids: tuple[str, ...]
@@ -902,16 +931,25 @@ def evaluate_role_targeted_send_set(
 def is_role_targeted_sending_actionable_now(
     connection: sqlite3.Connection,
     *,
+    project_root: Path | str,
     job_posting_id: str,
     current_time: str,
     local_timezone: tzinfo | str | None = None,
 ) -> bool:
+    paths = ProjectPaths.from_root(project_root)
     posting_row = _load_role_targeted_send_posting_row(connection, job_posting_id=job_posting_id)
     active_wave = _load_active_role_targeted_wave(connection, job_posting_id=job_posting_id)
-    pending_generated_messages = [
-        message for message in active_wave if message.message_status == MESSAGE_STATUS_GENERATED
-    ]
-    if pending_generated_messages:
+    next_message, retry_state = _find_next_send_frontier_message(
+        connection,
+        paths,
+        posting_row=posting_row,
+        active_wave=active_wave,
+        current_time=current_time,
+    )
+    if next_message is not None:
+        if retry_state is not None:
+            if not retry_state.retry_allowed_now:
+                return False
         current_dt = _parse_iso_datetime(current_time)
         resolved_timezone = _resolve_local_timezone(current_dt, local_timezone)
         global_gap_minutes = _determine_global_gap_minutes(
@@ -929,15 +967,15 @@ def is_role_targeted_sending_actionable_now(
         )
         return bool(pacing["pacing_allowed_now"])
 
+    if posting_row["posting_status"] != JOB_POSTING_STATUS_READY_FOR_OUTREACH:
+        return False
     send_set_plan = evaluate_role_targeted_send_set(
         connection,
         job_posting_id=job_posting_id,
         current_time=current_time,
         local_timezone=local_timezone,
     )
-    if send_set_plan.selected_contacts and not send_set_plan.pacing_allowed_now:
-        return False
-    return True
+    return bool(send_set_plan.selected_contacts) and send_set_plan.remaining_posting_daily_capacity > 0
 
 
 def _load_posting_row(
@@ -1723,9 +1761,30 @@ def execute_role_targeted_send_set(
     for index, active_message in enumerate(active_wave):
         if active_message.message_status == MESSAGE_STATUS_SENT:
             continue
-        if active_message.message_status in {MESSAGE_STATUS_FAILED, MESSAGE_STATUS_BLOCKED}:
+        if active_message.message_status == MESSAGE_STATUS_FAILED:
             continue
-        if active_message.message_status != MESSAGE_STATUS_GENERATED:
+        retry_state: RetryableBlockedSendState | None = None
+        if active_message.message_status == MESSAGE_STATUS_BLOCKED:
+            retry_state = _evaluate_retryable_blocked_send_state(
+                connection,
+                paths,
+                posting_row=posting_row,
+                active_message=active_message,
+                current_time=current_time,
+            )
+            if not retry_state.is_retryable:
+                continue
+            if retry_state.retry_exhausted:
+                break
+            if not retry_state.retry_allowed_now:
+                delayed_messages.extend(
+                    _build_retry_frontier_delayed_messages(
+                        active_wave[index:],
+                        earliest_allowed_send_at=str(retry_state.earliest_retry_at),
+                    )
+                )
+                break
+        elif active_message.message_status != MESSAGE_STATUS_GENERATED:
             issue = _persist_blocked_send(
                 connection,
                 paths,
@@ -1747,6 +1806,7 @@ def execute_role_targeted_send_set(
             paths,
             posting_row=posting_row,
             active_message=active_message,
+            allow_existing_blocked_send_result=retry_state is not None,
         )
         if guardrail_block is not None:
             issue = _persist_blocked_send(
@@ -1772,13 +1832,21 @@ def execute_role_targeted_send_set(
             global_gap_minutes=global_gap_minutes,
         )
         if not pacing["pacing_allowed_now"]:
-            delayed_messages.extend(
-                _build_delayed_messages(
-                    active_wave[index:],
-                    earliest_allowed_send_at=str(pacing["earliest_allowed_send_at"]),
-                    pacing_block_reason=_normalize_optional_text(pacing["pacing_block_reason"]),
+            if retry_state is not None:
+                delayed_messages.extend(
+                    _build_retry_frontier_delayed_messages(
+                        active_wave[index:],
+                        earliest_allowed_send_at=str(pacing["earliest_allowed_send_at"]),
+                    )
                 )
-            )
+            else:
+                delayed_messages.extend(
+                    _build_delayed_messages(
+                        active_wave[index:],
+                        earliest_allowed_send_at=str(pacing["earliest_allowed_send_at"]),
+                        pacing_block_reason=_normalize_optional_text(pacing["pacing_block_reason"]),
+                    )
+                )
             break
 
         outbound = OutboundOutreachMessage(
@@ -1842,6 +1910,36 @@ def execute_role_targeted_send_set(
                     reason_code=normalized_outcome.reason_code or "ambiguous_send_outcome",
                     message=normalized_outcome.message or "The send outcome could not be reconciled safely.",
                     exhaust_link=True,
+                )
+            )
+            break
+
+        if _is_retryable_transient_send_failure(
+            reason_code=normalized_outcome.reason_code,
+            message=normalized_outcome.message,
+        ):
+            blocked_messages.append(
+                _persist_blocked_send(
+                    connection,
+                    paths,
+                    posting_row=posting_row,
+                    active_message=active_message,
+                    current_time=current_time,
+                    reason_code=normalized_outcome.reason_code or "gmail_send_failed",
+                    message=normalized_outcome.message
+                    or "The outbound Gmail transport failed transiently and should be retried later.",
+                    exhaust_link=False,
+                    allow_wave_completion=False,
+                )
+            )
+            retry_due_at = _isoformat_utc(
+                _parse_iso_datetime(current_time)
+                + timedelta(minutes=TRANSIENT_SEND_RETRY_COOLDOWN_MINUTES)
+            )
+            delayed_messages.extend(
+                _build_retry_frontier_delayed_messages(
+                    active_wave[index:],
+                    earliest_allowed_send_at=retry_due_at,
                 )
             )
             break
@@ -2053,12 +2151,199 @@ def _build_delayed_messages(
     return delayed
 
 
+def _build_retry_frontier_delayed_messages(
+    messages: Sequence[_ActiveWaveMessage],
+    *,
+    earliest_allowed_send_at: str,
+) -> list[DelayedOutreachMessage]:
+    delayed: list[DelayedOutreachMessage] = []
+    for message in messages:
+        if message.message_status not in {MESSAGE_STATUS_GENERATED, MESSAGE_STATUS_BLOCKED}:
+            continue
+        delayed.append(
+            DelayedOutreachMessage(
+                outreach_message_id=message.outreach_message_id,
+                contact_id=message.contact_id,
+                job_posting_contact_id=message.job_posting_contact_id,
+                earliest_allowed_send_at=earliest_allowed_send_at,
+                pacing_block_reason=TRANSIENT_SEND_RETRY_PACING_REASON,
+            )
+        )
+    return delayed
+
+
+def _is_retryable_transient_send_failure(
+    *,
+    reason_code: str | None,
+    message: str | None,
+) -> bool:
+    if reason_code != "gmail_send_failed":
+        return False
+    normalized_message = _normalize_optional_text(message)
+    if normalized_message is None:
+        return False
+    return any(pattern.search(normalized_message) for pattern in TRANSIENT_SEND_FAILURE_PATTERNS)
+
+
+def _load_role_targeted_send_result_path(
+    paths: ProjectPaths,
+    *,
+    posting_row: Mapping[str, Any],
+    outreach_message_id: str,
+) -> Path:
+    return paths.outreach_message_send_result_path(
+        str(posting_row["company_name"]),
+        str(posting_row["role_title"]),
+        outreach_message_id,
+    )
+
+
+def _evaluate_retryable_blocked_send_state(
+    connection: sqlite3.Connection,
+    paths: ProjectPaths,
+    *,
+    posting_row: Mapping[str, Any],
+    active_message: _ActiveWaveMessage,
+    current_time: str,
+) -> RetryableBlockedSendState:
+    if active_message.message_status != MESSAGE_STATUS_BLOCKED:
+        return RetryableBlockedSendState(
+            is_retryable=False,
+            retry_allowed_now=False,
+            retry_exhausted=False,
+            attempt_count=0,
+            automatic_retry_count=0,
+            earliest_retry_at=None,
+            reason_code=None,
+            message=None,
+        )
+
+    send_result_path = _load_role_targeted_send_result_path(
+        paths,
+        posting_row=posting_row,
+        outreach_message_id=active_message.outreach_message_id,
+    )
+    if not send_result_path.exists():
+        return RetryableBlockedSendState(
+            is_retryable=False,
+            retry_allowed_now=False,
+            retry_exhausted=False,
+            attempt_count=0,
+            automatic_retry_count=0,
+            earliest_retry_at=None,
+            reason_code=None,
+            message=None,
+        )
+
+    try:
+        send_result_contract = _read_json_file(send_result_path)
+    except Exception:
+        return RetryableBlockedSendState(
+            is_retryable=False,
+            retry_allowed_now=False,
+            retry_exhausted=False,
+            attempt_count=0,
+            automatic_retry_count=0,
+            earliest_retry_at=None,
+            reason_code=None,
+            message=None,
+        )
+
+    send_status = _normalize_optional_text(send_result_contract.get("send_status"))
+    reason_code = _normalize_optional_text(send_result_contract.get("reason_code"))
+    message = _normalize_optional_text(send_result_contract.get("message"))
+    if send_status != MESSAGE_STATUS_BLOCKED or not _is_retryable_transient_send_failure(
+        reason_code=reason_code,
+        message=message,
+    ):
+        return RetryableBlockedSendState(
+            is_retryable=False,
+            retry_allowed_now=False,
+            retry_exhausted=False,
+            attempt_count=0,
+            automatic_retry_count=0,
+            earliest_retry_at=None,
+            reason_code=reason_code,
+            message=message,
+        )
+
+    send_attempt_count = max(
+        0,
+        int(
+            connection.execute(
+                """
+                SELECT COUNT(*)
+                FROM artifact_records
+                WHERE artifact_type = ?
+                  AND outreach_message_id = ?
+                """,
+                (
+                    SEND_RESULT_ARTIFACT_TYPE,
+                    active_message.outreach_message_id,
+                ),
+            ).fetchone()[0]
+            or 0
+        )
+        - 1,
+    )
+    automatic_retry_count = max(0, send_attempt_count - 1)
+    retry_exhausted = automatic_retry_count >= MAX_AUTOMATIC_TRANSIENT_SEND_RETRIES
+
+    current_dt = _parse_iso_datetime(current_time)
+    last_attempt_at = _normalize_optional_text(send_result_contract.get("produced_at"))
+    if last_attempt_at is None:
+        last_attempt_at = active_message.message_updated_at
+    earliest_retry_at_dt = _parse_iso_datetime(last_attempt_at) + timedelta(
+        minutes=TRANSIENT_SEND_RETRY_COOLDOWN_MINUTES
+    )
+    earliest_retry_at = _isoformat_utc(earliest_retry_at_dt)
+    return RetryableBlockedSendState(
+        is_retryable=True,
+        retry_allowed_now=not retry_exhausted and earliest_retry_at_dt <= current_dt,
+        retry_exhausted=retry_exhausted,
+        attempt_count=send_attempt_count,
+        automatic_retry_count=automatic_retry_count,
+        earliest_retry_at=earliest_retry_at,
+        reason_code=reason_code,
+        message=message,
+    )
+
+
+def _find_next_send_frontier_message(
+    connection: sqlite3.Connection,
+    paths: ProjectPaths,
+    *,
+    posting_row: Mapping[str, Any],
+    active_wave: Sequence[_ActiveWaveMessage],
+    current_time: str,
+) -> tuple[_ActiveWaveMessage | None, RetryableBlockedSendState | None]:
+    for active_message in active_wave:
+        if active_message.message_status == MESSAGE_STATUS_SENT:
+            continue
+        if active_message.message_status == MESSAGE_STATUS_FAILED:
+            continue
+        if active_message.message_status == MESSAGE_STATUS_BLOCKED:
+            retry_state = _evaluate_retryable_blocked_send_state(
+                connection,
+                paths,
+                posting_row=posting_row,
+                active_message=active_message,
+                current_time=current_time,
+            )
+            if retry_state.is_retryable:
+                return active_message, retry_state
+            continue
+        return active_message, None
+    return None, None
+
+
 def _evaluate_send_guardrails(
     connection: sqlite3.Connection,
     paths: ProjectPaths,
     *,
     posting_row: Mapping[str, Any],
     active_message: _ActiveWaveMessage,
+    allow_existing_blocked_send_result: bool = False,
 ) -> dict[str, Any] | None:
     if active_message.recipient_email is None:
         return {
@@ -2110,7 +2395,9 @@ def _evaluate_send_guardrails(
             "stop_wave": False,
         }
     send_status = _normalize_optional_text(send_result_contract.get("send_status"))
-    if send_status in {MESSAGE_STATUS_SENT, MESSAGE_STATUS_BLOCKED}:
+    if send_status == MESSAGE_STATUS_SENT or (
+        send_status == MESSAGE_STATUS_BLOCKED and not allow_existing_blocked_send_result
+    ):
         return {
             "reason_code": "ambiguous_send_state",
             "message": "Stored send_result.json already reflects a non-generated send state, so automatic resend is unsafe.",
@@ -2282,6 +2569,7 @@ def _persist_blocked_send(
     reason_code: str,
     message: str,
     exhaust_link: bool,
+    allow_wave_completion: bool = True,
 ) -> SendExecutionIssue:
     with connection:
         connection.execute(
@@ -2318,11 +2606,12 @@ def _persist_blocked_send(
         reason_code=reason_code,
         message=message,
     )
-    _complete_posting_if_wave_finished(
-        connection,
-        posting_row=posting_row,
-        current_time=current_time,
-    )
+    if allow_wave_completion:
+        _complete_posting_if_wave_finished(
+            connection,
+            posting_row=posting_row,
+            current_time=current_time,
+        )
     return SendExecutionIssue(
         outreach_message_id=active_message.outreach_message_id,
         contact_id=active_message.contact_id,
