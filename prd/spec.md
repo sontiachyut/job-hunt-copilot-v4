@@ -4537,19 +4537,3 @@ The main future-facing decisions have been frozen as explicit defaults or trigge
 5. the later people-search fallback evaluation order after Apollo is `PDL`, then `Coresignal`, then `ContactOut`
 6. the deferred two-step outreach mode now has a default future operating shape even though it remains out of scope for the current build
 7. `company` remains a field-level concept unless the explicit company-entity promotion triggers are met
-
----
-
-## 15. Next Iteration Plan
-
-1. Implement the Supervisor Agent control plane, including runtime identity/policy-pack generation, `pipeline_runs`, supervisor heartbeat audit, control-state persistence, runtime leases, incidents, expert review packets, rolling progress-log generation, near-term ops-plan persistence, replanning mode, and per-cycle context snapshots
-2. Implement the local macOS `launchd` heartbeat for the Supervisor Agent and wire chat-issued pause/resume/stop controls into canonical control state
-3. Implement the manual LinkedIn browser-capture path with selected-text support, local upstream receiver, and `capture-bundle.json`
-4. Implement the autonomous Gmail LinkedIn job-alert intake path with persisted Gmail collection artifacts, job-card fan-out, canonical JD assembly, and `lead-manifest.yaml` handoff
-5. Implement Resume Tailoring runtime from `job_posting_id` bootstrap through finalize, compile, one-page verification, and mandatory agent review
-6. Implement Apollo-first company-scoped people search, shortlist-time contact materialization, selected-contact enrichment, and person-scoped email discovery fallback
-7. Implement role-targeted outreach orchestration from agent-approved `requires_contacts` postings through ready-send-set drafting, paced sending, and immediate per-message feedback observation
-8. Add explicit runtime schemas and persistence for `jd_signals`, `resume_evidence_map`, and the remaining structured tailoring intelligence artifacts
-9. Implement provider retry, exhaustion, feedback-poll scheduling behavior, and bounded repair/incident escalation exactly as covered by the acceptance spec
-10. Wire automated validation and implementation progress tracking against `prd/test-spec.feature`
-11. Formalize and implement the deferred two-step learning-first outreach flow in a later iteration
