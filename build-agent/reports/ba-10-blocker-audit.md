@@ -1,6 +1,6 @@
 # BA-10 Blocker Audit
 
-- Acceptance scenarios: `214`
+- Acceptance scenarios: `226`
 - Open acceptance scenarios: `0`
 - Open acceptance gap clusters: `0`
 - Open build-board blockers: `0`

@@ -51,7 +51,7 @@
       "description": "Replays the committed bootstrap -> tailoring -> discovery -> send -> feedback -> review-query smoke path.",
       "status": "passed",
       "returncode": 0,
-      "duration_seconds": 2.431
+      "duration_seconds": 2.934
     },
     {
       "command_id": "qa_acceptance_reports",
@@ -61,7 +61,7 @@
       "description": "Keeps the committed BA-10 acceptance, blocker, readiness, and validation-suite reports synchronized with repo code, tests, and state references.",
       "status": "passed",
       "returncode": 0,
-      "duration_seconds": 2.266
+      "duration_seconds": 2.385
     },
     {
       "command_id": "qa_supervisor_regressions",
@@ -71,7 +71,7 @@
       "description": "Confirms incident-first selector ordering, existing-run reuse, bounded role-targeted progression through `delivery_feedback`, contact-rooted general-learning follow-through, and bounded daily maintenance selection or retention behavior.",
       "status": "passed",
       "returncode": 0,
-      "duration_seconds": 2.206
+      "duration_seconds": 3.43
     },
     {
       "command_id": "qa_runtime_control_regressions",
@@ -81,7 +81,7 @@
       "description": "Covers launchd plist wiring, control commands, chat lifecycle state, delayed feedback runners, maintenance review controls, and explicit negative control cases.",
       "status": "passed",
       "returncode": 0,
-      "duration_seconds": 15.6
+      "duration_seconds": 16.401
     },
     {
       "command_id": "qa_runtime_pack_regressions",
@@ -91,13 +91,13 @@
       "description": "Confirms generated runtime scaffolding stays honest about the current action catalog, maintenance workflow, and operator control surfaces.",
       "status": "passed",
       "returncode": 0,
-      "duration_seconds": 0.2
+      "duration_seconds": 0.311
     }
   ],
   "failed_command_ids": [],
   "passed": true,
   "validation_suite_report_version": 2,
-  "generated_at": "2026-04-09T23:39:59Z",
+  "generated_at": "2026-04-13T01:33:00Z",
   "summary": {
     "command_count": 5,
     "command_kind_counts": {
@@ -105,12 +105,12 @@
     },
     "passed_command_count": 5,
     "failed_command_count": 0,
-    "total_duration_seconds": 22.703
+    "total_duration_seconds": 25.461
   },
   "repo_status": {
-    "acceptance_scenario_count": 214,
+    "acceptance_scenario_count": 226,
     "acceptance_status_counts": {
-      "implemented": 212,
+      "implemented": 224,
       "partial": 0,
       "gap": 0,
       "deferred_optional": 1,

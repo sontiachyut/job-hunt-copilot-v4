@@ -831,6 +831,13 @@ _register_override(
 )
 _register_override(
     scenarios=(
+        "Current feedback-sync launchd and wrapper wiring uses the repo-local command path",
+    ),
+    status=STATUS_IMPLEMENTED,
+    note="`job_hunt_copilot.local_runtime`, `scripts/ops/run_feedback_sync.py`, `bin/jhc-feedback-sync-cycle`, and `tests/test_local_runtime.py` now pin the dedicated feedback-sync launchd wiring and repo-local wrapper command path.",
+)
+_register_override(
+    scenarios=(
         "Supervisor heartbeat runs under launchd and rebuilds fresh context from persisted state",
         "Runtime self-awareness comes from the generated identity and policy pack",
         "Heartbeats resume durable pipeline runs rather than creating duplicate work",

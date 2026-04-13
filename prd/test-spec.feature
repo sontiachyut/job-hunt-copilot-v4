@@ -951,6 +951,12 @@ Feature: Job Hunt Copilot next-build acceptance
       Then the already-contacted canonical contact is excluded from automatic send-set selection for the later posting
       And orchestration continues with alternate eligible contacts from that company when they exist
 
+    Scenario: Same-company exclusion begins only after an actual send
+      Given one posting at a company has only generated or in-progress drafts for a canonical contact
+      And no successful automatic send has yet occurred for that contact
+      When a later posting at that same company evaluates that same canonical contact
+      Then the contact is not excluded solely because of the earlier draft state
+
     Scenario: Later postings with no alternate same-company contacts do not auto-send a second email
       Given one posting at a company has already sent automatic outreach to a canonical contact
       And a later posting at that same company has no alternate automatically eligible contacts left after exclusions
@@ -958,11 +964,18 @@ Feature: Job Hunt Copilot next-build acceptance
       Then the system does not auto-send a second role-targeted email to that same canonical contact
       And the later posting is surfaced for review instead
 
-    Scenario: Current autonomous send set prefers recruiter, manager-adjacent, and engineer coverage without a global daily cap
-      Given a company has enough viable contacts across multiple recipient classes
-      When the build forms the current autonomous send set for that company and day
-      Then the default send set prefers one recruiter, one manager-adjacent contact, and one team-adjacent engineer when those classes are available
+    Scenario: Current autonomous active send slice prefers recruiter, manager-adjacent, and engineer coverage without a global daily cap
+      Given a posting has enough viable contacts across multiple recipient classes
+      When the build forms the current autonomous active send slice for that posting
+      Then the default active send slice prefers one recruiter, one manager-adjacent contact, and one team-adjacent engineer when those classes are available
       And the current build does not impose a separate global cross-company daily send cap
+
+    Scenario: Quota-blocked sending work yields to other runnable supervisor work
+      Given one posting is waiting only on its next allowed automatic send slot
+      And other runnable supervisor work exists
+      When the supervisor selects the next work item
+      Then the delayed-only sending run yields
+      And the supervisor may advance the other runnable work instead
 
     Scenario: Role-targeted one-step outreach uses personalization, overlap, and a low-friction ask
       Given a job posting is ready for outreach and a linked contact has usable profile context
@@ -973,24 +986,24 @@ Feature: Job Hunt Copilot next-build acceptance
       And the body shows visible overlap between the role and the sender's relevant background
       And the draft ends with a low-friction next step rather than a heavy ask
 
-    Scenario: Drafting begins only after the full current send set is ready
-      Given multiple contacts are intended for the current send set
+    Scenario: Drafting can begin as individual contacts become ready across the posting frontier
+      Given multiple untouched contacts belong to the same posting
       And at least one contact becomes ready earlier than the others
       When orchestration evaluates whether drafting may begin
-      Then drafting does not begin for that one ready contact alone
-      And drafting begins only after the full current send set is ready
+      Then drafting may begin for that ready contact without waiting for one fixed send set to become fully ready
+      And automatic sending for that posting still remains subject to the active send-slice and pacing rules
 
-    Scenario: The active ready send set is drafted before automatic sending begins
-      Given the full current send set is ready for role-targeted outreach
-      When Email Drafting and Sending prepares that send set
-      Then the system first generates and persists the drafts for that send set
-      And automatic sending begins only after that draft-generation phase completes for the ready set
+    Scenario: The ready posting frontier is drafted before automatic sending consumes it
+      Given one or more untouched contacts are currently ready for role-targeted outreach on a posting
+      When Email Drafting and Sending prepares that posting frontier
+      Then the system first generates and persists drafts for the currently ready untouched contacts
+      And automatic sending consumes those drafts later through the active send-slice and pacing rules
 
-    Scenario: Failed drafts do not block sending for successfully drafted contacts in the same ready set
-      Given the current ready send set contains multiple contacts
-      And draft generation fails for one contact in that set
-      When draft generation for the ready set completes
-      Then successfully generated drafts from that same set may still proceed into sending
+    Scenario: Failed drafts do not block sending for successfully drafted contacts in the same posting frontier
+      Given the current ready posting frontier contains multiple contacts
+      And draft generation fails for one contact in that frontier
+      When draft generation for the ready posting frontier completes
+      Then successfully generated drafts from that same frontier may still proceed into sending
       And the failed draft case is surfaced for review
 
     Scenario: Recruiter and team-adjacent outreach defaults to a short Zoom conversation ask
@@ -1020,15 +1033,17 @@ Feature: Job Hunt Copilot next-build acceptance
       Then it opens from role, team, or work-area context rather than requiring recipient-background hooks
       And it includes an explicit `why I am reaching out to you` line
       And it includes one concrete proof point of fit
+      And it includes the Job Hunt Copilot / AI-agent block
       And it uses one 15-minute Zoom ask
-      And any forwardable snippet is placed directly below the routing-help line
+      And the forwardable snippet is placed directly below the routing-help line
+      And the default body does not rely on an education-status sentence such as `I am currently finishing my MS ...`
 
-    Scenario: Internal-helper or alumni outreach may include a forwardable summary snippet
-      Given the recipient type is internal helper, referral-style contact, or alumni-style contact
-      When the outreach strategy benefits from easy internal forwarding
-      Then the draft may include a compact forwardable summary snippet
+    Scenario: The current shared role-targeted template includes a compact forwardable summary snippet
+      Given a role-targeted draft is generated with the current shared template
+      When the draft is inspected
+      Then the draft includes a compact forwardable summary snippet
       And that snippet stays small enough to be plausibly forwarded with little or no editing
-      But a forwardable snippet is not treated as mandatory for every recipient type
+      And that snippet is JD-aware rather than a generic skills list
 
   @delivery_feedback
   Rule: Delivery Feedback behavior
@@ -1041,10 +1056,10 @@ Feature: Job Hunt Copilot next-build acceptance
       And delayed feedback capture does not require the original interactive send session to remain running
 
     Scenario: Delivery feedback may begin immediately for each sent message
-      Given multiple messages are being sent as part of the current send set
+      Given multiple messages are being sent as part of the current active send slice
       When one specific send succeeds before the rest of the set has finished sending
       Then Delivery Feedback may begin bounce or reply observation for that sent message immediately
-      And feedback observation for that message does not wait for the rest of the current send set to finish
+      And feedback observation for that message does not wait for the rest of the current active send slice to finish
 
     Scenario: Delivery feedback persists canonical event history and machine handoff output
       Given a sent message later receives a bounce, not-bounced, or reply signal
@@ -1054,11 +1069,12 @@ Feature: Job Hunt Copilot next-build acceptance
       And `delivery_outcome.json` is produced as the machine handoff artifact
       And the latest state is derivable from event history rather than overwriting that history
 
-    Scenario: Bounced outcomes do not automatically rewrite discovery cache in the build
+    Scenario: Bounced outcomes conservatively block reuse without starting bounce recovery
       Given a sent email later bounces
       When Delivery Feedback records the bounced outcome
-      Then the bounced case is surfaced for owner review
-      And discovery cache or reusable-email state is not automatically rewritten by that bounce in the build
+      Then that bounced email identity is blocked from future automatic reuse
+      And the directly responsible provider result may also be blocked from future reuse
+      But the posting is not automatically reopened into a bounce-recovery loop in the current build
 
     Scenario: Delayed feedback scheduling uses launchd in the current deployment
       Given the build is deployed on the supported single-user macOS setup
@@ -1066,6 +1082,12 @@ Feature: Job Hunt Copilot next-build acceptance
       Then `launchd` is used as the scheduler for recurring feedback sync
       And the scheduler invokes reusable Delivery Feedback sync logic rather than embedding mailbox logic directly
       And scheduled runs are auditable through `feedback_sync_runs`
+
+    Scenario: The separate feedback-sync worker owns delayed mailbox polling
+      Given a role-targeted pipeline run is waiting at `delivery_feedback`
+      When delayed mailbox polling is needed
+      Then the separate feedback-sync worker performs the delayed mailbox polling
+      And the supervisor only reads persisted feedback state to keep or complete the run
 
     Scenario: Not-bounced is recorded when the observation window closes without a bounce
       Given an outreach message has been sent
@@ -1113,7 +1135,7 @@ Feature: Job Hunt Copilot next-build acceptance
       Given the current local deployment is the supported single-user macOS setup
       When the autonomous control plane is configured
       Then the supervisor heartbeat runs through `launchd`
-      And the current heartbeat interval is 3 minutes
+      And the current heartbeat interval is 5 seconds
       And each heartbeat may use a fresh LLM context
       But that context is rebuilt from canonical state, runtime identity or policy artifacts, selected durable work units, and only the local evidence needed for those work units
 
@@ -1210,10 +1232,19 @@ Feature: Job Hunt Copilot next-build acceptance
       Given the current local macOS deployment is using the supported supervisor wiring
       When the supervisor launchd job and helper scripts are inspected
       Then `ops/launchd/job-hunt-copilot-supervisor.plist` uses `Label = com.jobhuntcopilot.supervisor`
-      And it uses `RunAtLoad = true`, `StartInterval = 180`, and `KeepAlive = false`
+      And it uses `RunAtLoad = true`, `StartInterval = 5`, and `KeepAlive = false`
       And it points `ProgramArguments` to `bin/jhc-agent-cycle` under the absolute project root
       And `bin/jhc-agent-cycle` runs `python3 scripts/ops/run_supervisor_cycle.py --project-root <absolute project root>`
       And supervisor stdout and stderr are written to dedicated files under `ops/logs/`
+
+    Scenario: Current feedback-sync launchd and wrapper wiring uses the repo-local command path
+      Given the current local macOS deployment is using the supported delayed feedback wiring
+      When the feedback-sync launchd job and helper scripts are inspected
+      Then `ops/launchd/job-hunt-copilot-feedback-sync.plist` uses `Label = com.jobhuntcopilot.feedback-sync`
+      And it uses `RunAtLoad = true`, `StartInterval = 300`, and `KeepAlive = false`
+      And it points `ProgramArguments` to `bin/jhc-feedback-sync-cycle` under the absolute project root
+      And `bin/jhc-feedback-sync-cycle` runs `python3 scripts/ops/run_feedback_sync.py --project-root <absolute project root>`
+      And feedback-sync stdout and stderr are written to dedicated files under `ops/logs/`
 
     Scenario: jhc-agent-start and jhc-agent-stop use the current launchctl wiring
       Given the current local helper entrypoints are installed
@@ -1451,7 +1482,7 @@ Feature: Job Hunt Copilot next-build acceptance
     Scenario: Role-targeted orchestration follows the current dependency order
       Given a role-targeted posting is being processed in the build
       When the main pipeline runs
-      Then the dependency order is LinkedIn Scraping, eligibility or tailoring, mandatory agent review, company-scoped contact search or contact linking or contact reuse, selected-contact enrichment, email discovery when still needed, batch drafting for the ready send set, sending, and delivery feedback
+      Then the dependency order is LinkedIn Scraping, eligibility or tailoring, mandatory agent review, company-scoped contact search or contact linking or contact reuse, selected-contact enrichment, email discovery when still needed, frontier drafting for ready untouched contacts, sending, and delivery feedback
       And later stages do not proceed before their upstream prerequisites are satisfied
 
     Scenario: Posting remains requires-contacts until minimum outreach prerequisites exist
@@ -1504,8 +1535,9 @@ Feature: Job Hunt Copilot next-build acceptance
       When orchestration evaluates the next step for that contact
       Then the contact may move directly to `working_email_found`
       And fresh provider discovery is skipped for that contact in the current run
-      And that contact counts as discovery-ready for the current send set
-      But drafting or sending still waits for the full current send set to satisfy the remaining prerequisites
+      And that contact counts as discovery-ready immediately for the posting frontier
+      And drafting may begin for that contact once the posting-level prerequisites are satisfied
+      But automatic sending for that posting still waits for the active send-slice and pacing rules
 
     Scenario: Prior outreach history blocks automatic repeat send during orchestration
       Given a linked contact already has prior outreach history
@@ -1573,12 +1605,12 @@ Feature: Job Hunt Copilot next-build acceptance
       Then the flow does not require posting-specific resume tailoring
       And the flow does not require the role-targeted agent-review requirement before drafting or sending
 
-    Scenario: Discovery can start per contact but drafting or sending waits for the ready send set
+    Scenario: Discovery can start per contact while automatic sending still waits for the active send slice
       Given a posting has multiple linked contacts
       When one contact becomes linked and has enough local prerequisites to proceed
       Then discovery may begin for that contact without waiting for the full contact set
-      But drafting or sending does not begin for that contact alone
-      And drafting or sending waits until the current send set is fully ready under the active orchestration rules
+      And drafting may begin for that contact once the posting-level prerequisites are satisfied
+      But automatic sending for that posting still waits for the active send-slice and pacing rules
 
     Scenario: One contact failure does not stop unrelated contacts in the same posting flow
       Given multiple contacts are being processed for the same posting
@@ -1586,10 +1618,12 @@ Feature: Job Hunt Copilot next-build acceptance
       Then unrelated eligible contacts may still continue through the workflow
       And the failed contact remains available for review or retry handling
 
-    Scenario: Current build does not automatically expand contact search after the selected set is sent
-      Given the current selected outreach set for a posting has been sent
-      When no explicit user request for more contact expansion has been made
-      Then the system does not automatically go back and discover additional contacts for that posting
+    Scenario: Saved broad-search results may backfill the shortlist without rerunning external people search
+      Given a posting has already consumed part of its shortlisted contact pool
+      And a saved broad Apollo people-search artifact still exists for that posting
+      When orchestration sees that the active shortlist is below the current limit
+      Then the system may backfill additional shortlisted contacts from the saved broad-search artifact
+      But it does not need to rerun external company-scoped people search immediately just to continue the posting
 
   @linkedin_scraping
   Rule: LinkedIn Scraping acceptance
@@ -1608,6 +1642,19 @@ Feature: Job Hunt Copilot next-build acceptance
       When the same `gmail_message_id` is encountered again later
       Then the duplicate email is ignored instead of overwriting or creating another collected-email unit
 
+    Scenario: Autonomous Gmail intake uses a durable history checkpoint for incremental polling
+      Given autonomous Gmail intake has already persisted a mailbox history checkpoint
+      When the next Gmail intake poll runs
+      Then the poll resumes incrementally from that checkpoint when Gmail history is still valid
+      And the system does not rely only on a bounded recent-message search to find new alerts
+
+    Scenario: Checkpoint seed without new leads is recorded as auditable no-work
+      Given autonomous Gmail intake needs to seed or refresh the mailbox history checkpoint
+      And no new parseable lead cards are produced in that seed pass
+      When the seed pass completes
+      Then the checkpoint update is still persisted
+      And the result is recorded as auditable no-work rather than a false incident
+
     Scenario: Gmail thread membership does not suppress collection or parsing
       Given multiple LinkedIn job-alert emails belong to the same `gmail_thread_id`
       When Gmail ingestion runs
@@ -1621,6 +1668,12 @@ Feature: Job Hunt Copilot next-build acceptance
       And `job-cards.json` may be empty
       And no lead workspace is created from that message
       And review is triggered only when more than 3 such emails occur in one Gmail ingestion run or when the cumulative unresolved count exceeds 3 across history
+
+    Scenario: Digest-summary headers do not materialize as canonical leads
+      Given a LinkedIn Gmail alert contains only digest-summary headers or summary-only cards
+      When autonomous Gmail fan-out runs
+      Then those summary headers are ignored
+      And no canonical lead or job posting is created from them
 
     Scenario: Gmail-derived lead workspaces start incomplete and become blocked-no-jd when JD recovery fails
       Given a parsed Gmail alert card survives validation and deduplication
@@ -1647,6 +1700,12 @@ Feature: Job Hunt Copilot next-build acceptance
       When fallback identity is materialized
       Then a synthetic fallback identity key is created from the normalized LinkedIn job URL
       And the lead may still be created from that fallback identity
+
+    Scenario: Duplicate canonical lead identities are refreshed instead of crashing
+      Given autonomous Gmail intake encounters a parsed alert card that resolves to an existing canonical lead identity
+      When canonical lead materialization runs
+      Then the existing lead is refreshed or reused
+      But the run does not crash on duplicate canonical creation
 
     Scenario: Missing both job id and job URL blocks the autonomous lead only when no JD can be recovered
       Given a parsed autonomous alert card lacks both a usable LinkedIn `job_id` and a usable LinkedIn job URL
@@ -1686,7 +1745,7 @@ Feature: Job Hunt Copilot next-build acceptance
       Given a role-targeted lead entered through manual browser capture or autonomous Gmail job-alert intake
       And the required secrets, assets, and environment prerequisites are all available
       When the build runs the primary role-targeted flow
-      Then the flow progresses through LinkedIn Scraping, tailoring, mandatory agent review, company-scoped contact search, shortlist-time contact materialization, selected-contact enrichment, email discovery when needed, batch drafting for the ready send set, sending, and delivery feedback
+      Then the flow progresses through LinkedIn Scraping, tailoring, mandatory agent review, company-scoped contact search, shortlist-time contact materialization, selected-contact enrichment, email discovery when needed, frontier drafting for ready untouched contacts, sending, and delivery feedback
       And intermediate machine artifacts are persisted at each stage boundary
       And canonical state remains queryable throughout the flow
 

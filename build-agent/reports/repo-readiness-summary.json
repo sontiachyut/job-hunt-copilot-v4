@@ -1,6 +1,6 @@
 {
   "repo_readiness_report_version": 1,
-  "generated_at": "2026-04-09T23:39:59Z",
+  "generated_at": "2026-04-13T01:33:00Z",
   "project_root": "/Users/achyutaramsonti/Projects/job-hunt-copilot-v4",
   "sources": {
     "build_board": "build-agent/state/build-board.yaml",
@@ -33,7 +33,7 @@
   },
   "latest_validation": {
     "available": true,
-    "generated_at": "2026-04-09T23:39:59Z",
+    "generated_at": "2026-04-13T01:33:00Z",
     "passed": true,
     "command_count": 5,
     "failed_command_count": 0,
@@ -52,9 +52,9 @@
     "tracks_current_focus": true
   },
   "acceptance_status": {
-    "scenario_count": 214,
+    "scenario_count": 226,
     "status_counts": {
-      "implemented": 212,
+      "implemented": 224,
       "partial": 0,
       "gap": 0,
       "deferred_optional": 1,
