@@ -2667,7 +2667,7 @@ def _select_open_pipeline_run_work_unit(
     current_time: str,
     local_timezone: object | str | None = None,
 ) -> SupervisorWorkUnit | None:
-    from .outreach import evaluate_role_targeted_send_set
+    from .outreach import is_role_targeted_sending_actionable_now
 
     rows = connection.execute(
         """
@@ -2708,14 +2708,13 @@ def _select_open_pipeline_run_work_unit(
                     connection,
                     job_posting_id=job_posting_id,
                 )
-                if posting_status == "ready_for_outreach":
-                    send_set_plan = evaluate_role_targeted_send_set(
+                if posting_status in {"ready_for_outreach", "outreach_in_progress"}:
+                    if not is_role_targeted_sending_actionable_now(
                         connection,
                         job_posting_id=job_posting_id,
                         current_time=current_time,
                         local_timezone=local_timezone,
-                    )
-                    if send_set_plan.selected_contacts and not send_set_plan.pacing_allowed_now:
+                    ):
                         continue
 
         action_id = ROLE_TARGETED_PIPELINE_STAGE_ACTIONS.get(pipeline_run.current_stage)

@@ -877,6 +877,47 @@ def evaluate_role_targeted_send_set(
     )
 
 
+def is_role_targeted_sending_actionable_now(
+    connection: sqlite3.Connection,
+    *,
+    job_posting_id: str,
+    current_time: str,
+    local_timezone: tzinfo | str | None = None,
+) -> bool:
+    posting_row = _load_role_targeted_send_posting_row(connection, job_posting_id=job_posting_id)
+    active_wave = _load_active_role_targeted_wave(connection, job_posting_id=job_posting_id)
+    pending_generated_messages = [
+        message for message in active_wave if message.message_status == MESSAGE_STATUS_GENERATED
+    ]
+    if pending_generated_messages:
+        current_dt = _parse_iso_datetime(current_time)
+        resolved_timezone = _resolve_local_timezone(current_dt, local_timezone)
+        global_gap_minutes = _determine_global_gap_minutes(
+            job_posting_id=job_posting_id,
+            selected_contact_ids=[message.contact_id for message in active_wave],
+            current_dt=current_dt,
+            local_timezone=resolved_timezone,
+        )
+        pacing = _build_role_targeted_send_pacing_plan(
+            connection,
+            posting_row=posting_row,
+            current_dt=current_dt,
+            local_timezone=resolved_timezone,
+            global_gap_minutes=global_gap_minutes,
+        )
+        return bool(pacing["pacing_allowed_now"])
+
+    send_set_plan = evaluate_role_targeted_send_set(
+        connection,
+        job_posting_id=job_posting_id,
+        current_time=current_time,
+        local_timezone=local_timezone,
+    )
+    if send_set_plan.selected_contacts and not send_set_plan.pacing_allowed_now:
+        return False
+    return True
+
+
 def _load_posting_row(
     connection: sqlite3.Connection,
     *,

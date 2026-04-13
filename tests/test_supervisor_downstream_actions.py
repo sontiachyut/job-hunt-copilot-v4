@@ -3165,3 +3165,115 @@ def test_sending_run_waiting_for_next_day_quota_does_not_block_new_posting_boots
     assert execution.selected_work is not None
     assert execution.selected_work.action_id == ACTION_BOOTSTRAP_ROLE_TARGETED_RUN
     assert execution.selected_work.job_posting_id == next_job_posting_id
+
+
+def test_outreach_in_progress_sending_run_waiting_for_next_day_quota_does_not_block_new_posting_bootstrap(
+    tmp_path: Path,
+) -> None:
+    project_root = bootstrap_project(tmp_path)
+    paths = ProjectPaths.from_root(project_root)
+    write_sender_profile(paths)
+    connection = connect_database(project_root / "job_hunt_copilot.db")
+    lead_id, job_posting_id = seed_role_targeted_posting(
+        connection,
+        company_name="Acme Robotics",
+        role_title="Staff Software Engineer / AI",
+        posting_status="outreach_in_progress",
+        timestamp="2026-04-08T00:00:00Z",
+    )
+    seed_outreach_ready_tailoring_run(
+        connection,
+        paths,
+        company_name="Acme Robotics",
+        role_title="Staff Software Engineer / AI",
+        job_posting_id=job_posting_id,
+        current_time="2026-04-08T00:01:00Z",
+    )
+    for contact_id, job_posting_contact_id, display_name, recipient_type, position_title, link_level_status, contact_status, email, created_at in [
+        ("ct_wave_1", "jpc_wave_1", "Wave One", "recruiter", "Technical Recruiter", "outreach_done", "sent", "wave1@acme.example", "2026-04-08T00:02:00Z"),
+        ("ct_wave_2", "jpc_wave_2", "Wave Two", "hiring_manager", "Engineering Manager", "outreach_done", "sent", "wave2@acme.example", "2026-04-08T00:03:00Z"),
+        ("ct_wave_3", "jpc_wave_3", "Wave Three", "engineer", "Staff Software Engineer", "outreach_done", "sent", "wave3@acme.example", "2026-04-08T00:04:00Z"),
+        ("ct_wave_4", "jpc_wave_4", "Wave Four", "alumni", "Senior Software Engineer", "outreach_done", "sent", "wave4@acme.example", "2026-04-08T00:05:00Z"),
+        ("ct_wave_5", "jpc_wave_5", "Wave Five", "engineer", "Senior Software Engineer", "outreach_in_progress", "outreach_in_progress", "wave5@acme.example", "2026-04-08T00:06:00Z"),
+        ("ct_wave_6", "jpc_wave_6", "Wave Six", "other_internal", "Senior Software Engineer", "outreach_in_progress", "outreach_in_progress", "wave6@acme.example", "2026-04-08T00:07:00Z"),
+    ]:
+        seed_shortlisted_contact(
+            connection,
+            contact_id=contact_id,
+            job_posting_contact_id=job_posting_contact_id,
+            job_posting_id=job_posting_id,
+            company_name="Acme Robotics",
+            display_name=display_name,
+            recipient_type=recipient_type,
+            current_working_email=email,
+            position_title=position_title,
+            link_level_status=link_level_status,
+            contact_status=contact_status,
+            created_at=created_at,
+        )
+    for outreach_message_id, contact_id, job_posting_contact_id, email, message_status, sent_at, created_at, updated_at in [
+        ("msg_wave_1", "ct_wave_1", "jpc_wave_1", "wave1@acme.example", "sent", "2026-04-08T12:00:00Z", "2026-04-08T11:59:00Z", "2026-04-08T12:00:00Z"),
+        ("msg_wave_2", "ct_wave_2", "jpc_wave_2", "wave2@acme.example", "sent", "2026-04-08T13:00:00Z", "2026-04-08T12:59:00Z", "2026-04-08T13:00:00Z"),
+        ("msg_wave_3", "ct_wave_3", "jpc_wave_3", "wave3@acme.example", "sent", "2026-04-08T14:00:00Z", "2026-04-08T13:59:00Z", "2026-04-08T14:00:00Z"),
+        ("msg_wave_4", "ct_wave_4", "jpc_wave_4", "wave4@acme.example", "sent", "2026-04-08T14:05:00Z", "2026-04-08T14:04:00Z", "2026-04-08T14:05:00Z"),
+        ("msg_wave_5", "ct_wave_5", "jpc_wave_5", "wave5@acme.example", "generated", None, "2026-04-08T14:06:00Z", "2026-04-08T14:06:00Z"),
+        ("msg_wave_6", "ct_wave_6", "jpc_wave_6", "wave6@acme.example", "generated", None, "2026-04-08T14:06:00Z", "2026-04-08T14:06:00Z"),
+    ]:
+        connection.execute(
+            """
+            INSERT INTO outreach_messages (
+              outreach_message_id, contact_id, outreach_mode, recipient_email, message_status,
+              job_posting_id, job_posting_contact_id, subject, body_text, sent_at, created_at, updated_at
+            ) VALUES (?, ?, 'role_targeted', ?, ?, ?, ?, 'hello', 'body', ?, ?, ?)
+            """,
+            (
+                outreach_message_id,
+                contact_id,
+                email,
+                message_status,
+                job_posting_id,
+                job_posting_contact_id,
+                sent_at,
+                created_at,
+                updated_at,
+            ),
+        )
+    connection.commit()
+    resume_agent(
+        connection,
+        manual_command="jhc-agent-start",
+        timestamp="2026-04-08T14:06:00Z",
+    )
+    ensure_role_targeted_pipeline_run(
+        connection,
+        lead_id=lead_id,
+        job_posting_id=job_posting_id,
+        current_stage="sending",
+        started_at="2026-04-08T14:07:00Z",
+    )
+    _, next_job_posting_id = seed_role_targeted_posting(
+        connection,
+        lead_id="ld_downstream_next_send_wait_active_wave",
+        job_posting_id="jp_downstream_next_send_wait_active_wave",
+        lead_identity_key="another-wave-systems|platform-engineer",
+        posting_identity_key="another-wave-systems|platform-engineer|remote",
+        company_name="Another Wave Systems",
+        role_title="Platform Engineer",
+        posting_status="sourced",
+        timestamp="2026-04-08T14:08:00Z",
+    )
+
+    execution = run_supervisor_cycle(
+        connection,
+        paths,
+        trigger_type="launchd_heartbeat",
+        scheduler_name="launchd",
+        started_at="2026-04-08T14:10:00Z",
+        action_dependencies=SupervisorActionDependencies(local_timezone="UTC"),
+    )
+    connection.close()
+
+    assert execution.cycle.result == SUPERVISOR_CYCLE_RESULT_SUCCESS
+    assert execution.selected_work is not None
+    assert execution.selected_work.action_id == ACTION_BOOTSTRAP_ROLE_TARGETED_RUN
+    assert execution.selected_work.work_id == next_job_posting_id
