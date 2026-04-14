@@ -1681,7 +1681,10 @@ def run_email_discovery_for_contact(
                 detected_pattern=_normalize_optional_text(latest_found_attempt["detected_pattern"]),
             )
         else:
-            company_domain = _derive_company_domain(target_row)
+            company_domain = (
+                _resolved_company_domain_from_people_search_payload(paths, target_row)
+                or _derive_company_domain(target_row)
+            )
             provider_sequence = tuple(providers) if providers is not None else _build_default_email_finder_providers(paths)
             final_result: EmailDiscoveryProviderResult | None = None
 
@@ -1701,22 +1704,6 @@ def run_email_discovery_for_contact(
                         _persist_provider_budget_signal(
                             connection,
                             result=skipped_result,
-                            discovery_attempt_id=discovery_attempt_id,
-                            contact_id=contact_id,
-                            created_at=timestamp,
-                        )
-                    continue
-
-                if bool(getattr(provider, "requires_domain", False)) and company_domain is None:
-                    unresolved_result = EmailDiscoveryProviderResult(
-                        provider_name=provider_name,
-                        outcome=DISCOVERY_OUTCOME_DOMAIN_UNRESOLVED,
-                    )
-                    provider_steps.append(_provider_step_payload(unresolved_result))
-                    with connection:
-                        _persist_provider_budget_signal(
-                            connection,
-                            result=unresolved_result,
                             discovery_attempt_id=discovery_attempt_id,
                             contact_id=contact_id,
                             created_at=timestamp,
@@ -2511,6 +2498,17 @@ def _derive_company_domain(posting_row: sqlite3.Row) -> str | None:
         if host and "." in host and "linkedin.com" not in host:
             return host
     return None
+
+
+def _resolved_company_domain_from_people_search_payload(
+    paths: ProjectPaths,
+    posting_row: Mapping[str, Any],
+) -> str | None:
+    payload = _load_people_search_payload(paths, posting_row)
+    resolved_company = payload.get("resolved_company")
+    if not isinstance(resolved_company, Mapping):
+        return None
+    return _normalize_optional_text(resolved_company.get("primary_domain"))
 
 
 def _derive_company_website(posting_row: sqlite3.Row) -> str | None:

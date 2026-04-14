@@ -887,6 +887,18 @@ Feature: Job Hunt Copilot next-build acceptance
       Then the attempt records a distinct `domain_unresolved` reason instead of collapsing to generic `not_found`
       And provider paths that do not require a domain may still continue for that same contact
 
+    Scenario: Discovery reuses the saved resolved company domain before weaker derivation
+      Given people search already persisted a resolved company record with `primary_domain` in `people_search_result.json`
+      And person-scoped Email Discovery is running for a shortlisted contact from that posting
+      When the posting source URL does not itself provide a usable company domain
+      Then Email Discovery reuses the saved `primary_domain` for provider calls that need a company domain
+
+    Scenario: Discovery still calls providers that can operate without company_domain
+      Given person-scoped Email Discovery has no usable `company_domain`
+      And a provider supports the available contact input through `linkedin_url` or company-name context
+      When Email Discovery runs the provider cascade
+      Then the provider is still called instead of being pre-skipped by the outer discovery loop
+
     Scenario: Discovery updates provider-budget state and falls back when a provider is exhausted
       Given provider-based discovery is running through the current cascade
       When a provider is used, exhausted, or rate-limited

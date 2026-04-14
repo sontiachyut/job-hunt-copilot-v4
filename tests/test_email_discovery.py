@@ -1565,12 +1565,12 @@ def test_email_discovery_records_domain_unresolved_but_continues_hunter(tmp_path
     prospeo = FakeEmailFinderProvider(
         provider_name="prospeo",
         requires_domain=True,
-        responses=[],
+        responses=[{"outcome": DISCOVERY_OUTCOME_DOMAIN_UNRESOLVED}],
     )
     getprospect = FakeEmailFinderProvider(
         provider_name="getprospect",
         requires_domain=True,
-        responses=[],
+        responses=[{"outcome": DISCOVERY_OUTCOME_DOMAIN_UNRESOLVED}],
     )
     hunter = FakeEmailFinderProvider(
         provider_name="hunter",
@@ -1592,8 +1592,8 @@ def test_email_discovery_records_domain_unresolved_but_continues_hunter(tmp_path
     )
 
     assert result.outcome == DISCOVERY_OUTCOME_DOMAIN_UNRESOLVED
-    assert prospeo.calls == []
-    assert getprospect.calls == []
+    assert len(prospeo.calls) == 1
+    assert len(getprospect.calls) == 1
     assert len(hunter.calls) == 1
 
     attempt_row = connection.execute(
@@ -1646,8 +1646,16 @@ def test_email_discovery_treats_domain_unresolved_as_provider_exhaustion(tmp_pat
     seed_linked_contact(connection, linkedin_url=None, provider_person_id=None, identity_key="manual|maya")
 
     providers = (
-        FakeEmailFinderProvider(provider_name="prospeo", requires_domain=True, responses=[]),
-        FakeEmailFinderProvider(provider_name="getprospect", requires_domain=True, responses=[]),
+        FakeEmailFinderProvider(
+            provider_name="prospeo",
+            requires_domain=True,
+            responses=[{"outcome": DISCOVERY_OUTCOME_DOMAIN_UNRESOLVED}],
+        ),
+        FakeEmailFinderProvider(
+            provider_name="getprospect",
+            requires_domain=True,
+            responses=[{"outcome": DISCOVERY_OUTCOME_DOMAIN_UNRESOLVED}],
+        ),
         FakeEmailFinderProvider(
             provider_name="hunter",
             responses=[
@@ -1698,6 +1706,140 @@ def test_email_discovery_treats_domain_unresolved_as_provider_exhaustion(tmp_pat
         """
     ).fetchone()
     assert unresolved_row["unresolved_reason"] == "contact_exhausted"
+
+    connection.close()
+
+
+def test_email_discovery_uses_resolved_company_domain_from_people_search_payload(tmp_path: Path):
+    project_root = bootstrap_project(tmp_path)
+    paths = ProjectPaths.from_root(project_root)
+    connection = connect_database(project_root / "job_hunt_copilot.db")
+    seed_search_ready_posting(
+        connection,
+        paths,
+        source_url="https://www.linkedin.com/jobs/view/123",
+    )
+    seed_linked_contact(
+        connection,
+        linkedin_url=None,
+        full_name="Maya Rivera",
+        first_name="Maya",
+        last_name="Rivera",
+    )
+    people_search_path = (
+        paths.discovery_workspace_dir("Acme Robotics", "Staff Software Engineer / AI")
+        / "people_search_result.json"
+    )
+    people_search_path.parent.mkdir(parents=True, exist_ok=True)
+    people_search_path.write_text(
+        json.dumps(
+            {
+                "resolved_company": {
+                    "organization_id": "org_acme",
+                    "organization_name": "Acme Robotics",
+                    "primary_domain": "acmerobotics.com",
+                }
+            },
+            indent=2,
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+
+    prospeo = FakeEmailFinderProvider(
+        provider_name="prospeo",
+        requires_domain=True,
+        responses=[{"outcome": DISCOVERY_OUTCOME_NOT_FOUND}],
+    )
+    getprospect = FakeEmailFinderProvider(
+        provider_name="getprospect",
+        requires_domain=True,
+        responses=[
+            {
+                "outcome": "found",
+                "email": "maya@acmerobotics.com",
+                "provider_verification_status": "verified",
+            }
+        ],
+    )
+    hunter = FakeEmailFinderProvider(provider_name="hunter", responses=[])
+
+    result = run_email_discovery_for_contact(
+        project_root=project_root,
+        job_posting_id="jp_search",
+        contact_id="ct_target",
+        providers=(prospeo, getprospect, hunter),
+        current_time="2026-04-06T21:47:45Z",
+    )
+
+    assert result.outcome == "found"
+    assert result.email == "maya@acmerobotics.com"
+    assert prospeo.calls == [
+        {
+            "contact_id": "ct_target",
+            "job_posting_id": "jp_search",
+            "company_domain": "acmerobotics.com",
+            "company_name": "Acme Robotics",
+        }
+    ]
+    assert getprospect.calls == [
+        {
+            "contact_id": "ct_target",
+            "job_posting_id": "jp_search",
+            "company_domain": "acmerobotics.com",
+            "company_name": "Acme Robotics",
+        }
+    ]
+    assert hunter.calls == []
+
+    connection.close()
+
+
+def test_email_discovery_runs_prospeo_with_linkedin_url_without_company_domain(tmp_path: Path):
+    project_root = bootstrap_project(tmp_path)
+    paths = ProjectPaths.from_root(project_root)
+    connection = connect_database(project_root / "job_hunt_copilot.db")
+    seed_search_ready_posting(
+        connection,
+        paths,
+        source_url="https://www.linkedin.com/jobs/view/123",
+    )
+    seed_linked_contact(connection)
+
+    prospeo = FakeEmailFinderProvider(
+        provider_name="prospeo",
+        requires_domain=True,
+        responses=[
+            {
+                "outcome": "found",
+                "email": "maya@acmerobotics.com",
+                "provider_verification_status": "verified",
+            }
+        ],
+    )
+    getprospect = FakeEmailFinderProvider(provider_name="getprospect", requires_domain=True, responses=[])
+    hunter = FakeEmailFinderProvider(provider_name="hunter", responses=[])
+
+    result = run_email_discovery_for_contact(
+        project_root=project_root,
+        job_posting_id="jp_search",
+        contact_id="ct_target",
+        providers=(prospeo, getprospect, hunter),
+        current_time="2026-04-06T21:47:50Z",
+    )
+
+    assert result.outcome == "found"
+    assert result.email == "maya@acmerobotics.com"
+    assert prospeo.calls == [
+        {
+            "contact_id": "ct_target",
+            "job_posting_id": "jp_search",
+            "company_domain": None,
+            "company_name": "Acme Robotics",
+        }
+    ]
+    assert getprospect.calls == []
+    assert hunter.calls == []
 
     connection.close()
 
