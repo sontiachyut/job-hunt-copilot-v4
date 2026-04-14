@@ -962,8 +962,15 @@ def _persist_mailbox_feedback_signal(
             provider_message_id=_normalize_optional_text(signal.provider_message_id),
             produced_at=produced_at,
         )
+        if signal_type == EVENT_STATE_REPLIED:
+            _promote_contact_responder_state_from_reply(
+                connection,
+                contact_id=candidate.contact_id,
+                event_timestamp=event_timestamp,
+                updated_at=produced_at,
+            )
         return None
-    return _persist_delivery_feedback_event(
+    persisted_event = _persist_delivery_feedback_event(
         connection,
         paths,
         candidate=candidate,
@@ -975,6 +982,64 @@ def _persist_mailbox_feedback_signal(
         provider_message_id=_normalize_optional_text(signal.provider_message_id),
         produced_at=produced_at,
     )
+    if signal_type == EVENT_STATE_REPLIED:
+        _promote_contact_responder_state_from_reply(
+            connection,
+            contact_id=candidate.contact_id,
+            event_timestamp=event_timestamp,
+            updated_at=produced_at,
+        )
+    return persisted_event
+
+
+def _promote_contact_responder_state_from_reply(
+    connection: sqlite3.Connection,
+    *,
+    contact_id: str,
+    event_timestamp: str,
+    updated_at: str,
+) -> None:
+    row = connection.execute(
+        """
+        SELECT responder_state, responded_at
+        FROM contacts
+        WHERE contact_id = ?
+        """,
+        (contact_id,),
+    ).fetchone()
+    if row is None:
+        return
+
+    current_state = _normalize_optional_text(row["responder_state"]) or "none"
+    current_responded_at = _normalize_optional_text(row["responded_at"])
+    next_state = current_state if current_state == "warm" else EVENT_STATE_REPLIED
+    next_responded_at = current_responded_at
+    if next_responded_at is None or _parse_iso_datetime(event_timestamp) < _parse_iso_datetime(
+        next_responded_at
+    ):
+        next_responded_at = event_timestamp
+
+    if next_state == current_state and next_responded_at == current_responded_at:
+        return
+
+    with connection:
+        connection.execute(
+            """
+            UPDATE contacts
+            SET responder_state = ?,
+                responded_at = ?,
+                responder_updated_at = ?,
+                updated_at = ?
+            WHERE contact_id = ?
+            """,
+            (
+                next_state,
+                next_responded_at,
+                updated_at,
+                updated_at,
+                contact_id,
+            ),
+        )
 
 
 def _persist_not_bounced_outcome_if_due(

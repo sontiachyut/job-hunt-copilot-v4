@@ -21,6 +21,8 @@ from job_hunt_copilot.local_runtime import (
     review_maintenance_change_batch,
     request_guidance_clarification,
     return_background_task,
+    update_contact_responder_state,
+    update_job_posting_application_state,
 )
 
 
@@ -43,12 +45,15 @@ def main() -> int:
             "review-maintenance",
             "handoff-background-task",
             "return-background-task",
+            "update-application",
+            "update-responder",
         ],
     )
     parser.add_argument("--project-root", default=str(PROJECT_ROOT))
     parser.add_argument("--reason")
     parser.add_argument("--manual-command")
     parser.add_argument("--job-posting-id")
+    parser.add_argument("--contact-id")
     parser.add_argument("--expert-review-packet-id")
     parser.add_argument("--maintenance-change-batch-id")
     parser.add_argument("--object-type")
@@ -84,6 +89,13 @@ def main() -> int:
         choices=["conflict", "uncertainty"],
     )
     parser.add_argument("--source-override-event-id")
+    parser.add_argument("--application-state")
+    parser.add_argument("--applied-at")
+    parser.add_argument("--application-url")
+    parser.add_argument("--application-notes")
+    parser.add_argument("--responder-state")
+    parser.add_argument("--responded-at")
+    parser.add_argument("--responder-notes")
     args = parser.parse_args()
 
     try:
@@ -95,6 +107,39 @@ def main() -> int:
                 project_root=Path(args.project_root),
                 reason=args.reason,
                 manual_command=args.manual_command or "abandon",
+            )
+        elif args.command == "update-application":
+            if not args.job_posting_id:
+                parser.error("--job-posting-id is required for the update-application command.")
+            if not args.application_state:
+                parser.error("--application-state is required for the update-application command.")
+            if not args.reason:
+                parser.error("--reason is required for the update-application command.")
+            report = update_job_posting_application_state(
+                args.job_posting_id,
+                project_root=Path(args.project_root),
+                application_state=args.application_state,
+                applied_at=args.applied_at,
+                application_url=args.application_url,
+                application_notes=args.application_notes,
+                reason=args.reason,
+                manual_command=args.manual_command or "update-application",
+            )
+        elif args.command == "update-responder":
+            if not args.contact_id:
+                parser.error("--contact-id is required for the update-responder command.")
+            if not args.responder_state:
+                parser.error("--responder-state is required for the update-responder command.")
+            if not args.reason:
+                parser.error("--reason is required for the update-responder command.")
+            report = update_contact_responder_state(
+                args.contact_id,
+                project_root=Path(args.project_root),
+                responder_state=args.responder_state,
+                responded_at=args.responded_at,
+                responder_notes=args.responder_notes,
+                reason=args.reason,
+                manual_command=args.manual_command or "update-responder",
             )
         elif args.command == "close-review":
             if not args.expert_review_packet_id:

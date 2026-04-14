@@ -348,7 +348,7 @@ This is the agreed vocabulary for design discussions.
 2. The stable business identity shared across those component-owned folders shall be `{company_slug}/{role_slug}` for role-targeted work, with `lead_id`, `contact_id`, and `outreach_message_id` remaining the canonical object identifiers inside artifacts and DB state.
 3. For basic functioning, `company_slug` and `role_slug` shall be lowercase kebab-case path segments derived from the chosen canonical company and role text by trimming, lowercasing, converting whitespace and slash-like separators to `-`, removing other punctuation, and collapsing repeated hyphens. The dry-run path `applications/prepass/software-engineer/...` is the reference shape.
 4. The current component-owned path direction is:
-   - `applications/{company}/{role}/application.yaml` for pipeline orchestration state
+   - `applications/{company}/{role}/application.yaml` for the readable posting-local mirror of manual application state
    - `linkedin-scraping/runtime/gmail/{YYYYMMDDTHHMMSSZ}-{gmail_message_id}/...` for collected Gmail email snapshots and parse artifacts before per-lead fan-out
    - `linkedin-scraping/runtime/leads/{company}/{role}/{lead_id}/...` for upstream lead-intake artifacts
    - `resume-tailoring/output/tailored/{company}/{role}/...` for resume-tailoring workspace artifacts
@@ -499,6 +499,20 @@ This is the agreed vocabulary for design discussions.
 - **FR-SYS-15G (Outreach-to-Sent Transition):** A `contact` shall transition from `outreach_in_progress` to `sent` when an outreach message has been sent for that contact.
 - **FR-SYS-15H (Sent-to-Replied Transition):** A `contact` shall transition from `sent` to `replied` when a reply is detected for that contact's outreach.
 - **FR-SYS-15I (Post-Send-to-Exhausted Transition):** A `contact` may transition to `exhausted` after send when no further automatic discovery or outreach path remains for that contact in the current flow, such as when prior messages already exist and repeat outreach requires user review, or when bounce/retry paths have been exhausted.
+- **FR-SYS-15J (Manual Application State Separation):** Manual application tracking shall be stored on `job_postings` as separate application fields and shall not overload or redefine `posting_status`, `pipeline_runs.run_status`, or other autonomous workflow statuses.
+- **FR-SYS-15K (Application State Set):** For this build, `job_postings` manual application state should support at least `not_applied`, `applied`, `interviewing`, `rejected`, `offer`, and `withdrawn`.
+- **FR-SYS-15L (Application Field Set):** `job_postings` should carry manual application fields `application_state`, `applied_at`, `application_url`, `application_notes`, and `application_updated_at`.
+- **FR-SYS-15M (Application Timestamp Autofill):** When the owner manually sets `application_state` to a non-`not_applied` value and no `applied_at` is provided, the system should autofill `applied_at` with the current timestamp if no prior applied timestamp exists.
+- **FR-SYS-15N (Application State Forward-Only Rule):** In the current build, manual application tracking is forward-only. It should not support resetting a posting back to `not_applied`.
+- **FR-SYS-15O (Application Mirror Rule):** When manual application state changes, the canonical DB must be updated and a readable mirror must be written to `applications/{company}/{role}/application.yaml`.
+- **FR-SYS-15P (Manual Responder State Separation):** Responder or warm-contact tracking shall be stored on `contacts` as separate responder fields and shall not overload `contact_status`, which remains the outreach/discovery lifecycle field.
+- **FR-SYS-15Q (Responder State Set):** For this build, contact responder state should support at least `none`, `replied`, and `warm`.
+- **FR-SYS-15R (Responder Field Set):** `contacts` should carry responder fields `responder_state`, `responded_at`, `responder_notes`, and `responder_updated_at`.
+- **FR-SYS-15S (Detected Reply to Responder Promotion):** When a real reply is persisted in `delivery_feedback_events`, the linked contact should automatically transition to `responder_state = replied` unless the contact is already `warm`.
+- **FR-SYS-15T (First Reply Timestamp Rule):** `responded_at` should store the first known reply timestamp for that contact rather than the most recent reply time.
+- **FR-SYS-15U (Manual Warm Promotion Rule):** The owner may manually promote a contact from `replied` to `warm` or directly from `none` to `warm`. Manual warm promotion does not require a known `responded_at` value.
+- **FR-SYS-15V (Responder State Forward-Only Rule):** In the current build, responder tracking is forward-only. It should not support resetting a contact back to `none` or downgrading `warm` to `replied`.
+- **FR-SYS-15W (Manual State Audit Rule):** Manual application updates and manual responder updates shall record `override_events` so those state changes remain queryable with reason text and timestamp.
 - **FR-SYS-16 (Multi-Posting Contact Reuse):** A single contact may link to multiple `job_postings`. The system shall support contact reuse across multiple role or outreach contexts without requiring duplicate contact records for the same person.
 - **FR-SYS-16A (Single Automatic Company Touch per Canonical Contact):** A canonical contact may be reused across multiple postings at the same canonical company, but automatic role-targeted outreach shall treat that person as a single automatic company touch. Once one posting at that company has already sent automatic outreach to that contact, later postings at that company shall not automatically send a second role-targeted email to the same canonical contact.
 - **FR-SYS-16B (Same-Company Alternate Contact Continuation):** When a later posting at the same company excludes an already-contacted canonical contact from automatic outreach, the system shall continue with other eligible contacts from that company's remaining contact pool rather than stalling the posting immediately.
@@ -896,12 +910,18 @@ This section defines the next-build logical schema shape for `job_hunt_copilot.d
   - `posted_at`
   - `jd_artifact_path`
   - `archived_at`
+  - `application_state`
+  - `applied_at`
+  - `application_url`
+  - `application_notes`
+  - `application_updated_at`
 - Notes:
   - `posting_identity_key` is the normalized dedupe key used for conservative posting matching.
   - `canonical_company_key` is the operational same-company grouping key used for multi-posting contact reuse and repeat-outreach exclusion.
   - `provider_company_key` may retain a stronger provider-backed company identifier such as Apollo `organization_id` when available.
   - `company_key_source` records whether the current grouping key came from provisional normalized-name derivation or a provider-backed resolution.
   - `posting_status` stores the posting-level lifecycle state such as `sourced`, `resume_review_pending`, `requires_contacts`, or `completed`.
+  - `application_state` is separate owner-managed application tracking and does not drive the autonomous posting lifecycle.
   - `lead_id` points back to the originating upstream lead.
 
 **`contacts`**
@@ -929,11 +949,16 @@ This section defines the next-build logical schema shape for `job_hunt_copilot.d
   - `provider_name`
   - `provider_person_id`
   - `name_quality`
+  - `responder_state`
+  - `responded_at`
+  - `responder_notes`
+  - `responder_updated_at`
 - Notes:
   - `display_name` is the best currently known human-readable name string for the contact and may initially be sparse or obfuscated when a people-search provider does not yet reveal the full name.
   - `full_name` should be populated only when the system has a non-obfuscated full name with enough confidence to treat it as person identity rather than a provider display artifact.
   - `identity_key` is the normalized person-lookup key and is not required to be globally unique because same-name ambiguity may still exist in name-based fallback cases.
   - `contact_status` stores the current top-level contact lifecycle state such as `identified`, `working_email_found`, `sent`, or `replied`.
+  - `responder_state` is separate relationship metadata for reply-positive or warm contacts and does not replace `contact_status`.
   - Contacts auto-created from lead extraction should set `origin_component = linkedin_scraping`.
 
 **`linkedin_lead_contacts`**
@@ -1360,6 +1385,7 @@ This section defines the next-build logical schema shape for `job_hunt_copilot.d
   - `created_at`
 - Notes:
   - `event_state` should support the current high-level states `sent`, `bounced`, `not_bounced`, and `replied`.
+  - Persisted `replied` events should also refresh the linked contact's responder metadata, setting `responder_state = replied` when the contact is not already `warm`.
 
 #### Current Review Views
 
@@ -1494,6 +1520,11 @@ CREATE TABLE IF NOT EXISTS job_postings (
   posted_at TEXT,
   jd_artifact_path TEXT,
   archived_at TEXT,
+  application_state TEXT,
+  applied_at TEXT,
+  application_url TEXT,
+  application_notes TEXT,
+  application_updated_at TEXT,
   created_at TEXT NOT NULL,
   updated_at TEXT NOT NULL,
   FOREIGN KEY (lead_id) REFERENCES linkedin_leads(lead_id)
@@ -1518,6 +1549,10 @@ CREATE TABLE IF NOT EXISTS contacts (
   provider_name TEXT,
   provider_person_id TEXT,
   name_quality TEXT,
+  responder_state TEXT,
+  responded_at TEXT,
+  responder_notes TEXT,
+  responder_updated_at TEXT,
   created_at TEXT NOT NULL,
   updated_at TEXT NOT NULL
 );
@@ -1841,11 +1876,15 @@ CREATE INDEX IF NOT EXISTS idx_job_postings_identity_key
   ON job_postings(posting_identity_key);
 CREATE INDEX IF NOT EXISTS idx_job_postings_status
   ON job_postings(posting_status);
+CREATE INDEX IF NOT EXISTS idx_job_postings_application_state
+  ON job_postings(application_state);
 
 CREATE INDEX IF NOT EXISTS idx_contacts_identity_key
   ON contacts(identity_key);
 CREATE INDEX IF NOT EXISTS idx_contacts_linkedin_url
   ON contacts(linkedin_url);
+CREATE INDEX IF NOT EXISTS idx_contacts_responder_state
+  ON contacts(responder_state);
 CREATE INDEX IF NOT EXISTS idx_contacts_provider_person
   ON contacts(provider_name, provider_person_id);
 CREATE INDEX IF NOT EXISTS idx_contacts_status

@@ -10,6 +10,8 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
+import yaml
+
 from .artifacts import write_json_contract
 from .chat_runtime import build_chat_startup_dashboard, render_chat_startup_dashboard
 from .contracts import CONTRACT_VERSION
@@ -93,6 +95,76 @@ JOB_POSTING_STATUS_READY_FOR_OUTREACH = "ready_for_outreach"
 JOB_POSTING_STATUS_OUTREACH_IN_PROGRESS = "outreach_in_progress"
 JOB_POSTING_STATUS_ABANDONED = "abandoned"
 JOB_POSTING_STATUS_CLOSED_BY_USER = "closed_by_user"
+APPLICATION_STATE_NOT_APPLIED = "not_applied"
+APPLICATION_STATE_APPLIED = "applied"
+APPLICATION_STATE_INTERVIEWING = "interviewing"
+APPLICATION_STATE_REJECTED = "rejected"
+APPLICATION_STATE_OFFER = "offer"
+APPLICATION_STATE_WITHDRAWN = "withdrawn"
+APPLICATION_STATES = frozenset(
+    {
+        APPLICATION_STATE_NOT_APPLIED,
+        APPLICATION_STATE_APPLIED,
+        APPLICATION_STATE_INTERVIEWING,
+        APPLICATION_STATE_REJECTED,
+        APPLICATION_STATE_OFFER,
+        APPLICATION_STATE_WITHDRAWN,
+    }
+)
+APPLICATION_STATE_FORWARD_TRANSITIONS = {
+    APPLICATION_STATE_NOT_APPLIED: frozenset(APPLICATION_STATES),
+    APPLICATION_STATE_APPLIED: frozenset(
+        {
+            APPLICATION_STATE_APPLIED,
+            APPLICATION_STATE_INTERVIEWING,
+            APPLICATION_STATE_REJECTED,
+            APPLICATION_STATE_OFFER,
+            APPLICATION_STATE_WITHDRAWN,
+        }
+    ),
+    APPLICATION_STATE_INTERVIEWING: frozenset(
+        {
+            APPLICATION_STATE_INTERVIEWING,
+            APPLICATION_STATE_REJECTED,
+            APPLICATION_STATE_OFFER,
+            APPLICATION_STATE_WITHDRAWN,
+        }
+    ),
+    APPLICATION_STATE_REJECTED: frozenset({APPLICATION_STATE_REJECTED}),
+    APPLICATION_STATE_OFFER: frozenset(
+        {
+            APPLICATION_STATE_OFFER,
+            APPLICATION_STATE_WITHDRAWN,
+        }
+    ),
+    APPLICATION_STATE_WITHDRAWN: frozenset({APPLICATION_STATE_WITHDRAWN}),
+}
+RESPONDER_STATE_NONE = "none"
+RESPONDER_STATE_REPLIED = "replied"
+RESPONDER_STATE_WARM = "warm"
+RESPONDER_STATES = frozenset(
+    {
+        RESPONDER_STATE_NONE,
+        RESPONDER_STATE_REPLIED,
+        RESPONDER_STATE_WARM,
+    }
+)
+RESPONDER_STATE_FORWARD_TRANSITIONS = {
+    RESPONDER_STATE_NONE: frozenset(
+        {
+            RESPONDER_STATE_NONE,
+            RESPONDER_STATE_REPLIED,
+            RESPONDER_STATE_WARM,
+        }
+    ),
+    RESPONDER_STATE_REPLIED: frozenset(
+        {
+            RESPONDER_STATE_REPLIED,
+            RESPONDER_STATE_WARM,
+        }
+    ),
+    RESPONDER_STATE_WARM: frozenset({RESPONDER_STATE_WARM}),
+}
 ABANDONABLE_POSTING_STATUSES = frozenset(
     {
         JOB_POSTING_STATUS_SOURCED,
@@ -454,6 +526,102 @@ def _require_non_blank(value: str | None, field_name: str) -> str:
     if not normalized:
         raise ValueError(f"{field_name} is required.")
     return normalized
+
+
+def _normalize_optional_text(value: str | None) -> str | None:
+    normalized = (value or "").strip()
+    return normalized or None
+
+
+def _normalize_application_state(value: str) -> str:
+    normalized = _require_non_blank(value, "application_state")
+    if normalized not in APPLICATION_STATES:
+        supported = ", ".join(sorted(APPLICATION_STATES))
+        raise ValueError(
+            f"Unsupported application_state={normalized!r}. Supported values: {supported}."
+        )
+    return normalized
+
+
+def _normalize_responder_state(value: str) -> str:
+    normalized = _require_non_blank(value, "responder_state")
+    if normalized not in RESPONDER_STATES:
+        supported = ", ".join(sorted(RESPONDER_STATES))
+        raise ValueError(
+            f"Unsupported responder_state={normalized!r}. Supported values: {supported}."
+        )
+    return normalized
+
+
+def _application_snapshot_from_row(row: sqlite3.Row) -> dict[str, str | None]:
+    return {
+        "application_state": _normalize_optional_text(row["application_state"])
+        or APPLICATION_STATE_NOT_APPLIED,
+        "applied_at": _normalize_optional_text(row["applied_at"]),
+        "application_url": _normalize_optional_text(row["application_url"]),
+        "application_notes": _normalize_optional_text(row["application_notes"]),
+        "application_updated_at": _normalize_optional_text(row["application_updated_at"]),
+    }
+
+
+def _responder_snapshot_from_row(row: sqlite3.Row) -> dict[str, str | None]:
+    return {
+        "responder_state": _normalize_optional_text(row["responder_state"])
+        or RESPONDER_STATE_NONE,
+        "responded_at": _normalize_optional_text(row["responded_at"]),
+        "responder_notes": _normalize_optional_text(row["responder_notes"]),
+        "responder_updated_at": _normalize_optional_text(row["responder_updated_at"]),
+    }
+
+
+def _write_application_state_mirror(
+    paths: ProjectPaths,
+    *,
+    job_posting_row: sqlite3.Row,
+    generated_at: str,
+) -> Path:
+    path = paths.application_state_path(
+        str(job_posting_row["company_name"]),
+        str(job_posting_row["role_title"]),
+    )
+    path.parent.mkdir(parents=True, exist_ok=True)
+    payload = {
+        "contract_version": CONTRACT_VERSION,
+        "generated_at": generated_at,
+        "job_posting_id": str(job_posting_row["job_posting_id"]),
+        "lead_id": str(job_posting_row["lead_id"]),
+        "company_name": str(job_posting_row["company_name"]),
+        "role_title": str(job_posting_row["role_title"]),
+        "posting_status": str(job_posting_row["posting_status"]),
+        "application_state": _normalize_optional_text(job_posting_row["application_state"])
+        or APPLICATION_STATE_NOT_APPLIED,
+        "applied_at": _normalize_optional_text(job_posting_row["applied_at"]),
+        "application_url": _normalize_optional_text(job_posting_row["application_url"]),
+        "application_notes": _normalize_optional_text(job_posting_row["application_notes"]),
+        "application_updated_at": _normalize_optional_text(
+            job_posting_row["application_updated_at"]
+        ),
+    }
+    write_text_atomic(path, yaml.safe_dump(payload, sort_keys=False))
+    return path
+
+
+def _validate_application_transition(current_state: str, new_state: str) -> None:
+    allowed = APPLICATION_STATE_FORWARD_TRANSITIONS[current_state]
+    if new_state not in allowed:
+        raise ValueError(
+            "Application state is forward-only in the current build; "
+            f"cannot transition from {current_state!r} to {new_state!r}."
+        )
+
+
+def _validate_responder_transition(current_state: str, new_state: str) -> None:
+    allowed = RESPONDER_STATE_FORWARD_TRANSITIONS[current_state]
+    if new_state not in allowed:
+        raise ValueError(
+            "Responder state is forward-only in the current build; "
+            f"cannot transition from {current_state!r} to {new_state!r}."
+        )
 
 
 def _background_task_pause_reason(pipeline_run_id: str) -> str:
@@ -880,6 +1048,7 @@ def _record_state_transition(
     transition_reason: str | None,
     lead_id: str | None,
     job_posting_id: str | None,
+    contact_id: str | None = None,
 ) -> str:
     state_transition_event_id = new_canonical_id("state_transition_events")
     connection.execute(
@@ -902,7 +1071,7 @@ def _record_state_transition(
             LOCAL_RUNTIME_COMPONENT,
             lead_id,
             job_posting_id,
-            None,
+            contact_id,
         ),
     )
     return state_transition_event_id
@@ -1993,6 +2162,357 @@ def close_review_item(
             "override_event_id": decision.override_event_id,
             "decided_at": decision.decided_at,
             "applied_at": decision.applied_at,
+        },
+        "state_transition_event_id": state_transition_event_id,
+        "override_event_id": override_event.override_event_id,
+        "manual_command": manual_command,
+        "control_state": dict(control_state.values),
+    }
+
+
+def update_job_posting_application_state(
+    job_posting_id: str,
+    *,
+    application_state: str,
+    applied_at: str | None = None,
+    application_url: str | None = None,
+    application_notes: str | None = None,
+    project_root: Path | str | None = None,
+    reason: str | None = None,
+    manual_command: str | None = None,
+    timestamp: str | None = None,
+) -> dict[str, Any]:
+    normalized_job_posting_id = _require_non_blank(job_posting_id, "job_posting_id")
+    normalized_application_state = _normalize_application_state(application_state)
+    reason_text = _require_non_blank(reason, "reason")
+    normalized_applied_at = _normalize_optional_text(applied_at)
+    normalized_application_url = _normalize_optional_text(application_url)
+    normalized_application_notes = _normalize_optional_text(application_notes)
+
+    paths = ProjectPaths.from_root(project_root)
+    migration = initialize_database(paths.db_path)
+    current_timestamp = timestamp or now_utc_iso()
+
+    with connect_canonical_database(paths) as connection:
+        posting_row = connection.execute(
+            """
+            SELECT job_posting_id, lead_id, company_name, role_title, posting_status,
+                   application_state, applied_at, application_url, application_notes,
+                   application_updated_at, updated_at
+            FROM job_postings
+            WHERE job_posting_id = ?
+            """,
+            (normalized_job_posting_id,),
+        ).fetchone()
+        if posting_row is None:
+            raise ValueError(f"job_posting {normalized_job_posting_id!r} does not exist.")
+
+        previous_snapshot = _application_snapshot_from_row(posting_row)
+        current_state = (
+            previous_snapshot["application_state"] or APPLICATION_STATE_NOT_APPLIED
+        )
+        _validate_application_transition(current_state, normalized_application_state)
+
+        resolved_applied_at = normalized_applied_at or previous_snapshot["applied_at"]
+        if (
+            normalized_application_state != APPLICATION_STATE_NOT_APPLIED
+            and resolved_applied_at is None
+        ):
+            resolved_applied_at = current_timestamp
+
+        next_snapshot = {
+            "application_state": normalized_application_state,
+            "applied_at": resolved_applied_at,
+            "application_url": (
+                normalized_application_url
+                if application_url is not None
+                else previous_snapshot["application_url"]
+            ),
+            "application_notes": (
+                normalized_application_notes
+                if application_notes is not None
+                else previous_snapshot["application_notes"]
+            ),
+            "application_updated_at": current_timestamp,
+        }
+
+        if next_snapshot == previous_snapshot:
+            control_state = read_agent_control_state(connection, timestamp=current_timestamp)
+            return {
+                "contract_version": CONTRACT_VERSION,
+                "produced_at": now_utc_iso(),
+                "project_root": str(paths.project_root),
+                "database": {
+                    "db_path": str(migration.db_path),
+                    "applied_migrations": migration.applied_migrations,
+                    "user_version": migration.user_version,
+                },
+                "command": "update-application",
+                "status": "no_change",
+                "job_posting": {
+                    "job_posting_id": normalized_job_posting_id,
+                    "lead_id": str(posting_row["lead_id"]) if posting_row["lead_id"] else None,
+                    "posting_status": str(posting_row["posting_status"]),
+                    **previous_snapshot,
+                },
+                "application_mirror_path": None,
+                "state_transition_event_id": None,
+                "override_event_id": None,
+                "manual_command": manual_command,
+                "control_state": dict(control_state.values),
+            }
+
+        control_state = read_agent_control_state(connection, timestamp=current_timestamp)
+        previous_state = current_state
+        state_transition_event_id = None
+        with connection:
+            connection.execute(
+                """
+                UPDATE job_postings
+                SET application_state = ?,
+                    applied_at = ?,
+                    application_url = ?,
+                    application_notes = ?,
+                    application_updated_at = ?,
+                    updated_at = ?
+                WHERE job_posting_id = ?
+                """,
+                (
+                    next_snapshot["application_state"],
+                    next_snapshot["applied_at"],
+                    next_snapshot["application_url"],
+                    next_snapshot["application_notes"],
+                    next_snapshot["application_updated_at"],
+                    current_timestamp,
+                    normalized_job_posting_id,
+                ),
+            )
+            if previous_state != normalized_application_state:
+                state_transition_event_id = _record_state_transition(
+                    connection,
+                    object_type="job_postings",
+                    object_id=normalized_job_posting_id,
+                    stage="application_state",
+                    previous_state=previous_state,
+                    new_state=normalized_application_state,
+                    transition_timestamp=current_timestamp,
+                    transition_reason=reason_text,
+                    lead_id=str(posting_row["lead_id"]) if posting_row["lead_id"] else None,
+                    job_posting_id=normalized_job_posting_id,
+                )
+            override_event = record_override_event(
+                connection,
+                object_type="job_postings",
+                object_id=normalized_job_posting_id,
+                component_stage="application_state",
+                previous_value=previous_snapshot,
+                new_value=next_snapshot,
+                override_reason=reason_text,
+                override_by="owner",
+                lead_id=str(posting_row["lead_id"]) if posting_row["lead_id"] else None,
+                job_posting_id=normalized_job_posting_id,
+                override_timestamp=current_timestamp,
+            )
+
+        current_row = connection.execute(
+            """
+            SELECT job_posting_id, lead_id, company_name, role_title, posting_status,
+                   application_state, applied_at, application_url, application_notes,
+                   application_updated_at, updated_at
+            FROM job_postings
+            WHERE job_posting_id = ?
+            """,
+            (normalized_job_posting_id,),
+        ).fetchone()
+        if current_row is None:
+            raise ValueError("Application update did not persist cleanly.")
+        application_mirror_path = _write_application_state_mirror(
+            paths,
+            job_posting_row=current_row,
+            generated_at=current_timestamp,
+        )
+
+    return {
+        "contract_version": CONTRACT_VERSION,
+        "produced_at": now_utc_iso(),
+        "project_root": str(paths.project_root),
+        "database": {
+            "db_path": str(migration.db_path),
+            "applied_migrations": migration.applied_migrations,
+            "user_version": migration.user_version,
+        },
+        "command": "update-application",
+        "status": "updated",
+        "job_posting": {
+            "job_posting_id": normalized_job_posting_id,
+            "lead_id": str(current_row["lead_id"]) if current_row["lead_id"] else None,
+            "posting_status": str(current_row["posting_status"]),
+            **_application_snapshot_from_row(current_row),
+        },
+        "application_mirror_path": paths.relative_to_root(application_mirror_path).as_posix(),
+        "state_transition_event_id": state_transition_event_id,
+        "override_event_id": override_event.override_event_id,
+        "manual_command": manual_command,
+        "control_state": dict(control_state.values),
+    }
+
+
+def update_contact_responder_state(
+    contact_id: str,
+    *,
+    responder_state: str,
+    responded_at: str | None = None,
+    responder_notes: str | None = None,
+    project_root: Path | str | None = None,
+    reason: str | None = None,
+    manual_command: str | None = None,
+    timestamp: str | None = None,
+) -> dict[str, Any]:
+    normalized_contact_id = _require_non_blank(contact_id, "contact_id")
+    normalized_responder_state = _normalize_responder_state(responder_state)
+    reason_text = _require_non_blank(reason, "reason")
+    normalized_responded_at = _normalize_optional_text(responded_at)
+    normalized_responder_notes = _normalize_optional_text(responder_notes)
+
+    paths = ProjectPaths.from_root(project_root)
+    migration = initialize_database(paths.db_path)
+    current_timestamp = timestamp or now_utc_iso()
+
+    with connect_canonical_database(paths) as connection:
+        contact_row = connection.execute(
+            """
+            SELECT contact_id, company_name, contact_status, responder_state,
+                   responded_at, responder_notes, responder_updated_at, updated_at
+            FROM contacts
+            WHERE contact_id = ?
+            """,
+            (normalized_contact_id,),
+        ).fetchone()
+        if contact_row is None:
+            raise ValueError(f"contact {normalized_contact_id!r} does not exist.")
+
+        previous_snapshot = _responder_snapshot_from_row(contact_row)
+        current_state = previous_snapshot["responder_state"] or RESPONDER_STATE_NONE
+        _validate_responder_transition(current_state, normalized_responder_state)
+
+        next_snapshot = {
+            "responder_state": normalized_responder_state,
+            "responded_at": (
+                normalized_responded_at
+                if responded_at is not None
+                else previous_snapshot["responded_at"]
+            ),
+            "responder_notes": (
+                normalized_responder_notes
+                if responder_notes is not None
+                else previous_snapshot["responder_notes"]
+            ),
+            "responder_updated_at": current_timestamp,
+        }
+
+        if next_snapshot == previous_snapshot:
+            control_state = read_agent_control_state(connection, timestamp=current_timestamp)
+            return {
+                "contract_version": CONTRACT_VERSION,
+                "produced_at": now_utc_iso(),
+                "project_root": str(paths.project_root),
+                "database": {
+                    "db_path": str(migration.db_path),
+                    "applied_migrations": migration.applied_migrations,
+                    "user_version": migration.user_version,
+                },
+                "command": "update-responder",
+                "status": "no_change",
+                "contact": {
+                    "contact_id": normalized_contact_id,
+                    "company_name": str(contact_row["company_name"]),
+                    "contact_status": str(contact_row["contact_status"]),
+                    **previous_snapshot,
+                },
+                "state_transition_event_id": None,
+                "override_event_id": None,
+                "manual_command": manual_command,
+                "control_state": dict(control_state.values),
+            }
+
+        control_state = read_agent_control_state(connection, timestamp=current_timestamp)
+        previous_state = current_state
+        state_transition_event_id = None
+        with connection:
+            connection.execute(
+                """
+                UPDATE contacts
+                SET responder_state = ?,
+                    responded_at = ?,
+                    responder_notes = ?,
+                    responder_updated_at = ?,
+                    updated_at = ?
+                WHERE contact_id = ?
+                """,
+                (
+                    next_snapshot["responder_state"],
+                    next_snapshot["responded_at"],
+                    next_snapshot["responder_notes"],
+                    next_snapshot["responder_updated_at"],
+                    current_timestamp,
+                    normalized_contact_id,
+                ),
+            )
+            if previous_state != normalized_responder_state:
+                state_transition_event_id = _record_state_transition(
+                    connection,
+                    object_type="contacts",
+                    object_id=normalized_contact_id,
+                    stage="responder_state",
+                    previous_state=previous_state,
+                    new_state=normalized_responder_state,
+                    transition_timestamp=current_timestamp,
+                    transition_reason=reason_text,
+                    lead_id=None,
+                    job_posting_id=None,
+                    contact_id=normalized_contact_id,
+                )
+            override_event = record_override_event(
+                connection,
+                object_type="contacts",
+                object_id=normalized_contact_id,
+                component_stage="responder_state",
+                previous_value=previous_snapshot,
+                new_value=next_snapshot,
+                override_reason=reason_text,
+                override_by="owner",
+                contact_id=normalized_contact_id,
+                override_timestamp=current_timestamp,
+            )
+
+        current_row = connection.execute(
+            """
+            SELECT contact_id, company_name, contact_status, responder_state,
+                   responded_at, responder_notes, responder_updated_at, updated_at
+            FROM contacts
+            WHERE contact_id = ?
+            """,
+            (normalized_contact_id,),
+        ).fetchone()
+        if current_row is None:
+            raise ValueError("Responder update did not persist cleanly.")
+
+    return {
+        "contract_version": CONTRACT_VERSION,
+        "produced_at": now_utc_iso(),
+        "project_root": str(paths.project_root),
+        "database": {
+            "db_path": str(migration.db_path),
+            "applied_migrations": migration.applied_migrations,
+            "user_version": migration.user_version,
+        },
+        "command": "update-responder",
+        "status": "updated",
+        "contact": {
+            "contact_id": normalized_contact_id,
+            "company_name": str(current_row["company_name"]),
+            "contact_status": str(current_row["contact_status"]),
+            **_responder_snapshot_from_row(current_row),
         },
         "state_transition_event_id": state_transition_event_id,
         "override_event_id": override_event.override_event_id,

@@ -400,6 +400,21 @@ def test_sync_delivery_feedback_persists_bounce_and_reply_events(tmp_path: Path)
         },
     ]
 
+    contact_row = connection.execute(
+        """
+        SELECT contact_status, responder_state, responded_at, responder_notes
+        FROM contacts
+        WHERE contact_id = ?
+        """,
+        ("ct_replied",),
+    ).fetchone()
+    assert dict(contact_row) == {
+        "contact_status": "sent",
+        "responder_state": EVENT_STATE_REPLIED,
+        "responded_at": "2026-04-07T10:06:00Z",
+        "responder_notes": None,
+    }
+
     sync_row = connection.execute(
         """
         SELECT scheduler_name, scheduler_type, result, messages_examined,
@@ -582,6 +597,19 @@ def test_sync_delivery_feedback_dedupes_retried_reply_signal_by_logical_event(tm
         "event_timestamp": "2026-04-07T10:06:00Z",
         "reply_summary": "Interested in chatting next week.",
         "raw_reply_excerpt": "Interested in chatting next week if you have time.",
+    }
+
+    contact_row = connection.execute(
+        """
+        SELECT responder_state, responded_at
+        FROM contacts
+        WHERE contact_id = ?
+        """,
+        ("ct_replied",),
+    ).fetchone()
+    assert dict(contact_row) == {
+        "responder_state": EVENT_STATE_REPLIED,
+        "responded_at": "2026-04-07T10:06:00Z",
     }
 
     latest_payload = json.loads(

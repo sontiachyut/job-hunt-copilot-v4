@@ -295,6 +295,9 @@ class ProjectPaths:
             / workspace_slug(role_title)
         )
 
+    def application_state_path(self, company_name: str, role_title: str) -> Path:
+        return self.application_workspace_dir(company_name, role_title) / "application.yaml"
+
     def tailoring_eligibility_path(self, company_name: str, role_title: str) -> Path:
         return self.application_workspace_dir(company_name, role_title) / "eligibility.yaml"
 

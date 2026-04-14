@@ -10,6 +10,7 @@ from pathlib import Path
 from unittest.mock import patch
 
 import pytest
+import yaml
 
 from job_hunt_copilot.bootstrap import run_bootstrap
 from job_hunt_copilot.chat_runtime import (
@@ -524,6 +525,86 @@ def seed_posting_for_tailoring_override(
             "Acme Robotics",
             "Staff Platform Engineer",
             posting_status,
+            timestamp,
+            timestamp,
+        ),
+    )
+    connection.commit()
+
+
+def seed_posting_for_application_tracking(
+    connection: sqlite3.Connection,
+    *,
+    posting_status: str = "outreach_in_progress",
+    timestamp: str = "2026-04-08T13:00:00Z",
+) -> None:
+    connection.execute(
+        """
+        INSERT INTO linkedin_leads (
+          lead_id, lead_identity_key, lead_status, lead_shape, split_review_status,
+          source_type, source_reference, source_mode, source_url, company_name, role_title,
+          created_at, updated_at
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        """,
+        (
+            "ld_application",
+            "garmin|software-engineer-1-aviation-web-development",
+            "handed_off",
+            "posting_only",
+            "not_applicable",
+            "manual_capture",
+            "paste/lead-application",
+            "manual_capture",
+            "https://careers.garmin.example/jobs/17742",
+            "Garmin",
+            "Software Engineer 1 - Aviation Web Development",
+            timestamp,
+            timestamp,
+        ),
+    )
+    connection.execute(
+        """
+        INSERT INTO job_postings (
+          job_posting_id, lead_id, posting_identity_key, company_name, role_title,
+          posting_status, created_at, updated_at
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+        """,
+        (
+            "jp_application",
+            "ld_application",
+            "garmin|software-engineer-1-aviation-web-development|chandler",
+            "Garmin",
+            "Software Engineer 1 - Aviation Web Development",
+            posting_status,
+            timestamp,
+            timestamp,
+        ),
+    )
+    connection.commit()
+
+
+def seed_contact_for_responder_tracking(
+    connection: sqlite3.Connection,
+    *,
+    contact_status: str = "sent",
+    timestamp: str = "2026-04-08T13:10:00Z",
+) -> None:
+    connection.execute(
+        """
+        INSERT INTO contacts (
+          contact_id, identity_key, display_name, company_name, origin_component,
+          contact_status, full_name, current_working_email, created_at, updated_at
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        """,
+        (
+            "ct_responder",
+            "merlin-smith|garmin",
+            "Merlin Smith",
+            "Garmin",
+            "email_discovery",
+            contact_status,
+            "Merlin Smith",
+            "merlin.smith@garmin.com",
             timestamp,
             timestamp,
         ),
@@ -1687,6 +1768,362 @@ def test_control_agent_script_close_review_accepts_already_reviewed_packet(tmp_p
         "decision_type": "closed_by_user",
         "decision_notes": "Reviewed and confirmed there is no further contact path.",
     }
+
+
+def test_control_agent_script_update_application_persists_manual_application_state_and_mirror(
+    tmp_path,
+):
+    project_root = tmp_path / "repo"
+    project_root.mkdir()
+    create_minimal_project(project_root)
+    run_script(
+        "scripts/ops/control_agent.py",
+        "status",
+        "--project-root",
+        str(project_root),
+    )
+    connection = connect_database(project_root / "job_hunt_copilot.db")
+    seed_posting_for_application_tracking(connection)
+    connection.close()
+
+    report = json.loads(
+        run_script(
+            "scripts/ops/control_agent.py",
+            "update-application",
+            "--project-root",
+            str(project_root),
+            "--job-posting-id",
+            "jp_application",
+            "--application-state",
+            "applied",
+            "--application-url",
+            "https://careers.garmin.com/jobs/17742/apply",
+            "--application-notes",
+            "Applied through Garmin Careers after Merlin's reply.",
+            "--reason",
+            "Owner manually recorded the submitted application.",
+        ).stdout
+    )
+
+    assert report["command"] == "update-application"
+    assert report["status"] == "updated"
+    assert report["job_posting"] == {
+        "job_posting_id": "jp_application",
+        "lead_id": "ld_application",
+        "posting_status": "outreach_in_progress",
+        "application_state": "applied",
+        "applied_at": report["job_posting"]["applied_at"],
+        "application_url": "https://careers.garmin.com/jobs/17742/apply",
+        "application_notes": "Applied through Garmin Careers after Merlin's reply.",
+        "application_updated_at": report["job_posting"]["application_updated_at"],
+    }
+    assert report["state_transition_event_id"]
+    assert report["override_event_id"]
+
+    paths = ProjectPaths.from_root(project_root)
+    mirror_path = project_root / report["application_mirror_path"]
+    assert mirror_path == paths.application_state_path(
+        "Garmin",
+        "Software Engineer 1 - Aviation Web Development",
+    )
+    mirror_payload = yaml.safe_load(mirror_path.read_text(encoding="utf-8"))
+    assert mirror_payload == {
+        "contract_version": mirror_payload["contract_version"],
+        "generated_at": mirror_payload["generated_at"],
+        "job_posting_id": "jp_application",
+        "lead_id": "ld_application",
+        "company_name": "Garmin",
+        "role_title": "Software Engineer 1 - Aviation Web Development",
+        "posting_status": "outreach_in_progress",
+        "application_state": "applied",
+        "applied_at": report["job_posting"]["applied_at"],
+        "application_url": "https://careers.garmin.com/jobs/17742/apply",
+        "application_notes": "Applied through Garmin Careers after Merlin's reply.",
+        "application_updated_at": report["job_posting"]["application_updated_at"],
+    }
+
+    connection = connect_database(project_root / "job_hunt_copilot.db")
+    posting_row = connection.execute(
+        """
+        SELECT posting_status, application_state, applied_at, application_url,
+               application_notes, application_updated_at
+        FROM job_postings
+        WHERE job_posting_id = ?
+        """,
+        ("jp_application",),
+    ).fetchone()
+    transition_row = connection.execute(
+        """
+        SELECT object_type, object_id, stage, previous_state, new_state, transition_reason
+        FROM state_transition_events
+        WHERE state_transition_event_id = ?
+        """,
+        (report["state_transition_event_id"],),
+    ).fetchone()
+    override_row = connection.execute(
+        """
+        SELECT object_type, object_id, component_stage, previous_value, new_value, override_reason
+        FROM override_events
+        WHERE override_event_id = ?
+        """,
+        (report["override_event_id"],),
+    ).fetchone()
+    connection.close()
+
+    assert dict(posting_row) == {
+        "posting_status": "outreach_in_progress",
+        "application_state": "applied",
+        "applied_at": report["job_posting"]["applied_at"],
+        "application_url": "https://careers.garmin.com/jobs/17742/apply",
+        "application_notes": "Applied through Garmin Careers after Merlin's reply.",
+        "application_updated_at": report["job_posting"]["application_updated_at"],
+    }
+    assert dict(transition_row) == {
+        "object_type": "job_postings",
+        "object_id": "jp_application",
+        "stage": "application_state",
+        "previous_state": "not_applied",
+        "new_state": "applied",
+        "transition_reason": "Owner manually recorded the submitted application.",
+    }
+    assert dict(override_row) == {
+        "object_type": "job_postings",
+        "object_id": "jp_application",
+        "component_stage": "application_state",
+        "previous_value": json.dumps(
+            {
+                "application_state": "not_applied",
+                "applied_at": None,
+                "application_url": None,
+                "application_notes": None,
+                "application_updated_at": None,
+            },
+            sort_keys=True,
+        ),
+        "new_value": json.dumps(
+            {
+                "application_state": "applied",
+                "applied_at": report["job_posting"]["applied_at"],
+                "application_url": "https://careers.garmin.com/jobs/17742/apply",
+                "application_notes": "Applied through Garmin Careers after Merlin's reply.",
+                "application_updated_at": report["job_posting"]["application_updated_at"],
+            },
+            sort_keys=True,
+        ),
+        "override_reason": "Owner manually recorded the submitted application.",
+    }
+
+
+def test_update_application_rejects_backward_reset_to_not_applied(tmp_path):
+    project_root = tmp_path / "repo"
+    project_root.mkdir()
+    create_minimal_project(project_root)
+    run_script(
+        "scripts/ops/control_agent.py",
+        "status",
+        "--project-root",
+        str(project_root),
+    )
+    connection = connect_database(project_root / "job_hunt_copilot.db")
+    seed_posting_for_application_tracking(connection)
+    connection.execute(
+        """
+        UPDATE job_postings
+        SET application_state = 'applied',
+            applied_at = '2026-04-08T13:20:00Z',
+            application_updated_at = '2026-04-08T13:20:00Z'
+        WHERE job_posting_id = 'jp_application'
+        """
+    )
+    connection.commit()
+    connection.close()
+
+    result = subprocess.run(
+        [
+            sys.executable,
+            str(REPO_ROOT / "scripts/ops/control_agent.py"),
+            "update-application",
+            "--project-root",
+            str(project_root),
+            "--job-posting-id",
+            "jp_application",
+            "--application-state",
+            "not_applied",
+            "--reason",
+            "Trying to reset the application state.",
+        ],
+        check=False,
+        capture_output=True,
+        text=True,
+    )
+
+    assert result.returncode == 2
+    assert (
+        result.stderr.strip()
+        == "Application state is forward-only in the current build; cannot transition from 'applied' to 'not_applied'."
+    )
+
+
+def test_control_agent_script_update_responder_persists_manual_warm_state(tmp_path):
+    project_root = tmp_path / "repo"
+    project_root.mkdir()
+    create_minimal_project(project_root)
+    run_script(
+        "scripts/ops/control_agent.py",
+        "status",
+        "--project-root",
+        str(project_root),
+    )
+    connection = connect_database(project_root / "job_hunt_copilot.db")
+    seed_contact_for_responder_tracking(connection)
+    connection.close()
+
+    report = json.loads(
+        run_script(
+            "scripts/ops/control_agent.py",
+            "update-responder",
+            "--project-root",
+            str(project_root),
+            "--contact-id",
+            "ct_responder",
+            "--responder-state",
+            "warm",
+            "--responder-notes",
+            "Replied and was open to a short conversation.",
+            "--reason",
+            "Owner promoted a responsive contact into the warm pool.",
+        ).stdout
+    )
+
+    assert report["command"] == "update-responder"
+    assert report["status"] == "updated"
+    assert report["contact"] == {
+        "contact_id": "ct_responder",
+        "company_name": "Garmin",
+        "contact_status": "sent",
+        "responder_state": "warm",
+        "responded_at": None,
+        "responder_notes": "Replied and was open to a short conversation.",
+        "responder_updated_at": report["contact"]["responder_updated_at"],
+    }
+    assert report["state_transition_event_id"]
+    assert report["override_event_id"]
+
+    connection = connect_database(project_root / "job_hunt_copilot.db")
+    contact_row = connection.execute(
+        """
+        SELECT contact_status, responder_state, responded_at, responder_notes, responder_updated_at
+        FROM contacts
+        WHERE contact_id = ?
+        """,
+        ("ct_responder",),
+    ).fetchone()
+    transition_row = connection.execute(
+        """
+        SELECT object_type, object_id, stage, previous_state, new_state, transition_reason
+        FROM state_transition_events
+        WHERE state_transition_event_id = ?
+        """,
+        (report["state_transition_event_id"],),
+    ).fetchone()
+    override_row = connection.execute(
+        """
+        SELECT object_type, object_id, component_stage, previous_value, new_value, override_reason
+        FROM override_events
+        WHERE override_event_id = ?
+        """,
+        (report["override_event_id"],),
+    ).fetchone()
+    connection.close()
+
+    assert dict(contact_row) == {
+        "contact_status": "sent",
+        "responder_state": "warm",
+        "responded_at": None,
+        "responder_notes": "Replied and was open to a short conversation.",
+        "responder_updated_at": report["contact"]["responder_updated_at"],
+    }
+    assert dict(transition_row) == {
+        "object_type": "contacts",
+        "object_id": "ct_responder",
+        "stage": "responder_state",
+        "previous_state": "none",
+        "new_state": "warm",
+        "transition_reason": "Owner promoted a responsive contact into the warm pool.",
+    }
+    assert dict(override_row) == {
+        "object_type": "contacts",
+        "object_id": "ct_responder",
+        "component_stage": "responder_state",
+        "previous_value": json.dumps(
+            {
+                "responder_state": "none",
+                "responded_at": None,
+                "responder_notes": None,
+                "responder_updated_at": None,
+            },
+            sort_keys=True,
+        ),
+        "new_value": json.dumps(
+            {
+                "responder_state": "warm",
+                "responded_at": None,
+                "responder_notes": "Replied and was open to a short conversation.",
+                "responder_updated_at": report["contact"]["responder_updated_at"],
+            },
+            sort_keys=True,
+        ),
+        "override_reason": "Owner promoted a responsive contact into the warm pool.",
+    }
+
+
+def test_update_responder_rejects_backward_downgrade(tmp_path):
+    project_root = tmp_path / "repo"
+    project_root.mkdir()
+    create_minimal_project(project_root)
+    run_script(
+        "scripts/ops/control_agent.py",
+        "status",
+        "--project-root",
+        str(project_root),
+    )
+    connection = connect_database(project_root / "job_hunt_copilot.db")
+    seed_contact_for_responder_tracking(connection)
+    connection.execute(
+        """
+        UPDATE contacts
+        SET responder_state = 'warm',
+            responder_updated_at = '2026-04-08T13:30:00Z'
+        WHERE contact_id = 'ct_responder'
+        """
+    )
+    connection.commit()
+    connection.close()
+
+    result = subprocess.run(
+        [
+            sys.executable,
+            str(REPO_ROOT / "scripts/ops/control_agent.py"),
+            "update-responder",
+            "--project-root",
+            str(project_root),
+            "--contact-id",
+            "ct_responder",
+            "--responder-state",
+            "replied",
+            "--reason",
+            "Trying to downgrade a warm contact.",
+        ],
+        check=False,
+        capture_output=True,
+        text=True,
+    )
+
+    assert result.returncode == 2
+    assert (
+        result.stderr.strip()
+        == "Responder state is forward-only in the current build; cannot transition from 'warm' to 'replied'."
+    )
 
 
 def test_control_agent_script_abandon_is_idempotent_for_existing_abandoned_posting(tmp_path):

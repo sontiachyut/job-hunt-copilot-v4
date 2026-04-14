@@ -1131,6 +1131,14 @@ Feature: Job Hunt Copilot next-build acceptance
       And useful reply content or reply summary is retained when available
       But reply classification such as positive or negative is not required in the build
 
+    Scenario: Persisted reply events promote contacts into responder tracking without replacing lifecycle state
+      Given a contact already exists in canonical state with ordinary outreach lifecycle fields
+      And a real reply is persisted for one of that contact's messages
+      When Delivery Feedback writes that `replied` event
+      Then the contact responder metadata transitions to `replied`
+      And the first known reply timestamp is stored on the contact when available
+      But `contact_status` remains the outreach or discovery lifecycle field rather than being replaced by responder metadata
+
     Scenario: Bounce and not-bounced outcomes are reusable for discovery while replies remain review-only
       Given Delivery Feedback has recorded bounced, not-bounced, and replied outcomes over time
       When later discovery-oriented reuse logic inspects those outcomes
@@ -1341,6 +1349,7 @@ Feature: Job Hunt Copilot next-build acceptance
       When the expert issues pause, resume, stop, or object-specific override requests
       Then global controls are routed through `agent_control_state`
       And object-specific overrides are routed through canonical object updates plus `override_events`
+      And manual application-state or responder-state updates are routed through canonical object updates plus `override_events`
 
     Scenario: Current macOS sleep or wake detection uses pmset logs first and conservative fallback second
       Given the current deployment is the supported local macOS build
@@ -1638,6 +1647,27 @@ Feature: Job Hunt Copilot next-build acceptance
       And the close comment is stored as an `expert_review_decisions` record for that packet
       And a posting-status override event is recorded
       And the item no longer appears in normal pending expert-review queues
+
+    Scenario: Manual application tracking is stored separately from the autonomous posting lifecycle
+      Given a posting already exists in canonical state
+      When the owner records a manual application update for that posting
+      Then the posting retains its autonomous `posting_status`
+      And the posting stores manual application fields separately from pipeline lifecycle state
+      And the application change is recorded in `override_events`
+      And the readable mirror `applications/{company}/{role}/application.yaml` is updated from canonical state
+
+    Scenario: Manual responder tracking is stored separately from contact lifecycle state
+      Given a contact already exists in canonical state
+      When the owner manually promotes that contact to `warm`
+      Then the contact retains its ordinary `contact_status`
+      And the contact stores responder metadata separately from the outreach or discovery lifecycle
+      And the responder change is recorded in `override_events`
+
+    Scenario: Manual application and responder state are forward-only in the current build
+      Given a posting or contact already has manual application or responder state recorded
+      When the owner attempts to reset that manual state backward
+      Then the system rejects the downgrade
+      And the previously recorded manual state remains unchanged
 
     Scenario: General learning outreach bypasses the role-targeted agent-review requirement
       Given outreach is contact-rooted and not tied to a specific job posting
