@@ -370,6 +370,14 @@ def test_bootstrap_tailoring_run_creates_workspace_metadata_and_scaffolds(tmp_pa
         "Guidewire Software, Inc.",
         "Staff Software Engineer / AI",
     )
+    step_04_decision_path = paths.tailoring_step_04_path(
+        "Guidewire Software, Inc.",
+        "Staff Software Engineer / AI",
+    )
+    step_05_decision_path = paths.tailoring_step_05_path(
+        "Guidewire Software, Inc.",
+        "Staff Software Engineer / AI",
+    )
     legacy_step_3_path = paths.tailoring_step_3_jd_signals_path(
         "Guidewire Software, Inc.",
         "Staff Software Engineer / AI",
@@ -436,6 +444,8 @@ def test_bootstrap_tailoring_run_creates_workspace_metadata_and_scaffolds(tmp_pa
     step_01_payload = yaml.safe_load(step_01_path.read_text(encoding="utf-8"))
     step_02_payload = yaml.safe_load(step_02_path.read_text(encoding="utf-8"))
     step_03_payload = yaml.safe_load(step_03_path.read_text(encoding="utf-8"))
+    step_04_decision_payload = yaml.safe_load(step_04_decision_path.read_text(encoding="utf-8"))
+    step_05_decision_payload = yaml.safe_load(step_05_decision_path.read_text(encoding="utf-8"))
     legacy_step_3_payload = yaml.safe_load(legacy_step_3_path.read_text(encoding="utf-8"))
     step_4_payload = yaml.safe_load(step_4_path.read_text(encoding="utf-8"))
     step_6_payload = yaml.safe_load(step_6_path.read_text(encoding="utf-8"))
@@ -445,6 +455,8 @@ def test_bootstrap_tailoring_run_creates_workspace_metadata_and_scaffolds(tmp_pa
     assert manifest_payload["steps"]["step_01_jd_sections"]["status"] == "not_started"
     assert manifest_payload["steps"]["step_02_signals_raw"]["status"] == "not_started"
     assert manifest_payload["steps"]["step_03_signals_classified"]["status"] == "not_started"
+    assert manifest_payload["steps"]["step_04_theme_scores"]["status"] == "not_started"
+    assert manifest_payload["steps"]["step_05_theme_decision"]["status"] == "not_started"
     assert manifest_payload["steps"]["step_16_verification"]["status"] == "pending"
     assert manifest_payload["legacy_runtime_compatibility"]["outputs"]["step_7_verification"]["status"] == (
         "pending"
@@ -452,6 +464,8 @@ def test_bootstrap_tailoring_run_creates_workspace_metadata_and_scaffolds(tmp_pa
     assert step_01_payload["status"] == "not_started"
     assert step_02_payload["status"] == "not_started"
     assert step_03_payload["status"] == "not_started"
+    assert step_04_decision_payload["status"] == "not_started"
+    assert step_05_decision_payload["status"] == "not_started"
     assert legacy_step_3_payload["status"] == "not_started"
     assert step_4_payload["status"] == "not_started"
     assert step_6_payload["status"] == "not_started"
@@ -825,6 +839,16 @@ def test_generate_tailoring_intelligence_populates_step_artifacts_and_keeps_run_
             encoding="utf-8"
         )
     )
+    step_04_decision_payload = yaml.safe_load(
+        paths.tailoring_step_04_path("Acme Data Systems", "Software Engineer").read_text(
+            encoding="utf-8"
+        )
+    )
+    step_05_decision_payload = yaml.safe_load(
+        paths.tailoring_step_05_path("Acme Data Systems", "Software Engineer").read_text(
+            encoding="utf-8"
+        )
+    )
     step_3_payload = yaml.safe_load(
         paths.tailoring_step_3_jd_signals_path("Acme Data Systems", "Software Engineer").read_text(
             encoding="utf-8"
@@ -852,6 +876,12 @@ def test_generate_tailoring_intelligence_populates_step_artifacts_and_keeps_run_
     assert len(step_02_payload["signals"]) >= 3
     assert step_03_payload["status"] == "generated"
     assert step_03_payload["signal_priority_weights"]["core_responsibility"] == 2.0
+    assert step_04_decision_payload["status"] == "generated"
+    assert len(step_04_decision_payload["theme_scores"]) == 9
+    assert step_05_decision_payload["status"] == "generated"
+    assert step_05_decision_payload["theme"] == "distributed_infra"
+    assert step_05_decision_payload["template"] == "B"
+    assert step_05_decision_payload["hero_section"] == "experience"
     assert step_3_payload["status"] == "generated"
     assert len(step_3_payload["signals"]) >= 3
     assert step_3_payload == step_03_payload
@@ -879,6 +909,59 @@ def test_generate_tailoring_intelligence_populates_step_artifacts_and_keeps_run_
         ("jp_test",),
     ).fetchone()
     assert posting_row["posting_status"] == JOB_POSTING_STATUS_TAILORING_IN_PROGRESS
+
+
+def test_generate_tailoring_intelligence_classifies_garmin_like_web_jd_as_frontend_web(
+    tmp_path,
+):
+    _, paths, connection, bootstrap_result = prepare_real_tailoring_run(
+        tmp_path,
+        jd_body=(
+            "# JD\n"
+            "Responsibilities\n"
+            "- Build Angular and JavaScript web development features for customer-facing Garmin aviation products.\n"
+            "- Improve responsive browser experiences and accessibility.\n"
+            "Minimum Qualifications\n"
+            "- 3+ years of software engineering experience.\n"
+            "- TypeScript experience.\n"
+            "Preferred Qualifications\n"
+            "- Vue or React familiarity.\n"
+        ),
+    )
+
+    result = generate_tailoring_intelligence(
+        connection,
+        paths,
+        job_posting_id="jp_test",
+        timestamp="2026-04-06T20:10:00Z",
+    )
+
+    step_04_payload = yaml.safe_load(
+        paths.tailoring_step_04_path("Acme Data Systems", "Software Engineer").read_text(
+            encoding="utf-8"
+        )
+    )
+    step_05_payload = yaml.safe_load(
+        paths.tailoring_step_05_path("Acme Data Systems", "Software Engineer").read_text(
+            encoding="utf-8"
+        )
+    )
+    manifest_payload = yaml.safe_load(
+        paths.tailoring_intelligence_manifest_path(
+            "Acme Data Systems",
+            "Software Engineer",
+        ).read_text(encoding="utf-8")
+    )
+
+    assert result.resume_tailoring_run_id == bootstrap_result.run.resume_tailoring_run_id
+    assert result.track_name == "frontend_web"
+    assert step_04_payload["theme_scores"]["frontend_web"] > step_04_payload["theme_scores"]["backend_service"]
+    assert step_05_payload["theme"] == "frontend_web"
+    assert step_05_payload["template"] == "runtime"
+    assert step_05_payload["template_decision"]["decision_status"] == "deferred"
+    assert manifest_payload["selected_theme"] == "frontend_web"
+    assert manifest_payload["steps"]["step_04_theme_scores"]["status"] == "generated"
+    assert manifest_payload["steps"]["step_05_theme_decision"]["status"] == "generated"
 
 
 def test_generate_tailoring_intelligence_keeps_unsupported_requirements_as_explicit_gaps(

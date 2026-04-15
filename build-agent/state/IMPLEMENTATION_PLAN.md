@@ -61,29 +61,28 @@ Canonical inputs for this build program:
 
 ## Current Focus
 
-- `RT-02-S2` Task 9 - Steps 4 and 5
+- `RT-03-S1` Task 10 - Steps 6 and 7
 - Owner role: `tailoring-engineer`
 - Why now:
-  - RT-02-S1 now persists deterministic step-01 through step-03 artifacts, so the classifier can move from extraction into spec-backed theme scoring without reworking bootstrap again
-  - Garmin validation depends on Steps 4 and 5 selecting `frontend_web` and the correct template from the new classified-signal contract
-  - theme scoring and decision artifacts are the remaining open boundary before evidence selection work can start
+  - RT-02 is now complete, so the next dependency-gated work is using the persisted Step 5 theme decision to drive project scoring and selection
+  - evidence selection is the first slice that starts replacing the legacy backend-heavy candidate payload with theme-aware, auditable content selection
+  - Step 6 and Step 7 are the minimum bounded slice that can hand trustworthy inputs into later experience and project evidence mapping
 
 ## Latest Completed Slice
 
-`RT-02-S1` completed with:
-- add `job_hunt_copilot/tailoring/steps/step_01_jd_sections.py`, `step_02_signals_raw.py`, and `step_03_signals_classified.py` to implement deterministic JD sectioning, raw signal extraction, and classified-signal weighting from JD-only inputs
-- wire `job_hunt_copilot/resume_tailoring.py` bootstrap and intelligence generation to scaffold and emit `step-01` through `step-03` artifacts while keeping legacy downstream artifacts available as compatibility outputs
-- update runtime tests so the intelligence manifest now reflects the new 16-step contract and the generated step-03 payload is persisted to both the new canonical artifact path and the temporary legacy alias
-- validate with `python3.11 -m pytest tests/test_pipeline_steps.py tests/test_resume_tailoring.py tests/test_base_templates.py -q`
-- validate classifier handoff compatibility with `python3.11 -m pytest tests/test_theme_classifier.py -q`
+`RT-02-S2` completed with:
+- add `job_hunt_copilot/tailoring/steps/step_04_theme_scores.py` and `step_05_theme_decision.py` to persist auditable per-theme scoring, the winning theme, runner-up, margin, and fixed-vs-runtime template routing metadata
+- wire `job_hunt_copilot/resume_tailoring.py` scaffolds, manifest updates, and intelligence generation so Step 4 and Step 5 artifacts are emitted alongside the existing compatibility outputs
+- keep the legacy Step 6-plus path alive by continuing to feed it the compatibility track while exposing the new selected theme as the canonical classification result for the redesign contract
+- validate Garmin-style frontend classification and distributed-infra regression coverage with `python3.11 -m pytest tests/test_pipeline_steps.py tests/test_resume_tailoring.py tests/test_theme_classifier.py tests/test_base_templates.py -q`
 
 ## Next Execution Target
 
 For the next unattended builder cycle, the target is:
-- implement `job_hunt_copilot/tailoring/steps/step_04_theme_scores.py` and `step_05_theme_decision.py`
-- score all 9 themes from the new step-03 classified-signal artifact and record the runner-up, margin, and template choice as explicit step artifacts
-- update runtime wiring so theme selection starts feeding the redesign contract without prematurely deleting the legacy downstream path
-- validate Garmin-targeted and synthetic classifier cases before advancing into project scoring and evidence selection
+- implement `job_hunt_copilot/tailoring/steps/step_06_project_scores.py` and `step_07_project_selection.py`
+- score every project against the Step 3 or Step 5 inputs and persist traceable relevance coverage for each candidate project
+- select exactly four projects with Job Hunt Copilot first, plus explicit inclusion, exclusion, and fallback reasoning for the remaining project slots
+- validate project-scoring and project-selection artifacts before moving into Step 8 and Step 9 evidence mapping
 
 ## Done-When Summary
 
@@ -96,10 +95,10 @@ The redesign program is done only when:
 
 ## Next Slice After Current Focus
 
-If `RT-02-S2` completes cleanly, the next slice is:
-- `RT-03-S1` Task 10 - Steps 6 and 7
+If `RT-03-S1` completes cleanly, the next slice is:
+- `RT-03-S2` Task 11 - Steps 8 and 9
 
-If `RT-02-S2` is blocked, the builder should:
+If `RT-03-S1` is blocked, the builder should:
 - record the blocker explicitly in `build-agent/state/build-board.yaml`
 - log the attempted work in `build-agent/state/build-journal.md`
 - add a short handoff note in `build-agent/state/codex-progress.txt`

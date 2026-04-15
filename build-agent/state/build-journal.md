@@ -237,6 +237,32 @@
 - Next recommended slice:
   - `RT-02-S2` Task 9 - Steps 4 and 5
 
+### 2026-04-15 12:15 MST — tailoring-engineer
+
+- Slice attempted: `RT-02-S2` Task 9 - Steps 4 and 5
+- Result: done
+- Files changed:
+  - `job_hunt_copilot/tailoring/steps/step_04_theme_scores.py`
+  - `job_hunt_copilot/tailoring/steps/step_05_theme_decision.py`
+  - `job_hunt_copilot/tailoring/steps/__init__.py`
+  - `job_hunt_copilot/resume_tailoring.py`
+  - `tests/test_pipeline_steps.py`
+  - `tests/test_resume_tailoring.py`
+  - `build-agent/state/build-board.yaml`
+  - `build-agent/state/IMPLEMENTATION_PLAN.md`
+  - `build-agent/state/build-journal.md`
+  - `build-agent/state/codex-progress.txt`
+- Validation:
+  - `python3.11 -m pytest tests/test_pipeline_steps.py tests/test_resume_tailoring.py tests/test_theme_classifier.py tests/test_base_templates.py -q` passed
+  - Garmin-style web JD integration coverage now asserts `frontend_web` selection and Step 5 runtime template deferral
+- State files updated:
+  - `build-agent/state/build-board.yaml`
+  - `build-agent/state/IMPLEMENTATION_PLAN.md`
+  - `build-agent/state/build-journal.md`
+  - `build-agent/state/codex-progress.txt`
+- Next recommended slice:
+  - `RT-03-S1` Task 10 - Steps 6 and 7
+
 ## Session Template
 
 For each future unattended slice, append:

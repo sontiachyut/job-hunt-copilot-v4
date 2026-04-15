@@ -6,6 +6,8 @@ from job_hunt_copilot.tailoring.steps import (
     build_step_01_artifact,
     build_step_02_artifact,
     build_step_03_artifact,
+    build_step_04_artifact,
+    build_step_05_artifact,
 )
 
 
@@ -147,3 +149,104 @@ def test_step_03_classifies_signals_and_uses_spec_weighting() -> None:
     assert "angular" in angular_signal["tokens"]
     assert payload["role_metadata"]["employment_type"] == "Full-time"
     assert payload["role_metadata"]["location"] == "hybrid"
+
+
+def test_step_04_scores_all_themes_and_favors_frontend_web_for_garmin_like_jd() -> None:
+    step_01_payload = build_step_01_artifact(
+        posting_row=POSTING_ROW,
+        run=RUN,
+        jd_text=(
+            "Responsibilities\n"
+            "- Build Angular and JavaScript web interfaces for customer-facing aviation workflows.\n"
+            "- Own accessibility and responsive browser experiences.\n"
+            "Minimum Qualifications\n"
+            "- 3+ years of software engineering experience.\n"
+            "- Experience with TypeScript and UI component development.\n"
+        ),
+    )
+    step_02_payload = build_step_02_artifact(
+        posting_row=POSTING_ROW,
+        run=RUN,
+        step_01_payload=step_01_payload,
+    )
+    step_03_payload = build_step_03_artifact(
+        posting_row=POSTING_ROW,
+        run=RUN,
+        step_02_payload=step_02_payload,
+        jd_text=(
+            "Responsibilities\n"
+            "- Build Angular and JavaScript web interfaces for customer-facing aviation workflows.\n"
+            "- Own accessibility and responsive browser experiences.\n"
+            "Minimum Qualifications\n"
+            "- 3+ years of software engineering experience.\n"
+            "- Experience with TypeScript and UI component development.\n"
+        ),
+    )
+
+    payload = build_step_04_artifact(
+        posting_row=POSTING_ROW,
+        run=RUN,
+        step_03_payload=step_03_payload,
+    )
+
+    assert payload["status"] == "generated"
+    assert len(payload["theme_scores"]) == 9
+    assert payload["theme_scores"]["frontend_web"] > payload["theme_scores"]["distributed_infra"]
+    assert payload["decision_basis"]["leading_theme"] == "frontend_web"
+    assert payload["score_ranking"][0]["theme"] == "frontend_web"
+
+
+def test_step_05_records_theme_decision_and_runtime_template_deferral() -> None:
+    step_04_payload = build_step_04_artifact(
+        posting_row=POSTING_ROW,
+        run=RUN,
+        step_03_payload={
+            "role_title": "Software Engineer 1 - Aviation Web Development",
+            "signal_priority_weights": {
+                "must_have": 1.0,
+                "core_responsibility": 2.0,
+                "nice_to_have": 0.5,
+                "informational": 0.0,
+            },
+            "theme_signal_weights": {
+                "role_title": 2.0,
+                "must_have": 1.0,
+                "core_responsibility": 2.0,
+                "nice_to_have": 0.5,
+                "informational": 0.0,
+            },
+            "signals": [
+                {
+                    "signal_id": "signal_core_1",
+                    "priority": "core_responsibility",
+                    "signal": (
+                        "Build Angular and TypeScript customer-facing web experiences with strong accessibility."
+                    ),
+                    "tokens": [
+                        "build",
+                        "angular",
+                        "typescript",
+                        "customer-facing",
+                        "web",
+                        "accessibility",
+                    ],
+                }
+            ],
+        },
+    )
+
+    payload = build_step_05_artifact(
+        posting_row=POSTING_ROW,
+        run=RUN,
+        step_04_payload=step_04_payload,
+    )
+
+    assert payload["status"] == "generated"
+    assert payload["theme"] == "frontend_web"
+    assert payload["template"] == "runtime"
+    assert payload["selected_template"] is None
+    assert payload["layout_mode"] == "runtime_deferred"
+    assert payload["runner_up"] in {row["theme"] for row in payload["score_ranking"]}
+    assert payload["margin"] > 0.0
+    assert payload["template_decision"]["deferred_until_step"] == 9
+    assert payload["reasoning"]

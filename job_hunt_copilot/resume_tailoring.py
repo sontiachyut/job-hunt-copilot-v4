@@ -27,6 +27,8 @@ from .tailoring.steps import (
     build_step_01_artifact,
     build_step_02_artifact,
     build_step_03_artifact,
+    build_step_04_artifact,
+    build_step_05_artifact,
 )
 
 
@@ -1195,6 +1197,8 @@ def _workspace_bootstrap_is_complete(
         paths.tailoring_step_01_path(posting_row["company_name"], posting_row["role_title"]),
         paths.tailoring_step_02_path(posting_row["company_name"], posting_row["role_title"]),
         paths.tailoring_step_03_path(posting_row["company_name"], posting_row["role_title"]),
+        paths.tailoring_step_04_path(posting_row["company_name"], posting_row["role_title"]),
+        paths.tailoring_step_05_path(posting_row["company_name"], posting_row["role_title"]),
         paths.tailoring_step_3_jd_signals_path(posting_row["company_name"], posting_row["role_title"]),
         paths.tailoring_step_4_evidence_map_path(posting_row["company_name"], posting_row["role_title"]),
         paths.tailoring_step_5_context_path(posting_row["company_name"], posting_row["role_title"]),
@@ -1480,6 +1484,59 @@ def _write_intelligence_scaffolds(
                 "informational": 0.0,
             },
             "signals": [],
+        },
+        overwrite=overwrite,
+    )
+    _write_yaml_file(
+        paths.tailoring_step_04_path(company_name, role_title),
+        {
+            "job_posting_id": posting_row["job_posting_id"],
+            "resume_tailoring_run_id": run.resume_tailoring_run_id,
+            "status": INTELLIGENCE_STATUS_NOT_STARTED,
+            "role_title": role_title,
+            "classified_signal_count": 0,
+            "theme_scores": {},
+            "matched_terms": {},
+            "score_ranking": [],
+            "decision_basis": {
+                "leading_theme": None,
+                "template_hint": None,
+                "runner_up_theme": None,
+                "margin": 0.0,
+                "confidence": 0.0,
+            },
+        },
+        overwrite=overwrite,
+    )
+    _write_yaml_file(
+        paths.tailoring_step_05_path(company_name, role_title),
+        {
+            "job_posting_id": posting_row["job_posting_id"],
+            "resume_tailoring_run_id": run.resume_tailoring_run_id,
+            "status": INTELLIGENCE_STATUS_NOT_STARTED,
+            "role_title": role_title,
+            "theme": None,
+            "selected_theme": None,
+            "runner_up": None,
+            "runner_up_theme": None,
+            "margin": 0.0,
+            "confidence": 0.0,
+            "template": None,
+            "selected_template": None,
+            "layout_mode": "pending",
+            "hero_section": None,
+            "supporting_section": None,
+            "reasoning": [],
+            "template_decision": {
+                "template": None,
+                "selected_template": None,
+                "decision_mode": "pending",
+                "decision_status": "pending",
+                "hero_section": None,
+                "supporting_section": None,
+                "deferred_until_step": None,
+                "template_candidates": [],
+            },
         },
         overwrite=overwrite,
     )
@@ -2386,7 +2443,17 @@ def generate_tailoring_intelligence(
         step_02_payload=step_02_payload,
         jd_text=jd_text,
     )
-    track_name = _select_tailoring_track(step_3_payload)
+    step_04_payload = build_step_04_artifact(
+        posting_row=posting_row,
+        run=run,
+        step_03_payload=step_3_payload,
+    )
+    step_05_payload = build_step_05_artifact(
+        posting_row=posting_row,
+        run=run,
+        step_04_payload=step_04_payload,
+    )
+    compatibility_track_name = _select_tailoring_track(step_3_payload)
     profile_snippets = _extract_profile_snippets(profile_text, source_path=profile_path)
     step_4_payload = _build_step_4_evidence_artifact(
         posting_row=posting_row,
@@ -2397,13 +2464,13 @@ def generate_tailoring_intelligence(
     step_5_markdown = _build_step_5_context_markdown(
         posting_row=posting_row,
         run=run,
-        track_name=track_name,
+        track_name=compatibility_track_name,
         step_4_payload=step_4_payload,
     )
     step_6_payload = _build_step_6_candidate_payload(
         posting_row=posting_row,
         run=run,
-        track_name=track_name,
+        track_name=compatibility_track_name,
         profile_text=profile_text,
         resume_doc=resume_doc,
         step_3_payload=step_3_payload,
@@ -2438,6 +2505,16 @@ def generate_tailoring_intelligence(
         overwrite=True,
     )
     _write_yaml_file(
+        paths.tailoring_step_04_path(company_name, role_title),
+        step_04_payload,
+        overwrite=True,
+    )
+    _write_yaml_file(
+        paths.tailoring_step_05_path(company_name, role_title),
+        step_05_payload,
+        overwrite=True,
+    )
+    _write_yaml_file(
         paths.tailoring_step_3_jd_signals_path(company_name, role_title),
         step_3_payload,
         overwrite=True,
@@ -2467,7 +2544,9 @@ def generate_tailoring_intelligence(
         posting_row=posting_row,
         run=run,
         current_time=current_time,
-        track_name=track_name,
+        selected_theme=str(step_05_payload["theme"]),
+        step_05_payload=step_05_payload,
+        compatibility_track_name=compatibility_track_name,
         verification_outcome=str(step_7_payload["verification_outcome"]),
     )
 
@@ -2517,7 +2596,7 @@ def generate_tailoring_intelligence(
     return TailoringIntelligenceResult(
         job_posting_id=job_posting_id,
         resume_tailoring_run_id=refreshed_run.resume_tailoring_run_id,
-        track_name=track_name,
+        track_name=str(step_05_payload["theme"]),
         verification_outcome=verification_outcome,
         blocked_reason_code=None,
         step_artifact_paths={
@@ -2529,6 +2608,12 @@ def generate_tailoring_intelligence(
             ).as_posix(),
             "step_03": paths.relative_to_root(
                 paths.tailoring_step_03_path(company_name, role_title)
+            ).as_posix(),
+            "step_04": paths.relative_to_root(
+                paths.tailoring_step_04_path(company_name, role_title)
+            ).as_posix(),
+            "step_05": paths.relative_to_root(
+                paths.tailoring_step_05_path(company_name, role_title)
             ).as_posix(),
             "legacy_step_3": paths.relative_to_root(
                 paths.tailoring_step_3_jd_signals_path(company_name, role_title)
@@ -4380,7 +4465,9 @@ def _update_intelligence_manifest(
     posting_row: Mapping[str, Any],
     run: ResumeTailoringRunRecord,
     current_time: str,
-    track_name: str,
+    selected_theme: str,
+    step_05_payload: Mapping[str, Any],
+    compatibility_track_name: str,
     verification_outcome: str,
 ) -> None:
     manifest_path = paths.tailoring_intelligence_manifest_path(
@@ -4396,8 +4483,19 @@ def _update_intelligence_manifest(
     manifest_steps.setdefault("step_01_jd_sections", {})["status"] = INTELLIGENCE_STATUS_GENERATED
     manifest_steps.setdefault("step_02_signals_raw", {})["status"] = INTELLIGENCE_STATUS_GENERATED
     manifest_steps.setdefault("step_03_signals_classified", {})["status"] = INTELLIGENCE_STATUS_GENERATED
+    manifest_steps.setdefault("step_04_theme_scores", {})["status"] = INTELLIGENCE_STATUS_GENERATED
+    manifest_steps.setdefault("step_05_theme_decision", {})["status"] = INTELLIGENCE_STATUS_GENERATED
+    manifest_payload["selected_theme"] = selected_theme
+    manifest_payload["template_decision"] = {
+        "template": step_05_payload.get("template"),
+        "selected_template": step_05_payload.get("selected_template"),
+        "layout_mode": step_05_payload.get("layout_mode"),
+        "hero_section": step_05_payload.get("hero_section"),
+        "supporting_section": step_05_payload.get("supporting_section"),
+    }
     manifest_payload.setdefault("legacy_runtime_compatibility", {})
-    manifest_payload["legacy_runtime_compatibility"]["selected_track"] = track_name
+    manifest_payload["legacy_runtime_compatibility"]["selected_track"] = compatibility_track_name
+    manifest_payload["legacy_runtime_compatibility"]["selected_theme"] = selected_theme
     manifest_payload["legacy_runtime_compatibility"]["verification_outcome"] = verification_outcome
     legacy_outputs = manifest_payload["legacy_runtime_compatibility"].setdefault("outputs", {})
     legacy_outputs.setdefault("step_3_jd_signals", {})["status"] = INTELLIGENCE_STATUS_GENERATED

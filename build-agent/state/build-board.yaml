@@ -9,7 +9,7 @@ global_status:
     - prd/spec.md
     - prd/test-spec.feature
     - docs/superpowers/plans/2026-04-14-resume-tailoring-jd-fit.md
-  current_phase: classification
+  current_phase: evidence_selection
   overall_risk: medium
   summary:
     - The builder state has been repointed from the completed BA-10 program to the resume-tailoring redesign program.
@@ -17,7 +17,7 @@ global_status:
     - The redesign is spec-backed on this branch and replaces the old 3-track or 4-focus logic with theme-driven, evidence-pool-based tailoring.
     - Legacy Step 3 through Step 7 code remains in-tree until the new 16-step pipeline is validated end-to-end.
     - Static foundations are now complete, including the Job Hunt Copilot profile update required by FR-RT-34D.
-    - RT-02-S1 is complete, so the next open work is RT-02-S2 theme scoring and theme decision artifacts on top of the new step-01 through step-03 contract.
+    - RT-02 is now complete, so the next open work is RT-03-S1 project scoring and selection on top of the persisted Step 5 theme decision artifact.
   execution_principles:
     - One primary slice per unattended build session.
     - "Stay on branch `resume-tailoring`; do not switch branches."
@@ -174,7 +174,7 @@ epics:
 
   - id: RT-02
     name: Classification and decision core
-    status: in_progress
+    status: done
     owner_role: tailoring-engineer
     phase: RT-P2
     dependencies:
@@ -206,17 +206,19 @@ epics:
       - id: RT-02-S2
         name: Task 9 - Steps 4 and 5
         owner_role: tailoring-engineer
-        status: pending
+        status: done
         dependencies:
           - RT-02-S1
         deliverables:
           - "`step_04_theme_scores.py`"
           - "`step_05_theme_decision.py`"
           - Template A or B routing logic
+        validation:
+          - "`python3.11 -m pytest tests/test_pipeline_steps.py tests/test_resume_tailoring.py tests/test_theme_classifier.py tests/test_base_templates.py -q`"
 
   - id: RT-03
     name: Evidence selection and content generation
-    status: pending
+    status: in_progress
     owner_role: tailoring-engineer
     phase: RT-P3
     dependencies:
@@ -404,13 +406,13 @@ epics:
           - removal of old track or focus routing only after the redesign is fully validated
 
 current_focus:
-  epic_id: RT-02
-  slice_id: RT-02-S2
+  epic_id: RT-03
+  slice_id: RT-03-S1
   owner_role: tailoring-engineer
-  reason: Step-01 through step-03 artifacts now persist through bootstrap and intelligence generation, so the next highest-value slice is deterministic theme scoring and theme or template selection.
+  reason: Step 5 now persists the selected theme and template-routing decision, so the next highest-value slice is scoring projects and selecting the four-project set that later evidence mapping depends on.
   exit_criteria:
-    - "`job_hunt_copilot/tailoring/steps/step_04_theme_scores.py` exists and records per-theme scores from classified JD signals"
-    - "`job_hunt_copilot/tailoring/steps/step_05_theme_decision.py` exists and records the selected theme, template decision, runner-up, and margin"
+    - "`job_hunt_copilot/tailoring/steps/step_06_project_scores.py` exists and records per-project relevance scores and signal coverage"
+    - "`job_hunt_copilot/tailoring/steps/step_07_project_selection.py` exists and records a four-project selection with Job Hunt Copilot first plus explicit exclusions or fallbacks"
 
 focus_order:
   - epic_id: RT-01
