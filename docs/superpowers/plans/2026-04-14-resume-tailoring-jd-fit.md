@@ -48,6 +48,7 @@
 | `assets/resume-tailoring/data/skill_categories.yaml` | Per-theme skill category templates |
 | `assets/resume-tailoring/data/summary_templates.yaml` | Per-theme summary templates |
 | `assets/resume-tailoring/base/projects-first/base-resume.tex` | Template A (projects-first) |
+| `assets/resume-tailoring/base/experience-first/base-resume.tex` | Template B (experience-first) |
 | `tests/test_theme_classifier.py` | Tests for theme classifier |
 | `tests/test_keyword_system.py` | Tests for keyword system |
 | `tests/test_bullet_pool.py` | Tests for bullet pool |
@@ -59,7 +60,7 @@
 | File | What changes |
 |------|-------------|
 | `job_hunt_copilot/resume_tailoring.py` | Remove old track/focus system, old step builders, old constants. Wire up new pipeline. Update bootstrap to use theme classifier. Update finalize for flexible layout. |
-| `job_hunt_copilot/paths.py` | Add paths for new step artifacts (step-01 through step-16), new data files, Template A path |
+| `job_hunt_copilot/paths.py` | Add paths for new step artifacts (step-01 through step-16), new data files, Template A/B paths |
 | `resume-tailoring/input/profile.md` | Add Job Hunt Copilot project |
 | `assets/resume-tailoring/profile.md` | Add Job Hunt Copilot project (source of truth) |
 | `assets/resume-tailoring/ai/system-prompt.md` | Rewrite for 16-step pipeline |
@@ -1217,10 +1218,11 @@ git commit -m "feat(tailoring): add per-theme summary and skill category templat
 
 ---
 
-### Task 6: Template A (Projects-First) Base Resume
+### Task 6: Templates A and B Base Resumes
 
 **Files:**
 - Create: `assets/resume-tailoring/base/projects-first/base-resume.tex`
+- Create: `assets/resume-tailoring/base/experience-first/base-resume.tex`
 - Modify: `job_hunt_copilot/paths.py`
 
 - [ ] **Step 1: Create Template A**
@@ -1229,24 +1231,30 @@ Copy the Applied AI resume from `/Users/achyutaramsonti/Projects/Job Hunt/Resume
 
 Verify the section order matches Template A: Summary, Education, Projects, Experience, Awards/Leadership, Technical Skills.
 
-- [ ] **Step 2: Update paths.py**
+- [ ] **Step 2: Create Template B**
 
-Add the Template A path and new step artifact paths to `job_hunt_copilot/paths.py`. Add a function to resolve base template by template type ("A" or "B"):
+Create `assets/resume-tailoring/base/experience-first/base-resume.tex` as the experience-first variant (Summary → Education → Experience → Projects → Awards → Skills).
+
+Verify the section order matches Template B: Summary, Education, Experience, Projects, Awards/Leadership, Technical Skills.
+
+- [ ] **Step 3: Update paths.py**
+
+Add the Template A/B paths and new step artifact paths to `job_hunt_copilot/paths.py`. Add a function to resolve base template by template type ("A" or "B"):
 
 ```python
 def base_resume_template_path(template_type: str) -> str:
     if template_type == "A":
         return os.path.join(PROJECT_ROOT, "assets", "resume-tailoring", "base", "projects-first", "base-resume.tex")
-    return os.path.join(PROJECT_ROOT, "assets", "resume-tailoring", "base", "distributed-infra", "base-resume.tex")
+    return os.path.join(PROJECT_ROOT, "assets", "resume-tailoring", "base", "experience-first", "base-resume.tex")
 ```
 
 Add step artifact path functions for steps 01-16 following the existing pattern (e.g., `tailoring_step_01_path`, `tailoring_step_02_path`, etc.).
 
-- [ ] **Step 3: Commit**
+- [ ] **Step 4: Commit**
 
 ```bash
-git add assets/resume-tailoring/base/projects-first/base-resume.tex job_hunt_copilot/paths.py
-git commit -m "feat(tailoring): add Template A (projects-first) and update path resolution"
+git add assets/resume-tailoring/base/projects-first/base-resume.tex assets/resume-tailoring/base/experience-first/base-resume.tex job_hunt_copilot/paths.py
+git commit -m "feat(tailoring): add base templates and update path resolution"
 ```
 
 ---
@@ -1674,8 +1682,10 @@ Replace calls to `_build_step_3_signal_artifact()` through `_build_step_7_verifi
 Update to:
 1. Load Step 15 assembly output instead of Step 6 payload
 2. Apply assembly to template LaTeX (render summary, skills, bullets, tech stacks into the template sections)
-3. Run page-fill loop: compile, check page fill, adjust, repeat
-4. Load Step 16 verification instead of Step 7
+3. Load Step 16 verification instead of Step 7
+4. Perform the final canonical render/compile/persist pass only after Step 16 passes
+
+Note: Step 15 may use iterative render/compile helpers during page-fill convergence, but finalize owns the final accepted workspace render and canonical PDF persist.
 
 - [ ] **Step 4: Remove old code**
 

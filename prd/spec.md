@@ -232,7 +232,7 @@ This is the agreed vocabulary for design discussions.
    - `gmail_job_alert`: LinkedIn alert email ingested from Gmail and enriched with JD fetch
 2. Both upstream modes shall converge into one canonical lead workspace and one shared downstream handoff shape.
 3. The minimum upstream goal is to persist enough raw evidence to recover company, role, and job-context signals, plus post/profile context when that evidence exists.
-4. Candidate base resume track / base resume evidence
+4. Candidate base resume template assets / base resume evidence
 5. Candidate master profile file with expanded background details
 
 ### 5.1.1 LinkedIn Lead Acquisition Modes
@@ -2799,7 +2799,7 @@ For each lead, persist an eligibility decision artifact with:
   1. persist `eligibility.yaml`
   2. set `job_postings.posting_status = hard_ineligible`
   3. stop before full Resume Tailoring workspace bootstrap
-  4. skip Step 3 through Step 7 intelligence artifacts, resume compilation, and Tailoring-to-Outreach handoff
+  4. skip 16-step tailoring artifact generation, final resume compilation, and Tailoring-to-Outreach handoff
   The posting remains queryable for audit and owner override, but downstream tailoring and outreach do not proceed automatically.
 
 - **FR-RT-09C (No Tailoring Run on Hard-Ineligible Short-Circuit):**
@@ -2830,12 +2830,13 @@ For each lead, persist an eligibility decision artifact with:
 
 - **FR-RT-10A1 (Bootstrap Materialization Sequence):**
   When a role-targeted posting enters Resume Tailoring, workspace bootstrap shall:
-  1. resolve the selected base resume track
-  2. materialize the selected base resume source into the workspace `resume.tex`
-  3. create `scope-baseline.resume.tex` from that pre-edit workspace resume state
-  4. mirror `jd.md` and any available `post.md` / `poster-profile.md` context into the workspace
-  5. persist `meta.yaml`
-  before any Step 3 to Step 7 intelligence generation begins.
+  1. mirror `jd.md` and any available `post.md` / `poster-profile.md` context into the workspace
+  2. persist an initial `meta.yaml`
+  3. run Steps 1 through 5 to determine the selected theme and template
+  4. materialize the selected template source into the workspace `resume.tex`
+  5. create `scope-baseline.resume.tex` from that pre-edit workspace resume state
+  6. persist updated `meta.yaml` with theme/template decision metadata
+  before Steps 6 through 16 and final canonical render/compile proceed.
 
 - **FR-RT-10A2 (Run Record Creation Rule):**
   Once a posting passes the hard-disqualifier gate and workspace bootstrap begins, the system shall create a `resume_tailoring_runs` row with `tailoring_status = in_progress` and `resume_review_status = not_ready`.
@@ -2855,12 +2856,12 @@ For each lead, persist an eligibility decision artifact with:
   In addition to the per-workspace mirrors, the current setup flow may materialize a component-local working job-context file such as `resume-tailoring/input/job-postings/{company}-{role}.md`. When that working file exists, it shall be derived from the same linked lead `jd.md` / posting context and shall not diverge semantically from the workspace `jd.md`.
 
 - **FR-RT-10C (Constraint Metadata):**
-  `meta.yaml` shall record the base resume track used and current tailoring constraints, including:
-  1. `base-used`
-  2. `context-file`
-  3. `scope-baseline-file`
-  4. `section-locks`
-  5. `experience-role-allowlist`
+  `meta.yaml` shall record the selected theme/template decision and current tailoring constraints, including:
+  1. `base-used` (compatibility key storing the selected theme ID on the `resume-tailoring` branch)
+  2. `template-used`
+  3. `context-file`
+  4. `scope-baseline-file`
+  5. `section-locks`
   6. send-linkage metadata when available
 
 - **FR-RT-10D (Scope Guard Enforcement):**
@@ -2895,33 +2896,30 @@ For each lead, persist an eligibility decision artifact with:
   Tailoring must map signals only to truthful candidate evidence; no fabricated claims.
 
 - **FR-RT-12A (Intelligence Step Contract):**
-  Resume tailoring shall persist structured intelligence artifacts for the current step model:
-  1. Step 3 - JD Signal Map
-  2. Step 4 - Evidence Map
-  3. Step 5 - Elaborated SWE Context
-  4. Step 6 - Candidate Resume Edits
-  5. Step 7 - Verification
+  Resume tailoring shall persist structured intelligence artifacts for the current step model. On the `resume-tailoring` branch, the current step model is the 16-step contract defined in FR-RT-40. Historical Step 3 through Step 7 artifacts are legacy outputs only and do not define current branch behavior.
 
 - **FR-RT-12B (Finalize Gate on Intelligence Artifacts):**
-  In the current flow, finalize shall require valid Step 3, Step 4, and Step 7 artifacts before compile is allowed.
+  In the current `resume-tailoring` flow, finalize shall require valid Step 1 through Step 16 artifacts. Step 16 must end in `pass`; `needs-revision` and `fail` block finalize.
 
 - **FR-RT-12B1 (Step 6 Apply Requirement):**
-  Finalize shall also require a valid Step 6 candidate-edit payload. Compile is not allowed until the selected Step 6 edits have been applied to workspace `resume.tex`.
+  Finalize shall also require a valid Step 15 assembly artifact. Final canonical render/compile is not allowed until the accepted Step 15 assembly has been applied to workspace `resume.tex`.
 
 - **FR-RT-12C (Verification Decision Contract):**
-  Step 7 verification shall end in one of:
+  Step 16 verification shall end in one of:
   1. `pass`
   2. `fail`
   3. `needs-revision`
   and must not remain `pending` at finalize time.
 
 - **FR-RT-12C1 (Minimum Verification Checks):**
-  Step 7 verification shall at minimum evaluate:
-  1. `proof-grounding`
-  2. `jd-coverage`
-  3. `metric-sanity`
-  4. `line-budget`
-  5. compile/page-readiness
+  Step 16 verification shall at minimum evaluate:
+  1. `jd-content-alignment`
+  2. `jd-keyword-coverage`
+  3. `proof-grounding`
+  4. `jd-coverage`
+  5. `metric-sanity`
+  6. `line-budget`
+  7. `compile/page-readiness`
   and shall record explicit notes for any failed or revision-required check.
 
 - **FR-RT-12C2 (Current Tailoring Run Status Set):**
@@ -2956,7 +2954,7 @@ For each lead, persist an eligibility decision artifact with:
 - **FR-RT-14 (Tailored Resume Generation):**
   System shall generate a role-aligned resume variant emphasizing:
   1. Matching technical stack
-  2. Relevant AI integration work
+  2. Theme-relevant project and experience evidence for the target role archetype
   3. Collaboration/client-facing signal when requested by JD
 
 - **FR-RT-15 (Decision Transparency):**
@@ -2966,12 +2964,12 @@ For each lead, persist an eligibility decision artifact with:
   Current finalize flow shall perform scope validation before compile in normal operation.
 
 - **FR-RT-15A1 (Apply-Finalize-Compile Sequence):**
-  In the current runtime flow, finalize shall proceed in this order:
-  1. validate required Step 3 / Step 4 / Step 6 / Step 7 artifacts
-  2. apply the Step 6 edit payload to workspace `resume.tex`
+  In the current `resume-tailoring` runtime flow, finalize shall proceed in this order:
+  1. validate required Step 1 through Step 16 artifacts
+  2. apply the accepted Step 15 assembly payload to workspace `resume.tex`
   3. run scope validation against `scope-baseline.resume.tex`
-  4. compile PDF output
-  5. verify the compiled output remains one page
+  4. perform the final canonical render/compile/persist pass
+  5. verify the compiled output remains one page and matches the accepted Step 15/Step 16 outputs
   If any step fails, the tailoring run shall not be marked complete.
 
 - **FR-RT-15B (Canonical Resume Output):**
@@ -2997,37 +2995,40 @@ For each lead, persist an eligibility decision artifact with:
 - **FR-RT-18B (Deep-Dive Evidence + Metrics Bank):**
   Current tailoring may pull from detailed project context and metrics-bank content inside the master profile when mapping JD signals to defensible resume evidence.
 
-### 7.2.8 Base Resume Tracks and Current Editing Scope
+### 7.2.8 Base Templates and Current Editing Scope
 
-- **FR-RT-18C (Base Resume Tracks):**
-  Resume tailoring shall support multiple base resume tracks. Current known tracks include:
-  1. `distributed-infra`
-  2. `frontend-ai`
-  3. `genai` (future/partial)
+- **FR-RT-18C (Legacy Base Resume Tracks):**
+  The older multi-track model (`distributed-infra`, `frontend-ai`, `genai`) is legacy behavior only. On the `resume-tailoring` branch, track selection is retired and replaced by the theme/template system in FR-RT-33 and FR-RT-34.
 
-- **FR-RT-18C1 (Base Resume Track Source Rule):**
-  The source-of-truth base resume track files for this build shall come from `assets/resume-tailoring/base/<track>/base-resume.tex`. Workspace `resume.tex` is a materialized working copy derived from the selected base track rather than the canonical source asset itself.
+- **FR-RT-18C1 (Base Template Source Rule):**
+  The source-of-truth LaTeX base templates for this build shall be:
+  1. `assets/resume-tailoring/base/projects-first/base-resume.tex`
+  2. `assets/resume-tailoring/base/experience-first/base-resume.tex`
+  Workspace `resume.tex` is a materialized working copy derived from the selected template rather than the canonical source asset itself.
 
-- **FR-RT-18D (Automatic Base Track Selection):**
-  Resume tailoring shall automatically select the most appropriate base resume track for the application from JD/context signals rather than requiring manual base-track choice in the normal flow.
+- **FR-RT-18D (Automatic Theme/Template Selection):**
+  Resume tailoring shall automatically select the most appropriate theme and template for the application from JD/context signals rather than requiring manual choice in the normal flow.
 
-- **FR-RT-18D1 (Persist Selected Base Track):**
-  The automatically selected base track shall be recorded in the application workspace metadata as `base-used` so downstream tailoring and review can see which base was chosen.
+- **FR-RT-18D1 (Persist Selected Theme and Template):**
+  The selected theme shall be recorded in workspace metadata as `base-used` for compatibility with existing runtime surfaces, and the selected template shall be recorded as `template-used`.
 
-- **FR-RT-18E (Track Reframing):**
-  Tailoring may rewrite summary and technical-skills content to match the selected track, remove wrong-track noise, and reorder JD-relevant tools earlier, while remaining truthful.
+- **FR-RT-18E (Theme-Driven Reframing):**
+  Tailoring may rewrite summary, skills, tech-stack lines, section ordering, and bullet emphasis to match the selected theme, remove wrong-theme noise, and reorder JD-relevant tools earlier, while remaining truthful.
 
 - **FR-RT-18F (Current Default Editable Scope):**
-  Unless `meta.yaml` expands or restricts scope, the current default editable scope is:
+  Unless `meta.yaml` expands or restricts scope, the current editable scope on the `resume-tailoring` branch includes:
   1. `summary`
-  2. `technical-skills`
-  3. `software-engineer` role inside `EXPERIENCE`
+  2. `skills`
+  3. `projects`
+  4. all three experience entries
+  5. per-entry tech stack lines
+  6. section ordering via template selection
 
-- **FR-RT-18G (Current SOP Focus):**
-  The current deepest tailoring SOP is centered on the `software-engineer` experience block. Other resume sections may still be tailored, but the present detailed step discipline is strongest for that block.
+- **FR-RT-18G (Current Tailoring Focus):**
+  The current deepest tailoring discipline is no longer limited to the `software-engineer` experience block. The system now allocates tailoring effort across projects and all experience entries using hero/supporting mode.
 
-- **FR-RT-18H (Deferred Scope Expansion):**
-  Expansion beyond the current narrow default editing scope is deferred for a later iteration. This build should optimize the existing narrow scope before broader section-level tailoring is introduced.
+- **FR-RT-18H (Scope Expansion Status):**
+  Broader section-level tailoring is no longer deferred on the `resume-tailoring` branch. Expansion remains constrained by evidence grounding, template structure, and one-page limits rather than by the old narrow section allowlist.
 
 ### 7.2.9 Current Tailoring Method and Guardrails
 
@@ -3041,62 +3042,56 @@ For each lead, persist an eligibility decision artifact with:
   6. few-shot examples
   7. `meta.yaml` scope constraints
 
-- **FR-RT-20 (JD-Only Extraction in Step 3):**
-  Step 3 JD Signal Map shall be derived from JD content only and shall not be filtered by candidate evidence at extraction time.
+- **FR-RT-20 (JD-Only Extraction in Steps 1-3):**
+  JD sectioning, raw signal extraction, and signal classification shall be derived from JD content only and shall not be filtered by candidate evidence during those early extraction/classification steps.
 
-- **FR-RT-21 (Evidence Traceability in Step 4):**
-  Step 4 Evidence Map shall record traceable matches, source references, confidence, and honest gaps rather than forcing full JD coverage.
+- **FR-RT-21 (Evidence Traceability in Steps 8-10):**
+  Experience/project evidence mapping and gap analysis shall record traceable matches, source references, confidence, and honest gaps rather than forcing full JD coverage.
 
-- **FR-RT-22 (Controlled Elaboration in Step 5):**
-  Step 5 may elaborate relevant pipeline details only within the selected project boundary. Current elaboration output shall include:
-  1. selected pipeline scope
-  2. controlled elaboration
-  3. claim ledger with evidence/inference labeling
-  4. interview-safe narrative
+- **FR-RT-22 (Controlled Reframing During Composition):**
+  Tailoring may reframe selected experience variants and compose project bullets using evidence atoms, but only within the selected evidence boundary. Current composition output may include selected evidence scope, controlled reframing, evidence labels, and interview-safe narrative support.
 
-- **FR-RT-22A (Current Elaboration Strictness):**
-  In this build, Step 5 may perform moderate elaboration as long as it stays within the same project boundary, remains traceable to known evidence, and stays interview-safe. It should improve clarity and mapping power without inventing new project scope.
+- **FR-RT-22A (Current Reframing Strictness):**
+  In this build, composition may perform moderate reframing as long as it stays within the same project or role boundary, remains traceable to known evidence, and stays interview-safe. It should improve clarity and mapping power without inventing new project or role scope.
 
-- **FR-RT-22B (Step 5 Allowed Elaboration Moves):**
-  In the current build, Step 5 controlled elaboration may only:
+- **FR-RT-22B (Allowed Reframing Moves):**
+  In the current build, controlled reframing may only:
   1. clarify an already-known project's architecture, data flow, or component interaction at a higher level of readability
   2. restate known impact, scale, latency, reliability, automation, or delivery outcomes more coherently
   3. connect already-supported technical actions to already-supported business or user outcomes
   4. compress or reorganize known evidence into an interview-safe narrative
 
-- **FR-RT-22C (Step 5 Prohibited Elaboration Moves):**
-  Step 5 shall not:
+- **FR-RT-22C (Prohibited Reframing Moves):**
+  Tailoring shall not:
   1. introduce a new project, team, system, ownership area, customer, or production responsibility that is not already supported
   2. invent net-new metrics, technologies, integrations, or scope boundaries
   3. transform a weak inference into a direct factual claim
   4. broaden a project's blast radius beyond the selected project boundary
 
-- **FR-RT-22D (Claim-Ledger Eligibility Rule):**
-  Every Step 5 claim used for downstream tailoring shall be labeled in the claim ledger as either:
+- **FR-RT-22D (Evidence-Label Eligibility Rule):**
+  Every reframed claim used for downstream tailoring shall be labeled in the evidence ledger or equivalent traceability structure as either:
   1. `direct_evidence`
   2. `bounded_inference`
-  Only claims that remain interview-safe and project-bound may survive into Step 6. If a claim cannot be defended under one of those labels, it shall not be used.
+  Only claims that remain interview-safe and evidence-bound may survive into downstream assembly. If a claim cannot be defended under one of those labels, it shall not be used.
 
-- **FR-RT-23 (Current Step 6 Payload Structure):**
-  Current candidate resume edits shall be emitted as a structured payload containing:
+- **FR-RT-23 (Current Assembly Payload Structure):**
+  Current resume assembly output shall be emitted as a structured payload containing:
   1. `summary`
-  2. `technical-skills`
-  3. `software-engineer.tech-stack-line`
-  4. `software-engineer.bullets`
-  5. support pointers where applicable
+  2. `skill-categories`
+  3. ordered `projects`
+  4. ordered `experience`
+  5. per-entry `tech-stack-line`
+  6. per-entry `bullets`
+  7. support pointers where applicable
 
-- **FR-RT-24 (Current SWE Bullet Contract):**
-  In this build, the `software-engineer` experience edit contract requires exactly 4 bullets. Those bullets should collectively cover distinct purposes such as:
-  1. scale/user impact
-  2. end-to-end flow
-  3. optimization tied to user-facing effect
-  4. reliability/compliance/operations
+- **FR-RT-24 (Legacy Exact-SWE-Bullet Contract):**
+  The older exact-4 `software-engineer` bullet contract applies only to historical outputs generated before 7.2.11. On the `resume-tailoring` branch, bullet count per entry is governed by FR-RT-36A rather than a fixed four-bullet SWE contract.
 
 - **FR-RT-25 (Bullet Construction Principle):**
   Current bullet-writing should generally lead with user, domain, or business impact, then technical action, then measurable result.
 
 - **FR-RT-26 (Current Bullet Budget):**
-  The current SWE bullet target is 210-255 characters, with hard bounds of 100-275 characters. Tailoring shall preserve overall line-budget discipline so the final PDF remains one page.
+  The current bullet target is approximately 200-260 characters, with hard bounds of 100-275 characters. Tailoring shall preserve overall line-budget discipline so the final PDF remains one page.
 
 - **FR-RT-27 (LaTeX-Safe Output):**
   Tailored text shall remain LaTeX-safe. Current rules include escaping reserved characters such as `%`, `$`, `&`, `#`, and `_`, and using math-safe forms such as `$\\geq$` / `$\\leq$` when needed.
@@ -3127,7 +3122,7 @@ For each lead, persist an eligibility decision artifact with:
   Cookbook and few-shot assets do not need to be updated on every tailoring run. They should be updated when a run produces a new stable rule, reusable decision pattern, or high-value worked example worth preserving.
 
 - **FR-RT-32B (Resume Tailoring Runs Table):**
-  The central database shall include a `resume_tailoring_runs` table for minimum run-level Resume Tailoring persistence. For this build, this table should at minimum capture a run identifier, linked `job_posting_id`, selected base track, current/final tailoring status, resume-review status, workspace reference, and timestamps.
+  The central database shall include a `resume_tailoring_runs` table for minimum run-level Resume Tailoring persistence. For this build, this table should at minimum capture a run identifier, linked `job_posting_id`, selected theme, selected template, current/final tailoring status, resume-review status, workspace reference, and timestamps.
 
 ### 7.2.11 JD-Content Fit: Theme Classification, Dynamic Bullet Selection, and Layout
 
@@ -3188,11 +3183,11 @@ Resume tailoring produces structurally valid resumes that tell the wrong story f
   12. **Step 12 — Summary Composition:** Write theme-specific professional summary grounded in selected evidence and JD signals.
   13. **Step 13 — Skill Categories Composition:** Compose theme-appropriate skill categories. Inject JD-mentioned tools using the 3-layer keyword placement system (see FR-RT-38). Promote JD-relevant items to front of each category.
   14. **Step 14 — Tech Stack Lines Composition:** Generate per-entry tech stack lines appropriate to the selected theme. Only include technologies actually used in that specific role/project. Promote JD-mentioned technologies to front.
-  15. **Step 15 — Resume Assembly & Page Fill:** Assemble everything into the selected template. Compile LaTeX. Check page fill. Add/drop bullets to fill exactly one page. Iterate until correct.
+  15. **Step 15 — Resume Assembly & Page Fill:** Assemble everything into a template-ready structure. The step may invoke iterative render/compile helpers to check page fill, add/drop bullets, and converge on a one-page assembly artifact.
   16. **Step 16 — Verification:** Two passes: (a) Content — JD-content alignment, proof-grounding, JD coverage, gap coverage. (b) Structural — metric sanity, bullet budget, LaTeX safety, compile readiness, page count.
 
 - **FR-RT-40B (Finalize Gate):**
-  Finalize shall require valid artifacts for all 16 steps. Step 16 must end in `pass` before compile is allowed. If any step fails, the tailoring run shall not be marked complete.
+  Finalize shall require valid artifacts for all 16 steps. Step 15 may use iterative render/compile helpers during page-fill convergence, but final canonical render/compile/persist is allowed only after Step 16 ends in `pass`. If any step fails, the tailoring run shall not be marked complete.
 
 #### 7.2.11.2 JD Theme Classifier
 
@@ -3321,7 +3316,7 @@ Resume tailoring produces structurally valid resumes that tell the wrong story f
   A tailored resume may mix bullets from work experience and project sources. Ranking is by JD relevance, not by source type.
 
 - **FR-RT-35E (Project Selection and Ordering):**
-  Each tailored resume shall include exactly 4 projects. Projects with zero JD relevance for the selected theme shall be omitted entirely rather than included with minimal bullets.
+  Each tailored resume shall include exactly 4 projects. Projects with zero JD relevance for the selected theme should normally be omitted entirely rather than included with minimal bullets. If fewer than 3 non-JHC projects have positive relevance, the remaining slots shall be filled by the highest-ranked fallback projects from the pool so the 4-project layout is preserved.
   1. Job Hunt Copilot is always included and always listed first, regardless of theme.
   2. The remaining 3 project slots are filled by the most JD-relevant projects from the pool, ranked by relevance.
   3. Projects are ordered: Job Hunt Copilot first, then the remaining 3 in descending relevance order.
@@ -3565,12 +3560,12 @@ Resume tailoring produces structurally valid resumes that tell the wrong story f
 
 - **FR-RT-36C (Page-Fill Adjustment Loop):**
   After initial bullet selection and layout composition, the system shall:
-  1. Compile LaTeX to PDF
+  1. Invoke iterative render/compile helpers against the selected template
   2. Check page fill (trailing whitespace and page count)
   3. If whitespace remains: add the next-best bullet from the pool or expand a compressed entry
   4. If overflow: drop the lowest-ranked bullet or compress one
   5. Repeat until the resume fills exactly one page
-  6. Final verification: compile to PDF, confirm 1 page, minimal trailing whitespace
+  6. Final verification: render/compile the accepted assembly to PDF, confirm 1 page, minimal trailing whitespace
 
 #### 7.2.11.9 Verifier: JD-Content Alignment Check
 
@@ -4676,16 +4671,16 @@ Current imported guidance should include, at minimum:
 ## 12.1 Resume Tailoring
 1. Given a JD, system generates structured signal artifact with must-have vs nice-to-have split.
 2. System applies the explicit hard-disqualifier policy and flags hard-ineligible leads early.
-3. If a posting is hard-ineligible, the system persists `applications/{company}/{role}/eligibility.yaml`, sets posting status to `hard_ineligible`, and does not continue into workspace bootstrap, Step 3 to Step 7 artifacts, or outreach handoff.
+3. If a posting is hard-ineligible, the system persists `applications/{company}/{role}/eligibility.yaml`, sets posting status to `hard_ineligible`, and does not continue into workspace bootstrap, 16-step tailoring artifacts, or outreach handoff.
 4. Tailoring workspace contains `meta.yaml`, mirrored context files, `resume.tex`, a scope-baseline snapshot, and intelligence artifacts.
-5. Workspace bootstrap materializes the selected base resume track into workspace `resume.tex`, creates `scope-baseline.resume.tex` from the pre-edit workspace state, and mirrors the linked JD context before Step 3 begins.
+5. Workspace bootstrap mirrors the linked JD context, records initial metadata, runs Steps 1 through 5 to determine theme/template, then materializes the selected template into workspace `resume.tex` and creates `scope-baseline.resume.tex`.
 6. In this build, the effective tailoring context is the derived `jd.md` plus posting-level canonical state; `raw/source.md` may be kept for traceability when that artifact exists for the lead mode, but it is not a required direct tailoring input.
 7. In this build, mirrored `post.md` and `poster-profile.md` files may exist in the tailoring workspace, but the core tailoring decision path does not depend on them being present or semantically normalized.
 8. Scope constraints recorded in `meta.yaml` are enforced before finalize/compile.
-9. Tailoring run persists the current step artifacts for JD signals, evidence mapping, candidate edits, and verification.
+9. Tailoring run persists the current step artifacts for the full 16-step pipeline rather than only the retired Step 3 through Step 7 model.
 10. Once bootstrap begins, a `resume_tailoring_runs` row is created with `tailoring_status = in_progress` and `resume_review_status = not_ready`.
-11. Finalize requires valid Step 3, Step 4, Step 6, and Step 7 artifacts, and Step 7 must not remain `pending`.
-12. Finalize applies the selected Step 6 edit payload to workspace `resume.tex`, runs scope validation, compiles the PDF, and verifies one-page output before marking the run complete.
+11. Finalize requires valid Step 1 through Step 16 artifacts, and Step 16 must end in `pass`.
+12. Finalize applies the accepted Step 15 assembly to workspace `resume.tex`, runs scope validation, performs the final canonical compile/persist pass, and verifies one-page output before marking the run complete.
 13. Successful finalize moves the run to `tailoring_status = tailored` and `resume_review_status = resume_review_pending`.
 14. Tailored output includes traceable evidence mapping.
 15. Tailoring run uses the candidate master profile file and surfaces which master-profile evidence was used.
@@ -4693,12 +4688,12 @@ Current imported guidance should include, at minimum:
 17. Missing eligibility data is treated as `unknown` and proceeds without hard failure.
 18. Eligibility audit output is persisted with status, triggered rules, and supporting evidence snippets.
 19. Owner overrides (if any) are persisted with reason and timestamp.
-20. Current default editable scope is respected unless `meta.yaml` explicitly changes it.
-21. Current Step 6 payload contains structured summary, technical-skills, software-engineer stack line, and exactly 4 SWE bullets.
-22. SWE bullets respect current character-budget and LaTeX-safety constraints closely enough to remain compile-safe and page-safe.
-23. Verification evaluates at least proof-grounding, JD coverage, metric sanity, line budget, and compile/page-readiness checks and records explicit notes for failures or revision-required cases.
+20. Current editable scope is respected unless `meta.yaml` explicitly changes it, and that scope now covers summary, skills, projects, all experience entries, per-entry tech stacks, and template-driven section ordering.
+21. Current Step 15 assembly payload contains structured summary, skill categories, ordered projects, ordered experience entries, per-entry tech stack lines, and selected bullets.
+22. Bullets respect current character-budget and LaTeX-safety constraints closely enough to remain compile-safe and page-safe.
+23. Verification evaluates at least jd-content-alignment, jd-keyword-coverage, proof-grounding, JD coverage, metric sanity, line budget, and compile/page-readiness checks and records explicit notes for failures or revision-required cases.
 24. If evidence is insufficient or constraints block a requested edit, verification returns explicit blockers or revision guidance rather than fabricated claims.
-25. Base resume track is selected automatically from JD/context signals and persisted in workspace metadata.
+25. Theme and template are selected automatically from JD/context signals and persisted in workspace metadata as `base-used` and `template-used`.
 26. For role-targeted flow, the tailored resume stops at the mandatory agent-review gate before downstream outreach work begins.
 27. A review rejection followed by retailoring creates a new `resume_tailoring_runs` row rather than overwriting the prior run history.
 28. The Tailoring-to-Outreach handoff is DB-first by `job_posting_id`, with `meta.yaml` and referenced resume artifacts available as supporting runtime references and audit surfaces.
@@ -4708,7 +4703,7 @@ Current imported guidance should include, at minimum:
 32. The section on top (hero section) receives maximum tailoring — full LLM composition for projects, aggressive keyword injection for experience. The section below (supporting) stays conservative.
 33. Experience bullets use pre-written variants per theme with controlled JD keyword rewrite. Project bullets are composed by LLM from verified evidence atoms per JD.
 34. Bullet count per entry is flexible within per-entry min/max limits (JHC: 4/4 for AI themes; other projects: 1/2; SWE: 3/4; Associate: 2/3; Intern: 1/1). The system fills exactly one page with no trailing whitespace and no overflow.
-35. Exactly 4 projects appear on every resume. Job Hunt Copilot is always first. Remaining 3 are selected and ranked by JD relevance. Projects with zero relevance are omitted entirely.
+35. Exactly 4 projects appear on every resume. Job Hunt Copilot is always first. Remaining 3 are selected and ranked by JD relevance, with fallback projects used only when needed to preserve the 4-project layout.
 36. All 3 experience entries always appear. Bullet count varies within limits.
 37. Metrics in all bullets are sacred and never modified at runtime.
 38. JD keyword placement follows a 3-layer system: extraction (categorize and prioritize JD terms), profile matching (direct/equivalent/adjacent/no match), and section-specific placement rules.
@@ -5031,13 +5026,24 @@ Current imported guidance should include, at minimum:
 12. `resume-tailoring/output/tailored/{company}/{role}/resume.tex`
 13. `resume-tailoring/output/tailored/{company}/{role}/scope-baseline.resume.tex`
 14. `resume-tailoring/output/tailored/{company}/{role}/intelligence/manifest.yaml`
-15. `resume-tailoring/output/tailored/{company}/{role}/intelligence/step-3-jd-signals.yaml`
-16. `resume-tailoring/output/tailored/{company}/{role}/intelligence/step-4-evidence-map.yaml`
-17. `resume-tailoring/output/tailored/{company}/{role}/intelligence/step-5-elaborated-swe-context.md`
-18. `resume-tailoring/output/tailored/{company}/{role}/intelligence/step-6-candidate-swe-bullets.yaml`
-19. `resume-tailoring/output/tailored/{company}/{role}/intelligence/step-7-verification.yaml`
-20. `resume-tailoring/output/tailored/{company}/{role}/intelligence/prompts/`
-21. `resume-tailoring/output/tailored/{company}/{role}/Achyutaram Sonti.pdf`
+15. `resume-tailoring/output/tailored/{company}/{role}/intelligence/step-01-jd-sections.yaml`
+16. `resume-tailoring/output/tailored/{company}/{role}/intelligence/step-02-signals-raw.yaml`
+17. `resume-tailoring/output/tailored/{company}/{role}/intelligence/step-03-signals-classified.yaml`
+18. `resume-tailoring/output/tailored/{company}/{role}/intelligence/step-04-theme-scores.yaml`
+19. `resume-tailoring/output/tailored/{company}/{role}/intelligence/step-05-theme-decision.yaml`
+20. `resume-tailoring/output/tailored/{company}/{role}/intelligence/step-06-project-scores.yaml`
+21. `resume-tailoring/output/tailored/{company}/{role}/intelligence/step-07-project-selection.yaml`
+22. `resume-tailoring/output/tailored/{company}/{role}/intelligence/step-08-experience-evidence.yaml`
+23. `resume-tailoring/output/tailored/{company}/{role}/intelligence/step-09-project-evidence.yaml`
+24. `resume-tailoring/output/tailored/{company}/{role}/intelligence/step-10-gap-analysis.yaml`
+25. `resume-tailoring/output/tailored/{company}/{role}/intelligence/step-11-bullet-allocation.yaml`
+26. `resume-tailoring/output/tailored/{company}/{role}/intelligence/step-12-summary.yaml`
+27. `resume-tailoring/output/tailored/{company}/{role}/intelligence/step-13-skills.yaml`
+28. `resume-tailoring/output/tailored/{company}/{role}/intelligence/step-14-tech-stacks.yaml`
+29. `resume-tailoring/output/tailored/{company}/{role}/intelligence/step-15-assembly.yaml`
+30. `resume-tailoring/output/tailored/{company}/{role}/intelligence/step-16-verification.yaml`
+31. `resume-tailoring/output/tailored/{company}/{role}/intelligence/prompts/`
+32. `resume-tailoring/output/tailored/{company}/{role}/Achyutaram Sonti.pdf`
 22. `discovery/output/{company}/{role}/people_search_result.json`
 23. `discovery/output/{company}/{role}/recipient-profiles/{contact_id}/recipient_profile.json`
 24. `discovery/output/{company}/{role}/discovery_result.json`
