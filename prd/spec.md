@@ -3129,6 +3129,486 @@ For each lead, persist an eligibility decision artifact with:
 - **FR-RT-32B (Resume Tailoring Runs Table):**
   The central database shall include a `resume_tailoring_runs` table for minimum run-level Resume Tailoring persistence. For this build, this table should at minimum capture a run identifier, linked `job_posting_id`, selected base track, current/final tailoring status, resume-review status, workspace reference, and timestamps.
 
+### 7.2.11 JD-Content Fit: Theme Classification, Dynamic Bullet Selection, and Layout
+
+**Issue:** #80 — Fix general JD-content fit failures in resume tailoring
+**Branch:** `resume-tailoring`
+
+#### Problem Statement
+
+Resume tailoring produces structurally valid resumes that tell the wrong story for the job description. A backend-heavy resume can pass all existing checks for a frontend/web JD. Root causes: track selection couples frontend with AI, no web/frontend role focus exists, all tracks share the same HL7/Spark/backend bullets, evidence scoring is purely lexical, and the verifier has no JD-content alignment check.
+
+**Repro case:** Garmin Aviation (Software Engineer 1 — Aviation Web Development). JD is Angular/JavaScript/web/customer-facing. System selected `generalist_swe` track, `backend_service` focus. Output: HL7/Spark/AWS EMR bullets. Verification passed with score 72.
+
+**Superseded FRs:** This section supersedes the following existing FRs on the `resume-tailoring` branch:
+- FR-RT-18C (old 3-track system) → superseded by FR-RT-33
+- FR-RT-18D (old automatic track selection) → superseded by FR-RT-33D
+- FR-RT-24 (exactly 4 SWE bullets) → superseded by FR-RT-36A
+- FR-RT-12C1 minimum verification checks → extended by FR-RT-37B
+- The old Step 3-7 intelligence artifact contracts → superseded by the new 16-step pipeline (FR-RT-40)
+
+#### 7.2.11.1 Tailoring Pipeline — 16-Step Architecture
+
+- **FR-RT-40 (16-Step Pipeline):**
+  Resume tailoring shall use a 16-step pipeline. Each step produces a discrete, auditable YAML/markdown artifact in the intelligence directory. The old Step 3-7 pipeline is retired.
+
+  | Step | Name | Artifact |
+  |------|------|----------|
+  | 1 | JD Section Identification | `step-01-jd-sections.yaml` |
+  | 2 | Signal Extraction | `step-02-signals-raw.yaml` |
+  | 3 | Signal Classification & Weighting | `step-03-signals-classified.yaml` |
+  | 4 | Theme Scoring | `step-04-theme-scores.yaml` |
+  | 5 | Theme & Layout Decision | `step-05-theme-decision.yaml` |
+  | 6 | Project Relevance Scoring | `step-06-project-scores.yaml` |
+  | 7 | Project Selection & Ordering | `step-07-project-selection.yaml` |
+  | 8 | Experience Evidence Mapping | `step-08-experience-evidence.yaml` |
+  | 9 | Project Evidence Mapping | `step-09-project-evidence.yaml` |
+  | 10 | Gap Analysis | `step-10-gap-analysis.yaml` |
+  | 11 | Bullet Ranking & Allocation | `step-11-bullet-allocation.yaml` |
+  | 12 | Summary Composition | `step-12-summary.yaml` |
+  | 13 | Skill Categories Composition | `step-13-skills.yaml` |
+  | 14 | Tech Stack Lines Composition | `step-14-tech-stacks.yaml` |
+  | 15 | Resume Assembly & Page Fill | `step-15-assembly.yaml` |
+  | 16 | Verification | `step-16-verification.yaml` |
+
+  Finalize (apply to `.tex`, compile final PDF, persist) happens after Step 16 passes.
+
+- **FR-RT-40A (Step Descriptions):**
+  1. **Step 1 — JD Section Identification:** Parse JD text, identify headings and section boundaries (responsibilities, requirements, nice-to-have, benefits, etc.).
+  2. **Step 2 — Signal Extraction:** Extract individual requirement signals from each identified section. One signal per meaningful requirement line.
+  3. **Step 3 — Signal Classification & Weighting:** Classify each signal as must-have / core / nice-to-have / informational. Assign weights. Categorize by domain. Tokenize.
+  4. **Step 4 — Theme Scoring:** Score all 9 themes against classified signals using weighted term overlap with source-priority boosting. Record all per-theme scores.
+  5. **Step 5 — Theme & Layout Decision:** Pick the winning theme. Select base template (A or B). Record reasoning, runner-up theme, margin of victory.
+  6. **Step 6 — Project Relevance Scoring:** Score every available project against JD signals independently. Record per-project relevance scores and which signals each project covers.
+  7. **Step 7 — Project Selection & Ordering:** JHC always first. Select top 3 from scored projects. Record why each was chosen and why others were excluded.
+  8. **Step 8 — Experience Evidence Mapping:** Map JD signals to experience bullet candidates (SWE, Associate SWE, Intern). Score each match.
+  9. **Step 9 — Project Evidence Mapping:** Map JD signals to project bullet candidates (only the 4 selected projects). Score each match.
+  10. **Step 10 — Gap Analysis:** Identify uncovered JD signals. Flag must-have signals with no strong bullet match. Surface weak areas before composition begins. Identify JD keywords present in profile but not yet surfaced in any selected bullet — these are missed opportunities.
+  11. **Step 11 — Bullet Ranking & Allocation:** Rank all bullet candidates by JD fit. Assign bullet counts per entry within min/max limits. Select specific bullets per entry. Record what was cut and why. Apply hero-mode vs. supporting-mode tailoring intensity (see FR-RT-39).
+  12. **Step 12 — Summary Composition:** Write theme-specific professional summary grounded in selected evidence and JD signals.
+  13. **Step 13 — Skill Categories Composition:** Compose theme-appropriate skill categories. Inject JD-mentioned tools using the 3-layer keyword placement system (see FR-RT-38). Promote JD-relevant items to front of each category.
+  14. **Step 14 — Tech Stack Lines Composition:** Generate per-entry tech stack lines appropriate to the selected theme. Only include technologies actually used in that specific role/project. Promote JD-mentioned technologies to front.
+  15. **Step 15 — Resume Assembly & Page Fill:** Assemble everything into the selected template. Compile LaTeX. Check page fill. Add/drop bullets to fill exactly one page. Iterate until correct.
+  16. **Step 16 — Verification:** Two passes: (a) Content — JD-content alignment, proof-grounding, JD coverage, gap coverage. (b) Structural — metric sanity, bullet budget, LaTeX safety, compile readiness, page count.
+
+- **FR-RT-40B (Finalize Gate):**
+  Finalize shall require valid artifacts for all 16 steps. Step 16 must end in `pass` before compile is allowed. If any step fails, the tailoring run shall not be marked complete.
+
+#### 7.2.11.2 JD Theme Classifier
+
+- **FR-RT-33 (Theme-Based Track Selection):**
+  Resume tailoring shall replace the current token-counting `_select_tailoring_track()` with a theme classifier that picks from a fixed set of themes. The classifier shall be deterministic (no LLM) and testable.
+
+- **FR-RT-33A (Theme Set):**
+  The theme classifier shall select from these themes:
+
+  | # | Theme ID | Role Archetype |
+  |---|----------|---------------|
+  | 1 | `applied_ai` | Applied AI Engineer |
+  | 2 | `agent_ai_systems` | Agent / AI Systems Engineer |
+  | 3 | `forward_deployed_ai` | Forward Deployed / Solutions AI |
+  | 4 | `frontend_web` | Frontend / Web Developer |
+  | 5 | `backend_service` | Backend / API Engineer |
+  | 6 | `distributed_infra` | Data / Distributed Systems Engineer |
+  | 7 | `platform_infra` | Platform / DevOps / SRE |
+  | 8 | `fullstack` | Full-Stack Engineer |
+  | 9 | `generalist` | Fallback — no clear theme |
+
+- **FR-RT-33B (Theme Term Sets):**
+  Each theme shall have a dedicated weighted term set. Terms shall not be shared across themes in ways that create ambiguity (e.g., "frontend" shall not require "AI" to trigger `frontend_web`).
+
+  Representative trigger terms per theme:
+  1. `applied_ai`: LLM, RAG, embeddings, ML in production, model serving, inference, fine-tuning, prompt engineering, AI-powered features
+  2. `agent_ai_systems`: agentic AI, multi-agent, tool use, autonomous workflows, orchestration, planning, function calling, agent frameworks
+  3. `forward_deployed_ai`: customer-facing AI, deployment, integration, solutions engineering, technical consulting, client, implementation, domain-specific AI
+  4. `frontend_web`: React, Angular, Vue, JavaScript, TypeScript, CSS, HTML, web, UI, UX, customer-facing, responsive, browser, DOM, accessibility
+  5. `backend_service`: backend, API, REST, microservices, database, SQL, server-side, authentication, CRUD, middleware
+  6. `distributed_infra`: distributed systems, Spark, ETL, pipeline, Kafka, high-availability, throughput, data engineering, streaming
+  7. `platform_infra`: Kubernetes, Terraform, Docker, CI/CD, cloud infrastructure, DevOps, observability, monitoring, SRE, reliability
+  8. `fullstack`: full-stack, or both `frontend_web` and `backend_service` signals present in roughly equal measure
+  9. `generalist`: fallback when no theme clears the confidence threshold
+
+- **FR-RT-33C (Signal Source Weighting):**
+  The theme classifier shall weight JD signals by their source priority:
+  1. Role title and core responsibilities: 2x weight
+  2. Must-have requirements: 1x weight
+  3. Nice-to-have requirements: 0.5x weight
+  4. Informational signals: 0x weight (ignored for theme classification)
+
+- **FR-RT-33D (Theme Selection Rule):**
+  The classifier shall:
+  1. Score every theme by weighted term overlap against JD signals
+  2. Select the highest-scoring theme if it clears a confidence threshold
+  3. If `frontend_web` and `backend_service` both score high and are within a close margin, select `fullstack`
+  4. If no theme clears the threshold, fall back to `generalist`
+
+- **FR-RT-33E (Replace Existing Track/Focus System):**
+  The theme classifier replaces both `_select_tailoring_track()` and `_determine_role_focus()`. The existing 3-track (`frontend_ai`, `distributed_infra`, `generalist_swe`) and 4-focus (`ai_application`, `cloud_platform`, `backend_service`, `distributed`) systems are retired. The `base_used` field in `resume_tailoring_runs` shall store the selected theme ID.
+
+#### 7.2.11.3 Theme-Driven Resume Layout
+
+- **FR-RT-34 (Section Ordering by Theme — Two Base Templates):**
+  The system shall maintain two base LaTeX templates:
+  1. **Template A (projects-first):** Summary → Education → Projects → Experience → Awards → Skills
+  2. **Template B (experience-first):** Summary → Education → Experience → Projects → Awards → Skills
+
+  Theme-to-template mapping:
+  - Template A: `applied_ai`, `agent_ai_systems`, `forward_deployed_ai`
+  - Template B: `backend_service`, `distributed_infra`, `platform_infra`
+  - Runtime decision (A or B based on which section has stronger JD-relevant content): `frontend_web`, `fullstack`, `generalist`
+
+- **FR-RT-34A (Theme-Specific Skill Categories):**
+  Technical skill category names and ordering shall vary by theme. For example:
+  - AI themes: "Languages", "Applied AI", "Backend & Data", "Cloud & Infra", "Testing & Reliability"
+  - Frontend themes: "Languages", "Frontend & UI", "Backend & Data", "Cloud & DevOps", "Testing & Reliability"
+  - Backend/infra themes: "Languages", "Infrastructure & Systems", "Cloud & DevOps", "Data & Storage", "Testing & Reliability"
+
+- **FR-RT-34B (Theme-Specific Summary):**
+  Each theme shall have a corresponding summary template. The summary shall frame the candidate's experience in the language of the target role archetype.
+
+- **FR-RT-34C (Dynamic Tech Stack Lines):**
+  The tech stack line displayed under each experience/project entry shall be dynamic per theme, not hardcoded. For example, a `frontend_web` theme may show "React, Node.js, TypeScript, PostgreSQL, Docker" for the Intern role instead of the default stack. Tech stack lines for experience entries shall only include technologies the candidate actually used in that role. Tech stack lines for projects shall reflect the actual project stack.
+
+- **FR-RT-34D (Profile Update — Job Hunt Copilot):**
+  The master profile (`profile.md`) shall be updated to include the Job Hunt Copilot project with full detail, so the bullet evidence pool can draw from it.
+
+#### 7.2.11.4 Bullet Evidence System
+
+- **FR-RT-35 (Bullet Evidence Pool):**
+  Resume tailoring shall replace hardcoded per-track bullets with a evidence-based bullet system drawn from the full candidate profile.
+
+- **FR-RT-35A (Two-Tier Bullet Structure):**
+  The bullet system has two tiers:
+
+  **Tier 1 — Experience entries (SWE, Associate SWE, Intern): Pre-written variants.**
+  Each experience bullet gets multiple pre-written variants tagged by theme. At runtime, the system selects the best variant and applies a controlled rewrite pass to inject JD-specific keywords (see FR-RT-35G).
+
+  Pool entry structure for experience bullets:
+  1. `bullet_id`: unique identifier (e.g., `swe_scale_distributed`)
+  2. `text`: pre-written LaTeX-safe bullet text
+  3. `themes`: list of theme IDs this variant is written for
+  4. `tech_tags`: list of technology/domain terms for JD matching
+  5. `impact_type`: one of `scale`, `optimization`, `reliability`, `delivery`, `product`, `ai_integration`
+  6. `source`: which experience entry (e.g., `swe_role`, `associate_swe_role`, `intern_role`)
+  7. `metrics`: list of metrics referenced (sacred, never modified at runtime)
+
+  **Tier 2 — Project entries: Evidence atoms + LLM composition.**
+  Each project is decomposed into evidence atoms — verified, atomic facts about what was built. At runtime, the LLM composes bullets by selecting and combining relevant atoms using JD language.
+
+  Evidence atom structure:
+  1. `atom_id`: unique identifier (e.g., `jhc_supervisor`)
+  2. `what`: factual description of what was built/done
+  3. `themes`: list of theme IDs this atom is relevant to
+  4. `tech`: list of technologies involved
+  5. `metrics`: list of metrics (sacred, used exactly as stored)
+
+- **FR-RT-35B (Pool Sources):**
+  The bullet pool shall draw from all profile evidence:
+  1. Work experience (Tier 1 — pre-written variants): Software Engineer role, Associate Software Engineer role, Software Intern role
+  2. Projects (Tier 2 — evidence atoms): Job Hunt Copilot, LinkedIn Job-Matching Assistant, TIAA Student Loan Platform, Distributed Edge Face Recognition, National Parks Biodiversity Visualization, Context-Aware Health Monitoring App, Distributed Content Recommendation Engine, Cloud Meraki (Associate SWE deep-dive)
+
+- **FR-RT-35C (Bullet Selection for a Given JD):**
+  For a given JD, bullet selection shall:
+  1. Use the theme classifier to determine the theme and template
+  2. Determine hero vs. supporting mode for each section (see FR-RT-39)
+  3. For experience entries: select the best pre-written variant per theme, then apply hero-mode or supporting-mode rewrite rules
+  4. For project entries: select JD-relevant evidence atoms, then compose bullets at hero or supporting intensity
+  5. Rank all candidates by JD signal overlap
+  6. Select bullets respecting per-entry min/max limits and one-page fill constraint
+  7. Metrics in all bullets are never modified — they come from the pool/atom as-is
+
+- **FR-RT-35D (Cross-Source Mixing):**
+  A tailored resume may mix bullets from work experience and project sources. Ranking is by JD relevance, not by source type.
+
+- **FR-RT-35E (Project Selection and Ordering):**
+  Each tailored resume shall include exactly 4 projects. Projects with zero JD relevance for the selected theme shall be omitted entirely rather than included with minimal bullets.
+  1. Job Hunt Copilot is always included and always listed first, regardless of theme.
+  2. The remaining 3 project slots are filled by the most JD-relevant projects from the pool, ranked by relevance.
+  3. Projects are ordered: Job Hunt Copilot first, then the remaining 3 in descending relevance order.
+
+- **FR-RT-35F (Experience Entry Inclusion):**
+  All 3 experience entries (SWE role, Associate SWE role, Intern role) shall always appear on the resume. They are not omitted — only their bullet count varies within the per-entry limits.
+
+- **FR-RT-35G (Experience Bullet Rewrite Rules):**
+  After selecting the best pre-written variant for an experience bullet, the system may apply a controlled rewrite pass to inject JD-specific keywords. Rewrite rules:
+
+  | Allowed | Not allowed |
+  |---------|------------|
+  | Swap equivalent terms (e.g., "data services" → "backend services" if JD says "backend") | Change any metric or number |
+  | Promote JD terms (e.g., use "microservices" if JD says it and work involved services) | Add new claims not in the original bullet |
+  | Reorder to lead with JD-relevant impact | Change the scope of work |
+  | Mirror JD phrasing (e.g., "customer-facing" instead of "downstream") | Invent new technologies not in bullet's `tech_tags` |
+
+  The original variant shall be preserved in the artifact for audit. The rewrite is tracked as a diff.
+
+- **FR-RT-35H (Project Bullet Composition Rules):**
+  For project bullets, the LLM composes from evidence atoms. Composition rules:
+  1. Select the most JD-relevant atoms for that project
+  2. Combine atoms into bullets that mirror JD language and terminology
+  3. Metrics are used exactly as stored in the atom — never modified
+  4. Can freely reframe, reorder, and emphasize different aspects of the project
+  5. Cannot add claims not supported by any evidence atom for that project
+  6. Must stay within bullet character budget (200-260 chars target, 100-275 hard bounds)
+
+#### 7.2.11.5 Hero vs. Supporting Mode Tailoring
+
+- **FR-RT-39 (Hero vs. Supporting Mode):**
+  The section placed on top of the resume (determined by template A or B) is the **hero section** and receives maximum tailoring investment. The section below is the **supporting section** and stays closer to its natural form.
+
+  **Template A (projects-first):**
+  - Projects = hero mode → full LLM composition from evidence atoms, aggressive JD keyword matching, framing fully optimized for JD
+  - Experience = supporting mode → best pre-written variant selected, light JD keyword injection only
+
+  **Template B (experience-first):**
+  - Experience = hero mode → more aggressive rewriting of pre-written variants, active JD keyword injection, lead with JD-relevant aspects of each bullet
+  - Projects = supporting mode → use good pre-written variants or lightly composed bullets, less customization
+
+  **Runtime-decided templates** (`frontend_web`, `fullstack`, `generalist`):
+  - Whichever section the system places on top gets hero mode; the other gets supporting mode.
+
+- **FR-RT-39A (Hero Mode — Projects):**
+  In hero mode, project bullets are composed fresh from evidence atoms per JD:
+  1. LLM selects the most JD-relevant atoms
+  2. Composes bullets using JD language and terminology
+  3. Maximizes JD keyword coverage within truthfulness bounds
+  4. Full flexibility to frame the project differently per JD
+
+- **FR-RT-39B (Hero Mode — Experience):**
+  In hero mode, experience bullets receive aggressive rewriting:
+  1. Best pre-written variant selected per theme
+  2. JD keywords actively injected where equivalent terms exist
+  3. Bullet emphasis reordered to lead with JD-relevant impact
+  4. JD phrasing mirrored where natural
+  5. All rewrite rules from FR-RT-35G still apply (no new claims, no metric changes)
+
+- **FR-RT-39C (Supporting Mode — Projects):**
+  In supporting mode, project bullets are lightly tailored:
+  1. Use pre-composed or lightly adjusted bullets
+  2. Minimal JD keyword injection
+  3. Do not aggressively reframe the project — use its natural framing
+
+- **FR-RT-39D (Supporting Mode — Experience):**
+  In supporting mode, experience bullets are conservatively handled:
+  1. Best pre-written variant selected per theme
+  2. Light keyword injection only (equivalent swaps, not active reframing)
+  3. No reordering of bullet emphasis
+
+#### 7.2.11.6 JD Keyword Extraction and Placement System
+
+- **FR-RT-38 (3-Layer JD Keyword System):**
+  The system shall extract JD keywords and place them on the resume using a 3-layer approach: extraction, profile matching, and section-specific placement.
+
+- **FR-RT-38A (Layer 1 — JD Keyword Extraction):**
+  From classified signals (Step 3), extract every technology, tool, framework, methodology, and domain term. Categorize each keyword:
+  1. **Hard tech:** specific tools/languages (Angular, Python, Kubernetes, AWS, React, PostgreSQL)
+  2. **Methodologies:** Agile, CI/CD, TDD, Scrum, DevOps
+  3. **Domain terms:** distributed systems, microservices, real-time, customer-facing, data pipeline
+  4. **Soft/process:** collaboration, stakeholders, cross-functional, troubleshooting
+
+  Tag each keyword with its signal priority:
+  - From a must-have signal → **critical keyword**
+  - From a core responsibility → **high keyword**
+  - From a nice-to-have → **medium keyword**
+  - From informational → **low keyword**
+
+- **FR-RT-38B (Layer 2 — Profile Matching):**
+  For each extracted JD keyword, check against the full profile:
+
+  | Match Level | Meaning | Example |
+  |------------|---------|---------|
+  | **Direct match** | Exact keyword exists in profile | JD says "React", profile lists React in skills and TIAA project |
+  | **Equivalent match** | Synonymous/closely related tech exists | JD says "CI/CD pipelines", profile says "GitLab CI/CD" |
+  | **Adjacent match** | Related tech in same family per adjacency map | JD says "Angular", profile has React (same frontend framework family) |
+  | **No match** | Nothing in profile relates | JD says "Rust", profile has no Rust evidence |
+
+- **FR-RT-38C (Layer 3 — Section-Specific Placement Rules):**
+  Each resume section has different rules for which match levels it can use:
+
+  **Skills section (most permissive — goal is maximum JD keyword coverage):**
+  - Direct match → include, promote to front of relevant category
+  - Equivalent match → include, use JD's exact term
+  - Adjacent match → include if the adjacency map supports it (see FR-RT-38D)
+  - No match → do not include
+
+  **Tech stack lines (strict — only tools actually used in that specific role/project):**
+  - Direct match → include, promote to front
+  - Equivalent match → use the profile's version of the term
+  - Adjacent match → do not add
+  - No match → do not add
+
+  **Bullets (strictest — claims must be grounded in real work):**
+  - Direct match → use exact JD keyword when describing that work
+  - Equivalent match → use whichever term is more natural in context
+  - Adjacent match → do not stretch the bullet to claim this
+  - No match → do not include
+
+  **Summary (moderate — framing can be broad):**
+  - Direct match → weave into summary framing
+  - Equivalent match → use JD's term when natural
+  - Adjacent match → use broader framing that encompasses it (e.g., "modern frontend frameworks" if JD says Angular and profile has React)
+  - No match → do not include
+
+- **FR-RT-38D (Technology Adjacency Map):**
+  The system shall maintain an explicit adjacency map that groups technologies into families. Within a family, members are considered close enough that knowing one allows claiming familiarity with others **in the skills section only**.
+
+  Adjacency families:
+
+  **Frontend Frameworks:**
+  `[React, Angular, Vue, Svelte]` — all component-based, TypeScript-compatible, same mental model
+
+  **JavaScript/TypeScript Ecosystem:**
+  `[JavaScript, TypeScript, Node.js, Express, Next.js, Nuxt.js]` — same language runtime
+
+  **Python Web/API Frameworks:**
+  `[FastAPI, Flask, Django, Tornado]` — same language, similar patterns
+
+  **Data Processing:**
+  `[Apache Spark, Apache Flink, Apache Beam, Databricks]` — same distributed data processing paradigm
+
+  **Container Orchestration:**
+  `[Kubernetes, Docker Swarm, ECS, EKS, GKE, AKS]` — same container orchestration concept
+
+  **Cloud Services (by category):**
+  - Compute: `[AWS EC2, GCP Compute Engine, Azure VMs]`
+  - Serverless: `[AWS Lambda, GCP Cloud Functions, Azure Functions]`
+  - Storage: `[AWS S3, GCP Cloud Storage, Azure Blob Storage]`
+  - Queue/Messaging: `[AWS SQS, GCP Pub/Sub, Azure Service Bus, Kafka, RabbitMQ]`
+  - NoSQL: `[DynamoDB, MongoDB, Cassandra, CosmosDB]`
+  - Relational: `[PostgreSQL, MySQL, SQL Server, Oracle]`
+
+  **CI/CD Tools:**
+  `[GitLab CI/CD, GitHub Actions, Jenkins, CircleCI, Travis CI]`
+
+  **IaC Tools:**
+  `[Terraform, CloudFormation, Pulumi, Bicep, Ansible]`
+
+  **Monitoring/Observability:**
+  `[Datadog, Prometheus, Grafana, New Relic, Splunk, CloudWatch, ELK Stack]`
+
+  **ML/AI Frameworks:**
+  `[PyTorch, TensorFlow, Keras, JAX, scikit-learn]`
+
+  **Vector/Embedding Search:**
+  `[FAISS, Pinecone, Weaviate, Milvus, ChromaDB, Qdrant]`
+
+  **LLM/Agent Frameworks:**
+  `[LangChain, LlamaIndex, CrewAI, AutoGen, Semantic Kernel]`
+
+  **Mobile Development:**
+  - Android: `[Kotlin, Java (Android), Jetpack Compose]`
+  - iOS: `[Swift, SwiftUI, Objective-C]`
+  - Cross-platform: `[React Native, Flutter]`
+
+- **FR-RT-38E (Term Normalization):**
+  The adjacency map shall include aliases for common term variations so the system recognizes them as the same technology:
+  - "AWS" ↔ "Amazon Web Services"
+  - "K8s" ↔ "Kubernetes"
+  - "Postgres" ↔ "PostgreSQL"
+  - "JS" ↔ "JavaScript"
+  - "TS" ↔ "TypeScript"
+  - "Node" ↔ "Node.js"
+  - "React.js" ↔ "React"
+  - "GCP" ↔ "Google Cloud Platform"
+  - "C++" ↔ "CPP"
+  - "CI/CD" ↔ "CICD"
+
+- **FR-RT-38F (Adjacency Map as Static Data):**
+  The adjacency map shall be maintained as a static data structure in the codebase (Python dict or YAML file). It is easy to update and audit. It is not generated at runtime.
+
+- **FR-RT-38G (Skill Category Assignment for Adjacent Keywords):**
+  When an adjacent keyword is added to the skills section, the adjacency map shall also specify which skill category it belongs to:
+  - Frontend Frameworks → "Frontend & UI" or "Applied AI" depending on theme
+  - Data Processing → "Data & Storage" or "Backend & Data"
+  - Cloud services → "Cloud & Infra"
+  - CI/CD tools → "Cloud & DevOps"
+  - Monitoring tools → "Testing & Reliability"
+  So the system knows not just what to add but where to place it.
+
+#### 7.2.11.7 Truthfulness Rules
+
+- **FR-RT-41 (Tiered Truthfulness):**
+  Resume content truthfulness is tiered by section:
+
+  | Section | Rule |
+  |---------|------|
+  | **Skills** | Most permissive. Include important JD-mentioned tools even if not explicitly used in any profile entry, as long as they are justified by direct match, equivalent match, or adjacency map. The goal is maximum JD keyword coverage for ATS and recruiter scanning. |
+  | **Tech stack lines** | Strict. Only tools actually used in that specific role/project. |
+  | **Bullets** | Strictest. Only claims backed by real profile evidence (pre-written variants for experience, evidence atoms for projects). Metrics are sacred and never modified. |
+  | **Summary** | Moderate. Framing changes per theme, but no fabricated claims. |
+
+- **FR-RT-41A (Metrics Are Sacred):**
+  Metrics referenced in any bullet — whether from a pre-written variant or an evidence atom — shall never be modified, rounded, inflated, or reframed at runtime. "50M+" stays "50M+", "40%" stays "40%", "$15K" stays "$15K".
+
+- **FR-RT-41B (No Fabricated Claims):**
+  The system shall not generate claims about work the candidate did not do, technologies not in the profile, or outcomes not supported by evidence. When evidence is insufficient for a JD signal, it shall be reported as a gap (Step 10), not filled with fabrication.
+
+#### 7.2.11.8 One-Page Fill Constraint
+
+- **FR-RT-36 (One-Page Fill):**
+  The tailored resume shall fill exactly one page — no significant trailing whitespace at the bottom, and no overflow to a second page.
+
+- **FR-RT-36A (Flexible Bullet Count with Per-Entry Limits):**
+  The number of bullets per project or experience entry is not fixed. The system shall decide bullet count per entry based on JD relevance and page-fill needs. Per-entry limits:
+
+  | Entry | Min | Max | Notes |
+  |-------|-----|-----|-------|
+  | Job Hunt Copilot (AI themes only) | 4 | 4 | Fixed — strongest AI evidence |
+  | Other projects | 1 | 2 | |
+  | SWE role (primary experience) | 3 | 4 | |
+  | Associate SWE role | 2 | 3 | |
+  | Intern role | 1 | 1 | |
+
+  Within these limits, bullet selection is ranked by JD relevance and adjusted to fill one page.
+
+- **FR-RT-36B (Bullet Character Budget):**
+  Individual bullets shall target approximately 1.5 rendered lines (~200-260 characters). The existing hard bounds of 100-275 characters per bullet (FR-RT-26) remain in effect.
+
+- **FR-RT-36C (Page-Fill Adjustment Loop):**
+  After initial bullet selection and layout composition, the system shall:
+  1. Compile LaTeX to PDF
+  2. Check page fill (trailing whitespace and page count)
+  3. If whitespace remains: add the next-best bullet from the pool or expand a compressed entry
+  4. If overflow: drop the lowest-ranked bullet or compress one
+  5. Repeat until the resume fills exactly one page
+  6. Final verification: compile to PDF, confirm 1 page, minimal trailing whitespace
+
+#### 7.2.11.9 Verifier: JD-Content Alignment Check
+
+- **FR-RT-37 (JD-Content Alignment Verification):**
+  Step 16 verification shall include a new check: `jd-content-alignment`. This check validates that the selected theme and bullet content match the JD's actual domain intent.
+
+- **FR-RT-37A (Alignment Check Mechanism):**
+  The `jd-content-alignment` check shall:
+  1. Compare the selected theme against the JD signals — does the theme match the dominant JD domain?
+  2. Check that selected bullets contain tech/domain terms that appear in the JD
+  3. Flag mismatches where the resume tells a backend story but the JD is frontend (or vice versa)
+  4. Return `pass`, `needs_revision`, or `fail` using the same outcome contract as existing checks (FR-RT-12C)
+
+- **FR-RT-37B (Alignment Check is Mandatory):**
+  The `jd-content-alignment` check shall be added to the minimum verification check set alongside the existing checks (FR-RT-12C1). A resume that is structurally valid but materially off-target for the JD shall not pass verification.
+
+- **FR-RT-37C (JD Keyword Coverage Check):**
+  Step 16 verification shall also check JD keyword coverage:
+  1. Count how many critical and high JD keywords appear somewhere in the final resume (skills, bullets, tech stack lines, or summary)
+  2. Report the coverage ratio
+  3. If coverage of critical keywords falls below a threshold, return `needs_revision`
+
+#### 7.2.11.10 Existing Outputs and Migration
+
+- **FR-RT-42 (No Migration of Existing Outputs):**
+  Existing tailored resumes in `resume-tailoring/output/tailored/` are left untouched. They were generated under the old system. New tailoring runs use the new system. No retroactive re-tailoring is required.
+
+- **FR-RT-42A (Old System Removal):**
+  On the `resume-tailoring` branch, the old track system (`TRACK_LIBRARY`, `FRONTEND_AI_TRACK`, `DISTRIBUTED_INFRA_TRACK`, `GENERALIST_SWE_TRACK`), old focus system (`_determine_role_focus`, `ROLE_FOCUS_*` constants), old term sets (`FRONTEND_AI_TERMS`, `DISTRIBUTED_INFRA_TERMS`), old step builders (`_build_step_3_signal_artifact` through `_build_step_7_verification_artifact`), and old asset files (system prompt, cookbook, SOP) shall be replaced by the new system. The old code is not retained alongside the new code.
+
+- **FR-RT-42B (Asset Replacement):**
+  The following assets shall be rewritten for the new 16-step pipeline:
+  1. System prompt (`assets/resume-tailoring/ai/system-prompt.md`)
+  2. Cookbook (`assets/resume-tailoring/ai/cookbook.md`)
+  3. SOP (`assets/resume-tailoring/ai/sop-swe-experience-tailoring.md`)
+  4. Few-shot examples (`assets/resume-tailoring/ai/few-shot-examples/`)
+  5. Base resume templates — two templates (Template A and Template B) shall replace the single `distributed-infra/base-resume.tex`
+
 ## 7.3 Email Outreach Component FRs
 
 ### 7.3.1 Subcomponent Responsibilities
@@ -4222,6 +4702,24 @@ Current imported guidance should include, at minimum:
 26. For role-targeted flow, the tailored resume stops at the mandatory agent-review gate before downstream outreach work begins.
 27. A review rejection followed by retailoring creates a new `resume_tailoring_runs` row rather than overwriting the prior run history.
 28. The Tailoring-to-Outreach handoff is DB-first by `job_posting_id`, with `meta.yaml` and referenced resume artifacts available as supporting runtime references and audit surfaces.
+29. Tailoring uses a 16-step pipeline (JD parsing → signal extraction → signal classification → theme scoring → theme decision → project scoring → project selection → experience evidence mapping → project evidence mapping → gap analysis → bullet allocation → summary → skills → tech stacks → assembly/page-fill → verification), each producing an auditable artifact.
+30. Theme classifier selects from 9 fixed themes (`applied_ai`, `agent_ai_systems`, `forward_deployed_ai`, `frontend_web`, `backend_service`, `distributed_infra`, `platform_infra`, `fullstack`, `generalist`) using weighted term overlap against JD signals, with role title and core responsibilities weighted 2x.
+31. Selected theme determines section ordering (projects-first via Template A vs. experience-first via Template B), skill category names, summary framing, and hero/supporting tailoring intensity.
+32. The section on top (hero section) receives maximum tailoring — full LLM composition for projects, aggressive keyword injection for experience. The section below (supporting) stays conservative.
+33. Experience bullets use pre-written variants per theme with controlled JD keyword rewrite. Project bullets are composed by LLM from verified evidence atoms per JD.
+34. Bullet count per entry is flexible within per-entry min/max limits (JHC: 4/4 for AI themes; other projects: 1/2; SWE: 3/4; Associate: 2/3; Intern: 1/1). The system fills exactly one page with no trailing whitespace and no overflow.
+35. Exactly 4 projects appear on every resume. Job Hunt Copilot is always first. Remaining 3 are selected and ranked by JD relevance. Projects with zero relevance are omitted entirely.
+36. All 3 experience entries always appear. Bullet count varies within limits.
+37. Metrics in all bullets are sacred and never modified at runtime.
+38. JD keyword placement follows a 3-layer system: extraction (categorize and prioritize JD terms), profile matching (direct/equivalent/adjacent/no match), and section-specific placement rules.
+39. Skills section is most permissive — includes JD-mentioned tools via direct match, equivalent match, or adjacency map. Goal is maximum JD keyword coverage for ATS.
+40. Tech stack lines are strict — only tools actually used in that specific role/project.
+41. An explicit technology adjacency map groups tools into families (e.g., React/Angular/Vue, Spark/Flink/Beam). Adjacent matches justify skills-section inclusion only, not tech stack lines or bullets.
+42. Term normalization handles common aliases (AWS/Amazon Web Services, K8s/Kubernetes, JS/JavaScript, etc.).
+43. Verification includes a `jd-content-alignment` check that rejects resumes where the selected theme and bullet content do not match the JD's domain intent, even if structurally valid.
+44. Verification includes a JD keyword coverage check — critical keywords below a coverage threshold trigger `needs_revision`.
+45. A frontend/web JD (e.g., Garmin Aviation) shall produce a frontend-themed resume with web/frontend evidence, not backend/distributed bullets. The old failure mode where pure frontend JDs fall through to backend tracks is eliminated.
+46. Existing tailored outputs in `output/tailored/` are untouched. New runs use the new system. Old track/focus system, old steps, and old assets are removed on this branch.
 
 ## 12.2 Email Discovery
 1. Given a role-targeted posting that needs internal contacts, the system can run Apollo-first company-scoped people search and persist the broad candidate search result for the posting.
