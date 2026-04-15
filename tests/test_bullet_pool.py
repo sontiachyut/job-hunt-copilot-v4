@@ -1,10 +1,14 @@
 from __future__ import annotations
 
 from job_hunt_copilot.tailoring.bullet_pool import (
+    filter_atoms_by_theme,
     filter_bullets_by_theme,
     get_bullets_for_entry,
+    get_project_atoms,
     load_experience_pool,
+    load_project_pool,
     rank_bullets_by_jd_overlap,
+    rank_project_atoms_by_jd_overlap,
 )
 
 
@@ -74,3 +78,53 @@ def test_rank_bullets_by_jd_overlap_uses_alias_normalization_for_intern_variants
     ranked = rank_bullets_by_jd_overlap(intern_bullets, {"React", "Node", "frontend"})
 
     assert ranked[0]["bullet_id"] == "intern_frontend"
+
+
+def test_load_project_pool_returns_expected_projects() -> None:
+    pool = load_project_pool()
+
+    assert set(pool) == {
+        "job_hunt_copilot",
+        "linkedin_assistant",
+        "tiaa_platform",
+        "edge_face_recognition",
+        "national_parks_viz",
+        "health_monitoring",
+        "content_rec_engine",
+        "cloud_meraki",
+    }
+
+
+def test_get_project_atoms_returns_validated_atoms() -> None:
+    pool = load_project_pool()
+    atoms = get_project_atoms(pool, "job_hunt_copilot")
+
+    assert len(atoms) == 5
+    assert all("atom_id" in atom for atom in atoms)
+    assert all("what" in atom for atom in atoms)
+    assert all("themes" in atom for atom in atoms)
+    assert all("tech" in atom for atom in atoms)
+    assert len({atom["atom_id"] for atom in atoms}) == len(atoms)
+
+
+def test_filter_atoms_by_theme_returns_agentic_job_hunt_copilot_atoms() -> None:
+    pool = load_project_pool()
+    atoms = get_project_atoms(pool, "job_hunt_copilot")
+
+    agentic_atoms = filter_atoms_by_theme(atoms, "agent_ai_systems")
+
+    assert {atom["atom_id"] for atom in agentic_atoms} == {
+        "jhc_supervisor_runtime",
+        "jhc_contract_audit",
+        "jhc_operator_controls",
+        "jhc_validation_surface",
+    }
+
+
+def test_rank_project_atoms_by_jd_overlap_uses_alias_normalization() -> None:
+    pool = load_project_pool()
+    atoms = get_project_atoms(pool, "content_rec_engine")
+
+    ranked = rank_project_atoms_by_jd_overlap(atoms, {"React", "Node", "Express"})
+
+    assert ranked[0]["atom_id"] == "cre_fullstack_platform"

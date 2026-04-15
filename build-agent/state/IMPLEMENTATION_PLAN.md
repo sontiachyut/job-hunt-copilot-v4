@@ -61,29 +61,29 @@ Canonical inputs for this build program:
 
 ## Current Focus
 
-- `RT-01-S4` Task 4 - Project evidence atoms
+- `RT-01-S5` Task 5 - Summary and skill category templates
 - Owner role: `tailoring-engineer`
 - Why now:
-  - the experience bullet pool now exists, so the remaining static-evidence gap is the project evidence-atom pool
-  - Step 9, project selection, and later content composition depend on auditable project atoms before they can be implemented cleanly
-  - this keeps the build inside the static-foundations phase while completing the remaining evidence substrate the redesign depends on
+  - the experience and project evidence pools now exist, so the next static-foundation dependency is the theme-specific summary and skill-template layer
+  - Step 12 and Step 13 need explicit per-theme templates before the new pipeline can compose grounded summaries and skill sections
+  - this keeps the build inside the static-foundations phase while advancing the content templates that the redesign depends on
 
 ## Latest Completed Slice
 
-`RT-01-S3` completed with:
-- create `assets/resume-tailoring/data/bullet_pool_experience.yaml` with grounded theme-tagged variants for the SWE, Associate SWE, and Intern entries
-- implement validated experience bullet-pool loading and JD-overlap ranking helpers in `job_hunt_copilot/tailoring/bullet_pool.py`
-- add `tests/test_bullet_pool.py` covering pool loading, theme filtering, and alias-aware ranking
+`RT-01-S4` completed with:
+- create `assets/resume-tailoring/data/bullet_pool_projects.yaml` with evidence-grounded project atoms for Job Hunt Copilot, LinkedIn Assistant, TIAA, Edge Face Recognition, National Parks, Health Monitoring, Content Recommendation, and Cloud Meraki
+- extend `job_hunt_copilot/tailoring/bullet_pool.py` with validated project-pool loading, theme filtering, and alias-aware JD-overlap ranking helpers for project atoms
+- extend `tests/test_bullet_pool.py` with targeted project-pool coverage for loading, theme filtering, and alias-aware ranking
 - validate with `python3.11 -m pytest tests/test_bullet_pool.py -q`
 - regression-check the adjacent keyword and theme layers with `python3.11 -m pytest tests/test_keyword_system.py -q` and `python3.11 -m pytest tests/test_theme_classifier.py -q`
 
 ## Next Execution Target
 
 For the next unattended builder cycle, the target is:
-- create `assets/resume-tailoring/data/bullet_pool_projects.yaml`
-- extend `job_hunt_copilot/tailoring/bullet_pool.py` with project evidence-atom loading and query helpers
-- extend `tests/test_bullet_pool.py` with targeted project-pool coverage
-- validate the project evidence-atom slice before advancing to summary and skill templates
+- create `assets/resume-tailoring/data/summary_templates.yaml`
+- create `assets/resume-tailoring/data/skill_categories.yaml`
+- add targeted tests or loaders as needed for the theme-template slice
+- validate the summary and skill-template slice before advancing to base-resume templates
 
 ## Done-When Summary
 
@@ -96,10 +96,10 @@ The redesign program is done only when:
 
 ## Next Slice After Current Focus
 
-If `RT-01-S4` completes cleanly, the next slice is:
-- `RT-01-S5` Task 5 - Summary and skill category templates
+If `RT-01-S5` completes cleanly, the next slice is:
+- `RT-01-S6` Task 6 - Template A and Template B base resumes
 
-If `RT-01-S4` is blocked, the builder should:
+If `RT-01-S5` is blocked, the builder should:
 - record the blocker explicitly in `build-agent/state/build-board.yaml`
 - log the attempted work in `build-agent/state/build-journal.md`
 - add a short handoff note in `build-agent/state/codex-progress.txt`

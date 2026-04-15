@@ -1,0 +1,550 @@
+version: 1
+
+projects:
+  job_hunt_copilot:
+    name: Job Hunt Copilot v4
+    dates: 2026 - Present
+    github: https://github.com/sontiachyut/job-hunt-copilot-v4
+    stack:
+      - Python
+      - SQLite
+      - YAML
+      - Pytest
+      - launchd
+      - LaTeX
+    atoms:
+      - atom_id: jhc_supervisor_runtime
+        what: >-
+          Built a Python supervisor runtime with canonical SQLite state,
+          lease-guarded heartbeat execution, and bounded progression across
+          Gmail intake, resume tailoring, contact discovery, outreach, and
+          delivery feedback.
+        themes:
+          - agent_ai_systems
+          - applied_ai
+          - forward_deployed_ai
+          - backend_service
+        tech:
+          - Python
+          - SQLite
+          - Gmail
+          - workflow orchestration
+          - heartbeats
+        metrics: []
+
+      - atom_id: jhc_pipeline_handoffs
+        what: >-
+          Designed DB-first and artifact-backed workflow contracts so lead
+          intake, tailoring, discovery, sending, and feedback can resume
+          cleanly with explicit handoff artifacts instead of hidden chat state.
+        themes:
+          - applied_ai
+          - forward_deployed_ai
+          - backend_service
+          - generalist
+        tech:
+          - Python
+          - SQLite
+          - YAML
+          - artifact contracts
+          - handoff design
+        metrics: []
+
+      - atom_id: jhc_contract_audit
+        what: >-
+          Persisted review packets, override history, incident traces, and
+          shared artifact metadata so autonomous job-search runs stay
+          inspectable, recoverable, and auditable.
+        themes:
+          - agent_ai_systems
+          - platform_infra
+          - backend_service
+        tech:
+          - Python
+          - SQLite
+          - review packets
+          - audit events
+          - artifact metadata
+        metrics: []
+
+      - atom_id: jhc_operator_controls
+        what: >-
+          Implemented repo-local launchd and chat control surfaces for
+          pause/resume, escalation, grouped review snapshots, and explicit
+          background-task handoffs during autonomous runs.
+        themes:
+          - agent_ai_systems
+          - platform_infra
+          - generalist
+        tech:
+          - launchd
+          - Python
+          - chat controls
+          - escalation routing
+        metrics: []
+
+      - atom_id: jhc_validation_surface
+        what: >-
+          Added a spec-first quality layer with smoke harnesses, acceptance
+          traceability, blocker audits, and validation-suite reports guarding
+          the supervisor, runtime control plane, and downstream workflows.
+        themes:
+          - agent_ai_systems
+          - platform_infra
+          - backend_service
+          - generalist
+        tech:
+          - Python
+          - Pytest
+          - Gherkin
+          - validation reporting
+        metrics: []
+
+  linkedin_assistant:
+    name: LinkedIn Job-Matching Assistant
+    dates: August 2025 - November 2025
+    github: https://github.com/sontiachyut/CSE573-LinkedIn-Assistant
+    stack:
+      - Python
+      - FastAPI
+      - Next.js
+      - React
+      - TypeScript
+      - scikit-learn
+      - Sentence-BERT
+      - FAISS
+      - Neo4j
+    atoms:
+      - atom_id: la_retrieval
+        what: >-
+          Built an explainable job-search copilot over 31,597 LinkedIn
+          postings, combining Sentence-BERT embeddings, FAISS retrieval, and
+          Rasch IRT scoring to reach NDCG 0.78 with transparent fit reasoning.
+        themes:
+          - applied_ai
+          - agent_ai_systems
+          - backend_service
+        tech:
+          - Python
+          - FastAPI
+          - Sentence-BERT
+          - FAISS
+          - Neo4j
+          - Rasch IRT
+        metrics:
+          - "31,597"
+          - "NDCG 0.78"
+
+      - atom_id: la_ranking_pipeline
+        what: >-
+          Implemented a multi-stage ranking pipeline that compared RapidFuzz,
+          TF-IDF, semantic embeddings, and Rasch scoring to expose
+          per-requirement match probabilities instead of black-box rankings.
+        themes:
+          - applied_ai
+          - agent_ai_systems
+          - backend_service
+        tech:
+          - RapidFuzz
+          - scikit-learn
+          - Sentence-BERT
+          - FAISS
+          - ranking systems
+        metrics:
+          - "NDCG 0.58"
+          - "NDCG 0.62"
+          - "NDCG 0.74"
+          - "NDCG 0.78"
+
+      - atom_id: la_fullstack
+        what: >-
+          Delivered a Next.js and React frontend with a FastAPI backend,
+          TypeScript UI, and conversational fit-explanation flow over a
+          31,597-record job dataset with ~50ms search latency.
+        themes:
+          - frontend_web
+          - fullstack
+        tech:
+          - Next.js
+          - React
+          - TypeScript
+          - FastAPI
+          - Tailwind CSS
+        metrics:
+          - "31,597"
+          - "~50ms"
+
+  tiaa_platform:
+    name: Student Loan Retirement Matching Platform
+    dates: October 2025
+    github: https://github.com/ShivamGS/loan-platform
+    stack:
+      - React
+      - TypeScript
+      - AWS Lambda
+      - AWS API Gateway
+      - DynamoDB
+      - PostgreSQL
+      - AWS Bedrock
+      - S3
+    atoms:
+      - atom_id: tiaa_serverless_platform
+        what: >-
+          Built a serverless financial-planning platform with React, API
+          Gateway, 6 Lambda functions, DynamoDB, PostgreSQL, and S3 to support
+          45M+ Americans under SECURE 2.0; the project won 2nd place at the
+          TIAA Spark Challenge.
+        themes:
+          - applied_ai
+          - frontend_web
+          - fullstack
+          - forward_deployed_ai
+        tech:
+          - React
+          - TypeScript
+          - AWS Lambda
+          - AWS API Gateway
+          - DynamoDB
+          - PostgreSQL
+          - S3
+        metrics:
+          - "6"
+          - "45M+"
+          - "2nd place"
+
+      - atom_id: tiaa_chat_advisor
+        what: >-
+          Implemented a WebSocket-based multi-turn financial chatbot with
+          DynamoDB session persistence, LLM integration, and graceful fallback
+          across 3 operating modes.
+        themes:
+          - applied_ai
+          - agent_ai_systems
+          - forward_deployed_ai
+        tech:
+          - AWS Bedrock
+          - DynamoDB
+          - WebSocket
+          - LLM integration
+        metrics:
+          - "3"
+
+      - atom_id: tiaa_security_architecture
+        what: >-
+          Designed a dual-database architecture with DynamoDB for real-time
+          sessions and Supabase PostgreSQL with row-level security, bcrypt, and
+          presigned S3 URLs for sensitive financial workflows.
+        themes:
+          - backend_service
+          - platform_infra
+          - fullstack
+        tech:
+          - DynamoDB
+          - PostgreSQL
+          - Supabase
+          - bcrypt
+          - S3
+        metrics: []
+
+  edge_face_recognition:
+    name: Distributed Edge Face Recognition Pipeline
+    dates: January 2025 - April 2025
+    github: https://github.com/sontiachyut/CSE546-Cloud-Computing
+    stack:
+      - Python
+      - PyTorch
+      - MTCNN
+      - InceptionResnetV1
+      - AWS Lambda
+      - SQS
+      - EC2
+      - AWS IoT Greengrass
+      - Docker
+    atoms:
+      - atom_id: efr_four_architectures
+        what: >-
+          Implemented the same face-recognition pipeline across 4 cloud
+          architectures spanning EC2, auto-scaling web and app tiers,
+          containerized Lambda, and hybrid Greengrass plus Lambda deployment to
+          compare scalability, cost, and latency trade-offs.
+        themes:
+          - distributed_infra
+          - platform_infra
+        tech:
+          - Python
+          - EC2
+          - AWS Lambda
+          - Docker
+          - AWS IoT Greengrass
+          - SQS
+        metrics:
+          - "4"
+
+      - atom_id: efr_inference_pipeline
+        what: >-
+          Built an MTCNN-to-InceptionResnetV1 inference pipeline that achieved
+          100% accuracy on 100 frames with sub-second latency while keeping edge
+          preprocessing under 100ms.
+        themes:
+          - applied_ai
+          - distributed_infra
+          - platform_infra
+        tech:
+          - Python
+          - PyTorch
+          - MTCNN
+          - InceptionResnetV1
+          - AWS Lambda
+        metrics:
+          - "100%"
+          - "100 frames"
+          - "<100ms"
+
+      - atom_id: efr_queue_scaling
+        what: >-
+          Used queue-based decoupling with SQS and controller-driven scaling up
+          to 15 EC2 instances so web and app tiers could scale independently
+          under concurrent image-processing load.
+        themes:
+          - backend_service
+          - distributed_infra
+          - platform_infra
+        tech:
+          - SQS
+          - EC2
+          - Flask
+          - autoscaling
+        metrics:
+          - "15"
+          - "100"
+
+  national_parks_viz:
+    name: National Parks Biodiversity Visualization
+    dates: Spring 2025
+    github: https://github.com/sontiachyut/data-visualization
+    stack:
+      - D3.js
+      - JavaScript
+      - HTML5
+      - CSS3
+      - Bootstrap 5
+      - d3-force-boundary
+    atoms:
+      - atom_id: npv_interactive_viz
+        what: >-
+          Built an interactive biodiversity visualization across 60 U.S.
+          National Parks, combining hierarchical treemaps with nested
+          force-directed circular packing in D3.js.
+        themes:
+          - frontend_web
+        tech:
+          - D3.js
+          - JavaScript
+          - HTML5
+          - CSS3
+        metrics:
+          - "60"
+
+      - atom_id: npv_force_layout
+        what: >-
+          Implemented a force-directed layout with 4 simultaneous forces,
+          drag-enabled interaction, and a dynamic species-count versus acreage
+          toggle without page reloads.
+        themes:
+          - frontend_web
+          - generalist
+        tech:
+          - D3.js
+          - JavaScript
+          - force simulation
+          - interaction design
+        metrics:
+          - "4"
+
+      - atom_id: npv_data_pipeline
+        what: >-
+          Loaded 3 CSV sources in parallel, including a 17.5MB species dataset,
+          and used custom boundary constraints plus responsive tooltips to keep
+          dense park-level visuals usable.
+        themes:
+          - frontend_web
+          - fullstack
+        tech:
+          - JavaScript
+          - Promise.all
+          - CSV parsing
+          - d3-force-boundary
+        metrics:
+          - "3"
+          - "17.5MB"
+
+  health_monitoring:
+    name: Context-Aware Health Monitoring App
+    dates: August 2025 - November 2025
+    github: https://github.com/sontiachyut/CSE535-Project1-Context-Monitoring-App
+    stack:
+      - Kotlin
+      - Android
+      - Room
+      - Coroutines
+      - MVVM
+      - SQLite
+    atoms:
+      - atom_id: hm_sensor_algorithms
+        what: >-
+          Built an Android app that measured heart rate through camera-based PPG
+          and respiratory rate through accelerometer data using only built-in
+          smartphone sensors instead of external hardware.
+        themes:
+          - frontend_web
+          - fullstack
+          - generalist
+        tech:
+          - Kotlin
+          - Android
+          - camera APIs
+          - accelerometer
+          - signal processing
+        metrics:
+          - "425"
+          - "50 Hz"
+
+      - atom_id: hm_mobile_architecture
+        what: >-
+          Structured the app as MVVM with Room-backed local persistence,
+          lifecycle-aware coroutines, and repository abstractions so symptom
+          tracking and measurement history stayed testable and privacy
+          preserving.
+        themes:
+          - frontend_web
+          - backend_service
+          - fullstack
+        tech:
+          - Kotlin
+          - Android
+          - Room
+          - Coroutines
+          - MVVM
+          - SQLite
+        metrics:
+          - "10"
+
+  content_rec_engine:
+    name: Distributed Content Recommendation Engine
+    dates: Academic Project
+    github: ""
+    stack:
+      - React
+      - Node.js
+      - Express
+      - MongoDB
+      - Neo4j
+      - Docker
+    atoms:
+      - atom_id: cre_fullstack_platform
+        what: >-
+          Built a distributed social-media recommendation platform with an
+          Instagram-like React UI, Node and Express APIs, and a MongoDB sharded
+          cluster backed by Neo4j graph traversal.
+        themes:
+          - fullstack
+          - frontend_web
+          - distributed_infra
+        tech:
+          - React
+          - Node.js
+          - Express
+          - MongoDB
+          - Neo4j
+          - Docker
+          - sharding
+        metrics:
+          - "9"
+
+      - atom_id: cre_recommendation_graph
+        what: >-
+          Implemented hybrid collaborative filtering with 3-hop Neo4j Cypher
+          traversals and real-time MongoDB-to-Neo4j synchronization through
+          change streams.
+        themes:
+          - backend_service
+          - distributed_infra
+          - applied_ai
+        tech:
+          - Neo4j
+          - Cypher
+          - MongoDB
+          - change streams
+          - recommendation systems
+        metrics:
+          - "3"
+
+  cloud_meraki:
+    name: Cloud Meraki
+    dates: August 2021 - February 2023
+    github: ""
+    stack:
+      - Golang
+      - Python
+      - Java
+      - Kubernetes
+      - Docker
+      - PostgreSQL
+      - Jenkins
+      - GitLab CI/CD
+      - Prometheus
+    atoms:
+      - atom_id: meraki_optimizer_engine
+        what: >-
+          Built the optimizer engine and backend APIs for a Kubernetes resource
+          optimization platform that tracked usage across 200+ microservices and
+          right-sized CPU and memory allocations through vertical scaling.
+        themes:
+          - backend_service
+          - platform_infra
+          - distributed_infra
+        tech:
+          - Golang
+          - Java
+          - Kubernetes
+          - backend APIs
+          - Vertical Pod Autoscaler
+        metrics:
+          - "200+"
+
+      - atom_id: meraki_cost_reliability
+        what: >-
+          Applied vertical scaling decisions across live microservice clusters
+          while maintaining 99.95% uptime and reducing cloud compute cost by 25%
+          ($120K annually).
+        themes:
+          - platform_infra
+          - distributed_infra
+          - backend_service
+        tech:
+          - Kubernetes
+          - Docker
+          - Prometheus
+          - cloud optimization
+        metrics:
+          - "99.95%"
+          - "25%"
+          - "$120K"
+
+      - atom_id: meraki_test_coverage
+        what: >-
+          Added 250+ unit and integration tests across Golang, Java, and Python
+          to catch 50+ critical bugs in scaling logic before production
+          deployment.
+        themes:
+          - backend_service
+          - platform_infra
+          - generalist
+        tech:
+          - Golang
+          - Java
+          - Python
+          - testing
+        metrics:
+          - "250+"
+          - "50+"

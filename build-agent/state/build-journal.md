@@ -105,6 +105,30 @@
 - Next recommended slice:
   - `RT-01-S4` Task 4 - Project evidence atoms
 
+### 2026-04-15 10:57 MST — tailoring-engineer
+
+- Slice attempted: `RT-01-S4` Task 4 - Project evidence atoms
+- Result: done
+- Files changed:
+  - `assets/resume-tailoring/data/bullet_pool_projects.yaml`
+  - `job_hunt_copilot/tailoring/bullet_pool.py`
+  - `tests/test_bullet_pool.py`
+  - `build-agent/state/build-board.yaml`
+  - `build-agent/state/IMPLEMENTATION_PLAN.md`
+  - `build-agent/state/build-journal.md`
+  - `build-agent/state/codex-progress.txt`
+- Validation:
+  - `python3.11 -m pytest tests/test_bullet_pool.py -q` passed
+  - `python3.11 -m pytest tests/test_keyword_system.py -q` passed
+  - `python3.11 -m pytest tests/test_theme_classifier.py -q` passed
+- State files updated:
+  - `build-agent/state/build-board.yaml`
+  - `build-agent/state/IMPLEMENTATION_PLAN.md`
+  - `build-agent/state/build-journal.md`
+  - `build-agent/state/codex-progress.txt`
+- Next recommended slice:
+  - `RT-01-S5` Task 5 - Summary and skill category templates
+
 ## Session Template
 
 For each future unattended slice, append:
