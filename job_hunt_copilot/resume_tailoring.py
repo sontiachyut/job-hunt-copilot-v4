@@ -23,6 +23,11 @@ from .outreach import evaluate_role_targeted_send_set
 from .paths import ProjectPaths
 from .records import lifecycle_timestamps, new_canonical_id, now_utc_iso
 from .supervisor import OverrideEventRecord, record_override_event
+from .tailoring.steps import (
+    build_step_01_artifact,
+    build_step_02_artifact,
+    build_step_03_artifact,
+)
 
 
 RESUME_TAILORING_COMPONENT = "resume_tailoring"
@@ -1187,6 +1192,9 @@ def _workspace_bootstrap_is_complete(
         paths.tailoring_resume_tex_path(posting_row["company_name"], posting_row["role_title"]),
         paths.tailoring_scope_baseline_path(posting_row["company_name"], posting_row["role_title"]),
         paths.tailoring_intelligence_manifest_path(posting_row["company_name"], posting_row["role_title"]),
+        paths.tailoring_step_01_path(posting_row["company_name"], posting_row["role_title"]),
+        paths.tailoring_step_02_path(posting_row["company_name"], posting_row["role_title"]),
+        paths.tailoring_step_03_path(posting_row["company_name"], posting_row["role_title"]),
         paths.tailoring_step_3_jd_signals_path(posting_row["company_name"], posting_row["role_title"]),
         paths.tailoring_step_4_evidence_map_path(posting_row["company_name"], posting_row["role_title"]),
         paths.tailoring_step_5_context_path(posting_row["company_name"], posting_row["role_title"]),
@@ -1320,6 +1328,69 @@ def _sync_optional_workspace_context(
             target_path.unlink()
 
 
+def _current_pipeline_manifest_steps(
+    paths: ProjectPaths,
+    *,
+    company_name: str,
+    role_title: str,
+) -> dict[str, dict[str, str]]:
+    step_specs = (
+        ("step_01_jd_sections", paths.tailoring_step_01_path(company_name, role_title), INTELLIGENCE_STATUS_NOT_STARTED),
+        ("step_02_signals_raw", paths.tailoring_step_02_path(company_name, role_title), INTELLIGENCE_STATUS_NOT_STARTED),
+        ("step_03_signals_classified", paths.tailoring_step_03_path(company_name, role_title), INTELLIGENCE_STATUS_NOT_STARTED),
+        ("step_04_theme_scores", paths.tailoring_step_04_path(company_name, role_title), INTELLIGENCE_STATUS_NOT_STARTED),
+        ("step_05_theme_decision", paths.tailoring_step_05_path(company_name, role_title), INTELLIGENCE_STATUS_NOT_STARTED),
+        ("step_06_project_scores", paths.tailoring_step_06_path(company_name, role_title), INTELLIGENCE_STATUS_NOT_STARTED),
+        ("step_07_project_selection", paths.tailoring_step_07_path(company_name, role_title), INTELLIGENCE_STATUS_NOT_STARTED),
+        ("step_08_experience_evidence", paths.tailoring_step_08_path(company_name, role_title), INTELLIGENCE_STATUS_NOT_STARTED),
+        ("step_09_project_evidence", paths.tailoring_step_09_path(company_name, role_title), INTELLIGENCE_STATUS_NOT_STARTED),
+        ("step_10_gap_analysis", paths.tailoring_step_10_path(company_name, role_title), INTELLIGENCE_STATUS_NOT_STARTED),
+        ("step_11_bullet_allocation", paths.tailoring_step_11_path(company_name, role_title), INTELLIGENCE_STATUS_NOT_STARTED),
+        ("step_12_summary", paths.tailoring_step_12_path(company_name, role_title), INTELLIGENCE_STATUS_NOT_STARTED),
+        ("step_13_skills", paths.tailoring_step_13_path(company_name, role_title), INTELLIGENCE_STATUS_NOT_STARTED),
+        ("step_14_tech_stacks", paths.tailoring_step_14_path(company_name, role_title), INTELLIGENCE_STATUS_NOT_STARTED),
+        ("step_15_assembly", paths.tailoring_step_15_path(company_name, role_title), INTELLIGENCE_STATUS_NOT_STARTED),
+        ("step_16_verification", paths.tailoring_step_16_path(company_name, role_title), INTELLIGENCE_STATUS_PENDING),
+    )
+    return {
+        step_id: {
+            "status": status,
+            "artifact_path": str(path.resolve()),
+        }
+        for step_id, path, status in step_specs
+    }
+
+
+def _legacy_runtime_compatibility_outputs(
+    paths: ProjectPaths,
+    *,
+    company_name: str,
+    role_title: str,
+) -> dict[str, dict[str, str]]:
+    return {
+        "step_3_jd_signals": {
+            "status": INTELLIGENCE_STATUS_NOT_STARTED,
+            "artifact_path": str(paths.tailoring_step_3_jd_signals_path(company_name, role_title).resolve()),
+        },
+        "step_4_evidence_map": {
+            "status": INTELLIGENCE_STATUS_NOT_STARTED,
+            "artifact_path": str(paths.tailoring_step_4_evidence_map_path(company_name, role_title).resolve()),
+        },
+        "step_5_elaborated_swe_context": {
+            "status": INTELLIGENCE_STATUS_NOT_STARTED,
+            "artifact_path": str(paths.tailoring_step_5_context_path(company_name, role_title).resolve()),
+        },
+        "step_6_candidate_resume_edits": {
+            "status": INTELLIGENCE_STATUS_NOT_STARTED,
+            "artifact_path": str(paths.tailoring_step_6_candidate_bullets_path(company_name, role_title).resolve()),
+        },
+        "step_7_verification": {
+            "status": INTELLIGENCE_STATUS_PENDING,
+            "artifact_path": str(paths.tailoring_step_7_verification_path(company_name, role_title).resolve()),
+        },
+    }
+
+
 def _write_intelligence_scaffolds(
     paths: ProjectPaths,
     *,
@@ -1349,30 +1420,66 @@ def _write_intelligence_scaffolds(
             "bootstrap_timestamp": current_time,
             "workspace_path": str(workspace_path),
             "prompts_dir": str(prompts_dir.resolve()),
-            "steps": {
-                "step_3_jd_signals": {
-                    "status": INTELLIGENCE_STATUS_NOT_STARTED,
-                    "artifact_path": str(paths.tailoring_step_3_jd_signals_path(company_name, role_title).resolve()),
-                },
-                "step_4_evidence_map": {
-                    "status": INTELLIGENCE_STATUS_NOT_STARTED,
-                    "artifact_path": str(paths.tailoring_step_4_evidence_map_path(company_name, role_title).resolve()),
-                },
-                "step_5_elaborated_swe_context": {
-                    "status": INTELLIGENCE_STATUS_NOT_STARTED,
-                    "artifact_path": str(paths.tailoring_step_5_context_path(company_name, role_title).resolve()),
-                },
-                "step_6_candidate_resume_edits": {
-                    "status": INTELLIGENCE_STATUS_NOT_STARTED,
-                    "artifact_path": str(
-                        paths.tailoring_step_6_candidate_bullets_path(company_name, role_title).resolve()
-                    ),
-                },
-                "step_7_verification": {
-                    "status": INTELLIGENCE_STATUS_PENDING,
-                    "artifact_path": str(paths.tailoring_step_7_verification_path(company_name, role_title).resolve()),
-                },
+            "current_contract": "16-step",
+            "steps": _current_pipeline_manifest_steps(
+                paths,
+                company_name=company_name,
+                role_title=role_title,
+            ),
+            "legacy_runtime_compatibility": {
+                "status": "active_until_new_pipeline_cutover",
+                "outputs": _legacy_runtime_compatibility_outputs(
+                    paths,
+                    company_name=company_name,
+                    role_title=role_title,
+                ),
             },
+        },
+        overwrite=overwrite,
+    )
+    _write_yaml_file(
+        paths.tailoring_step_01_path(company_name, role_title),
+        {
+            "job_posting_id": posting_row["job_posting_id"],
+            "resume_tailoring_run_id": run.resume_tailoring_run_id,
+            "status": INTELLIGENCE_STATUS_NOT_STARTED,
+            "role_title": role_title,
+            "sections": [],
+        },
+        overwrite=overwrite,
+    )
+    _write_yaml_file(
+        paths.tailoring_step_02_path(company_name, role_title),
+        {
+            "job_posting_id": posting_row["job_posting_id"],
+            "resume_tailoring_run_id": run.resume_tailoring_run_id,
+            "status": INTELLIGENCE_STATUS_NOT_STARTED,
+            "role_title": role_title,
+            "signals": [],
+        },
+        overwrite=overwrite,
+    )
+    _write_yaml_file(
+        paths.tailoring_step_03_path(company_name, role_title),
+        {
+            "job_posting_id": posting_row["job_posting_id"],
+            "resume_tailoring_run_id": run.resume_tailoring_run_id,
+            "status": INTELLIGENCE_STATUS_NOT_STARTED,
+            "context_file": str(workspace_jd_path),
+            "signal_priority_weights": {
+                "must_have": 1.0,
+                "core_responsibility": 2.0,
+                "nice_to_have": 0.5,
+                "informational": 0.0,
+            },
+            "theme_signal_weights": {
+                "role_title": 2.0,
+                "must_have": 1.0,
+                "core_responsibility": 2.0,
+                "nice_to_have": 0.5,
+                "informational": 0.0,
+            },
+            "signals": [],
         },
         overwrite=overwrite,
     )
@@ -2263,9 +2370,20 @@ def generate_tailoring_intelligence(
     section_locks = _normalized_slug_list(meta_payload.get("section_locks"))
     experience_role_allowlist = _normalized_slug_list(meta_payload.get("experience_role_allowlist"))
 
-    step_3_payload = _build_step_3_signal_artifact(
+    step_01_payload = build_step_01_artifact(
         posting_row=posting_row,
         run=run,
+        jd_text=jd_text,
+    )
+    step_02_payload = build_step_02_artifact(
+        posting_row=posting_row,
+        run=run,
+        step_01_payload=step_01_payload,
+    )
+    step_3_payload = build_step_03_artifact(
+        posting_row=posting_row,
+        run=run,
+        step_02_payload=step_02_payload,
         jd_text=jd_text,
     )
     track_name = _select_tailoring_track(step_3_payload)
@@ -2304,6 +2422,21 @@ def generate_tailoring_intelligence(
         experience_role_allowlist=experience_role_allowlist,
     )
 
+    _write_yaml_file(
+        paths.tailoring_step_01_path(company_name, role_title),
+        step_01_payload,
+        overwrite=True,
+    )
+    _write_yaml_file(
+        paths.tailoring_step_02_path(company_name, role_title),
+        step_02_payload,
+        overwrite=True,
+    )
+    _write_yaml_file(
+        paths.tailoring_step_03_path(company_name, role_title),
+        step_3_payload,
+        overwrite=True,
+    )
     _write_yaml_file(
         paths.tailoring_step_3_jd_signals_path(company_name, role_title),
         step_3_payload,
@@ -2388,19 +2521,28 @@ def generate_tailoring_intelligence(
         verification_outcome=verification_outcome,
         blocked_reason_code=None,
         step_artifact_paths={
-            "step_3": paths.relative_to_root(
+            "step_01": paths.relative_to_root(
+                paths.tailoring_step_01_path(company_name, role_title)
+            ).as_posix(),
+            "step_02": paths.relative_to_root(
+                paths.tailoring_step_02_path(company_name, role_title)
+            ).as_posix(),
+            "step_03": paths.relative_to_root(
+                paths.tailoring_step_03_path(company_name, role_title)
+            ).as_posix(),
+            "legacy_step_3": paths.relative_to_root(
                 paths.tailoring_step_3_jd_signals_path(company_name, role_title)
             ).as_posix(),
-            "step_4": paths.relative_to_root(
+            "legacy_step_4": paths.relative_to_root(
                 paths.tailoring_step_4_evidence_map_path(company_name, role_title)
             ).as_posix(),
-            "step_5": paths.relative_to_root(
+            "legacy_step_5": paths.relative_to_root(
                 paths.tailoring_step_5_context_path(company_name, role_title)
             ).as_posix(),
-            "step_6": paths.relative_to_root(
+            "legacy_step_6": paths.relative_to_root(
                 paths.tailoring_step_6_candidate_bullets_path(company_name, role_title)
             ).as_posix(),
-            "step_7": paths.relative_to_root(
+            "legacy_step_7": paths.relative_to_root(
                 paths.tailoring_step_7_verification_path(company_name, role_title)
             ).as_posix(),
         },
@@ -4246,16 +4388,23 @@ def _update_intelligence_manifest(
         posting_row["role_title"],
     )
     manifest_payload = _load_yaml_file(manifest_path)
+    manifest_payload["current_contract"] = "16-step"
     manifest_payload["generated_at"] = current_time
-    manifest_payload["selected_track"] = track_name
-    manifest_payload["verification_outcome"] = verification_outcome
-    manifest_payload["steps"]["step_3_jd_signals"]["status"] = INTELLIGENCE_STATUS_GENERATED
-    manifest_payload["steps"]["step_4_evidence_map"]["status"] = INTELLIGENCE_STATUS_GENERATED
-    manifest_payload["steps"]["step_5_elaborated_swe_context"]["status"] = INTELLIGENCE_STATUS_GENERATED
-    manifest_payload["steps"]["step_6_candidate_resume_edits"]["status"] = INTELLIGENCE_STATUS_GENERATED
-    manifest_payload["steps"]["step_7_verification"]["status"] = verification_outcome
     manifest_payload["job_posting_id"] = posting_row["job_posting_id"]
     manifest_payload["resume_tailoring_run_id"] = run.resume_tailoring_run_id
+    manifest_steps = manifest_payload.setdefault("steps", {})
+    manifest_steps.setdefault("step_01_jd_sections", {})["status"] = INTELLIGENCE_STATUS_GENERATED
+    manifest_steps.setdefault("step_02_signals_raw", {})["status"] = INTELLIGENCE_STATUS_GENERATED
+    manifest_steps.setdefault("step_03_signals_classified", {})["status"] = INTELLIGENCE_STATUS_GENERATED
+    manifest_payload.setdefault("legacy_runtime_compatibility", {})
+    manifest_payload["legacy_runtime_compatibility"]["selected_track"] = track_name
+    manifest_payload["legacy_runtime_compatibility"]["verification_outcome"] = verification_outcome
+    legacy_outputs = manifest_payload["legacy_runtime_compatibility"].setdefault("outputs", {})
+    legacy_outputs.setdefault("step_3_jd_signals", {})["status"] = INTELLIGENCE_STATUS_GENERATED
+    legacy_outputs.setdefault("step_4_evidence_map", {})["status"] = INTELLIGENCE_STATUS_GENERATED
+    legacy_outputs.setdefault("step_5_elaborated_swe_context", {})["status"] = INTELLIGENCE_STATUS_GENERATED
+    legacy_outputs.setdefault("step_6_candidate_resume_edits", {})["status"] = INTELLIGENCE_STATUS_GENERATED
+    legacy_outputs.setdefault("step_7_verification", {})["status"] = verification_outcome
     _write_yaml_file(manifest_path, manifest_payload, overwrite=True)
 
 

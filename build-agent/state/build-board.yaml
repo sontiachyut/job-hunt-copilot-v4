@@ -17,7 +17,7 @@ global_status:
     - The redesign is spec-backed on this branch and replaces the old 3-track or 4-focus logic with theme-driven, evidence-pool-based tailoring.
     - Legacy Step 3 through Step 7 code remains in-tree until the new 16-step pipeline is validated end-to-end.
     - Static foundations are now complete, including the Job Hunt Copilot profile update required by FR-RT-34D.
-    - The next open work is RT-02 classification, starting with JD sectioning and signal extraction artifacts.
+    - RT-02-S1 is complete, so the next open work is RT-02-S2 theme scoring and theme decision artifacts on top of the new step-01 through step-03 contract.
   execution_principles:
     - One primary slice per unattended build session.
     - "Stay on branch `resume-tailoring`; do not switch branches."
@@ -192,7 +192,7 @@ epics:
       - id: RT-02-S1
         name: Task 8 - Steps 1 through 3
         owner_role: tailoring-engineer
-        status: pending
+        status: done
         dependencies:
           - RT-01
         deliverables:
@@ -200,6 +200,9 @@ epics:
           - "`step_02_signals_raw.py`"
           - "`step_03_signals_classified.py`"
           - pipeline artifact path support for step-01 through step-03
+        validation:
+          - "`python3.11 -m pytest tests/test_pipeline_steps.py tests/test_resume_tailoring.py tests/test_base_templates.py -q`"
+          - "`python3.11 -m pytest tests/test_theme_classifier.py -q`"
       - id: RT-02-S2
         name: Task 9 - Steps 4 and 5
         owner_role: tailoring-engineer
@@ -401,13 +404,13 @@ epics:
           - removal of old track or focus routing only after the redesign is fully validated
 
 current_focus:
-  epic_id: RT-01
-  slice_id: RT-01-S6
+  epic_id: RT-02
+  slice_id: RT-02-S2
   owner_role: tailoring-engineer
-  reason: The theme templates are now in place, so the next static-foundation dependency is the pair of base LaTeX resumes that Step 15 will assemble against.
+  reason: Step-01 through step-03 artifacts now persist through bootstrap and intelligence generation, so the next highest-value slice is deterministic theme scoring and theme or template selection.
   exit_criteria:
-    - "`assets/resume-tailoring/base/projects-first/base-resume.tex` exists"
-    - "`assets/resume-tailoring/base/experience-first/base-resume.tex` exists"
+    - "`job_hunt_copilot/tailoring/steps/step_04_theme_scores.py` exists and records per-theme scores from classified JD signals"
+    - "`job_hunt_copilot/tailoring/steps/step_05_theme_decision.py` exists and records the selected theme, template decision, runner-up, and margin"
 
 focus_order:
   - epic_id: RT-01

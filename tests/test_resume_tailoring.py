@@ -358,7 +358,19 @@ def test_bootstrap_tailoring_run_creates_workspace_metadata_and_scaffolds(tmp_pa
         "Guidewire Software, Inc.",
         "Staff Software Engineer / AI",
     )
-    step_3_path = paths.tailoring_step_3_jd_signals_path(
+    step_01_path = paths.tailoring_step_01_path(
+        "Guidewire Software, Inc.",
+        "Staff Software Engineer / AI",
+    )
+    step_02_path = paths.tailoring_step_02_path(
+        "Guidewire Software, Inc.",
+        "Staff Software Engineer / AI",
+    )
+    step_03_path = paths.tailoring_step_03_path(
+        "Guidewire Software, Inc.",
+        "Staff Software Engineer / AI",
+    )
+    legacy_step_3_path = paths.tailoring_step_3_jd_signals_path(
         "Guidewire Software, Inc.",
         "Staff Software Engineer / AI",
     )
@@ -421,14 +433,26 @@ def test_bootstrap_tailoring_run_creates_workspace_metadata_and_scaffolds(tmp_pa
     }
 
     manifest_payload = yaml.safe_load(intelligence_manifest_path.read_text(encoding="utf-8"))
-    step_3_payload = yaml.safe_load(step_3_path.read_text(encoding="utf-8"))
+    step_01_payload = yaml.safe_load(step_01_path.read_text(encoding="utf-8"))
+    step_02_payload = yaml.safe_load(step_02_path.read_text(encoding="utf-8"))
+    step_03_payload = yaml.safe_load(step_03_path.read_text(encoding="utf-8"))
+    legacy_step_3_payload = yaml.safe_load(legacy_step_3_path.read_text(encoding="utf-8"))
     step_4_payload = yaml.safe_load(step_4_path.read_text(encoding="utf-8"))
     step_6_payload = yaml.safe_load(step_6_path.read_text(encoding="utf-8"))
     step_7_payload = yaml.safe_load(step_7_path.read_text(encoding="utf-8"))
 
-    assert manifest_payload["steps"]["step_3_jd_signals"]["status"] == "not_started"
-    assert manifest_payload["steps"]["step_7_verification"]["status"] == "pending"
-    assert step_3_payload["status"] == "not_started"
+    assert manifest_payload["current_contract"] == "16-step"
+    assert manifest_payload["steps"]["step_01_jd_sections"]["status"] == "not_started"
+    assert manifest_payload["steps"]["step_02_signals_raw"]["status"] == "not_started"
+    assert manifest_payload["steps"]["step_03_signals_classified"]["status"] == "not_started"
+    assert manifest_payload["steps"]["step_16_verification"]["status"] == "pending"
+    assert manifest_payload["legacy_runtime_compatibility"]["outputs"]["step_7_verification"]["status"] == (
+        "pending"
+    )
+    assert step_01_payload["status"] == "not_started"
+    assert step_02_payload["status"] == "not_started"
+    assert step_03_payload["status"] == "not_started"
+    assert legacy_step_3_payload["status"] == "not_started"
     assert step_4_payload["status"] == "not_started"
     assert step_6_payload["status"] == "not_started"
     assert step_7_payload["verification_outcome"] == "pending"
@@ -786,6 +810,21 @@ def test_generate_tailoring_intelligence_populates_step_artifacts_and_keeps_run_
     assert result.verification_outcome == "pass"
     assert result.resume_tailoring_run_id == bootstrap_result.run.resume_tailoring_run_id
 
+    step_01_payload = yaml.safe_load(
+        paths.tailoring_step_01_path("Acme Data Systems", "Software Engineer").read_text(
+            encoding="utf-8"
+        )
+    )
+    step_02_payload = yaml.safe_load(
+        paths.tailoring_step_02_path("Acme Data Systems", "Software Engineer").read_text(
+            encoding="utf-8"
+        )
+    )
+    step_03_payload = yaml.safe_load(
+        paths.tailoring_step_03_path("Acme Data Systems", "Software Engineer").read_text(
+            encoding="utf-8"
+        )
+    )
     step_3_payload = yaml.safe_load(
         paths.tailoring_step_3_jd_signals_path("Acme Data Systems", "Software Engineer").read_text(
             encoding="utf-8"
@@ -807,8 +846,15 @@ def test_generate_tailoring_intelligence_populates_step_artifacts_and_keeps_run_
         )
     )
 
+    assert step_01_payload["status"] == "generated"
+    assert step_01_payload["sections"]
+    assert step_02_payload["status"] == "generated"
+    assert len(step_02_payload["signals"]) >= 3
+    assert step_03_payload["status"] == "generated"
+    assert step_03_payload["signal_priority_weights"]["core_responsibility"] == 2.0
     assert step_3_payload["status"] == "generated"
     assert len(step_3_payload["signals"]) >= 3
+    assert step_3_payload == step_03_payload
     assert step_4_payload["status"] == "generated"
     assert step_4_payload["matches"]
     assert step_6_payload["status"] == "generated"

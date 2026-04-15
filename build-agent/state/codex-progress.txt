@@ -4,14 +4,14 @@ Current program:
 - resume-tailoring JD-content-fit redesign on branch `resume-tailoring`
 
 Current focus:
-- `RT-02-S1` Task 8 - Steps 1 through 3
+- `RT-02-S2` Task 9 - Steps 4 and 5
 - owner role: `tailoring-engineer`
 
 Latest checkpoint:
-- 2026-04-15 11:35 MST
+- 2026-04-15 11:55 MST
 - role owner: tailoring-engineer
-- slice attempted: `RT-01-S7` Task 7 - Update master profile with Job Hunt Copilot
+- slice attempted: `RT-02-S1` Task 8 - Steps 1 through 3
 - result: done
-- key files changed: assets/resume-tailoring/profile.md; resume-tailoring/input/profile.md (runtime mirror, gitignored); build-agent/state/build-board.yaml; build-agent/state/IMPLEMENTATION_PLAN.md; build-agent/state/build-journal.md; build-agent/state/codex-progress.txt
-- validation summary: profile sync and first-project insertion check passed; `python3.11 -m pytest tests/test_resume_tailoring.py tests/test_smoke_harness.py -q` passed
-- next recommended slice: `RT-02-S1` Task 8 - Steps 1 through 3
+- key files changed: job_hunt_copilot/tailoring/steps/step_01_jd_sections.py; job_hunt_copilot/tailoring/steps/step_02_signals_raw.py; job_hunt_copilot/tailoring/steps/step_03_signals_classified.py; job_hunt_copilot/tailoring/steps/__init__.py; job_hunt_copilot/resume_tailoring.py; tests/test_pipeline_steps.py; tests/test_resume_tailoring.py; build-agent/state/build-board.yaml; build-agent/state/IMPLEMENTATION_PLAN.md; build-agent/state/build-journal.md; build-agent/state/codex-progress.txt
+- validation summary: `python3.11 -m pytest tests/test_pipeline_steps.py tests/test_resume_tailoring.py tests/test_base_templates.py -q` passed; `python3.11 -m pytest tests/test_theme_classifier.py -q` passed
+- next recommended slice: `RT-02-S2` Task 9 - Steps 4 and 5

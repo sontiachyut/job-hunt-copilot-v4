@@ -61,29 +61,29 @@ Canonical inputs for this build program:
 
 ## Current Focus
 
-- `RT-02-S1` Task 8 - Steps 1 through 3
+- `RT-02-S2` Task 9 - Steps 4 and 5
 - Owner role: `tailoring-engineer`
 - Why now:
-  - RT-01 is now complete, so the redesign can move from static assets into deterministic classification logic without foundation gaps
-  - Garmin validation depends on Steps 1 through 3 producing auditable JD sections and classified signals before theme scoring can exist
-  - implementing the first three step artifacts establishes the contract the rest of the 16-step pipeline will build on
+  - RT-02-S1 now persists deterministic step-01 through step-03 artifacts, so the classifier can move from extraction into spec-backed theme scoring without reworking bootstrap again
+  - Garmin validation depends on Steps 4 and 5 selecting `frontend_web` and the correct template from the new classified-signal contract
+  - theme scoring and decision artifacts are the remaining open boundary before evidence selection work can start
 
 ## Latest Completed Slice
 
-`RT-01-S7` completed with:
-- update `assets/resume-tailoring/profile.md` so Job Hunt Copilot now exists as the first project with stack, runtime, workflow-contract, HITL-control, and validation evidence aligned to FR-RT-34D
-- refresh the gitignored runtime mirror at `resume-tailoring/input/profile.md` so the working tailoring surface matches the tracked source profile byte-for-byte
-- extend the profile metrics bank with Job Hunt Copilot validation counts so later tailoring slices can preserve those quantitative signals
-- validate profile insertion and mirror consistency with a targeted local script
-- validate the changed asset path with `python3.11 -m pytest tests/test_resume_tailoring.py tests/test_smoke_harness.py -q`
+`RT-02-S1` completed with:
+- add `job_hunt_copilot/tailoring/steps/step_01_jd_sections.py`, `step_02_signals_raw.py`, and `step_03_signals_classified.py` to implement deterministic JD sectioning, raw signal extraction, and classified-signal weighting from JD-only inputs
+- wire `job_hunt_copilot/resume_tailoring.py` bootstrap and intelligence generation to scaffold and emit `step-01` through `step-03` artifacts while keeping legacy downstream artifacts available as compatibility outputs
+- update runtime tests so the intelligence manifest now reflects the new 16-step contract and the generated step-03 payload is persisted to both the new canonical artifact path and the temporary legacy alias
+- validate with `python3.11 -m pytest tests/test_pipeline_steps.py tests/test_resume_tailoring.py tests/test_base_templates.py -q`
+- validate classifier handoff compatibility with `python3.11 -m pytest tests/test_theme_classifier.py -q`
 
 ## Next Execution Target
 
 For the next unattended builder cycle, the target is:
-- implement `job_hunt_copilot/tailoring/steps/step_01_jd_sections.py`, `step_02_signals_raw.py`, and `step_03_signals_classified.py`
-- produce deterministic step-01 through step-03 artifacts using the new JD-signal contract instead of the legacy track or focus logic
-- add or update targeted tests that lock the first three redesign steps to spec-backed behavior
-- validate the first classification slice before advancing into theme scoring and template selection
+- implement `job_hunt_copilot/tailoring/steps/step_04_theme_scores.py` and `step_05_theme_decision.py`
+- score all 9 themes from the new step-03 classified-signal artifact and record the runner-up, margin, and template choice as explicit step artifacts
+- update runtime wiring so theme selection starts feeding the redesign contract without prematurely deleting the legacy downstream path
+- validate Garmin-targeted and synthetic classifier cases before advancing into project scoring and evidence selection
 
 ## Done-When Summary
 
@@ -96,10 +96,10 @@ The redesign program is done only when:
 
 ## Next Slice After Current Focus
 
-If `RT-01-S7` completes cleanly, the next slice is:
-- `RT-02-S2` Task 9 - Steps 4 and 5
+If `RT-02-S2` completes cleanly, the next slice is:
+- `RT-03-S1` Task 10 - Steps 6 and 7
 
-If `RT-02-S1` is blocked, the builder should:
+If `RT-02-S2` is blocked, the builder should:
 - record the blocker explicitly in `build-agent/state/build-board.yaml`
 - log the attempted work in `build-agent/state/build-journal.md`
 - add a short handoff note in `build-agent/state/codex-progress.txt`
