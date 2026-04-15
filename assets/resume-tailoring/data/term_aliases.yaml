@@ -1,0 +1,30 @@
+aliases:
+  AWS:
+    - Amazon Web Services
+  K8s:
+    - Kubernetes
+  Postgres:
+    - PostgreSQL
+  JS:
+    - JavaScript
+  TS:
+    - TypeScript
+  Node:
+    - Node.js
+  React.js:
+    - React
+  GCP:
+    - Google Cloud Platform
+  C++:
+    - CPP
+    - Cplusplus
+  CI/CD:
+    - CICD
+  D3:
+    - D3.js
+  Vue:
+    - Vue.js
+  Next:
+    - Next.js
+  Nuxt:
+    - Nuxt.js

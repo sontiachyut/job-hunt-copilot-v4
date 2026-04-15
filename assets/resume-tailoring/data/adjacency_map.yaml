@@ -1,0 +1,187 @@
+families:
+  frontend_frameworks:
+    members:
+      - React
+      - Angular
+      - Vue
+      - Svelte
+    skill_category_default: Frontend & UI
+    reason: Component-based, TypeScript-compatible, same mental model
+
+  javascript_ecosystem:
+    members:
+      - JavaScript
+      - TypeScript
+      - Node.js
+      - Express
+      - Next.js
+      - Nuxt.js
+    skill_category_default: Frontend & UI
+    reason: Same language runtime
+
+  python_web_frameworks:
+    members:
+      - FastAPI
+      - Flask
+      - Django
+      - Tornado
+    skill_category_default: Backend & Data
+    reason: Same language, similar patterns
+
+  data_processing:
+    members:
+      - Apache Spark
+      - Apache Flink
+      - Apache Beam
+      - Databricks
+    skill_category_default: Data & Storage
+    reason: Same distributed data processing paradigm
+
+  container_orchestration:
+    members:
+      - Kubernetes
+      - Docker Swarm
+      - ECS
+      - EKS
+      - GKE
+      - AKS
+    skill_category_default: Cloud & Infra
+    reason: Same container orchestration concept
+
+  cloud_compute:
+    members:
+      - AWS EC2
+      - GCP Compute Engine
+      - Azure VMs
+    skill_category_default: Cloud & Infra
+    reason: Same compute service category
+
+  cloud_serverless:
+    members:
+      - AWS Lambda
+      - GCP Cloud Functions
+      - Azure Functions
+    skill_category_default: Cloud & Infra
+    reason: Same serverless paradigm
+
+  cloud_storage:
+    members:
+      - AWS S3
+      - GCP Cloud Storage
+      - Azure Blob Storage
+    skill_category_default: Cloud & Infra
+    reason: Same object storage category
+
+  cloud_queue:
+    members:
+      - AWS SQS
+      - GCP Pub/Sub
+      - Azure Service Bus
+      - Kafka
+      - RabbitMQ
+    skill_category_default: Cloud & Infra
+    reason: Same messaging and queue paradigm
+
+  nosql_databases:
+    members:
+      - DynamoDB
+      - MongoDB
+      - Cassandra
+      - CosmosDB
+    skill_category_default: Data & Storage
+    reason: Same NoSQL paradigm
+
+  relational_databases:
+    members:
+      - PostgreSQL
+      - MySQL
+      - SQL Server
+      - Oracle
+    skill_category_default: Data & Storage
+    reason: Same relational database paradigm
+
+  cicd_tools:
+    members:
+      - GitLab CI/CD
+      - GitHub Actions
+      - Jenkins
+      - CircleCI
+      - Travis CI
+    skill_category_default: Cloud & DevOps
+    reason: Same build and deploy pipeline concept
+
+  iac_tools:
+    members:
+      - Terraform
+      - CloudFormation
+      - Pulumi
+      - Bicep
+      - Ansible
+    skill_category_default: Cloud & Infra
+    reason: Same infrastructure-as-code paradigm
+
+  monitoring_tools:
+    members:
+      - Datadog
+      - Prometheus
+      - Grafana
+      - New Relic
+      - Splunk
+      - CloudWatch
+      - ELK Stack
+    skill_category_default: Testing & Reliability
+    reason: Same observability paradigm
+
+  ml_frameworks:
+    members:
+      - PyTorch
+      - TensorFlow
+      - Keras
+      - JAX
+      - scikit-learn
+    skill_category_default: Applied AI
+    reason: Same ML training and inference paradigm
+
+  vector_search:
+    members:
+      - FAISS
+      - Pinecone
+      - Weaviate
+      - Milvus
+      - ChromaDB
+      - Qdrant
+    skill_category_default: Applied AI
+    reason: Same vector similarity search concept
+
+  llm_frameworks:
+    members:
+      - LangChain
+      - LlamaIndex
+      - CrewAI
+      - AutoGen
+      - Semantic Kernel
+    skill_category_default: Applied AI
+    reason: Same LLM orchestration paradigm
+
+  mobile_android:
+    members:
+      - Kotlin
+      - Java (Android)
+      - Jetpack Compose
+    skill_category_default: Frontend & UI
+    reason: Same Android platform
+
+  mobile_ios:
+    members:
+      - Swift
+      - SwiftUI
+      - Objective-C
+    skill_category_default: Frontend & UI
+    reason: Same iOS platform
+
+  mobile_cross_platform:
+    members:
+      - React Native
+      - Flutter
+    skill_category_default: Frontend & UI
+    reason: Cross-platform mobile frameworks

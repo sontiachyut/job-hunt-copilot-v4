@@ -61,22 +61,30 @@ Canonical inputs for this build program:
 
 ## Current Focus
 
-- `RT-01-S1` Task 1 - Technology adjacency map and term aliases
+- `RT-01-S2` Task 2 - Theme term sets and classifier
 - Owner role: `tailoring-engineer`
 - Why now:
-  - the adjacency and alias layer is reused by theme classification, gap analysis, and keyword placement
-  - it is the narrowest high-value slice that unlocks the rest of the redesign
-  - it can be validated independently before larger pipeline work starts
+  - the classifier is the next dependency on top of the completed adjacency and alias foundation
+  - theme selection is the critical decision layer that fixes the Garmin-style frontend misrouting failure
+  - it remains bounded enough to validate independently before evidence-pool and assembly work
 
-## First Execution Target
+## Latest Completed Slice
 
-For the first unattended builder cycle, the target is:
+`RT-01-S1` completed with:
 - create `job_hunt_copilot/tailoring/` package scaffolding
 - create `assets/resume-tailoring/data/adjacency_map.yaml`
 - create `assets/resume-tailoring/data/term_aliases.yaml`
 - implement adjacency and alias loading in `job_hunt_copilot/tailoring/keyword_system.py`
 - add `tests/test_keyword_system.py`
 - validate with `python3.11 -m pytest tests/test_keyword_system.py -q`
+
+## Next Execution Target
+
+For the next unattended builder cycle, the target is:
+- create `assets/resume-tailoring/data/theme_terms.yaml`
+- implement deterministic theme scoring in `job_hunt_copilot/tailoring/theme_classifier.py`
+- add `tests/test_theme_classifier.py`
+- validate with `python3.11 -m pytest tests/test_theme_classifier.py -q`
 
 ## Done-When Summary
 
@@ -89,10 +97,10 @@ The redesign program is done only when:
 
 ## Next Slice After Current Focus
 
-If `RT-01-S1` completes cleanly, the next slice is:
-- `RT-01-S2` Task 2 - Theme term sets and classifier
+If `RT-01-S2` completes cleanly, the next slice is:
+- `RT-01-S3` Task 3 - Experience bullet evidence pool
 
-If `RT-01-S1` is blocked, the builder should:
+If `RT-01-S2` is blocked, the builder should:
 - record the blocker explicitly in `build-agent/state/build-board.yaml`
 - log the attempted work in `build-agent/state/build-journal.md`
 - add a short handoff note in `build-agent/state/codex-progress.txt`

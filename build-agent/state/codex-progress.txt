@@ -4,14 +4,14 @@ Current program:
 - resume-tailoring JD-content-fit redesign on branch `resume-tailoring`
 
 Current focus:
-- `RT-01-S1` Task 1 - Technology adjacency map and term aliases
+- `RT-01-S2` Task 2 - Theme term sets and classifier
 - owner role: `tailoring-engineer`
 
 Latest checkpoint:
-- 2026-04-15 00:00 MST
-- role owner: build-lead
-- slice attempted: builder-state reset for resume-tailoring redesign
+- 2026-04-15 10:17 MST
+- role owner: tailoring-engineer
+- slice attempted: `RT-01-S1` Task 1 - Technology adjacency map and term aliases
 - result: done
-- key files changed: build-agent/state/build-board.yaml; build-agent/state/IMPLEMENTATION_PLAN.md; build-agent/state/build-journal.md; build-agent/state/codex-progress.txt; build-agent/builder-bootstrap.md; build-agent/execution-loop.md
-- validation summary: YAML parse and selector check passed; the board selects `RT-01-S1` with owner `tailoring-engineer`; `python3.11 -m pytest tests/test_build_agent_cycle.py -q` passed
-- next recommended slice: `RT-01-S1` Task 1 - Technology adjacency map and term aliases
+- key files changed: assets/resume-tailoring/data/adjacency_map.yaml; assets/resume-tailoring/data/term_aliases.yaml; job_hunt_copilot/tailoring/__init__.py; job_hunt_copilot/tailoring/steps/__init__.py; job_hunt_copilot/tailoring/keyword_system.py; tests/test_keyword_system.py; build-agent/state/build-board.yaml; build-agent/state/IMPLEMENTATION_PLAN.md; build-agent/state/build-journal.md; build-agent/state/codex-progress.txt
+- validation summary: `python3.11 -m pytest tests/test_keyword_system.py -q` passed
+- next recommended slice: `RT-01-S2` Task 2 - Theme term sets and classifier

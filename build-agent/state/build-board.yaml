@@ -81,7 +81,7 @@ epics:
       - id: RT-01-S1
         name: Task 1 - Technology adjacency map and term aliases
         owner_role: tailoring-engineer
-        status: pending
+        status: done
         deliverables:
           - "`assets/resume-tailoring/data/adjacency_map.yaml`"
           - "`assets/resume-tailoring/data/term_aliases.yaml`"
@@ -377,13 +377,13 @@ epics:
 
 current_focus:
   epic_id: RT-01
-  slice_id: RT-01-S1
+  slice_id: RT-01-S2
   owner_role: tailoring-engineer
-  reason: The redesign should start by building the stable term-normalization and adjacency foundation that later theme classification, gap analysis, and keyword placement will all reuse.
+  reason: The adjacency and alias layer is now in place, so the next highest-value slice is the deterministic theme classifier that depends on those shared term foundations.
   exit_criteria:
-    - "`job_hunt_copilot/tailoring/` package scaffold exists"
-    - "adjacency map and term aliases are persisted under `assets/resume-tailoring/data/`"
-    - keyword-system tests exist and pass
+    - "`assets/resume-tailoring/data/theme_terms.yaml` exists"
+    - "`job_hunt_copilot/tailoring/theme_classifier.py` implements deterministic theme scoring"
+    - "`tests/test_theme_classifier.py` exists and passes"
 
 focus_order:
   - epic_id: RT-01
