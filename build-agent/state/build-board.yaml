@@ -104,12 +104,16 @@ epics:
       - id: RT-01-S3
         name: Task 3 - Experience bullet evidence pool
         owner_role: tailoring-engineer
-        status: pending
+        status: done
         dependencies:
           - RT-01-S2
         deliverables:
           - "`assets/resume-tailoring/data/bullet_pool_experience.yaml`"
           - "`job_hunt_copilot/tailoring/bullet_pool.py` experience loading support"
+        validation:
+          - "`python3.11 -m pytest tests/test_bullet_pool.py -q`"
+          - "`python3.11 -m pytest tests/test_keyword_system.py -q`"
+          - "`python3.11 -m pytest tests/test_theme_classifier.py -q`"
       - id: RT-01-S4
         name: Task 4 - Project evidence atoms
         owner_role: tailoring-engineer
@@ -377,12 +381,12 @@ epics:
 
 current_focus:
   epic_id: RT-01
-  slice_id: RT-01-S3
+  slice_id: RT-01-S4
   owner_role: tailoring-engineer
-  reason: The theme classifier foundation is now in place, so the next dependency is the experience bullet evidence pool that downstream evidence selection and assembly will consume.
+  reason: The experience bullet pool and loader are now in place, so the next dependency is the project evidence-atom pool that Step 9 and later assembly work will consume.
   exit_criteria:
-    - "`assets/resume-tailoring/data/bullet_pool_experience.yaml` exists"
-    - "`job_hunt_copilot/tailoring/bullet_pool.py` loads experience bullet variants"
+    - "`assets/resume-tailoring/data/bullet_pool_projects.yaml` exists"
+    - "`job_hunt_copilot/tailoring/bullet_pool.py` loads project evidence atoms"
 
 focus_order:
   - epic_id: RT-01

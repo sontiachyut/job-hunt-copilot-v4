@@ -1,0 +1,720 @@
+version: 1
+
+entries:
+  swe_role:
+    company: Infinite Computer Solutions
+    title: Software Engineer
+    dates: March 2023 - March 2024
+    bullet_limits:
+      min: 3
+      max: 4
+    tech_stack:
+      - Python
+      - Scala
+      - Apache Spark
+      - AWS
+      - EMR
+      - S3
+      - HL7
+    bullets:
+      - bullet_id: swe_scale_distributed
+        source: swe_role
+        base_purpose: scale
+        impact_type: scale
+        themes:
+          - distributed_infra
+          - backend_service
+          - generalist
+        tech_tags:
+          - Python
+          - Scala
+          - AWS
+          - EMR
+          - S3
+          - HL7
+          - distributed systems
+          - real-time analytics
+        metrics:
+          - "50M+"
+          - "~580 TPS"
+          - "1,500+"
+          - "24/7"
+        text: >-
+          Built and maintained distributed, high-availability data services in
+          Python and Scala on AWS (EMR, S3), processing 50M+ daily HL7 records
+          (~580 TPS) for real-time clinical analytics across 1,500+ hospitals
+          with 24/7 uptime
+
+      - bullet_id: swe_scale_platform
+        source: swe_role
+        base_purpose: scale
+        impact_type: scale
+        themes:
+          - platform_infra
+        tech_tags:
+          - Python
+          - Scala
+          - AWS
+          - EMR
+          - S3
+          - monitoring
+          - uptime
+          - SLA
+        metrics:
+          - "50M+"
+          - "~580 TPS"
+          - "1,500+"
+          - "24/7"
+        text: >-
+          Operated production data services on AWS (EMR, S3) that processed
+          50M+ daily HL7 records (~580 TPS), sustaining 24/7 uptime and
+          SLA-aligned delivery for clinical analytics used across 1,500+
+          hospitals
+
+      - bullet_id: swe_scale_ai
+        source: swe_role
+        base_purpose: scale
+        impact_type: scale
+        themes:
+          - applied_ai
+          - agent_ai_systems
+          - forward_deployed_ai
+        tech_tags:
+          - Python
+          - Scala
+          - AWS
+          - EMR
+          - S3
+          - clinical analytics
+          - healthcare data
+          - decision support
+        metrics:
+          - "50M+"
+          - "~580 TPS"
+          - "1,500+"
+          - "24/7"
+        text: >-
+          Built Python and Scala services on AWS (EMR, S3) that processed 50M+
+          daily HL7 records (~580 TPS) into real-time clinical analytics
+          workflows for 1,500+ hospitals, enabling always-on decision support
+          with 24/7 uptime
+
+      - bullet_id: swe_scale_frontend
+        source: swe_role
+        base_purpose: scale
+        impact_type: scale
+        themes:
+          - frontend_web
+          - fullstack
+        tech_tags:
+          - Python
+          - Scala
+          - AWS
+          - dashboard
+          - customer-facing
+          - web
+          - analytics
+        metrics:
+          - "50M+"
+          - "~580 TPS"
+          - "1,500+"
+          - "24/7"
+        text: >-
+          Built Python and Scala backend services on AWS (EMR, S3) that
+          processed 50M+ daily HL7 records (~580 TPS) powering customer-facing
+          clinical analytics dashboards used across 1,500+ hospitals with 24/7
+          uptime
+
+      - bullet_id: swe_delivery_distributed
+        source: swe_role
+        base_purpose: delivery
+        impact_type: delivery
+        themes:
+          - distributed_infra
+          - backend_service
+          - generalist
+        tech_tags:
+          - Python
+          - Apache Spark
+          - HL7
+          - ETL
+          - pipelines
+          - data engineering
+        metrics:
+          - "2TB+"
+          - "40%"
+          - "6 hours"
+          - "3.6 hours"
+        text: >-
+          Developed ETL pipelines in Python, Apache Spark, and custom HL7
+          parsers over 2TB+ of daily data, cutting processing time by 40\% (6
+          hours to 3.6 hours) and enabling same-day analytics delivery
+
+      - bullet_id: swe_delivery_platform
+        source: swe_role
+        base_purpose: delivery
+        impact_type: delivery
+        themes:
+          - platform_infra
+        tech_tags:
+          - Python
+          - Apache Spark
+          - HL7
+          - pipelines
+          - reliability
+          - SLA
+          - production operations
+        metrics:
+          - "2TB+"
+          - "40%"
+          - "6 hours"
+          - "3.6 hours"
+        text: >-
+          Improved production data-flow reliability across Python and Spark
+          pipelines handling 2TB+ of daily HL7 data, reducing end-to-end
+          processing time by 40\% (6 hours to 3.6 hours) for SLA-bound
+          analytics delivery
+
+      - bullet_id: swe_delivery_ai
+        source: swe_role
+        base_purpose: delivery
+        impact_type: delivery
+        themes:
+          - applied_ai
+          - agent_ai_systems
+          - forward_deployed_ai
+        tech_tags:
+          - Python
+          - Apache Spark
+          - HL7
+          - clinical analytics
+          - healthcare data
+          - analytics datasets
+        metrics:
+          - "2TB+"
+          - "40%"
+          - "6 hours"
+          - "3.6 hours"
+        text: >-
+          Built Spark and Python data pipelines that transformed 2TB+ of daily
+          HL7 feeds into analytics-ready clinical datasets, reducing turnaround
+          by 40\% (6 hours to 3.6 hours) for same-day decision support
+
+      - bullet_id: swe_delivery_frontend
+        source: swe_role
+        base_purpose: delivery
+        impact_type: delivery
+        themes:
+          - frontend_web
+          - fullstack
+        tech_tags:
+          - Python
+          - Apache Spark
+          - dashboard
+          - analytics
+          - web
+          - reporting
+        metrics:
+          - "2TB+"
+          - "40%"
+          - "6 hours"
+          - "3.6 hours"
+        text: >-
+          Built Python and Spark pipelines that turned 2TB+ of daily HL7 data
+          into dashboard-ready analytics datasets, reducing data-to-dashboard
+          turnaround by 40\% (6 hours to 3.6 hours) for same-day clinical
+          reporting
+
+      - bullet_id: swe_optimization_distributed
+        source: swe_role
+        base_purpose: optimization
+        impact_type: optimization
+        themes:
+          - distributed_infra
+          - backend_service
+          - generalist
+        tech_tags:
+          - Apache Spark
+          - AWS
+          - EMR
+          - performance
+          - throughput
+          - cost optimization
+        metrics:
+          - "25+"
+          - "50%"
+          - "20K"
+          - "30K records/second"
+          - "$15K"
+        text: >-
+          Optimized 25+ Apache Spark jobs with parallel processing and caching
+          on AWS EMR, improving throughput by 50\% (20K to 30K records/second)
+          and reducing AWS costs by \$15K monthly
+
+      - bullet_id: swe_optimization_platform
+        source: swe_role
+        base_purpose: optimization
+        impact_type: optimization
+        themes:
+          - platform_infra
+        tech_tags:
+          - Apache Spark
+          - AWS
+          - EMR
+          - performance tuning
+          - cost optimization
+          - cloud infrastructure
+        metrics:
+          - "25+"
+          - "50%"
+          - "20K"
+          - "30K records/second"
+          - "$15K"
+        text: >-
+          Tuned 25+ Spark workloads on AWS EMR with parallel execution and
+          caching, improving throughput by 50\% (20K to 30K records/second)
+          while cutting recurring cloud spend by \$15K per month
+
+      - bullet_id: swe_optimization_ai
+        source: swe_role
+        base_purpose: optimization
+        impact_type: optimization
+        themes:
+          - applied_ai
+          - agent_ai_systems
+          - forward_deployed_ai
+        tech_tags:
+          - Apache Spark
+          - clinical analytics
+          - AWS
+          - throughput
+          - data freshness
+          - cost optimization
+        metrics:
+          - "25+"
+          - "50%"
+          - "20K"
+          - "30K records/second"
+          - "$15K"
+        text: >-
+          Optimized 25+ Spark jobs supporting clinical analytics workloads,
+          improving throughput by 50\% (20K to 30K records/second) and lowering
+          recurring AWS cost by \$15K monthly without sacrificing data freshness
+
+      - bullet_id: swe_optimization_frontend
+        source: swe_role
+        base_purpose: optimization
+        impact_type: optimization
+        themes:
+          - frontend_web
+          - fullstack
+        tech_tags:
+          - Apache Spark
+          - AWS
+          - dashboard
+          - performance
+          - latency
+          - analytics
+        metrics:
+          - "25+"
+          - "50%"
+          - "20K"
+          - "30K records/second"
+          - "$15K"
+        text: >-
+          Optimized 25+ Spark jobs on AWS EMR with parallel execution and
+          caching, improving throughput by 50\% (20K to 30K records/second) and
+          reducing dashboard refresh latency while saving \$15K monthly
+
+      - bullet_id: swe_reliability_distributed
+        source: swe_role
+        base_purpose: reliability
+        impact_type: reliability
+        themes:
+          - distributed_infra
+          - backend_service
+          - generalist
+        tech_tags:
+          - monitoring
+          - alerting
+          - incident response
+          - data quality
+          - HL7
+          - reliability
+          - SLA
+        metrics: []
+        text: >-
+          Designed monitoring and alerting for pipeline health, triaged
+          data-quality issues, and resolved production incidents across HL7
+          workflows to maintain SLA compliance for real-time clinical analytics
+
+      - bullet_id: swe_reliability_platform
+        source: swe_role
+        base_purpose: reliability
+        impact_type: reliability
+        themes:
+          - platform_infra
+        tech_tags:
+          - monitoring
+          - alerting
+          - observability
+          - incident response
+          - HL7
+          - availability
+          - SLA
+        metrics:
+          - ">=99%"
+        text: >-
+          Owned observability for production HL7 pipelines, building monitoring
+          and alerting, triaging data-quality failures, and resolving incidents
+          to sustain $\geq$99\% availability against clinical analytics SLA
+          targets
+
+      - bullet_id: swe_reliability_ai
+        source: swe_role
+        base_purpose: reliability
+        impact_type: reliability
+        themes:
+          - applied_ai
+          - agent_ai_systems
+          - forward_deployed_ai
+        tech_tags:
+          - monitoring
+          - alerting
+          - incident response
+          - healthcare
+          - regulated systems
+          - data quality
+        metrics: []
+        text: >-
+          Maintained production clinical analytics workflows by instrumenting
+          monitoring and alerting, triaging data-quality issues, and resolving
+          incidents across HL7 pipelines in a regulated healthcare environment
+
+      - bullet_id: swe_reliability_frontend
+        source: swe_role
+        base_purpose: reliability
+        impact_type: reliability
+        themes:
+          - frontend_web
+          - fullstack
+        tech_tags:
+          - monitoring
+          - alerting
+          - dashboard
+          - customer-facing
+          - data quality
+          - reliability
+        metrics: []
+        text: >-
+          Maintained the production analytics pipeline behind clinician-facing
+          dashboards, using monitoring and alerting to catch data-quality issues
+          early and resolve incidents before they disrupted same-day reporting
+
+  associate_swe_role:
+    company: Infinite Computer Solutions
+    title: Associate Software Engineer
+    dates: August 2021 - February 2023
+    bullet_limits:
+      min: 2
+      max: 3
+    tech_stack:
+      - Golang
+      - Java
+      - Python
+      - Kubernetes
+      - Docker
+      - PostgreSQL
+      - Jenkins
+      - GitLab CI/CD
+      - Prometheus
+    bullets:
+      - bullet_id: assoc_optimization_platform
+        source: associate_swe_role
+        base_purpose: optimization
+        impact_type: optimization
+        themes:
+          - platform_infra
+          - distributed_infra
+        tech_tags:
+          - Kubernetes
+          - Docker
+          - resource optimization
+          - microservices
+          - cloud cost
+        metrics:
+          - "200+"
+          - "25%"
+          - "$120K"
+        text: >-
+          Built Cloud Meraki, a Kubernetes optimization platform that tracked
+          usage across 200+ microservices, identified over-provisioned
+          workloads, and recommended right-sized CPU and memory allocations,
+          reducing cloud compute cost by 25\% (\$120K annually)
+
+      - bullet_id: assoc_optimization_backend
+        source: associate_swe_role
+        base_purpose: optimization
+        impact_type: optimization
+        themes:
+          - backend_service
+        tech_tags:
+          - Golang
+          - Java
+          - backend services
+          - Kubernetes
+          - APIs
+          - microservices
+        metrics:
+          - "200+"
+          - "25%"
+          - "$120K"
+        text: >-
+          Built backend services for Cloud Meraki in Golang and Java that
+          analyzed usage across 200+ microservices and drove right-sizing
+          recommendations, cutting cloud compute cost by 25\% (\$120K annually)
+
+      - bullet_id: assoc_optimization_generalist
+        source: associate_swe_role
+        base_purpose: optimization
+        impact_type: optimization
+        themes:
+          - applied_ai
+          - agent_ai_systems
+          - forward_deployed_ai
+          - frontend_web
+          - fullstack
+          - generalist
+        tech_tags:
+          - Kubernetes
+          - Golang
+          - Java
+          - platform
+          - microservices
+          - cost optimization
+        metrics:
+          - "200+"
+          - "25%"
+          - "$120K"
+        text: >-
+          Built Cloud Meraki, an internal engineering platform that tracked
+          usage across 200+ microservices and recommended right-sized CPU and
+          memory allocations, delivering a 25\% cloud compute reduction worth
+          \$120K annually
+
+      - bullet_id: assoc_delivery_platform
+        source: associate_swe_role
+        base_purpose: delivery
+        impact_type: delivery
+        themes:
+          - platform_infra
+          - distributed_infra
+        tech_tags:
+          - Golang
+          - Java
+          - Kubernetes
+          - vertical scaling
+          - distributed systems
+          - uptime
+        metrics:
+          - "99.95%"
+        text: >-
+          Developed the optimizer engine and Kubernetes integrations in Golang
+          and Java to apply vertical scaling decisions across live clusters,
+          maintaining 99.95\% uptime during production workload adjustments
+
+      - bullet_id: assoc_delivery_backend
+        source: associate_swe_role
+        base_purpose: delivery
+        impact_type: delivery
+        themes:
+          - backend_service
+        tech_tags:
+          - Golang
+          - Java
+          - APIs
+          - backend services
+          - Kubernetes
+          - microservices
+        metrics:
+          - "99.95%"
+        text: >-
+          Developed the Cloud Meraki optimizer engine and backend APIs in
+          Golang and Java, integrating with Kubernetes to apply vertical
+          scaling decisions across microservice clusters while maintaining
+          99.95\% uptime
+
+      - bullet_id: assoc_delivery_generalist
+        source: associate_swe_role
+        base_purpose: delivery
+        impact_type: delivery
+        themes:
+          - applied_ai
+          - agent_ai_systems
+          - forward_deployed_ai
+          - frontend_web
+          - fullstack
+          - generalist
+        tech_tags:
+          - Golang
+          - Java
+          - Kubernetes
+          - production services
+          - integrations
+          - uptime
+        metrics:
+          - "99.95%"
+        text: >-
+          Built production services and integrations for Cloud Meraki in Golang
+          and Java, applying right-sizing changes across Kubernetes clusters
+          with 99.95\% uptime during live workload adjustments
+
+      - bullet_id: assoc_reliability_platform
+        source: associate_swe_role
+        base_purpose: reliability
+        impact_type: reliability
+        themes:
+          - platform_infra
+          - distributed_infra
+        tech_tags:
+          - Golang
+          - Java
+          - Python
+          - testing
+          - autoscaling
+          - reliability
+        metrics:
+          - "250+"
+          - "50+"
+        text: >-
+          Wrote 250+ unit and integration tests across the optimization and
+          autoscaling pipeline in Golang, Java, and Python, catching 50+
+          critical bugs before production deployment
+
+      - bullet_id: assoc_reliability_backend
+        source: associate_swe_role
+        base_purpose: reliability
+        impact_type: reliability
+        themes:
+          - backend_service
+        tech_tags:
+          - Golang
+          - Java
+          - Python
+          - testing
+          - backend services
+          - scaling logic
+        metrics:
+          - "250+"
+          - "50+"
+        text: >-
+          Built 250+ unit and integration tests for backend optimization
+          services in Golang, Java, and Python, catching 50+ critical bugs in
+          scaling logic before release
+
+      - bullet_id: assoc_reliability_generalist
+        source: associate_swe_role
+        base_purpose: reliability
+        impact_type: reliability
+        themes:
+          - applied_ai
+          - agent_ai_systems
+          - forward_deployed_ai
+          - frontend_web
+          - fullstack
+          - generalist
+        tech_tags:
+          - Golang
+          - Java
+          - Python
+          - testing
+          - release quality
+          - reliability
+        metrics:
+          - "250+"
+          - "50+"
+        text: >-
+          Created 250+ unit and integration tests across Cloud Meraki services
+          in Golang, Java, and Python, finding 50+ critical bugs before
+          production rollout and improving release confidence
+
+  intern_role:
+    company: Infinite Computer Solutions
+    title: Software Intern
+    dates: February 2021 - August 2021
+    bullet_limits:
+      min: 1
+      max: 1
+    tech_stack:
+      - React
+      - Node.js
+      - PostgreSQL
+      - Docker
+      - Kubernetes
+      - GitLab CI/CD
+    bullets:
+      - bullet_id: intern_frontend
+        source: intern_role
+        base_purpose: product
+        impact_type: product
+        themes:
+          - frontend_web
+          - fullstack
+        tech_tags:
+          - React
+          - Node.js
+          - JavaScript
+          - web application
+          - frontend
+          - user-facing
+          - Kubernetes
+        metrics:
+          - "5,000+"
+        text: >-
+          Deployed a containerized job recruitment portal using React and
+          Node.js across Kubernetes clusters, shipping a user-facing web
+          application that served 5,000+ users
+
+      - bullet_id: intern_platform
+        source: intern_role
+        base_purpose: product
+        impact_type: product
+        themes:
+          - platform_infra
+          - distributed_infra
+          - backend_service
+        tech_tags:
+          - React
+          - Node.js
+          - Kubernetes
+          - Docker
+          - distributed clusters
+          - deployment
+        metrics:
+          - "5,000+"
+        text: >-
+          Deployed a containerized recruitment platform with React, Node.js,
+          and Kubernetes across distributed clusters, supporting production
+          rollout for a portal used by 5,000+ users
+
+      - bullet_id: intern_generalist
+        source: intern_role
+        base_purpose: product
+        impact_type: product
+        themes:
+          - applied_ai
+          - agent_ai_systems
+          - forward_deployed_ai
+          - generalist
+        tech_tags:
+          - React
+          - Node.js
+          - Kubernetes
+          - deployment
+          - product delivery
+        metrics:
+          - "5,000+"
+        text: >-
+          Supported deployment of a containerized job recruitment portal built
+          with React, Node.js, and Kubernetes, helping ship a production system
+          used by 5,000+ users

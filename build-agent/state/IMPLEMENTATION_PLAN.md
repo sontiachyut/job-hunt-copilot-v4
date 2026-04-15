@@ -61,29 +61,29 @@ Canonical inputs for this build program:
 
 ## Current Focus
 
-- `RT-01-S3` Task 3 - Experience bullet evidence pool
+- `RT-01-S4` Task 4 - Project evidence atoms
 - Owner role: `tailoring-engineer`
 - Why now:
-  - the theme classifier is now in place, so downstream tailoring work needs the experience evidence pool next
-  - bullet-pool loading is the next bounded dependency before project evidence, summary generation, and assembly
-  - this keeps the build inside the static-foundations phase while adding the evidence substrate the new runtime depends on
+  - the experience bullet pool now exists, so the remaining static-evidence gap is the project evidence-atom pool
+  - Step 9, project selection, and later content composition depend on auditable project atoms before they can be implemented cleanly
+  - this keeps the build inside the static-foundations phase while completing the remaining evidence substrate the redesign depends on
 
 ## Latest Completed Slice
 
-`RT-01-S2` completed with:
-- create `assets/resume-tailoring/data/theme_terms.yaml`
-- implement deterministic theme loading and scoring in `job_hunt_copilot/tailoring/theme_classifier.py`
-- add `tests/test_theme_classifier.py` covering Garmin frontend routing, AI/distributed/fullstack cases, and weighting behavior
-- validate with `python3.11 -m pytest tests/test_theme_classifier.py -q`
-- regression-check the existing keyword layer with `python3.11 -m pytest tests/test_keyword_system.py -q`
+`RT-01-S3` completed with:
+- create `assets/resume-tailoring/data/bullet_pool_experience.yaml` with grounded theme-tagged variants for the SWE, Associate SWE, and Intern entries
+- implement validated experience bullet-pool loading and JD-overlap ranking helpers in `job_hunt_copilot/tailoring/bullet_pool.py`
+- add `tests/test_bullet_pool.py` covering pool loading, theme filtering, and alias-aware ranking
+- validate with `python3.11 -m pytest tests/test_bullet_pool.py -q`
+- regression-check the adjacent keyword and theme layers with `python3.11 -m pytest tests/test_keyword_system.py -q` and `python3.11 -m pytest tests/test_theme_classifier.py -q`
 
 ## Next Execution Target
 
 For the next unattended builder cycle, the target is:
-- create `assets/resume-tailoring/data/bullet_pool_experience.yaml`
-- implement experience bullet-pool loading support in `job_hunt_copilot/tailoring/bullet_pool.py`
-- add targeted validation for bullet-pool loading and theme filtering
-- validate the new bullet-pool slice before advancing to project evidence atoms
+- create `assets/resume-tailoring/data/bullet_pool_projects.yaml`
+- extend `job_hunt_copilot/tailoring/bullet_pool.py` with project evidence-atom loading and query helpers
+- extend `tests/test_bullet_pool.py` with targeted project-pool coverage
+- validate the project evidence-atom slice before advancing to summary and skill templates
 
 ## Done-When Summary
 
@@ -96,10 +96,10 @@ The redesign program is done only when:
 
 ## Next Slice After Current Focus
 
-If `RT-01-S3` completes cleanly, the next slice is:
-- `RT-01-S4` Task 4 - Project evidence atoms
+If `RT-01-S4` completes cleanly, the next slice is:
+- `RT-01-S5` Task 5 - Summary and skill category templates
 
-If `RT-01-S3` is blocked, the builder should:
+If `RT-01-S4` is blocked, the builder should:
 - record the blocker explicitly in `build-agent/state/build-board.yaml`
 - log the attempted work in `build-agent/state/build-journal.md`
 - add a short handoff note in `build-agent/state/codex-progress.txt`
