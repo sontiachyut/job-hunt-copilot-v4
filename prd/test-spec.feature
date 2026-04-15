@@ -18,7 +18,7 @@ Feature: Job Hunt Copilot next-build acceptance
       Given `spec.md` is present
       And `runtime_secrets.json` is present or vendor-specific secret files are already available
       And `assets/resume-tailoring/profile.md` exists
-      And at least one base resume source exists under `assets/resume-tailoring/base/`
+      And the required base resume templates exist under `assets/resume-tailoring/base/`
       And `assets/outreach/cold-outreach-guide.md` exists
       When the fresh build bootstrap checklist is executed
       Then vendor-specific runtime secret files can be materialized when required
@@ -80,7 +80,7 @@ Feature: Job Hunt Copilot next-build acceptance
       And the build input pack contains `assets/`
       When a fresh build implementation is bootstrapped
       Then the build can use `assets/resume-tailoring/profile.md` as master-profile input
-      And the build can use the single bundled base resume track under `assets/resume-tailoring/base/`
+      And the build can use the bundled base resume templates under `assets/resume-tailoring/base/`
       And the build can use `assets/outreach/cold-outreach-guide.md` as the outreach guide
       And no additional personal-context files are required to start the build
 
@@ -651,12 +651,13 @@ Feature: Job Hunt Copilot next-build acceptance
       And the workspace contains mirrored context files
       And the workspace contains `resume.tex`
       And the workspace contains a scope-baseline snapshot
-      And the workspace contains the current intelligence artifacts for Steps 3 through 7
+      And the workspace contains the current intelligence artifacts for Steps 1 through 16
 
     Scenario: Workspace metadata captures the current tailoring constraints
       Given a Resume Tailoring workspace has been created
       When `meta.yaml` is inspected
       Then it includes `base_used`
+      And it includes `template_used`
       And it includes `context_file`
       And it includes `scope_baseline_file`
       And it includes `section_locks`
@@ -668,11 +669,12 @@ Feature: Job Hunt Copilot next-build acceptance
       Then edits outside locked sections or outside the allowed experience-role scope are rejected
       And out-of-scope changes do not silently pass through finalize
 
-    Scenario: Base resume track is selected automatically and persisted in workspace metadata
+    Scenario: Theme and template are selected automatically and persisted in workspace metadata
       Given a job posting is eligible for tailoring
-      When Resume Tailoring chooses the base resume track
-      Then the most appropriate base track is selected from JD and context signals
-      And the selected track is persisted in `meta.yaml` as `base_used`
+      When Resume Tailoring chooses the theme and layout
+      Then the most appropriate theme is selected from JD and context signals
+      And the selected theme is persisted in `meta.yaml` as `base_used`
+      And the selected template is persisted in `meta.yaml` as `template_used`
 
     Scenario: Tailoring run lifecycle is persisted from bootstrap through mandatory agent review
       Given a job posting is eligible for tailoring
@@ -686,72 +688,85 @@ Feature: Job Hunt Copilot next-build acceptance
       When the mandatory agent review finishes for that same run
       Then the run transitions to `resume_review_status = approved`
 
-    Scenario: Current default editing scope stays narrow unless metadata expands it
+    Scenario: Current default editing scope covers the full theme-driven tailoring boundary
       Given the build is tailoring a posting under the default scope rules
       When candidate edits are produced
-      Then the editable areas are limited to `summary`, `technical-skills`, and the `software-engineer` experience block
+      Then the editable areas include `summary`, skill categories, projects, all experience entries, per-entry tech-stack lines, and template-driven section ordering
       And locked sections outside that scope are not rewritten unless `meta.yaml` explicitly changes the allowed scope
 
-    Scenario: Tailored resume shows credible overlap with the target role and JD intent
+    Scenario: Tailored resume shows credible JD fit without fabrication
       Given a job posting has clear role intent, responsibilities, and must-have requirements
       When Resume Tailoring completes a role-targeted run
-      Then the tailored resume shows clear overlap between the target role and the candidate's real experience
+      Then the tailored resume shows clear fit between the target role and the candidate's real experience
       And the `summary` is updated to reflect the JD's role intent in an evidence-grounded way
       And the `summary` remains neutral rather than sounding inflated or fabricated
-      And the `software-engineer` experience block emphasizes similar or adjacent work that makes the candidate relevant to the position
+      And selected projects and experience entries emphasize similar or adjacent work that makes the candidate relevant to the position
       And the tailoring output includes traceable evidence mapping rather than opaque rewriting
       And honest gaps are surfaced instead of being hidden or fabricated
 
-    Scenario: JD-relevant stack is reflected in summary-adjacent sections, work experience, and skills ordering
+    Scenario: JD-relevant stack is reflected in summary, skill categories, tech-stack lines, and selected bullets
       Given a job posting emphasizes a specific technical stack in a meaningful order
-      When Resume Tailoring emits the current Step 6 payload
-      Then `software-engineer.tech-stack-line` is updated to match the selected role framing
-      And the stack line stays consistent with the technologies actually reflected in the `software-engineer` work-experience bullets
+      When Resume Tailoring produces the Step 15 assembly payload
+      Then per-entry tech-stack lines are updated to match the selected theme and actual evidence
+      And tech-stack lines stay consistent with the technologies actually reflected in the corresponding work-experience bullets or project evidence
       And JD-relevant technologies are ordered earlier when they are truthfully supported by candidate evidence
-      And `technical-skills` is updated to foreground JD-relevant tools and categories
-      And `technical-skills` remains category-clean rather than mixing unrelated groups chaotically
-      And a JD-requested tool that is truthfully supported but not central to the work-experience bullets may appear later in the relevant skills line rather than being omitted
+      And skill categories are updated to foreground JD-relevant tools and categories
+      And skill categories remain category-clean rather than mixing unrelated groups chaotically
+      And a JD-requested tool that is truthfully supported but not central to the selected bullets may appear later in the relevant skills line rather than being omitted
       But unsupported stack terms are not inserted only to mimic the JD
 
-    Scenario: Step artifacts preserve JD-only extraction and honest evidence mapping
+    Scenario: Step artifacts preserve JD-only extraction, theme scoring, and honest evidence mapping
       Given Resume Tailoring has completed the current intelligence steps
-      When the Step 3 and Step 4 artifacts are inspected
+      When the Step 3, Step 4, Step 5, Step 8, and Step 9 artifacts are inspected
       Then Step 3 reflects JD-derived signals without being filtered by candidate evidence first
-      And Step 4 records traceable evidence matches, source references, confidence, and honest gaps
+      And Step 4 records all per-theme scores against the classified JD signals
+      And Step 5 records the winning theme, selected template, runner-up theme, and margin
+      And Step 8 records traceable experience evidence matches, source references, confidence, and honest gaps
+      And Step 9 records traceable project evidence matches, source references, confidence, and honest gaps
       And the system does not force fake coverage for every JD requirement
 
-    Scenario: JD signal weighting uses one current global default scale
+    Scenario: JD signal weighting uses the current theme-classifier weighting rules
       Given Resume Tailoring has produced JD signals with must-have, core-responsibility, nice-to-have, and informational priorities
-      When current weighting is inspected for coverage or matching logic
-      Then the build uses one shared default weighting scale across role-targeted postings
-      And must-have signals outrank core responsibilities
-      And core responsibilities outrank nice-to-have signals
-      And nice-to-have signals outrank informational signals
-      And the build does not require role-family-specific weight calibration
+      When current weighting is inspected for classification and theme scoring
+      Then role title and core responsibilities are weighted 2x
+      And must-have signals are weighted 1x
+      And nice-to-have signals are weighted 0.5x
+      And informational signals are ignored for theme classification
 
-    Scenario: Step 6 payload uses the current structured edit contract
+    Scenario: Step 15 assembly payload uses the current structured edit contract
       Given Resume Tailoring has produced candidate resume edits
-      When the Step 6 output is inspected
-      Then it contains `summary`
-      And it contains `technical-skills`
-      And it contains `software-engineer.tech-stack-line`
-      And it contains `software-engineer.bullets`
+      When the Step 15 assembly output is inspected
+      Then it contains a structured `summary`
+      And it contains structured skill categories
+      And it contains ordered projects
+      And it contains ordered experience entries
+      And it contains per-entry tech-stack lines
+      And it contains selected bullets for each included entry
 
-    Scenario: Step 5 controlled elaboration stays within allowed bounded evidence moves
-      Given Resume Tailoring is producing Step 5 elaboration for one selected project boundary
-      When the Step 5 artifact and claim ledger are inspected
-      Then the elaboration may clarify architecture, data flow, known impact, or interview-safe narrative within that same project boundary
-      And every retained claim is labeled as either `direct_evidence` or `bounded_inference`
-      But the system does not invent a new project, ownership area, metric, technology, or scope boundary
+    Scenario: Theme-specific layout chooses Template A or Template B and applies hero/supporting mode
+      Given Resume Tailoring has selected a theme for a role-targeted posting
+      When the Step 5 theme and layout decision is inspected
+      Then the build selects Template A or Template B according to the selected theme or runtime section-strength decision
+      And the section on top is treated as the hero section
+      And the section below it is treated as the supporting section
+      And hero-mode receives stronger tailoring intensity than supporting-mode
 
-    Scenario: Work-experience bullets preserve numeric metrics and resume-writing discipline
+    Scenario: Experience and project bullets preserve numeric metrics and resume-writing discipline
       Given the evidence map or master profile contains defensible project metrics
-      When Resume Tailoring writes the `software-engineer` experience bullets
-      Then the build produces exactly 4 bullets for that experience block
+      When Resume Tailoring selects final bullets for projects and experience entries
+      Then per-entry bullet count stays within the configured min/max limits
       And bullets use numeric metric style instead of spelled-out number forms when metrics are present
       And relevant bullets retain concrete numbers or metrics whenever truthful supporting evidence exists
       And bullets follow impact-first resume-writing structure closely enough to show meaningful overlap and outcomes
       And bullets stay within the current character-budget constraints
+
+    Scenario: Project selection keeps four projects with Job Hunt Copilot first
+      Given Resume Tailoring has scored all available projects against the JD
+      When the Step 7 project-selection artifact is inspected
+      Then exactly 4 projects are selected for the resume
+      And Job Hunt Copilot is always included and listed first
+      And the remaining projects are ordered by JD relevance
+      And fallback projects are used only when needed to preserve the 4-project layout
 
     Scenario: Final output remains compile-safe, one-page, and visually disciplined
       Given Resume Tailoring has produced candidate edits and verification has passed
@@ -764,10 +779,10 @@ Feature: Job Hunt Copilot next-build acceptance
       And the resume remains visually readable rather than collapsing into crowded or malformed formatting
 
     Scenario: Finalize requires valid intelligence and one-page output
-      Given Resume Tailoring has produced Steps 3 through 7
+      Given Resume Tailoring has produced Steps 1 through 16
       When finalize is attempted
-      Then finalize succeeds only if Steps 3, 4, and 7 are valid
-      And Step 7 is not `pending`
+      Then finalize succeeds only if all required Step 1 through Step 16 artifacts are valid
+      And Step 16 ends in `pass`
       And the final output compiles to `Achyutaram Sonti.pdf`
       And the final output remains one page
 
@@ -777,6 +792,28 @@ Feature: Job Hunt Copilot next-build acceptance
       Then the result is `needs-revision` or `fail`
       And the output includes explicit blockers or revision guidance
       And the system does not fabricate claims to satisfy the JD
+
+    Scenario: JD keyword placement follows extraction, matching, and placement rules
+      Given a JD contains critical and high-priority technical keywords
+      When Resume Tailoring produces the final tailored resume
+      Then JD keywords are extracted and categorized before composition
+      And profile matching distinguishes direct, equivalent, adjacent, and no-match cases
+      And adjacent matches may appear in the skills section only when justified by the adjacency map
+      But adjacent matches do not become bullets or tech-stack-line claims by themselves
+
+    Scenario: Verification includes JD-content alignment and keyword coverage
+      Given Resume Tailoring has produced the Step 16 verification artifact
+      When verification results are inspected
+      Then verification includes a `jd-content-alignment` check
+      And verification includes a JD keyword coverage check
+      And a resume that is structurally valid but materially off-target for the JD does not pass
+
+    Scenario: Frontend web JD does not fall through to backend tailoring
+      Given a frontend or web JD such as Garmin Aviation Web Development
+      When Resume Tailoring completes the run
+      Then the selected theme is `frontend_web` or a justified runtime full-stack decision
+      And the final resume emphasizes web or frontend evidence rather than backend or distributed-systems evidence
+      And the old failure mode where pure web JDs fall through to backend tailoring is eliminated
 
     Scenario: Tailoring overrides are persisted when the owner changes an agent-reviewed tailoring decision
       Given a role-targeted posting already has a tailoring outcome
