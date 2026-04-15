@@ -65,6 +65,14 @@ Golang, Python, Java, Kubernetes, Docker, PostgreSQL, Jenkins, GitLab CI/CD, Pro
 
 ## Projects
 
+### Job Hunt Copilot v4 (Feb 2026 – Apr 2026)
+- **Stack:** Python, SQLite, Multi-Agent Systems, Agentic Workflows, Review Gates
+- Built an autonomous supervisor-agent in Python with durable SQLite state and lease-guarded execution across Gmail intake, resume tailoring, contact discovery, outreach, and delivery feedback
+- Engineered DB-first, artifact-backed workflow contracts, review packets, and audit events so fresh sessions can reconstruct context, resume runs, and preserve traceable handoffs
+- Added human-in-the-loop controls with repo-local launchd heartbeats, pause/escalation routing, and grouped review snapshots to keep autonomous runs bounded, inspectable, and recoverable
+- Hardened the runtime with a spec-backed quality layer, 220+ automated tests, and 212 implemented required acceptance scenarios across supervisor control and downstream workflows
+- **GitHub:** https://github.com/sontiachyut/job-hunt-copilot-v4
+
 ### Distributed Edge Face Recognition Pipeline (Jan 2025 – Apr 2025)
 - **Stack:** Python, AWS IoT Greengrass v2, EC2, MQTT, SQS, AWS Lambda, S3, MTCNN, FaceNet
 - Developed real-time edge computing pipeline deploying AWS IoT Greengrass Core on EC2 for MTCNN-based face detection via MQTT streaming, achieving 100% accuracy on 100 frames with sub-second latency
@@ -127,6 +135,7 @@ Golang, Python, Java, Kubernetes, Docker, PostgreSQL, Jenkins, GitLab CI/CD, Pro
 - **5,000+** users served
 
 ### Projects
+- **220+** automated tests and **212** implemented required acceptance scenarios (Job Hunt Copilot v4)
 - **100%** accuracy on 100 frames, sub-second latency (Edge Face Recognition)
 - **45M+** eligible Americans under SECURE 2.0 (TIAA Platform)
 - **2nd place, $2,000** prize (TIAA Spark Challenge)

@@ -61,31 +61,29 @@ Canonical inputs for this build program:
 
 ## Current Focus
 
-- `RT-01-S7` Task 7 - Update master profile with Job Hunt Copilot
+- `RT-02-S1` Task 8 - Steps 1 through 3
 - Owner role: `tailoring-engineer`
 - Why now:
-  - Template A and Template B now exist, so the final remaining static-foundation gap is the profile evidence update required by FR-RT-34D
-  - the Job Hunt Copilot project details must land in the source profile before project scoring, evidence mapping, and assembly can use them honestly
-  - completing Task 7 closes RT-01 cleanly and unlocks the classification-core phase without leaving the redesign underpowered on its own flagship project
+  - RT-01 is now complete, so the redesign can move from static assets into deterministic classification logic without foundation gaps
+  - Garmin validation depends on Steps 1 through 3 producing auditable JD sections and classified signals before theme scoring can exist
+  - implementing the first three step artifacts establishes the contract the rest of the 16-step pipeline will build on
 
 ## Latest Completed Slice
 
-`RT-01-S6` completed with:
-- create `assets/resume-tailoring/base/projects-first/base-resume.tex` from the applied-AI source resume so Template A now exists in-tree with the required projects-first section order
-- create `assets/resume-tailoring/base/experience-first/base-resume.tex` as the canonical Template B asset while leaving the legacy `distributed-infra` base in place for the old runtime
-- extend `job_hunt_copilot/paths.py` with explicit Template A or B resolution plus step-01 through step-16 artifact path helpers for the redesign pipeline
-- add bootstrap and fixture support so fresh builds require the new canonical template pair while the legacy tailoring runtime still ignores those template-only directories during old track selection
-- add `tests/test_base_templates.py` and update bootstrap, tailoring, and smoke-harness tests to validate section order, path resolution, canonical template presence, and legacy-runtime stability
-- validate with `python3.11 -m pytest tests/test_base_templates.py tests/test_bootstrap.py tests/test_resume_tailoring.py tests/test_smoke_harness.py -q`
-- compile-smoke both canonical base templates in temporary directories with the local LaTeX toolchain
+`RT-01-S7` completed with:
+- update `assets/resume-tailoring/profile.md` so Job Hunt Copilot now exists as the first project with stack, runtime, workflow-contract, HITL-control, and validation evidence aligned to FR-RT-34D
+- refresh the gitignored runtime mirror at `resume-tailoring/input/profile.md` so the working tailoring surface matches the tracked source profile byte-for-byte
+- extend the profile metrics bank with Job Hunt Copilot validation counts so later tailoring slices can preserve those quantitative signals
+- validate profile insertion and mirror consistency with a targeted local script
+- validate the changed asset path with `python3.11 -m pytest tests/test_resume_tailoring.py tests/test_smoke_harness.py -q`
 
 ## Next Execution Target
 
 For the next unattended builder cycle, the target is:
-- update `assets/resume-tailoring/profile.md` with the Job Hunt Copilot project details required by FR-RT-34D
-- update `resume-tailoring/input/profile.md` or the relevant profile-sync surface so the redesign runtime can consume the same Job Hunt Copilot evidence
-- keep the additions evidence-grounded and aligned with the new summary, skill, and project-evidence pools
-- validate the profile-update slice before advancing into RT-02 classification work
+- implement `job_hunt_copilot/tailoring/steps/step_01_jd_sections.py`, `step_02_signals_raw.py`, and `step_03_signals_classified.py`
+- produce deterministic step-01 through step-03 artifacts using the new JD-signal contract instead of the legacy track or focus logic
+- add or update targeted tests that lock the first three redesign steps to spec-backed behavior
+- validate the first classification slice before advancing into theme scoring and template selection
 
 ## Done-When Summary
 
@@ -99,9 +97,9 @@ The redesign program is done only when:
 ## Next Slice After Current Focus
 
 If `RT-01-S7` completes cleanly, the next slice is:
-- `RT-02-S1` Task 8 - Steps 1 through 3
+- `RT-02-S2` Task 9 - Steps 4 and 5
 
-If `RT-01-S7` is blocked, the builder should:
+If `RT-02-S1` is blocked, the builder should:
 - record the blocker explicitly in `build-agent/state/build-board.yaml`
 - log the attempted work in `build-agent/state/build-journal.md`
 - add a short handoff note in `build-agent/state/codex-progress.txt`

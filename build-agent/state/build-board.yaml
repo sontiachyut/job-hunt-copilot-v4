@@ -9,14 +9,15 @@ global_status:
     - prd/spec.md
     - prd/test-spec.feature
     - docs/superpowers/plans/2026-04-14-resume-tailoring-jd-fit.md
-  current_phase: foundations
+  current_phase: classification
   overall_risk: medium
   summary:
     - The builder state has been repointed from the completed BA-10 program to the resume-tailoring redesign program.
     - The Garmin Aviation repro is the confidence check that exposed the problem, but the redesign must work for all JD families, not just Garmin.
     - The redesign is spec-backed on this branch and replaces the old 3-track or 4-focus logic with theme-driven, evidence-pool-based tailoring.
     - Legacy Step 3 through Step 7 code remains in-tree until the new 16-step pipeline is validated end-to-end.
-    - Template A and Template B base resume assets now exist, and the remaining RT-01 work is the Job Hunt Copilot profile update.
+    - Static foundations are now complete, including the Job Hunt Copilot profile update required by FR-RT-34D.
+    - The next open work is RT-02 classification, starting with JD sectioning and signal extraction artifacts.
   execution_principles:
     - One primary slice per unattended build session.
     - "Stay on branch `resume-tailoring`; do not switch branches."
@@ -64,7 +65,7 @@ phases:
 epics:
   - id: RT-01
     name: Static foundations
-    status: in_progress
+    status: done
     owner_role: tailoring-engineer
     phase: RT-P1
     objective: Build the static data, base templates, and profile inputs that the new tailoring runtime depends on.
@@ -161,16 +162,19 @@ epics:
       - id: RT-01-S7
         name: Task 7 - Update master profile with Job Hunt Copilot
         owner_role: tailoring-engineer
-        status: pending
+        status: done
         dependencies:
           - RT-01-S3
         deliverables:
           - "`resume-tailoring/input/profile.md`"
           - "`assets/resume-tailoring/profile.md`"
+        validation:
+          - "profile source and runtime mirror contain Job Hunt Copilot as the first project and remain byte-for-byte synchronized"
+          - "`python3.11 -m pytest tests/test_resume_tailoring.py tests/test_smoke_harness.py -q`"
 
   - id: RT-02
     name: Classification and decision core
-    status: pending
+    status: in_progress
     owner_role: tailoring-engineer
     phase: RT-P2
     dependencies:
