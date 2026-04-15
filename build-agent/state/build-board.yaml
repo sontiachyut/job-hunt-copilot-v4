@@ -16,6 +16,7 @@ global_status:
     - The Garmin Aviation repro is the confidence check that exposed the problem, but the redesign must work for all JD families, not just Garmin.
     - The redesign is spec-backed on this branch and replaces the old 3-track or 4-focus logic with theme-driven, evidence-pool-based tailoring.
     - Legacy Step 3 through Step 7 code remains in-tree until the new 16-step pipeline is validated end-to-end.
+    - Template A and Template B base resume assets now exist, and the remaining RT-01 work is the Job Hunt Copilot profile update.
   execution_principles:
     - One primary slice per unattended build session.
     - "Stay on branch `resume-tailoring`; do not switch branches."
@@ -146,12 +147,17 @@ epics:
       - id: RT-01-S6
         name: Task 6 - Template A and Template B base resumes
         owner_role: tailoring-engineer
-        status: pending
+        status: done
         dependencies:
           - RT-01-S5
         deliverables:
           - "`assets/resume-tailoring/base/projects-first/base-resume.tex`"
           - "`assets/resume-tailoring/base/experience-first/base-resume.tex`"
+          - "`job_hunt_copilot/paths.py` template and step-artifact path helpers"
+          - targeted fixture and bootstrap support for canonical template validation without early runtime cutover
+        validation:
+          - "`python3.11 -m pytest tests/test_base_templates.py tests/test_bootstrap.py tests/test_resume_tailoring.py tests/test_smoke_harness.py -q`"
+          - "temporary-directory LaTeX compile smoke passed for both canonical base templates"
       - id: RT-01-S7
         name: Task 7 - Update master profile with Job Hunt Copilot
         owner_role: tailoring-engineer

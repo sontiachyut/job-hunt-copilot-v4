@@ -4,14 +4,14 @@ Current program:
 - resume-tailoring JD-content-fit redesign on branch `resume-tailoring`
 
 Current focus:
-- `RT-01-S6` Task 6 - Template A and Template B base resumes
+- `RT-01-S7` Task 7 - Update master profile with Job Hunt Copilot
 - owner role: `tailoring-engineer`
 
 Latest checkpoint:
-- 2026-04-15 11:07 MST
+- 2026-04-15 11:24 MST
 - role owner: tailoring-engineer
-- slice attempted: `RT-01-S5` Task 5 - Summary and skill category templates
+- slice attempted: `RT-01-S6` Task 6 - Template A and Template B base resumes
 - result: done
-- key files changed: assets/resume-tailoring/data/summary_templates.yaml; assets/resume-tailoring/data/skill_categories.yaml; job_hunt_copilot/tailoring/content_templates.py; job_hunt_copilot/tailoring/__init__.py; tests/test_content_templates.py; build-agent/state/build-board.yaml; build-agent/state/IMPLEMENTATION_PLAN.md; build-agent/state/build-journal.md; build-agent/state/codex-progress.txt
-- validation summary: `python3.11 -m pytest tests/test_content_templates.py -q` passed; `python3.11 -m pytest tests/test_keyword_system.py -q` passed; `python3.11 -m pytest tests/test_theme_classifier.py -q` passed; `python3.11 -m pytest tests/test_bullet_pool.py -q` passed
-- next recommended slice: `RT-01-S6` Task 6 - Template A and Template B base resumes
+- key files changed: assets/resume-tailoring/base/projects-first/base-resume.tex; assets/resume-tailoring/base/experience-first/base-resume.tex; assets/README.md; job_hunt_copilot/paths.py; job_hunt_copilot/bootstrap.py; job_hunt_copilot/resume_tailoring.py; tests/support.py; tests/test_base_templates.py; tests/test_bootstrap.py; tests/test_resume_tailoring.py; tests/test_smoke_harness.py; build-agent/state/build-board.yaml; build-agent/state/IMPLEMENTATION_PLAN.md; build-agent/state/build-journal.md; build-agent/state/codex-progress.txt
+- validation summary: `python3.11 -m pytest tests/test_base_templates.py tests/test_bootstrap.py tests/test_resume_tailoring.py tests/test_smoke_harness.py -q` passed; temporary-directory LaTeX compile smoke passed for both canonical base templates
+- next recommended slice: `RT-01-S7` Task 7 - Update master profile with Job Hunt Copilot

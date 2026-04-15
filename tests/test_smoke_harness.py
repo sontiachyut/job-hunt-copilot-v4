@@ -46,8 +46,14 @@ from tests.support import create_minimal_project
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 REAL_PROFILE_PATH = REPO_ROOT / "assets" / "resume-tailoring" / "profile.md"
-REAL_BASE_RESUME_PATH = (
+REAL_DISTRIBUTED_BASE_RESUME_PATH = (
     REPO_ROOT / "assets" / "resume-tailoring" / "base" / "distributed-infra" / "base-resume.tex"
+)
+REAL_PROJECTS_FIRST_BASE_RESUME_PATH = (
+    REPO_ROOT / "assets" / "resume-tailoring" / "base" / "projects-first" / "base-resume.tex"
+)
+REAL_EXPERIENCE_FIRST_BASE_RESUME_PATH = (
+    REPO_ROOT / "assets" / "resume-tailoring" / "base" / "experience-first" / "base-resume.tex"
 )
 
 SMOKE_COMPANY_NAME = "Acme Data Systems"
@@ -200,7 +206,21 @@ def _create_smoke_project(tmp_path: Path) -> tuple[Path, ProjectPaths, dict[str,
     distributed_dir = project_root / "assets" / "resume-tailoring" / "base" / "distributed-infra"
     distributed_dir.mkdir(parents=True, exist_ok=True)
     (distributed_dir / "base-resume.tex").write_text(
-        REAL_BASE_RESUME_PATH.read_text(encoding="utf-8"),
+        REAL_DISTRIBUTED_BASE_RESUME_PATH.read_text(encoding="utf-8"),
+        encoding="utf-8",
+    )
+    projects_first_dir = project_root / "assets" / "resume-tailoring" / "base" / "projects-first"
+    projects_first_dir.mkdir(parents=True, exist_ok=True)
+    (projects_first_dir / "base-resume.tex").write_text(
+        REAL_PROJECTS_FIRST_BASE_RESUME_PATH.read_text(encoding="utf-8"),
+        encoding="utf-8",
+    )
+    experience_first_dir = (
+        project_root / "assets" / "resume-tailoring" / "base" / "experience-first"
+    )
+    experience_first_dir.mkdir(parents=True, exist_ok=True)
+    (experience_first_dir / "base-resume.tex").write_text(
+        REAL_EXPERIENCE_FIRST_BASE_RESUME_PATH.read_text(encoding="utf-8"),
         encoding="utf-8",
     )
 

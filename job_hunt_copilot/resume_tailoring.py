@@ -992,7 +992,7 @@ def _select_base_resume_track(
     role_title: str,
     jd_text: str,
 ) -> tuple[str, Path] | None:
-    candidates = paths.base_resume_sources()
+    candidates = _legacy_base_resume_sources(paths)
     if not candidates:
         return None
     if len(candidates) == 1:
@@ -1012,6 +1012,16 @@ def _select_base_resume_track(
 def _base_track_score(base_resume_path: Path, ranking_text: str) -> int:
     track_tokens = [token for token in re.split(r"[^a-z0-9]+", base_resume_path.parent.name.lower()) if token]
     return sum(1 for token in track_tokens if token in ranking_text)
+
+
+def _legacy_base_resume_sources(paths: ProjectPaths) -> list[Path]:
+    candidates = paths.base_resume_sources()
+    legacy_candidates = [
+        candidate
+        for candidate in candidates
+        if candidate.parent.name not in {"projects-first", "experience-first"}
+    ]
+    return legacy_candidates or candidates
 
 
 def _resolve_base_resume_source(paths: ProjectPaths, *, base_used: str) -> Path | None:

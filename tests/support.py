@@ -18,9 +18,10 @@ def create_minimal_project(root: Path) -> None:
     (ai_dir / "system-prompt.md").write_text("# prompt\n", encoding="utf-8")
     (ai_dir / "cookbook.md").write_text("# cookbook\n", encoding="utf-8")
     (ai_dir / "sop-swe-experience-tailoring.md").write_text("# sop\n", encoding="utf-8")
-    base_dir = root / "assets" / "resume-tailoring" / "base" / "generalist"
-    base_dir.mkdir(parents=True, exist_ok=True)
-    (base_dir / "base-resume.tex").write_text("% resume\n", encoding="utf-8")
+    for base_name in ("generalist", "projects-first", "experience-first"):
+        base_dir = root / "assets" / "resume-tailoring" / "base" / base_name
+        base_dir.mkdir(parents=True, exist_ok=True)
+        (base_dir / "base-resume.tex").write_text("% resume\n", encoding="utf-8")
     outreach_dir = root / "assets" / "outreach"
     outreach_dir.mkdir(parents=True, exist_ok=True)
     (outreach_dir / "cold-outreach-guide.md").write_text("# guide\n", encoding="utf-8")

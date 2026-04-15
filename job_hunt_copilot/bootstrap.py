@@ -28,15 +28,16 @@ REQUIRED_MODULES = {
 
 def ensure_required_inputs(paths: ProjectPaths) -> dict[str, Any]:
     missing: list[str] = []
-    required_paths = [paths.spec_path, *paths.required_asset_paths()]
+    required_paths = [
+        paths.spec_path,
+        *paths.required_asset_paths(),
+        *paths.required_base_resume_template_paths(),
+    ]
     for required_path in required_paths:
         if not required_path.exists():
             missing.append(str(required_path))
 
     base_resume_sources = [str(path) for path in paths.base_resume_sources()]
-    if not base_resume_sources:
-        missing.append("assets/resume-tailoring/base/**/base-resume.tex")
-
     if missing:
         raise FileNotFoundError("Missing required build inputs: " + ", ".join(missing))
 
@@ -44,6 +45,9 @@ def ensure_required_inputs(paths: ProjectPaths) -> dict[str, Any]:
         "spec_path": str(paths.spec_path),
         "base_resume_sources": base_resume_sources,
         "required_asset_paths": [str(path) for path in paths.required_asset_paths()],
+        "required_base_resume_template_paths": [
+            str(path) for path in paths.required_base_resume_template_paths()
+        ],
     }
 
 

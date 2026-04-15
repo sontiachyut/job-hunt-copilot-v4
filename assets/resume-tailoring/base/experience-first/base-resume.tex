@@ -1,0 +1,363 @@
+\documentclass[9pt]{extarticle}
+
+% Packages:
+\usepackage[
+    ignoreheadfoot,
+    top=0.4cm,
+    bottom=0.75cm,
+    left=0.75cm,
+    right=0.75cm,
+    footskip=0.3cm,
+]{geometry}
+\usepackage{titlesec}
+\usepackage{tabularx}
+\usepackage{array}
+\usepackage[dvipsnames]{xcolor}
+\definecolor{primaryColor}{RGB}{0, 0, 238}
+\usepackage{enumitem}
+\usepackage{fontawesome5}
+\usepackage{amsmath}
+\usepackage[
+    pdftitle={Achyutaram Sonti CV},
+    pdfauthor={Achyutaram Sonti},
+    pdfcreator={LaTeX with RenderCV},
+    colorlinks=true,
+    urlcolor=primaryColor
+]{hyperref}
+\usepackage[pscoord]{eso-pic}
+\usepackage{calc}
+\usepackage{bookmark}
+\usepackage{lastpage}
+\usepackage{changepage}
+\usepackage{paracol}
+\usepackage{ifthen}
+\usepackage{needspace}
+\usepackage{iftex}
+
+\ifPDFTeX
+    \input{glyphtounicode}
+    \pdfgentounicode=1
+    \usepackage[utf8]{inputenc}
+    \usepackage{helvet}
+    \renewcommand{\familydefault}{\sfdefault}
+\fi
+
+\AtBeginEnvironment{adjustwidth}{\partopsep0pt}
+\pagestyle{empty}
+\setcounter{secnumdepth}{0}
+\setlength{\parindent}{0pt}
+\setlength{\topskip}{0pt}
+\setlength{\columnsep}{0cm}
+
+\titleformat{\section}{\needspace{4\baselineskip}\bfseries\fontsize{8pt}{10pt}\selectfont}{}{0pt}{}[\vspace{1pt}\titlerule]
+
+\titlespacing{\section}{0pt}{0.15cm}{0.10cm}
+
+\newenvironment{highlights}{
+    \begin{itemize}[
+        topsep=0.02cm,
+        parsep=0.02cm,
+        partopsep=0pt,
+        itemsep=0.01cm,
+        leftmargin=0.4cm + 10pt
+    ]
+    \setlength{\itemsep}{0.01cm}
+    \renewcommand{\labelitemi}{\textcolor{black}{$\bullet$}}
+}{
+    \end{itemize}
+}
+
+\newenvironment{onecolentry}{
+    \begin{adjustwidth}{
+        0.2cm + 0.00001cm
+    }{
+        0.2cm + 0.00001cm
+    }
+}{
+    \end{adjustwidth}
+}
+
+\newenvironment{twocolentry}[2][]{
+    \onecolentry
+    \def\secondColumn{{\fontsize{8.5pt}{10pt}\selectfont #2}}
+    \setcolumnwidth{\fill, 4cm}
+    \begin{paracol}{2}
+}{
+    \switchcolumn \raggedleft \secondColumn
+    \end{paracol}
+    \endonecolentry
+}
+
+\newenvironment{twocolentrynarrow}[2][]{
+    \onecolentry
+    \def\secondColumn{{\fontsize{8.5pt}{10pt}\selectfont #2}}
+    \setcolumnwidth{\fill, 2.5cm}
+    \begin{paracol}{2}
+}{
+    \switchcolumn \raggedleft \secondColumn
+    \end{paracol}
+    \endonecolentry
+}
+
+\newenvironment{twocolentrywide}[2][]{
+    \onecolentry
+    \def\secondColumn{{\fontsize{8.5pt}{10pt}\selectfont #2}}
+    \setcolumnwidth{\fill, 5cm}
+    \begin{paracol}{2}
+}{
+    \switchcolumn \raggedleft \secondColumn
+    \end{paracol}
+    \endonecolentry
+}
+
+\newenvironment{header}{
+    \setlength{\topsep}{0pt}\par\kern\topsep\centering\linespread{1.2}
+}{
+    \par\kern\topsep
+}
+
+\let\hrefWithoutArrow\href
+\renewcommand{\href}[2]{\hrefWithoutArrow{#1}{\ifthenelse{\equal{#2}{}}{ }{#2 }\raisebox{.15ex}{\footnotesize \faExternalLink*}}}
+
+\begin{document}
+    \newcommand{\AND}{\unskip
+        \cleaders\copy\ANDbox\hskip\wd\ANDbox
+        \ignorespaces
+    }
+    \newsavebox\ANDbox
+    \sbox\ANDbox{}
+
+    % -------------------- Name --------------------
+    \begin{header}
+        \textbf{\fontsize{22pt}{24pt}\selectfont Achyutaram Sonti}
+
+        \normalsize
+        \kern 0.20cm%
+        \mbox{\hrefWithoutArrow{mailto:asonti1@asu.edu}{\color{primaryColor}{\footnotesize\faEnvelope[regular]}\hspace*{0.13cm}asonti1@asu.edu}}%
+        \kern 0.20cm%
+        \AND%
+        \kern 0.20cm%
+        \mbox{\hrefWithoutArrow{tel:+1-602-768-6071}{\color{primaryColor}{\footnotesize\faPhone*}\hspace*{0.13cm}602-768-6071}}%
+        \kern 0.20cm%
+        \AND%
+        \kern 0.20cm%
+        \mbox{\hrefWithoutArrow{https://www.linkedin.com/in/asonti/}{\color{primaryColor}{\footnotesize\faLinkedinIn}\hspace*{0.13cm}https://www.linkedin.com/in/asonti}}%
+        \kern 0.20cm%
+        \AND%
+        \kern 0.20cm%
+        \mbox{\hrefWithoutArrow{https://github.com/sontiachyut}{\color{primaryColor}{\footnotesize\faGithub}\hspace*{0.13cm}https://www.github.com/sontiachyut}}%
+    \end{header}
+
+    \vspace{0.15cm}
+
+    % -------------------- Summary --------------------
+    \section{SUMMARY}
+
+    \begin{onecolentry}
+        MS CS candidate with 3+ years of experience building large-scale distributed systems and infrastructure, focusing on system reliability, performance optimization, and cost-efficient cloud architecture
+    \end{onecolentry}
+
+    % -------------------- Education --------------------
+    \section{EDUCATION}
+
+    \begin{twocolentry}{
+    \textbf{August 2024 - May 2026}}
+        \textbf{Arizona State University, Tempe, USA,} \textit{Master of Science in Computer Science,} GPA: \textbf{3.96/4.00}
+    \end{twocolentry}
+
+
+    \vspace{0.1cm}
+
+    \begin{twocolentry}{
+    \textbf{July 2017 - August 2021}}
+        \textbf{Manipal Institute of Technology, Manipal, India,} \textit{BTech in Electrical and Electronics Engineering,} GPA: \textbf{7.1/10}
+    \end{twocolentry}
+
+    \vspace{0.1cm}
+
+    \begin{onecolentry}
+        \textbf{Coursework:} Advanced Operating Systems, Cloud Computing, Foundation of Algorithms, Statistical Machine Learning, Mobile Computing, Computer Networks, Data Structures and Algorithms, Object Oriented Programming, C++
+    \end{onecolentry}
+
+    % -------------------- Experience --------------------
+    \section{EXPERIENCE}
+
+    \begin{twocolentry}{
+    \textbf{August 2025 - Present}}
+        \textbf{SCAI Grader, CSE 360: Introduction to Software Engineering} $|$ \textit{Arizona State University, Tempe, USA}
+    \end{twocolentry}
+
+    \vspace{0.05cm}
+
+    \begin{onecolentry}
+        \begin{highlights}
+            \item Guided 50+ students in building Java applications and debugging code; developed course materials on software engineering and OOP
+        \end{highlights}
+    \end{onecolentry}
+
+    \vspace{0.06cm}
+
+    \begin{twocolentry}{
+    \textbf{March 2023 - March 2024}}
+        \textbf{Software Engineer} $|$ \textit{Infinite Computer Solutions, Bengaluru, India}
+    \end{twocolentry}
+
+    \vspace{0.05cm}
+
+    \begin{onecolentry}
+        \textit{Python, Apache Spark, PostgreSQL, AWS (S3, EMR), Terraform, Docker, GitLab CI/CD}
+        \begin{highlights}
+            \item Built and maintained distributed, high-availability data services in Python and Scala on AWS (EMR, S3), processing 50M+ daily HL7 records (~580 TPS) powering real-time clinical analytics for 1,500+ hospitals with 24/7 uptime
+            \item Developed ETL pipelines using Python, Apache Spark, and custom HL7 parsers, reducing processing time by 40\% (6 hours to 3.6 hours) on 2TB+ daily data, enabling same-day analytics
+            \item Optimized 25+ Apache Spark jobs with parallel processing and caching on AWS EMR, improving throughput by 50\% (from 20K to 30K records/second) and reducing AWS costs by \$15K monthly
+            \item Designed monitoring and alerting for pipeline health, triaging data quality issues and resolving production incidents across HL7 workflows to maintain SLA compliance and support reliable same-day clinical analytics delivery
+        \end{highlights}
+    \end{onecolentry}
+
+    \vspace{0.06cm}
+
+    \begin{twocolentrywide}{
+    \textbf{August 2021 - February 2023}}
+        \textbf{Associate Software Engineer} $|$ \textit{Infinite Computer Solutions, Bengaluru, India}
+    \end{twocolentrywide}
+
+    \vspace{0.05cm}
+
+    \begin{onecolentry}
+        \textit{Golang, Python, Java, Kubernetes, Docker, PostgreSQL, Jenkins, GitLab CI/CD, Prometheus}
+        \begin{highlights}
+            \item Built Cloud Meraki, a Kubernetes optimization platform that tracked usage across 200+ microservices, identified over-provisioned workloads, and recommended right-sized CPU/memory allocations, reducing cloud compute costs by 25\% (\$120K annually)
+            \item Developed the optimizer engine and APIs in Golang and Java that integrated with Kubernetes to apply right-sizing decisions across microservice clusters, maintaining 99.95\% uptime during live adjustments
+            \item Composed 250+ unit and integration tests in Golang, Java, and Python across the optimization pipeline, catching 50+ critical bugs in scaling logic before production deployment
+        \end{highlights}
+    \end{onecolentry}
+
+    \vspace{0.06cm}
+
+    \begin{twocolentrywide}{
+    \textbf{February 2021 - August 2021}}
+        \textbf{Software Intern} $|$ \textit{Infinite Computer Solutions, Bengaluru, India}
+    \end{twocolentrywide}
+
+    \vspace{0.05cm}
+
+    \begin{onecolentry}
+        \textit{React, Node.js, PostgreSQL, Docker, Kubernetes, GitLab CI/CD}
+        \begin{highlights}
+            \item Deployed containerized job recruitment portal using React, Node.js, and Kubernetes across distributed clusters serving 5,000+ users
+        \end{highlights}
+    \end{onecolentry}
+
+
+    % -------------------- Projects --------------------
+    \section{PROJECTS}
+
+    \begin{twocolentry}{
+    \textbf{January 2025 - April 2025}}
+        \textbf{Distributed Edge Face Recognition Pipeline} $|$ \href{https://github.com/sontiachyut/CSE546-Cloud-Computing.git}{Code} $|$ \textit{Python, AWS IoT Greengrass v2, EC2, MQTT, SQS, AWS Lambda, S3, MTCNN, FaceNet}
+    \end{twocolentry}
+
+    \vspace{0.05cm}
+
+    \begin{onecolentry}
+        \begin{highlights}
+            \item Developed real-time edge computing pipeline deploying AWS IoT Greengrass Core on EC2 for MTCNN-based face detection via MQTT streaming, achieving 100\% accuracy on 100 frames with sub-second latency
+        \end{highlights}
+    \end{onecolentry}
+
+    \vspace{0.06cm}
+
+    \begin{twocolentrynarrow}{
+    \textbf{October 2025}}
+        \textbf{Student Loan Retirement Matching Platform} $|$ \href{https://github.com/ShivamGS/loan-platform.git}{Code} $|$ \textit{React, TypeScript, AWS Lambda, DynamoDB, S3, AWS Bedrock}
+    \end{twocolentrynarrow}
+
+    \vspace{0.05cm}
+
+    \begin{onecolentry}
+        \begin{highlights}
+            \item Won 2nd place at TIAA Spark Challenge 2025: Developed full-stack web application with serverless APIs (AWS Lambda, API Gateway, DynamoDB) for 45M+ eligible Americans under SECURE 2.0
+        \end{highlights}
+    \end{onecolentry}
+
+    \vspace{0.06cm}
+
+    \begin{twocolentrywide}{
+    \textbf{August 2025 - November 2025}}
+        \textbf{LinkedIn Job-Matching Assistant} $|$ \href{https://github.com/sontiachyut/CSE573-LinkedIn-Assistant}{Code} $|$ \textit{Python, FastAPI, Next.js, React, scikit-learn, FAISS, Neo4j}
+    \end{twocolentrywide}
+
+    \vspace{0.05cm}
+
+    \begin{onecolentry}
+        \begin{highlights}
+            \item Built a full-stack job-search web application using FastAPI, Next.js, and Neo4j, exposing RESTful APIs and user-centric interfaces for personalized job recommendations (NDCG 0.78)
+        \end{highlights}
+    \end{onecolentry}
+
+    \vspace{0.06cm}
+
+    \begin{twocolentrywide}{
+    \textbf{August 2025 - November 2025}}
+        \textbf{Context-Aware Health Monitoring App} $|$ \href{https://github.com/sontiachyut/CSE535-Project1-Context-Monitoring-App}{Code} $|$ \textit{Kotlin, Android, Room, Coroutines}
+    \end{twocolentrywide}
+
+    \vspace{0.05cm}
+
+    \begin{onecolentry}
+        \begin{highlights}
+            \item Built an Android app measuring heart rate via camera-based PPG and respiratory rate via accelerometer data, with symptom tracking persisted in Room database using Repository pattern
+        \end{highlights}
+    \end{onecolentry}
+
+
+    % -------------------- Awards and Leadership --------------------
+    \section{AWARDS AND LEADERSHIP}
+
+    \begin{onecolentry}
+        \begin{highlights}
+            \item \textbf{2nd Place (\$2,000) - Fund the Future Spark Challenge (TIAA)} $|$ \href{https://www.linkedin.com/posts/asonti_tiaa-asu-fundthefuture-activity-7385160181057277952-9Y5S}{Post}: Built secure financial planning system with AI-powered automation using React and AWS serverless architecture \hfill {\fontsize{8.5pt}{10pt}\selectfont\textbf{October 2025}}
+            \item \textbf{Most Technically Sophisticated Project - InnovationHacks 25 ASU:} Developed AI AGENT-powered solution recognized for technical sophistication among 50+ competing projects \hfill {\fontsize{8.5pt}{10pt}\selectfont\textbf{April 2025}}
+        \end{highlights}
+    \end{onecolentry}
+
+    \vspace{0.06cm}
+
+    \begin{twocolentry}{
+    \textbf{November 2025 - Present}}
+        \textbf{Director of Technology (Volunteer), AI Club at Thunderbird} $|$ \textit{Arizona State University, Phoenix, USA}
+    \end{twocolentry}
+
+    \vspace{0.05cm}
+
+    \begin{onecolentry}
+        \begin{highlights}
+            \item Conduct workshops for 30+ graduate students on latest AI trends like Agentic AI and tools like Lovable to build portfolio websites
+        \end{highlights}
+    \end{onecolentry}
+
+    % -------------------- Technical Skills --------------------
+    \section{TECHNICAL SKILLS}
+
+    \begin{onecolentry}
+        \textbf{Languages:} Python, Golang, C++, Java, Scala, SQL, Bash
+    \end{onecolentry}
+
+    \begin{onecolentry}
+        \textbf{Infrastructure \& Systems:} Distributed Systems, Microservices, Load Balancing, gRPC, Protocol Buffers, System Design
+    \end{onecolentry}
+
+    \begin{onecolentry}
+        \textbf{Cloud \& DevOps:} AWS (EMR, EC2, S3, Lambda, SQS), GCP, Kubernetes, Docker, Terraform, GitLab CI/CD, Linux
+    \end{onecolentry}
+
+    \begin{onecolentry}
+        \textbf{Data \& Storage:} Apache Spark, PostgreSQL, MySQL, DynamoDB, MongoDB, Redis
+    \end{onecolentry}
+
+    \begin{onecolentry}
+        \textbf{Testing \& Reliability:} Pytest, JUnit, Unit/Integration Testing, Monitoring, Debugging, Performance Profiling
+    \end{onecolentry}
+
+
+\end{document}

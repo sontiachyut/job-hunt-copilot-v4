@@ -30,6 +30,22 @@ class ProjectPaths:
         return self.project_root / "assets"
 
     @property
+    def tailoring_assets_dir(self) -> Path:
+        return self.assets_dir / "resume-tailoring"
+
+    @property
+    def tailoring_base_dir(self) -> Path:
+        return self.tailoring_assets_dir / "base"
+
+    @property
+    def projects_first_base_resume_path(self) -> Path:
+        return self.tailoring_base_dir / "projects-first" / "base-resume.tex"
+
+    @property
+    def experience_first_base_resume_path(self) -> Path:
+        return self.tailoring_base_dir / "experience-first" / "base-resume.tex"
+
+    @property
     def secrets_dir(self) -> Path:
         return self.project_root / "secrets"
 
@@ -376,6 +392,126 @@ class ProjectPaths:
     def tailoring_intelligence_manifest_path(self, company_name: str, role_title: str) -> Path:
         return self.tailoring_intelligence_dir(company_name, role_title) / "manifest.yaml"
 
+    def _tailoring_step_artifact_path(
+        self,
+        company_name: str,
+        role_title: str,
+        filename: str,
+    ) -> Path:
+        return self.tailoring_intelligence_dir(company_name, role_title) / filename
+
+    def tailoring_step_01_path(self, company_name: str, role_title: str) -> Path:
+        return self._tailoring_step_artifact_path(
+            company_name,
+            role_title,
+            "step-01-jd-sections.yaml",
+        )
+
+    def tailoring_step_02_path(self, company_name: str, role_title: str) -> Path:
+        return self._tailoring_step_artifact_path(
+            company_name,
+            role_title,
+            "step-02-signals-raw.yaml",
+        )
+
+    def tailoring_step_03_path(self, company_name: str, role_title: str) -> Path:
+        return self._tailoring_step_artifact_path(
+            company_name,
+            role_title,
+            "step-03-signals-classified.yaml",
+        )
+
+    def tailoring_step_04_path(self, company_name: str, role_title: str) -> Path:
+        return self._tailoring_step_artifact_path(
+            company_name,
+            role_title,
+            "step-04-theme-scores.yaml",
+        )
+
+    def tailoring_step_05_path(self, company_name: str, role_title: str) -> Path:
+        return self._tailoring_step_artifact_path(
+            company_name,
+            role_title,
+            "step-05-theme-decision.yaml",
+        )
+
+    def tailoring_step_06_path(self, company_name: str, role_title: str) -> Path:
+        return self._tailoring_step_artifact_path(
+            company_name,
+            role_title,
+            "step-06-project-scores.yaml",
+        )
+
+    def tailoring_step_07_path(self, company_name: str, role_title: str) -> Path:
+        return self._tailoring_step_artifact_path(
+            company_name,
+            role_title,
+            "step-07-project-selection.yaml",
+        )
+
+    def tailoring_step_08_path(self, company_name: str, role_title: str) -> Path:
+        return self._tailoring_step_artifact_path(
+            company_name,
+            role_title,
+            "step-08-experience-evidence.yaml",
+        )
+
+    def tailoring_step_09_path(self, company_name: str, role_title: str) -> Path:
+        return self._tailoring_step_artifact_path(
+            company_name,
+            role_title,
+            "step-09-project-evidence.yaml",
+        )
+
+    def tailoring_step_10_path(self, company_name: str, role_title: str) -> Path:
+        return self._tailoring_step_artifact_path(
+            company_name,
+            role_title,
+            "step-10-gap-analysis.yaml",
+        )
+
+    def tailoring_step_11_path(self, company_name: str, role_title: str) -> Path:
+        return self._tailoring_step_artifact_path(
+            company_name,
+            role_title,
+            "step-11-bullet-allocation.yaml",
+        )
+
+    def tailoring_step_12_path(self, company_name: str, role_title: str) -> Path:
+        return self._tailoring_step_artifact_path(
+            company_name,
+            role_title,
+            "step-12-summary.yaml",
+        )
+
+    def tailoring_step_13_path(self, company_name: str, role_title: str) -> Path:
+        return self._tailoring_step_artifact_path(
+            company_name,
+            role_title,
+            "step-13-skills.yaml",
+        )
+
+    def tailoring_step_14_path(self, company_name: str, role_title: str) -> Path:
+        return self._tailoring_step_artifact_path(
+            company_name,
+            role_title,
+            "step-14-tech-stacks.yaml",
+        )
+
+    def tailoring_step_15_path(self, company_name: str, role_title: str) -> Path:
+        return self._tailoring_step_artifact_path(
+            company_name,
+            role_title,
+            "step-15-assembly.yaml",
+        )
+
+    def tailoring_step_16_path(self, company_name: str, role_title: str) -> Path:
+        return self._tailoring_step_artifact_path(
+            company_name,
+            role_title,
+            "step-16-verification.yaml",
+        )
+
     def tailoring_step_3_jd_signals_path(self, company_name: str, role_title: str) -> Path:
         return self.tailoring_intelligence_dir(company_name, role_title) / "step-3-jd-signals.yaml"
 
@@ -673,15 +809,36 @@ class ProjectPaths:
     def background_task_result_markdown_path(self, pipeline_run_id: str) -> Path:
         return self.background_task_dir(pipeline_run_id) / "background_task_result.md"
 
+    def required_base_resume_template_paths(self) -> list[Path]:
+        return [
+            self.projects_first_base_resume_path,
+            self.experience_first_base_resume_path,
+        ]
+
+    def base_resume_template_path(self, template_type: str) -> Path:
+        normalized = template_type.strip().upper()
+        if normalized == "A":
+            return self.projects_first_base_resume_path
+        if normalized == "B":
+            return self.experience_first_base_resume_path
+        raise ValueError(f"Unknown base resume template type: {template_type}")
+
     def base_resume_sources(self) -> list[Path]:
-        return sorted((self.assets_dir / "resume-tailoring" / "base").rglob("base-resume.tex"))
+        priority = {
+            "generalist": 0,
+            "distributed-infra": 1,
+        }
+        return sorted(
+            self.tailoring_base_dir.rglob("base-resume.tex"),
+            key=lambda path: (priority.get(path.parent.name, 2), path.parent.name, str(path)),
+        )
 
     def required_asset_paths(self) -> list[Path]:
         return [
-            self.assets_dir / "resume-tailoring" / "profile.md",
-            self.assets_dir / "resume-tailoring" / "ai" / "system-prompt.md",
-            self.assets_dir / "resume-tailoring" / "ai" / "cookbook.md",
-            self.assets_dir / "resume-tailoring" / "ai" / "sop-swe-experience-tailoring.md",
+            self.tailoring_assets_dir / "profile.md",
+            self.tailoring_assets_dir / "ai" / "system-prompt.md",
+            self.tailoring_assets_dir / "ai" / "cookbook.md",
+            self.tailoring_assets_dir / "ai" / "sop-swe-experience-tailoring.md",
             self.assets_dir / "outreach" / "cold-outreach-guide.md",
         ]
 

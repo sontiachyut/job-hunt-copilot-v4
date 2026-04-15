@@ -156,6 +156,38 @@
 - Next recommended slice:
   - `RT-01-S6` Task 6 - Template A and Template B base resumes
 
+### 2026-04-15 11:24 MST — tailoring-engineer
+
+- Slice attempted: `RT-01-S6` Task 6 - Template A and Template B base resumes
+- Result: done
+- Files changed:
+  - `assets/resume-tailoring/base/projects-first/base-resume.tex`
+  - `assets/resume-tailoring/base/experience-first/base-resume.tex`
+  - `assets/README.md`
+  - `job_hunt_copilot/paths.py`
+  - `job_hunt_copilot/bootstrap.py`
+  - `job_hunt_copilot/resume_tailoring.py`
+  - `tests/support.py`
+  - `tests/test_base_templates.py`
+  - `tests/test_bootstrap.py`
+  - `tests/test_resume_tailoring.py`
+  - `tests/test_smoke_harness.py`
+  - `build-agent/state/build-board.yaml`
+  - `build-agent/state/IMPLEMENTATION_PLAN.md`
+  - `build-agent/state/build-journal.md`
+  - `build-agent/state/codex-progress.txt`
+- Validation:
+  - `python3.11 -m pytest tests/test_base_templates.py tests/test_bootstrap.py tests/test_resume_tailoring.py tests/test_smoke_harness.py -q` passed
+  - temporary-directory LaTeX compile smoke passed for `assets/resume-tailoring/base/projects-first/base-resume.tex`
+  - temporary-directory LaTeX compile smoke passed for `assets/resume-tailoring/base/experience-first/base-resume.tex`
+- State files updated:
+  - `build-agent/state/build-board.yaml`
+  - `build-agent/state/IMPLEMENTATION_PLAN.md`
+  - `build-agent/state/build-journal.md`
+  - `build-agent/state/codex-progress.txt`
+- Next recommended slice:
+  - `RT-01-S7` Task 7 - Update master profile with Job Hunt Copilot
+
 ## Session Template
 
 For each future unattended slice, append:

@@ -36,6 +36,10 @@ def test_bootstrap_materializes_support_dirs_secrets_and_db(tmp_path):
     assert (project_root / "ops" / "agent" / "ops-plan.yaml").exists()
     assert (project_root / "ops" / "logs").exists()
     assert str(project_root / "ops" / "agent" / "identity.yaml") in report["runtime_pack"]["created_paths"]
+    assert report["inputs"]["required_base_resume_template_paths"] == [
+        str(project_root / "assets" / "resume-tailoring" / "base" / "projects-first" / "base-resume.tex"),
+        str(project_root / "assets" / "resume-tailoring" / "base" / "experience-first" / "base-resume.tex"),
+    ]
 
     connection = sqlite3.connect(project_root / "job_hunt_copilot.db")
     migrations = connection.execute(
@@ -48,8 +52,9 @@ def test_bootstrap_materializes_support_dirs_secrets_and_db(tmp_path):
         ("0001_runtime_bootstrap.sql",),
         ("0002_canonical_schema.sql",),
         ("0003_company_grouping_keys.sql",),
+        ("0004_application_and_responder_tracking.sql",),
     ]
-    assert user_version == 3
+    assert user_version == 4
 
 
 def test_bootstrap_is_idempotent(tmp_path):
@@ -64,6 +69,7 @@ def test_bootstrap_is_idempotent(tmp_path):
         "0001_runtime_bootstrap.sql",
         "0002_canonical_schema.sql",
         "0003_company_grouping_keys.sql",
+        "0004_application_and_responder_tracking.sql",
     ]
     assert second_report["database"]["applied_migrations"] == []
     assert second_report["directories"]["created_paths"] == []
@@ -78,6 +84,16 @@ def test_bootstrap_requires_minimum_assets(tmp_path):
     (project_root / "assets" / "outreach" / "cold-outreach-guide.md").unlink()
 
     with pytest.raises(FileNotFoundError):
+        run_bootstrap(project_root=project_root)
+
+
+def test_bootstrap_requires_canonical_base_resume_templates(tmp_path):
+    project_root = tmp_path / "repo"
+    project_root.mkdir()
+    create_minimal_project(project_root)
+    (project_root / "assets" / "resume-tailoring" / "base" / "projects-first" / "base-resume.tex").unlink()
+
+    with pytest.raises(FileNotFoundError, match="projects-first"):
         run_bootstrap(project_root=project_root)
 
 

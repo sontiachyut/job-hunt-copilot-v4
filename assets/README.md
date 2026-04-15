@@ -4,7 +4,9 @@ This folder is the reusable personal/context asset pack for a fresh build.
 
 Included:
 - `resume-tailoring/profile.md`
-- `resume-tailoring/base/distributed-infra/base-resume.tex`
+- `resume-tailoring/base/projects-first/base-resume.tex`
+- `resume-tailoring/base/experience-first/base-resume.tex`
+- `resume-tailoring/base/distributed-infra/base-resume.tex` (legacy base retained until redesign cutover)
 - `resume-tailoring/ai/system-prompt.md`
 - `resume-tailoring/ai/cookbook.md`
 - `resume-tailoring/ai/sop-swe-experience-tailoring.md`
