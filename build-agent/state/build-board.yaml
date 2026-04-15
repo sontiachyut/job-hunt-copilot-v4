@@ -1,1174 +1,402 @@
 project: job-hunt-copilot-v4
-board_version: 2
-last_reset_note: Initial seeded build board created from the finalized PRD and acceptance spec.
-last_planning_update: 2026-04-09
+board_version: 3
+last_reset_note: Resume-tailoring branch build program reset from BA-10 closeout to the JD-content-fit redesign backlog.
+last_planning_update: 2026-04-15
 
 global_status:
-  current_build_goal: Implement the current-build PRD and acceptance spec in this repository with bounded, validated slices.
+  current_build_goal: "Implement the resume-tailoring JD-content-fit redesign on branch `resume-tailoring` without deleting the legacy tailoring path until the new system passes focused and broad validation."
   canonical_inputs:
     - prd/spec.md
     - prd/test-spec.feature
-  current_phase: complete
-  overall_risk: low
+    - docs/superpowers/plans/2026-04-14-resume-tailoring-jd-fit.md
+  current_phase: foundations
+  overall_risk: medium
   summary:
-    - Planning now reflects the PRD and acceptance spec instead of the initial seeded checklist.
-    - BA-01 is now complete: the repo has runtime bootstrap checks, canonical SQLite schema migration, review views, and shared record-ID/timestamp helpers.
-    - Shared artifact publication utilities now cover YAML/JSON contract envelopes, canonical workspace paths, and `artifact_records` registration for lead, posting, contact, and message roots.
-    - BA-02 is now complete: the repo has canonical supervisor-state helpers, a bounded heartbeat executor, terminal-run review packet artifacts, expert review decisions, and override-event lineage persisted in canonical state.
-    - BA-03 is now complete in code: runtime-pack materialization, local launchd/start-stop-cycle helpers, and the direct `jhc-chat` operator entrypoint now exist for the macOS runtime surface.
-    - BA-04 is now complete in code: the repo has a bounded `linkedin_scraping` ingestion path that reads `paste/paste.txt` or browser-style capture bundles, creates canonical lead workspaces, persists `capture-bundle.json`, copies or assembles `raw/source.md`, derives deterministic manual split artifacts, materializes canonical manual postings and poster links, publishes `resume_tailoring`-ready lead manifests, and refreshes existing manual leads in place while snapshotting prior source or review artifacts under each lead-local `history/` directory.
-    - BA-05 is now complete in code: the Gmail intake path now persists collected-email units before fan-out, dedupes by `job_id` or normalized LinkedIn job URL fallback, creates autonomous lead workspaces from parsed cards, merges multi-source JD candidates into canonical `jd.md` with LinkedIn conflict precedence, and records honest `incomplete`, review-blocked, or `blocked_no_jd` lead state with queryable provenance.
-    - BA-06 is now complete in code: job_hunt_copilot.resume_tailoring now covers posting-linked hard eligibility, workspace bootstrap, deterministic Step 3 through Step 7 artifacts, finalize plus one-page verification, persisted mandatory review decisions, direct posting handoff into `requires_contacts` or `ready_for_outreach`, owner override lineage in `override_events`, and snapshot-backed retailoring history across multiple runs.
-    - "BA-07-S1 is now complete in code: `job_hunt_copilot.email_discovery` can bootstrap from approved `requires_contacts` postings, resolve Apollo company identity when available, persist broad `people_search_result.json`, and materialize only the capped shortlist into canonical `contacts` plus `job_posting_contacts`."
-    - "BA-07-S2 is now complete in code: shortlisted contacts can now run selective Apollo enrichment, persist optional `recipient_profile.json` snapshots when LinkedIn public-profile extraction succeeds, drop terminal sparse dead ends from canonical shortlist state, and publish the contact-level readiness signals that now feed BA-08 send-set planning."
-    - "BA-07 is now complete in code: `job_hunt_copilot.email_discovery` now also runs the person-scoped `prospeo -> getprospect -> hunter` cascade with normalized outcomes, reusable working-email shortcuts, bounce-aware retry handling, persisted `discovery_result.json` handoffs plus `discovery_attempts` / `provider_budget_state` / `provider_budget_events`, and canonical unresolved or exhausted review visibility."
-    - "BA-08 is now complete in code: `job_hunt_copilot.outreach` now assembles the current autonomous role-targeted send set, keeps `ready_for_outreach` honest until the selected set is fully send-ready, excludes repeat-outreach contacts from the automatic set, computes queryable company pacing plus randomized inter-send-gap timing, persists grounded role-targeted plus general-learning drafts with canonical `outreach_messages`, and executes one safe automatic send at a time with persisted `sent_at` plus thread or delivery identifiers while blocking ambiguous or repeat-contact resends."
-    - "BA-09-S1 is now complete in code: `job_hunt_copilot.delivery_feedback` now reuses canonical sent-message metadata for immediate or delayed mailbox observation, persists `feedback_sync_runs` plus exact-message `delivery_feedback_events` for `bounced`, `not_bounced`, and `replied` outcomes, emits per-event `delivery_outcome.json` artifacts with workspace-root latest mirrors, and lets send execution trigger an immediate post-send feedback poll when a mailbox observer is provided."
-    - "BA-09-S2 is now complete in code: `job_hunt_copilot.review_queries` now exposes grouped read-only review surfaces for postings, contacts, sent-message history, unresolved discovery, bounced-email cases, expert review packets, open incidents, outstanding blocked/failed/repeat-outreach cases, override history, and per-object traceability over canonical artifacts, transitions, and downstream records."
-    - "BA-09 is now complete in code: delivery feedback now dedupes repeated mailbox signals at the logical-event level, exposes queryable feedback-reuse candidates for bounced and `not_bounced` discovery reads, keeps replied outcomes review-only, and lets discovery consume those feedback signals without auto-clearing contact email state."
-    - "BA-10-S1 is now complete: `build-agent/reports/ba-10-acceptance-trace-matrix.json` and `.md` now map all 214 acceptance scenarios to owning epics, code, tests, and explicit hardening gaps, with a guard test that keeps the matrix aligned to `prd/test-spec.feature`."
-    - "BA-10-S2 is now complete: `tests/test_smoke_harness.py` now drives a committed bootstrap -> tailoring -> discovery -> send -> delayed-feedback -> review-query smoke flow with deterministic fakes, and the regenerated acceptance trace matrix now closes the explicit smoke-harness gap while leaving the remaining blocker clusters honest."
-    - "BA-10 is now complete for required acceptance: the acceptance trace matrix, smoke harness, blocker audit, repo-readiness summary, and current-focus validation suite now land at 212 implemented / 0 partial / 0 gap scenarios, and the final BA-10-S3 closeout adds bounded daily maintenance execution, retained maintenance review artifacts, maintenance approval controls, and honest recruiter- and manager-facing repo notes."
-    - "BA-10-S3 report hardening now also records whether the committed latest validation snapshot actually tracks the active current-focus slice, and the validation-suite runner pre-seeds that selector-aligned snapshot before `qa_acceptance_reports` executes, so replaying `--current-focus` can recover cleanly from a stale blocker-specific latest-report state without manual report prep."
-    - "BA-10-S4 is now complete in code: `job_hunt_copilot.supervisor` now advances durable role-targeted runs through `lead_handoff`, bounded mandatory review, bounded `people_search`, bounded `email_discovery`, bounded `sending`, and bounded `delivery_feedback`, and it now also advances contact-rooted general-learning work through bounded email discovery, send-ready dispatch, and delayed-feedback follow-through without posting linkage or role-targeted review prerequisites."
-    - "`jhc-chat` now records canonical begin/end state, pauses autonomous work on open, resumes on clean explicit close when chat caused the pause, auto-resumes safely after an unexpected exit has idled for 15 minutes, materializes a persisted clean-first startup dashboard plus grouped review snapshot before Codex opens, and exposes explicit persisted-state helper commands for review-queue and default change-summary reads."
-    - "Host-side launchd and build-wrapper validation have now been replayed successfully on the real machine: `bin/jhc-agent-start` loaded supervisor and delayed-feedback jobs, `launchctl print` confirmed the live job state, `bin/jhc-agent-stop` cleanly booted those jobs out, and `build-agent/bin/jhc-build-start` started real host build-lead cycles with the supported `codex exec` invocation before `build-agent/bin/jhc-build-stop` returned the machine to an idle state."
+    - The builder state has been repointed from the completed BA-10 program to the resume-tailoring redesign program.
+    - The Garmin Aviation repro is the confidence check that exposed the problem, but the redesign must work for all JD families, not just Garmin.
+    - The redesign is spec-backed on this branch and replaces the old 3-track or 4-focus logic with theme-driven, evidence-pool-based tailoring.
+    - Legacy Step 3 through Step 7 code remains in-tree until the new 16-step pipeline is validated end-to-end.
   execution_principles:
     - One primary slice per unattended build session.
-    - Prefer DB-first state, artifact contracts, and runtime scaffolding before higher-level agent behavior.
-    - Reuse shared lead, posting, contact, and artifact primitives across manual and Gmail intake paths.
+    - "Stay on branch `resume-tailoring`; do not switch branches."
+    - Treat the branch-local redesign plan as authoritative decomposition for this build program.
+    - "Prefer additive implementation under `job_hunt_copilot/tailoring/` before integration cutover."
+    - Do not delete or bypass the legacy tailoring path until the new path is green on targeted and broad tests.
 
 phases:
-  - id: P0
-    name: Planning and build-loop readiness
-    objective: Replace the seed backlog with a dependency-aware implementation program and keep unattended build execution trustworthy.
+  - id: RT-P1
+    name: Static foundations
+    objective: Add the new tailoring package, static data files, base templates, and profile updates needed by the redesign.
     epics:
-      - BA-00
+      - RT-01
 
-  - id: P1
-    name: Canonical platform
-    objective: Stand up shared runtime scaffolding, canonical schema, supervisor state, and local operator entrypoints.
+  - id: RT-P2
+    name: Classification and decision core
+    objective: Implement JD sectioning, signal extraction, signal classification, theme scoring, and theme selection.
     epics:
-      - BA-01
-      - BA-02
-      - BA-03
+      - RT-02
 
-  - id: P2
-    name: Lead acquisition
-    objective: Materialize manual and Gmail lead intake into canonical lead and posting state.
+  - id: RT-P3
+    name: Evidence selection and content generation
+    objective: Implement project scoring, evidence mapping, gap analysis, bullet allocation, summary, skills, and tech-stack composition.
     epics:
-      - BA-04
-      - BA-05
+      - RT-03
 
-  - id: P3
-    name: Tailoring and review gate
-    objective: Build eligibility, tailoring, finalize, and the mandatory agent review boundary.
+  - id: RT-P4
+    name: Assembly and verification
+    objective: Assemble one-page resumes with Template A or B and reject JD-content-mismatched outputs.
     epics:
-      - BA-06
+      - RT-04
 
-  - id: P4
-    name: Outreach execution
-    objective: Build people search, discovery, drafting, sending, delivery feedback, and queryable review surfaces.
+  - id: RT-P5
+    name: Runtime integration
+    objective: Wire the new pipeline into the live tailoring runtime without deleting the legacy path early.
     epics:
-      - BA-07
-      - BA-08
-      - BA-09
+      - RT-05
 
-  - id: P5
-    name: Validation and hardening
-    objective: Add acceptance traceability, smoke coverage, and blocker burn-down across the implemented system.
+  - id: RT-P6
+    name: Validation and rollout
+    objective: Prove the redesign on the Garmin repro and the broader test suite, then retire the old path only after green validation.
     epics:
-      - BA-10
+      - RT-06
 
 epics:
-  - id: BA-00
-    name: Planning and decomposition
-    status: completed
-    owner_role: planning-engineer
-    phase: P0
-    dependencies: []
-    objective: Turn the finalized PRD and acceptance spec into a clear, dependency-aware implementation program for the rest of the team.
-    acceptance_focus:
-      - Build bootstrap and prerequisites
-      - Current-build orchestration remains sequential
-      - Supervisor Agent behavior
-      - End-to-end acceptance
-    done_when:
-      - implementation plan is explicitly phased and dependency-aware
-      - major epics are decomposed into bounded near-term slices
-      - build-board focus ordering is justified and current
-    completed_notes:
-      - The build board now groups work into phased implementation waves with explicit cross-epic dependencies.
-      - Each implementation epic now lists bounded near-term slices that map back to the PRD and acceptance rules.
-
-  - id: BA-01
-    name: Foundation and schema
-    status: completed
-    owner_role: foundation-engineer
-    phase: P1
-    dependencies:
-      - BA-00
-    objective: Materialize the runtime bootstrap, canonical SQLite schema, shared artifact metadata, and contract-writing helpers.
-    acceptance_focus:
-      - Build bootstrap and prerequisites
-      - Machine handoff contracts and canonical state
-      - State transitions and relationship records
-    done_when:
-      - bootstrap checks can initialize or migrate `job_hunt_copilot.db`
-      - canonical tables, indexes, and review views exist for the next-build schema
-      - shared artifact contract helpers can publish machine handoff artifacts plus `artifact_records`
-    completed_notes:
-      - The repo-local bootstrap package, canonical schema migrations, review views, and shared record helpers now initialize cleanly on fresh or existing runtime state.
-      - Shared artifact helpers now publish contract-envelope YAML or JSON artifacts, register them in `artifact_records`, and expose canonical workspace path builders for lead, tailoring, discovery, and outreach components.
-    near_term_slices:
-      - id: BA-01-S1
-        name: Runtime bootstrap and DB init skeleton
-        owner_role: foundation-engineer
-        status: completed
-        deliverables:
-          - Python package or module skeleton for the fresh-build runtime
-          - repo-local runtime support directories such as `paste/` and component output roots
-          - bootstrap checks for required assets, secrets materialization, and DB initialization entrypoint
-        completed_notes:
-          - Added the `job_hunt_copilot` package with repo-path helpers, secret materialization, and SQLite migration scaffolding.
-          - Added `bin/jhc-bootstrap` plus a first migration that initializes `job_hunt_copilot.db` and tracks applied migrations.
-          - Bootstrap now materializes `paste/paste.txt` and the major runtime support roots needed by later ingestion, tailoring, discovery, outreach, and ops slices.
-        validation:
-          - "`python3 -m pytest tests/test_bootstrap.py`"
-          - "`python3 -m job_hunt_copilot.bootstrap --project-root /Users/achyutaramsonti/Projects/job-hunt-copilot-v4`"
-          - "`python3 -m job_hunt_copilot.bootstrap prereqs`"
-      - id: BA-01-S2
-        name: Canonical schema and views
-        owner_role: foundation-engineer
-        status: completed
-        dependencies:
-          - BA-01-S1
-        deliverables:
-          - tables, indexes, and core views from PRD section 7.1.1 and the acceptance schema scenario
-          - stable ID generation and lifecycle timestamp conventions
-          - migration or re-init flow that can run cleanly on a fresh repo
-        completed_notes:
-          - Added `0002_canonical_schema.sql` with the canonical next-build tables, minimum index set, and review views plus the acceptance-required `maintenance_change_batches` table.
-          - Added shared canonical record helpers for stable ID prefixes and lifecycle timestamps so downstream slices can write rows without inventing new conventions.
-          - Reconciled the PRD prose and DDL skeleton by including `supervisor_cycles` snapshot columns plus review views for unresolved contacts, bounced email, pending expert review, and open incidents.
-        validation:
-          - "`python3.11 -m pytest tests/test_bootstrap.py tests/test_schema.py`"
-          - "`python3.11 -m job_hunt_copilot.bootstrap --project-root /Users/achyutaramsonti/Projects/job-hunt-copilot-v4`"
-          - "Live DB check confirmed `user_version = 2` plus `unresolved_contacts_review`, `bounced_email_review`, `expert_review_queue`, and `open_agent_incidents_review`."
-      - id: BA-01-S3
-        name: Artifact contract and registry utilities
-        owner_role: foundation-engineer
-        status: completed
-        dependencies:
-          - BA-01-S2
-        deliverables:
-          - shared contract envelope writer for YAML and JSON handoff artifacts
-          - "`artifact_records` registration helpers keyed by lead, posting, contact, and message IDs"
-          - canonical file-path and reference helpers for downstream components
-        completed_notes:
-          - Added `job_hunt_copilot.artifacts` with shared JSON/YAML contract writers enforcing the current-build envelope fields and failure-reason requirements.
-          - Added canonical project path helpers for lead, application, tailoring, discovery, and outreach workspaces plus relative artifact reference normalization under the repo root.
-          - Added artifact publication helpers that register `artifact_records` against lead, posting, contact, and message roots after file creation.
-        validation:
-          - "`python3.11 -m pytest tests/test_bootstrap.py tests/test_schema.py tests/test_artifacts.py`"
-          - "`python3.11 -m job_hunt_copilot.bootstrap --project-root /Users/achyutaramsonti/Projects/job-hunt-copilot-v4`"
-
-  - id: BA-02
-    name: Supervisor control plane
-    status: completed
-    owner_role: build-lead
-    phase: P1
-    dependencies:
-      - BA-01
-    objective: Implement the autonomous supervisor state model, bounded cycle execution, incidents, review packets, and override recording.
-    acceptance_focus:
-      - Supervisor Agent behavior
-      - Failure, retry, and idempotency behavior
-      - Current-build orchestration remains sequential
-    done_when:
-      - control-state tables and runtime persistence exist
-      - one bounded supervisor cycle can select, validate, and record a single work unit
-      - incidents, review packets, and override events are queryable from canonical state
-    completed_notes:
-      - "`job_hunt_copilot.supervisor` now covers canonical control state, bounded cycle execution, incident persistence, terminal-run review packet generation, expert review decisions, and override audit lineage."
-      - Unsupported bounded-cycle escalation now emits both canonical incidents and persisted expert review packets, while direct helper flows can finalize review-worthy runs and mark review completion with linked override history.
-    near_term_slices:
-      - id: BA-02-S1
-        name: Control-state persistence and run lifecycle helpers
-        owner_role: build-lead
-        status: completed
-        deliverables:
-          - "`pipeline_runs`, `supervisor_cycles`, `agent_control_state`, and `agent_runtime_leases` access layer"
-          - canonical status transitions for paused, stopped, in-progress, failed, escalated, and completed run states
-          - safe lease acquisition and stale-recovery helpers for the product supervisor
-        completed_notes:
-          - Added `job_hunt_copilot.supervisor` with canonical helpers for agent-mode persistence, non-terminal run reuse, bounded run-status transitions, provisional heartbeat-cycle rows, and runtime lease acquisition, renewal, release, and stale recovery.
-          - Added focused supervisor-state tests covering control-mode semantics, pipeline-run lifecycle transitions, single-open-run enforcement, cycle audit recording, and lease deferral or reclamation behavior against the canonical SQLite schema.
-          - Recorded the current PRD ambiguity around escalated-run immutability versus explicit `escalated -> in_progress` recovery by implementing the explicit resume transition while still keeping new-run creation keyed to non-terminal runs only.
-        validation:
-          - "`python3.11 -m pytest tests/test_supervisor.py`"
-          - "`python3.11 -m pytest tests/test_bootstrap.py tests/test_schema.py tests/test_artifacts.py tests/test_supervisor.py`"
-      - id: BA-02-S2
-        name: Bounded cycle executor
-        owner_role: build-lead
-        status: completed
-        dependencies:
-          - BA-02-S1
-        deliverables:
-          - one-work-unit supervisor selection loop with prerequisite and output validation
-          - action-catalog-backed dispatch skeleton
-          - cycle summaries and incident emission on blocked or failed progression
-        completed_notes:
-          - Added `run_supervisor_cycle` plus a narrow registered action catalog for posting-scoped run bootstrap, durable lead-handoff checkpoints, and unresolved-incident escalation behind the canonical supervisor lease.
-          - Added canonical incident helpers and auto-pause checks so critical unresolved send-safety or canonical-state-integrity incidents pause autonomous execution, while unsupported pipeline stages emit incidents and escalate the affected durable run instead of improvising behavior.
-          - Added persisted cycle context snapshots under `ops/agent/context-snapshots/<supervisor_cycle_id>/context_snapshot.json` and focused supervisor tests for new-run selection, existing-run reuse, incident priority, auto-pause, and unsupported-stage escalation.
-        validation:
-          - "`python3.11 -m pytest tests/test_supervisor.py`"
-          - "`python3.11 -m pytest tests/test_bootstrap.py tests/test_schema.py tests/test_artifacts.py tests/test_supervisor.py`"
-      - id: BA-02-S3
-        name: Review packet and override plumbing
-        owner_role: build-lead
-        status: completed
-        dependencies:
-          - BA-02-S2
-        deliverables:
-          - "`expert_review_packets` and `expert_review_decisions` persistence"
-          - "`override_events` persistence and lineage to prior agent decisions"
-          - terminal run packet generation hooks for review-worthy outcomes
-        completed_notes:
-          - Added supervisor helpers for persisted `expert_review_packets`, `expert_review_decisions`, and `override_events`, including override lineage back to the triggering review context and affected object-state snapshot.
-          - Added review-packet artifact generation under `ops/review-packets/<pipeline_run_id>/` plus `artifact_records` registration for both `review_packet.json` and `review_packet.md`.
-          - Wired bounded-cycle progression failures to emit a pending review packet automatically when a selected `pipeline_run` reaches an escalated terminal outcome.
-        validation:
-          - "`python3.11 -m pytest tests/test_supervisor.py`"
-          - "`python3.11 -m pytest tests/test_bootstrap.py tests/test_schema.py tests/test_artifacts.py tests/test_supervisor.py`"
-
-  - id: BA-03
-    name: macOS local runtime helpers
-    status: completed
-    owner_role: build-lead
-    phase: P1
-    dependencies:
-      - BA-01
-      - BA-02
-    objective: Implement the product-side runtime pack, launchd wiring, and local operator entrypoints.
-    acceptance_focus:
-      - Build bootstrap and prerequisites
-      - Supervisor Agent behavior
-      - Review surfaces and chat-based control
-    done_when:
-      - "`ops/agent/` runtime pack artifacts are materialized from repo state"
-      - repo-local `jhc-agent-start`, `jhc-agent-stop`, `jhc-agent-cycle`, and `jhc-chat` behaviors exist
-      - launchd and chat pause or resume wiring match the current-build control model
-    completed_notes:
-      - Bootstrap now renders the runtime identity, policies, action catalog, service goals, escalation policy, bootstrap prompts, and initial progress surfaces under `ops/agent/`.
-      - Those `ops/agent/` artifacts remain repo-local generated runtime surfaces under the existing `.gitignore`, so validation relies on materialization hooks rather than checked-in generated files.
-      - Local launchd materialization plus repo-local `jhc-agent-start`, `jhc-agent-stop`, `jhc-agent-cycle`, and `jhc-chat` wrappers now exist through `job_hunt_copilot.local_runtime` and `scripts/ops/` helper scripts.
-      - "`jhc-chat` now persists active-session and exit-mode state through canonical control-state keys, pauses autonomous work on open, resumes on clean explicit close when chat itself induced the pause, and preserves unexpected-exit expert-interaction pauses for later explicit resume or future idle-timeout handling."
-      - Live `launchctl bootstrap gui/$UID ...` still returns `Input/output error` in the current sandboxed session, but failed startup now rolls canonical control state back to `stopped` instead of leaving a false `running` status behind.
-    near_term_slices:
-      - id: BA-03-S1
-        name: Runtime pack materialization
-        owner_role: build-lead
-        status: completed
-        deliverables:
-          - generated `ops/agent/identity.yaml`, `policies.yaml`, `action-catalog.yaml`, `service-goals.yaml`, `escalation-policy.yaml`, and bootstrap markdown files
-          - absolute-path rendering for repo-local runtime pack consumers
-          - product-side runtime pack validation hooks
-        completed_notes:
-          - Added `job_hunt_copilot.runtime_pack` plus `scripts/ops/build_runtime_pack.py` so the product-side runtime pack can be rendered from canonical paths, registered supervisor actions, and current control-state semantics.
-          - Extended bootstrap to materialize `ops/agent/identity.yaml`, `policies.yaml`, `action-catalog.yaml`, `service-goals.yaml`, `escalation-policy.yaml`, `chat-bootstrap.md`, and `supervisor-bootstrap.md`, and to seed initial `progress-log.md` and `ops-plan.yaml` without clobbering later operator-maintained state.
-          - Added targeted validation for absolute-path rendering, narrow current action-catalog contents, and preservation of existing `progress-log.md` plus `ops-plan.yaml` on rerender; bootstrap now also creates `ops/logs/` for the later launchd slice.
-        validation:
-          - "`python3.11 -m pytest tests/test_bootstrap.py tests/test_runtime_pack.py`"
-          - "`python3.11 -m pytest tests/test_bootstrap.py tests/test_schema.py tests/test_artifacts.py tests/test_supervisor.py tests/test_runtime_pack.py`"
-          - "`python3.11 scripts/ops/build_runtime_pack.py --project-root /Users/achyutaramsonti/Projects/job-hunt-copilot-v4`"
-          - "`python3.11 -m job_hunt_copilot.bootstrap --project-root /Users/achyutaramsonti/Projects/job-hunt-copilot-v4`"
-      - id: BA-03-S2
-        name: launchd and helper entrypoints
-        owner_role: build-lead
-        status: completed
-        dependencies:
-          - BA-03-S1
-        deliverables:
-          - repo-local `bin/jhc-agent-start`, `bin/jhc-agent-stop`, and `bin/jhc-agent-cycle`
-          - launchd template rendering with the required label, interval, and log paths
-          - idempotent bootstrap or bootout behavior for repeated start or stop commands
-        completed_notes:
-          - Added `job_hunt_copilot.local_runtime` plus `scripts/ops/materialize_supervisor_plist.py`, `scripts/ops/control_agent.py`, and `scripts/ops/run_supervisor_cycle.py` so the product runtime can render the supervisor plist, persist canonical control-state mutations, and execute one real supervisor heartbeat from the repo-local command path.
-          - Added repo-local `bin/jhc-agent-start`, `bin/jhc-agent-stop`, and `bin/jhc-agent-cycle` wrappers that resolve the absolute project root, materialize the runtime pack and plist, persist control-state transitions, and wire the local supervisor through `launchctl`.
-          - Tightened startup honesty so a failed `launchctl bootstrap` attempt now unloads any partial job state and restores canonical control state to `stopped` instead of leaving the DB claiming the supervisor is running.
-          - Updated the generated runtime-pack messaging plus repo-facing docs so launchd and start/stop/cycle wiring are treated as implemented, while the direct `jhc-chat` operator entrypoint remains the next slice.
-        validation:
-          - "`python3.11 -m pytest tests/test_local_runtime.py tests/test_runtime_pack.py tests/test_supervisor.py`"
-          - "`python3.11 -m pytest tests/test_bootstrap.py tests/test_schema.py tests/test_artifacts.py tests/test_supervisor.py tests/test_runtime_pack.py tests/test_local_runtime.py`"
-          - "`python3.11 scripts/ops/materialize_supervisor_plist.py --project-root /Users/achyutaramsonti/Projects/job-hunt-copilot-v4`"
-          - "`plutil -p /Users/achyutaramsonti/Projects/job-hunt-copilot-v4/ops/launchd/job-hunt-copilot-supervisor.plist`"
-          - "`bin/jhc-agent-cycle`"
-          - "Live `bin/jhc-agent-start` validation still returns `Bootstrap failed: 5: Input/output error` in the current sandboxed session, but follow-up `scripts/ops/control_agent.py status` plus `launchctl print gui/$UID/com.jobhuntcopilot.supervisor` confirmed rollback to `agent_mode = stopped` with no loaded job."
-          - "`bin/jhc-agent-stop` succeeded idempotently while the launchd job was unloaded."
-      - id: BA-03-S3
-        name: "`jhc-chat` operator bootstrap"
-        owner_role: build-lead
-        status: completed
-        dependencies:
-          - BA-03-S1
-          - BA-02-S3
-        deliverables:
-          - chat session begin or end bookkeeping
-          - startup dashboard bootstrap from persisted state
-          - pause-on-chat and safe-resume control integration
-        completed_notes:
-          - Added product-side chat session helpers in `job_hunt_copilot.local_runtime` plus new canonical control-state keys for active session tracking, clean-close auto-resume gating, and last-chat begin/end metadata.
-          - Added `scripts/ops/chat_session.py` and repo-local `bin/jhc-chat` so the expert-facing wrapper begins the canonical chat session before launch, runs Codex rooted at the project with `ops/agent/chat-bootstrap.md`, and records `explicit_close` or `unexpected_exit` on shutdown.
-          - Clean explicit close now auto-resumes only when the chat itself induced the `expert_interaction` pause, while pre-existing non-chat pauses remain intact and unexpected exit stays paused for later explicit resume or future idle-timeout handling.
-        validation:
-          - "`python3.11 -m pytest tests/test_local_runtime.py`"
-          - "`python3.11 -m pytest tests/test_bootstrap.py tests/test_schema.py tests/test_artifacts.py tests/test_supervisor.py tests/test_runtime_pack.py tests/test_local_runtime.py`"
-          - "`env JHC_CODEX_BIN=/usr/bin/true bin/jhc-chat`"
-          - "`python3.11 scripts/ops/control_agent.py status --project-root /Users/achyutaramsonti/Projects/job-hunt-copilot-v4` confirmed `agent_mode = stopped`, `active_chat_session_id = \"\"`, and `last_chat_exit_mode = explicit_close` after the wrapper smoke run."
-
-  - id: BA-04
-    name: Manual capture path
-    status: completed
-    owner_role: ingestion-engineer
-    phase: P2
-    dependencies:
-      - BA-01
-    objective: Build the manual browser-capture ingestion path, paste fallback, split-review flow, and lead materialization.
-    acceptance_focus:
-      - External integrations and bootstrap configuration
-      - LinkedIn Scraping acceptance
-      - Machine handoff contracts and canonical state
-    done_when:
-      - manual capture bundles and paste fallback persist canonical lead raw sources
-      - split metadata, split review, and lead manifests are published for manual leads
-      - valid manual leads materialize canonical postings and traceable contact link records
-      - refresh-in-place manual lead reruns preserve prior source or review snapshots under lead-local history while keeping the live workspace honest
-    completed_notes:
-      - "`BA-04-S1` landed the shared manual lead-workspace conventions, including the repo-local `jhc-linkedin-ingest` entrypoint, `capture-bundle.json`, canonical `raw/source.md`, and `lead_raw_source` artifact registration."
-      - "Captured manual leads now persist a canonical `linkedin_leads` shell row immediately with `lead_status = captured` and the explicit pre-split placeholder `split_review_status = not_started` until `BA-04-S2` publishes deterministic split artifacts."
-      - "`BA-04-S2` now derives `post.md`, `jd.md`, and `poster-profile.md` when evidence exists, persists `source-split.yaml` plus `source-split-review.yaml`, and publishes a blocked-or-ready `lead-manifest.yaml` with canonical `split_review_status` updates for manual leads."
-      - "`BA-04-S3` now materializes canonical `job_postings`, poster `contacts`, `linkedin_lead_contacts`, and `job_posting_contacts` from reviewed manual leads, keeps reruns idempotent, and upgrades `lead-manifest.yaml` to carry created entity ids plus `resume_tailoring` readiness."
-      - "`BA-04-S4` now refreshes existing manual leads in place, snapshots replaced source or review artifacts under `history/<timestamp>-source-refresh/`, clears stale live split artifacts, rewrites an honest refresh-state `lead-manifest.yaml`, and preserves prior posting `jd_artifact_path` references by repointing them to the snapped historical `jd.md` when needed."
-    near_term_slices:
-      - id: BA-04-S1
-        name: Paste inbox and manual capture bundle persistence
-        owner_role: ingestion-engineer
-        status: completed
-        deliverables:
-          - "`paste/paste.txt` bootstrap and paste-ingestion entrypoint"
-          - capture-bundle schema handling for selected-text and full-page submissions
-          - canonical manual lead workspace creation with `raw/source.md`
-        completed_notes:
-          - Added `job_hunt_copilot.linkedin_scraping` plus repo-local `bin/jhc-linkedin-ingest` and `scripts/linkedin_scraping/ingest_manual_capture.py` so the local upstream receiver can ingest `paste/paste.txt` or browser-style capture-bundle JSON into a canonical lead workspace.
-          - Manual-capture bundles now preserve selected-text versus tray-review submission-path metadata in `capture-bundle.json`, while paste fallback still copies the inbox bytes unchanged into `linkedin-scraping/runtime/leads/<company>/<role>/<lead_id>/raw/source.md`.
-          - Accepted manual leads now create an immediate canonical `linkedin_leads` row, persist `capture-bundle.json`, and register `lead_raw_source` in `artifact_records` without stepping into split/review or downstream posting creation yet.
-        validation:
-          - "`python3.11 -m pytest tests/test_linkedin_scraping.py`"
-          - "`python3.11 -m pytest tests/test_bootstrap.py tests/test_artifacts.py tests/test_linkedin_scraping.py`"
-          - "`python3.11 -m pytest`"
-          - "`bin/jhc-linkedin-ingest --help`"
-      - id: BA-04-S2
-        name: Rule-based split and review pipeline
-        owner_role: ingestion-engineer
-        status: completed
-        dependencies:
-          - BA-04-S1
-        deliverables:
-          - deterministic source splitting into `post.md`, `jd.md`, and `poster-profile.md`
-          - "`source-split.yaml`, `source-split-review.yaml`, and blocked-manifest behavior"
-          - ambiguity handling that preserves raw source unchanged
-        completed_notes:
-          - Added `derive_manual_lead_context` plus the repo-local `bin/jhc-linkedin-ingest derive --lead-id ...` path so manual leads can run a deterministic first pass over canonical `raw/source.md` without mutating the raw evidence.
-          - Manual lead workspaces now publish `post.md`, `jd.md`, and `poster-profile.md` when evidence exists, clean obvious post or profile chrome conservatively, and persist `source-split.yaml`, `source-split-review.yaml`, and `lead-manifest.yaml` with blocked-or-ready handoff metadata.
-          - Repeated split-review reruns now replace the lead-local `lead_split_metadata`, `lead_split_review`, and `lead_manifest` registry rows idempotently instead of accumulating duplicate `artifact_records`.
-        validation:
-          - "`python3.11 -m pytest tests/test_linkedin_scraping.py`"
-          - "`python3.11 -m pytest tests/test_bootstrap.py tests/test_artifacts.py tests/test_linkedin_scraping.py`"
-          - "`python3.11 -m pytest`"
-          - "`bin/jhc-linkedin-ingest --help`"
-      - id: BA-04-S3
-        name: Manual lead entity materialization
-        owner_role: ingestion-engineer
-        status: completed
-        dependencies:
-          - BA-04-S2
-        deliverables:
-          - canonical `linkedin_leads`, `job_postings`, `contacts`, and relationship-row creation from reviewed manual leads
-          - "`lead-manifest.yaml` updates that expose created entity ids plus `resume_tailoring` readiness"
-          - idempotent reruns for manual posting/contact materialization
-        completed_notes:
-          - Added `materialize_manual_lead_entities` plus the repo-local `bin/jhc-linkedin-ingest materialize --lead-id ...` flow so reviewed manual leads can materialize canonical postings and poster contact links without duplicating relationship rows on rerun.
-          - Materialized postings now persist `posting_status = sourced`, a conservative `posting_identity_key`, the relative `jd_artifact_path`, and lead linkage through `lead_id`, while materialized poster contacts now infer recipient typing from captured title evidence, including the first-class `founder` value.
-          - Manual `lead-manifest.yaml` now upgrades from `posting_materialization` readiness to include actual created entity ids plus `handoff_targets.resume_tailoring.ready = true` whenever a canonical `job_posting_id` exists.
-        validation:
-          - "`python3.11 -m py_compile job_hunt_copilot/linkedin_scraping.py tests/test_linkedin_scraping.py`"
-          - "`python3.11 -m pytest tests/test_linkedin_scraping.py`"
-          - "`python3.11 -m pytest tests/test_bootstrap.py tests/test_artifacts.py tests/test_linkedin_scraping.py`"
-          - "`python3.11 -m pytest`"
-          - "`bin/jhc-linkedin-ingest --help`"
-          - "`bin/jhc-linkedin-ingest materialize --help`"
-      - id: BA-04-S4
-        name: Lead refresh history and workspace snapshotting
-        owner_role: ingestion-engineer
-        status: completed
-        dependencies:
-          - BA-04-S3
-        deliverables:
-          - refresh-in-place workspace updates with history snapshots
-          - preserved prior source or review snapshots under `history/` without regressing downstream canonical state
-          - honest manifest updates for refreshed manual leads
-        completed_notes:
-          - Existing manual lead ingestion no longer silently no-ops on rerun; matching manual-capture submissions now refresh the live workspace in place, and paste fallback can refresh an existing lead explicitly through `--lead-id`.
-          - Refreshes snapshot the replaced lead-local source and review artifacts under `history/`, clear stale live `post.md` or `jd.md` or split-review files, and delete stale split artifact registry rows so the live workspace stays honest.
-          - When a refreshed lead already has a canonical posting, the old live `jd.md` is preserved under the history snapshot and the posting row is repointed to that snapped artifact path before the live workspace is cleared for the new source.
-        validation:
-          - "`python3.11 -m py_compile job_hunt_copilot/linkedin_scraping.py`"
-          - "`python3.11 -m pytest tests/test_linkedin_scraping.py`"
-          - "`python3.11 -m pytest`"
-          - "`bin/jhc-linkedin-ingest --help`"
-          - "`bin/jhc-linkedin-ingest paste --help`"
-
-  - id: BA-05
-    name: Gmail alert intake
-    status: completed
-    owner_role: ingestion-engineer
-    phase: P2
-    dependencies:
-      - BA-01
-      - BA-04
-    objective: Build agent-invoked Gmail LinkedIn job-alert collection, parsing, JD recovery, and autonomous lead fan-out.
-    acceptance_focus:
-      - External integrations and bootstrap configuration
-      - LinkedIn Scraping acceptance
-      - End-to-end acceptance
-    done_when:
-      - collected Gmail alert units are persisted idempotently before lead fan-out
-      - parsed alert cards create autonomous lead workspaces with JD recovery provenance
-      - autonomous lead dedupe, mismatch review, and blocked-no-jd behavior are queryable
-    completed_notes:
-      - The repo now has a bounded Gmail collection stage under `job_hunt_copilot.gmail_alerts`, exposed through `bin/jhc-linkedin-ingest gmail-batch`, that persists normalized collected-email units and parsed card artifacts before any lead workspace fan-out occurs.
-      - Plain-text LinkedIn alert digests are now the primary parse input, HTML-derived fallback only runs when the plain-text body is unavailable or unusable, and zero-card cases remain retained with machine-readable review-threshold metadata for later review surfaces.
-      - "`bin/jhc-linkedin-ingest gmail-batch` now runs the full bounded autonomous intake path: it fans retained parsed cards into canonical lead workspaces, copies lead-local `alert-email.md`, publishes `alert-card.json`, `jd-fetch.json`, and `lead-manifest.yaml`, and records conservative lead dedupe plus `incomplete` or `blocked_no_jd` state without fabricating manual split artifacts."
-      - Multi-source autonomous JD recovery now merges non-conflicting additions into canonical `jd.md`, prefers LinkedIn-derived content for conflicting sections, surfaces material Gmail-card versus recovered-JD identity mismatches for review, and tolerates normalization-only differences such as legal-suffix company variants or `SWE II` versus `Software Engineer II`.
-    near_term_slices:
-      - id: BA-05-S1
-        name: Gmail collection unit and parser
-        owner_role: ingestion-engineer
-        status: completed
-        deliverables:
-          - Gmail collection storage keyed by message id
-          - plain-text-first LinkedIn alert parser with multi-card fan-out
-          - zero-card retention and threshold-based review triggering
-        completed_notes:
-          - Added `job_hunt_copilot.gmail_alerts` with normalized Gmail-alert message and batch contracts, timestamp-keyed collection-path helpers, and idempotent collection behavior keyed by `gmail_message_id`.
-          - Each collected Gmail message now persists `email.md`, `email.json`, and retained `job-cards.json` under `linkedin-scraping/runtime/gmail/{YYYYMMDDTHHMMSSZ}-{gmail_message_id}/`, with multi-card parsing from the plain-text digest and HTML-derived fallback only when the plain-text body is unusable.
-          - Zero-card Gmail collections now remain retained without creating lead workspaces and carry machine-readable threshold metadata that triggers review when a run exceeds 3 zero-card messages or unresolved zero-card history exceeds 3.
-        validation:
-          - "`python3.11 -m py_compile job_hunt_copilot/gmail_alerts.py job_hunt_copilot/linkedin_scraping.py job_hunt_copilot/paths.py tests/test_gmail_alerts.py`"
-          - "`python3.11 -m pytest tests/test_gmail_alerts.py`"
-          - "`python3.11 -m pytest`"
-          - "`bin/jhc-linkedin-ingest gmail-batch --help`"
-      - id: BA-05-S2
-        name: Autonomous lead fan-out and JD recovery
-        owner_role: ingestion-engineer
-        status: completed
-        dependencies:
-          - BA-05-S1
-        deliverables:
-          - per-card lead workspace creation and dedupe by job id or normalized URL
-          - LinkedIn guest or accepted-source JD recovery into canonical `jd.md`
-          - autonomous lead lifecycle states including `incomplete` and `blocked_no_jd`
-        completed_notes:
-          - Extended `job_hunt_copilot.linkedin_scraping` with a Gmail batch wrapper that preserves the collection-first rule, then fans each created parsed card into a canonical lead workspace only after the collected-email unit exists.
-          - Autonomous Gmail leads now persist lead-local `alert-email.md`, `alert-card.json`, `jd-fetch.json`, and `lead-manifest.yaml`, dedupe by `job_id` first and otherwise by the normalized URL or synthetic fallback identity, and register the new lead-local artifacts in `artifact_records`.
-          - JD recovery now accepts bounded accepted-source fixture input, persists canonical `jd.md` when a usable source is present, records best-effort company-resolution provenance, and otherwise leaves the lead queryably blocked as `blocked_no_jd` without pretending manual split artifacts exist.
-        validation:
-          - "`python3.11 -m py_compile job_hunt_copilot/linkedin_scraping.py job_hunt_copilot/paths.py tests/test_gmail_alerts.py`"
-          - "`python3.11 -m pytest tests/test_gmail_alerts.py`"
-          - "`python3.11 -m pytest tests/test_linkedin_scraping.py`"
-          - "`python3.11 -m pytest`"
-          - "`bin/jhc-linkedin-ingest gmail-batch --help`"
-      - id: BA-05-S3
-        name: JD provenance merge and mismatch review
-        owner_role: ingestion-engineer
-        status: completed
-        dependencies:
-          - BA-05-S2
-        deliverables:
-          - merged JD persistence with LinkedIn conflict precedence
-          - company or role mismatch review logic with tolerated normalization differences
-          - autonomous lead manifest and posting materialization handoff updates
-        completed_notes:
-          - Extended Gmail lead materialization so multiple JD candidates now merge into canonical `jd.md`, preserving non-conflicting additions while keeping LinkedIn-derived content authoritative for conflicting sections.
-          - Added queryable JD provenance metadata under `jd-fetch.json` and `lead-manifest.yaml`, including contributing source summaries, merge status, conflict-resolution policy, and identity-reconciliation status.
-          - Added material mismatch review blocking for posting-materialization and resume-tailoring handoff targets while tolerating normalization-only company or role differences, and repaired the normalized-URL fallback identity path so missing-`job_id` autonomous cards dedupe the way the board already described.
-        validation:
-          - "`python3.11 -m py_compile job_hunt_copilot/gmail_alerts.py job_hunt_copilot/linkedin_scraping.py tests/test_gmail_alerts.py`"
-          - "`python3.11 -m pytest tests/test_gmail_alerts.py`"
-          - "`python3.11 -m pytest tests/test_linkedin_scraping.py`"
-          - "`python3.11 -m pytest`"
-          - "`bin/jhc-linkedin-ingest gmail-batch --help`"
-
-  - id: BA-06
-    name: Resume tailoring runtime
-    status: completed
+  - id: RT-01
+    name: Static foundations
+    status: in_progress
     owner_role: tailoring-engineer
-    phase: P3
-    dependencies:
-      - BA-01
-      - BA-04
-      - BA-05
-    objective: Build eligibility, workspace bootstrap, structured tailoring steps, finalize, and mandatory agent review.
+    phase: RT-P1
+    objective: Build the static data, base templates, and profile inputs that the new tailoring runtime depends on.
     acceptance_focus:
-      - Resume Tailoring behavior
-      - Machine handoff contracts and canonical state
-      - Current-build safety, privacy, and evidence-grounding boundaries
+      - Resume Tailoring runtime
+      - Evidence-grounded tailoring
+      - Deterministic artifact generation
     done_when:
-      - eligible postings create tailoring workspaces with the required artifacts and metadata
-      - finalize enforces scope, compile safety, and one-page output
-      - tailoring runs persist from bootstrap through agent approval or explicit override history
-    completed_notes:
-      - BA-06-S1 is complete: job_hunt_copilot.resume_tailoring now bootstraps from job_posting_id, evaluates hard eligibility against the persisted posting-linked jd.md, writes applications/{company}/{role}/eligibility.yaml, registers that artifact in artifact_records, and records explicit unknown handling instead of failing closed when hard-eligibility language is absent.
-      - The slice also short-circuits hard-ineligible postings honestly, creates or reuses the first resume_tailoring_runs row with canonical timestamps plus workspace linkage for bootstrap-ready postings, and records state-transition audit rows for posting hard-stop decisions plus run creation.
-      - BA-06-S2 is complete: eligible postings now materialize their tailoring workspace under `resume-tailoring/output/tailored/{company}/{role}/` with `meta.yaml`, mirrored `jd.md`, optional mirrored `post.md` / `poster-profile.md`, `resume.tex`, `scope-baseline.resume.tex`, component-local input mirrors, and Step 3 through Step 7 intelligence scaffold artifacts.
-      - Workspace bootstrap remains DB-first by `job_posting_id` plus persisted `jd.md`, publishes `meta.yaml` through the shared artifact-contract envelope, backfills older run rows that predate workspace files, and preserves existing workspace edits when the active run is merely being reused.
-      - BA-06-S3 is complete: the tailoring runtime now replaces those scaffold files with deterministic Step 3 through Step 7 artifacts, maps JD signals to master-profile evidence honestly, applies the Step 6 payload only inside the allowed tailoring boundary, compiles `Achyutaram Sonti.pdf`, verifies one-page output, and transitions successful runs plus postings into `resume_review_pending`.
-      - BA-06-S4 is complete: the tailoring runtime now persists mandatory review decisions under `resume-tailoring/output/tailored/{company}/{role}/review/{resume_tailoring_run_id}/`, transitions `resume_review_pending` runs into `approved` or `rejected`, advances approved postings into `requires_contacts` or `ready_for_outreach`, records owner overrides with prior-decision context in `override_events`, and snapshots completed run workspaces before retailoring so prior rows keep immutable history references.
+      - "`job_hunt_copilot/tailoring/` package scaffold exists and can load redesign data files"
+      - "adjacency map, aliases, theme terms, evidence pools, skill templates, and summary templates exist under `assets/resume-tailoring/data/`"
+      - Template A and Template B base resumes exist
+      - the source profile includes Job Hunt Copilot evidence needed by the redesign
+      - targeted tests for keyword lookup, theme classification, and bullet-pool loading pass
     near_term_slices:
-      - id: BA-06-S1
-        name: Eligibility and tailoring-run lifecycle
+      - id: RT-01-S1
+        name: Task 1 - Technology adjacency map and term aliases
         owner_role: tailoring-engineer
-        status: completed
+        status: pending
         deliverables:
-          - hard-eligibility evaluation with evidence-grounded audit artifact
-          - "`resume_tailoring_runs` lifecycle bootstrap and posting gating"
-          - current global greater-than-5-years experience threshold and explicit unknown handling
-        completed_notes:
-          - Added job_hunt_copilot.resume_tailoring with job_posting_id-rooted bootstrap helpers, regex-bounded hard-eligibility evaluation, soft sponsorship flagging, explicit unknown handling, base-track selection, and idempotent initial run reuse for already-bootstrapped postings.
-          - Added canonical applications/{company}/{role}/eligibility.yaml publication plus artifact_records replacement semantics for the current eligibility artifact, and recorded state_transition_events for both hard-ineligible posting changes and initial tailoring-run creation.
-          - Honest bootstrap gating now blocks missing jd.md or missing base-resume assets without fabricating run state, while hard-ineligible postings stop before resume_tailoring_runs creation per the current PRD rule.
+          - "`assets/resume-tailoring/data/adjacency_map.yaml`"
+          - "`assets/resume-tailoring/data/term_aliases.yaml`"
+          - "`job_hunt_copilot/tailoring/keyword_system.py` adjacency and alias loading support"
+          - "`tests/test_keyword_system.py`"
         validation:
-          - "`python3.11 -m py_compile job_hunt_copilot/resume_tailoring.py tests/test_resume_tailoring.py job_hunt_copilot/paths.py`"
-          - "`python3.11 -m pytest tests/test_resume_tailoring.py`"
-          - "`python3.11 -m pytest`"
-      - id: BA-06-S2
-        name: Workspace bootstrap and step artifact scaffolding
+          - "`python3.11 -m pytest tests/test_keyword_system.py -q`"
+      - id: RT-01-S2
+        name: Task 2 - Theme term sets and classifier
         owner_role: tailoring-engineer
-        status: completed
+        status: pending
         dependencies:
-          - BA-06-S1
+          - RT-01-S1
         deliverables:
-          - per-posting workspace with `meta.yaml`, mirrored context, baseline snapshot, and Step 3-7 artifact slots
-          - base resume track selection and persisted scope constraints
-          - DB-first linkage from `job_posting_id` rather than raw-lead dependence
-        completed_notes:
-          - Extended `job_hunt_copilot.resume_tailoring` so a bootstrap-ready posting now materializes `resume-tailoring/output/tailored/{company}/{role}/` with `resume.tex`, `scope-baseline.resume.tex`, mirrored `jd.md`, optional mirrored `post.md` / `poster-profile.md`, and the `intelligence/` scaffold for Step 3 through Step 7 artifacts.
-          - Added shared-contract `meta.yaml` publication with `tailoring_meta` artifact registration, persisted scope constraints, selected base track, absolute context references, workspace linkage, and downstream send-linkage metadata.
-          - Added component-local `resume-tailoring/input/profile.md` and `resume-tailoring/input/job-postings/{company}-{role}.md` mirrors, legacy-run workspace backfill, and non-destructive active-run reuse so repeated bootstrap calls do not overwrite existing workspace edits or generated intelligence files.
+          - "`assets/resume-tailoring/data/theme_terms.yaml`"
+          - "`job_hunt_copilot/tailoring/theme_classifier.py`"
+          - "`tests/test_theme_classifier.py`"
         validation:
-          - "`python3.11 -m py_compile job_hunt_copilot/resume_tailoring.py job_hunt_copilot/paths.py tests/test_resume_tailoring.py`"
-          - "`python3.11 -m pytest tests/test_resume_tailoring.py`"
-          - "`python3.11 -m pytest`"
-      - id: BA-06-S3
-        name: Structured edit generation and finalize verification
+          - "`python3.11 -m pytest tests/test_theme_classifier.py -q`"
+      - id: RT-01-S3
+        name: Task 3 - Experience bullet evidence pool
         owner_role: tailoring-engineer
-        status: completed
+        status: pending
         dependencies:
-          - BA-06-S2
+          - RT-01-S2
         deliverables:
-          - Step 3 through Step 7 intelligence generation with honest evidence mapping
-          - structured Step 6 edit payload, scope guard, and claim discipline
-          - compile-safe finalize path producing one-page `Achyutaram Sonti.pdf`
-        completed_notes:
-          - Extended `job_hunt_copilot.resume_tailoring` with deterministic Step 3 through Step 7 generation that reads the persisted workspace `jd.md`, master profile mirror, and current `resume.tex`, then writes structured JD signals, evidence matches or gaps, controlled-elaboration markdown, Step 6 candidate edits, and non-pending Step 7 verification output.
-          - Added guarded finalize helpers that apply the selected Step 6 payload to workspace `resume.tex`, validate the result against `scope-baseline.resume.tex`, compile the canonical `Achyutaram Sonti.pdf`, verify one-page output with `pdfinfo`, and persist run plus posting transitions into `tailored` / `resume_review_pending` only on success.
-          - Added focused tailoring tests that exercise generated artifacts, real LaTeX finalize success, and explicit scope-violation rejection before compile so the slice validates both the happy path and honest failure behavior.
-        validation:
-          - "`python3.11 -m py_compile job_hunt_copilot/resume_tailoring.py tests/test_resume_tailoring.py`"
-          - "`python3.11 -m pytest tests/test_resume_tailoring.py`"
-          - "`python3.11 -m pytest`"
-      - id: BA-06-S4
-        name: Mandatory agent review and override handling
+          - "`assets/resume-tailoring/data/bullet_pool_experience.yaml`"
+          - "`job_hunt_copilot/tailoring/bullet_pool.py` experience loading support"
+      - id: RT-01-S4
+        name: Task 4 - Project evidence atoms
         owner_role: tailoring-engineer
-        status: completed
+        status: pending
         dependencies:
-          - BA-06-S3
+          - RT-01-S3
         deliverables:
-          - "`resume_review_pending` to `approved` review transition"
-          - retailoring history preservation across multiple runs
-          - override persistence with prior-decision context and timestamps
-        completed_notes:
-          - Extended `job_hunt_copilot.resume_tailoring` with persisted mandatory review decision helpers that move finalized runs from `resume_review_pending` into `approved` or `rejected`, publish per-run review artifacts, and republish `meta.yaml` with the latest review-gate context.
-          - Approved review decisions now evaluate the current posting-contact plus working-email prerequisites and move postings directly into `requires_contacts` or `ready_for_outreach`, while rejection returns the posting to `tailoring_in_progress` for the next bounded retailoring attempt.
-          - Owner override handling now records prior-decision context, override reason, and timestamp in canonical `override_events`, and bootstrap snapshots completed run workspaces into `resume-tailoring/output/history/` before creating a new run so previous history rows keep immutable workspace, meta, and PDF references.
-        validation:
-          - "`python3.11 -m py_compile job_hunt_copilot/resume_tailoring.py job_hunt_copilot/paths.py tests/test_resume_tailoring.py`"
-          - "`python3.11 -m pytest tests/test_resume_tailoring.py`"
-          - "`python3.11 -m pytest`"
+          - "`assets/resume-tailoring/data/bullet_pool_projects.yaml`"
+          - project evidence-atom loading and query helpers
+      - id: RT-01-S5
+        name: Task 5 - Summary and skill category templates
+        owner_role: tailoring-engineer
+        status: pending
+        dependencies:
+          - RT-01-S2
+        deliverables:
+          - "`assets/resume-tailoring/data/summary_templates.yaml`"
+          - "`assets/resume-tailoring/data/skill_categories.yaml`"
+      - id: RT-01-S6
+        name: Task 6 - Template A and Template B base resumes
+        owner_role: tailoring-engineer
+        status: pending
+        dependencies:
+          - RT-01-S5
+        deliverables:
+          - "`assets/resume-tailoring/base/projects-first/base-resume.tex`"
+          - "`assets/resume-tailoring/base/experience-first/base-resume.tex`"
+      - id: RT-01-S7
+        name: Task 7 - Update master profile with Job Hunt Copilot
+        owner_role: tailoring-engineer
+        status: pending
+        dependencies:
+          - RT-01-S3
+        deliverables:
+          - "`resume-tailoring/input/profile.md`"
+          - "`assets/resume-tailoring/profile.md`"
 
-  - id: BA-07
-    name: People search and discovery
-    status: completed
-    owner_role: outreach-engineer
-    phase: P4
+  - id: RT-02
+    name: Classification and decision core
+    status: pending
+    owner_role: tailoring-engineer
+    phase: RT-P2
     dependencies:
-      - BA-01
-      - BA-06
-    objective: Build Apollo-first people search, shortlist materialization, enrichment, recipient profile capture, and email discovery.
+      - RT-01
+    objective: Replace the old track or focus routing with deterministic JD sectioning, signal weighting, theme scoring, and theme/template decision artifacts.
     acceptance_focus:
-      - Email Discovery behavior
-      - State transitions and relationship records
-      - Current-build orchestration remains sequential
+      - JD section parsing
+      - Theme selection
+      - Deterministic step artifacts
     done_when:
-      - Apollo-first company-scoped search persists broad results and shortlisted canonical contacts
-      - selective enrichment and recipient-profile capture exist for shortlisted contacts
-      - discovery cascade, provider budgets, and exhaustion or unresolved review surfaces are queryable
-    completed_notes:
-      - "BA-07-S1 is complete: `job_hunt_copilot.email_discovery` now boots from approved `requires_contacts` postings, resolves Apollo company identity when available, persists broad `people_search_result.json`, and materializes only the capped shortlist into canonical `contacts` plus `job_posting_contacts`."
-      - "BA-07-S2 is complete: shortlisted contacts can now run selective Apollo enrichment, persist optional `recipient_profile.json` snapshots when LinkedIn public-profile extraction succeeds, drop terminal sparse dead ends from canonical shortlist state, and publish the contact-level readiness signals that now feed BA-08 send-set planning."
-      - "BA-07-S3 is complete: linked contacts without usable emails now run the ordered `prospeo -> getprospect -> hunter` cascade with normalized no-match or failure handling, reusable working-email shortcuts for clearly identified contacts, bounce-aware retry behavior, canonical `discovery_attempts`, provider budget state plus events, `discovery_result.json` handoff artifacts, and reviewable unresolved or exhausted outcomes through the existing SQLite views."
+      - "Steps 1 through 5 are implemented under `job_hunt_copilot/tailoring/steps/`"
+      - "Garmin Aviation classifies as `frontend_web`"
+      - step artifacts reflect the new 16-step contract instead of the legacy Step 3 through Step 7 model
     near_term_slices:
-      - id: BA-07-S1
-        name: Apollo search and shortlist materialization
-        owner_role: outreach-engineer
-        status: completed
-        deliverables:
-          - company resolution and broad `people_search_result.json` persistence
-          - shortlist selection capped to the current policy and canonical contact/link creation
-          - recipient-type inference and relationship-state bootstrap
-        completed_notes:
-          - "Added `job_hunt_copilot.email_discovery` with DB-first bootstrap from approved `requires_contacts` postings, Apollo company-resolution hooks, tolerant broad-search normalization, and persisted `discovery/output/{company}/{role}/people_search_result.json` artifacts."
-          - Added deterministic shortlist selection capped at 6 contacts across recruiter, manager-adjacent, and engineer buckets, while leaving non-shortlisted broad-search candidates artifact-only.
-          - "Added shortlist-time canonical `contacts` and `job_posting_contacts` materialization, including reuse of matching contacts, `identified -> shortlisted` link promotion, and sparse-name preservation when Apollo returns obfuscated identities."
-        validation:
-          - "`python3.11 -m py_compile job_hunt_copilot/email_discovery.py tests/test_email_discovery.py`"
-          - "`python3.11 -m pytest tests/test_email_discovery.py`"
-          - "`python3.11 -m pytest`"
-      - id: BA-07-S2
-        name: Contact enrichment and recipient profiles
-        owner_role: outreach-engineer
-        status: completed
+      - id: RT-02-S1
+        name: Task 8 - Steps 1 through 3
+        owner_role: tailoring-engineer
+        status: pending
         dependencies:
-          - BA-07-S1
+          - RT-01
         deliverables:
-          - selective enrichment for shortlisted contacts only
-          - optional `recipient_profile.json` capture from public LinkedIn context
-          - dead-end shortlist removal without losing broad search artifacts
-        completed_notes:
-          - Added shortlisted-contact enrichment in `job_hunt_copilot.email_discovery`, with Apollo `people/match` normalization only for canonical `shortlisted` posting-contact pairs that still need clearer identity, LinkedIn URL recovery, or a usable work email.
-          - Added best-effort `recipient_profile.json` persistence under `discovery/output/{company}/{role}/recipient-profiles/{contact_id}/`, including artifact registration and non-blocking LinkedIn public-profile extraction so sparse enrichment can still continue into later discovery without a profile snapshot.
-          - Added terminal dead-end cleanup for unusable sparse shortlist contacts, plus `identified -> working_email_found` contact promotion and `requires_contacts -> ready_for_outreach` posting promotion when shortlisted-contact emails now satisfy the minimum current outreach prerequisites.
-        validation:
-          - "`python3.11 -m py_compile job_hunt_copilot/email_discovery.py job_hunt_copilot/paths.py tests/test_email_discovery.py`"
-          - "`python3.11 -m pytest tests/test_email_discovery.py`"
-          - "`python3.11 -m pytest`"
-      - id: BA-07-S3
-        name: Email discovery cascade and budget tracking
-        owner_role: outreach-engineer
-        status: completed
+          - "`step_01_jd_sections.py`"
+          - "`step_02_signals_raw.py`"
+          - "`step_03_signals_classified.py`"
+          - pipeline artifact path support for step-01 through step-03
+      - id: RT-02-S2
+        name: Task 9 - Steps 4 and 5
+        owner_role: tailoring-engineer
+        status: pending
         dependencies:
-          - BA-07-S2
+          - RT-02-S1
         deliverables:
-          - Prospeo to GetProspect to Hunter cascade with normalized outcomes
-          - provider-budget state and budget-event persistence
-          - working-email reuse, bounce-aware retries, and unresolved or bounced review views
-        completed_notes:
-          - Extended `job_hunt_copilot.email_discovery` with `run_email_discovery_for_contact`, default Prospeo/GetProspect/Hunter provider clients, provider-specific no-match normalization, contact-scoped `discovery_result.json` publication, and one-row-per-cascade `discovery_attempts` persistence.
-          - Added canonical `provider_budget_state` and `provider_budget_events` updates for provider usage, rate-limit or quota outcomes, domain-unresolved skips, and bounced-provider retry behavior, plus a query helper for derived combined known remaining credits.
-          - Added working-email reuse for clearly identified contacts, bounce-aware retry handling that skips the provider tied to a bounced discovery and rejects the same bounced email if another provider returns it again, and contact or posting-contact exhaustion state that keeps unresolved review surfaces queryable without losing canonical linkage.
-        validation:
-          - "`python3.11 -m py_compile job_hunt_copilot/email_discovery.py tests/test_email_discovery.py`"
-          - "`python3.11 -m pytest tests/test_email_discovery.py`"
-          - "`python3.11 -m pytest`"
+          - "`step_04_theme_scores.py`"
+          - "`step_05_theme_decision.py`"
+          - Template A or B routing logic
 
-  - id: BA-08
-    name: Drafting and sending
-    status: completed
-    owner_role: outreach-engineer
-    phase: P4
+  - id: RT-03
+    name: Evidence selection and content generation
+    status: pending
+    owner_role: tailoring-engineer
+    phase: RT-P3
     dependencies:
-      - BA-01
-      - BA-06
-      - BA-07
-    objective: Build send-set assembly, role-targeted draft generation, pacing-aware sending, and outreach message persistence.
+      - RT-02
+    objective: Build evidence mapping, project selection, bullet allocation, summary composition, skills composition, and tech-stack composition.
     acceptance_focus:
-      - Email Drafting and Sending behavior
-      - Failure, retry, and idempotency behavior
-      - Current-build safety, privacy, and evidence-grounding boundaries
+      - Evidence-grounded tailoring
+      - JD-content fit
+      - Bullet allocation
     done_when:
-      - ready send sets are assembled only after the current prerequisite contacts are fully ready
-      - drafts and send artifacts persist with canonical message records
-      - autonomous sending enforces repeat-contact guardrails and company pacing rules
-    completed_notes:
-      - "BA-08-S1 is complete: `job_hunt_copilot.outreach` now computes the current autonomous role-targeted send set, excludes repeat-outreach contacts from the automatic path, and exposes queryable pacing decisions for later draft and send execution."
-      - "BA-08-S2 is complete: `job_hunt_copilot.outreach` now generates deterministic role-targeted and general-learning drafts from persisted posting, tailoring, and recipient context, persists canonical `outreach_messages` rows plus stable per-message `email_draft.md` and `send_result.json` artifacts, mirrors the latest role-targeted draft/send artifacts at the posting workspace root, and advances postings plus linked contacts into `outreach_in_progress` when drafting begins."
-      - "BA-08-S3 is complete: `job_hunt_copilot.outreach` now executes the active drafted outreach wave through a provider-injected send runner, persists canonical `sent_at` plus thread and delivery identifiers, blocks automatic resend attempts when prior sent history or ambiguous send state makes the next action unsafe, advances successfully sent links into `outreach_done`, and closes postings into `completed` once the active wave reaches terminal sent or review-blocked states."
+      - Steps 6 through 14 are implemented and produce auditable artifacts
+      - content generation is driven by evidence pools instead of the old backend-heavy fallback path
+      - the summary, skills, tech stacks, and selected bullets reflect the chosen theme and layout mode
     near_term_slices:
-      - id: BA-08-S1
-        name: Send-set readiness and pacing selection
-        owner_role: outreach-engineer
-        status: completed
-        deliverables:
-          - current send-set formation rules across recruiter, manager-adjacent, and engineer contacts
-          - posting readiness evaluation for `requires_contacts` versus `ready_for_outreach`
-          - company-level pacing windows and randomized send gaps
-        completed_notes:
-          - Added `job_hunt_copilot.outreach` with DB-first role-targeted send-set planning over canonical `job_postings`, `job_posting_contacts`, `contacts`, and prior `outreach_messages`, selecting up to three contacts with recruiter, manager-adjacent, and engineer coverage plus deterministic fallback ordering.
-          - Replaced the earlier single-tier `ready_for_outreach` shortcut in both `job_hunt_copilot.email_discovery` and `job_hunt_copilot.resume_tailoring` so postings now advance only when every contact in the currently selected automatic send set has a usable email, while repeat-outreach contacts are surfaced for review instead of silently blocking or auto-sending.
-          - Added queryable company-level pacing calculations that enforce the current 3-send same-company daily cap, derive deterministic randomized 6-to-10-minute inter-send gaps, and expose the earliest allowed automatic send time for the later BA-08 send runtime.
-        validation:
-          - "`python3.11 -m py_compile job_hunt_copilot/outreach.py job_hunt_copilot/email_discovery.py job_hunt_copilot/resume_tailoring.py tests/test_outreach.py tests/test_resume_tailoring.py`"
-          - "`python3.11 -m pytest tests/test_outreach.py tests/test_email_discovery.py tests/test_resume_tailoring.py`"
-          - "`python3.11 -m pytest`"
-      - id: BA-08-S2
-        name: Draft generation and artifact persistence
-        owner_role: outreach-engineer
-        status: completed
+      - id: RT-03-S1
+        name: Task 10 - Steps 6 and 7
+        owner_role: tailoring-engineer
+        status: pending
         dependencies:
-          - BA-08-S1
+          - RT-02-S2
         deliverables:
-          - role-targeted and general-learning draft generation paths
-          - "`email_draft.md` and `send_result.json` publication with stable IDs"
-          - persisted final subject, body, and optional HTML body on `outreach_messages`
-        completed_notes:
-          - Extended `job_hunt_copilot.outreach` with deterministic draft-generation entrypoints for send-set-selected role-targeted contacts and contact-rooted general-learning outreach, grounded in persisted posting JD context, tailoring artifacts, sender profile data, and optional `recipient_profile.json` snapshots when present.
-          - Added canonical `outreach_messages` persistence for generated and failed draft attempts, stable per-message artifact publication under `outreach/output/.../messages/<outreach_message_id>/`, and role-targeted workspace-root mirrors for the latest `email_draft.md` plus `send_result.json`.
-          - Added drafting-begin state transitions that move `job_postings`, `contacts`, and `job_posting_contacts` into `outreach_in_progress`, while preserving partial-batch success when one contact's draft generation fails and surfacing that failure through a canonical failed `send_result.json`.
-        validation:
-          - "`python3.11 -m py_compile job_hunt_copilot/outreach.py job_hunt_copilot/paths.py tests/test_outreach.py`"
-          - "`python3.11 -m pytest tests/test_outreach.py`"
-          - "`python3.11 -m pytest`"
-      - id: BA-08-S3
-        name: Send execution and repeat-outreach guardrails
-        owner_role: outreach-engineer
-        status: completed
+          - "`step_06_project_scores.py`"
+          - "`step_07_project_selection.py`"
+      - id: RT-03-S2
+        name: Task 11 - Steps 8 and 9
+        owner_role: tailoring-engineer
+        status: pending
         dependencies:
-          - BA-08-S2
+          - RT-03-S1
         deliverables:
-          - send execution with canonical send timestamps and provider or thread metadata
-          - ambiguous-send under-sending policy and repeat-contact review routing
-          - per-contact and per-posting state advancement into outreach-in-progress and completed states
-        completed_notes:
-          - Added provider-injected send execution over the active drafted outreach wave so the runtime now loads the latest drafted message per in-wave contact, persists canonical `sent_at` plus thread or delivery identifiers, and leaves later contacts delayed behind the existing randomized inter-send-gap and company-cap pacing rules instead of sending the whole wave back-to-back.
-          - Added repeat-outreach and ambiguous-send guardrails that block automatic resend when prior sent history, inconsistent send metadata, unreadable `send_result.json`, or multiple active messages make the next action unsafe, while persisting blocked `send_result.json` outcomes and exhausting the posting-contact link for review-only cases rather than risking duplicate outreach.
-          - Added terminal wave completion handling that advances successfully sent contacts into `sent`, marks sent posting-contact links as `outreach_done`, and promotes the posting into `completed` once the active drafted wave has no remaining generated messages outside sent or review-blocked terminal states.
-        validation:
-          - "`python3.11 -m py_compile job_hunt_copilot/outreach.py tests/test_outreach.py`"
-          - "`python3.11 -m pytest tests/test_outreach.py`"
-          - "`python3.11 -m pytest tests/test_outreach.py tests/test_email_discovery.py tests/test_resume_tailoring.py`"
-          - "`python3.11 -m pytest`"
+          - "`step_08_experience_evidence.py`"
+          - "`step_09_project_evidence.py`"
+      - id: RT-03-S3
+        name: Task 12 - Step 10 gap analysis
+        owner_role: tailoring-engineer
+        status: pending
+        dependencies:
+          - RT-03-S2
+        deliverables:
+          - "`step_10_gap_analysis.py`"
+      - id: RT-03-S4
+        name: Task 13 - Step 11 bullet ranking and allocation
+        owner_role: tailoring-engineer
+        status: pending
+        dependencies:
+          - RT-03-S3
+        deliverables:
+          - "`step_11_bullet_allocation.py`"
+      - id: RT-03-S5
+        name: Task 14 - Steps 12 through 14
+        owner_role: tailoring-engineer
+        status: pending
+        dependencies:
+          - RT-03-S4
+        deliverables:
+          - "`step_12_summary.py`"
+          - "`step_13_skills.py`"
+          - "`step_14_tech_stacks.py`"
 
-  - id: BA-09
-    name: Delivery feedback and review surfaces
-    status: completed
-    owner_role: outreach-engineer
-    phase: P4
+  - id: RT-04
+    name: Assembly and verification
+    status: pending
+    owner_role: tailoring-engineer
+    phase: RT-P4
     dependencies:
-      - BA-01
-      - BA-02
-      - BA-08
-    objective: Build mailbox feedback observation, delivery event persistence, and queryable operational review surfaces.
+      - RT-03
+    objective: Assemble the final resume into Template A or B, run page-fill convergence, and fail when the resume is structurally valid but JD-misaligned.
     acceptance_focus:
-      - Delivery Feedback behavior
-      - Review surfaces and chat-based control
-      - End-to-end acceptance
+      - One-page compile-safe output
+      - JD-content-fit verification
+      - Template-specific assembly
     done_when:
-      - immediate and delayed feedback sync can persist bounced, not-bounced, and replied events
-      - canonical review queries can surface postings, contacts, messages, unresolved discovery cases, incidents, and review packets
-      - feedback reuse policy remains bounded to the current build rules
-    completed_notes:
-      - Delivery feedback now persists auditable exact-message event history for immediate and delayed mailbox observation, dedupes repeated logical mailbox outcomes, and keeps latest delivery state derived from that preserved history instead of rewriting the canonical record shape.
-      - Review queries now expose grouped operational inspection surfaces plus delivery-feedback reuse candidates so later chat or owner workflows can inspect what discovery may reuse and what remains review-only.
-      - Discovery now reads bounced and `not_bounced` feedback as bounded reuse input without auto-clearing `current_working_email`, while replied outcomes remain retained for review and outreach analysis rather than entering the current discovery-learning loop.
+      - "Step 15 assembly produces compile-safe `resume.tex` using the selected template"
+      - Step 16 verification rejects backend or frontend mismatches and other JD-content-fit failures
+      - targeted assembly and verification tests pass
     near_term_slices:
-      - id: BA-09-S1
-        name: Feedback event ingestion and observation windows
-        owner_role: outreach-engineer
-        status: completed
-        deliverables:
-          - immediate post-send poll plus delayed 5-minute sync within the 30-minute window
-          - "`feedback_sync_runs` and `delivery_feedback_events` persistence"
-          - "`delivery_outcome.json` publication per observed event"
-        completed_notes:
-          - Added `job_hunt_copilot.delivery_feedback` with reusable immediate and delayed mailbox-observation logic that rehydrates sent outreach from canonical state, matches mailbox signals back to the exact `outreach_message_id` through stored delivery metadata or recipient fallback, and records auditable `feedback_sync_runs`.
-          - Added canonical feedback persistence for `bounced`, `not_bounced`, and `replied` events, including exact-message `delivery_feedback_events` rows plus per-event `delivery_outcome.json` artifacts under each message workspace with latest-workspace mirrors for role-targeted and general-learning outreach.
-          - Wired `job_hunt_copilot.outreach.execute_role_targeted_send_set` to trigger an immediate post-send feedback poll whenever the send executor is given a mailbox observer, while leaving the default send path unchanged when no observer is available.
-        validation:
-          - "`python3.11 -m py_compile job_hunt_copilot/delivery_feedback.py job_hunt_copilot/outreach.py job_hunt_copilot/paths.py tests/test_delivery_feedback.py tests/test_outreach.py`"
-          - "`python3.11 -m pytest tests/test_delivery_feedback.py tests/test_outreach.py`"
-          - "`python3.11 -m pytest`"
-      - id: BA-09-S2
-        name: Review queries and traceability surfaces
-        owner_role: outreach-engineer
-        status: completed
+      - id: RT-04-S1
+        name: Task 15 - Step 15 assembly and page fill
+        owner_role: tailoring-engineer
+        status: pending
         dependencies:
-          - BA-09-S1
-          - BA-02-S3
+          - RT-03-S5
         deliverables:
-          - query paths for pending review, unresolved discovery, bounced-email, and sent-message history
-          - per-object traceability joining artifacts, state transitions, and downstream records
-          - clean-first grouping rules needed by `jhc-chat`
-        completed_notes:
-          - Added `job_hunt_copilot.review_queries` with grouped review-surface retrieval over postings, contacts, sent-message history, unresolved discovery, bounced-email cases, pending expert review packets, and open incidents so later chat or reviewer flows can query canonical state directly instead of reconstructing it from raw artifacts.
-          - Added blocked/failed outreach review-item queries with artifact-backed reason recovery, repeat-outreach review detection from canonical prior-send history, override-history retrieval, and per-object traceability over linked artifacts, recorded state transitions, and downstream records for `job_posting`, `contact`, and `outreach_message` inspection flows.
-          - Added focused review-query tests seeded from canonical rows plus real artifact registration so the new retrieval layer validates sent-message feedback linkage, review-packet or incident joins, override history, and traceability behavior against the persisted repo contracts.
-        validation:
-          - "`python3.11 -m py_compile job_hunt_copilot/review_queries.py tests/test_review_queries.py`"
-          - "`python3.11 -m pytest tests/test_review_queries.py`"
-          - "`python3.11 -m pytest tests/test_schema.py tests/test_outreach.py tests/test_delivery_feedback.py tests/test_review_queries.py`"
-          - "`python3.11 -m pytest`"
-      - id: BA-09-S3
-        name: Feedback reuse and reply-safe handling
-        owner_role: outreach-engineer
-        status: completed
+          - "`step_15_assembly.py`"
+          - Template A or B assembly logic
+      - id: RT-04-S2
+        name: Task 16 - Step 16 verification
+        owner_role: tailoring-engineer
+        status: pending
         dependencies:
-          - BA-09-S1
+          - RT-04-S1
         deliverables:
-          - bounce-aware discovery reuse boundaries and reply retention for review only
-          - idempotent feedback ingestion for repeated mailbox signals
-          - explicit reply-safe reuse constraints for later discovery-facing feedback reads
-        completed_notes:
-          - Extended `job_hunt_copilot.delivery_feedback` with logical-event idempotency for repeated mailbox signals so duplicate bounce or reply ingestion no longer creates misleading duplicate history rows, while richer reply summaries can still refresh the existing artifact payload.
-          - Added queryable feedback-reuse candidates that classify bounced emails as blocked, `not_bounced` emails as eligible for bounded reuse, and replied-only outcomes as review-only state outside the current discovery-learning loop.
-          - Updated `job_hunt_copilot.email_discovery` to consume those feedback signals directly, reuse mailbox-confirmed `not_bounced` emails when available, skip bounced-provider retries, and stop auto-clearing `current_working_email` just because bounce feedback exists.
-        validation:
-          - "`python3.11 -m py_compile job_hunt_copilot/delivery_feedback.py job_hunt_copilot/email_discovery.py job_hunt_copilot/review_queries.py tests/test_delivery_feedback.py tests/test_email_discovery.py tests/test_review_queries.py`"
-          - "`python3.11 -m pytest tests/test_delivery_feedback.py tests/test_email_discovery.py tests/test_review_queries.py`"
-          - "`python3.11 -m pytest tests/test_outreach.py tests/test_delivery_feedback.py tests/test_email_discovery.py tests/test_review_queries.py`"
-          - "`python3.11 -m pytest`"
+          - "`step_16_verification.py`"
+          - JD-content-fit verification rules and tests
 
-  - id: BA-10
-    name: Validation and hardening
-    status: completed
+  - id: RT-05
+    name: Runtime integration
+    status: pending
+    owner_role: build-lead
+    phase: RT-P5
+    dependencies:
+      - RT-04
+    objective: Wire the new tailoring package into the live runtime, keep the legacy path until green, and align bootstrap/finalize with the new pipeline.
+    acceptance_focus:
+      - Runtime integration
+      - Backward-safe cutover
+      - Artifact-path correctness
+    done_when:
+      - the new pipeline is orchestrated from a single runtime entrypoint
+      - "`resume_tailoring.py` uses the redesign path behind the runtime boundary"
+      - the legacy path is still available until validation closes the risk
+    near_term_slices:
+      - id: RT-05-S1
+        name: Task 17 - Pipeline orchestration
+        owner_role: tailoring-engineer
+        status: pending
+        dependencies:
+          - RT-04-S2
+        deliverables:
+          - "`job_hunt_copilot/tailoring/pipeline.py`"
+          - step execution and artifact IO wiring
+      - id: RT-05-S2
+        name: Task 18 - Wire up bootstrap and finalize
+        owner_role: build-lead
+        status: pending
+        dependencies:
+          - RT-05-S1
+        deliverables:
+          - "`job_hunt_copilot/resume_tailoring.py` redesign integration"
+          - "`job_hunt_copilot/paths.py` step-01 through step-16 path support"
+
+  - id: RT-06
+    name: Validation and rollout
+    status: pending
     owner_role: quality-engineer
-    phase: P5
+    phase: RT-P6
     dependencies:
-      - BA-01
-      - BA-02
-      - BA-03
-      - BA-04
-      - BA-05
-      - BA-06
-      - BA-07
-      - BA-08
-      - BA-09
-    objective: Add implementation validation, acceptance traceability, smoke checks, and blocker burn-down across the assembled system.
+      - RT-05
+    objective: Prove the redesign on the Garmin repro and the full test surface, update guidance docs, and retire the old system only after green validation.
     acceptance_focus:
-      - Build bootstrap and prerequisites
-      - End-to-end acceptance
-      - Current-build safety, privacy, and evidence-grounding boundaries
+      - Garmin repro
+      - Full-suite validation
+      - Operational cutover safety
     done_when:
-      - acceptance coverage is traceable from feature rules to implemented slices
-      - smoke checks exist for bootstrap, tailoring, discovery, send, feedback, and review-query flows
-      - unresolved defects are either fixed or explicitly recorded with evidence
+      - Garmin Aviation produces a web-aligned tailored resume and passes the new verifier
+      - the redesign guidance docs and prompts are updated
+      - the full resume-tailoring test suite passes
+      - old track or focus logic is removed only after green validation proves the new system
     near_term_slices:
-      - id: BA-10-S1
-        name: Acceptance trace matrix
+      - id: RT-06-S1
+        name: Task 19 - Garmin integration validation
         owner_role: quality-engineer
-        status: completed
+        status: pending
+        dependencies:
+          - RT-05-S2
         deliverables:
-          - scenario-to-component traceability for the feature file
-          - explicit gap list for not-yet-implemented or deferred behavior
-          - validation ownership notes for each epic
-        completed_notes:
-          - Added `job_hunt_copilot.acceptance_traceability` plus `scripts/quality/generate_acceptance_trace_matrix.py` so the acceptance matrix is generated from `prd/test-spec.feature` instead of maintained as a hand-edited status note.
-          - Published `build-agent/reports/ba-10-acceptance-trace-matrix.json` and `.md`, covering all 214 scenarios with explicit owner role, epic linkage, component or test references, and an honest status split of 182 implemented, 15 partial, 15 gap, 1 deferred-optional, and 1 excluded-from-required-acceptance.
-          - Added `tests/test_acceptance_traceability.py` to fail if the feature file changes without regenerating the trace matrix or if the matrix points at stale repo paths.
-          - The trace matrix records the current hardening blockers explicitly: no integrated smoke harness yet, supervisor orchestration still stops at `lead_handoff`, chat review or control is wrapper-only, delayed feedback is not scheduler-wired, maintenance automation is absent, sleep or wake recovery is metadata-only, posting abandon control is missing, and safety/privacy hardening regressions are still pending.
-        validation:
-          - "`python3.11 scripts/quality/generate_acceptance_trace_matrix.py --project-root /Users/achyutaramsonti/Projects/job-hunt-copilot-v4`"
-          - "`python3.11 -m py_compile job_hunt_copilot/acceptance_traceability.py scripts/quality/generate_acceptance_trace_matrix.py tests/test_acceptance_traceability.py`"
-          - "`python3.11 -m pytest tests/test_acceptance_traceability.py`"
-      - id: BA-10-S2
-        name: Smoke harness and fixtures
+          - Garmin Aviation integration test coverage
+          - "verified `frontend_web` decision and content-fit outputs"
+      - id: RT-06-S2
+        name: Task 20 - Rewrite prompt, cookbook, and SOP
+        owner_role: tailoring-engineer
+        status: pending
+        dependencies:
+          - RT-06-S1
+        deliverables:
+          - "`assets/resume-tailoring/ai/system-prompt.md`"
+          - "`assets/resume-tailoring/ai/cookbook.md`"
+          - "`assets/resume-tailoring/ai/sop-swe-experience-tailoring.md`"
+      - id: RT-06-S3
+        name: Task 21 - Full test suite and manual verification
         owner_role: quality-engineer
-        status: completed
+        status: pending
         dependencies:
-          - BA-10-S1
-          - BA-06-S3
-          - BA-07-S3
-          - BA-08-S2
-          - BA-09-S1
+          - RT-06-S2
         deliverables:
-          - bootstrap smoke test covering DB init, assets, secrets loading, and paste or runtime-pack directories
-          - sample posting and contact fixtures for tailoring, discovery, send, and feedback checks
-          - machine-valid artifact checks for `discovery_result.json`, `send_result.json`, and review surfaces
-        completed_notes:
-          - "Added `tests/test_smoke_harness.py` with a committed role-targeted smoke harness that bootstraps a fresh temp repo, compiles a real tailored resume from the bundled assets, approves the tailoring run, executes Apollo shortlist plus person-scoped discovery with deterministic fakes, drafts and sends the first outreach wave, runs delayed feedback sync, and queries review surfaces plus object traceability from canonical state."
-          - "Regenerated `build-agent/reports/ba-10-acceptance-trace-matrix.json` and `.md` so the matrix now reflects the landed smoke coverage: `Build smoke test passes` is implemented, the explicit `BA10_SMOKE_HARNESS` gap disappears, and the remaining delayed-feedback gap now points at scheduler wiring rather than missing validation."
-          - "Kept the remaining blocker surface honest by leaving `BA10_DELAYED_FEEDBACK_SCHEDULING`, downstream supervisor orchestration, chat review/control, maintenance automation, sleep/wake recovery, posting-abandon control, and safety/privacy hardening as open BA-10-S3 work."
-        validation:
-          - "`python3.11 -m py_compile job_hunt_copilot/acceptance_traceability.py tests/test_smoke_harness.py`"
-          - "`python3.11 -m pytest tests/test_smoke_harness.py`"
-          - "`python3.11 scripts/quality/generate_acceptance_trace_matrix.py --project-root /Users/achyutaramsonti/Projects/job-hunt-copilot-v4`"
-          - "`python3.11 -m pytest tests/test_acceptance_traceability.py tests/test_smoke_harness.py`"
-          - "`python3.11 -m pytest tests/test_resume_tailoring.py tests/test_email_discovery.py tests/test_outreach.py tests/test_delivery_feedback.py tests/test_review_queries.py`"
-      - id: BA-10-S3
-        name: Cross-component regression and blocker burn-down
+          - broad resume-tailoring regression coverage
+          - explicit go or no-go note for legacy-path removal
+      - id: RT-06-S4
+        name: Legacy path retirement after green validation
         owner_role: build-lead
-        status: completed
+        status: pending
         dependencies:
-          - BA-10-S2
+          - RT-06-S3
         deliverables:
-          - targeted regression coverage for failure or retry, idempotency, and safety constraints
-          - explicit blocker confirmation or closure for any acceptance gaps
-          - final readiness notes for recruiter- or manager-facing repo surfaces
-        completed_notes:
-          - Added explicit BA-10 hardening regressions across `tests/test_resume_tailoring.py`, `tests/test_outreach.py`, and `tests/test_review_queries.py` so unsupported tailoring requirements stay recorded as Step 4 gaps, role-targeted drafting ignores raw-source claims outside the approved tailoring inputs, drafting refuses non-approved tailoring runs, and runtime secret values plus raw reply excerpts stay out of persisted review outputs.
-          - Tightened `job_hunt_copilot.review_queries` so outreach-message traceability now exposes reply summaries without copying `raw_reply_excerpt` into review-oriented traceability surfaces.
-          - Added delayed-feedback scheduler wiring under `job_hunt_copilot.local_runtime`, `scripts/ops/run_feedback_sync.py`, `scripts/ops/materialize_feedback_sync_plist.py`, `bin/jhc-feedback-sync-cycle`, and the existing `jhc-agent-start`/`jhc-agent-stop` lifecycle so launchd now invokes reusable Delivery Feedback sync logic through a dedicated repo-local job.
-          - Added focused local-runtime coverage for the delayed-feedback plist shape, auditable scheduler execution, delayed bounce capture after the interactive send session ends, and wrapper wiring around the new feedback-sync job.
-          - Added conservative sleep/wake recovery detection in `job_hunt_copilot.local_runtime.execute_supervisor_heartbeat`, so supervisor heartbeats now check `pmset -g log` first, persist detected Sleep/Wake/DarkWake evidence into canonical control-state metadata, and fall back to a >1 hour supervisor-cycle gap heuristic when explicit power-event lines are unavailable.
-          - Added focused local-runtime regression coverage for both explicit `pmset` wake evidence and the >1 hour fallback-gap recovery path, then regenerated `build-agent/reports/ba-10-acceptance-trace-matrix.json` and `.md` so the sleep/wake recovery scenario is now implemented and the overall matrix now reports 190 implemented / 8 partial / 14 gap scenarios.
-          - Added targeted supervisor regressions across `agent_review`, `people_search`, `email_discovery`, `sending`, and `delivery_feedback` so unsupported downstream stages now have explicit blocker evidence showing the same durable `pipeline_run_id`, stage boundary, and pending review packet are retained instead of silently resetting to `lead_handoff`.
-          - Refined `job_hunt_copilot.acceptance_traceability` and the regenerated BA-10 matrix notes so the downstream-supervisor gap now states the proven selector-ordering and retry-safe persistence evidence while still remaining an explicit action-catalog blocker.
-          - Added focused chat/runtime-pack regressions in `tests/test_local_runtime.py` and `tests/test_runtime_pack.py` so the unexpected-exit -> explicit-resume recovery path is proven and the generated `ops/agent/chat-bootstrap.md` prompt stays anchored to persisted control-state, review-surface, and snapshot guidance while richer in-chat review/control behavior remains an explicit gap.
-          - Refined `job_hunt_copilot.acceptance_traceability` plus the regenerated BA-10 reports so every remaining explicit gap now carries a short evidence summary and concrete code/test refs instead of only a prose reason.
-          - Added focused blocker regressions proving `scripts/ops/control_agent.py` still rejects the missing `abandon` command and the generated `ops/agent/ops-plan.yaml` keeps maintenance in backlog-only placeholder state instead of implying an implemented workflow.
-          - Added `job_hunt_copilot.blocker_audit`, `scripts/quality/generate_blocker_audit.py`, committed `build-agent/reports/ba-10-blocker-audit.json` plus `.md`, and `tests/test_blocker_audit.py` so the remaining acceptance-gap clusters and open build-board blockers are summarized in one durable report with explicit confirmation commands and evidence-hygiene checks.
-          - Added `job_hunt_copilot.quality_validation`, `scripts/quality/run_ba10_validation_suite.py`, and `tests/test_quality_validation.py` so the automated BA-10 blocker-audit commands can now be resolved, dry-run inspected, and executed from one reproducible entrypoint after refreshing the committed acceptance-trace and blocker-audit reports.
-          - Refined `job_hunt_copilot.acceptance_traceability`, `job_hunt_copilot.quality_validation`, and `job_hunt_copilot.blocker_audit` so BA-10 now carries explicit smoke-coverage targets for bootstrap, tailoring, discovery, send, feedback, and review-query flows, and `scripts/quality/run_ba10_validation_suite.py --smoke-target ...` resolves the matching targeted command plan instead of relying on one undifferentiated smoke note.
-          - Refined `job_hunt_copilot.acceptance_traceability` plus the regenerated BA-10 reports so the downstream-supervisor gap now points at the active build-lead slice `BA-10-S4`, and added a `tests/test_blocker_audit.py` guard that fails if the current BA-10 focus slice disappears from the open gap-cluster ledger.
-          - Refined `job_hunt_copilot.acceptance_traceability` plus `job_hunt_copilot.blocker_audit` so the committed BA-10 reports now publish a machine-checked implemented-slice catalog from `build-agent/state/build-board.yaml`, and each rule, scenario, gap cluster, and epic validation note carries supporting slice ids instead of stopping at epic-level traceability.
-          - Refined `job_hunt_copilot.blocker_audit`, `job_hunt_copilot.quality_validation`, and `scripts/quality/run_ba10_validation_suite.py` so each open acceptance-gap cluster, build-board blocker, and current focus slice now exposes one canonical validation-suite invocation, and the runner can resolve `--gap-id`, `--blocker-id`, and `--current-focus` plans directly instead of rebuilding those command sets by hand.
-          - Extended `job_hunt_copilot.quality_validation` plus `scripts/quality/run_ba10_validation_suite.py` so each non-dry-run BA-10 validation pass now writes durable `build-agent/reports/ba-10-validation-suite-latest.json` and `.md` evidence artifacts instead of leaving results only in terminal output.
-          - Extended `job_hunt_copilot.quality_validation` plus `scripts/quality/run_ba10_validation_suite.py` again so dry-run payloads and durable latest-run evidence now preserve the resolved smoke-target, acceptance-gap, build-board-blocker, and current-focus selector context rather than only the flattened command list.
-          - Refined `job_hunt_copilot.blocker_audit` plus the BA-10 guard tests so the maintenance-automation gap and the active BA-10-S3 current-focus replay now also run `qa_supervisor_regressions`, keeping the remaining selector-order partial backed by direct supervisor-ordering evidence instead of runtime-pack plus report guards alone.
-          - Added `build-agent/scripts/run_build_lead_cycle.build_codex_exec_command`, `tests/test_build_agent_cycle.py`, and updated `job_hunt_copilot.blocker_audit` so `BUILD-CLI-001` now has automated regression coverage for the unattended `codex exec` invocation shape while the required host-side wrapper replay remains an explicit open blocker.
-          - Updated the repo-facing BA-10 report surfaces so `README.md`, `docs/ARCHITECTURE.md`, and `build-agent/reports/README.md` now point reviewers at the latest validation-suite snapshot alongside the acceptance trace matrix and blocker audit.
-          - Expanded `job_hunt_copilot.blocker_audit` and `job_hunt_copilot.quality_validation` so each remaining BA-10 gap cluster and the active `--current-focus` selector now enumerate exact open scenario names, rule names, feature-file lines, status counts, and persisted scenario notes instead of stopping at gap ids or aggregate counts.
-          - Refined `README.md`, `docs/ARCHITECTURE.md`, and `build-agent/reports/README.md` again so manager-facing repo surfaces now name the four remaining BA-10 hardening gaps explicitly and point directly at the committed acceptance trace, blocker audit, and latest validation-suite snapshot.
-          - Added `job_hunt_copilot.chat_runtime`, wired `job_hunt_copilot.local_runtime` plus `bin/jhc-chat` to materialize and print `ops/agent/chat-startup.md`, and added focused runtime regressions so the chat surface now has a persisted clean-first startup dashboard with grouped review items and runtime metrics derived only from active supervisor-cycle execution time.
-          - Re-ran `python3.11 scripts/quality/run_ba10_validation_suite.py --project-root /Users/achyutaramsonti/Projects/job-hunt-copilot-v4 --current-focus` on 2026-04-09T02:23:21Z, refreshing the durable latest-run evidence snapshot with 5 of 5 automated checks passing while moving the acceptance status to `196 implemented / 3 partial / 13 gap` and keeping the same four open BA-10-S3 gap clusters explicit.
-          - Added multi-item chat review-queue regressions in `tests/test_local_runtime.py` so the persisted `jhc-chat` review snapshot now has direct newest-first and compact-first evidence across pending review packets, failed expert-requested background tasks, maintenance batches, and open incidents without claiming broader in-chat retrieval or control behavior.
-          - Re-ran `python3.11 scripts/quality/run_ba10_validation_suite.py --project-root /Users/achyutaramsonti/Projects/job-hunt-copilot-v4 --current-focus` on 2026-04-09T02:38:39Z, refreshing `build-agent/reports/ba-10-validation-suite-latest.{json,md}` with another passing 5-command replay while keeping the same four open BA-10-S3 gap clusters explicit.
-          - Added `scripts/ops/chat_state.py` plus `job_hunt_copilot.chat_runtime` helper functions for explicit persisted-state `dashboard`, `review-queue`, and `change-summary` reads, then updated the generated `ops/agent/chat-bootstrap.md` guidance so `jhc-chat` can reread canonical review or change surfaces instead of relying on startup memory alone.
-          - Added focused local-runtime and runtime-pack regressions proving the new persisted chat helper commands surface grouped review items and default change summaries since the last completed expert review, and narrowed the remaining chat hardening gap to generic object-specific override routing plus broader expert-guidance workflows.
-          - Hardened `scripts/ops/chat_session.py` so duplicate `jhc-chat` begin failures now exit cleanly with a concise error instead of a traceback, and extended `tests/test_local_runtime.py` with explicit safety regressions for duplicate active-session begin, mismatched session-end ignore behavior, and terminal-posting abandon refusal without side effects.
-          - Extended `tests/test_local_runtime.py` again so repeated `scripts/ops/chat_state.py review-queue` and `change-summary` reads are now proven byte-stable and side-effect-free against canonical control, review, maintenance, and override state instead of only returning the expected first result once.
-          - Tightened `job_hunt_copilot.blocker_audit` so `qa_acceptance_reports` now executes `tests/test_quality_validation.py` alongside the committed acceptance-trace and blocker-audit guard tests, keeping the BA-10 validation command registry under the same automated report-guard replay it advertises.
-          - Re-ran `python3.11 scripts/quality/run_ba10_validation_suite.py --project-root /Users/achyutaramsonti/Projects/job-hunt-copilot-v4 --current-focus` on 2026-04-09T03:58:26Z, refreshing `build-agent/reports/ba-10-validation-suite-latest.{json,md}` with another passing 5-command replay while keeping the blocker surface unchanged at `201 implemented / 2 partial / 9 gap` across maintenance automation and deeper chat guidance or override workflows.
-          - Re-ran `python3.11 scripts/quality/run_ba10_validation_suite.py --project-root /Users/achyutaramsonti/Projects/job-hunt-copilot-v4 --current-focus` on 2026-04-09T04:17:35Z after the chat-state read-only regression, stricter acceptance-report guard, and final state-file checkpoint landed; the same 5 automated checks passed again, `qa_acceptance_reports` still exercises `tests/test_quality_validation.py` in the durable latest-run snapshot, and the blocker surface remained unchanged at `201 implemented / 2 partial / 9 gap`.
-          - Added `job_hunt_copilot.repo_readiness`, `scripts/quality/generate_repo_readiness_report.py`, committed `build-agent/reports/repo-readiness-summary.json` plus `.md`, and `tests/test_repo_readiness.py` so recruiter- and manager-facing repo surfaces now have a durable readiness snapshot anchored to the current blocker audit, latest validation-suite evidence, and the still-open maintenance plus deeper chat-control gap themes.
-          - Tightened `job_hunt_copilot.quality_validation` plus `job_hunt_copilot.blocker_audit` so `qa_acceptance_reports` now guards the readiness summary alongside the acceptance trace, blocker audit, and validation-suite selectors, and the refreshed `build-agent/reports/ba-10-validation-suite-latest.{json,md}` snapshot now links the readiness report explicitly.
-          - Refined `README.md`, `docs/ARCHITECTURE.md`, and `build-agent/reports/README.md` so manager-facing repo surfaces now route readers through `build-agent/reports/repo-readiness-summary.md` before the lower-level BA-10 evidence reports.
-          - Re-ran `python3.11 scripts/quality/run_ba10_validation_suite.py --project-root /Users/achyutaramsonti/Projects/job-hunt-copilot-v4 --current-focus` on 2026-04-09T04:35:52Z, refreshing the blocker audit, readiness summary, and latest validation-suite snapshot with another passing 5-command replay while keeping the blocker surface unchanged at `201 implemented / 2 partial / 9 gap`.
-          - Added direct `scripts/ops/chat_state.py dashboard` CLI regression coverage in `tests/test_local_runtime.py`, and expanded the existing read-only/idempotency guard so the persisted dashboard path is now proven byte-stable alongside `review-queue` and `change-summary` while also watching the pipeline, supervisor-cycle, message, feedback, and review tables that feed dashboard metrics.
-          - Re-ran `python3.11 scripts/quality/run_ba10_validation_suite.py --project-root /Users/achyutaramsonti/Projects/job-hunt-copilot-v4 --current-focus` on 2026-04-09T04:48:30Z, refreshing the readiness summary plus latest validation-suite snapshot with another passing 5-command replay while keeping the blocker surface unchanged at `201 implemented / 2 partial / 9 gap`.
-          - Tightened `job_hunt_copilot.repo_readiness` and `tests/test_repo_readiness.py` so `README.md` and `docs/ARCHITECTURE.md` must now mention the exact currently open BA-10 gap titles from the blocker audit instead of only generic readiness phrases, which keeps recruiter- and manager-facing repo surfaces fail-closed against stale blocker wording.
-          - Updated `README.md` and `docs/ARCHITECTURE.md` to name `BA10_MAINTENANCE_AUTOMATION` and `BA10_CHAT_REVIEW_AND_CONTROL` verbatim, then re-ran `python3.11 scripts/quality/run_ba10_validation_suite.py --project-root /Users/achyutaramsonti/Projects/job-hunt-copilot-v4 --current-focus` on 2026-04-09T18:53:24Z, refreshing the readiness summary plus latest validation-suite snapshot with another passing 5-command replay while keeping the blocker surface unchanged at `201 implemented / 2 partial / 9 gap`.
-          - Added focused `tests/test_blocker_audit.py` and `tests/test_quality_validation.py` regressions that pin the still-open `BA10_CHAT_REVIEW_AND_CONTROL` cluster to its exact validation-command mapping, open scenario names, feature-file lines, and persisted note text instead of relying on current-focus coverage alone.
-          - Re-ran `python3.11 scripts/quality/run_ba10_validation_suite.py --project-root /Users/achyutaramsonti/Projects/job-hunt-copilot-v4 --current-focus` on 2026-04-09T19:07:11Z, refreshing the readiness summary plus latest validation-suite snapshot with another passing 5-command replay while keeping the blocker surface unchanged at `201 implemented / 2 partial / 9 gap`.
-          - Re-ran `python3.11 scripts/quality/run_ba10_validation_suite.py --project-root /Users/achyutaramsonti/Projects/job-hunt-copilot-v4 --current-focus` on 2026-04-09T19:17:23Z after the latest blocker-confirmation pass, refreshing `build-agent/reports/ba-10-validation-suite-latest.{json,md}` plus `build-agent/reports/repo-readiness-summary.{json,md}` with another passing 5-command replay while keeping the blocker surface unchanged at `201 implemented / 2 partial / 9 gap`.
-          - Re-ran `python3.11 scripts/quality/run_ba10_validation_suite.py --project-root /Users/achyutaramsonti/Projects/job-hunt-copilot-v4 --current-focus` on 2026-04-09T19:27:06Z after rehydrating the selected quality-engineer cycle, refreshing `build-agent/reports/ba-10-validation-suite-latest.{json,md}` plus `build-agent/reports/repo-readiness-summary.{json,md}` again with the same 5 automated checks passing and the blocker surface still unchanged at `201 implemented / 2 partial / 9 gap`; the remaining BA-10-S3 work is still functional build-lead burn-down on deeper `jhc-chat` control or maintenance automation rather than additional report-only closure.
-          - Extended `tests/test_quality_validation.py` so the committed `build-agent/reports/ba-10-validation-suite-latest.{json,md}` snapshot is now checked against the live selector resolution, current command registry, repo-status snapshot, and rendered markdown instead of only exercising helper-level dry runs.
-          - Expanded `job_hunt_copilot.quality_validation.render_ba10_validation_suite_markdown` so current-focus gap summaries now print the exact open scenario names, rules, feature-file lines, and blocker note text inline, then re-ran `python3.11 scripts/quality/run_ba10_validation_suite.py --project-root /Users/achyutaramsonti/Projects/job-hunt-copilot-v4 --current-focus` on 2026-04-09T19:40:28Z, refreshing `build-agent/reports/ba-10-validation-suite-latest.{json,md}` plus `build-agent/reports/repo-readiness-summary.{json,md}` with another passing 5-command replay while keeping the blocker surface unchanged at `201 implemented / 2 partial / 9 gap`.
-          - Re-ran the broader `BA10-TRACE-001` validation suite, which first exposed a stale bootstrap regression pinned to the original three-action runtime-pack scaffold; updated `tests/test_bootstrap.py` to derive the expected action ids from the live `registered_supervisor_action_catalog()`, then re-ran `python3.11 scripts/quality/run_ba10_validation_suite.py --project-root /Users/achyutaramsonti/Projects/job-hunt-copilot-v4 --blocker-id BA10-TRACE-001` on 2026-04-09T19:52:13Z with all 11 automated checks passing while the blocker surface stayed unchanged at `201 implemented / 2 partial / 9 gap`.
-          - Tightened `job_hunt_copilot.repo_readiness`, `tests/test_repo_readiness.py`, and `tests/test_quality_validation.py` so the committed latest validation snapshot must now declare `Validation selector = current_focus` and `Tracks active focus = True` while BA-10-S3 remains the active slice, keeping recruiter- and manager-facing readiness notes honest about which replay the repo is actually surfacing.
-          - Updated `scripts/quality/run_ba10_validation_suite.py` so non-dry-run replays seed the selector-aligned `build-agent/reports/ba-10-validation-suite-latest.{json,md}` snapshot before executing command steps, then forced a stale blocker-specific latest-report state and re-ran `python3.11 scripts/quality/run_ba10_validation_suite.py --project-root /Users/achyutaramsonti/Projects/job-hunt-copilot-v4 --current-focus` on 2026-04-09T20:06:04Z with all 5 automated checks passing while `build-agent/reports/repo-readiness-summary.{json,md}` now reports `Validation selector = current_focus`, `Tracks active focus = True`, and the blocker surface stayed unchanged at `201 implemented / 2 partial / 9 gap`.
-          - Re-ran `python3.11 scripts/quality/run_ba10_validation_suite.py --project-root /Users/achyutaramsonti/Projects/job-hunt-copilot-v4 --current-focus` on 2026-04-09T20:17:54Z with the same 5 automated checks still passing, refreshed `build-agent/reports/ba-10-validation-suite-latest.{json,md}` plus `build-agent/reports/repo-readiness-summary.{json,md}` again, and confirmed from the exact remaining acceptance lines that BA-10-S3 has no further quality-only closure path; the next real burn-down slice is build-lead/local-runtime work on generic object-specific override routing or expert-guidance conflict handling before maintenance automation.
-          - Re-ran `python3.11 scripts/quality/run_ba10_validation_suite.py --project-root /Users/achyutaramsonti/Projects/job-hunt-copilot-v4 --current-focus` on 2026-04-09T20:27:43Z after rehydrating the selected cycle in a clean repo, refreshed `build-agent/reports/ba-10-validation-suite-latest.{json,md}` plus `build-agent/reports/repo-readiness-summary.{json,md}` again with the same 5 automated checks passing, and reconfirmed that BA-10-S3 remains blocked on runtime-owned `jhc-chat` control or guidance work plus maintenance automation rather than any further quality-only hardening.
-          - Added supported object-specific override routing through `scripts/ops/control_agent.py override` plus `job_hunt_copilot.local_runtime.apply_object_override`, delegating safely to posting abandon and tailoring-review override primitives so read-only chat-state helpers remain no-write while supported override requests now persist canonical state changes plus `override_events`.
-          - Added focused runtime regressions proving the generic override route can abandon an active posting, can flip a reviewed tailoring decision from rejected to approved through canonical state, and rejects redundant tailoring overrides without side effects.
-          - Re-ran `python3.11 scripts/quality/run_ba10_validation_suite.py --project-root /Users/achyutaramsonti/Projects/job-hunt-copilot-v4 --current-focus` on 2026-04-09T20:51:14Z after the state-file checkpoint, refreshing the acceptance trace, blocker audit, repo-readiness summary, and latest validation-suite snapshot with another passing 5-command replay while keeping the blocker surface at `202 implemented / 1 partial / 9 gap`; the remaining BA-10-S3 work is now deeper expert-guidance or background-task workflow handling plus maintenance automation.
-          - Added live expert-guidance persistence and clarification routing through `job_hunt_copilot.local_runtime.persist_expert_guidance`, `job_hunt_copilot.local_runtime.request_guidance_clarification`, and the new `scripts/ops/control_agent.py guidance` or `clarify-guidance` commands, so current-object or future-similar guidance now persists with lineage, repeated requests stay idempotent, and uncertain or conflicting reuse creates canonical incidents that pause the autonomous system.
-          - Added focused local-runtime regressions plus report-surface updates proving live guidance defaults to current-plus-similar-future scope, conflict handling stays reviewable through canonical incidents, clarification requests reuse the same reviewable pause safely, and the remaining chat gap is now limited to expert-requested background-task handoff and return workflows.
-          - Re-ran `python3.11 scripts/quality/run_ba10_validation_suite.py --project-root /Users/achyutaramsonti/Projects/job-hunt-copilot-v4 --current-focus` on 2026-04-09T21:19:31Z after the guidance-clarification checkpoint, refreshing the acceptance trace, blocker audit, repo-readiness summary, and latest validation-suite snapshot with another passing 5-command replay while keeping the blocker surface at `204 implemented / 1 partial / 7 gap`; the remaining BA-10-S3 work is now expert-requested background-task workflows plus maintenance automation.
-          - Added persisted expert-requested background-task handoff and return routing through `scripts/ops/control_agent.py handoff-background-task|return-background-task`, `job_hunt_copilot.local_runtime`, `job_hunt_copilot.chat_runtime`, and the generated runtime-pack chat bootstrap so longer chat-owned tasks now record an explicit handoff summary, hold exclusive focus over routine supervisor work, surface unresolved returns in the failed-background-task review group, and automatically create pending expert review packets when they finish successfully.
-          - Added focused local-runtime plus runtime-pack regressions proving exclusive-focus control-state persistence, successful background-task return into the expert review queue, unresolved return behavior that restores normal chat-pause semantics safely, and the remaining runtime-pack honesty updates that now leave maintenance automation as the only open BA-10 functional gap.
-          - Refined `tests/test_blocker_audit.py`, `tests/test_quality_validation.py`, and `tests/test_repo_readiness.py` so the committed BA-10 evidence now fails closed if the retired `BA10_CHAT_REVIEW_AND_CONTROL` cluster reappears in current-focus, repo-readiness, or latest validation-suite surfaces without a matching acceptance-trace regression.
-          - Added `job_hunt_copilot.maintenance`, new maintenance artifact path helpers, and supervisor or local-runtime or control-agent integration so daily maintenance now runs on an isolated git branch or worktree, writes `maintenance_change.json` plus `maintenance_change.md`, records both change-scoped and full-system validation outcomes, and retains failed batches for explicit review instead of silently merging or discarding them.
-          - Added maintenance-targeted regressions across `tests/test_supervisor.py`, `tests/test_local_runtime.py`, `tests/test_runtime_pack.py`, `tests/test_acceptance_traceability.py`, `tests/test_blocker_audit.py`, `tests/test_quality_validation.py`, and `tests/test_repo_readiness.py`, then updated `README.md` and `docs/ARCHITECTURE.md` so recruiter- and manager-facing repo surfaces now describe the implemented maintenance review and approval flow honestly.
-          - Re-ran `python3.11 scripts/quality/run_ba10_validation_suite.py --project-root /Users/achyutaramsonti/Projects/job-hunt-copilot-v4 --current-focus` on 2026-04-09T22:49:06Z after the maintenance closeout, selector-order fix, and state-file checkpoint, refreshing the acceptance trace, blocker audit, repo-readiness summary, and latest validation-suite snapshot with another passing 5-command replay while moving required acceptance to `212 implemented / 0 partial / 0 gap`; `BA10-TRACE-001` is now closed and only host-side `BUILD-CLI-001` plus `OPS-LAUNCHD-001` remain open.
-        validation:
-          - "`python3.11 -m py_compile job_hunt_copilot/local_runtime.py job_hunt_copilot/chat_runtime.py job_hunt_copilot/runtime_pack.py job_hunt_copilot/review_queries.py job_hunt_copilot/supervisor.py scripts/ops/control_agent.py tests/test_local_runtime.py tests/test_runtime_pack.py`"
-          - "`python3.11 -m pytest tests/test_local_runtime.py tests/test_runtime_pack.py`"
-          - "`python3.11 -m py_compile job_hunt_copilot/local_runtime.py job_hunt_copilot/acceptance_traceability.py job_hunt_copilot/runtime_pack.py job_hunt_copilot/paths.py scripts/ops/materialize_feedback_sync_plist.py scripts/ops/run_feedback_sync.py tests/test_local_runtime.py`"
-          - "`zsh -n bin/jhc-agent-start bin/jhc-agent-stop bin/jhc-agent-cycle bin/jhc-feedback-sync-cycle bin/jhc-chat`"
-          - "`python3.11 -m pytest tests/test_local_runtime.py tests/test_delivery_feedback.py tests/test_acceptance_traceability.py`"
-          - "`python3.11 scripts/quality/generate_acceptance_trace_matrix.py --project-root /Users/achyutaramsonti/Projects/job-hunt-copilot-v4`"
-          - "`python3.11 scripts/quality/generate_blocker_audit.py --project-root /Users/achyutaramsonti/Projects/job-hunt-copilot-v4`"
-          - "`python3.11 -m py_compile job_hunt_copilot/blocker_audit.py scripts/quality/generate_blocker_audit.py tests/test_blocker_audit.py`"
-          - "`python3.11 -m pytest tests/test_acceptance_traceability.py tests/test_blocker_audit.py tests/test_smoke_harness.py tests/test_local_runtime.py tests/test_supervisor.py tests/test_review_queries.py tests/test_runtime_pack.py`"
-          - "`python3.11 -m py_compile job_hunt_copilot/quality_validation.py scripts/quality/run_ba10_validation_suite.py tests/test_quality_validation.py`"
-          - "`python3.11 -m pytest tests/test_quality_validation.py`"
-          - "`python3.11 -m pytest tests/test_acceptance_traceability.py tests/test_blocker_audit.py tests/test_quality_validation.py tests/test_repo_readiness.py`"
-          - "`python3.11 -m py_compile job_hunt_copilot/acceptance_traceability.py job_hunt_copilot/blocker_audit.py job_hunt_copilot/quality_validation.py scripts/quality/run_ba10_validation_suite.py tests/test_acceptance_traceability.py tests/test_quality_validation.py`"
-          - "`python3.11 -m pytest tests/test_acceptance_traceability.py tests/test_blocker_audit.py tests/test_quality_validation.py tests/test_smoke_harness.py`"
-          - "`python3.11 scripts/quality/run_ba10_validation_suite.py --project-root /Users/achyutaramsonti/Projects/job-hunt-copilot-v4 --dry-run --smoke-target bootstrap --smoke-target feedback`"
-          - "`python3.11 scripts/quality/run_ba10_validation_suite.py --project-root /Users/achyutaramsonti/Projects/job-hunt-copilot-v4`"
-          - "`python3.11 scripts/quality/run_ba10_validation_suite.py --project-root /Users/achyutaramsonti/Projects/job-hunt-copilot-v4 --current-focus`"
-          - "`python3.11 -m pytest`"
-          - "`python3.11 -m py_compile job_hunt_copilot/acceptance_traceability.py tests/test_supervisor.py tests/test_acceptance_traceability.py`"
-          - "`python3.11 -m pytest tests/test_supervisor.py tests/test_acceptance_traceability.py`"
-          - "`python3.11 -m pytest tests/test_local_runtime.py`"
-          - "`python3.11 scripts/quality/run_ba10_validation_suite.py --project-root /Users/achyutaramsonti/Projects/job-hunt-copilot-v4 --current-focus`"
-          - "`python3.11 -m pytest tests/test_blocker_audit.py tests/test_quality_validation.py`"
-          - "`python3.11 -m pytest tests/test_local_runtime.py tests/test_runtime_pack.py tests/test_acceptance_traceability.py`"
-          - "`python3.11 -m pytest tests/test_local_runtime.py tests/test_runtime_pack.py tests/test_acceptance_traceability.py tests/test_blocker_audit.py tests/test_quality_validation.py tests/test_repo_readiness.py -q`"
-          - "`python3.11 scripts/quality/run_ba10_validation_suite.py --project-root /Users/achyutaramsonti/Projects/job-hunt-copilot-v4 --current-focus`"
-          - "`python3.11 -m py_compile job_hunt_copilot/acceptance_traceability.py job_hunt_copilot/blocker_audit.py tests/test_acceptance_traceability.py tests/test_blocker_audit.py`"
-          - "`python3.11 -m pytest tests/test_acceptance_traceability.py tests/test_blocker_audit.py tests/test_quality_validation.py`"
-          - "`python3.11 scripts/quality/run_ba10_validation_suite.py --project-root /Users/achyutaramsonti/Projects/job-hunt-copilot-v4 --skip-report-refresh --command-id qa_acceptance_reports`"
-          - "`python3.11 -m py_compile job_hunt_copilot/blocker_audit.py job_hunt_copilot/quality_validation.py scripts/quality/run_ba10_validation_suite.py tests/test_blocker_audit.py tests/test_quality_validation.py`"
-          - "`python3.11 -m pytest tests/test_blocker_audit.py tests/test_quality_validation.py`"
-          - "`python3.11 scripts/quality/run_ba10_validation_suite.py --project-root /Users/achyutaramsonti/Projects/job-hunt-copilot-v4 --dry-run --current-focus`"
-          - "`python3.11 scripts/quality/run_ba10_validation_suite.py --project-root /Users/achyutaramsonti/Projects/job-hunt-copilot-v4 --dry-run --blocker-id OPS-LAUNCHD-001 --include-manual`"
-          - "`python3.11 -m py_compile job_hunt_copilot/quality_validation.py scripts/quality/run_ba10_validation_suite.py tests/test_quality_validation.py`"
-          - "`python3.11 -m pytest tests/test_quality_validation.py tests/test_blocker_audit.py tests/test_acceptance_traceability.py`"
-          - "`python3.11 scripts/quality/run_ba10_validation_suite.py --project-root /Users/achyutaramsonti/Projects/job-hunt-copilot-v4`"
-          - "`python3.11 scripts/quality/run_ba10_validation_suite.py --project-root /Users/achyutaramsonti/Projects/job-hunt-copilot-v4 --dry-run --current-focus --smoke-target bootstrap`"
-          - "`python3.11 scripts/quality/run_ba10_validation_suite.py --project-root /Users/achyutaramsonti/Projects/job-hunt-copilot-v4 --current-focus --smoke-target bootstrap`"
-          - "`python3.11 -m py_compile scripts/ops/chat_session.py tests/test_local_runtime.py`"
-          - "`python3.11 -m pytest tests/test_local_runtime.py`"
-          - "`python3.11 scripts/quality/run_ba10_validation_suite.py --project-root /Users/achyutaramsonti/Projects/job-hunt-copilot-v4 --current-focus`"
-          - "`python3.11 -m pytest tests/test_bootstrap.py tests/test_schema.py tests/test_artifacts.py tests/test_runtime_pack.py`"
-          - "`python3.11 scripts/quality/run_ba10_validation_suite.py --project-root /Users/achyutaramsonti/Projects/job-hunt-copilot-v4 --blocker-id BA10-TRACE-001`"
-          - "`python3.11 -m py_compile job_hunt_copilot/supervisor.py job_hunt_copilot/local_runtime.py job_hunt_copilot/maintenance.py scripts/ops/control_agent.py`"
-          - "`python3.11 -m pytest tests/test_supervisor.py -k maintenance tests/test_local_runtime.py -k 'maintenance or execute_supervisor_heartbeat_reports_maintenance_batch_when_dependencies_are_injected'`"
-          - "`python3.11 -m pytest tests/test_supervisor.py tests/test_supervisor_downstream_actions.py`"
-          - "`python3.11 scripts/quality/run_ba10_validation_suite.py --project-root /Users/achyutaramsonti/Projects/job-hunt-copilot-v4 --current-focus`"
-        remaining_scope:
-          - none
-      - id: BA-10-S4
-        name: Downstream supervisor action-catalog burn-down
-        owner_role: build-lead
-        status: completed
-        dependencies:
-          - BA-10-S3
-        deliverables:
-          - bounded supervisor action registration beyond `lead_handoff` for the current role-targeted flow
-          - durable stage progression that reduces the downstream-supervisor partial cluster in the acceptance matrix
-          - updated supervisor or smoke regressions proving end-to-end stage advancement instead of unsupported-stage escalation for the newly implemented boundaries
-        progress_notes:
-          - Quality-engineer support work added `tests/test_supervisor_downstream_actions.py`, which isolates the current `lead_handoff` checkpoint boundary, later-stage unsupported-action escalation, and retry-safe reuse of the same durable run plus pending review packet.
-          - Quality-engineer support work now also proves an existing durable pipeline run is selected before bootstrapping another eligible `resume_review_pending` posting, so the current selector ordering is backed by direct regression evidence instead of implementation inference alone.
-          - Quality-engineer support work initially proved that a ready contact-rooted general-learning candidate still yielded `no_work`, giving the remaining general-learning supervisor gap direct regression evidence before implementation started.
-          - "`job_hunt_copilot.blocker_audit` now routes `qa_supervisor_regressions` to that focused downstream file, and the regenerated BA-10 acceptance-trace plus blocker-audit reports cite the dedicated evidence explicitly instead of pointing only at the broad supervisor suite."
-          - Build-lead implementation now advances durable role-targeted runs from `lead_handoff` into `agent_review`, and the new `perform_mandatory_agent_review` action reuses the existing tailoring review persistence to approve pending tailored runs and advance them into `people_search` or `sending` without creating duplicate run history.
-          - "Focused downstream regressions now seed real pending-review tailoring state and prove three concrete behaviors: `lead_handoff` advancement into `agent_review`, bounded mandatory-review advancement into `people_search`, and retry-safe resume from `people_search` with the same `pipeline_run_id` plus pending review packet when later downstream stages are still unsupported."
-          - "The downstream-supervisor gap reports now carry a machine-readable implementation snapshot listing the current selector priority order (`active_incident`, `open_pipeline_run`, `new_role_targeted_posting`), the registered role-targeted checkpoint stages (`agent_review`, `lead_handoff`), the validated blocked downstream stages (`people_search`, `email_discovery`, `sending`, `delivery_feedback`), and the still-missing contact-rooted general-learning path."
-          - "The BA-10 blocker audit and validation runner now expose canonical `--current-focus`, `--gap-id`, and `--blocker-id` invocations, so the open downstream-supervisor focus can be revalidated from one stable entrypoint without reconstructing command plans manually."
-          - "The latest `build-agent/reports/ba-10-validation-suite-latest.*` snapshot now also records the resolved selector context for mixed `--current-focus` plus `--smoke-target` replays, so downstream-supervisor evidence shows why each validation command was included instead of only listing the executed commands."
-          - "The latest `build-agent/reports/ba-10-validation-suite-latest.*` snapshot now also separates requested selectors from repo-wide open BA-10 status, publishing open acceptance-gap and build-board-blocker counts plus ids so a focused replay cannot be mistaken for blocker closure."
-          - "Build-lead implementation now also registers `run_role_targeted_people_search`, which reuses the existing discovery component to refresh `people_search_result.json`, materialize shortlisted contacts, and advance the same durable `pipeline_run_id` into `email_discovery` or `sending` without restarting."
-          - "Focused downstream regressions now also prove `people_search -> email_discovery` with persisted shortlist artifacts, and retry-safe resume from `email_discovery` with the same durable run plus pending review packet when the later action catalog is still unsupported."
-          - "The downstream-supervisor gap reports now list `agent_review`, `lead_handoff`, and `people_search` as registered role-targeted action stages, narrow the validated blocked later stages to `email_discovery`, `sending`, and `delivery_feedback`, and keep the still-missing contact-rooted general-learning path explicit."
-          - "Build-lead implementation now also registers `run_role_targeted_email_discovery`, which reuses the current send-set evaluation plus existing discovery component to inspect one selected contact at a time, persist `discovery_result.json`, keep the durable run at `email_discovery` while more discovery is needed, or advance the same `pipeline_run_id` into `sending` once the active send set is ready."
-          - "Focused downstream regressions now also prove two bounded email-discovery behaviors: the durable run stays at `email_discovery` after a non-terminal discovery miss, and the same run advances from `email_discovery` into `sending` when the selected contact produces a usable email."
-          - "Build-lead implementation now also registers `run_role_targeted_sending`, which drafts the ready send set when send artifacts are still missing, executes one provider-injected send safely, keeps the durable run at `sending` while later-wave contacts remain paced, advances terminal sent waves into `delivery_feedback`, and completes review-worthy no-send blocked waves with the existing review-packet flow."
-          - "Focused downstream regressions now also prove three bounded sending behaviors: the supervisor drafts the ready send set and stays at `sending` while later-wave contacts remain due later, the same durable run advances from `sending` into `delivery_feedback` after a terminal sent wave with immediate feedback evidence, and a no-send blocked terminal wave completes the run with a persisted pending review packet."
-          - "The downstream-supervisor gap reports now list `agent_review`, `email_discovery`, `lead_handoff`, `people_search`, and `sending` as registered role-targeted action stages, narrow the validated blocked later stages to `delivery_feedback`, and keep the still-missing contact-rooted general-learning path explicit."
-          - "Build-lead implementation now also registers `run_role_targeted_delivery_feedback`, which reuses `job_hunt_copilot.delivery_feedback.sync_delivery_feedback` for the selected posting's sent messages, keeps the durable run at `delivery_feedback` while high-level outcomes remain pending, and completes the same run with a pending review packet once every sent message has a bounced, `not_bounced`, or replied outcome."
-          - "Focused downstream regressions now also prove two bounded delivery-feedback behaviors: the supervisor keeps the same durable run active at `delivery_feedback` while the observation window is still open, and a later retry reuses that same `pipeline_run_id` to complete the run plus review packet once the delayed feedback boundary closes."
-          - "The downstream-supervisor gap reports now list `delivery_feedback` as a registered role-targeted action stage, clear the validated blocked role-targeted stage list, move the acceptance matrix to 193 implemented / 5 partial / 14 gap scenarios, and keep the still-missing contact-rooted general-learning selector path explicit."
-          - "Build-lead implementation now also registers `run_general_learning_outreach`, which selects send-ready contact-rooted cases after the primary role-targeted posting work, reuses or creates one learning-first draft, executes one safe send without posting linkage or tailored-resume requirements, and triggers the existing immediate feedback sync path for that sent contact."
-          - "Focused downstream regressions now also prove two new bounded general-learning behaviors: a send-ready contact-rooted case is selected and sent without any pipeline run or role-targeted review prerequisites, and an eligible new role-targeted posting still outranks that opportunistic contact-rooted work in the selector order."
-          - "Build-lead implementation now also registers `run_general_learning_email_discovery`, which selects contact-rooted general-learning cases that still lack a working email, reuses the existing discovery component to run one bounded provider-backed discovery step without posting linkage, persists a contact-rooted `discovery_result.json`, and updates canonical contact state to `working_email_found` or `exhausted` without inventing a pipeline run."
-          - "Focused downstream regressions now also prove two new contact-rooted progression behaviors: a no-email general-learning contact is selected for bounded discovery and becomes send-ready in canonical contact state, and the next heartbeat then reuses the existing general-learning send action for that same contact without creating a pipeline run."
-          - "Build-lead implementation now also registers `run_general_learning_delivery_feedback`, which selects sent contact-rooted general-learning outreach after the send boundary, reuses the shared delayed-feedback sync logic for that contact's sent messages, and keeps the flow contact-rooted without inventing a pipeline run."
-          - "Focused downstream regressions now also prove two new delayed-feedback follow-through behaviors: a sent general-learning contact is selected for bounded delayed feedback on the next heartbeat without creating a pipeline run, and a later delayed sync persists `not_bounced` feedback and clears the remaining follow-up work for that contact."
-          - "The downstream-supervisor gap cluster is now closed honestly: the acceptance matrix still reports 194 implemented / 4 partial / 14 gap scenarios, but the remaining open BA-10 clusters are now limited to maintenance, chat review/control, idle-timeout resume, and posting-abandon behavior."
-        validation:
-          - "`python3.11 -m py_compile job_hunt_copilot/supervisor.py tests/test_supervisor.py tests/test_supervisor_downstream_actions.py tests/support.py`"
-          - "`python3.11 -m pytest tests/test_supervisor.py tests/test_supervisor_downstream_actions.py`"
-          - "`python3.11 -m pytest tests/test_delivery_feedback.py`"
-          - "`python3.11 -m pytest tests/test_supervisor_downstream_actions.py tests/test_acceptance_traceability.py tests/test_blocker_audit.py tests/test_quality_validation.py`"
-          - "`python3.11 scripts/quality/run_ba10_validation_suite.py --project-root /Users/achyutaramsonti/Projects/job-hunt-copilot-v4 --current-focus`"
-          - "`python3.11 -m py_compile job_hunt_copilot/paths.py job_hunt_copilot/email_discovery.py job_hunt_copilot/supervisor.py tests/test_email_discovery.py tests/test_supervisor_downstream_actions.py tests/test_acceptance_traceability.py tests/test_blocker_audit.py tests/test_quality_validation.py`"
-          - "`python3.11 -m pytest tests/test_email_discovery.py tests/test_supervisor_downstream_actions.py`"
-          - "`python3.11 -m pytest tests/test_quality_validation.py`"
-          - "`python3.11 scripts/quality/run_ba10_validation_suite.py --project-root /Users/achyutaramsonti/Projects/job-hunt-copilot-v4 --current-focus --smoke-target bootstrap`"
+          - removal of old track or focus routing only after the redesign is fully validated
 
 current_focus:
-  epic_id: BA-10
-  slice_id: BA-10-S3
-  owner_role: build-lead
-  reason: BA-10-S3 closed the final required acceptance gap through the bounded maintenance workflow, retained review artifacts, and approval controls, and host-side validation has now confirmed both the unattended build wrapper and the product launchd helpers on the real machine, so the product now sits at 212 implemented / 0 partial / 0 gap scenarios with no remaining repo-tracked blockers.
+  epic_id: RT-01
+  slice_id: RT-01-S1
+  owner_role: tailoring-engineer
+  reason: The redesign should start by building the stable term-normalization and adjacency foundation that later theme classification, gap analysis, and keyword placement will all reuse.
   exit_criteria:
-    - the acceptance trace matrix, blocker audit, repo-readiness summary, and latest validation snapshot stay aligned to the zero-gap required-acceptance surface
-    - host-side validation evidence stays captured in the committed closeout notes and reports
-    - no new acceptance regressions appear in the BA-10 closeout validation suite
+    - "`job_hunt_copilot/tailoring/` package scaffold exists"
+    - "adjacency map and term aliases are persisted under `assets/resume-tailoring/data/`"
+    - keyword-system tests exist and pass
 
 focus_order:
-  - epic_id: BA-10
-    why_now: Hardening is most effective after the main component boundaries and artifacts exist.
-  - epic_id: BA-09
-    why_now: Delivery feedback and review surfaces are now complete in code, but BA-10 validation may still surface bounded follow-up fixes here.
-  - epic_id: BA-06
-    why_now: Tailoring is functionally complete in code, but later hardening or cross-epic fixes may still revisit it if validation exposes gaps.
+  - epic_id: RT-01
+    why_now: Static data, package scaffolding, and templates are the hard prerequisites for every later redesign slice.
+  - epic_id: RT-02
+    why_now: The Garmin failure is primarily a routing and classification problem, so the next highest-value work is deterministic theme selection.
+  - epic_id: RT-03
+    why_now: Evidence-pool content generation only becomes trustworthy once the classifier and signal weighting are correct.
+  - epic_id: RT-04
+    why_now: Assembly and verification should be layered on top of stable content generation rather than built first.
+  - epic_id: RT-05
+    why_now: Runtime integration should happen after the new pipeline exists, not before.
+  - epic_id: RT-06
+    why_now: Validation and legacy removal belong at the end so the old system remains available until the redesign is proven.
 
-known_blockers:
-  - blocker_id: BA10-TRACE-001
-    status: closed
-    severity: high
-    owner_role: quality-engineer
-    summary: "The regenerated BA-10 trace matrix now reports 212 implemented / 0 partial / 0 gap scenarios; explicit smoke-coverage targets, implemented-slice traceability, reproducible validation-command mappings, a guarded repo-readiness summary, and a durable latest validation-suite snapshot now cover the full required acceptance surface including bounded maintenance selection, retained maintenance review artifacts, and maintenance approval controls."
-    evidence:
-      - build-agent/reports/ba-10-acceptance-trace-matrix.json
-      - build-agent/reports/ba-10-acceptance-trace-matrix.md
-      - build-agent/reports/ba-10-blocker-audit.json
-      - build-agent/reports/ba-10-blocker-audit.md
-      - build-agent/reports/repo-readiness-summary.json
-      - build-agent/reports/repo-readiness-summary.md
-      - build-agent/reports/ba-10-validation-suite-latest.json
-      - build-agent/reports/ba-10-validation-suite-latest.md
-      - job_hunt_copilot/acceptance_traceability.py
-      - job_hunt_copilot/blocker_audit.py
-      - job_hunt_copilot/quality_validation.py
-      - job_hunt_copilot/repo_readiness.py
-      - scripts/quality/generate_blocker_audit.py
-      - scripts/quality/generate_repo_readiness_report.py
-      - scripts/quality/run_ba10_validation_suite.py
-      - scripts/ops/control_agent.py
-      - tests/test_acceptance_traceability.py
-      - tests/test_blocker_audit.py
-      - tests/test_local_runtime.py
-      - tests/test_quality_validation.py
-      - tests/test_repo_readiness.py
-      - tests/test_supervisor_downstream_actions.py
-      - tests/test_delivery_feedback.py
-      - tests/test_schema.py
-      - tests/test_smoke_harness.py
-      - tests/test_supervisor.py
-      - tests/test_runtime_pack.py
-      - tests/test_resume_tailoring.py
-      - tests/test_outreach.py
-      - tests/test_review_queries.py
-    impact: Required acceptance coverage is now fully traceable and replayable from committed reports; reopen this blocker only if the acceptance trace, blocker audit, repo-readiness summary, or current-focus validation suite drifts away from the zero-gap surface.
-    next_action: No immediate code follow-up. Keep the committed BA-10 reports current and reopen this blocker only if a new acceptance regression appears.
-  - blocker_id: BUILD-CLI-001
-    status: closed
-    severity: medium
-    owner_role: build-lead
-    summary: "Host-side replay now confirms `build-agent/bin/jhc-build-start` loads `gui/$UID/com.jobhuntcopilot.buildlead`, starts real build-lead heartbeat cycles, and records clean `no_work` cycle rows with the supported `codex exec` invocation after the `--ask-for-approval` incompatibility fix."
-    evidence:
-      - build-agent/reports/host-validation-closeout.md
-      - build-agent/scripts/run_build_lead_cycle.py
-      - build-agent/bin/jhc-build-start
-      - build-agent/bin/jhc-build-stop
-      - build-agent/state/build-cycles.jsonl
-      - tests/test_build_agent_cycle.py
-      - build-agent/logs/build-lead.stdout.log
-    impact: The unattended build wrapper is now validated both in automated tests and on the host machine, so this blocker only needs reopening if a future host replay fails or the Codex CLI shape changes again.
-    next_action: No immediate follow-up. Reopen only if a future host replay fails or the supported `codex exec` contract changes.
-  - blocker_id: OPS-LAUNCHD-001
-    status: closed
-    severity: medium
-    owner_role: build-lead
-    summary: "Host-side replay now confirms `bin/jhc-agent-start` successfully bootstraps both `gui/$UID/com.jobhuntcopilot.supervisor` and `gui/$UID/com.jobhuntcopilot.feedback-sync`, `launchctl print` reports the expected live launchd state, and `bin/jhc-agent-stop` cleanly boots both jobs out while canonical control state returns to `stopped`."
-    evidence:
-      - build-agent/reports/host-validation-closeout.md
-      - bin/jhc-agent-start
-      - bin/jhc-agent-stop
-      - bin/jhc-feedback-sync-cycle
-      - ops/launchd/job-hunt-copilot-supervisor.plist
-      - ops/launchd/job-hunt-copilot-feedback-sync.plist
-      - scripts/ops/materialize_supervisor_plist.py
-      - scripts/ops/materialize_feedback_sync_plist.py
-      - scripts/ops/control_agent.py
-      - tests/test_local_runtime.py
-    impact: Product-side launchd startup and shutdown are now verified on the host machine, so this blocker only needs reopening if future host launchctl behavior regresses.
-    next_action: No immediate follow-up. Reopen only if a future host launchctl replay fails or the launchd job definitions change materially.
+known_blockers: []

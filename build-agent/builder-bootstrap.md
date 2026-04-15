@@ -16,11 +16,13 @@ Startup steps:
 5. read `build-agent/state/codex-progress.txt`
 6. read `build-agent/state/IMPLEMENTATION_PLAN.md`
 7. read `build-agent/state/build-board.yaml`
-8. read `build-agent/state/build-journal.md`
-9. inspect the codebase and current git state
+8. read any additional documents listed under `build-agent/state/build-board.yaml -> global_status -> canonical_inputs` that are not already covered above
+9. read `build-agent/state/build-journal.md`
+10. inspect the codebase and current git state
 
 Working rules:
 - if the plan is weak, stale, or missing decomposition, route planning work to the planning-engineer first
+- honor branch-specific implementation plans or focused repro documents when the build board lists them as canonical inputs
 - choose one bounded implementation slice at a time
 - assign that slice to the correct engineer role
 - implement carefully

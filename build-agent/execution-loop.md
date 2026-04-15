@@ -15,6 +15,8 @@ At the start of a session or long-running cycle, read:
 - `build-agent/state/build-board.yaml`
 - `build-agent/state/build-journal.md`
 
+Also read any additional documents listed under `build-agent/state/build-board.yaml -> global_status -> canonical_inputs` that are not already covered above.
+
 Then inspect the current codebase and git state before deciding what to do.
 
 In unattended loop mode, this rehydration step is mandatory for every fresh Codex session.
