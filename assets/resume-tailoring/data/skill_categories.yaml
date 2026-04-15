@@ -1,0 +1,162 @@
+categories:
+  applied_ai:
+    - name: Languages
+      pool_sources:
+        - languages
+    - name: Applied AI
+      pool_sources:
+        - ai & data
+        - systems
+    - name: Backend \& Data
+      pool_sources:
+        - backend
+        - data & storage
+    - name: Cloud \& Infra
+      pool_sources:
+        - cloud & devops
+    - name: Testing \& Reliability
+      pool_sources:
+        - testing & reliability
+
+  agent_ai_systems:
+    - name: Languages
+      pool_sources:
+        - languages
+    - name: Applied AI
+      pool_sources:
+        - ai & data
+        - systems
+    - name: Backend \& Data
+      pool_sources:
+        - backend
+        - data & storage
+    - name: Cloud \& Infra
+      pool_sources:
+        - cloud & devops
+    - name: Testing \& Reliability
+      pool_sources:
+        - testing & reliability
+
+  forward_deployed_ai:
+    - name: Languages
+      pool_sources:
+        - languages
+    - name: Applied AI
+      pool_sources:
+        - ai & data
+    - name: Backend \& Data
+      pool_sources:
+        - backend
+        - data & storage
+        - systems
+    - name: Cloud \& Infra
+      pool_sources:
+        - cloud & devops
+    - name: Testing \& Reliability
+      pool_sources:
+        - testing & reliability
+
+  frontend_web:
+    - name: Languages
+      pool_sources:
+        - languages
+    - name: Frontend \& UI
+      pool_sources:
+        - frontend & mobile
+    - name: Backend \& Data
+      pool_sources:
+        - backend
+        - data & storage
+    - name: Cloud \& DevOps
+      pool_sources:
+        - cloud & devops
+    - name: Testing \& Reliability
+      pool_sources:
+        - testing & reliability
+
+  backend_service:
+    - name: Languages
+      pool_sources:
+        - languages
+    - name: Infrastructure \& Systems
+      pool_sources:
+        - systems
+    - name: Cloud \& DevOps
+      pool_sources:
+        - cloud & devops
+    - name: Data \& Storage
+      pool_sources:
+        - data & storage
+    - name: Testing \& Reliability
+      pool_sources:
+        - testing & reliability
+
+  distributed_infra:
+    - name: Languages
+      pool_sources:
+        - languages
+    - name: Infrastructure \& Systems
+      pool_sources:
+        - systems
+    - name: Cloud \& DevOps
+      pool_sources:
+        - cloud & devops
+    - name: Data \& Storage
+      pool_sources:
+        - data & storage
+    - name: Testing \& Reliability
+      pool_sources:
+        - testing & reliability
+
+  platform_infra:
+    - name: Languages
+      pool_sources:
+        - languages
+    - name: Infrastructure \& Systems
+      pool_sources:
+        - systems
+    - name: Cloud \& DevOps
+      pool_sources:
+        - cloud & devops
+    - name: Data \& Storage
+      pool_sources:
+        - data & storage
+    - name: Testing \& Reliability
+      pool_sources:
+        - testing & reliability
+
+  fullstack:
+    - name: Languages
+      pool_sources:
+        - languages
+    - name: Application \& Systems
+      pool_sources:
+        - frontend & mobile
+        - systems
+    - name: Cloud \& DevOps
+      pool_sources:
+        - cloud & devops
+    - name: Data \& Storage
+      pool_sources:
+        - data & storage
+    - name: Testing \& Reliability
+      pool_sources:
+        - testing & reliability
+
+  generalist:
+    - name: Languages
+      pool_sources:
+        - languages
+    - name: Application \& Systems
+      pool_sources:
+        - frontend & mobile
+        - systems
+    - name: Cloud \& DevOps
+      pool_sources:
+        - cloud & devops
+    - name: Data \& Storage
+      pool_sources:
+        - data & storage
+    - name: Testing \& Reliability
+      pool_sources:
+        - testing & reliability

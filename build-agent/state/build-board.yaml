@@ -130,12 +130,19 @@ epics:
       - id: RT-01-S5
         name: Task 5 - Summary and skill category templates
         owner_role: tailoring-engineer
-        status: pending
+        status: done
         dependencies:
           - RT-01-S2
         deliverables:
           - "`assets/resume-tailoring/data/summary_templates.yaml`"
           - "`assets/resume-tailoring/data/skill_categories.yaml`"
+          - "`job_hunt_copilot/tailoring/content_templates.py`"
+          - "`tests/test_content_templates.py`"
+        validation:
+          - "`python3.11 -m pytest tests/test_content_templates.py -q`"
+          - "`python3.11 -m pytest tests/test_keyword_system.py -q`"
+          - "`python3.11 -m pytest tests/test_theme_classifier.py -q`"
+          - "`python3.11 -m pytest tests/test_bullet_pool.py -q`"
       - id: RT-01-S6
         name: Task 6 - Template A and Template B base resumes
         owner_role: tailoring-engineer
@@ -385,12 +392,12 @@ epics:
 
 current_focus:
   epic_id: RT-01
-  slice_id: RT-01-S5
+  slice_id: RT-01-S6
   owner_role: tailoring-engineer
-  reason: The static evidence pools are now in place, so the next dependency is the theme-specific summary and skill-category templates that Step 12 and Step 13 will consume.
+  reason: The theme templates are now in place, so the next static-foundation dependency is the pair of base LaTeX resumes that Step 15 will assemble against.
   exit_criteria:
-    - "`assets/resume-tailoring/data/summary_templates.yaml` exists"
-    - "`assets/resume-tailoring/data/skill_categories.yaml` exists"
+    - "`assets/resume-tailoring/base/projects-first/base-resume.tex` exists"
+    - "`assets/resume-tailoring/base/experience-first/base-resume.tex` exists"
 
 focus_order:
   - epic_id: RT-01
