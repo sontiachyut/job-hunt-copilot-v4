@@ -4,14 +4,14 @@ Current program:
 - resume-tailoring JD-content-fit redesign on branch `resume-tailoring`
 
 Current focus:
-- `RT-01-S2` Task 2 - Theme term sets and classifier
+- `RT-01-S3` Task 3 - Experience bullet evidence pool
 - owner role: `tailoring-engineer`
 
 Latest checkpoint:
-- 2026-04-15 10:17 MST
+- 2026-04-15 10:25 MST
 - role owner: tailoring-engineer
-- slice attempted: `RT-01-S1` Task 1 - Technology adjacency map and term aliases
+- slice attempted: `RT-01-S2` Task 2 - Theme term sets and classifier
 - result: done
-- key files changed: assets/resume-tailoring/data/adjacency_map.yaml; assets/resume-tailoring/data/term_aliases.yaml; job_hunt_copilot/tailoring/__init__.py; job_hunt_copilot/tailoring/steps/__init__.py; job_hunt_copilot/tailoring/keyword_system.py; tests/test_keyword_system.py; build-agent/state/build-board.yaml; build-agent/state/IMPLEMENTATION_PLAN.md; build-agent/state/build-journal.md; build-agent/state/codex-progress.txt
-- validation summary: `python3.11 -m pytest tests/test_keyword_system.py -q` passed
-- next recommended slice: `RT-01-S2` Task 2 - Theme term sets and classifier
+- key files changed: assets/resume-tailoring/data/theme_terms.yaml; job_hunt_copilot/tailoring/theme_classifier.py; tests/test_theme_classifier.py; build-agent/state/build-board.yaml; build-agent/state/IMPLEMENTATION_PLAN.md; build-agent/state/build-journal.md; build-agent/state/codex-progress.txt
+- validation summary: `python3.11 -m pytest tests/test_theme_classifier.py -q` passed; `python3.11 -m pytest tests/test_keyword_system.py -q` passed
+- next recommended slice: `RT-01-S3` Task 3 - Experience bullet evidence pool

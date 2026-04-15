@@ -1,0 +1,177 @@
+themes:
+  applied_ai:
+    template: A
+    terms:
+      - llm
+      - llms
+      - rag
+      - embeddings
+      - machine learning
+      - ml
+      - model serving
+      - inference
+      - fine tuning
+      - fine-tuning
+      - prompt engineering
+      - ai powered
+      - ai-powered
+      - nlp
+      - natural language
+      - computer vision
+      - deep learning
+      - neural network
+      - transformer
+      - gpt
+      - bert
+
+  agent_ai_systems:
+    template: A
+    terms:
+      - agentic
+      - multi agent
+      - multi-agent
+      - agent framework
+      - agent frameworks
+      - tool use
+      - autonomous workflow
+      - autonomous workflows
+      - orchestration
+      - planning
+      - function calling
+      - copilot
+      - assistant
+      - conversational ai
+      - workflow automation
+
+  forward_deployed_ai:
+    template: A
+    terms:
+      - forward deployed
+      - solutions engineer
+      - customer facing ai
+      - customer-facing ai
+      - technical consulting
+      - implementation engineer
+      - integration engineer
+      - field engineer
+      - professional services
+      - applied scientist
+      - domain specific ai
+      - domain-specific ai
+
+  frontend_web:
+    template: runtime
+    terms:
+      - react
+      - angular
+      - vue
+      - svelte
+      - javascript
+      - typescript
+      - css
+      - html
+      - web
+      - web development
+      - frontend
+      - front end
+      - front-end
+      - ui
+      - ux
+      - user interface
+      - customer facing
+      - customer-facing
+      - responsive
+      - browser
+      - dom
+      - accessibility
+      - single page
+      - spa
+      - component
+      - components
+
+  backend_service:
+    template: B
+    terms:
+      - backend
+      - back end
+      - back-end
+      - api
+      - apis
+      - rest
+      - restful
+      - graphql
+      - microservice
+      - microservices
+      - database
+      - databases
+      - sql
+      - server side
+      - server-side
+      - authentication
+      - authorization
+      - crud
+      - middleware
+      - endpoint
+      - endpoints
+      - service
+      - services
+      - gateway
+
+  distributed_infra:
+    template: B
+    terms:
+      - distributed system
+      - distributed systems
+      - spark
+      - etl
+      - pipeline
+      - pipelines
+      - kafka
+      - high availability
+      - high-availability
+      - throughput
+      - data engineering
+      - data engineer
+      - streaming
+      - batch processing
+      - data lake
+      - lakehouse
+      - airflow
+      - hadoop
+      - hive
+      - presto
+
+  platform_infra:
+    template: B
+    terms:
+      - kubernetes
+      - terraform
+      - docker
+      - ci cd
+      - ci/cd
+      - cicd
+      - cloud infrastructure
+      - devops
+      - observability
+      - monitoring
+      - sre
+      - site reliability
+      - platform engineer
+      - platform engineering
+      - container
+      - containers
+      - helm
+      - istio
+      - service mesh
+      - linux
+
+  fullstack:
+    template: runtime
+    terms:
+      - full stack
+      - full-stack
+      - fullstack
+
+  generalist:
+    template: runtime
+    terms: []
