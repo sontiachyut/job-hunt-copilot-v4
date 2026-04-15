@@ -1,9 +1,9 @@
 # BA-10 Acceptance Trace Matrix
 
 - Feature file: `prd/test-spec.feature`
-- Scenario count: `226`
+- Scenario count: `239`
 - Status counts:
-  - `implemented`: `224`
+  - `implemented`: `237`
   - `partial`: `0`
   - `gap`: `0`
   - `deferred_optional`: `1`
@@ -55,14 +55,14 @@
 | Machine handoff contracts and canonical state | build-lead | 15 | 0 | 0 | 0 | 0 |
 | State transitions and relationship records | build-lead | 14 | 0 | 0 | 0 | 0 |
 | External integrations and bootstrap configuration | ingestion-engineer | 25 | 0 | 0 | 1 | 0 |
-| Failure, retry, and idempotency behavior | quality-engineer | 8 | 0 | 0 | 0 | 0 |
-| Resume Tailoring behavior | tailoring-engineer | 23 | 0 | 0 | 0 | 0 |
-| Email Discovery behavior | outreach-engineer | 17 | 0 | 0 | 0 | 0 |
+| Failure, retry, and idempotency behavior | quality-engineer | 10 | 0 | 0 | 0 | 0 |
+| Resume Tailoring behavior | tailoring-engineer | 27 | 0 | 0 | 0 | 0 |
+| Email Discovery behavior | outreach-engineer | 19 | 0 | 0 | 0 | 0 |
 | Email Drafting and Sending behavior | outreach-engineer | 18 | 0 | 0 | 0 | 0 |
-| Delivery Feedback behavior | outreach-engineer | 12 | 0 | 0 | 0 | 0 |
+| Delivery Feedback behavior | outreach-engineer | 13 | 0 | 0 | 0 | 0 |
 | Supervisor Agent behavior | build-lead | 34 | 0 | 0 | 0 | 0 |
 | Review surfaces and chat-based control | quality-engineer | 7 | 0 | 0 | 0 | 0 |
-| Current-build orchestration remains sequential | build-lead | 22 | 0 | 0 | 0 | 0 |
+| Current-build orchestration remains sequential | build-lead | 26 | 0 | 0 | 0 | 0 |
 | LinkedIn Scraping acceptance | ingestion-engineer | 16 | 0 | 0 | 0 | 0 |
 | End-to-end acceptance | quality-engineer | 3 | 0 | 0 | 0 | 1 |
 | Current-build safety, privacy, and evidence-grounding boundaries | quality-engineer | 3 | 0 | 0 | 0 | 0 |

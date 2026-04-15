@@ -112,6 +112,61 @@ def _collect_implemented_slice_catalog(
     return slice_catalog, slice_ids_by_epic
 
 
+def _load_report_implemented_slice_catalog(project_root: Path) -> list[dict[str, str]]:
+    report_path = project_root / REPORT_JSON_PATH
+    if not report_path.exists():
+        return []
+
+    payload = json.loads(report_path.read_text(encoding="utf-8"))
+    implemented_slices = payload.get("implemented_slices", [])
+    if not isinstance(implemented_slices, list):
+        return []
+
+    normalized: list[dict[str, str]] = []
+    for record in implemented_slices:
+        if not isinstance(record, dict):
+            continue
+        slice_id = record.get("slice_id")
+        epic_id = record.get("epic_id")
+        status = record.get("status")
+        if not slice_id or not epic_id or not status:
+            continue
+        normalized.append(
+            {
+                "slice_id": str(slice_id),
+                "epic_id": str(epic_id),
+                "name": str(record.get("name", "")),
+                "owner_role": str(record.get("owner_role", "")),
+                "status": str(status),
+            }
+        )
+    return normalized
+
+
+def _merge_implemented_slice_catalogs(
+    primary_catalog: list[dict[str, str]],
+    fallback_catalog: list[dict[str, str]],
+) -> tuple[list[dict[str, str]], dict[str, list[str]]]:
+    merged_by_slice_id: dict[str, dict[str, str]] = {}
+    order: list[str] = []
+
+    for catalog in (primary_catalog, fallback_catalog):
+        for record in catalog:
+            slice_id = record["slice_id"]
+            if slice_id not in merged_by_slice_id:
+                order.append(slice_id)
+            merged_by_slice_id[slice_id] = record
+
+    merged_catalog = [merged_by_slice_id[slice_id] for slice_id in order]
+    slice_ids_by_epic: dict[str, list[str]] = defaultdict(list)
+    for record in merged_catalog:
+        epic_id = record["epic_id"]
+        slice_id = record["slice_id"]
+        slice_ids_by_epic[epic_id].append(slice_id)
+
+    return merged_catalog, slice_ids_by_epic
+
+
 def _resolve_slice_ids(
     epic_ids: tuple[str, ...] | list[str],
     slice_ids_by_epic: dict[str, list[str]],
@@ -999,7 +1054,16 @@ def parse_feature_file(feature_path: Path) -> list[dict[str, Any]]:
 def build_acceptance_trace_matrix(project_root: Path | str) -> dict[str, Any]:
     root = Path(project_root)
     board = _load_build_board(root)
-    implemented_slices, slice_ids_by_epic = _collect_implemented_slice_catalog(board)
+    board_implemented_slices, board_slice_ids_by_epic = _collect_implemented_slice_catalog(board)
+    fallback_implemented_slices = _load_report_implemented_slice_catalog(root)
+    implemented_slices, slice_ids_by_epic = _merge_implemented_slice_catalogs(
+        board_implemented_slices,
+        [
+            record
+            for record in fallback_implemented_slices
+            if record["epic_id"] not in board_slice_ids_by_epic
+        ],
+    )
     feature_entries = parse_feature_file(root / FEATURE_PATH)
     feature_rules = {entry["rule"] for entry in feature_entries}
     unknown_rules = feature_rules - set(RULE_BLUEPRINTS)
