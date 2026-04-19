@@ -1152,6 +1152,74 @@ def test_mandatory_agent_review_approval_moves_posting_to_requires_contacts(tmp_
     }
 
 
+def test_bootstrap_reuses_approved_run_after_downstream_handoff(tmp_path):
+    _, paths, connection, bootstrap_result = prepare_real_tailoring_run(
+        tmp_path,
+        jd_body=(
+            "# JD\n"
+            "Requirements\n"
+            "- 3+ years of software engineering experience.\n"
+            "- Build distributed services in Python on AWS.\n"
+        ),
+    )
+    generate_tailoring_intelligence(
+        connection,
+        paths,
+        job_posting_id="jp_test",
+        timestamp="2026-04-06T20:10:00Z",
+    )
+    finalize_tailoring_run(
+        connection,
+        paths,
+        job_posting_id="jp_test",
+        timestamp="2026-04-06T20:20:00Z",
+    )
+    approval = record_tailoring_review_decision(
+        connection,
+        paths,
+        job_posting_id="jp_test",
+        decision_type=RESUME_REVIEW_STATUS_APPROVED,
+        decision_notes="Approved for downstream outreach.",
+        reviewer_type=MANDATORY_REVIEWER_AGENT,
+        timestamp="2026-04-06T20:25:00Z",
+    )
+
+    rerun = bootstrap_tailoring_run(
+        connection,
+        paths,
+        job_posting_id="jp_test",
+        timestamp="2026-04-06T20:30:00Z",
+    )
+
+    run_rows = connection.execute(
+        """
+        SELECT resume_tailoring_run_id, tailoring_status, resume_review_status
+        FROM resume_tailoring_runs
+        WHERE job_posting_id = ?
+        ORDER BY created_at ASC, resume_tailoring_run_id ASC
+        """,
+        ("jp_test",),
+    ).fetchall()
+    posting_status = connection.execute(
+        "SELECT posting_status FROM job_postings WHERE job_posting_id = ?",
+        ("jp_test",),
+    ).fetchone()[0]
+
+    assert bootstrap_result.run is not None
+    assert approval.run.resume_tailoring_run_id == bootstrap_result.run.resume_tailoring_run_id
+    assert rerun.reused_existing_run is True
+    assert rerun.run is not None
+    assert rerun.run.resume_tailoring_run_id == approval.run.resume_tailoring_run_id
+    assert posting_status == JOB_POSTING_STATUS_REQUIRES_CONTACTS
+    assert [dict(row) for row in run_rows] == [
+        {
+            "resume_tailoring_run_id": approval.run.resume_tailoring_run_id,
+            "tailoring_status": TAILORING_STATUS_TAILORED,
+            "resume_review_status": RESUME_REVIEW_STATUS_APPROVED,
+        }
+    ]
+
+
 def test_mandatory_agent_review_can_move_directly_to_ready_for_outreach(tmp_path):
     _, paths, connection, _ = prepare_real_tailoring_run(
         tmp_path,

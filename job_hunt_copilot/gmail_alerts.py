@@ -678,7 +678,24 @@ def _list_incremental_uncollected_gmail_message_refs(
                 gmail_message_id = _normalize_optional_text(raw_message.get("id"))
                 if gmail_message_id is None or gmail_message_id in seen_message_ids:
                     continue
-                if not _gmail_message_sender_matches(service, gmail_message_id=gmail_message_id, senders=senders):
+                try:
+                    sender_matches = _gmail_message_sender_matches(
+                        service,
+                        gmail_message_id=gmail_message_id,
+                        senders=senders,
+                    )
+                except Exception as exc:  # pragma: no cover - depends on live Gmail API surfaces
+                    if _is_stale_gmail_history_checkpoint_error(exc):
+                        raise GmailMailboxHistoryCheckpointError(
+                            "Gmail incremental polling encountered a referenced message "
+                            f"{gmail_message_id!r} that can no longer be fetched from "
+                            f"checkpoint {start_history_id!r}."
+                        ) from exc
+                    raise GmailMailboxPollingError(
+                        "Gmail incremental polling could not inspect sender metadata for "
+                        f"message {gmail_message_id!r} from checkpoint {start_history_id!r}."
+                    ) from exc
+                if not sender_matches:
                     continue
                 seen_message_ids.add(gmail_message_id)
                 selected.append(

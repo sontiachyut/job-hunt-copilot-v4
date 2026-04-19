@@ -40,6 +40,7 @@ from tests.support import create_minimal_project, seed_pending_review_tailoring_
 from tests.test_outreach import (
     ImmediateBounceObserver as OutreachImmediateBounceObserver,
     RecordingOutreachSender as OutreachRecordingSender,
+    SequencedOutreachSender,
     seed_approved_tailoring_run as seed_outreach_ready_tailoring_run,
     write_sender_profile,
 )
@@ -3079,6 +3080,213 @@ def test_retry_after_delivery_feedback_stage_reuses_same_run_and_completes_later
         },
     ]
     assert len(stored_packets) == 1
+
+
+def test_delivery_feedback_stage_prefers_actionable_retryable_sending(
+    tmp_path: Path,
+) -> None:
+    project_root = bootstrap_project(tmp_path)
+    paths = ProjectPaths.from_root(project_root)
+    write_sender_profile(paths)
+    connection = connect_database(project_root / "job_hunt_copilot.db")
+    lead_id, job_posting_id = seed_role_targeted_posting(
+        connection,
+        company_name="Acme Robotics",
+        role_title="Staff Software Engineer / AI",
+        posting_status="ready_for_outreach",
+        timestamp="2026-04-08T00:00:00Z",
+    )
+    seed_outreach_ready_tailoring_run(
+        connection,
+        paths,
+        company_name="Acme Robotics",
+        role_title="Staff Software Engineer / AI",
+        job_posting_id=job_posting_id,
+        current_time="2026-04-08T00:01:00Z",
+    )
+    seed_shortlisted_contact(
+        connection,
+        contact_id="ct_feedback_retry_sent",
+        job_posting_contact_id="jpc_feedback_retry_sent",
+        job_posting_id=job_posting_id,
+        company_name="Acme Robotics",
+        display_name="Priya Recruiter",
+        recipient_type="recruiter",
+        current_working_email="priya@acme.example",
+        position_title="Technical Recruiter",
+        created_at="2026-04-08T00:02:00Z",
+    )
+    seed_shortlisted_contact(
+        connection,
+        contact_id="ct_feedback_retry_blocked",
+        job_posting_contact_id="jpc_feedback_retry_blocked",
+        job_posting_id=job_posting_id,
+        company_name="Acme Robotics",
+        display_name="Maya Manager",
+        recipient_type="hiring_manager",
+        current_working_email="maya@acme.example",
+        position_title="Hiring Manager",
+        created_at="2026-04-08T00:03:00Z",
+    )
+    draft_batch = generate_role_targeted_send_set_drafts(
+        connection,
+        project_root=project_root,
+        job_posting_id=job_posting_id,
+        current_time="2026-04-08T00:04:00Z",
+        local_timezone="UTC",
+    )
+    message_ids_by_contact = {
+        row["contact_id"]: row["outreach_message_id"]
+        for row in connection.execute(
+            """
+            SELECT contact_id, outreach_message_id
+            FROM outreach_messages
+            WHERE job_posting_id = ?
+            """,
+            (job_posting_id,),
+        ).fetchall()
+    }
+    connection.execute(
+        """
+        UPDATE outreach_messages
+        SET message_status = 'sent',
+            sent_at = '2026-04-08T00:04:30Z',
+            thread_id = 'thread-already-sent',
+            delivery_tracking_id = 'delivery-already-sent',
+            updated_at = '2026-04-08T00:04:30Z'
+        WHERE outreach_message_id = ?
+        """,
+        (message_ids_by_contact["ct_feedback_retry_sent"],),
+    )
+    connection.execute(
+        """
+        UPDATE contacts
+        SET contact_status = 'sent',
+            updated_at = '2026-04-08T00:04:30Z'
+        WHERE contact_id = 'ct_feedback_retry_sent'
+        """
+    )
+    connection.execute(
+        """
+        UPDATE job_posting_contacts
+        SET link_level_status = 'outreach_done',
+            updated_at = '2026-04-08T00:04:30Z'
+        WHERE job_posting_contact_id = 'jpc_feedback_retry_sent'
+        """
+    )
+    connection.commit()
+    sender = SequencedOutreachSender(
+        {
+            message_ids_by_contact["ct_feedback_retry_blocked"]: [
+                SimpleNamespace(
+                    outcome="failed",
+                    reason_code="gmail_send_failed",
+                    message=(
+                        "HTTPSConnectionPool(host='oauth2.googleapis.com', port=443): "
+                        "Max retries exceeded with url: /token "
+                        "(Caused by NameResolutionError(\"Failed to resolve "
+                        "'oauth2.googleapis.com'\"))"
+                    ),
+                    thread_id=None,
+                    delivery_tracking_id=None,
+                    sent_at=None,
+                ),
+                SimpleNamespace(
+                    outcome="sent",
+                    thread_id="thread-retried",
+                    delivery_tracking_id="delivery-retried",
+                    reason_code=None,
+                    message=None,
+                    sent_at=None,
+                ),
+            ],
+        }
+    )
+    first_send = execute_role_targeted_send_set(
+        connection,
+        project_root=project_root,
+        job_posting_id=job_posting_id,
+        current_time="2026-04-08T00:20:00Z",
+        local_timezone="UTC",
+        sender=sender,
+    )
+    assert len(draft_batch.drafted_messages) == 2
+    assert len(first_send.sent_messages) == 0
+    assert len(first_send.blocked_messages) == 1
+    connection.execute(
+        """
+        UPDATE job_postings
+        SET posting_status = 'completed',
+            updated_at = '2026-04-08T00:20:30Z'
+        WHERE job_posting_id = ?
+        """,
+        (job_posting_id,),
+    )
+    connection.commit()
+
+    resume_agent(
+        connection,
+        manual_command="jhc-agent-start",
+        timestamp="2026-04-08T00:21:00Z",
+    )
+    pipeline_run, _ = ensure_role_targeted_pipeline_run(
+        connection,
+        lead_id=lead_id,
+        job_posting_id=job_posting_id,
+        current_stage="delivery_feedback",
+        started_at="2026-04-08T00:22:00Z",
+    )
+    sync_delivery_feedback(
+        connection,
+        project_root=project_root,
+        current_time="2026-04-08T00:29:00Z",
+        scheduler_name="job-hunt-copilot-feedback-sync",
+        scheduler_type="launchd",
+    )
+
+    retry_execution = run_supervisor_cycle(
+        connection,
+        paths,
+        trigger_type="launchd_heartbeat",
+        scheduler_name="launchd",
+        started_at="2026-04-08T00:40:00Z",
+        action_dependencies=SupervisorActionDependencies(
+            outreach_sender=sender,
+            local_timezone="UTC",
+        ),
+    )
+    updated_run = get_pipeline_run(connection, pipeline_run.pipeline_run_id)
+    posting_status = connection.execute(
+        """
+        SELECT posting_status
+        FROM job_postings
+        WHERE job_posting_id = ?
+        """,
+        (job_posting_id,),
+    ).fetchone()[0]
+    message_statuses = {
+        row["contact_id"]: row["message_status"]
+        for row in connection.execute(
+            """
+            SELECT contact_id, message_status
+            FROM outreach_messages
+            WHERE job_posting_id = ?
+            """,
+            (job_posting_id,),
+        ).fetchall()
+    }
+    connection.close()
+
+    assert retry_execution.cycle.result == SUPERVISOR_CYCLE_RESULT_SUCCESS
+    assert retry_execution.selected_work is not None
+    assert retry_execution.selected_work.action_id == ACTION_RUN_ROLE_TARGETED_SENDING
+    assert updated_run is not None
+    assert updated_run.current_stage == "delivery_feedback"
+    assert posting_status == "completed"
+    assert message_statuses == {
+        "ct_feedback_retry_sent": "sent",
+        "ct_feedback_retry_blocked": "sent",
+    }
 
 
 def test_pending_delivery_feedback_run_does_not_block_new_posting_bootstrap(

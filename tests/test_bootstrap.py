@@ -48,8 +48,10 @@ def test_bootstrap_materializes_support_dirs_secrets_and_db(tmp_path):
         ("0001_runtime_bootstrap.sql",),
         ("0002_canonical_schema.sql",),
         ("0003_company_grouping_keys.sql",),
+        ("0004_application_and_responder_tracking.sql",),
+        ("0005_refresh_expert_review_queue_view.sql",),
     ]
-    assert user_version == 3
+    assert user_version == 5
 
 
 def test_bootstrap_is_idempotent(tmp_path):
@@ -64,11 +66,90 @@ def test_bootstrap_is_idempotent(tmp_path):
         "0001_runtime_bootstrap.sql",
         "0002_canonical_schema.sql",
         "0003_company_grouping_keys.sql",
+        "0004_application_and_responder_tracking.sql",
+        "0005_refresh_expert_review_queue_view.sql",
     ]
     assert second_report["database"]["applied_migrations"] == []
     assert second_report["directories"]["created_paths"] == []
     assert str(project_root / "ops" / "agent" / "progress-log.md") in second_report["runtime_pack"]["preserved_paths"]
     assert str(project_root / "ops" / "agent" / "ops-plan.yaml") in second_report["runtime_pack"]["preserved_paths"]
+
+
+def test_bootstrap_refreshes_stale_expert_review_queue_view(tmp_path):
+    project_root = tmp_path / "repo"
+    project_root.mkdir()
+    create_minimal_project(project_root)
+
+    run_bootstrap(project_root=project_root)
+
+    connection = sqlite3.connect(project_root / "job_hunt_copilot.db")
+    connection.executescript(
+        """
+        DROP VIEW IF EXISTS expert_review_queue;
+        CREATE VIEW expert_review_queue AS
+        SELECT
+          erp.expert_review_packet_id,
+          erp.pipeline_run_id,
+          COALESCE(erp.job_posting_id, pr.job_posting_id) AS job_posting_id,
+          erp.packet_status,
+          erp.packet_path,
+          pr.run_status,
+          pr.current_stage,
+          pr.run_summary,
+          jp.company_name,
+          jp.role_title,
+          GROUP_CONCAT(ai.agent_incident_id) AS incident_ids,
+          GROUP_CONCAT(ai.summary, ' | ') AS incident_summaries,
+          erp.created_at
+        FROM expert_review_packets erp
+        JOIN pipeline_runs pr
+          ON pr.pipeline_run_id = erp.pipeline_run_id
+        LEFT JOIN job_postings jp
+          ON jp.job_posting_id = COALESCE(erp.job_posting_id, pr.job_posting_id)
+        LEFT JOIN agent_incidents ai
+          ON ai.pipeline_run_id = pr.pipeline_run_id
+         AND ai.status IN ('open', 'in_repair', 'escalated')
+        WHERE erp.packet_status = 'pending_expert_review'
+        GROUP BY
+          erp.expert_review_packet_id,
+          erp.pipeline_run_id,
+          COALESCE(erp.job_posting_id, pr.job_posting_id),
+          erp.packet_status,
+          erp.packet_path,
+          pr.run_status,
+          pr.current_stage,
+          pr.run_summary,
+          jp.company_name,
+          jp.role_title,
+          erp.created_at;
+        """
+    )
+    connection.execute(
+        "DELETE FROM schema_migrations WHERE migration_name = ?",
+        ("0005_refresh_expert_review_queue_view.sql",),
+    )
+    connection.execute("PRAGMA user_version = 4")
+    connection.commit()
+    connection.close()
+
+    report = run_bootstrap(project_root=project_root)
+    assert report["database"]["applied_migrations"] == [
+        "0005_refresh_expert_review_queue_view.sql",
+    ]
+
+    connection = sqlite3.connect(project_root / "job_hunt_copilot.db")
+    view_sql = connection.execute(
+        """
+        SELECT sql
+        FROM sqlite_master
+        WHERE type = 'view' AND name = 'expert_review_queue'
+        """
+    ).fetchone()[0]
+    user_version = connection.execute("PRAGMA user_version").fetchone()[0]
+    connection.close()
+
+    assert "erp.summary_excerpt" in view_sql
+    assert user_version == 5
 
 
 def test_bootstrap_requires_minimum_assets(tmp_path):

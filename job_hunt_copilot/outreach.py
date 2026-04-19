@@ -1658,7 +1658,7 @@ def execute_general_learning_outreach(
             thread_id=normalized_outcome.thread_id,
             delivery_tracking_id=normalized_outcome.delivery_tracking_id,
         )
-        run_immediate_delivery_feedback_poll(
+        _run_immediate_delivery_feedback_poll_safely(
             connection,
             project_root=project_root,
             current_time=current_time,
@@ -1961,7 +1961,7 @@ def execute_role_targeted_send_set(
         job_posting_id=job_posting_id,
     )
     if sent_messages:
-        run_immediate_delivery_feedback_poll(
+        _run_immediate_delivery_feedback_poll_safely(
             connection,
             project_root=project_root,
             current_time=current_time,
@@ -2252,10 +2252,7 @@ def _evaluate_retryable_blocked_send_state(
     send_status = _normalize_optional_text(send_result_contract.get("send_status"))
     reason_code = _normalize_optional_text(send_result_contract.get("reason_code"))
     message = _normalize_optional_text(send_result_contract.get("message"))
-    if send_status != MESSAGE_STATUS_BLOCKED or not _is_retryable_transient_send_failure(
-        reason_code=reason_code,
-        message=message,
-    ):
+    if send_status != MESSAGE_STATUS_BLOCKED:
         return RetryableBlockedSendState(
             is_retryable=False,
             retry_allowed_now=False,
@@ -2286,6 +2283,51 @@ def _evaluate_retryable_blocked_send_state(
         )
         - 1,
     )
+    if reason_code == "ambiguous_send_state":
+        remaining_guardrail = _evaluate_send_guardrails(
+            connection,
+            paths,
+            posting_row=posting_row,
+            active_message=active_message,
+            allow_existing_blocked_send_result=True,
+        )
+        if remaining_guardrail is None:
+            return RetryableBlockedSendState(
+                is_retryable=True,
+                retry_allowed_now=True,
+                retry_exhausted=False,
+                attempt_count=send_attempt_count,
+                automatic_retry_count=0,
+                earliest_retry_at=current_time,
+                reason_code=reason_code,
+                message=message,
+            )
+        return RetryableBlockedSendState(
+            is_retryable=False,
+            retry_allowed_now=False,
+            retry_exhausted=False,
+            attempt_count=send_attempt_count,
+            automatic_retry_count=0,
+            earliest_retry_at=None,
+            reason_code=reason_code,
+            message=message,
+        )
+
+    if not _is_retryable_transient_send_failure(
+        reason_code=reason_code,
+        message=message,
+    ):
+        return RetryableBlockedSendState(
+            is_retryable=False,
+            retry_allowed_now=False,
+            retry_exhausted=False,
+            attempt_count=send_attempt_count,
+            automatic_retry_count=0,
+            earliest_retry_at=None,
+            reason_code=reason_code,
+            message=message,
+        )
+
     automatic_retry_count = max(0, send_attempt_count - 1)
     retry_exhausted = automatic_retry_count >= MAX_AUTOMATIC_TRANSIENT_SEND_RETRIES
 
@@ -3020,6 +3062,47 @@ def _load_latest_general_learning_message_row(
     ).fetchone()
 
 
+def _run_immediate_delivery_feedback_poll_safely(
+    connection: sqlite3.Connection,
+    *,
+    project_root: Path | str,
+    current_time: str,
+    outreach_message_ids: Sequence[str],
+    observer: MailboxFeedbackObserver | None,
+) -> None:
+    try:
+        run_immediate_delivery_feedback_poll(
+            connection,
+            project_root=project_root,
+            current_time=current_time,
+            outreach_message_ids=outreach_message_ids,
+            observer=observer,
+        )
+    except Exception:
+        # Immediate polling is opportunistic; the delayed feedback sync is the durable
+        # recovery path and should not negate a successful send.
+        return
+
+
+def _load_latest_approved_tailoring_run_row(
+    connection: sqlite3.Connection,
+    *,
+    job_posting_id: str,
+) -> sqlite3.Row | None:
+    return connection.execute(
+        """
+        SELECT resume_tailoring_run_id, resume_review_status, final_resume_path, meta_yaml_path
+        FROM resume_tailoring_runs
+        WHERE job_posting_id = ?
+          AND resume_review_status = 'approved'
+        ORDER BY COALESCE(completed_at, updated_at, created_at, started_at) DESC,
+                 resume_tailoring_run_id DESC
+        LIMIT 1
+        """,
+        (job_posting_id,),
+    ).fetchone()
+
+
 def _load_tailoring_draft_inputs(
     connection: sqlite3.Connection,
     paths: ProjectPaths,
@@ -3027,16 +3110,10 @@ def _load_tailoring_draft_inputs(
     posting_row: Mapping[str, Any],
     current_time: str,
 ) -> dict[str, Any]:
-    latest_run = connection.execute(
-        """
-        SELECT resume_tailoring_run_id, resume_review_status, final_resume_path, meta_yaml_path
-        FROM resume_tailoring_runs
-        WHERE job_posting_id = ?
-        ORDER BY created_at DESC, resume_tailoring_run_id DESC
-        LIMIT 1
-        """,
-        (posting_row["job_posting_id"],),
-    ).fetchone()
+    latest_run = _load_latest_approved_tailoring_run_row(
+        connection,
+        job_posting_id=str(posting_row["job_posting_id"]),
+    )
     if latest_run is None or str(latest_run["resume_review_status"]).strip() != "approved":
         raise OutreachDraftingError(
             f"Job posting `{posting_row['job_posting_id']}` is not backed by an approved tailoring run."

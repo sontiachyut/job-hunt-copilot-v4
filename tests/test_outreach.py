@@ -568,6 +568,21 @@ class ImmediateBounceObserver:
         ]
 
 
+class TimeoutFeedbackObserver:
+    def __init__(self) -> None:
+        self.poll_calls: list[dict[str, object]] = []
+
+    def poll(self, messages, *, current_time, observation_scope):  # type: ignore[no-untyped-def]
+        self.poll_calls.append(
+            {
+                "message_ids": [message.outreach_message_id for message in messages],
+                "current_time": current_time,
+                "observation_scope": observation_scope,
+            }
+        )
+        raise TimeoutError("Synthetic mailbox timeout")
+
+
 def test_send_set_prefers_ready_contacts_for_each_primary_class(tmp_path: Path):
     project_root, _ = bootstrap_project(tmp_path)
     connection = connect_database(project_root / "job_hunt_copilot.db")
@@ -2929,6 +2944,92 @@ def test_send_execution_runs_immediate_feedback_poll_when_observer_is_provided(t
     connection.close()
 
 
+def test_send_execution_keeps_successful_send_when_immediate_feedback_poll_fails(tmp_path: Path):
+    project_root, paths = bootstrap_project(tmp_path)
+    connection = connect_database(project_root / "job_hunt_copilot.db")
+    write_sender_profile(paths)
+    seed_posting(connection)
+    seed_linked_contact(
+        connection,
+        contact_id="ct_r1",
+        job_posting_contact_id="jpc_r1",
+        display_name="Priya Recruiter",
+        recipient_type=RECIPIENT_TYPE_RECRUITER,
+        current_working_email="priya@acme.example",
+        created_at="2026-04-06T20:01:00Z",
+    )
+    seed_approved_tailoring_run(connection, paths)
+    draft_batch = generate_role_targeted_send_set_drafts(
+        connection,
+        project_root=project_root,
+        job_posting_id="jp_outreach",
+        current_time="2026-04-06T20:30:00Z",
+        local_timezone=ZoneInfo("UTC"),
+    )
+    observer = TimeoutFeedbackObserver()
+
+    result = execute_role_targeted_send_set(
+        connection,
+        project_root=project_root,
+        job_posting_id="jp_outreach",
+        current_time="2026-04-06T20:40:00Z",
+        local_timezone=ZoneInfo("UTC"),
+        sender=RecordingOutreachSender(),
+        feedback_observer=observer,
+    )
+
+    message_id = draft_batch.drafted_messages[0].outreach_message_id
+    message_row = connection.execute(
+        """
+        SELECT message_status, sent_at
+        FROM outreach_messages
+        WHERE outreach_message_id = ?
+        """,
+        (message_id,),
+    ).fetchone()
+    feedback_sync_row = connection.execute(
+        """
+        SELECT scheduler_name, scheduler_type, observation_scope, result, error_message
+        FROM feedback_sync_runs
+        ORDER BY started_at DESC, feedback_sync_run_id DESC
+        LIMIT 1
+        """
+    ).fetchone()
+    feedback_event_count = connection.execute(
+        """
+        SELECT COUNT(*)
+        FROM delivery_feedback_events
+        WHERE outreach_message_id = ?
+        """,
+        (message_id,),
+    ).fetchone()[0]
+
+    assert [message.outreach_message_id for message in result.sent_messages] == [message_id]
+    assert result.blocked_messages == ()
+    assert result.failed_messages == ()
+    assert dict(message_row) == {
+        "message_status": MESSAGE_STATUS_SENT,
+        "sent_at": "2026-04-06T20:40:00Z",
+    }
+    assert dict(feedback_sync_row) == {
+        "scheduler_name": "interactive_post_send",
+        "scheduler_type": "interactive",
+        "observation_scope": OBSERVATION_SCOPE_IMMEDIATE,
+        "result": "failed",
+        "error_message": "Synthetic mailbox timeout",
+    }
+    assert feedback_event_count == 0
+    assert observer.poll_calls == [
+        {
+            "message_ids": [message_id],
+            "current_time": "2026-04-06T20:40:00Z",
+            "observation_scope": OBSERVATION_SCOPE_IMMEDIATE,
+        }
+    ]
+
+    connection.close()
+
+
 def test_send_execution_completes_posting_when_last_message_is_sent(tmp_path: Path):
     project_root, paths = bootstrap_project(tmp_path)
     connection = connect_database(project_root / "job_hunt_copilot.db")
@@ -3519,5 +3620,197 @@ def test_transient_send_retry_exhaustion_leaves_message_blocked_and_not_actionab
         current_time="2026-04-06T21:44:00Z",
         local_timezone=ZoneInfo("UTC"),
     ) is False
+
+    connection.close()
+
+
+def test_cleared_ambiguous_blocked_send_retries_successfully(
+    tmp_path: Path,
+):
+    project_root, paths = bootstrap_project(tmp_path)
+    connection = connect_database(project_root / "job_hunt_copilot.db")
+    write_sender_profile(paths)
+    seed_posting(connection)
+    seed_linked_contact(
+        connection,
+        contact_id="ct_primary",
+        job_posting_contact_id="jpc_primary",
+        display_name="Priya Recruiter",
+        recipient_type=RECIPIENT_TYPE_RECRUITER,
+        current_working_email="priya@acme.example",
+        created_at="2026-04-06T20:01:00Z",
+    )
+    seed_approved_tailoring_run(connection, paths)
+    draft_batch = generate_role_targeted_send_set_drafts(
+        connection,
+        project_root=project_root,
+        job_posting_id="jp_outreach",
+        current_time="2026-04-06T20:30:00Z",
+        local_timezone=ZoneInfo("UTC"),
+    )
+    message_id = draft_batch.drafted_messages[0].outreach_message_id
+    sender = SequencedOutreachSender(
+        {
+            message_id: [
+                SendAttemptOutcome(
+                    outcome="sent",
+                    thread_id="thread-recovered",
+                    delivery_tracking_id="delivery-recovered",
+                )
+            ]
+        }
+    )
+
+    connection.execute(
+        """
+        INSERT INTO linkedin_leads (
+          lead_id, lead_identity_key, lead_status, lead_shape, split_review_status,
+          source_type, source_reference, source_mode, source_url, company_name, role_title,
+          created_at, updated_at
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        """,
+        (
+            "ld_duplicate",
+            "ld_duplicate|acme-robotics|older-role",
+            "handed_off",
+            "posting_only",
+            "not_applicable",
+            "gmail_job_alert",
+            "gmail/message/456",
+            "gmail_job_alert",
+            "https://careers.acme.example/jobs/456",
+            "Acme Robotics",
+            "Earlier Role",
+            "2026-04-06T20:00:30Z",
+            "2026-04-06T20:00:30Z",
+        ),
+    )
+    connection.execute(
+        """
+        INSERT INTO job_postings (
+          job_posting_id, lead_id, posting_identity_key, company_name, role_title,
+          posting_status, created_at, updated_at
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+        """,
+        (
+            "jp_duplicate",
+            "ld_duplicate",
+            "acme-robotics|earlier-role",
+            "Acme Robotics",
+            "Earlier Role",
+            JOB_POSTING_STATUS_OUTREACH_IN_PROGRESS,
+            "2026-04-06T20:00:30Z",
+            "2026-04-06T20:00:30Z",
+        ),
+    )
+    connection.execute(
+        """
+        INSERT INTO job_posting_contacts (
+          job_posting_contact_id, job_posting_id, contact_id, recipient_type, relevance_reason,
+          link_level_status, created_at, updated_at
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+        """,
+        (
+            "jpc_duplicate",
+            "jp_duplicate",
+            "ct_primary",
+            RECIPIENT_TYPE_RECRUITER,
+            "Earlier outreach wave still active.",
+            POSTING_CONTACT_STATUS_OUTREACH_IN_PROGRESS,
+            "2026-04-06T20:31:00Z",
+            "2026-04-06T20:31:00Z",
+        ),
+    )
+    connection.execute(
+        """
+        INSERT INTO outreach_messages (
+          outreach_message_id, contact_id, outreach_mode, recipient_email, message_status,
+          job_posting_id, job_posting_contact_id, subject, body_text, created_at, updated_at
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        """,
+        (
+            "msg_duplicate",
+            "ct_primary",
+            "role_targeted",
+            "priya@acme.example",
+            MESSAGE_STATUS_GENERATED,
+            "jp_duplicate",
+            "jpc_duplicate",
+            "Earlier outreach",
+            "Earlier outreach body",
+            "2026-04-06T20:31:00Z",
+            "2026-04-06T20:31:00Z",
+        ),
+    )
+    connection.commit()
+
+    first_result = execute_role_targeted_send_set(
+        connection,
+        project_root=project_root,
+        job_posting_id="jp_outreach",
+        current_time="2026-04-06T20:40:00Z",
+        local_timezone=ZoneInfo("UTC"),
+        sender=sender,
+    )
+
+    blocked_payload = json.loads(
+        paths.outreach_message_send_result_path(
+            "Acme Robotics",
+            "Staff Software Engineer / AI",
+            message_id,
+        ).read_text(encoding="utf-8")
+    )
+    blocked_row = connection.execute(
+        """
+        SELECT message_status
+        FROM outreach_messages
+        WHERE outreach_message_id = ?
+        """,
+        (message_id,),
+    ).fetchone()
+    assert [issue.outreach_message_id for issue in first_result.blocked_messages] == [message_id]
+    assert blocked_row["message_status"] == MESSAGE_STATUS_BLOCKED
+    assert blocked_payload["reason_code"] == "ambiguous_send_state"
+
+    connection.execute(
+        """
+        UPDATE outreach_messages
+        SET message_status = ?, updated_at = ?
+        WHERE outreach_message_id = ?
+        """,
+        (
+            MESSAGE_STATUS_FAILED,
+            "2026-04-06T20:50:00Z",
+            "msg_duplicate",
+        ),
+    )
+    connection.commit()
+
+    second_result = execute_role_targeted_send_set(
+        connection,
+        project_root=project_root,
+        job_posting_id="jp_outreach",
+        current_time="2026-04-06T20:55:00Z",
+        local_timezone=ZoneInfo("UTC"),
+        sender=sender,
+    )
+
+    sent_row = connection.execute(
+        """
+        SELECT message_status, sent_at, thread_id, delivery_tracking_id
+        FROM outreach_messages
+        WHERE outreach_message_id = ?
+        """,
+        (message_id,),
+    ).fetchone()
+    assert [message.outreach_message_id for message in second_result.sent_messages] == [message_id]
+    assert second_result.blocked_messages == ()
+    assert second_result.failed_messages == ()
+    assert dict(sent_row) == {
+        "message_status": MESSAGE_STATUS_SENT,
+        "sent_at": "2026-04-06T20:55:00Z",
+        "thread_id": "thread-recovered",
+        "delivery_tracking_id": "delivery-recovered",
+    }
 
     connection.close()

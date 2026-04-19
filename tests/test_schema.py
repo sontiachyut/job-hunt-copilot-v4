@@ -148,7 +148,7 @@ def test_bootstrap_materializes_canonical_schema_objects(tmp_path):
     assert EXPECTED_TABLES <= tables
     assert EXPECTED_VIEWS <= views
     assert EXPECTED_INDEXES <= indexes
-    assert user_version == 4
+    assert user_version == 5
 
 
 def test_review_views_are_queryable_from_canonical_state(tmp_path):

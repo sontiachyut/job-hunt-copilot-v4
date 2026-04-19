@@ -754,7 +754,7 @@ SUPERVISOR_ACTION_CATALOG = MappingProxyType(
             description="Run one bounded role-targeted sending step, generating drafts when needed, and advance the durable run to delivery feedback once the active wave is complete.",
             prerequisites=(
                 "pipeline_run exists and is non-terminal",
-                "pipeline_run.current_stage is `sending`",
+                "pipeline_run.current_stage is `sending`, or is `delivery_feedback` with an actionable retryable send frontier",
                 "job_posting.posting_status is `ready_for_outreach`, `outreach_in_progress`, or `completed`",
                 "the selected posting remains linked to an approved tailoring decision",
                 "a bounded outreach sender is configured before any automatic send is attempted",
@@ -2327,6 +2327,7 @@ def run_supervisor_cycle(
                         validation_error = _validate_selected_work(
                             connection,
                             selected_work,
+                            project_root=paths.project_root,
                             catalog_entry=catalog_entry,
                             current_time=cycle_started_at,
                             action_dependencies=resolved_action_dependencies,
@@ -2361,40 +2362,41 @@ def run_supervisor_cycle(
                                 timestamp=cycle_started_at,
                                 action_dependencies=resolved_action_dependencies,
                             )
-                            execution_error = _validate_selected_work_result(
+                        execution_error = _validate_selected_work_result(
+                            connection,
+                            paths,
+                            selected_work,
+                            catalog_entry=catalog_entry,
+                            current_time=cycle_started_at,
+                            pipeline_run=pipeline_run,
+                            incident=incident,
+                            maintenance_batch_id=maintenance_batch_id,
+                        )
+                        if execution_error is not None:
+                            error_summary = execution_error
+                            incident, pipeline_run = _record_progression_failure(
+                                connection,
+                                selected_work,
+                                summary=execution_error,
+                                incident_type="supervisor_action_execution_failed",
+                                severity=INCIDENT_SEVERITY_HIGH,
+                                timestamp=cycle_started_at,
+                            )
+                            review_packet = _ensure_review_packet_for_terminal_run(
                                 connection,
                                 paths,
-                                selected_work,
-                                catalog_entry=catalog_entry,
-                                pipeline_run=pipeline_run,
-                                incident=incident,
-                                maintenance_batch_id=maintenance_batch_id,
+                                pipeline_run,
+                                created_at=cycle_started_at,
                             )
-                            if execution_error is not None:
-                                error_summary = execution_error
-                                incident, pipeline_run = _record_progression_failure(
-                                    connection,
-                                    selected_work,
-                                    summary=execution_error,
-                                    incident_type="supervisor_action_execution_failed",
-                                    severity=INCIDENT_SEVERITY_HIGH,
-                                    timestamp=cycle_started_at,
-                                )
-                                review_packet = _ensure_review_packet_for_terminal_run(
-                                    connection,
-                                    paths,
-                                    pipeline_run,
-                                    created_at=cycle_started_at,
-                                )
-                                cycle_result = SUPERVISOR_CYCLE_RESULT_FAILED
-                            else:
-                                review_packet = _ensure_review_packet_for_terminal_run(
-                                    connection,
-                                    paths,
-                                    pipeline_run,
-                                    created_at=cycle_started_at,
-                                )
-                                cycle_result = SUPERVISOR_CYCLE_RESULT_SUCCESS
+                            cycle_result = SUPERVISOR_CYCLE_RESULT_FAILED
+                        else:
+                            review_packet = _ensure_review_packet_for_terminal_run(
+                                connection,
+                                paths,
+                                pipeline_run,
+                                created_at=cycle_started_at,
+                            )
+                            cycle_result = SUPERVISOR_CYCLE_RESULT_SUCCESS
 
         if selected_work is not None:
             context_snapshot_path = _write_context_snapshot(
@@ -2747,6 +2749,26 @@ def _select_open_pipeline_run_work_unit(
         if pipeline_run.current_stage == "delivery_feedback":
             job_posting_id = _optional_text(pipeline_run.job_posting_id)
             if job_posting_id:
+                if is_role_targeted_sending_actionable_now(
+                    connection,
+                    project_root=project_root,
+                    job_posting_id=job_posting_id,
+                    current_time=current_time,
+                    local_timezone=local_timezone,
+                ):
+                    return SupervisorWorkUnit(
+                        work_type=WORK_TYPE_PIPELINE_RUN,
+                        work_id=pipeline_run.pipeline_run_id,
+                        action_id=ACTION_RUN_ROLE_TARGETED_SENDING,
+                        summary=(
+                            "Resume actionable retryable sending work before delayed "
+                            "feedback finalization closes the durable pipeline run."
+                        ),
+                        lead_id=pipeline_run.lead_id,
+                        job_posting_id=pipeline_run.job_posting_id,
+                        pipeline_run_id=pipeline_run.pipeline_run_id,
+                        current_stage=pipeline_run.current_stage,
+                    )
                 sent_message_ids = _list_posting_sent_outreach_message_ids(
                     connection,
                     job_posting_id=job_posting_id,
@@ -2998,6 +3020,7 @@ def _validate_selected_work(
     connection: sqlite3.Connection,
     selected_work: SupervisorWorkUnit,
     *,
+    project_root: Path | str,
     catalog_entry: SupervisorActionCatalogEntry,
     current_time: str,
     action_dependencies: SupervisorActionDependencies,
@@ -3301,6 +3324,8 @@ def _validate_selected_work(
         return None
 
     if catalog_entry.action_id == ACTION_RUN_ROLE_TARGETED_SENDING:
+        from .outreach import is_role_targeted_sending_actionable_now
+
         pipeline_run = get_pipeline_run(connection, selected_work.work_id)
         if pipeline_run is None:
             return f"pipeline_run {selected_work.work_id!r} no longer exists."
@@ -3309,7 +3334,7 @@ def _validate_selected_work(
                 f"pipeline_run {selected_work.work_id!r} is not non-terminal; "
                 f"found {pipeline_run.run_status!r}."
             )
-        if pipeline_run.current_stage != "sending":
+        if pipeline_run.current_stage not in {"sending", "delivery_feedback"}:
             return (
                 f"pipeline_run {selected_work.work_id!r} is at unsupported sending "
                 f"stage {pipeline_run.current_stage!r}."
@@ -3342,19 +3367,29 @@ def _validate_selected_work(
             )
         latest_run = connection.execute(
             """
-            SELECT resume_review_status
+            SELECT 1
             FROM resume_tailoring_runs
             WHERE job_posting_id = ?
-            ORDER BY COALESCE(completed_at, updated_at, created_at, started_at) DESC,
-                     resume_tailoring_run_id DESC
+              AND resume_review_status = 'approved'
             LIMIT 1
             """,
             (job_posting_id,),
         ).fetchone()
-        if latest_run is None or latest_run[0] != "approved":
+        if latest_run is None:
             return (
                 f"job_posting {job_posting_id!r} is not backed by an approved tailoring "
                 "review for sending."
+            )
+        if pipeline_run.current_stage == "delivery_feedback" and not is_role_targeted_sending_actionable_now(
+            connection,
+            project_root=project_root,
+            job_posting_id=job_posting_id,
+            current_time=current_time,
+            local_timezone=action_dependencies.local_timezone,
+        ):
+            return (
+                f"pipeline_run {selected_work.work_id!r} is at delivery_feedback without "
+                "a retryable sending frontier that is actionable now."
             )
         if (
             posting_status != "completed"
@@ -4259,6 +4294,7 @@ def _execute_selected_work_unit(
         if latest_posting_status in {
             JOB_POSTING_STATUS_READY_FOR_OUTREACH,
             JOB_POSTING_STATUS_OUTREACH_IN_PROGRESS,
+            JOB_POSTING_STATUS_COMPLETED,
         }:
             if is_role_targeted_sending_actionable_now(
                 connection,
@@ -4355,6 +4391,12 @@ def _execute_selected_work_unit(
         return pipeline_run, None, None
 
     if catalog_entry.action_id == ACTION_RUN_ROLE_TARGETED_DELIVERY_FEEDBACK:
+        from .outreach import (
+            _find_next_send_frontier_message,
+            _load_active_role_targeted_wave,
+            _load_role_targeted_send_posting_row,
+        )
+
         job_posting_id = _require_text(selected_work.job_posting_id, "job_posting_id")
         sent_message_ids = _list_posting_sent_outreach_message_ids(
             connection,
@@ -4380,6 +4422,40 @@ def _execute_selected_work_unit(
                     "the durable pipeline run at delivery_feedback while "
                     f"{len(pending_feedback_message_ids)} sent messages still await a "
                     "high-level feedback outcome from the separate feedback-sync worker."
+                ),
+                timestamp=timestamp,
+            )
+            return pipeline_run, None, None
+
+        posting_row = _load_role_targeted_send_posting_row(
+            connection,
+            job_posting_id=job_posting_id,
+        )
+        active_wave = _load_active_role_targeted_wave(
+            connection,
+            job_posting_id=job_posting_id,
+        )
+        next_frontier, retry_state = _find_next_send_frontier_message(
+            connection,
+            paths,
+            posting_row=posting_row,
+            active_wave=active_wave,
+            current_time=timestamp,
+        )
+        if next_frontier is not None:
+            frontier_summary = (
+                "a retryable blocked send frontier"
+                if retry_state is not None
+                else "a remaining drafted send frontier"
+            )
+            pipeline_run = advance_pipeline_run(
+                connection,
+                selected_work.work_id,
+                current_stage="delivery_feedback",
+                run_summary=(
+                    "Supervisor kept the durable pipeline run active at "
+                    "delivery_feedback because the posting still has "
+                    f"{frontier_summary} that should resume once pacing permits."
                 ),
                 timestamp=timestamp,
             )
@@ -4487,6 +4563,7 @@ def _validate_selected_work_result(
     selected_work: SupervisorWorkUnit,
     *,
     catalog_entry: SupervisorActionCatalogEntry,
+    current_time: str,
     pipeline_run: PipelineRunRecord | None,
     incident: AgentIncidentRecord | None,
     maintenance_batch_id: str | None,
@@ -5018,6 +5095,12 @@ def _validate_selected_work_result(
         return f"Sending persisted an unexpected posting status {posting_status!r}."
 
     if catalog_entry.action_id == ACTION_RUN_ROLE_TARGETED_DELIVERY_FEEDBACK:
+        from .outreach import (
+            _find_next_send_frontier_message,
+            _load_active_role_targeted_wave,
+            _load_role_targeted_send_posting_row,
+        )
+
         if pipeline_run is None:
             return "Supervisor failed to load the selected pipeline_run after delivery feedback."
         if pipeline_run.pipeline_run_id != selected_work.work_id:
@@ -5053,6 +5136,33 @@ def _validate_selected_work_result(
                 return (
                     "Delivery feedback should remain at the delivery_feedback stage while "
                     f"outcomes remain pending; found {pipeline_run.current_stage!r}."
+                )
+            return None
+        posting_row = _load_role_targeted_send_posting_row(
+            connection,
+            job_posting_id=pipeline_run.job_posting_id,
+        )
+        active_wave = _load_active_role_targeted_wave(
+            connection,
+            job_posting_id=pipeline_run.job_posting_id,
+        )
+        next_frontier, _ = _find_next_send_frontier_message(
+            connection,
+            paths,
+            posting_row=posting_row,
+            active_wave=active_wave,
+            current_time=current_time,
+        )
+        if next_frontier is not None:
+            if pipeline_run.run_status != RUN_STATUS_IN_PROGRESS:
+                return (
+                    "Delivery feedback should keep the pipeline_run active while later "
+                    f"send frontier work remains; found {pipeline_run.run_status!r}."
+                )
+            if pipeline_run.current_stage != "delivery_feedback":
+                return (
+                    "Delivery feedback should stay at the delivery_feedback stage while "
+                    f"later send frontier work remains; found {pipeline_run.current_stage!r}."
                 )
             return None
         if pipeline_run.run_status != RUN_STATUS_COMPLETED:

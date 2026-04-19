@@ -66,6 +66,16 @@ JOB_POSTING_STATUS_TAILORING_IN_PROGRESS = "tailoring_in_progress"
 JOB_POSTING_STATUS_RESUME_REVIEW_PENDING = "resume_review_pending"
 JOB_POSTING_STATUS_REQUIRES_CONTACTS = "requires_contacts"
 JOB_POSTING_STATUS_READY_FOR_OUTREACH = "ready_for_outreach"
+JOB_POSTING_STATUS_OUTREACH_IN_PROGRESS = "outreach_in_progress"
+JOB_POSTING_STATUS_COMPLETED = "completed"
+DOWNSTREAM_TAILORING_PRESERVE_POSTING_STATUSES = frozenset(
+    {
+        JOB_POSTING_STATUS_REQUIRES_CONTACTS,
+        JOB_POSTING_STATUS_READY_FOR_OUTREACH,
+        JOB_POSTING_STATUS_OUTREACH_IN_PROGRESS,
+        JOB_POSTING_STATUS_COMPLETED,
+    }
+)
 
 INTELLIGENCE_STATUS_GENERATED = "generated"
 VERIFICATION_OUTCOME_PASS = "pass"
@@ -695,7 +705,18 @@ def bootstrap_tailoring_run(
             connection,
             posting_row["job_posting_id"],
         )
-        if existing_run is not None and not _run_requires_fresh_tailoring_attempt(existing_run):
+        downstream_approved_run = None
+        if posting_status in DOWNSTREAM_TAILORING_PRESERVE_POSTING_STATUSES:
+            downstream_approved_run = get_latest_approved_resume_tailoring_run_for_posting(
+                connection,
+                posting_row["job_posting_id"],
+            )
+        if downstream_approved_run is not None:
+            run = downstream_approved_run
+            reused_existing_run = True
+            base_used = downstream_approved_run.base_used
+            bootstrap_ready = True
+        elif existing_run is not None and not _run_requires_fresh_tailoring_attempt(existing_run):
             run = existing_run
             reused_existing_run = True
             base_used = existing_run.base_used
@@ -765,7 +786,7 @@ def bootstrap_tailoring_run(
                 posting_row=posting_row,
                 run=run,
             )
-            if bootstrap_ready:
+            if bootstrap_ready and posting_status not in DOWNSTREAM_TAILORING_PRESERVE_POSTING_STATUSES:
                 posting_status = _set_job_posting_status(
                     connection,
                     job_posting_id=posting_row["job_posting_id"],
@@ -955,6 +976,27 @@ def get_latest_resume_tailoring_run_for_posting(
         LIMIT 1
         """,
         (job_posting_id,),
+    ).fetchone()
+    return None if row is None else _resume_tailoring_run_from_row(row)
+
+
+def get_latest_approved_resume_tailoring_run_for_posting(
+    connection: sqlite3.Connection,
+    job_posting_id: str,
+) -> ResumeTailoringRunRecord | None:
+    row = connection.execute(
+        """
+        SELECT resume_tailoring_run_id, job_posting_id, base_used, tailoring_status,
+               resume_review_status, workspace_path, meta_yaml_path, final_resume_path,
+               verification_outcome, started_at, completed_at, created_at, updated_at
+        FROM resume_tailoring_runs
+        WHERE job_posting_id = ?
+          AND resume_review_status = ?
+        ORDER BY COALESCE(completed_at, updated_at, created_at, started_at) DESC,
+                 resume_tailoring_run_id DESC
+        LIMIT 1
+        """,
+        (job_posting_id, RESUME_REVIEW_STATUS_APPROVED),
     ).fetchone()
     return None if row is None else _resume_tailoring_run_from_row(row)
 
