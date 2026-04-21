@@ -2728,7 +2728,12 @@ def _select_open_pipeline_run_work_unit(
     current_time: str,
     local_timezone: object | str | None = None,
 ) -> SupervisorWorkUnit | None:
-    from .outreach import is_role_targeted_sending_actionable_now
+    from .outreach import (
+        _find_next_send_frontier_message,
+        _load_active_role_targeted_wave,
+        _load_role_targeted_send_posting_row,
+        is_role_targeted_sending_actionable_now,
+    )
 
     rows = connection.execute(
         """
@@ -2781,6 +2786,23 @@ def _select_open_pipeline_run_work_unit(
                         )
                     )
                     if pending_feedback_message_ids:
+                        continue
+                    posting_row = _load_role_targeted_send_posting_row(
+                        connection,
+                        job_posting_id=job_posting_id,
+                    )
+                    active_wave = _load_active_role_targeted_wave(
+                        connection,
+                        job_posting_id=job_posting_id,
+                    )
+                    next_frontier, _ = _find_next_send_frontier_message(
+                        connection,
+                        ProjectPaths.from_root(project_root),
+                        posting_row=posting_row,
+                        active_wave=active_wave,
+                        current_time=current_time,
+                    )
+                    if next_frontier is not None:
                         continue
         if pipeline_run.current_stage == "sending":
             job_posting_id = _optional_text(pipeline_run.job_posting_id)
