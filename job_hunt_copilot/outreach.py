@@ -131,6 +131,9 @@ ROLE_SIGNAL_BOILERPLATE_PATTERNS: tuple[re.Pattern[str], ...] = (
     re.compile(r"\beager to learn\b", re.IGNORECASE),
 )
 ROLE_SIGNAL_NONTECHNICAL_PATTERNS: tuple[re.Pattern[str], ...] = (
+    re.compile(r"^we are seeking\b", re.IGNORECASE),
+    re.compile(r"^we are looking for\b", re.IGNORECASE),
+    re.compile(r"^looking for\b", re.IGNORECASE),
     re.compile(r"^seeking an? .+ to join our team", re.IGNORECASE),
     re.compile(
         r"^contribute to design of new functionality and expand existing functionality$",
@@ -263,6 +266,12 @@ ROLE_SIGNAL_TITLE_THEME_PATTERNS: tuple[tuple[re.Pattern[str], tuple[str, ...]],
     ),
 )
 ROLE_SIGNAL_FOCUS_ANCHOR_PATTERNS: tuple[tuple[re.Pattern[str], str], ...] = (
+    (re.compile(r"\b(?:hybrid-cloud applications?|cloud and hybrid-cloud applications?)\b", re.IGNORECASE), "hybrid_cloud_apps"),
+    (re.compile(r"\bdevsecops\b", re.IGNORECASE), "devsecops"),
+    (re.compile(r"\b(?:web services? in the cloud|cloud web services?)\b", re.IGNORECASE), "cloud_web_services"),
+    (re.compile(r"\bgraphql\b", re.IGNORECASE), "graphql_rest"),
+    (re.compile(r"\b(?:rest(?:ful)? (?:apis?|services?)|swagger|postman)\b", re.IGNORECASE), "graphql_rest"),
+    (re.compile(r"\bci/cd\b", re.IGNORECASE), "ci_cd"),
     (re.compile(r"\b(?:public cloud|cloud-native|cloud-ready|aws|gcp|azure|pcf)\b", re.IGNORECASE), "cloud"),
     (re.compile(r"\b(?:kubernetes|docker|container(?:s|ization)?|container orchestration|podman|cri-o)\b", re.IGNORECASE), "containers"),
     (re.compile(r"\b(?:backend|rest apis?|restful services?|backend apis?|microservices?|grpc|event-driven)\b", re.IGNORECASE), "backend"),
@@ -281,6 +290,36 @@ ROLE_SIGNAL_FOCUS_ANCHOR_PATTERNS: tuple[tuple[re.Pattern[str], str], ...] = (
     (re.compile(r"\b(?:java|scala|python|golang|go|spring(?: boot)?|kotlin|c\+\+|c#)\b", re.IGNORECASE), "languages"),
 )
 ROLE_SIGNAL_SUMMARY_GROUPS: tuple[tuple[re.Pattern[str], str], ...] = (
+    (re.compile(r"\bevent-driven\b.*\bmetadata\b", re.IGNORECASE), "event-driven metadata pipelines"),
+    (re.compile(r"\bscheduling engines?\b.*\breal-time control systems?\b", re.IGNORECASE), "scheduling engines for real-time control systems"),
+    (re.compile(r"\bproduction-level models? and pipelines?\b", re.IGNORECASE), "production-level AI/ML models and pipelines"),
+    (re.compile(r"\b(?:hybrid-cloud applications?|cloud and hybrid-cloud applications?)\b", re.IGNORECASE), "hybrid-cloud application development"),
+    (re.compile(r"\bdevsecops\b", re.IGNORECASE), "DevSecOps"),
+    (re.compile(r"\b(?:web services? in the cloud|cloud web services?)\b", re.IGNORECASE), "cloud web services"),
+    (
+        re.compile(
+            r"(?=.*\bgraphql\b)(?=.*\b(?:rest(?:ful)? (?:apis?|services?)|swagger|postman)\b)",
+            re.IGNORECASE,
+        ),
+        "GraphQL and REST APIs",
+    ),
+    (
+        re.compile(
+            r"\brest(?:ful)? services?\b.*\bswagger\b.*\bpostman\b|\bpostman\b.*\bswagger\b.*\brest(?:ful)? services?\b",
+            re.IGNORECASE,
+        ),
+        "RESTful services, Swagger, and Postman",
+    ),
+    (
+        re.compile(
+            r"\brest(?:ful)? apis?\b.*\bmicroservices?\b|\bmicroservices?\b.*\brest(?:ful)? apis?\b",
+            re.IGNORECASE,
+        ),
+        "REST APIs or microservices",
+    ),
+    (re.compile(r"\bgraphql\b", re.IGNORECASE), "GraphQL APIs"),
+    (re.compile(r"\b(?:rest(?:ful)? (?:apis?|services?))\b", re.IGNORECASE), "REST APIs"),
+    (re.compile(r"\bci/cd\b", re.IGNORECASE), "CI/CD automation"),
     (re.compile(r"\b(?:terraform|infrastructure provisioning)\b", re.IGNORECASE), "Terraform-based infrastructure provisioning"),
     (re.compile(r"\bapi gateway\b", re.IGNORECASE), "API gateway build-out"),
     (re.compile(r"\b(?:workload identity|iam|oauth|oidc)\b", re.IGNORECASE), "workload identity automation"),
@@ -298,6 +337,184 @@ ROLE_SIGNAL_SUMMARY_GROUPS: tuple[tuple[re.Pattern[str], str], ...] = (
     (re.compile(r"\benterprise security systems?\b", re.IGNORECASE), "enterprise security systems"),
     (re.compile(r"\b(?:security|secure infrastructure|cloud security|application security)\b", re.IGNORECASE), "secure infrastructure"),
     (re.compile(r"\b(?:intel federal|government)\b", re.IGNORECASE), "government-focused security work"),
+)
+ROLE_THEME_TITLE_RULES: tuple[dict[str, Any], ...] = (
+    {
+        "family": "ai_ml",
+        "pattern": re.compile(r"\b(?:ai|ml|machine learning|deep learning|perception|generative)\b", re.IGNORECASE),
+        "preferred_anchors": ("ai_ml", "perception", "edge", "data", "distributed"),
+        "fallback_label": "AI/ML systems",
+        "growth_area_ids": ("ai_ml_systems", "backend_distributed_systems", "platform_infrastructure"),
+    },
+    {
+        "family": "robotics",
+        "pattern": re.compile(r"\b(?:robotics?|robotic|autonomy|embedded|perception)\b", re.IGNORECASE),
+        "preferred_anchors": ("robotics", "perception", "edge", "ai_ml", "distributed"),
+        "fallback_label": "robotics and edge systems",
+        "growth_area_ids": ("robotics_edge_systems", "ai_ml_systems", "backend_distributed_systems"),
+    },
+    {
+        "family": "security",
+        "pattern": re.compile(r"\b(?:security|cyber|identity|secure)\b", re.IGNORECASE),
+        "preferred_anchors": ("security", "identity", "cloud", "automation", "backend"),
+        "fallback_label": "security and identity systems",
+        "growth_area_ids": ("security_identity", "platform_infrastructure"),
+    },
+    {
+        "family": "data",
+        "pattern": re.compile(r"\b(?:data|analytics|spark|etl|pipeline)\b", re.IGNORECASE),
+        "preferred_anchors": ("data", "distributed", "cloud", "automation", "backend"),
+        "fallback_label": "data and analytics systems",
+        "growth_area_ids": ("data_platforms", "backend_distributed_systems", "platform_infrastructure"),
+    },
+    {
+        "family": "cloud_platform",
+        "pattern": re.compile(r"\b(?:cloud|platform|devops|infrastructure|site reliability|sre)\b", re.IGNORECASE),
+        "preferred_anchors": ("terraform", "identity", "devsecops", "cloud_web_services", "hybrid_cloud_apps", "cloud", "containers", "automation", "backend", "distributed", "graphql_rest", "ci_cd"),
+        "fallback_label": "platform and infrastructure",
+        "growth_area_ids": ("platform_infrastructure", "backend_distributed_systems"),
+    },
+    {
+        "family": "backend",
+        "pattern": re.compile(r"\b(?:backend|api|server|services?)\b", re.IGNORECASE),
+        "preferred_anchors": ("backend", "graphql_rest", "distributed", "automation", "cloud", "data", "languages"),
+        "fallback_label": "backend and distributed systems",
+        "growth_area_ids": ("backend_distributed_systems", "platform_infrastructure"),
+    },
+    {
+        "family": "full_stack",
+        "pattern": re.compile(r"\bfull[ -]?stack\b", re.IGNORECASE),
+        "preferred_anchors": ("backend", "graphql_rest", "cloud", "automation", "languages"),
+        "fallback_label": "full-stack application systems",
+        "growth_area_ids": ("backend_distributed_systems",),
+    },
+    {
+        "family": "scheduling",
+        "pattern": re.compile(r"\b(?:scheduler|scheduling|real-time|control systems?)\b", re.IGNORECASE),
+        "preferred_anchors": ("scheduling", "distributed", "backend", "languages"),
+        "fallback_label": "real-time systems",
+        "growth_area_ids": ("systems_leadership",),
+    },
+)
+ROLE_THEME_PART_PRIORITY: dict[str, int] = {
+    "hybrid_cloud_apps": 12,
+    "devsecops": 11,
+    "cloud_web_services": 11,
+    "graphql_rest": 10,
+    "terraform": 12,
+    "api_gateway": 11,
+    "identity": 10,
+    "ai_ml": 10,
+    "perception": 10,
+    "edge": 9,
+    "robotics": 9,
+    "data": 9,
+    "distributed": 8,
+    "containers": 8,
+    "ci_cd": 8,
+    "backend": 9,
+    "automation": 7,
+    "cloud": 6,
+    "security": 6,
+    "scheduling": 6,
+    "languages": 4,
+}
+ROLE_THEME_PART_LABELS: dict[str, str] = {
+    "event-driven metadata pipelines": "backend",
+    "scheduling engines for real-time control systems": "scheduling",
+    "production-level AI/ML models and pipelines": "ai_ml",
+    "hybrid-cloud application development": "hybrid_cloud_apps",
+    "DevSecOps": "devsecops",
+    "cloud web services": "cloud_web_services",
+    "GraphQL and REST APIs": "graphql_rest",
+    "GraphQL APIs": "graphql_rest",
+    "RESTful services, Swagger, and Postman": "graphql_rest",
+    "REST APIs or microservices": "backend",
+    "REST APIs": "graphql_rest",
+    "CI/CD automation": "ci_cd",
+    "Terraform-based infrastructure provisioning": "terraform",
+    "API gateway build-out": "api_gateway",
+    "workload identity automation": "identity",
+    "public cloud infrastructure": "cloud",
+    "container platforms": "containers",
+    "backend automation tooling": "automation",
+    "backend APIs and services": "backend",
+    "Spark-based big data engineering": "data",
+    "distributed systems": "distributed",
+    "machine learning and deep learning": "ai_ml",
+    "perception software": "perception",
+    "edge devices": "edge",
+    "robotic systems integration": "robotics",
+    "real-time scheduling systems": "scheduling",
+    "enterprise security systems": "security",
+    "secure infrastructure": "security",
+    "government-focused security work": "security",
+}
+ROLE_THEME_SENTENCE_LABELS: dict[str, str] = {
+    "cloud_platform": "platform and infrastructure",
+    "backend": "backend and distributed systems",
+    "data": "data and analytics systems",
+    "ai_ml": "AI/ML systems",
+    "robotics": "robotics and edge systems",
+    "security": "security and identity systems",
+    "full_stack": "application platform work",
+    "scheduling": "systems and leadership work",
+}
+ANCHOR_KEYWORD_HINTS: dict[str, tuple[str, ...]] = {
+    "hybrid_cloud_apps": ("hybrid-cloud", "cloud applications", "application development", "cloud development"),
+    "devsecops": ("devsecops", "secure delivery", "security standards"),
+    "cloud_web_services": ("web services", "cloud web services"),
+    "graphql_rest": ("graphql", "rest", "restful", "apis", "api", "swagger", "postman"),
+    "ci_cd": ("ci/cd", "deployment", "release automation"),
+    "terraform": ("terraform", "infrastructure provisioning"),
+    "api_gateway": ("api gateway",),
+    "identity": ("identity", "iam", "oauth", "oidc", "workload identity"),
+    "cloud": ("cloud", "aws", "gcp", "azure", "pcf"),
+    "containers": ("kubernetes", "docker", "containers"),
+    "backend": ("backend", "microservices", "services", "event-driven", "grpc"),
+    "automation": ("automation", "workflow", "jenkins", "github actions"),
+    "data": ("spark", "etl", "data", "analytics", "databricks", "stream processing"),
+    "distributed": ("distributed", "throughput", "reliability", "scale", "latency"),
+    "ai_ml": ("machine learning", "deep learning", "generative ai", "llm", "model"),
+    "perception": ("perception",),
+    "edge": ("edge", "on-device", "embedded"),
+    "robotics": ("robotic", "robotics", "ros", "motion", "sensor"),
+    "security": ("security", "secure", "government"),
+    "scheduling": ("scheduler", "scheduling", "real-time", "control"),
+    "languages": ("java", "scala", "python", "golang", "kotlin", "c++", "c#"),
+}
+ROLE_THEME_OVERLAP_STOPWORDS: frozenset[str] = frozenset(
+    {
+        "build",
+        "building",
+        "design",
+        "designing",
+        "develop",
+        "developing",
+        "implement",
+        "implementing",
+        "support",
+        "supporting",
+        "systems",
+        "system",
+        "services",
+        "service",
+        "platform",
+        "platforms",
+        "software",
+        "engineering",
+        "engineer",
+        "team",
+        "teams",
+        "solutions",
+        "solution",
+        "role",
+        "work",
+        "workloads",
+        "production",
+        "multiple",
+        "global",
+    }
 )
 ROLE_TARGETED_DRAFT_BLOCK_PATTERNS: tuple[re.Pattern[str], ...] = (
     re.compile(r"\bwork around identifies\b", re.IGNORECASE),
@@ -468,6 +685,45 @@ class SenderIdentity:
 
 
 @dataclass(frozen=True)
+class SenderGrowthArea:
+    area_id: str
+    label: str
+    keywords: tuple[str, ...]
+    growth_overlap_sentence: str
+    background_overlap_sentence: str
+    combined_overlap_sentence: str
+
+
+@dataclass(frozen=True)
+class RoleThemeSelection:
+    focus_phrase: str
+    role_family: str | None
+    anchor_labels: tuple[str, ...]
+    source_signals: tuple[str, ...]
+    background_overlap: bool
+    growth_overlap: bool
+    growth_area_label: str | None
+    overlap_sentence: str
+
+
+@dataclass(frozen=True)
+class _RoleThemeCandidate:
+    raw_signal: str
+    source_kind: str
+    normalized_focus: str
+    anchor_labels: tuple[str, ...]
+    focus_parts: tuple[str, ...]
+    score: int
+    title_score: int
+    technical_score: int
+    specificity_score: int
+    background_score: int
+    growth_score: int
+    role_family: str | None
+    growth_area_label: str | None
+
+
+@dataclass(frozen=True)
 class RenderedDraft:
     subject: str
     body_markdown: str
@@ -494,6 +750,7 @@ class RoleTargetedDraftContext:
     proof_point: str | None
     fit_summary: str | None
     work_area: str | None
+    theme_selection: RoleThemeSelection
     sender: SenderIdentity
     tailored_resume_path: str
 
@@ -1499,6 +1756,19 @@ def _build_role_targeted_draft_context(
         job_posting_id=str(posting_row["job_posting_id"]),
         contact_id=str(contact_row["contact_id"]),
     )
+    growth_areas = _load_sender_growth_areas(paths)
+    theme_selection = _select_role_theme_selection(
+        tailoring_inputs["step_3_payload"],
+        str(tailoring_inputs["jd_text"]),
+        step_4_payload=tailoring_inputs["step_4_payload"],
+        step_6_payload=tailoring_inputs["step_6_payload"],
+        role_title=str(posting_row["role_title"]),
+        growth_areas=growth_areas,
+    )
+    if theme_selection is None:
+        raise OutreachDraftingError(
+            f"Job posting `{posting_row['job_posting_id']}` does not have an acceptable title-aligned technical theme for role-targeted drafting."
+        )
     return RoleTargetedDraftContext(
         job_posting_id=str(posting_row["job_posting_id"]),
         job_posting_contact_id=str(contact_row["job_posting_contact_id"]),
@@ -1514,17 +1784,16 @@ def _build_role_targeted_draft_context(
         recipient_profile=recipient_profile,
         jd_text=str(tailoring_inputs["jd_text"]),
         role_intent_summary=_normalize_optional_text(tailoring_inputs.get("role_intent_summary")),
-        proof_point=_select_proof_point(tailoring_inputs["step_6_payload"]),
+        proof_point=_select_theme_aligned_proof_point(
+            tailoring_inputs["step_6_payload"],
+            theme_selection=theme_selection,
+        ),
         fit_summary=_select_fit_summary(
             tailoring_inputs["step_6_payload"],
             tailoring_inputs["step_3_payload"],
         ),
-        work_area=_select_role_work_area(
-            tailoring_inputs["step_3_payload"],
-            str(tailoring_inputs["jd_text"]),
-            step_4_payload=tailoring_inputs["step_4_payload"],
-            role_title=str(posting_row["role_title"]),
-        ),
+        work_area=theme_selection.focus_phrase,
+        theme_selection=theme_selection,
         sender=sender,
         tailored_resume_path=str(tailoring_inputs["resume_path"]),
     )
@@ -1591,15 +1860,15 @@ def generate_role_targeted_send_set_drafts(
             contact_row=contact_row,
             current_time=current_time,
         )
-        context = _build_role_targeted_draft_context(
-            connection,
-            paths,
-            posting_row=posting_row,
-            contact_row=contact_row,
-            sender=sender,
-            tailoring_inputs=tailoring_inputs,
-        )
         try:
+            context = _build_role_targeted_draft_context(
+                connection,
+                paths,
+                posting_row=posting_row,
+                contact_row=contact_row,
+                sender=sender,
+                tailoring_inputs=tailoring_inputs,
+            )
             rendered = draft_renderer.render_role_targeted(context)
         except Exception as exc:
             failure = _persist_failed_draft_attempt(
@@ -1682,15 +1951,28 @@ def refresh_role_targeted_generated_drafts(
             job_posting_id=job_posting_id,
             contact_id=active_message.contact_id,
         )
-        context = _build_role_targeted_draft_context(
-            connection,
-            paths,
-            posting_row=posting_row,
-            contact_row=contact_row,
-            sender=sender,
-            tailoring_inputs=tailoring_inputs,
-        )
-        rendered = draft_renderer.render_role_targeted(context)
+        try:
+            context = _build_role_targeted_draft_context(
+                connection,
+                paths,
+                posting_row=posting_row,
+                contact_row=contact_row,
+                sender=sender,
+                tailoring_inputs=tailoring_inputs,
+            )
+            rendered = draft_renderer.render_role_targeted(context)
+        except Exception as exc:
+            _persist_blocked_send(
+                connection,
+                paths,
+                posting_row=posting_row,
+                active_message=active_message,
+                current_time=current_time,
+                reason_code="draft_refresh_blocked",
+                message=str(exc) or "Pending generated draft no longer meets drafting quality gates.",
+                exhaust_link=False,
+            )
+            continue
         refreshed = _refresh_persisted_role_targeted_generated_draft(
             connection,
             paths,
@@ -3605,17 +3887,237 @@ def _select_fit_summary(
     return ", ".join(selected_items[:4]) or None
 
 
-def _role_work_area(step_3_payload: Mapping[str, Any], jd_text: str) -> str | None:
-    return _select_role_work_area(step_3_payload, jd_text, step_4_payload=None, role_title=None)
+def _load_sender_growth_areas(paths: ProjectPaths) -> tuple[SenderGrowthArea, ...]:
+    growth_path = paths.assets_dir / "outreach" / "candidate-growth-areas.yaml"
+    if not growth_path.exists():
+        return ()
+    payload = _read_yaml_file(growth_path)
+    areas: list[SenderGrowthArea] = []
+    for entry in payload.get("areas") or []:
+        if not isinstance(entry, Mapping):
+            continue
+        area_id = _normalize_optional_text(entry.get("area_id"))
+        label = _normalize_optional_text(entry.get("label"))
+        if area_id is None or label is None:
+            continue
+        keywords = tuple(
+            keyword.lower()
+            for keyword in (entry.get("keywords") or [])
+            if _normalize_optional_text(keyword) is not None
+        )
+        growth_sentence = _normalize_optional_text(entry.get("growth_overlap_sentence"))
+        background_sentence = _normalize_optional_text(entry.get("background_overlap_sentence"))
+        combined_sentence = _normalize_optional_text(entry.get("combined_overlap_sentence"))
+        if growth_sentence is None or background_sentence is None or combined_sentence is None:
+            continue
+        areas.append(
+            SenderGrowthArea(
+                area_id=area_id,
+                label=label,
+                keywords=keywords,
+                growth_overlap_sentence=growth_sentence,
+                background_overlap_sentence=background_sentence,
+                combined_overlap_sentence=combined_sentence,
+            )
+        )
+    return tuple(areas)
 
 
-def _select_role_work_area(
+def _tokenize_role_theme_text(text: str) -> set[str]:
+    return {
+        token
+        for token in re.findall(r"[A-Za-z0-9+#./-]+", text.lower())
+        if len(token) >= 2
+    }
+
+
+def _role_theme_rule(role_title: str | None) -> Mapping[str, Any] | None:
+    normalized_title = _normalize_optional_text(role_title)
+    if normalized_title is None:
+        return None
+    for rule in ROLE_THEME_TITLE_RULES:
+        if rule["pattern"].search(normalized_title):
+            return rule
+    return None
+
+
+def _extract_cloud_provider_suffix(value: str) -> str | None:
+    lowered = value.lower()
+    providers: list[str] = []
+    if "aws" in lowered or "amazon web services" in lowered:
+        providers.append("AWS")
+    if "gcp" in lowered or "google cloud" in lowered:
+        providers.append("GCP")
+    if "azure" in lowered:
+        providers.append("Azure")
+    if "pcf" in lowered:
+        providers.append("PCF")
+    unique: list[str] = []
+    for provider in providers:
+        if provider not in unique:
+            unique.append(provider)
+    if len(unique) < 2:
+        return None
+    return _join_focus_phrases(unique)
+
+
+def _extract_role_theme_parts(*values: str) -> tuple[str, ...]:
+    parts: list[str] = []
+    for value in values:
+        if not value:
+            continue
+        for part in _focus_summary_parts(value):
+            if part not in parts:
+                parts.append(part)
+    return tuple(parts)
+
+
+def _anchor_keywords(anchor_labels: Sequence[str]) -> set[str]:
+    keywords: set[str] = set()
+    for label in anchor_labels:
+        keywords.update(ANCHOR_KEYWORD_HINTS.get(label, ()))
+    return keywords
+
+
+def _score_step_6_theme_overlap(
+    raw_signal: str,
+    *,
+    step_6_payload: Mapping[str, Any] | None,
+    anchor_labels: Sequence[str],
+) -> int:
+    if step_6_payload is None:
+        return 0
+    target_terms = {
+        token
+        for token in _tokenize_role_theme_text(raw_signal)
+        if token not in ROLE_THEME_OVERLAP_STOPWORDS and len(token) >= 4
+    }
+    target_terms |= _anchor_keywords(anchor_labels)
+    if not target_terms:
+        return 0
+    score = 0
+    for entry in step_6_payload.get("technical_skills", []) or []:
+        items = " ".join(str(item) for item in entry.get("items") or [])
+        overlap = target_terms & _tokenize_role_theme_text(items)
+        if overlap:
+            score += min(3, len(overlap))
+    for bullet in (step_6_payload.get("software_engineer") or {}).get("bullets") or []:
+        text = _normalize_optional_text(bullet.get("text"))
+        if text is None:
+            continue
+        overlap = target_terms & _tokenize_role_theme_text(text)
+        if not overlap:
+            continue
+        score += 2 + min(3, len(overlap))
+        if METRIC_RE.search(text):
+            score += 2
+    return score
+
+
+def _match_growth_area(
+    cleaned_signal: str,
+    *,
+    role_title: str | None,
+    anchor_labels: Sequence[str],
+    growth_areas: Sequence[SenderGrowthArea],
+) -> tuple[int, SenderGrowthArea | None]:
+    if not growth_areas:
+        return 0, None
+    normalized_title = (_normalize_optional_text(role_title) or "").lower()
+    signal_terms = _tokenize_role_theme_text(cleaned_signal) | _anchor_keywords(anchor_labels)
+    role_rule = _role_theme_rule(role_title)
+    allowed_area_ids = set(role_rule.get("growth_area_ids") or ()) if role_rule is not None else set()
+    best_score = 0
+    best_area: SenderGrowthArea | None = None
+    for area in growth_areas:
+        if allowed_area_ids and area.area_id not in allowed_area_ids:
+            continue
+        score = 0
+        for keyword in area.keywords:
+            if keyword in normalized_title:
+                score += 1
+            if keyword in cleaned_signal.lower():
+                score += 2
+            if keyword in signal_terms:
+                score += 1
+        if score > best_score:
+            best_score = score
+            best_area = area
+    return best_score, best_area
+
+
+def _candidate_focus_parts(
+    raw_signal: str,
+    normalized_focus: str,
+) -> tuple[str, ...]:
+    normalized = _normalize_optional_text(normalized_focus)
+    if normalized is not None and _should_preserve_explicit_focus(raw_signal, normalized):
+        return (normalized,)
+    parts = list(_extract_role_theme_parts(raw_signal, normalized_focus))
+    if parts:
+        return tuple(parts)
+    return (normalized,) if normalized is not None else ()
+
+
+def _is_tool_only_candidate(raw_signal: str, normalized_focus: str) -> bool:
+    lowered_raw = raw_signal.lower()
+    lowered_focus = normalized_focus.lower()
+    if "backend work will include" in lowered_raw or "frontend work will include" in lowered_raw:
+        return False
+    if re.search(r"\b(?:additional tools such as|tools such as|programming languages such as)\b", lowered_raw):
+        return True
+    if _looks_like_technology_focus_list(normalized_focus):
+        return not re.search(
+            r"\b(?:build|design|develop|implement|architect|drive|define|support|deploy|deliver)\b",
+            lowered_raw,
+        )
+    if re.fullmatch(r"[a-z0-9#+./ -]+(?:,\s*[a-z0-9#+./ -]+){1,5}", lowered_focus):
+        return True
+    return False
+
+
+def _should_preserve_explicit_focus(raw_signal: str, normalized_focus: str) -> bool:
+    lowered_raw = raw_signal.lower()
+    lowered_focus = normalized_focus.lower()
+    if any(token in lowered_raw or token in lowered_focus for token in ("swagger", "postman")):
+        return True
+    if "full cycle delivery" in lowered_raw or "full-cycle ai/ml" in lowered_focus:
+        return True
+    if "spark-based data pipelines" in lowered_focus:
+        return True
+    if re.search(r"\bfor (?:ai|ml|machine learning|deep learning)\b.*\bworkloads?\b", lowered_focus):
+        return True
+    if re.match(
+        r"^(?:implementing|building|designing|developing)\s+event-driven,?\s+distributed systems?\b",
+        lowered_focus,
+    ) and "metadata" in lowered_focus:
+        return True
+    if re.search(r"\brest(?:ful)? apis?\s+or\s+microservices?\b", lowered_focus):
+        return True
+    if "backend work will include" in lowered_raw or "frontend work will include" in lowered_raw:
+        return True
+    if _looks_like_technology_focus_list(normalized_focus) and not re.search(
+        r"\b(?:additional tools such as|tools such as|programming languages such as)\b",
+        lowered_raw,
+    ):
+        return True
+    if re.match(
+        r"^(?:supporting|building|designing|developing|implementing)\s+cloud-based applications? and services?\b",
+        lowered_focus,
+    ):
+        return True
+    return False
+
+
+def _build_role_theme_candidates(
     step_3_payload: Mapping[str, Any],
     jd_text: str,
     *,
     step_4_payload: Mapping[str, Any] | None,
+    step_6_payload: Mapping[str, Any] | None,
     role_title: str | None,
-) -> str | None:
+    growth_areas: Sequence[SenderGrowthArea],
+) -> list[_RoleThemeCandidate]:
     candidate_signals: list[tuple[str, str]] = []
     for priority_key in ("must_have", "core_responsibility", "nice_to_have"):
         signals = step_3_payload.get("signals_by_priority", {}).get(priority_key) or []
@@ -3635,44 +4137,371 @@ def _select_role_work_area(
         if isinstance(step_3_payload.get("role_metadata"), Mapping)
         else None
     )
-    scored_candidates: list[tuple[int, int, str]] = []
-    for index, (source_kind, raw_signal) in enumerate(candidate_signals):
+    candidates: list[_RoleThemeCandidate] = []
+    for source_kind, raw_signal in candidate_signals:
         normalized_focus = _normalize_technical_focus_phrase(
             raw_signal,
             role_title=derived_role_title,
         )
         if normalized_focus is None:
             continue
-        score = _score_role_signal_for_opener(
-            normalized_focus,
-            raw_signal=raw_signal,
-            role_title=derived_role_title,
-            source_kind=source_kind,
-            step_4_payload=step_4_payload,
+        if _is_tool_only_candidate(raw_signal, normalized_focus) and source_kind in {"must_have", "nice_to_have"}:
+            continue
+        anchor_labels = tuple(
+            sorted(_extract_role_focus_anchors(normalized_focus) | _extract_role_focus_anchors(raw_signal))
         )
-        if score > 0:
-            scored_candidates.append((score, -index, normalized_focus))
-    if scored_candidates:
-        return max(scored_candidates)[2]
+        if not anchor_labels:
+            continue
+        title_score = _score_role_signal_title_alignment(normalized_focus, derived_role_title)
+        technical_score = _role_signal_technical_priority(normalized_focus, raw_signal)
+        specificity_score = _score_role_signal_specificity(normalized_focus, raw_signal)
+        background_score = _score_jd_signal_evidence_overlap(raw_signal, step_4_payload)
+        background_score += _score_step_6_theme_overlap(
+            raw_signal,
+            step_6_payload=step_6_payload,
+            anchor_labels=anchor_labels,
+        )
+        growth_score, matched_growth_area = _match_growth_area(
+            normalized_focus,
+            role_title=derived_role_title,
+            anchor_labels=anchor_labels,
+            growth_areas=growth_areas,
+        )
+        if technical_score <= 0 or specificity_score <= 0:
+            continue
+        if background_score <= 0 and growth_score <= 0:
+            continue
+        score = (
+            technical_score * 100
+            + specificity_score * 25
+            + title_score * 20
+            + ROLE_SIGNAL_SOURCE_PRIORITY.get(source_kind, 0) * 10
+            + background_score * 5
+            + growth_score * 5
+        )
+        candidates.append(
+            _RoleThemeCandidate(
+                raw_signal=raw_signal,
+                source_kind=source_kind,
+                normalized_focus=normalized_focus,
+                anchor_labels=anchor_labels,
+                focus_parts=_candidate_focus_parts(raw_signal, normalized_focus),
+                score=score,
+                title_score=title_score,
+                technical_score=technical_score,
+                specificity_score=specificity_score,
+                background_score=background_score,
+                growth_score=growth_score,
+                role_family=_normalize_optional_text(
+                    (_role_theme_rule(derived_role_title) or {}).get("family")
+                    if _role_theme_rule(derived_role_title) is not None
+                    else None
+                ),
+                growth_area_label=matched_growth_area.label if matched_growth_area is not None else None,
+            )
+        )
+    if candidates:
+        return candidates
     for line in jd_text.splitlines():
         stripped = line.strip()
-        if stripped and not stripped.startswith("#"):
-            normalized_focus = _normalize_technical_focus_phrase(
-                stripped,
-                role_title=derived_role_title,
-            )
-            if normalized_focus is None:
-                continue
-            scored = _score_role_signal_for_opener(
-                normalized_focus,
+        if not stripped or stripped.startswith("#"):
+            continue
+        normalized_focus = _normalize_technical_focus_phrase(stripped, role_title=derived_role_title)
+        if normalized_focus is None:
+            continue
+        anchor_labels = tuple(
+            sorted(_extract_role_focus_anchors(normalized_focus) | _extract_role_focus_anchors(stripped))
+        )
+        if not anchor_labels:
+            continue
+        background_score = _score_jd_signal_evidence_overlap(stripped, step_4_payload)
+        background_score += _score_step_6_theme_overlap(
+            stripped,
+            step_6_payload=step_6_payload,
+            anchor_labels=anchor_labels,
+        )
+        growth_score, matched_growth_area = _match_growth_area(
+            normalized_focus,
+            role_title=derived_role_title,
+            anchor_labels=anchor_labels,
+            growth_areas=growth_areas,
+        )
+        if background_score <= 0 and growth_score <= 0:
+            continue
+        title_score = _score_role_signal_title_alignment(normalized_focus, derived_role_title)
+        technical_score = _role_signal_technical_priority(normalized_focus, stripped)
+        specificity_score = _score_role_signal_specificity(normalized_focus, stripped)
+        if technical_score <= 0 or specificity_score <= 0:
+            continue
+        candidates.append(
+            _RoleThemeCandidate(
                 raw_signal=stripped,
-                role_title=derived_role_title,
                 source_kind="jd_fallback",
-                step_4_payload=step_4_payload,
+                normalized_focus=normalized_focus,
+                anchor_labels=anchor_labels,
+                focus_parts=_candidate_focus_parts(stripped, normalized_focus),
+                score=(
+                    technical_score * 100
+                    + specificity_score * 25
+                    + title_score * 20
+                    + background_score * 5
+                    + growth_score * 5
+                ),
+                title_score=title_score,
+                technical_score=technical_score,
+                specificity_score=specificity_score,
+                background_score=background_score,
+                growth_score=growth_score,
+                role_family=_normalize_optional_text(
+                    (_role_theme_rule(derived_role_title) or {}).get("family")
+                    if _role_theme_rule(derived_role_title) is not None
+                    else None
+                ),
+                growth_area_label=matched_growth_area.label if matched_growth_area is not None else None,
             )
-            if scored > 0:
-                return normalized_focus
-    return None
+        )
+    return candidates
+
+
+def _order_theme_parts(
+    parts: Sequence[str],
+    *,
+    role_title: str | None,
+) -> list[str]:
+    role_rule = _role_theme_rule(role_title)
+    preferred_anchors = tuple(role_rule.get("preferred_anchors") or ()) if role_rule is not None else ()
+    preferred_index = {anchor: index for index, anchor in enumerate(preferred_anchors)}
+    unique_parts: list[str] = []
+    for part in parts:
+        if part not in unique_parts:
+            unique_parts.append(part)
+    return sorted(
+        unique_parts,
+        key=lambda part: (
+            preferred_index.get(ROLE_THEME_PART_LABELS.get(part, ""), 99),
+            -ROLE_THEME_PART_PRIORITY.get(ROLE_THEME_PART_LABELS.get(part, ""), 0),
+            len(part),
+        ),
+    )
+
+
+def _synthesize_role_theme_focus(
+    best_candidate: _RoleThemeCandidate,
+    candidates: Sequence[_RoleThemeCandidate],
+    *,
+    role_title: str | None,
+) -> str:
+    chosen_parts: list[str] = []
+    provider_suffix: str | None = None
+    primary_anchors = set(best_candidate.anchor_labels)
+    generic_anchor_labels = {"cloud", "backend", "distributed"}
+    explicit_best_focus = (
+        len(best_candidate.focus_parts) == 1
+        and best_candidate.focus_parts[0] == best_candidate.normalized_focus
+        and best_candidate.focus_parts[0] not in ROLE_THEME_PART_LABELS
+    )
+    if explicit_best_focus:
+        chosen_parts.extend(best_candidate.focus_parts)
+        provider_suffix = _extract_cloud_provider_suffix(best_candidate.raw_signal)
+    else:
+        for candidate in sorted(candidates, key=lambda item: item.score, reverse=True):
+            shared = primary_anchors & set(candidate.anchor_labels)
+            if candidate is not best_candidate and not shared and candidate.title_score <= 0:
+                continue
+            for part in candidate.focus_parts:
+                if part not in chosen_parts:
+                    chosen_parts.append(part)
+            provider_suffix = provider_suffix or _extract_cloud_provider_suffix(candidate.raw_signal)
+            if len(chosen_parts) >= 4:
+                break
+    ordered_parts = _order_theme_parts(chosen_parts, role_title=role_title)
+    specific_parts = [
+        part
+        for part in ordered_parts
+        if ROLE_THEME_PART_LABELS.get(part, "") not in generic_anchor_labels
+    ]
+    if len(specific_parts) >= 3:
+        ordered_parts = specific_parts
+    selected_parts = ordered_parts[:3]
+    if not selected_parts:
+        return best_candidate.normalized_focus
+    if (
+        len(selected_parts) == 1
+        and ROLE_THEME_PART_LABELS.get(selected_parts[0]) == "cloud"
+        and provider_suffix is None
+    ):
+        return best_candidate.normalized_focus
+    focus = _join_focus_phrases(selected_parts)
+    if (
+        provider_suffix is not None
+        and any("cloud" in part.lower() for part in selected_parts)
+        and provider_suffix.lower() not in focus.lower()
+    ):
+        focus = f"{focus} across {provider_suffix}"
+    return _restore_focus_term_casing(focus)
+
+
+def _select_role_theme_selection(
+    step_3_payload: Mapping[str, Any],
+    jd_text: str,
+    *,
+    step_4_payload: Mapping[str, Any] | None,
+    step_6_payload: Mapping[str, Any] | None,
+    role_title: str | None,
+    growth_areas: Sequence[SenderGrowthArea],
+) -> RoleThemeSelection | None:
+    candidates = _build_role_theme_candidates(
+        step_3_payload,
+        jd_text,
+        step_4_payload=step_4_payload,
+        step_6_payload=step_6_payload,
+        role_title=role_title,
+        growth_areas=growth_areas,
+    )
+    if not candidates:
+        return None
+    ranked = sorted(candidates, key=lambda item: item.score, reverse=True)
+    best_candidate = ranked[0]
+    focus_phrase = _synthesize_role_theme_focus(
+        best_candidate,
+        ranked,
+        role_title=role_title,
+    )
+    anchor_labels = tuple(
+        sorted({label for candidate in ranked[:4] for label in candidate.anchor_labels})
+    )
+    growth_area_label = next(
+        (
+            candidate.growth_area_label
+            for candidate in ranked
+            if candidate.growth_area_label is not None
+        ),
+        None,
+    )
+    background_overlap = any(candidate.background_score > 0 for candidate in ranked[:3])
+    growth_overlap = any(candidate.growth_score > 0 for candidate in ranked[:3])
+    provisional_selection = RoleThemeSelection(
+        focus_phrase=focus_phrase,
+        role_family=best_candidate.role_family,
+        anchor_labels=anchor_labels,
+        source_signals=tuple(candidate.raw_signal for candidate in ranked[:3]),
+        background_overlap=background_overlap,
+        growth_overlap=growth_overlap,
+        growth_area_label=growth_area_label,
+        overlap_sentence="",
+    )
+    return RoleThemeSelection(
+        focus_phrase=provisional_selection.focus_phrase,
+        role_family=provisional_selection.role_family,
+        anchor_labels=provisional_selection.anchor_labels,
+        source_signals=provisional_selection.source_signals,
+        background_overlap=provisional_selection.background_overlap,
+        growth_overlap=provisional_selection.growth_overlap,
+        growth_area_label=provisional_selection.growth_area_label,
+        overlap_sentence=_theme_overlap_sentence(
+            provisional_selection,
+            growth_areas,
+        ),
+    )
+
+
+def _theme_overlap_sentence(
+    theme_selection: RoleThemeSelection,
+    growth_areas: Sequence[SenderGrowthArea],
+) -> str:
+    matched_area = next(
+        (
+            area
+            for area in growth_areas
+            if area.label == theme_selection.growth_area_label
+        ),
+        None,
+    )
+    if matched_area is not None:
+        if theme_selection.background_overlap and theme_selection.growth_overlap:
+            return matched_area.combined_overlap_sentence
+        if theme_selection.background_overlap:
+            return matched_area.background_overlap_sentence
+        if theme_selection.growth_overlap:
+            return matched_area.growth_overlap_sentence
+    label = ROLE_THEME_SENTENCE_LABELS.get(theme_selection.role_family or "", "systems")
+    if theme_selection.background_overlap and theme_selection.growth_overlap:
+        return f"That lines up well with the kind of {label} work I've done and want to keep growing in."
+    if theme_selection.background_overlap:
+        return f"That lines up with the kind of {label} work I've been doing."
+    return f"That is the kind of {label} work I want to keep growing in."
+
+
+def _select_theme_aligned_proof_point(
+    step_6_payload: Mapping[str, Any],
+    *,
+    theme_selection: RoleThemeSelection,
+) -> str | None:
+    bullets = list((step_6_payload.get("software_engineer") or {}).get("bullets") or [])
+    if not bullets:
+        return None
+    target_terms = _anchor_keywords(theme_selection.anchor_labels) | _tokenize_role_theme_text(
+        theme_selection.focus_phrase
+    )
+    if not target_terms:
+        return _select_proof_point(step_6_payload)
+    candidate_entries: list[tuple[int, int, int, str]] = []
+    purpose_rank = {
+        "scale-impact": 0,
+        "optimization": 1,
+        "end-to-end-flow": 2,
+        "reliability-operations": 3,
+    }
+    for entry in bullets:
+        text = _normalize_optional_text(entry.get("text"))
+        if text is None:
+            continue
+        overlap = target_terms & _tokenize_role_theme_text(text)
+        metric_bonus = 2 if METRIC_RE.search(text) else 0
+        candidate_entries.append(
+            (
+                len(overlap) * 5 + metric_bonus,
+                -purpose_rank.get(_normalize_optional_text(entry.get("purpose")) or "", 99),
+                -len(text),
+                text,
+            )
+        )
+    candidate_entries.sort(reverse=True)
+    if candidate_entries and candidate_entries[0][0] > 0:
+        return candidate_entries[0][3]
+    return _select_proof_point(step_6_payload)
+
+
+def _role_work_area(step_3_payload: Mapping[str, Any], jd_text: str) -> str | None:
+    selection = _select_role_theme_selection(
+        step_3_payload,
+        jd_text,
+        step_4_payload=None,
+        step_6_payload=None,
+        role_title=None,
+        growth_areas=(),
+    )
+    return None if selection is None else selection.focus_phrase
+
+
+def _select_role_work_area(
+    step_3_payload: Mapping[str, Any],
+    jd_text: str,
+    *,
+    step_4_payload: Mapping[str, Any] | None,
+    step_6_payload: Mapping[str, Any] | None,
+    role_title: str | None,
+    growth_areas: Sequence[SenderGrowthArea] = (),
+) -> str | None:
+    selection = _select_role_theme_selection(
+        step_3_payload,
+        jd_text,
+        step_4_payload=step_4_payload,
+        step_6_payload=step_6_payload,
+        role_title=role_title,
+        growth_areas=growth_areas,
+    )
+    return None if selection is None else selection.focus_phrase
 
 
 def _clean_role_signal(value: str) -> str | None:
@@ -3756,6 +4585,8 @@ def _clean_role_signal(value: str) -> str | None:
         cleaned,
         flags=re.IGNORECASE,
     )
+    cleaned = re.sub(r"\s*\(\d+\s+years?\)\s*$", "", cleaned, flags=re.IGNORECASE)
+    cleaned = re.sub(r"\s*\(\d+\s+year\)\s*$", "", cleaned, flags=re.IGNORECASE)
     if not cleaned:
         return None
     normalized = cleaned.lower()
@@ -3956,83 +4787,12 @@ def _compose_role_targeted_opener_inputs(
 ) -> RoleTargetedOpenerInputs:
     role_theme = _compose_role_targeted_role_theme(context)
     technical_focus = _compose_role_targeted_technical_focus(context, role_theme)
-    classification_source = " ".join(
-        value
-        for value in (
-            context.role_title,
-            role_theme,
-            technical_focus,
-        )
-        if value
-    ).lower()
-    if any(
-        token in classification_source
-        for token in (
-            "generative ai",
-            "machine learning",
-            "ai/ml",
-            "llm",
-            "large language model",
-            "large language models",
-            "copilot",
-            "cognitive service",
-        )
-    ):
-        return RoleTargetedOpenerInputs(
-            company_name=context.company_name,
-            role_title=context.role_title,
-            role_theme=role_theme,
-            technical_focus=technical_focus,
-            overlap_sentence=(
-                "That is an area I want to keep building depth in."
-            ),
-        )
-    if "security" in classification_source or "government" in classification_source:
-        return RoleTargetedOpenerInputs(
-            company_name=context.company_name,
-            role_title=context.role_title,
-            role_theme=role_theme,
-            technical_focus=technical_focus,
-            overlap_sentence=(
-                "That is an area I want to keep building depth in."
-            ),
-        )
-    if "leadership" in classification_source or "scheduling" in classification_source:
-        return RoleTargetedOpenerInputs(
-            company_name=context.company_name,
-            role_title=context.role_title,
-            role_theme=role_theme,
-            technical_focus=technical_focus,
-            overlap_sentence=(
-                "That is the kind of systems and leadership work I want to keep leaning into."
-            ),
-        )
-    focus_signal_source = " ".join(
-        value
-        for value in (
-            role_theme,
-            technical_focus,
-        )
-        if value
-    ).lower()
-    if any(token in focus_signal_source for token in ("platform", "cloud", "infrastructure")):
-        return RoleTargetedOpenerInputs(
-            company_name=context.company_name,
-            role_title=context.role_title,
-            role_theme=role_theme,
-            technical_focus=technical_focus,
-            overlap_sentence=(
-                "That is the kind of platform and infrastructure work I want to keep growing in."
-            ),
-        )
     return RoleTargetedOpenerInputs(
         company_name=context.company_name,
         role_title=context.role_title,
         role_theme=role_theme,
         technical_focus=technical_focus,
-        overlap_sentence=(
-            "That is the kind of systems work I want to keep growing in."
-        ),
+        overlap_sentence=context.theme_selection.overlap_sentence,
     )
 
 
@@ -4279,11 +5039,11 @@ def _compose_role_targeted_technical_focus(
     context: RoleTargetedDraftContext,
     role_theme: str,
 ) -> str:
-    for raw_value in (context.work_area, context.role_intent_summary):
-        normalized_focus = _normalize_technical_focus_phrase(
-            raw_value,
-            role_title=context.role_title,
-        )
+    preserved_focus = _normalize_optional_text(context.work_area)
+    if preserved_focus is not None:
+        return _restore_focus_term_casing(preserved_focus.strip(" ,.;"))
+    for raw_value in (context.role_intent_summary,):
+        normalized_focus = _normalize_technical_focus_phrase(raw_value, role_title=context.role_title)
         if normalized_focus is not None:
             return normalized_focus
     return role_theme
@@ -4442,11 +5202,18 @@ def _restore_focus_term_casing(candidate: str) -> str:
         (r"\bkotlin\b", "Kotlin"),
         (r"\bpython\b", "Python"),
         (r"\bgolang\b", "Golang"),
+        (r"\bgraphql\b", "GraphQL"),
+        (r"\brest apis\b", "REST APIs"),
+        (r"\bspark\b", "Spark"),
         (r"\baws\b", "AWS"),
         (r"\bgcp\b", "GCP"),
         (r"\bazure\b", "Azure"),
         (r"\bpcf\b", "PCF"),
         (r"\bterraform\b", "Terraform"),
+        (r"\bdevsecops\b", "DevSecOps"),
+        (r"\bci/cd\b", "CI/CD"),
+        (r"\bai/ml\b", "AI/ML"),
+        (r"\bllm\b", "LLM"),
         (r"\brestful services\b", "RESTful services"),
         (r"\bapi gateway\b", "API gateway"),
     )
@@ -4462,6 +5229,13 @@ def _normalize_technical_focus_phrase(value: str | None, *, role_title: str | No
         return None
     candidate = _clean_role_signal(normalized)
     if candidate is None:
+        lowered_normalized = normalized.lower()
+        if _is_ineligible_role_signal_text(normalized):
+            return None
+        if any(pattern.search(lowered_normalized) for pattern in ROLE_SIGNAL_BOILERPLATE_PATTERNS):
+            return None
+        if any(pattern.search(lowered_normalized) for pattern in ROLE_SIGNAL_NONTECHNICAL_PATTERNS):
+            return None
         candidate = _role_work_area_phrase(normalized)
     candidate = _role_work_area_phrase(candidate)
     first_word, _, remainder = candidate.partition(" ")

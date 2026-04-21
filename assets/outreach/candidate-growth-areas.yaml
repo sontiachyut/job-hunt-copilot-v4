@@ -1,0 +1,125 @@
+version: 1
+areas:
+  - area_id: platform_infrastructure
+    label: platform and infrastructure
+    keywords:
+      - cloud
+      - hybrid-cloud
+      - aws
+      - gcp
+      - azure
+      - kubernetes
+      - docker
+      - terraform
+      - infrastructure
+      - platform
+      - devops
+      - devsecops
+      - ci/cd
+      - iam
+      - workload identity
+      - api gateway
+      - observability
+      - reliability
+    growth_overlap_sentence: That is the kind of platform and infrastructure work I want to keep growing in.
+    background_overlap_sentence: That lines up with the kind of platform and infrastructure work I've been doing.
+    combined_overlap_sentence: That lines up well with the kind of platform and infrastructure work I've done and want to keep growing in.
+  - area_id: backend_distributed_systems
+    label: backend and distributed systems
+    keywords:
+      - backend
+      - api
+      - apis
+      - graphql
+      - rest
+      - microservices
+      - distributed
+      - event-driven
+      - grpc
+      - java
+      - scala
+      - python
+      - golang
+      - throughput
+      - latency
+    growth_overlap_sentence: That is the kind of backend and distributed systems work I want to keep growing in.
+    background_overlap_sentence: That lines up with the kind of backend and distributed systems work I've been doing.
+    combined_overlap_sentence: That lines up well with the kind of backend and distributed systems work I've done and want to keep growing in.
+  - area_id: data_platforms
+    label: data and analytics systems
+    keywords:
+      - spark
+      - data
+      - analytics
+      - etl
+      - data pipeline
+      - pipelines
+      - databricks
+      - snowflake
+      - lakehouse
+      - streaming
+      - batch
+    growth_overlap_sentence: That is the kind of data and analytics systems work I want to keep growing in.
+    background_overlap_sentence: That lines up with the kind of data and analytics systems work I've been doing.
+    combined_overlap_sentence: That lines up well with the kind of data and analytics systems work I've done and want to keep growing in.
+  - area_id: ai_ml_systems
+    label: AI/ML systems
+    keywords:
+      - ai
+      - ml
+      - machine learning
+      - deep learning
+      - generative ai
+      - llm
+      - large language model
+      - models
+      - inference
+      - rag
+      - agentic ai
+      - perception
+      - edge
+    growth_overlap_sentence: That is an area I want to keep building depth in.
+    background_overlap_sentence: That lines up with the AI/ML systems work I've been doing.
+    combined_overlap_sentence: That lines up well with the AI/ML systems work I've done and want to keep building depth in.
+  - area_id: robotics_edge_systems
+    label: robotics and edge systems
+    keywords:
+      - robotics
+      - robotic
+      - ros
+      - motion
+      - sensor
+      - perception
+      - edge
+      - embedded
+      - real-time
+    growth_overlap_sentence: That is the kind of robotics and edge systems work I want to keep growing in.
+    background_overlap_sentence: That lines up with the kind of robotics and edge systems work I've been doing.
+    combined_overlap_sentence: That lines up well with the kind of robotics and edge systems work I've done and want to keep growing in.
+  - area_id: systems_leadership
+    label: systems and leadership
+    keywords:
+      - scheduler
+      - scheduling
+      - real-time
+      - control
+      - leadership
+      - manager
+    growth_overlap_sentence: That is the kind of systems and leadership work I want to keep leaning into.
+    background_overlap_sentence: That lines up with the kind of systems and leadership work I've been doing.
+    combined_overlap_sentence: That lines up well with the kind of systems and leadership work I've done and want to keep leaning into.
+  - area_id: security_identity
+    label: security and identity systems
+    keywords:
+      - security
+      - secure
+      - cloud security
+      - application security
+      - identity
+      - iam
+      - oauth
+      - oidc
+      - government
+    growth_overlap_sentence: That is an area I want to keep building depth in.
+    background_overlap_sentence: That lines up with the kind of security and identity systems work I've been doing.
+    combined_overlap_sentence: That lines up well with the kind of security and identity systems work I've done and want to keep building depth in.

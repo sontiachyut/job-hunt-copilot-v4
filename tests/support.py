@@ -24,6 +24,58 @@ def create_minimal_project(root: Path) -> None:
     outreach_dir = root / "assets" / "outreach"
     outreach_dir.mkdir(parents=True, exist_ok=True)
     (outreach_dir / "cold-outreach-guide.md").write_text("# guide\n", encoding="utf-8")
+    (outreach_dir / "candidate-growth-areas.yaml").write_text(
+        "\n".join(
+            [
+                "version: 1",
+                "areas:",
+                "  - area_id: platform_infrastructure",
+                "    label: platform and infrastructure",
+                "    keywords: [cloud, aws, gcp, azure, kubernetes, terraform, infrastructure, platform, devops, devsecops, ci/cd, iam, api gateway]",
+                "    growth_overlap_sentence: That is the kind of platform and infrastructure work I want to keep growing in.",
+                "    background_overlap_sentence: That lines up with the kind of platform and infrastructure work I've been doing.",
+                "    combined_overlap_sentence: That lines up well with the kind of platform and infrastructure work I've done and want to keep growing in.",
+                "  - area_id: backend_distributed_systems",
+                "    label: backend and distributed systems",
+                "    keywords: [backend, api, apis, graphql, rest, microservices, distributed, grpc, java, scala, python, golang]",
+                "    growth_overlap_sentence: That is the kind of backend and distributed systems work I want to keep growing in.",
+                "    background_overlap_sentence: That lines up with the kind of backend and distributed systems work I've been doing.",
+                "    combined_overlap_sentence: That lines up well with the kind of backend and distributed systems work I've done and want to keep growing in.",
+                "  - area_id: data_platforms",
+                "    label: data and analytics systems",
+                "    keywords: [spark, data, analytics, etl, pipelines, databricks, snowflake]",
+                "    growth_overlap_sentence: That is the kind of data and analytics systems work I want to keep growing in.",
+                "    background_overlap_sentence: That lines up with the kind of data and analytics systems work I've been doing.",
+                "    combined_overlap_sentence: That lines up well with the kind of data and analytics systems work I've done and want to keep growing in.",
+                "  - area_id: ai_ml_systems",
+                "    label: AI/ML systems",
+                "    keywords: [ai, ml, machine learning, deep learning, generative ai, llm, perception, edge]",
+                "    growth_overlap_sentence: That is an area I want to keep building depth in.",
+                "    background_overlap_sentence: That lines up with the AI/ML systems work I've been doing.",
+                "    combined_overlap_sentence: That lines up well with the AI/ML systems work I've done and want to keep building depth in.",
+                "  - area_id: robotics_edge_systems",
+                "    label: robotics and edge systems",
+                "    keywords: [robotics, robotic, ros, motion, sensor, perception, edge, embedded]",
+                "    growth_overlap_sentence: That is the kind of robotics and edge systems work I want to keep growing in.",
+                "    background_overlap_sentence: That lines up with the kind of robotics and edge systems work I've been doing.",
+                "    combined_overlap_sentence: That lines up well with the kind of robotics and edge systems work I've done and want to keep growing in.",
+                "  - area_id: systems_leadership",
+                "    label: systems and leadership",
+                "    keywords: [scheduler, scheduling, real-time, control, leadership, manager]",
+                "    growth_overlap_sentence: That is the kind of systems and leadership work I want to keep leaning into.",
+                "    background_overlap_sentence: That lines up with the kind of systems and leadership work I've been doing.",
+                "    combined_overlap_sentence: That lines up well with the kind of systems and leadership work I've done and want to keep leaning into.",
+                "  - area_id: security_identity",
+                "    label: security and identity systems",
+                "    keywords: [security, secure, identity, iam, oauth, oidc, government]",
+                "    growth_overlap_sentence: That is an area I want to keep building depth in.",
+                "    background_overlap_sentence: That lines up with the kind of security and identity systems work I've been doing.",
+                "    combined_overlap_sentence: That lines up well with the kind of security and identity systems work I've done and want to keep building depth in.",
+                "",
+            ]
+        ),
+        encoding="utf-8",
+    )
 
     secrets_dir = root / "secrets"
     secrets_dir.mkdir(parents=True, exist_ok=True)
