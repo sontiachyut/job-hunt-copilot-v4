@@ -15,7 +15,7 @@ from zoneinfo import ZoneInfo
 
 import yaml
 
-from .artifacts import ArtifactLinkage, publish_json_artifact, register_artifact_record
+from .artifacts import ArtifactLinkage, publish_json_artifact, register_artifact_record, write_json_contract
 from .company_keys import ensure_missing_posting_company_keys, posting_company_key_from_row
 from .delivery_feedback import MailboxFeedbackObserver, run_immediate_delivery_feedback_poll
 from .paths import ProjectPaths
@@ -149,6 +149,27 @@ ROLE_SIGNAL_NONTECHNICAL_PATTERNS: tuple[re.Pattern[str], ...] = (
     re.compile(r"^willing to work extended hours", re.IGNORECASE),
     re.compile(r"^passionate about building great software", re.IGNORECASE),
 )
+ROLE_SIGNAL_INELIGIBLE_PATTERNS: tuple[re.Pattern[str], ...] = (
+    re.compile(r"\bmedical, dental(?:,? & vision| and vision)\b", re.IGNORECASE),
+    re.compile(r"\b(?:401\(k\)|paid time off|pto|life insurance|wellness|tuition reimbursement)\b", re.IGNORECASE),
+    re.compile(r"\bgrow a career\b", re.IGNORECASE),
+    re.compile(r"\bbuild a future\b", re.IGNORECASE),
+    re.compile(r"\bcareer growth\b", re.IGNORECASE),
+    re.compile(r"\bjoin our team\b", re.IGNORECASE),
+    re.compile(r"\babout us\b", re.IGNORECASE),
+    re.compile(r"\bwho we are\b", re.IGNORECASE),
+    re.compile(r"\bour values\b", re.IGNORECASE),
+    re.compile(r"\bour culture\b", re.IGNORECASE),
+    re.compile(r"\bapply now\b", re.IGNORECASE),
+    re.compile(r"\bwhy (?:work|join)\b", re.IGNORECASE),
+    re.compile(r"\bbenefits to support you\b", re.IGNORECASE),
+)
+ROLE_SIGNAL_GENERIC_FOCUS_PATTERNS: tuple[re.Pattern[str], ...] = (
+    re.compile(r"\bapplication delivery\b", re.IGNORECASE),
+    re.compile(r"\bplatform enhancements?\b", re.IGNORECASE),
+    re.compile(r"\bbackend services\b", re.IGNORECASE),
+    re.compile(r"\bmodels?, simulations?,? and analytics\b", re.IGNORECASE),
+)
 ROLE_SIGNAL_TECHNICAL_PRIORITY_PATTERNS: tuple[tuple[re.Pattern[str], int], ...] = (
     (
         re.compile(
@@ -172,12 +193,13 @@ ROLE_SIGNAL_TECHNICAL_PRIORITY_PATTERNS: tuple[tuple[re.Pattern[str], int], ...]
     (re.compile(r"\b(?:distributed|event-driven|backend)\b", re.IGNORECASE), 8),
     (
         re.compile(
-            r"\b(?:models?|pipelines?|databricks|airflow|langchain|llamaindex|vector databases?|vector index)\b",
+            r"\b(?:data pipelines?|ml models?|ai models?|model inference|databricks|airflow|langchain|llamaindex|vector databases?|vector index)\b",
             re.IGNORECASE,
         ),
         8,
     ),
     (re.compile(r"\b(?:spring boot|jakarta ee)\b", re.IGNORECASE), 7),
+    (re.compile(r"\b(?:robotic|robotics|ros|motion control|sensor integration)\b", re.IGNORECASE), 7),
     (re.compile(r"\b(?:\.net(?: framework| core)?|asp\.net|c#)\b", re.IGNORECASE), 6),
     (re.compile(r"\b(?:sql server|mongodb|postgresql|mysql|relational databases?)\b", re.IGNORECASE), 6),
     (re.compile(r"\b(?:aws|gcp|azure|cloud|ci/cd|jenkins|circleci|github actions)\b", re.IGNORECASE), 6),
@@ -209,6 +231,73 @@ ROLE_SIGNAL_LEADING_CASE_EXCEPTIONS: frozenset[str] = frozenset(
         "kubernetes",
         "docker",
     }
+)
+ROLE_SIGNAL_TITLE_THEME_PATTERNS: tuple[tuple[re.Pattern[str], tuple[str, ...]], ...] = (
+    (
+        re.compile(r"\b(?:cloud|platform|systems?)\b", re.IGNORECASE),
+        ("cloud", "aws", "gcp", "azure", "pcf", "platform", "container", "infrastructure", "backend"),
+    ),
+    (
+        re.compile(r"\bbackend\b", re.IGNORECASE),
+        ("backend", "api", "apis", "microservice", "microservices", "distributed", "event-driven"),
+    ),
+    (
+        re.compile(r"\b(?:data|analytics|spark)\b", re.IGNORECASE),
+        ("spark", "data", "pipeline", "pipelines", "etl", "analytics", "distributed"),
+    ),
+    (
+        re.compile(r"\b(?:ai|ml|machine learning|deep learning|perception)\b", re.IGNORECASE),
+        ("ai", "machine learning", "deep learning", "llm", "perception", "edge", "model", "models"),
+    ),
+    (
+        re.compile(r"\bsecurity\b", re.IGNORECASE),
+        ("security", "secure", "identity"),
+    ),
+    (
+        re.compile(r"\bfull stack\b", re.IGNORECASE),
+        ("frontend", "backend", "api", "apis", "angular", "react", "javascript"),
+    ),
+    (
+        re.compile(r"\brobotics?\b", re.IGNORECASE),
+        ("robotic", "robotics", "ros", "motion", "sensor", "automation"),
+    ),
+)
+ROLE_SIGNAL_FOCUS_ANCHOR_PATTERNS: tuple[tuple[re.Pattern[str], str], ...] = (
+    (re.compile(r"\b(?:public cloud|cloud-native|cloud-ready|aws|gcp|azure|pcf)\b", re.IGNORECASE), "cloud"),
+    (re.compile(r"\b(?:kubernetes|docker|container(?:s|ization)?|container orchestration|podman|cri-o)\b", re.IGNORECASE), "containers"),
+    (re.compile(r"\b(?:backend|rest apis?|restful services?|backend apis?|microservices?|grpc|event-driven)\b", re.IGNORECASE), "backend"),
+    (re.compile(r"\b(?:automation(?: tooling| tools?)?|automation workflows?|ci/cd|github actions|jenkins)\b", re.IGNORECASE), "automation"),
+    (re.compile(r"\b(?:terraform|infrastructure provisioning)\b", re.IGNORECASE), "terraform"),
+    (re.compile(r"\bapi gateway\b", re.IGNORECASE), "api_gateway"),
+    (re.compile(r"\b(?:workload identity|iam|oauth|oidc)\b", re.IGNORECASE), "identity"),
+    (re.compile(r"\b(?:spark|databricks|big data|data pipelines?|etl|stream processing)\b", re.IGNORECASE), "data"),
+    (re.compile(r"\b(?:distributed systems?|distributed services?)\b", re.IGNORECASE), "distributed"),
+    (re.compile(r"\b(?:machine learning|deep learning|generative ai|ai/ml|llm|large language models?)\b", re.IGNORECASE), "ai_ml"),
+    (re.compile(r"\bperception\b", re.IGNORECASE), "perception"),
+    (re.compile(r"\bedge devices?\b", re.IGNORECASE), "edge"),
+    (re.compile(r"\b(?:robotic|robotics|ros|motion control|sensor integration)\b", re.IGNORECASE), "robotics"),
+    (re.compile(r"\b(?:security|secure infrastructure|cloud security|application security)\b", re.IGNORECASE), "security"),
+    (re.compile(r"\b(?:scheduler|scheduling|real-time|control systems?)\b", re.IGNORECASE), "scheduling"),
+    (re.compile(r"\b(?:java|scala|python|golang|go|spring(?: boot)?|kotlin|c\+\+|c#)\b", re.IGNORECASE), "languages"),
+)
+ROLE_SIGNAL_SUMMARY_GROUPS: tuple[tuple[re.Pattern[str], str], ...] = (
+    (re.compile(r"\b(?:terraform|infrastructure provisioning)\b", re.IGNORECASE), "Terraform-based infrastructure provisioning"),
+    (re.compile(r"\bapi gateway\b", re.IGNORECASE), "API gateway build-out"),
+    (re.compile(r"\b(?:workload identity|iam|oauth|oidc)\b", re.IGNORECASE), "workload identity automation"),
+    (re.compile(r"\b(?:public cloud|cloud-native|cloud-ready|aws|gcp|azure|pcf)\b", re.IGNORECASE), "public cloud infrastructure"),
+    (re.compile(r"\b(?:kubernetes|docker|container(?:s|ization)?|container orchestration|podman|cri-o)\b", re.IGNORECASE), "container platforms"),
+    (re.compile(r"\b(?:backend automation|automation tooling|automation tools?|automation workflows?)\b", re.IGNORECASE), "backend automation tooling"),
+    (re.compile(r"\b(?:backend|rest apis?|restful services?|backend apis?|microservices?)\b", re.IGNORECASE), "backend APIs and services"),
+    (re.compile(r"\b(?:spark|databricks|big data|data pipelines?|etl)\b", re.IGNORECASE), "Spark-based big data engineering"),
+    (re.compile(r"\b(?:distributed systems?|distributed services?)\b", re.IGNORECASE), "distributed systems"),
+    (re.compile(r"\b(?:machine learning|deep learning)\b", re.IGNORECASE), "machine learning and deep learning"),
+    (re.compile(r"\bperception\b", re.IGNORECASE), "perception software"),
+    (re.compile(r"\bedge devices?\b", re.IGNORECASE), "edge devices"),
+    (re.compile(r"\b(?:robotic|robotics|ros|motion control|sensor integration)\b", re.IGNORECASE), "robotic systems integration"),
+    (re.compile(r"\b(?:scheduler|scheduling engines?|real-time|control systems?)\b", re.IGNORECASE), "real-time scheduling systems"),
+    (re.compile(r"\benterprise security systems?\b", re.IGNORECASE), "enterprise security systems"),
+    (re.compile(r"\b(?:security|secure infrastructure|cloud security|application security)\b", re.IGNORECASE), "secure infrastructure"),
+    (re.compile(r"\b(?:intel federal|government)\b", re.IGNORECASE), "government-focused security work"),
 )
 ROLE_TARGETED_DRAFT_BLOCK_PATTERNS: tuple[re.Pattern[str], ...] = (
     re.compile(r"\bwork around identifies\b", re.IGNORECASE),
@@ -1390,6 +1479,57 @@ class DeterministicOutreachDraftRenderer(OutreachDraftRenderer):
         )
 
 
+def _build_role_targeted_draft_context(
+    connection: sqlite3.Connection,
+    paths: ProjectPaths,
+    *,
+    posting_row: Mapping[str, Any],
+    contact_row: Mapping[str, Any],
+    sender: SenderIdentity,
+    tailoring_inputs: Mapping[str, Any],
+) -> RoleTargetedDraftContext:
+    recipient_email = _normalize_optional_text(contact_row["current_working_email"])
+    if recipient_email is None:
+        raise OutreachDraftingError(
+            f"Contact `{contact_row['contact_id']}` is missing a usable working email."
+        )
+    recipient_profile = _load_recipient_profile(
+        connection,
+        paths,
+        job_posting_id=str(posting_row["job_posting_id"]),
+        contact_id=str(contact_row["contact_id"]),
+    )
+    return RoleTargetedDraftContext(
+        job_posting_id=str(posting_row["job_posting_id"]),
+        job_posting_contact_id=str(contact_row["job_posting_contact_id"]),
+        lead_id=str(posting_row["lead_id"]),
+        company_name=str(posting_row["company_name"]),
+        role_title=str(posting_row["role_title"]),
+        recipient_type=str(contact_row["recipient_type"]),
+        contact_id=str(contact_row["contact_id"]),
+        display_name=str(contact_row["display_name"]),
+        recipient_email=recipient_email,
+        position_title=_normalize_optional_text(contact_row["position_title"]),
+        discovery_summary=_normalize_optional_text(contact_row["discovery_summary"]),
+        recipient_profile=recipient_profile,
+        jd_text=str(tailoring_inputs["jd_text"]),
+        role_intent_summary=_normalize_optional_text(tailoring_inputs.get("role_intent_summary")),
+        proof_point=_select_proof_point(tailoring_inputs["step_6_payload"]),
+        fit_summary=_select_fit_summary(
+            tailoring_inputs["step_6_payload"],
+            tailoring_inputs["step_3_payload"],
+        ),
+        work_area=_select_role_work_area(
+            tailoring_inputs["step_3_payload"],
+            str(tailoring_inputs["jd_text"]),
+            step_4_payload=tailoring_inputs["step_4_payload"],
+            role_title=str(posting_row["role_title"]),
+        ),
+        sender=sender,
+        tailored_resume_path=str(tailoring_inputs["resume_path"]),
+    )
+
+
 def generate_role_targeted_send_set_drafts(
     connection: sqlite3.Connection,
     *,
@@ -1451,39 +1591,13 @@ def generate_role_targeted_send_set_drafts(
             contact_row=contact_row,
             current_time=current_time,
         )
-        recipient_profile = _load_recipient_profile(
+        context = _build_role_targeted_draft_context(
             connection,
             paths,
-            job_posting_id=job_posting_id,
-            contact_id=str(contact_row["contact_id"]),
-        )
-        context = RoleTargetedDraftContext(
-            job_posting_id=str(posting_row["job_posting_id"]),
-            job_posting_contact_id=str(contact_row["job_posting_contact_id"]),
-            lead_id=str(posting_row["lead_id"]),
-            company_name=str(posting_row["company_name"]),
-            role_title=str(posting_row["role_title"]),
-            recipient_type=str(contact_row["recipient_type"]),
-            contact_id=str(contact_row["contact_id"]),
-            display_name=str(contact_row["display_name"]),
-            recipient_email=recipient_email,
-            position_title=_normalize_optional_text(contact_row["position_title"]),
-            discovery_summary=_normalize_optional_text(contact_row["discovery_summary"]),
-            recipient_profile=recipient_profile,
-            jd_text=tailoring_inputs["jd_text"],
-            role_intent_summary=tailoring_inputs["role_intent_summary"],
-            proof_point=_select_proof_point(tailoring_inputs["step_6_payload"]),
-            fit_summary=_select_fit_summary(
-                tailoring_inputs["step_6_payload"],
-                tailoring_inputs["step_3_payload"],
-            ),
-            work_area=_select_role_work_area(
-                tailoring_inputs["step_3_payload"],
-                tailoring_inputs["jd_text"],
-                step_4_payload=tailoring_inputs["step_4_payload"],
-            ),
+            posting_row=posting_row,
+            contact_row=contact_row,
             sender=sender,
-            tailored_resume_path=str(tailoring_inputs["resume_path"]),
+            tailoring_inputs=tailoring_inputs,
         )
         try:
             rendered = draft_renderer.render_role_targeted(context)
@@ -1525,6 +1639,170 @@ def generate_role_targeted_send_set_drafts(
         failed_contacts=tuple(failed_contacts),
         posting_status_after_drafting=JOB_POSTING_STATUS_OUTREACH_IN_PROGRESS,
     )
+
+
+def refresh_role_targeted_generated_drafts(
+    connection: sqlite3.Connection,
+    *,
+    project_root: Path | str,
+    job_posting_id: str,
+    current_time: str,
+    renderer: OutreachDraftRenderer | None = None,
+) -> tuple[str, ...]:
+    paths = ProjectPaths.from_root(project_root)
+    posting_row = _load_role_targeted_draft_posting_row(connection, job_posting_id=job_posting_id)
+    if posting_row["posting_status"] not in {
+        JOB_POSTING_STATUS_READY_FOR_OUTREACH,
+        JOB_POSTING_STATUS_OUTREACH_IN_PROGRESS,
+        JOB_POSTING_STATUS_COMPLETED,
+    }:
+        return ()
+    active_wave = _load_active_role_targeted_wave(connection, job_posting_id=job_posting_id)
+    generated_messages = [
+        message
+        for message in active_wave
+        if message.message_status == MESSAGE_STATUS_GENERATED
+    ]
+    if not generated_messages:
+        return ()
+
+    sender = _load_sender_identity(paths)
+    tailoring_inputs = _load_tailoring_draft_inputs(
+        connection,
+        paths,
+        posting_row=posting_row,
+        current_time=current_time,
+    )
+    draft_renderer = renderer or DeterministicOutreachDraftRenderer()
+    refreshed_ids: list[str] = []
+
+    for active_message in generated_messages:
+        contact_row = _load_draft_contact_row(
+            connection,
+            job_posting_id=job_posting_id,
+            contact_id=active_message.contact_id,
+        )
+        context = _build_role_targeted_draft_context(
+            connection,
+            paths,
+            posting_row=posting_row,
+            contact_row=contact_row,
+            sender=sender,
+            tailoring_inputs=tailoring_inputs,
+        )
+        rendered = draft_renderer.render_role_targeted(context)
+        refreshed = _refresh_persisted_role_targeted_generated_draft(
+            connection,
+            paths,
+            posting_row=posting_row,
+            contact_row=contact_row,
+            active_message=active_message,
+            rendered=rendered,
+            current_time=current_time,
+            resume_attachment_path=str(tailoring_inputs["resume_path"]),
+        )
+        if refreshed:
+            refreshed_ids.append(active_message.outreach_message_id)
+
+    return tuple(refreshed_ids)
+
+
+def _refresh_persisted_role_targeted_generated_draft(
+    connection: sqlite3.Connection,
+    paths: ProjectPaths,
+    *,
+    posting_row: Mapping[str, Any],
+    contact_row: Mapping[str, Any],
+    active_message: _ActiveWaveMessage,
+    rendered: RenderedDraft,
+    current_time: str,
+    resume_attachment_path: str,
+) -> bool:
+    company_name = str(posting_row["company_name"])
+    role_title = str(posting_row["role_title"])
+    recipient_email = _normalize_optional_text(contact_row["current_working_email"]) or str(active_message.recipient_email or "")
+    draft_path = paths.outreach_message_draft_path(
+        company_name,
+        role_title,
+        active_message.outreach_message_id,
+    )
+    html_path = paths.outreach_message_html_path(
+        company_name,
+        role_title,
+        active_message.outreach_message_id,
+    )
+    send_result_path = paths.outreach_message_send_result_path(
+        company_name,
+        role_title,
+        active_message.outreach_message_id,
+    )
+    needs_refresh = any(
+        (
+            active_message.subject != rendered.subject,
+            active_message.body_text != rendered.body_markdown,
+            active_message.body_html != rendered.body_html,
+            not draft_path.exists(),
+            not send_result_path.exists(),
+            bool(rendered.body_html) and not html_path.exists(),
+        )
+    )
+    if not needs_refresh:
+        return False
+
+    _write_text_file(draft_path, rendered.body_markdown)
+    body_html_artifact_path: str | None = None
+    if rendered.body_html:
+        _write_text_file(html_path, rendered.body_html)
+        body_html_artifact_path = str(html_path.resolve())
+    elif html_path.exists():
+        html_path.unlink()
+
+    with connection:
+        connection.execute(
+            """
+            UPDATE outreach_messages
+            SET subject = ?, body_text = ?, body_html = ?, updated_at = ?
+            WHERE outreach_message_id = ?
+            """,
+            (
+                rendered.subject,
+                rendered.body_markdown,
+                rendered.body_html,
+                current_time,
+                active_message.outreach_message_id,
+            ),
+        )
+
+    write_json_contract(
+        send_result_path,
+        producer_component=OUTREACH_COMPONENT,
+        result="success",
+        linkage=ArtifactLinkage(
+            lead_id=str(posting_row["lead_id"]),
+            job_posting_id=str(posting_row["job_posting_id"]),
+            contact_id=str(contact_row["contact_id"]),
+            outreach_message_id=active_message.outreach_message_id,
+        ),
+        payload={
+            "outreach_mode": OUTREACH_MODE_ROLE_TARGETED,
+            "recipient_email": recipient_email,
+            "send_status": MESSAGE_STATUS_GENERATED,
+            "sent_at": None,
+            "thread_id": None,
+            "delivery_tracking_id": None,
+            "subject": rendered.subject,
+            "body_text_artifact_path": str(draft_path.resolve()),
+            "body_html_artifact_path": body_html_artifact_path,
+            "resume_attachment_path": resume_attachment_path,
+        },
+        produced_at=current_time,
+    )
+    _write_text_file(paths.outreach_latest_draft_path(company_name, role_title), rendered.body_markdown)
+    _write_text_file(
+        paths.outreach_latest_send_result_path(company_name, role_title),
+        send_result_path.read_text(encoding="utf-8"),
+    )
+    return True
 
 
 def generate_general_learning_draft(
@@ -1736,6 +2014,12 @@ def execute_role_targeted_send_set(
             f"Job posting `{job_posting_id}` is `{posting_row['posting_status']}`; sending starts only from `ready_for_outreach`, `outreach_in_progress`, or `completed`."
         )
 
+    refresh_role_targeted_generated_drafts(
+        connection,
+        project_root=project_root,
+        job_posting_id=job_posting_id,
+        current_time=current_time,
+    )
     active_wave = _load_active_role_targeted_wave(connection, job_posting_id=job_posting_id)
     if not active_wave:
         raise OutreachSendingError(
@@ -3322,7 +3606,7 @@ def _select_fit_summary(
 
 
 def _role_work_area(step_3_payload: Mapping[str, Any], jd_text: str) -> str | None:
-    return _select_role_work_area(step_3_payload, jd_text, step_4_payload=None)
+    return _select_role_work_area(step_3_payload, jd_text, step_4_payload=None, role_title=None)
 
 
 def _select_role_work_area(
@@ -3330,8 +3614,15 @@ def _select_role_work_area(
     jd_text: str,
     *,
     step_4_payload: Mapping[str, Any] | None,
+    role_title: str | None,
 ) -> str | None:
     candidate_signals: list[tuple[str, str]] = []
+    for priority_key in ("must_have", "core_responsibility", "nice_to_have"):
+        signals = step_3_payload.get("signals_by_priority", {}).get(priority_key) or []
+        for signal in signals:
+            text = _normalize_optional_text(signal.get("signal"))
+            if text is not None:
+                candidate_signals.append((priority_key, text))
     role_intent_summary = _normalize_optional_text(step_3_payload.get("role_intent_summary"))
     if role_intent_summary is not None:
         candidate_signals.extend(
@@ -3339,49 +3630,54 @@ def _select_role_work_area(
             for part in role_intent_summary.split(";")
             if part.strip()
         )
-    for priority_key in ("must_have", "core_responsibility", "nice_to_have"):
-        signals = step_3_payload.get("signals_by_priority", {}).get(priority_key) or []
-        for signal in signals:
-            text = _normalize_optional_text(signal.get("signal"))
-            if text is not None:
-                candidate_signals.append((priority_key, text))
+    derived_role_title = role_title or _normalize_optional_text(
+        (step_3_payload.get("role_metadata") or {}).get("role_title")
+        if isinstance(step_3_payload.get("role_metadata"), Mapping)
+        else None
+    )
     scored_candidates: list[tuple[int, int, str]] = []
-    fallback_candidates: list[str] = []
     for index, (source_kind, raw_signal) in enumerate(candidate_signals):
-        cleaned = _clean_role_signal(raw_signal)
-        if cleaned is not None:
-            fallback_candidates.append(cleaned)
-            score = _score_role_signal_for_opener(
-                cleaned,
-                raw_signal=raw_signal,
-                source_kind=source_kind,
-                step_4_payload=step_4_payload,
-            )
-            if score > 0:
-                scored_candidates.append((score, -index, cleaned))
+        normalized_focus = _normalize_technical_focus_phrase(
+            raw_signal,
+            role_title=derived_role_title,
+        )
+        if normalized_focus is None:
+            continue
+        score = _score_role_signal_for_opener(
+            normalized_focus,
+            raw_signal=raw_signal,
+            role_title=derived_role_title,
+            source_kind=source_kind,
+            step_4_payload=step_4_payload,
+        )
+        if score > 0:
+            scored_candidates.append((score, -index, normalized_focus))
     if scored_candidates:
         return max(scored_candidates)[2]
-    if fallback_candidates:
-        return fallback_candidates[0]
     for line in jd_text.splitlines():
         stripped = line.strip()
         if stripped and not stripped.startswith("#"):
-            cleaned = _clean_role_signal(stripped)
-            if cleaned is not None:
-                scored = _score_role_signal_for_opener(
-                    cleaned,
-                    raw_signal=stripped,
-                    source_kind="jd_fallback",
-                    step_4_payload=step_4_payload,
-                )
-                if scored > 0:
-                    return cleaned
-                return cleaned
+            normalized_focus = _normalize_technical_focus_phrase(
+                stripped,
+                role_title=derived_role_title,
+            )
+            if normalized_focus is None:
+                continue
+            scored = _score_role_signal_for_opener(
+                normalized_focus,
+                raw_signal=stripped,
+                role_title=derived_role_title,
+                source_kind="jd_fallback",
+                step_4_payload=step_4_payload,
+            )
+            if scored > 0:
+                return normalized_focus
     return None
 
 
 def _clean_role_signal(value: str) -> str | None:
-    cleaned = re.sub(r"\s+", " ", value.strip().rstrip("."))
+    cleaned = re.sub(r"^\s*[-*]\s*", "", value.strip())
+    cleaned = re.sub(r"\s+", " ", cleaned.rstrip("."))
     stripped_original = cleaned
     focus_marker = re.search(
         r"\b(?:you will focus primarily on|focus primarily on|will focus on)\b",
@@ -3404,13 +3700,50 @@ def _clean_role_signal(value: str) -> str | None:
         flags=re.IGNORECASE,
     )
     cleaned = re.sub(
+        r"^\d+\+?(?:\s*[-–]\s*\d+)?\s+years?\s+"
+        r"(?:(?:building|working\s+with|working\s+on|supporting|designing|developing|implementing)\s+)",
+        "",
+        cleaned,
+        flags=re.IGNORECASE,
+    )
+    cleaned = re.sub(
         r"^As a .*?,\s+you(?:'|’)ll\s+",
         "",
         cleaned,
         flags=re.IGNORECASE,
     )
     cleaned = re.sub(
+        r"^as a [^,]+,\s+",
+        "",
+        cleaned,
+        flags=re.IGNORECASE,
+    )
+    cleaned = re.sub(
         r"^(?:experience with|experience in|experience building|building|build|developing|develop|designing|design|working on|work on)\s+",
+        "",
+        cleaned,
+        flags=re.IGNORECASE,
+    )
+    cleaned = re.sub(
+        r"^(?:at least one programming language like|one or more programming languages such as)\s+.+?\s+\bto\b\s+",
+        "",
+        cleaned,
+        flags=re.IGNORECASE,
+    )
+    cleaned = re.sub(
+        r"^(?:developing|working)\s+in\s+programming languages such as\s+",
+        "",
+        cleaned,
+        flags=re.IGNORECASE,
+    )
+    cleaned = re.sub(
+        r"^(?:additional tools such as|tools such as|programming languages such as)\s+",
+        "",
+        cleaned,
+        flags=re.IGNORECASE,
+    )
+    cleaned = re.sub(
+        r"^(?:design/build/test|design, build, test|design and build|build and maintain|build and support)\s+",
         "",
         cleaned,
         flags=re.IGNORECASE,
@@ -3426,11 +3759,13 @@ def _clean_role_signal(value: str) -> str | None:
     if not cleaned:
         return None
     normalized = cleaned.lower()
+    if _is_ineligible_role_signal_text(cleaned):
+        return None
     if any(pattern.search(normalized) for pattern in ROLE_SIGNAL_BOILERPLATE_PATTERNS):
         return None
     if any(pattern.search(normalized) for pattern in ROLE_SIGNAL_NONTECHNICAL_PATTERNS):
         return None
-    if len(cleaned) > 220 and cleaned.count(".") + cleaned.count(";") >= 1:
+    if len(cleaned) > 260 and cleaned.count(".") + cleaned.count(";") >= 1:
         return None
     first_word, _, remainder = cleaned.partition(" ")
     gerund = ROLE_SIGNAL_VERB_PREFIXES.get(first_word.lower())
@@ -3449,19 +3784,102 @@ def _score_role_signal_for_opener(
     cleaned_signal: str,
     *,
     raw_signal: str,
+    role_title: str | None,
     source_kind: str,
     step_4_payload: Mapping[str, Any] | None,
 ) -> int:
-    lowered = cleaned_signal.lower()
-    technical_score = max(
-        weight
-        for pattern, weight in ROLE_SIGNAL_TECHNICAL_PRIORITY_PATTERNS
-        if pattern.search(lowered)
-    ) if any(pattern.search(lowered) for pattern, _ in ROLE_SIGNAL_TECHNICAL_PRIORITY_PATTERNS) else 0
+    if _fails_role_title_specific_gate(cleaned_signal, role_title):
+        return 0
+    technical_score = _role_signal_technical_priority(cleaned_signal, raw_signal)
     if technical_score <= 0:
         return 0
+    specificity_score = _score_role_signal_specificity(cleaned_signal, raw_signal)
+    if specificity_score <= 0:
+        return 0
+    title_score = _score_role_signal_title_alignment(cleaned_signal, role_title)
     evidence_score = _score_jd_signal_evidence_overlap(raw_signal, step_4_payload)
-    return technical_score * 100 + ROLE_SIGNAL_SOURCE_PRIORITY.get(source_kind, 0) * 10 + evidence_score * 5
+    return (
+        technical_score * 100
+        + specificity_score * 25
+        + title_score * 20
+        + ROLE_SIGNAL_SOURCE_PRIORITY.get(source_kind, 0) * 10
+        + evidence_score * 5
+    )
+
+
+def _is_ineligible_role_signal_text(value: str) -> bool:
+    normalized = value.strip()
+    lowered = normalized.lower()
+    if any(pattern.search(lowered) for pattern in ROLE_SIGNAL_INELIGIBLE_PATTERNS):
+        return True
+    if normalized.endswith("!") and len(normalized.split()) <= 8 and not _extract_role_focus_anchors(normalized):
+        return True
+    return False
+
+
+def _role_signal_technical_priority(cleaned_signal: str, raw_signal: str) -> int:
+    scores: list[int] = []
+    for candidate in (cleaned_signal, raw_signal):
+        lowered = candidate.lower()
+        scores.extend(
+            weight
+            for pattern, weight in ROLE_SIGNAL_TECHNICAL_PRIORITY_PATTERNS
+            if pattern.search(lowered)
+        )
+    return max(scores) if scores else 0
+
+
+def _extract_role_focus_anchors(value: str) -> set[str]:
+    anchors: set[str] = set()
+    for pattern, label in ROLE_SIGNAL_FOCUS_ANCHOR_PATTERNS:
+        if pattern.search(value):
+            anchors.add(label)
+    return anchors
+
+
+def _score_role_signal_specificity(cleaned_signal: str, raw_signal: str) -> int:
+    anchors = _extract_role_focus_anchors(cleaned_signal) | _extract_role_focus_anchors(raw_signal)
+    if not anchors:
+        return 0
+    if any(pattern.search(cleaned_signal) for pattern in ROLE_SIGNAL_GENERIC_FOCUS_PATTERNS) and len(anchors) < 2:
+        return 0
+    return len(anchors) + (1 if len(cleaned_signal.split()) <= 12 else 0)
+
+
+def _score_role_signal_title_alignment(cleaned_signal: str, role_title: str | None) -> int:
+    normalized_title = _normalize_optional_text(role_title)
+    if normalized_title is None:
+        return 0
+    lowered_title = normalized_title.lower()
+    lowered_signal = cleaned_signal.lower()
+    score = 0
+    for title_pattern, keywords in ROLE_SIGNAL_TITLE_THEME_PATTERNS:
+        if not title_pattern.search(lowered_title):
+            continue
+        if any(keyword in lowered_signal for keyword in keywords):
+            score += 1
+    return score
+
+
+def _fails_role_title_specific_gate(cleaned_signal: str, role_title: str | None) -> bool:
+    normalized_title = _normalize_optional_text(role_title)
+    if normalized_title is None:
+        return False
+    lowered_title = normalized_title.lower()
+    lowered_signal = cleaned_signal.lower()
+    gates: tuple[tuple[tuple[str, ...], tuple[str, ...]], ...] = (
+        (("cloud",), ("cloud", "aws", "gcp", "azure", "pcf", "hybrid-cloud", "application", "applications", "infrastructure", "platform")),
+        (("security",), ("security", "secure", "identity")),
+        (("robotics", "robotic"), ("robotic", "robotics", "ros", "motion", "sensor", "automation")),
+        (("backend",), ("backend", "api", "apis", "microservice", "distributed", "rest")),
+        (("scheduler", "scheduling"), ("scheduler", "scheduling", "real-time", "control systems")),
+        (("data", "analytics"), ("data", "spark", "pipeline", "pipelines", "analytics", "etl")),
+    )
+    for title_tokens, required_tokens in gates:
+        if not any(token in lowered_title for token in title_tokens):
+            continue
+        return not any(token in lowered_signal for token in required_tokens)
+    return False
 
 
 def _score_jd_signal_evidence_overlap(
@@ -3538,18 +3956,17 @@ def _compose_role_targeted_opener_inputs(
 ) -> RoleTargetedOpenerInputs:
     role_theme = _compose_role_targeted_role_theme(context)
     technical_focus = _compose_role_targeted_technical_focus(context, role_theme)
-    opener_signal_source = " ".join(
+    classification_source = " ".join(
         value
         for value in (
             context.role_title,
             role_theme,
             technical_focus,
-            _normalize_optional_text(context.role_intent_summary),
         )
         if value
     ).lower()
     if any(
-        token in opener_signal_source
+        token in classification_source
         for token in (
             "generative ai",
             "machine learning",
@@ -3570,7 +3987,7 @@ def _compose_role_targeted_opener_inputs(
                 "That is an area I want to keep building depth in."
             ),
         )
-    if "security" in opener_signal_source or "government" in opener_signal_source:
+    if "security" in classification_source or "government" in classification_source:
         return RoleTargetedOpenerInputs(
             company_name=context.company_name,
             role_title=context.role_title,
@@ -3580,7 +3997,7 @@ def _compose_role_targeted_opener_inputs(
                 "That is an area I want to keep building depth in."
             ),
         )
-    if "leadership" in opener_signal_source or "scheduling" in opener_signal_source:
+    if "leadership" in classification_source or "scheduling" in classification_source:
         return RoleTargetedOpenerInputs(
             company_name=context.company_name,
             role_title=context.role_title,
@@ -3590,7 +4007,15 @@ def _compose_role_targeted_opener_inputs(
                 "That is the kind of systems and leadership work I want to keep leaning into."
             ),
         )
-    if "platform" in opener_signal_source or "cloud" in opener_signal_source:
+    focus_signal_source = " ".join(
+        value
+        for value in (
+            role_theme,
+            technical_focus,
+        )
+        if value
+    ).lower()
+    if any(token in focus_signal_source for token in ("platform", "cloud", "infrastructure")):
         return RoleTargetedOpenerInputs(
             company_name=context.company_name,
             role_title=context.role_title,
@@ -3671,30 +4096,8 @@ def _snippet_focus_phrase(context: RoleTargetedDraftContext) -> str:
     role_theme = _compose_role_targeted_role_theme(context)
     technical_focus = _compose_role_targeted_technical_focus(context, role_theme)
     focus = _normalize_optional_text(technical_focus) or role_theme
-    lowered_focus = focus.lower()
-    lowered_role = context.role_title.lower()
-
-    if any(token in lowered_focus for token in ("security", "government", "intel federal")):
-        return "secure infrastructure and enterprise security systems"
-    if any(token in lowered_focus for token in ("scheduler", "scheduling", "real-time")):
-        return "real-time scheduling and production systems"
-    if any(token in lowered_focus for token in ("rest api", "restful", "webapi", "swagger", "postman", "microservice")):
-        return "backend services and APIs"
-    if "full stack" in lowered_role:
-        return "full-stack services and backend APIs"
-    if "ai" in lowered_focus and any(
-        token in lowered_focus for token in ("backend", "distributed", "platform", "data")
-    ):
-        return "AI platform and backend systems"
-    if "ai" in lowered_focus:
-        return "production AI and data systems"
-    if "backend" in lowered_focus and "distributed" in lowered_focus:
-        return "backend and distributed systems"
-    if any(token in lowered_focus for token in ("cloud", "platform", "infrastructure")):
-        return "cloud-based production systems"
-    if len(focus.split()) <= 8 and " " in focus:
-        return focus
-    return role_theme
+    compact_focus = _compact_focus_for_snippet(focus, role_title=context.role_title)
+    return compact_focus or focus or role_theme
 
 
 def _snippet_focus_preposition(focus: str) -> str:
@@ -3826,16 +4229,14 @@ def _role_work_area_phrase(value: str | None) -> str:
 
 
 def _compose_role_targeted_role_theme(context: RoleTargetedDraftContext) -> str:
-    source = " ".join(
-        value
-        for value in (
-            context.role_title,
-            _normalize_optional_text(context.work_area),
-            _normalize_optional_text(context.role_intent_summary),
-            context.jd_text[:2000],
-        )
-        if value
-    ).lower()
+    source_parts = [
+        context.role_title,
+        _normalize_optional_text(context.work_area),
+        _normalize_optional_text(context.role_intent_summary),
+    ]
+    if not any(source_parts[1:]):
+        source_parts.append(context.jd_text[:2000])
+    source = " ".join(value for value in source_parts if value).lower()
     if any(
         token in source
         for token in (
@@ -3855,12 +4256,17 @@ def _compose_role_targeted_role_theme(context: RoleTargetedDraftContext) -> str:
         return "enterprise security systems, secure infrastructure, and government-focused security work"
     if any(token in source for token in ("scheduler", "scheduling", "scheduling engines")):
         return "engineering leadership and real-time scheduling systems"
+    if any(token in source for token in ("platform", "cloud", "infrastructure")) and any(
+        token in source
+        for token in ("backend", "distributed", "api", "microservice", "container", "automation")
+    ):
+        return "cloud infrastructure, backend systems, and platform engineering"
     if any(token in source for token in ("distributed", "grpc", "load balancing")):
         return "backend systems, distributed services, and production delivery"
-    if "backend" in source:
-        return "backend services and application delivery"
     if any(token in source for token in ("event-driven", "metadata", "documents", "document", "python")):
         return "production Python services, backend systems, and distributed processing"
+    if "backend" in source:
+        return "backend systems and APIs"
     if any(token in source for token in ("platform", "cloud", "infrastructure")):
         return "cloud infrastructure, platform systems, and production engineering"
     candidate = _role_work_area_phrase(context.work_area or context.role_intent_summary)
@@ -3874,7 +4280,10 @@ def _compose_role_targeted_technical_focus(
     role_theme: str,
 ) -> str:
     for raw_value in (context.work_area, context.role_intent_summary):
-        normalized_focus = _normalize_technical_focus_phrase(raw_value)
+        normalized_focus = _normalize_technical_focus_phrase(
+            raw_value,
+            role_title=context.role_title,
+        )
         if normalized_focus is not None:
             return normalized_focus
     return role_theme
@@ -3893,6 +4302,14 @@ def _join_focus_phrases(parts: Sequence[str]) -> str:
 
 def _looks_like_technology_focus_list(value: str) -> bool:
     lowered = value.lower()
+    if re.search(
+        r"\b(?:designing|deploying|managing|developing|creating|implementing)\b,\s+"
+        r"\b(?:designing|deploying|managing|developing|creating|implementing)\b",
+        lowered,
+    ):
+        return False
+    if "cloud solutions using" in lowered or "applications using frameworks" in lowered:
+        return False
     if any(
         marker in lowered
         for marker in (
@@ -3988,7 +4405,58 @@ def _summarize_technical_focus_enumeration(candidate: str) -> str:
     return summary or candidate
 
 
-def _normalize_technical_focus_phrase(value: str | None) -> str | None:
+def _focus_summary_parts(value: str) -> list[str]:
+    parts: list[str] = []
+    for pattern, summary in ROLE_SIGNAL_SUMMARY_GROUPS:
+        if pattern.search(value) and summary not in parts:
+            parts.append(summary)
+    return parts
+
+
+def _compact_focus_for_snippet(focus: str | None, *, role_title: str | None) -> str | None:
+    normalized = _normalize_technical_focus_phrase(focus, role_title=role_title)
+    if normalized is None:
+        return None
+    if len(normalized.split()) <= 10:
+        return normalized
+    summarized = _summarize_long_technical_focus_phrase(normalized, role_title=role_title)
+    return summarized or normalized
+
+
+def _summarize_long_technical_focus_phrase(candidate: str, *, role_title: str | None) -> str | None:
+    parts = _focus_summary_parts(candidate)
+    if not parts:
+        return None
+    if role_title and "full stack" in role_title.lower():
+        parts = [part for part in parts if part != "backend APIs and services"] or parts
+    summary = _join_focus_phrases(parts[:3]) or None
+    if summary is None:
+        return None
+    return _restore_focus_term_casing(summary)
+
+
+def _restore_focus_term_casing(candidate: str) -> str:
+    replacements = (
+        (r"\bjava\b", "Java"),
+        (r"\bscala\b", "Scala"),
+        (r"\bkotlin\b", "Kotlin"),
+        (r"\bpython\b", "Python"),
+        (r"\bgolang\b", "Golang"),
+        (r"\baws\b", "AWS"),
+        (r"\bgcp\b", "GCP"),
+        (r"\bazure\b", "Azure"),
+        (r"\bpcf\b", "PCF"),
+        (r"\bterraform\b", "Terraform"),
+        (r"\brestful services\b", "RESTful services"),
+        (r"\bapi gateway\b", "API gateway"),
+    )
+    normalized = candidate
+    for pattern, replacement in replacements:
+        normalized = re.sub(pattern, replacement, normalized, flags=re.IGNORECASE)
+    return normalized
+
+
+def _normalize_technical_focus_phrase(value: str | None, *, role_title: str | None) -> str | None:
     normalized = _normalize_optional_text(value)
     if normalized is None:
         return None
@@ -4054,22 +4522,48 @@ def _normalize_technical_focus_phrase(value: str | None) -> str | None:
         candidate,
         flags=re.IGNORECASE,
     )
+    candidate = re.sub(r"\s*\(\d+\s+years?\)\s*$", "", candidate, flags=re.IGNORECASE)
+    candidate = re.sub(r"\s*\(\d+\s+year\)\s*$", "", candidate, flags=re.IGNORECASE)
     candidate = re.sub(r"\s+", " ", candidate).strip(" ,.;")
     rewritten_ai_ml_focus = _rewrite_ai_ml_focus_phrase(candidate)
     if rewritten_ai_ml_focus is not None:
         candidate = rewritten_ai_ml_focus
+    lowered_candidate = candidate.lower()
+    if "cloud solutions" in lowered_candidate and any(
+        token in lowered_candidate for token in ("aws", "gcp", "azure", "pcf")
+    ):
+        summarized_cloud = _summarize_long_technical_focus_phrase(candidate, role_title=role_title)
+        if summarized_cloud is not None:
+            candidate = summarized_cloud
     if _looks_like_technology_focus_list(candidate):
         candidate = _summarize_technical_focus_enumeration(candidate)
     if not candidate:
         return None
+    if _is_ineligible_role_signal_text(candidate):
+        return None
+    if any(pattern.search(candidate) for pattern in ROLE_SIGNAL_GENERIC_FOCUS_PATTERNS):
+        summarized_generic = _summarize_long_technical_focus_phrase(candidate, role_title=role_title)
+        if summarized_generic is not None:
+            candidate = summarized_generic
+    if not candidate:
+        return None
+    if len(candidate.split()) > 18:
+        summarized = _summarize_long_technical_focus_phrase(candidate, role_title=role_title)
+        if summarized is None:
+            return None
+        candidate = summarized
     lowered = candidate.lower()
     if any(pattern.search(lowered) for pattern in ROLE_SIGNAL_BOILERPLATE_PATTERNS):
         return None
-    if len(candidate.split()) > 18:
-        return None
     if re.search(r"\b(?:identifies|develops|plans|implements|supports),\s", lowered):
+        summarized = _summarize_long_technical_focus_phrase(candidate, role_title=role_title)
+        if summarized is None:
+            return None
+        candidate = summarized
+        lowered = candidate.lower()
+    if not _extract_role_focus_anchors(candidate):
         return None
-    return candidate
+    return _restore_focus_term_casing(candidate)
 
 
 def _rewrite_ai_ml_focus_phrase(candidate: str) -> str | None:

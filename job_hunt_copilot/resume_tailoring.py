@@ -301,6 +301,57 @@ JD_POLICY_LINE_PATTERNS = (
     re.compile(r"\btalent community\b", re.IGNORECASE),
     re.compile(r"\bred flag\b", re.IGNORECASE),
 )
+JD_OUTREACH_INELIGIBLE_LINE_PATTERNS = (
+    re.compile(r"\bmedical, dental(?:,? & vision| and vision)\b", re.IGNORECASE),
+    re.compile(r"\b(?:401\(k\)|paid time off|pto|life insurance|wellness|tuition reimbursement)\b", re.IGNORECASE),
+    re.compile(r"\bgrow a career\b", re.IGNORECASE),
+    re.compile(r"\bbuild a future\b", re.IGNORECASE),
+    re.compile(r"\bjoin our team\b", re.IGNORECASE),
+    re.compile(r"\babout us\b", re.IGNORECASE),
+    re.compile(r"\bwho we are\b", re.IGNORECASE),
+    re.compile(r"\bour values\b", re.IGNORECASE),
+    re.compile(r"\bour culture\b", re.IGNORECASE),
+    re.compile(r"\bapply now\b", re.IGNORECASE),
+)
+JD_ROLE_SCOPE_TERMS = frozenset(
+    {
+        "api",
+        "apis",
+        "automation",
+        "aws",
+        "azure",
+        "backend",
+        "cloud",
+        "containers",
+        "data",
+        "deep",
+        "distributed",
+        "docker",
+        "edge",
+        "etl",
+        "gcp",
+        "identity",
+        "java",
+        "kubernetes",
+        "learning",
+        "machine",
+        "microservices",
+        "ml",
+        "model",
+        "models",
+        "monitoring",
+        "pipeline",
+        "pipelines",
+        "platform",
+        "python",
+        "reliability",
+        "rest",
+        "scala",
+        "security",
+        "spark",
+        "terraform",
+    }
+)
 LOW_SIGNAL_PROFILE_SECTION_TERMS = frozenset(
     {
         "abstraction boundary",
@@ -3548,7 +3599,7 @@ def _build_step_3_signal_artifact(
     role_intent_signals = [
         signal["signal"]
         for signal in signals
-        if signal["priority"] in {"core_responsibility", "must_have"}
+        if _is_role_intent_summary_signal(signal)
     ][:2]
     role_intent_summary = (
         "; ".join(role_intent_signals)
@@ -4543,10 +4594,48 @@ def _normalize_jd_line(line: str) -> str:
     return cleaned
 
 
+def _is_ineligible_jd_signal_line(line: str) -> bool:
+    normalized = line.strip()
+    if any(pattern.search(normalized) for pattern in JD_OUTREACH_INELIGIBLE_LINE_PATTERNS):
+        return True
+    if normalized.endswith("!") and len(normalized.split()) <= 8:
+        return True
+    return False
+
+
+def _has_role_scope_anchor(line: str) -> bool:
+    tokens = _tokenize(line)
+    if tokens & FRONTEND_AI_TERMS:
+        return True
+    if tokens & DISTRIBUTED_INFRA_TERMS:
+        return True
+    if tokens & JD_ROLE_SCOPE_TERMS:
+        return True
+    lowered = line.lower()
+    return any(
+        phrase in lowered
+        for phrase in (
+            "rest api",
+            "restful",
+            "microservice",
+            "cloud-ready",
+            "cloud-native",
+            "public cloud",
+            "workload identity",
+            "api gateway",
+            "machine learning",
+            "deep learning",
+            "edge devices",
+        )
+    )
+
+
 def _classify_signal_priority(current_heading: str, line: str) -> str | None:
     heading = current_heading.lower()
     normalized = line.lower()
     if _jd_heading_from_line(line):
+        return None
+    if _is_ineligible_jd_signal_line(line):
         return None
     if any(pattern.search(line) for pattern in JD_POLICY_LINE_PATTERNS):
         return None
@@ -4585,6 +4674,26 @@ def _classify_signal_priority(current_heading: str, line: str) -> str | None:
     if any(term in normalized for term in ("build", "design", "develop", "collaborate", "own")):
         return "core_responsibility"
     return None
+
+
+def _is_role_intent_summary_signal(signal: Mapping[str, Any]) -> bool:
+    if signal.get("priority") not in {"must_have", "core_responsibility"}:
+        return False
+    raw_text = signal.get("signal")
+    text = str(raw_text).strip() if raw_text is not None else ""
+    if not text:
+        return False
+    if _is_ineligible_jd_signal_line(text):
+        return False
+    if str(signal.get("category") or "") in {
+        "authorization",
+        "compensation",
+        "education_requirement",
+        "experience_requirement",
+        "location_constraint",
+    }:
+        return False
+    return _has_role_scope_anchor(text)
 
 
 def _categorize_signal(line: str) -> str:

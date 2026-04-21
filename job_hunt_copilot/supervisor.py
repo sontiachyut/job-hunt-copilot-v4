@@ -4329,6 +4329,7 @@ def _execute_selected_work_unit(
             evaluate_role_targeted_send_set,
             generate_role_targeted_send_set_drafts,
             is_role_targeted_sending_actionable_now,
+            refresh_role_targeted_generated_drafts,
         )
 
         job_posting_id = _require_text(selected_work.job_posting_id, "job_posting_id")
@@ -4383,6 +4384,12 @@ def _execute_selected_work_unit(
             JOB_POSTING_STATUS_OUTREACH_IN_PROGRESS,
             JOB_POSTING_STATUS_COMPLETED,
         }:
+            refresh_role_targeted_generated_drafts(
+                connection,
+                project_root=paths.project_root,
+                job_posting_id=job_posting_id,
+                current_time=timestamp,
+            )
             if is_role_targeted_sending_actionable_now(
                 connection,
                 project_root=paths.project_root,

@@ -910,6 +910,43 @@ def test_generate_tailoring_intelligence_filters_jd_noise_and_scores_ai_resume_f
     assert step_7_payload["jd_coverage_score"] >= 0.55
 
 
+def test_generate_tailoring_intelligence_filters_benefits_and_slogans_from_role_intent_summary(
+    tmp_path,
+):
+    _, paths, connection, _ = prepare_real_tailoring_run(
+        tmp_path,
+        jd_body=(
+            "Responsibilities\n"
+            "Build Terraform-based infrastructure provisioning, API gateway build-out, and workload identity automation for backend platform services.\n"
+            "Benefits\n"
+            "Medical, dental & vision\n"
+            "Who We Are\n"
+            "Grow a Career. Build a Future!\n"
+        ),
+    )
+
+    generate_tailoring_intelligence(
+        connection,
+        paths,
+        job_posting_id="jp_test",
+        timestamp="2026-04-06T20:10:00Z",
+    )
+
+    step_3_payload = yaml.safe_load(
+        paths.tailoring_step_3_jd_signals_path("Acme Data Systems", "Software Engineer").read_text(
+            encoding="utf-8"
+        )
+    )
+    signals = [str(signal["signal"]).lower() for signal in step_3_payload["signals"]]
+    role_intent_summary = str(step_3_payload["role_intent_summary"]).lower()
+
+    assert not any("medical, dental" in signal for signal in signals)
+    assert not any("grow a career" in signal for signal in signals)
+    assert "terraform-based infrastructure provisioning" in role_intent_summary
+    assert "medical, dental" not in role_intent_summary
+    assert "grow a career" not in role_intent_summary
+
+
 def test_generate_tailoring_intelligence_handles_plain_jd_headings_and_location_constraints(
     tmp_path,
 ):

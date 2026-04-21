@@ -45,6 +45,7 @@ from job_hunt_copilot.outreach import (
     generate_general_learning_draft,
     generate_role_targeted_send_set_drafts,
     is_role_targeted_sending_actionable_now,
+    refresh_role_targeted_generated_drafts,
 )
 from job_hunt_copilot.paths import ProjectPaths
 from tests.support import create_minimal_project
@@ -1266,7 +1267,8 @@ def test_role_targeted_draft_batch_persists_messages_artifacts_and_transitions(t
         in recruiter_body
     )
     assert (
-        "He has experience in AI platform and backend systems, including building distributed Python and Scala data services processing 50M+ daily HL7 records at roughly 580 TPS for real-time analytics."
+        "He has experience in reliable backend and distributed systems for AI platform workloads, "
+        "including building distributed Python and Scala data services processing 50M+ daily HL7 records at roughly 580 TPS for real-time analytics."
         in recruiter_body
     )
     assert "Profile: www.linkedin.com/in/asonti" in recruiter_body
@@ -1302,7 +1304,8 @@ def test_role_targeted_draft_batch_persists_messages_artifacts_and_transitions(t
         in manager_body
     )
     assert (
-        "His background is in AI platform and backend systems, including building distributed Python and Scala data services processing 50M+ daily HL7 records at roughly 580 TPS for real-time analytics."
+        "His background is in reliable backend and distributed systems for AI platform workloads, "
+        "including building distributed Python and Scala data services processing 50M+ daily HL7 records at roughly 580 TPS for real-time analytics."
         in manager_body
     )
 
@@ -1683,8 +1686,8 @@ def test_role_targeted_composition_rewrites_security_jd_into_natural_theme(tmp_p
     body_text = Path(result.drafted_messages[0].body_text_artifact_path).read_text(encoding="utf-8")
     assert (
         "I'm reaching out about the Government Information Security Engineer role at Intel because I was "
-        "interested in the role's focus on enterprise security systems, secure infrastructure, and "
-        "government-focused security work. That is an area I want to keep building depth in."
+        "interested in the role's focus on enterprise security systems and secure infrastructure. "
+        "That is an area I want to keep building depth in."
         in body_text
     )
     assert "identifies, develops, plans, implements" not in body_text.lower()
@@ -2458,11 +2461,729 @@ def test_role_targeted_composition_does_not_overclassify_generic_backend_roles_a
     body_text = Path(result.drafted_messages[0].body_text_artifact_path).read_text(encoding="utf-8")
     assert (
         "I'm reaching out about the Sr Software Engineer role at PayPal because I was interested in the role's "
-        "focus on secure, highly available backend services and distributed systems that support product "
-        "delivery across the software lifecycle."
+        "focus on backend APIs and services and distributed systems."
         in body_text
     )
     assert "government-focused security work" not in body_text
+
+    connection.close()
+
+
+def test_role_targeted_composition_filters_benefits_from_focus_selection(tmp_path: Path):
+    project_root, paths = bootstrap_project(tmp_path)
+    connection = connect_database(project_root / "job_hunt_copilot.db")
+    write_sender_profile(paths)
+    seed_posting(
+        connection,
+        company_name="TEKsystems",
+        role_title="Backend Developer",
+    )
+    seed_linked_contact(
+        connection,
+        contact_id="ct_teksystems",
+        job_posting_contact_id="jpc_teksystems",
+        display_name="Taylor Recruiter",
+        recipient_type=RECIPIENT_TYPE_RECRUITER,
+        current_working_email="taylor@teksystems.example",
+        created_at="2026-04-06T20:01:00Z",
+    )
+    seed_approved_tailoring_run(
+        connection,
+        paths,
+        company_name="TEKsystems",
+        role_title="Backend Developer",
+    )
+    paths.tailoring_step_3_jd_signals_path(
+        "TEKsystems",
+        "Backend Developer",
+    ).write_text(
+        yaml.safe_dump(
+            {
+                "job_posting_id": "jp_outreach",
+                "resume_tailoring_run_id": "rtr_outreach",
+                "status": "generated",
+                "role_intent_summary": (
+                    "Medical, dental & vision; "
+                    "Build Terraform-based infrastructure provisioning, API gateway build-out, "
+                    "and workload identity automation for backend platform workloads."
+                ),
+                "signals_by_priority": {
+                    "must_have": [
+                        {"signal": "Medical, dental & vision"},
+                    ],
+                    "core_responsibility": [
+                        {
+                            "signal": (
+                                "Build Terraform-based infrastructure provisioning, API gateway "
+                                "build-out, and workload identity automation for backend platform workloads."
+                            )
+                        }
+                    ],
+                    "nice_to_have": [],
+                    "informational": [],
+                },
+                "signals": [],
+            },
+            sort_keys=False,
+        ),
+        encoding="utf-8",
+    )
+    paths.tailoring_step_4_evidence_map_path(
+        "TEKsystems",
+        "Backend Developer",
+    ).write_text(
+        yaml.safe_dump(
+            {
+                "matches": [
+                    {
+                        "jd_signal": (
+                            "Build Terraform-based infrastructure provisioning, API gateway "
+                            "build-out, and workload identity automation for backend platform workloads."
+                        ),
+                        "confidence": "high",
+                        "source_excerpt": "Built infrastructure automation and backend platform services on AWS.",
+                    }
+                ]
+            },
+            sort_keys=False,
+        ),
+        encoding="utf-8",
+    )
+
+    result = generate_role_targeted_send_set_drafts(
+        connection,
+        project_root=project_root,
+        job_posting_id="jp_outreach",
+        current_time="2026-04-06T20:30:00Z",
+        local_timezone=ZoneInfo("UTC"),
+    )
+
+    body_text = Path(result.drafted_messages[0].body_text_artifact_path).read_text(encoding="utf-8")
+    assert "Medical, dental & vision" not in body_text
+    assert "Terraform-based infrastructure provisioning" in body_text
+    assert "API gateway build-out" in body_text
+    assert "workload identity automation" in body_text
+
+    connection.close()
+
+
+def test_role_targeted_composition_filters_marketing_slogans_from_focus_selection(tmp_path: Path):
+    project_root, paths = bootstrap_project(tmp_path)
+    connection = connect_database(project_root / "job_hunt_copilot.db")
+    write_sender_profile(paths)
+    seed_posting(
+        connection,
+        company_name="CNH",
+        role_title="AI Development Engineer",
+    )
+    seed_linked_contact(
+        connection,
+        contact_id="ct_cnh",
+        job_posting_contact_id="jpc_cnh",
+        display_name="Morgan Engineer",
+        recipient_type=RECIPIENT_TYPE_ENGINEER,
+        current_working_email="morgan@cnh.example",
+        created_at="2026-04-06T20:01:00Z",
+    )
+    seed_approved_tailoring_run(
+        connection,
+        paths,
+        company_name="CNH",
+        role_title="AI Development Engineer",
+    )
+    paths.tailoring_step_3_jd_signals_path(
+        "CNH",
+        "AI Development Engineer",
+    ).write_text(
+        yaml.safe_dump(
+            {
+                "job_posting_id": "jp_outreach",
+                "resume_tailoring_run_id": "rtr_outreach",
+                "status": "generated",
+                "role_intent_summary": (
+                    "Grow a Career. Build a Future!; "
+                    "Develop machine learning and deep learning models for perception software on edge devices."
+                ),
+                "signals_by_priority": {
+                    "must_have": [],
+                    "core_responsibility": [
+                        {"signal": "Grow a Career. Build a Future!"},
+                        {
+                            "signal": (
+                                "Develop machine learning and deep learning models for perception "
+                                "software on edge devices."
+                            )
+                        },
+                    ],
+                    "nice_to_have": [],
+                    "informational": [],
+                },
+                "signals": [],
+            },
+            sort_keys=False,
+        ),
+        encoding="utf-8",
+    )
+
+    result = generate_role_targeted_send_set_drafts(
+        connection,
+        project_root=project_root,
+        job_posting_id="jp_outreach",
+        current_time="2026-04-06T20:30:00Z",
+        local_timezone=ZoneInfo("UTC"),
+    )
+
+    body_text = Path(result.drafted_messages[0].body_text_artifact_path).read_text(encoding="utf-8")
+    assert "Grow a Career. Build a Future!" not in body_text
+    assert "machine learning and deep learning" in body_text
+    assert "perception software" in body_text
+    assert "edge devices" in body_text
+
+    connection.close()
+
+
+def test_role_targeted_composition_summarizes_long_cloud_backend_signal(tmp_path: Path):
+    project_root, paths = bootstrap_project(tmp_path)
+    connection = connect_database(project_root / "job_hunt_copilot.db")
+    write_sender_profile(paths)
+    seed_posting(
+        connection,
+        company_name="PayPal",
+        role_title="System & Cloud Engineer",
+    )
+    seed_linked_contact(
+        connection,
+        contact_id="ct_paypal_cloud",
+        job_posting_contact_id="jpc_paypal_cloud",
+        display_name="Priya Engineer",
+        recipient_type=RECIPIENT_TYPE_ENGINEER,
+        current_working_email="priya@paypal.example",
+        created_at="2026-04-06T20:01:00Z",
+    )
+    seed_approved_tailoring_run(
+        connection,
+        paths,
+        company_name="PayPal",
+        role_title="System & Cloud Engineer",
+    )
+    paths.tailoring_step_3_jd_signals_path(
+        "PayPal",
+        "System & Cloud Engineer",
+    ).write_text(
+        yaml.safe_dump(
+            {
+                "job_posting_id": "jp_outreach",
+                "resume_tailoring_run_id": "rtr_outreach",
+                "status": "generated",
+                "role_intent_summary": "Build backend services and application delivery across cloud teams.",
+                "signals_by_priority": {
+                    "must_have": [
+                        {
+                            "signal": (
+                                "At least one programming language like GoLang, Java, Ruby, Python to "
+                                "design/build/test public cloud platform backend and automation tools."
+                            )
+                        }
+                    ],
+                    "core_responsibility": [
+                        {
+                            "signal": (
+                                "Work with container orchestration tools to support cloud-native "
+                                "production systems."
+                            )
+                        }
+                    ],
+                    "nice_to_have": [],
+                    "informational": [],
+                },
+                "signals": [],
+            },
+            sort_keys=False,
+        ),
+        encoding="utf-8",
+    )
+    paths.tailoring_step_4_evidence_map_path(
+        "PayPal",
+        "System & Cloud Engineer",
+    ).write_text(
+        yaml.safe_dump(
+            {
+                "matches": [
+                    {
+                        "jd_signal": (
+                            "At least one programming language like GoLang, Java, Ruby, Python to "
+                            "design/build/test public cloud platform backend and automation tools."
+                        ),
+                        "confidence": "high",
+                        "source_excerpt": "Built backend automation services and cloud-native platform tooling on AWS.",
+                    }
+                ]
+            },
+            sort_keys=False,
+        ),
+        encoding="utf-8",
+    )
+
+    result = generate_role_targeted_send_set_drafts(
+        connection,
+        project_root=project_root,
+        job_posting_id="jp_outreach",
+        current_time="2026-04-06T20:30:00Z",
+        local_timezone=ZoneInfo("UTC"),
+    )
+
+    body_text = Path(result.drafted_messages[0].body_text_artifact_path).read_text(encoding="utf-8")
+    assert "at least one programming language like" not in body_text.lower()
+    assert "public cloud" in body_text.lower()
+    assert "automation" in body_text.lower()
+    assert "application delivery" not in body_text.lower()
+    assert "cloud-based production systems" not in body_text.lower()
+
+    connection.close()
+
+
+def test_role_targeted_composition_prefers_cloud_signal_over_generic_models_phrase(tmp_path: Path):
+    project_root, paths = bootstrap_project(tmp_path)
+    connection = connect_database(project_root / "job_hunt_copilot.db")
+    write_sender_profile(paths)
+    seed_posting(
+        connection,
+        company_name="Wells Fargo",
+        role_title="Senior Software Engineer",
+    )
+    seed_linked_contact(
+        connection,
+        contact_id="ct_wells",
+        job_posting_contact_id="jpc_wells",
+        display_name="Jordan Manager",
+        recipient_type=RECIPIENT_TYPE_HIRING_MANAGER,
+        current_working_email="jordan@wells.example",
+        created_at="2026-04-06T20:01:00Z",
+    )
+    seed_approved_tailoring_run(
+        connection,
+        paths,
+        company_name="Wells Fargo",
+        role_title="Senior Software Engineer",
+    )
+    paths.tailoring_step_3_jd_signals_path(
+        "Wells Fargo",
+        "Senior Software Engineer",
+    ).write_text(
+        yaml.safe_dump(
+            {
+                "job_posting_id": "jp_outreach",
+                "resume_tailoring_run_id": "rtr_outreach",
+                "status": "generated",
+                "role_intent_summary": "Build models, simulations, and analytics to support platform enhancements.",
+                "signals_by_priority": {
+                    "must_have": [
+                        {
+                            "signal": "2+ years building cloud-ready solutions on AWS, GCP, or PCF"
+                        }
+                    ],
+                    "core_responsibility": [
+                        {
+                            "signal": "Build models, simulations, and analytics to support platform enhancements."
+                        }
+                    ],
+                    "nice_to_have": [
+                        {"signal": "Build Spark-based data pipelines for large-scale engineering workflows."}
+                    ],
+                    "informational": [],
+                },
+                "signals": [],
+            },
+            sort_keys=False,
+        ),
+        encoding="utf-8",
+    )
+    paths.tailoring_step_4_evidence_map_path(
+        "Wells Fargo",
+        "Senior Software Engineer",
+    ).write_text(
+        yaml.safe_dump(
+            {
+                "matches": [
+                    {
+                        "jd_signal": "2+ years building cloud-ready solutions on AWS, GCP, or PCF",
+                        "confidence": "high",
+                        "source_excerpt": "Built cloud-ready data services on AWS and production distributed systems at scale.",
+                    }
+                ]
+            },
+            sort_keys=False,
+        ),
+        encoding="utf-8",
+    )
+
+    result = generate_role_targeted_send_set_drafts(
+        connection,
+        project_root=project_root,
+        job_posting_id="jp_outreach",
+        current_time="2026-04-06T20:30:00Z",
+        local_timezone=ZoneInfo("UTC"),
+    )
+
+    body_text = Path(result.drafted_messages[0].body_text_artifact_path).read_text(encoding="utf-8")
+    assert "spark-based data pipelines for large-scale engineering workflows" in body_text.lower()
+    assert "models, simulations, and analytics to support platform enhancements" not in body_text
+
+    connection.close()
+
+
+def test_role_targeted_composition_prefers_cloud_application_work_over_additional_tools_prefix(
+    tmp_path: Path,
+):
+    project_root, paths = bootstrap_project(tmp_path)
+    connection = connect_database(project_root / "job_hunt_copilot.db")
+    write_sender_profile(paths)
+    seed_posting(
+        connection,
+        company_name="Intel",
+        role_title="Cloud Application Development Engineer",
+    )
+    seed_linked_contact(
+        connection,
+        contact_id="ct_cloud_apps",
+        job_posting_contact_id="jpc_cloud_apps",
+        display_name="Ari Manager",
+        recipient_type=RECIPIENT_TYPE_HIRING_MANAGER,
+        current_working_email="ari@intel.example",
+        created_at="2026-04-06T20:01:00Z",
+    )
+    seed_approved_tailoring_run(
+        connection,
+        paths,
+        company_name="Intel",
+        role_title="Cloud Application Development Engineer",
+    )
+    paths.tailoring_step_3_jd_signals_path(
+        "Intel",
+        "Cloud Application Development Engineer",
+    ).write_text(
+        yaml.safe_dump(
+            {
+                "job_posting_id": "jp_outreach",
+                "resume_tailoring_run_id": "rtr_outreach",
+                "status": "generated",
+                "role_intent_summary": (
+                    "Develop cloud and hybrid-cloud applications using frameworks from internal "
+                    "and external cloud providers like Amazon Web Services, Google Cloud, and Azure."
+                ),
+                "signals_by_priority": {
+                    "must_have": [
+                        {
+                            "signal": (
+                                "Experience with additional tools such as Databricks, Snowflake, SQL"
+                            )
+                        }
+                    ],
+                    "core_responsibility": [
+                        {
+                            "signal": (
+                                "Develop cloud and hybrid-cloud applications using frameworks from internal "
+                                "and external cloud providers like Amazon Web Services, Google Cloud, and Azure."
+                            )
+                        }
+                    ],
+                    "nice_to_have": [],
+                    "informational": [],
+                },
+                "signals": [],
+            },
+            sort_keys=False,
+        ),
+        encoding="utf-8",
+    )
+
+    result = generate_role_targeted_send_set_drafts(
+        connection,
+        project_root=project_root,
+        job_posting_id="jp_outreach",
+        current_time="2026-04-06T20:30:00Z",
+        local_timezone=ZoneInfo("UTC"),
+    )
+
+    body_text = Path(result.drafted_messages[0].body_text_artifact_path).read_text(encoding="utf-8")
+    assert "additional tools such as" not in body_text.lower()
+    assert "databricks, snowflake, sql" not in body_text.lower()
+    assert "public cloud infrastructure" in body_text
+
+    connection.close()
+
+
+def test_role_targeted_composition_does_not_scramble_cloud_solution_sentence_with_comma_verbs(
+    tmp_path: Path,
+):
+    project_root, paths = bootstrap_project(tmp_path)
+    connection = connect_database(project_root / "job_hunt_copilot.db")
+    write_sender_profile(paths)
+    seed_posting(
+        connection,
+        company_name="PayPal",
+        role_title="Software Engineer",
+    )
+    seed_linked_contact(
+        connection,
+        contact_id="ct_paypal_cloud_sentence",
+        job_posting_contact_id="jpc_paypal_cloud_sentence",
+        display_name="Kumar Manager",
+        recipient_type=RECIPIENT_TYPE_HIRING_MANAGER,
+        current_working_email="kumar@paypal.example",
+        created_at="2026-04-06T20:01:00Z",
+    )
+    seed_approved_tailoring_run(
+        connection,
+        paths,
+        company_name="PayPal",
+        role_title="Software Engineer",
+    )
+    paths.tailoring_step_3_jd_signals_path(
+        "PayPal",
+        "Software Engineer",
+    ).write_text(
+        yaml.safe_dump(
+            {
+                "job_posting_id": "jp_outreach",
+                "resume_tailoring_run_id": "rtr_outreach",
+                "status": "generated",
+                "role_intent_summary": "Design, develop and deploy scalable software solutions.",
+                "signals_by_priority": {
+                    "must_have": [
+                        {
+                            "signal": (
+                                "Experience in designing, deploying, and managing scalable cloud "
+                                "solutions using AWS, GCP, or Azure platforms (1 year)."
+                            )
+                        }
+                    ],
+                    "core_responsibility": [],
+                    "nice_to_have": [],
+                    "informational": [],
+                },
+                "signals": [],
+            },
+            sort_keys=False,
+        ),
+        encoding="utf-8",
+    )
+
+    result = generate_role_targeted_send_set_drafts(
+        connection,
+        project_root=project_root,
+        job_posting_id="jp_outreach",
+        current_time="2026-04-06T20:30:00Z",
+        local_timezone=ZoneInfo("UTC"),
+    )
+
+    body_text = Path(result.drafted_messages[0].body_text_artifact_path).read_text(encoding="utf-8")
+    assert "GCP, Experience in designing" not in body_text
+    assert "public cloud infrastructure" in body_text
+
+    connection.close()
+
+
+def test_role_targeted_composition_prefers_robotics_work_scope_over_full_stack_requirement_prefix(
+    tmp_path: Path,
+):
+    project_root, paths = bootstrap_project(tmp_path)
+    connection = connect_database(project_root / "job_hunt_copilot.db")
+    write_sender_profile(paths)
+    seed_posting(
+        connection,
+        company_name="Intel",
+        role_title="Robotics Software Developer",
+    )
+    seed_linked_contact(
+        connection,
+        contact_id="ct_robotics",
+        job_posting_contact_id="jpc_robotics",
+        display_name="Taylor Manager",
+        recipient_type=RECIPIENT_TYPE_HIRING_MANAGER,
+        current_working_email="taylor@intel.example",
+        created_at="2026-04-06T20:01:00Z",
+    )
+    seed_approved_tailoring_run(
+        connection,
+        paths,
+        company_name="Intel",
+        role_title="Robotics Software Developer",
+    )
+    paths.tailoring_step_3_jd_signals_path(
+        "Intel",
+        "Robotics Software Developer",
+    ).write_text(
+        yaml.safe_dump(
+            {
+                "job_posting_id": "jp_outreach",
+                "resume_tailoring_run_id": "rtr_outreach",
+                "status": "generated",
+                "role_intent_summary": (
+                    "Develop and integrate software solutions for robotic systems within existing "
+                    "manufacturing systems to automate processes and tasks within an industrial environment."
+                ),
+                "signals_by_priority": {
+                    "must_have": [
+                        {
+                            "signal": (
+                                "1+ years of experience as a full-stack software developer, developing in "
+                                "programming languages such as C/C++/C#, Python, Java, SQL, NoSQL"
+                            )
+                        }
+                    ],
+                    "core_responsibility": [
+                        {
+                            "signal": (
+                                "Develop and integrate software solutions for robotic systems within existing "
+                                "manufacturing systems to automate processes and tasks within an industrial environment."
+                            )
+                        },
+                        {
+                            "signal": (
+                                "Writing, testing, and debugging code for robotic applications, including "
+                                "motion control, sensor integration, and communication protocols."
+                            )
+                        },
+                    ],
+                    "nice_to_have": [],
+                    "informational": [],
+                },
+                "signals": [],
+            },
+            sort_keys=False,
+        ),
+        encoding="utf-8",
+    )
+
+    result = generate_role_targeted_send_set_drafts(
+        connection,
+        project_root=project_root,
+        job_posting_id="jp_outreach",
+        current_time="2026-04-06T20:30:00Z",
+        local_timezone=ZoneInfo("UTC"),
+    )
+
+    body_text = Path(result.drafted_messages[0].body_text_artifact_path).read_text(encoding="utf-8")
+    assert "full-stack software developer" not in body_text.lower()
+    assert "programming languages such as" not in body_text.lower()
+    assert "robotic systems" in body_text.lower() or "robotic systems integration" in body_text.lower()
+
+    connection.close()
+
+
+def test_refresh_role_targeted_generated_drafts_rewrites_pending_unsent_messages(tmp_path: Path):
+    project_root, paths = bootstrap_project(tmp_path)
+    connection = connect_database(project_root / "job_hunt_copilot.db")
+    write_sender_profile(paths)
+    seed_posting(
+        connection,
+        company_name="Acme Platform",
+        role_title="Backend Developer",
+    )
+    seed_linked_contact(
+        connection,
+        contact_id="ct_refresh",
+        job_posting_contact_id="jpc_refresh",
+        display_name="Sam Recruiter",
+        recipient_type=RECIPIENT_TYPE_RECRUITER,
+        current_working_email="sam@acme.example",
+        created_at="2026-04-06T20:01:00Z",
+    )
+    seed_approved_tailoring_run(
+        connection,
+        paths,
+        company_name="Acme Platform",
+        role_title="Backend Developer",
+    )
+    step_3_path = paths.tailoring_step_3_jd_signals_path("Acme Platform", "Backend Developer")
+    step_3_path.write_text(
+        yaml.safe_dump(
+            {
+                "job_posting_id": "jp_outreach",
+                "resume_tailoring_run_id": "rtr_outreach",
+                "status": "generated",
+                "role_intent_summary": "Build backend services and application delivery across product teams.",
+                "signals_by_priority": {
+                    "must_have": [],
+                    "core_responsibility": [
+                        {"signal": "Build backend services and application delivery across product teams."}
+                    ],
+                    "nice_to_have": [],
+                    "informational": [],
+                },
+                "signals": [],
+            },
+            sort_keys=False,
+        ),
+        encoding="utf-8",
+    )
+
+    draft_batch = generate_role_targeted_send_set_drafts(
+        connection,
+        project_root=project_root,
+        job_posting_id="jp_outreach",
+        current_time="2026-04-06T20:30:00Z",
+        local_timezone=ZoneInfo("UTC"),
+    )
+    original_message = draft_batch.drafted_messages[0]
+    original_body = Path(original_message.body_text_artifact_path).read_text(encoding="utf-8")
+    assert "backend APIs and services" in original_body
+
+    step_3_path.write_text(
+        yaml.safe_dump(
+            {
+                "job_posting_id": "jp_outreach",
+                "resume_tailoring_run_id": "rtr_outreach",
+                "status": "generated",
+                "role_intent_summary": (
+                    "Build Terraform-based infrastructure provisioning, API gateway build-out, "
+                    "and workload identity automation for backend platform workloads."
+                ),
+                "signals_by_priority": {
+                    "must_have": [],
+                    "core_responsibility": [
+                        {
+                            "signal": (
+                                "Build Terraform-based infrastructure provisioning, API gateway "
+                                "build-out, and workload identity automation for backend platform workloads."
+                            )
+                        }
+                    ],
+                    "nice_to_have": [],
+                    "informational": [],
+                },
+                "signals": [],
+            },
+            sort_keys=False,
+        ),
+        encoding="utf-8",
+    )
+
+    refreshed_ids = refresh_role_targeted_generated_drafts(
+        connection,
+        project_root=project_root,
+        job_posting_id="jp_outreach",
+        current_time="2026-04-06T20:40:00Z",
+    )
+
+    updated_row = connection.execute(
+        """
+        SELECT outreach_message_id, message_status, body_text
+        FROM outreach_messages
+        WHERE outreach_message_id = ?
+        """,
+        (original_message.outreach_message_id,),
+    ).fetchone()
+    updated_body = Path(original_message.body_text_artifact_path).read_text(encoding="utf-8")
+
+    assert refreshed_ids == (original_message.outreach_message_id,)
+    assert updated_row["outreach_message_id"] == original_message.outreach_message_id
+    assert updated_row["message_status"] == MESSAGE_STATUS_GENERATED
+    assert "application delivery" not in updated_row["body_text"].lower()
+    assert "Terraform-based infrastructure provisioning" in updated_body
+    assert "API gateway build-out" in updated_body
+    assert "workload identity automation" in updated_body
 
     connection.close()
 
