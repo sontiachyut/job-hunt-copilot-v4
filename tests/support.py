@@ -101,6 +101,31 @@ def create_minimal_project(root: Path) -> None:
         ),
         encoding="utf-8",
     )
+    (outreach_dir / "opener-rubric.yaml").write_text(
+        "\n".join(
+            [
+                "version: 1",
+                "allowed_claim_modes:",
+                "  - direct_background",
+                "  - adjacent_overlap",
+                "  - growth_area",
+                "  - interest_area",
+                "blocked_focus_phrases:",
+                "  - application delivery",
+                "  - platform enhancements",
+                "  - additional tools such as",
+                "  - programming languages such as",
+                "blocked_opener_phrases:",
+                "  - I've done this kind of work",
+                "  - That is what prompted me to reach out",
+                "  - which is what prompted me to reach out",
+                "minimum_specific_anchor_count: 1",
+                "require_title_alignment: true",
+                "",
+            ]
+        ),
+        encoding="utf-8",
+    )
 
     secrets_dir = root / "secrets"
     secrets_dir.mkdir(parents=True, exist_ok=True)

@@ -1314,11 +1314,26 @@ def test_role_targeted_draft_batch_persists_messages_artifacts_and_transitions(t
     send_result_payload = json.loads(
         Path(recruiter_message.send_result_artifact_path).read_text(encoding="utf-8")
     )
+    assert recruiter_message.opener_decision_artifact_path is not None
+    opener_decision_payload = json.loads(
+        Path(recruiter_message.opener_decision_artifact_path).read_text(encoding="utf-8")
+    )
     assert send_result_payload["outreach_message_id"] == recruiter_message.outreach_message_id
     assert send_result_payload["result"] == "success"
     assert send_result_payload["send_status"] == MESSAGE_STATUS_GENERATED
     assert send_result_payload["body_text_artifact_path"] == recruiter_message.body_text_artifact_path
+    assert (
+        send_result_payload["opener_decision_artifact_path"]
+        == recruiter_message.opener_decision_artifact_path
+    )
     assert send_result_payload["resume_attachment_path"].endswith("Achyutaram Sonti.pdf")
+    assert opener_decision_payload["outreach_message_id"] == recruiter_message.outreach_message_id
+    assert opener_decision_payload["result"] == "success"
+    assert opener_decision_payload["claim_mode"] == "interest_area"
+    assert (
+        opener_decision_payload["technical_focus"]
+        == "reliable backend and distributed systems for AI platform workloads"
+    )
 
     latest_draft_path = paths.outreach_latest_draft_path("Acme Robotics", "Staff Software Engineer / AI")
     latest_send_result_path = paths.outreach_latest_send_result_path(
@@ -1379,10 +1394,10 @@ def test_role_targeted_draft_batch_persists_messages_artifacts_and_transitions(t
         """
         SELECT COUNT(*)
         FROM artifact_records
-        WHERE artifact_type IN ('email_draft', 'send_result')
+        WHERE artifact_type IN ('email_draft', 'send_result', 'opener_decision')
         """
     ).fetchone()[0]
-    assert artifact_count >= 6
+    assert artifact_count >= 9
 
     connection.close()
 
@@ -3281,6 +3296,7 @@ def test_refresh_role_targeted_generated_drafts_rewrites_pending_unsent_messages
         local_timezone=ZoneInfo("UTC"),
     )
     original_message = draft_batch.drafted_messages[0]
+    assert original_message.opener_decision_artifact_path is not None
     original_body = Path(original_message.body_text_artifact_path).read_text(encoding="utf-8")
     assert "backend APIs and services" in original_body
 
@@ -3330,6 +3346,12 @@ def test_refresh_role_targeted_generated_drafts_rewrites_pending_unsent_messages
         (original_message.outreach_message_id,),
     ).fetchone()
     updated_body = Path(original_message.body_text_artifact_path).read_text(encoding="utf-8")
+    updated_send_result = json.loads(
+        Path(original_message.send_result_artifact_path).read_text(encoding="utf-8")
+    )
+    updated_opener_decision = json.loads(
+        Path(original_message.opener_decision_artifact_path).read_text(encoding="utf-8")
+    )
 
     assert refreshed_ids == (original_message.outreach_message_id,)
     assert updated_row["outreach_message_id"] == original_message.outreach_message_id
@@ -3338,6 +3360,14 @@ def test_refresh_role_targeted_generated_drafts_rewrites_pending_unsent_messages
     assert "Terraform-based infrastructure provisioning" in updated_body
     assert "API gateway build-out" in updated_body
     assert "workload identity automation" in updated_body
+    assert (
+        updated_send_result["opener_decision_artifact_path"]
+        == original_message.opener_decision_artifact_path
+    )
+    assert (
+        updated_opener_decision["technical_focus"]
+        == "Terraform-based infrastructure provisioning, API gateway build-out, and workload identity automation"
+    )
 
     connection.close()
 

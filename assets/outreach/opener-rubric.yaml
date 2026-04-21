@@ -1,0 +1,17 @@
+version: 1
+allowed_claim_modes:
+  - direct_background
+  - adjacent_overlap
+  - growth_area
+  - interest_area
+blocked_focus_phrases:
+  - application delivery
+  - platform enhancements
+  - additional tools such as
+  - programming languages such as
+blocked_opener_phrases:
+  - I've done this kind of work
+  - That is what prompted me to reach out
+  - which is what prompted me to reach out
+minimum_specific_anchor_count: 1
+require_title_alignment: true

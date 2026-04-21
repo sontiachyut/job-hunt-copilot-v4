@@ -491,6 +491,14 @@ class ProjectPaths:
     ) -> Path:
         return self.outreach_message_dir(company_name, role_title, outreach_message_id) / "email_draft.html"
 
+    def outreach_message_opener_decision_path(
+        self,
+        company_name: str,
+        role_title: str,
+        outreach_message_id: str,
+    ) -> Path:
+        return self.outreach_message_dir(company_name, role_title, outreach_message_id) / "opener_decision.json"
+
     def outreach_message_send_result_path(
         self,
         company_name: str,

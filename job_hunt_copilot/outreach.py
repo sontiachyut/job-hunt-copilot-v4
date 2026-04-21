@@ -24,6 +24,7 @@ from .records import lifecycle_timestamps, new_canonical_id
 OUTREACH_COMPONENT = "email_drafting_sending"
 OUTREACH_DRAFT_ARTIFACT_TYPE = "email_draft"
 OUTREACH_DRAFT_HTML_ARTIFACT_TYPE = "email_draft_html"
+OPENER_DECISION_ARTIFACT_TYPE = "opener_decision"
 SEND_RESULT_ARTIFACT_TYPE = "send_result"
 
 JOB_POSTING_STATUS_REQUIRES_CONTACTS = "requires_contacts"
@@ -80,6 +81,11 @@ MESSAGE_STATUS_GENERATED = "generated"
 MESSAGE_STATUS_BLOCKED = "blocked"
 MESSAGE_STATUS_FAILED = "failed"
 MESSAGE_STATUS_SENT = "sent"
+
+CLAIM_MODE_DIRECT_BACKGROUND = "direct_background"
+CLAIM_MODE_ADJACENT_OVERLAP = "adjacent_overlap"
+CLAIM_MODE_GROWTH_AREA = "growth_area"
+CLAIM_MODE_INTEREST_AREA = "interest_area"
 
 SEND_OUTCOME_SENT = "sent"
 SEND_OUTCOME_FAILED = "failed"
@@ -749,6 +755,16 @@ class SenderInterestArea:
 
 
 @dataclass(frozen=True)
+class OpenerRubric:
+    version: int
+    allowed_claim_modes: tuple[str, ...]
+    blocked_focus_phrases: tuple[str, ...]
+    blocked_opener_phrases: tuple[str, ...]
+    minimum_specific_anchor_count: int
+    require_title_alignment: bool
+
+
+@dataclass(frozen=True)
 class RoleThemeSelection:
     focus_phrase: str
     role_family: str | None
@@ -764,6 +780,34 @@ class RoleThemeSelection:
     interest_overlap_sentence: str | None
     interest_snippet_sentence: str | None
     overlap_sentence: str
+
+
+@dataclass(frozen=True)
+class RoleTargetedOpenerDecision:
+    role_title: str
+    company_name: str
+    role_theme: str
+    technical_focus: str
+    claim_mode: str
+    overlap_sentence: str
+    source_signals: tuple[str, ...]
+    growth_area_label: str | None
+    interest_area_label: str | None
+    rationale: tuple[str, ...]
+
+    def as_dict(self) -> dict[str, Any]:
+        return {
+            "role_title": self.role_title,
+            "company_name": self.company_name,
+            "role_theme": self.role_theme,
+            "technical_focus": self.technical_focus,
+            "claim_mode": self.claim_mode,
+            "overlap_sentence": self.overlap_sentence,
+            "source_signals": list(self.source_signals),
+            "growth_area_label": self.growth_area_label,
+            "interest_area_label": self.interest_area_label,
+            "rationale": list(self.rationale),
+        }
 
 
 @dataclass(frozen=True)
@@ -790,6 +834,7 @@ class RenderedDraft:
     body_markdown: str
     body_html: str | None
     include_forwardable_snippet: bool
+    opener_decision: RoleTargetedOpenerDecision | None = None
 
 
 @dataclass(frozen=True)
@@ -812,6 +857,8 @@ class RoleTargetedDraftContext:
     fit_summary: str | None
     work_area: str | None
     theme_selection: RoleThemeSelection
+    opener_rubric: OpenerRubric
+    opener_decision: RoleTargetedOpenerDecision
     sender: SenderIdentity
     tailored_resume_path: str
 
@@ -829,7 +876,6 @@ class RoleTargetedCompositionPlan:
 class RoleTargetedOpenerInputs:
     company_name: str
     role_title: str
-    role_theme: str
     technical_focus: str
     overlap_sentence: str
 
@@ -879,6 +925,7 @@ class DraftedOutreachMessage:
     body_text_artifact_path: str
     send_result_artifact_path: str
     body_html_artifact_path: str | None
+    opener_decision_artifact_path: str | None
     resume_attachment_path: str | None
 
     def as_dict(self) -> dict[str, Any]:
@@ -894,6 +941,7 @@ class DraftedOutreachMessage:
             "body_text_artifact_path": self.body_text_artifact_path,
             "send_result_artifact_path": self.send_result_artifact_path,
             "body_html_artifact_path": self.body_html_artifact_path,
+            "opener_decision_artifact_path": self.opener_decision_artifact_path,
             "resume_attachment_path": self.resume_attachment_path,
         }
 
@@ -1758,6 +1806,7 @@ class DeterministicOutreachDraftRenderer(OutreachDraftRenderer):
             body_markdown=body_markdown,
             body_html=_render_markdown_email_html(body_markdown),
             include_forwardable_snippet=include_snippet,
+            opener_decision=context.opener_decision,
         )
 
     def render_general_learning(self, context: GeneralLearningDraftContext) -> RenderedDraft:
@@ -1819,6 +1868,7 @@ def _build_role_targeted_draft_context(
     )
     growth_areas = _load_sender_growth_areas(paths)
     interest_areas = _load_sender_interest_areas(paths)
+    opener_rubric = _load_opener_rubric(paths)
     theme_selection = _select_role_theme_selection(
         tailoring_inputs["step_3_payload"],
         str(tailoring_inputs["jd_text"]),
@@ -1832,6 +1882,13 @@ def _build_role_targeted_draft_context(
         raise OutreachDraftingError(
             f"Job posting `{posting_row['job_posting_id']}` does not have an acceptable title-aligned technical theme for role-targeted drafting."
         )
+    opener_decision = _build_role_targeted_opener_decision(
+        company_name=str(posting_row["company_name"]),
+        role_title=str(posting_row["role_title"]),
+        jd_text=str(tailoring_inputs["jd_text"]),
+        role_intent_summary=_normalize_optional_text(tailoring_inputs.get("role_intent_summary")),
+        theme_selection=theme_selection,
+    )
     return RoleTargetedDraftContext(
         job_posting_id=str(posting_row["job_posting_id"]),
         job_posting_contact_id=str(contact_row["job_posting_contact_id"]),
@@ -1857,6 +1914,8 @@ def _build_role_targeted_draft_context(
         ),
         work_area=theme_selection.focus_phrase,
         theme_selection=theme_selection,
+        opener_rubric=opener_rubric,
+        opener_decision=opener_decision,
         sender=sender,
         tailored_resume_path=str(tailoring_inputs["resume_path"]),
     )
@@ -2081,6 +2140,11 @@ def _refresh_persisted_role_targeted_generated_draft(
         role_title,
         active_message.outreach_message_id,
     )
+    opener_decision_path = paths.outreach_message_opener_decision_path(
+        company_name,
+        role_title,
+        active_message.outreach_message_id,
+    )
     needs_refresh = any(
         (
             active_message.subject != rendered.subject,
@@ -2089,6 +2153,7 @@ def _refresh_persisted_role_targeted_generated_draft(
             not draft_path.exists(),
             not send_result_path.exists(),
             bool(rendered.body_html) and not html_path.exists(),
+            rendered.opener_decision is not None and not opener_decision_path.exists(),
         )
     )
     if not needs_refresh:
@@ -2101,6 +2166,38 @@ def _refresh_persisted_role_targeted_generated_draft(
         body_html_artifact_path = str(html_path.resolve())
     elif html_path.exists():
         html_path.unlink()
+    opener_decision_artifact_path: str | None = None
+    linkage = ArtifactLinkage(
+        lead_id=str(posting_row["lead_id"]),
+        job_posting_id=str(posting_row["job_posting_id"]),
+        contact_id=str(contact_row["contact_id"]),
+        outreach_message_id=active_message.outreach_message_id,
+    )
+    if rendered.opener_decision is not None:
+        if opener_decision_path.exists():
+            write_json_contract(
+                opener_decision_path,
+                producer_component=OUTREACH_COMPONENT,
+                result="success",
+                linkage=linkage,
+                payload=rendered.opener_decision.as_dict(),
+                produced_at=current_time,
+            )
+        else:
+            publish_json_artifact(
+                connection,
+                paths,
+                artifact_type=OPENER_DECISION_ARTIFACT_TYPE,
+                artifact_path=opener_decision_path,
+                producer_component=OUTREACH_COMPONENT,
+                result="success",
+                linkage=linkage,
+                payload=rendered.opener_decision.as_dict(),
+                produced_at=current_time,
+            )
+        opener_decision_artifact_path = str(opener_decision_path.resolve())
+    elif opener_decision_path.exists():
+        opener_decision_path.unlink()
 
     with connection:
         connection.execute(
@@ -2122,12 +2219,7 @@ def _refresh_persisted_role_targeted_generated_draft(
         send_result_path,
         producer_component=OUTREACH_COMPONENT,
         result="success",
-        linkage=ArtifactLinkage(
-            lead_id=str(posting_row["lead_id"]),
-            job_posting_id=str(posting_row["job_posting_id"]),
-            contact_id=str(contact_row["contact_id"]),
-            outreach_message_id=active_message.outreach_message_id,
-        ),
+        linkage=linkage,
         payload={
             "outreach_mode": OUTREACH_MODE_ROLE_TARGETED,
             "recipient_email": recipient_email,
@@ -2138,6 +2230,7 @@ def _refresh_persisted_role_targeted_generated_draft(
             "subject": rendered.subject,
             "body_text_artifact_path": str(draft_path.resolve()),
             "body_html_artifact_path": body_html_artifact_path,
+            "opener_decision_artifact_path": opener_decision_artifact_path,
             "resume_attachment_path": resume_attachment_path,
         },
         produced_at=current_time,
@@ -4020,6 +4113,71 @@ def _load_sender_interest_areas(paths: ProjectPaths) -> tuple[SenderInterestArea
     return tuple(areas)
 
 
+def _default_opener_rubric() -> OpenerRubric:
+    return OpenerRubric(
+        version=1,
+        allowed_claim_modes=(
+            CLAIM_MODE_DIRECT_BACKGROUND,
+            CLAIM_MODE_ADJACENT_OVERLAP,
+            CLAIM_MODE_GROWTH_AREA,
+            CLAIM_MODE_INTEREST_AREA,
+        ),
+        blocked_focus_phrases=(
+            "application delivery",
+            "platform enhancements",
+            "additional tools such as",
+            "programming languages such as",
+        ),
+        blocked_opener_phrases=(
+            "i've done this kind of work",
+            "that is what prompted me to reach out",
+            "which is what prompted me to reach out",
+        ),
+        minimum_specific_anchor_count=1,
+        require_title_alignment=True,
+    )
+
+
+def _load_opener_rubric(paths: ProjectPaths) -> OpenerRubric:
+    rubric_path = paths.assets_dir / "outreach" / "opener-rubric.yaml"
+    if not rubric_path.exists():
+        return _default_opener_rubric()
+    payload = _read_yaml_file(rubric_path)
+    default = _default_opener_rubric()
+    allowed_claim_modes = tuple(
+        value
+        for value in (payload.get("allowed_claim_modes") or [])
+        if _normalize_optional_text(value) is not None
+    ) or default.allowed_claim_modes
+    blocked_focus_phrases = tuple(
+        value.lower()
+        for value in (payload.get("blocked_focus_phrases") or [])
+        if _normalize_optional_text(value) is not None
+    ) or default.blocked_focus_phrases
+    blocked_opener_phrases = tuple(
+        value.lower()
+        for value in (payload.get("blocked_opener_phrases") or [])
+        if _normalize_optional_text(value) is not None
+    ) or default.blocked_opener_phrases
+    minimum_specific_anchor_count = payload.get("minimum_specific_anchor_count")
+    if not isinstance(minimum_specific_anchor_count, int) or minimum_specific_anchor_count <= 0:
+        minimum_specific_anchor_count = default.minimum_specific_anchor_count
+    require_title_alignment = payload.get("require_title_alignment")
+    if not isinstance(require_title_alignment, bool):
+        require_title_alignment = default.require_title_alignment
+    version = payload.get("version")
+    if not isinstance(version, int):
+        version = default.version
+    return OpenerRubric(
+        version=version,
+        allowed_claim_modes=allowed_claim_modes,
+        blocked_focus_phrases=blocked_focus_phrases,
+        blocked_opener_phrases=blocked_opener_phrases,
+        minimum_specific_anchor_count=minimum_specific_anchor_count,
+        require_title_alignment=require_title_alignment,
+    )
+
+
 def _format_interest_snippet_sentence(template: str, *, focus: str) -> str:
     try:
         return template.format(focus=focus)
@@ -5168,6 +5326,129 @@ def _score_jd_signal_evidence_overlap(
     return score
 
 
+def _determine_opener_claim_mode(theme_selection: RoleThemeSelection) -> str:
+    if theme_selection.direct_background_overlap:
+        return CLAIM_MODE_DIRECT_BACKGROUND
+    if theme_selection.interest_overlap:
+        return CLAIM_MODE_INTEREST_AREA
+    if theme_selection.adjacent_background_overlap:
+        return CLAIM_MODE_ADJACENT_OVERLAP
+    return CLAIM_MODE_GROWTH_AREA
+
+
+def _compose_role_targeted_role_theme_from_values(
+    *,
+    role_title: str,
+    work_area: str | None,
+    role_intent_summary: str | None,
+    jd_text: str,
+) -> str:
+    source_parts = [
+        role_title,
+        _normalize_optional_text(work_area),
+        _normalize_optional_text(role_intent_summary),
+    ]
+    if not any(source_parts[1:]):
+        source_parts.append(jd_text[:2000])
+    source = " ".join(value for value in source_parts if value).lower()
+    if any(
+        token in source
+        for token in (
+            "information security",
+            "security engineer",
+            "enterprise security",
+            "application security",
+            "cloud security",
+            "cybersecurity",
+            "cyber security",
+            "secure infrastructure",
+            "intel federal",
+            "government information security",
+            "government-focused security",
+        )
+    ):
+        return "enterprise security systems, secure infrastructure, and government-focused security work"
+    if any(token in source for token in ("scheduler", "scheduling", "scheduling engines")):
+        return "engineering leadership and real-time scheduling systems"
+    if any(token in source for token in ("platform", "cloud", "infrastructure")) and any(
+        token in source
+        for token in ("backend", "distributed", "api", "microservice", "container", "automation")
+    ):
+        return "cloud infrastructure, backend systems, and platform engineering"
+    if any(token in source for token in ("distributed", "grpc", "load balancing")):
+        return "backend systems, distributed services, and production delivery"
+    if any(token in source for token in ("event-driven", "metadata", "documents", "document", "python")):
+        return "production Python services, backend systems, and distributed processing"
+    if "backend" in source:
+        return "backend systems and APIs"
+    if any(token in source for token in ("platform", "cloud", "infrastructure")):
+        return "cloud infrastructure, platform systems, and production engineering"
+    candidate = _role_work_area_phrase(work_area or role_intent_summary)
+    if len(candidate.split()) <= 8 and " " in candidate:
+        return candidate
+    return "backend systems, distributed services, and production engineering"
+
+
+def _compose_role_targeted_technical_focus_from_values(
+    *,
+    role_title: str,
+    work_area: str | None,
+    role_intent_summary: str | None,
+    fallback_role_theme: str,
+) -> str:
+    preserved_focus = _normalize_optional_text(work_area)
+    if preserved_focus is not None:
+        return _restore_focus_term_casing(preserved_focus.strip(" ,.;"))
+    for raw_value in (role_intent_summary,):
+        normalized_focus = _normalize_technical_focus_phrase(raw_value, role_title=role_title)
+        if normalized_focus is not None:
+            return normalized_focus
+    return fallback_role_theme
+
+
+def _build_role_targeted_opener_decision(
+    *,
+    company_name: str,
+    role_title: str,
+    jd_text: str,
+    role_intent_summary: str | None,
+    theme_selection: RoleThemeSelection,
+) -> RoleTargetedOpenerDecision:
+    role_theme = _compose_role_targeted_role_theme_from_values(
+        role_title=role_title,
+        work_area=theme_selection.focus_phrase,
+        role_intent_summary=role_intent_summary,
+        jd_text=jd_text,
+    )
+    technical_focus = _compose_role_targeted_technical_focus_from_values(
+        role_title=role_title,
+        work_area=theme_selection.focus_phrase,
+        role_intent_summary=role_intent_summary,
+        fallback_role_theme=role_theme,
+    )
+    claim_mode = _determine_opener_claim_mode(theme_selection)
+    rationale: list[str] = [
+        f"Selected theme `{technical_focus}` from JD-grounded signals aligned to role `{role_title}`.",
+        f"Claim mode classified as `{claim_mode}`.",
+    ]
+    if theme_selection.growth_area_label is not None:
+        rationale.append(f"Matched growth area `{theme_selection.growth_area_label}`.")
+    if theme_selection.interest_area_label is not None:
+        rationale.append(f"Matched interest area `{theme_selection.interest_area_label}`.")
+    return RoleTargetedOpenerDecision(
+        role_title=role_title,
+        company_name=company_name,
+        role_theme=role_theme,
+        technical_focus=technical_focus,
+        claim_mode=claim_mode,
+        overlap_sentence=theme_selection.overlap_sentence,
+        source_signals=theme_selection.source_signals,
+        growth_area_label=theme_selection.growth_area_label,
+        interest_area_label=theme_selection.interest_area_label,
+        rationale=tuple(rationale),
+    )
+
+
 def _build_role_targeted_subject(context: RoleTargetedDraftContext) -> str:
     return f"Interest in the {context.role_title} role at {context.company_name}"
 
@@ -5194,21 +5475,18 @@ def _compose_role_targeted_composition_plan(
         ),
         snippet_text=_render_forwardable_snippet_text(context),
     )
-    _validate_role_targeted_composition_plan(plan)
+    _validate_role_targeted_composition_plan(plan, context)
     return plan
 
 
 def _compose_role_targeted_opener_inputs(
     context: RoleTargetedDraftContext,
 ) -> RoleTargetedOpenerInputs:
-    role_theme = _compose_role_targeted_role_theme(context)
-    technical_focus = _compose_role_targeted_technical_focus(context, role_theme)
     return RoleTargetedOpenerInputs(
         company_name=context.company_name,
         role_title=context.role_title,
-        role_theme=role_theme,
-        technical_focus=technical_focus,
-        overlap_sentence=context.theme_selection.overlap_sentence,
+        technical_focus=context.opener_decision.technical_focus,
+        overlap_sentence=context.opener_decision.overlap_sentence,
     )
 
 
@@ -5424,64 +5702,15 @@ def _role_work_area_phrase(value: str | None) -> str:
 
 
 def _compose_role_targeted_role_theme(context: RoleTargetedDraftContext) -> str:
-    source_parts = [
-        context.role_title,
-        _normalize_optional_text(context.work_area),
-        _normalize_optional_text(context.role_intent_summary),
-    ]
-    if not any(source_parts[1:]):
-        source_parts.append(context.jd_text[:2000])
-    source = " ".join(value for value in source_parts if value).lower()
-    if any(
-        token in source
-        for token in (
-            "information security",
-            "security engineer",
-            "enterprise security",
-            "application security",
-            "cloud security",
-            "cybersecurity",
-            "cyber security",
-            "secure infrastructure",
-            "intel federal",
-            "government information security",
-            "government-focused security",
-        )
-    ):
-        return "enterprise security systems, secure infrastructure, and government-focused security work"
-    if any(token in source for token in ("scheduler", "scheduling", "scheduling engines")):
-        return "engineering leadership and real-time scheduling systems"
-    if any(token in source for token in ("platform", "cloud", "infrastructure")) and any(
-        token in source
-        for token in ("backend", "distributed", "api", "microservice", "container", "automation")
-    ):
-        return "cloud infrastructure, backend systems, and platform engineering"
-    if any(token in source for token in ("distributed", "grpc", "load balancing")):
-        return "backend systems, distributed services, and production delivery"
-    if any(token in source for token in ("event-driven", "metadata", "documents", "document", "python")):
-        return "production Python services, backend systems, and distributed processing"
-    if "backend" in source:
-        return "backend systems and APIs"
-    if any(token in source for token in ("platform", "cloud", "infrastructure")):
-        return "cloud infrastructure, platform systems, and production engineering"
-    candidate = _role_work_area_phrase(context.work_area or context.role_intent_summary)
-    if len(candidate.split()) <= 8 and " " in candidate:
-        return candidate
-    return "backend systems, distributed services, and production engineering"
+    return context.opener_decision.role_theme
 
 
 def _compose_role_targeted_technical_focus(
     context: RoleTargetedDraftContext,
     role_theme: str,
 ) -> str:
-    preserved_focus = _normalize_optional_text(context.work_area)
-    if preserved_focus is not None:
-        return _restore_focus_term_casing(preserved_focus.strip(" ,.;"))
-    for raw_value in (context.role_intent_summary,):
-        normalized_focus = _normalize_technical_focus_phrase(raw_value, role_title=context.role_title)
-        if normalized_focus is not None:
-            return normalized_focus
-    return role_theme
+    _ = role_theme
+    return context.opener_decision.technical_focus
 
 
 def _join_focus_phrases(parts: Sequence[str]) -> str:
@@ -5921,7 +6150,74 @@ def _render_forwardable_snippet_text(context: RoleTargetedDraftContext) -> str:
     )
 
 
-def _validate_role_targeted_composition_plan(plan: RoleTargetedCompositionPlan) -> None:
+def _validate_role_targeted_opener_decision(context: RoleTargetedDraftContext) -> None:
+    decision = context.opener_decision
+    rubric = context.opener_rubric
+    if decision.claim_mode not in rubric.allowed_claim_modes:
+        raise OutreachDraftingError(
+            f"Opener decision uses unsupported claim mode `{decision.claim_mode}`."
+        )
+    lowered_focus = decision.technical_focus.lower()
+    blocked_focus = next(
+        (phrase for phrase in rubric.blocked_focus_phrases if phrase in lowered_focus),
+        None,
+    )
+    if blocked_focus is not None:
+        raise OutreachDraftingError(
+            f"Opener decision technical focus `{decision.technical_focus}` contains blocked phrase `{blocked_focus}`."
+        )
+    anchor_count = len(_extract_role_focus_anchors(decision.technical_focus))
+    if anchor_count < rubric.minimum_specific_anchor_count:
+        raise OutreachDraftingError(
+            f"Opener decision technical focus `{decision.technical_focus}` does not meet minimum specificity."
+        )
+    if rubric.require_title_alignment and _fails_role_title_specific_gate(
+        decision.technical_focus,
+        decision.role_title,
+    ):
+        raise OutreachDraftingError(
+            f"Opener decision technical focus `{decision.technical_focus}` is not title-aligned for `{decision.role_title}`."
+        )
+    overlap_lower = decision.overlap_sentence.lower()
+    if decision.claim_mode == CLAIM_MODE_DIRECT_BACKGROUND and any(
+        marker in overlap_lower
+        for marker in ("actively building toward", "academic and personal projects")
+    ):
+        raise OutreachDraftingError(
+            "Direct-background opener decision cannot use interest-area wording."
+        )
+    if decision.claim_mode == CLAIM_MODE_INTEREST_AREA and any(
+        marker in overlap_lower for marker in ("i've done", "background overlaps", "background is")
+    ):
+        raise OutreachDraftingError(
+            "Interest-area opener decision cannot imply direct professional experience."
+        )
+    if decision.claim_mode == CLAIM_MODE_GROWTH_AREA and any(
+        marker in overlap_lower for marker in ("i've done", "background overlaps", "background is")
+    ):
+        raise OutreachDraftingError(
+            "Growth-area opener decision cannot imply direct professional experience."
+        )
+
+
+def _validate_role_targeted_composition_plan(
+    plan: RoleTargetedCompositionPlan,
+    context: RoleTargetedDraftContext,
+) -> None:
+    _validate_role_targeted_opener_decision(context)
+    opener_lower = plan.opener_paragraph.lower()
+    blocked_phrase = next(
+        (phrase for phrase in context.opener_rubric.blocked_opener_phrases if phrase in opener_lower),
+        None,
+    )
+    if blocked_phrase is not None:
+        raise OutreachDraftingError(
+            f"Role-targeted opener failed quality validation for blocked phrase `{blocked_phrase}`."
+        )
+    if context.opener_decision.technical_focus not in plan.opener_paragraph:
+        raise OutreachDraftingError("Rendered opener does not include the selected technical focus.")
+    if context.opener_decision.overlap_sentence not in plan.opener_paragraph:
+        raise OutreachDraftingError("Rendered opener does not include the selected overlap sentence.")
     combined_text = " ".join(
         [
             plan.opener_paragraph,
@@ -5957,12 +6253,23 @@ def _persist_rendered_draft(
     draft_path = paths.outreach_message_draft_path(company_name, role_title, outreach_message_id)
     html_path = paths.outreach_message_html_path(company_name, role_title, outreach_message_id)
     send_result_path = paths.outreach_message_send_result_path(company_name, role_title, outreach_message_id)
+    opener_decision_path = paths.outreach_message_opener_decision_path(
+        company_name,
+        role_title,
+        outreach_message_id,
+    )
 
     _write_text_file(draft_path, rendered.body_markdown)
     body_html_artifact_path: str | None = None
     if rendered.body_html:
         _write_text_file(html_path, rendered.body_html)
         body_html_artifact_path = str(html_path.resolve())
+    linkage = ArtifactLinkage(
+        lead_id=str(posting_row["lead_id"]),
+        job_posting_id=str(posting_row["job_posting_id"]),
+        contact_id=str(contact_row["contact_id"]),
+        outreach_message_id=outreach_message_id,
+    )
 
     timestamps = lifecycle_timestamps(current_time)
     with connection:
@@ -5998,12 +6305,7 @@ def _persist_rendered_draft(
         paths,
         artifact_type=OUTREACH_DRAFT_ARTIFACT_TYPE,
         artifact_path=draft_path,
-        linkage=ArtifactLinkage(
-            lead_id=str(posting_row["lead_id"]),
-            job_posting_id=str(posting_row["job_posting_id"]),
-            contact_id=str(contact_row["contact_id"]),
-            outreach_message_id=outreach_message_id,
-        ),
+        linkage=linkage,
         created_at=current_time,
     )
     if rendered.body_html:
@@ -6012,14 +6314,24 @@ def _persist_rendered_draft(
             paths,
             artifact_type=OUTREACH_DRAFT_HTML_ARTIFACT_TYPE,
             artifact_path=html_path,
-            linkage=ArtifactLinkage(
-                lead_id=str(posting_row["lead_id"]),
-                job_posting_id=str(posting_row["job_posting_id"]),
-                contact_id=str(contact_row["contact_id"]),
-                outreach_message_id=outreach_message_id,
-            ),
+            linkage=linkage,
             created_at=current_time,
         )
+
+    opener_decision_artifact_path: str | None = None
+    if rendered.opener_decision is not None:
+        published_opener_decision = publish_json_artifact(
+            connection,
+            paths,
+            artifact_type=OPENER_DECISION_ARTIFACT_TYPE,
+            artifact_path=opener_decision_path,
+            producer_component=OUTREACH_COMPONENT,
+            result="success",
+            linkage=linkage,
+            payload=rendered.opener_decision.as_dict(),
+            produced_at=current_time,
+        )
+        opener_decision_artifact_path = str(published_opener_decision.location.absolute_path)
 
     published_send_result = publish_json_artifact(
         connection,
@@ -6028,12 +6340,7 @@ def _persist_rendered_draft(
         artifact_path=send_result_path,
         producer_component=OUTREACH_COMPONENT,
         result="success",
-        linkage=ArtifactLinkage(
-            lead_id=str(posting_row["lead_id"]),
-            job_posting_id=str(posting_row["job_posting_id"]),
-            contact_id=str(contact_row["contact_id"]),
-            outreach_message_id=outreach_message_id,
-        ),
+        linkage=linkage,
         payload={
             "outreach_mode": outreach_mode,
             "recipient_email": recipient_email,
@@ -6044,6 +6351,7 @@ def _persist_rendered_draft(
             "subject": rendered.subject,
             "body_text_artifact_path": str(draft_path.resolve()),
             "body_html_artifact_path": body_html_artifact_path,
+            "opener_decision_artifact_path": opener_decision_artifact_path,
             "resume_attachment_path": resume_attachment_path,
         },
         produced_at=current_time,
@@ -6068,6 +6376,7 @@ def _persist_rendered_draft(
         body_text_artifact_path=str(draft_path.resolve()),
         send_result_artifact_path=str(send_result_path.resolve()),
         body_html_artifact_path=body_html_artifact_path,
+        opener_decision_artifact_path=opener_decision_artifact_path,
         resume_attachment_path=resume_attachment_path,
     )
 
@@ -6184,6 +6493,7 @@ def _persist_rendered_general_learning_draft(
         body_text_artifact_path=str(draft_path.resolve()),
         send_result_artifact_path=str(send_result_path.resolve()),
         body_html_artifact_path=body_html_artifact_path,
+        opener_decision_artifact_path=None,
         resume_attachment_path=None,
     )
 
