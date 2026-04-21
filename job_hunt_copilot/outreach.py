@@ -281,7 +281,7 @@ ROLE_SIGNAL_FOCUS_ANCHOR_PATTERNS: tuple[tuple[re.Pattern[str], str], ...] = (
     (re.compile(r"\b(?:workload identity|iam|oauth|oidc)\b", re.IGNORECASE), "identity"),
     (re.compile(r"\b(?:spark|databricks|big data|data pipelines?|etl|stream processing)\b", re.IGNORECASE), "data"),
     (re.compile(r"\b(?:distributed systems?|distributed services?)\b", re.IGNORECASE), "distributed"),
-    (re.compile(r"\b(?:machine learning|deep learning|generative ai|ai/ml|llm|large language models?)\b", re.IGNORECASE), "ai_ml"),
+    (re.compile(r"\b(?:ai|machine learning|deep learning|generative ai|ai/ml|llm|large language models?)\b", re.IGNORECASE), "ai_ml"),
     (re.compile(r"\bperception\b", re.IGNORECASE), "perception"),
     (re.compile(r"\bedge devices?\b", re.IGNORECASE), "edge"),
     (re.compile(r"\b(?:robotic|robotics|ros|motion control|sensor integration)\b", re.IGNORECASE), "robotics"),
@@ -460,6 +460,50 @@ ROLE_THEME_SENTENCE_LABELS: dict[str, str] = {
     "full_stack": "application platform work",
     "scheduling": "systems and leadership work",
 }
+ROLE_THEME_SPECIALIZED_DIRECT_ANCHORS: frozenset[str] = frozenset(
+    {
+        "ai_ml",
+        "perception",
+        "edge",
+        "robotics",
+        "security",
+        "identity",
+        "scheduling",
+        "data",
+    }
+)
+ROLE_THEME_DIRECT_CLAIM_RULES: dict[str, tuple[str, ...]] = {
+    "ai_ml": ("ai_ml", "perception", "edge"),
+    "robotics": ("robotics", "perception", "edge"),
+    "security": ("security", "identity"),
+    "data": ("data",),
+    "cloud_platform": (
+        "hybrid_cloud_apps",
+        "devsecops",
+        "cloud_web_services",
+        "graphql_rest",
+        "ci_cd",
+        "terraform",
+        "api_gateway",
+        "identity",
+        "cloud",
+        "containers",
+        "automation",
+    ),
+    "backend": ("backend", "graphql_rest", "distributed", "languages"),
+    "full_stack": ("backend", "graphql_rest", "languages", "cloud", "automation"),
+    "scheduling": ("scheduling",),
+}
+ROLE_THEME_TRANSFERABLE_ANCHORS: tuple[str, ...] = (
+    "backend",
+    "distributed",
+    "cloud",
+    "data",
+    "automation",
+    "containers",
+    "languages",
+    "graphql_rest",
+)
 ANCHOR_KEYWORD_HINTS: dict[str, tuple[str, ...]] = {
     "hybrid_cloud_apps": ("hybrid-cloud", "cloud applications", "application development", "cloud development"),
     "devsecops": ("devsecops", "secure delivery", "security standards"),
@@ -475,7 +519,7 @@ ANCHOR_KEYWORD_HINTS: dict[str, tuple[str, ...]] = {
     "automation": ("automation", "workflow", "jenkins", "github actions"),
     "data": ("spark", "etl", "data", "analytics", "databricks", "stream processing"),
     "distributed": ("distributed", "throughput", "reliability", "scale", "latency"),
-    "ai_ml": ("machine learning", "deep learning", "generative ai", "llm", "model"),
+    "ai_ml": ("ai", "machine learning", "deep learning", "generative ai", "llm", "model"),
     "perception": ("perception",),
     "edge": ("edge", "on-device", "embedded"),
     "robotics": ("robotic", "robotics", "ros", "motion", "sensor"),
@@ -701,6 +745,8 @@ class RoleThemeSelection:
     anchor_labels: tuple[str, ...]
     source_signals: tuple[str, ...]
     background_overlap: bool
+    direct_background_overlap: bool
+    adjacent_background_overlap: bool
     growth_overlap: bool
     growth_area_label: str | None
     overlap_sentence: str
@@ -4046,6 +4092,157 @@ def _match_growth_area(
     return best_score, best_area
 
 
+def _keyword_hits(text: str, keywords: set[str]) -> int:
+    lowered = text.lower()
+    tokens = _tokenize_role_theme_text(text)
+    hits = 0
+    for keyword in keywords:
+        normalized_keyword = keyword.lower()
+        if (
+            " " in normalized_keyword
+            or "/" in normalized_keyword
+            or "-" in normalized_keyword
+        ):
+            if normalized_keyword in lowered:
+                hits += 1
+        elif normalized_keyword in tokens:
+            hits += 1
+    return hits
+
+
+def _theme_direct_anchor_labels(theme_selection: RoleThemeSelection) -> tuple[str, ...]:
+    focus_labels = tuple(sorted(_extract_role_focus_anchors(theme_selection.focus_phrase)))
+    candidate_labels = focus_labels or theme_selection.anchor_labels
+    allowed_labels = ROLE_THEME_DIRECT_CLAIM_RULES.get(theme_selection.role_family or "", ())
+    if allowed_labels:
+        direct_labels = tuple(
+            label for label in candidate_labels if label in allowed_labels
+        )
+        if direct_labels:
+            return direct_labels
+    specialized = tuple(
+        label
+        for label in candidate_labels
+        if label in ROLE_THEME_SPECIALIZED_DIRECT_ANCHORS
+    )
+    if specialized:
+        return specialized
+    return candidate_labels
+
+
+def _score_direct_background_overlap_for_label(
+    label: str,
+    *,
+    theme_selection: RoleThemeSelection,
+    step_4_payload: Mapping[str, Any] | None,
+    step_6_payload: Mapping[str, Any] | None,
+) -> int:
+    direct_keywords = _anchor_keywords((label,))
+    if not direct_keywords:
+        return 0
+    score = 0
+    source_signals = {
+        normalized
+        for signal in theme_selection.source_signals
+        if (normalized := _normalize_optional_text(signal)) is not None
+    }
+    if step_4_payload is not None:
+        confidence_weight = {"high": 3, "medium": 2, "low": 1}
+        matches = step_4_payload.get("matches")
+        if isinstance(matches, list):
+            for match in matches:
+                if not isinstance(match, Mapping):
+                    continue
+                jd_signal = _normalize_optional_text(match.get("jd_signal"))
+                if source_signals and jd_signal not in source_signals:
+                    continue
+                source_excerpt = _normalize_optional_text(match.get("source_excerpt"))
+                if source_excerpt is None:
+                    continue
+                hits = _keyword_hits(source_excerpt, direct_keywords)
+                if hits <= 0:
+                    continue
+                confidence = (_normalize_optional_text(match.get("confidence")) or "").lower()
+                score += hits + confidence_weight.get(confidence, 1)
+    if step_6_payload is not None:
+        for bullet in (step_6_payload.get("software_engineer") or {}).get("bullets") or []:
+            text = _normalize_optional_text(bullet.get("text"))
+            if text is None:
+                continue
+            hits = _keyword_hits(text, direct_keywords)
+            if hits <= 0:
+                continue
+            score += hits + (1 if METRIC_RE.search(text) else 0)
+    return score
+
+
+def _score_theme_direct_background_overlap(
+    theme_selection: RoleThemeSelection,
+    *,
+    step_4_payload: Mapping[str, Any] | None,
+    step_6_payload: Mapping[str, Any] | None,
+) -> int:
+    direct_anchor_labels = _theme_direct_anchor_labels(theme_selection)
+    if not direct_anchor_labels:
+        return 0
+    per_label_scores = {
+        label: _score_direct_background_overlap_for_label(
+            label,
+            theme_selection=theme_selection,
+            step_4_payload=step_4_payload,
+            step_6_payload=step_6_payload,
+        )
+        for label in direct_anchor_labels
+    }
+    specialized_focus_labels = tuple(
+        label
+        for label in direct_anchor_labels
+        if label in ROLE_THEME_SPECIALIZED_DIRECT_ANCHORS
+    )
+    if (
+        theme_selection.role_family is None
+        and len(specialized_focus_labels) > 1
+        and any(per_label_scores.get(label, 0) <= 0 for label in specialized_focus_labels)
+    ):
+        return 0
+    return sum(per_label_scores.values())
+
+
+def _score_transferable_background_overlap(
+    *,
+    step_4_payload: Mapping[str, Any] | None,
+    step_6_payload: Mapping[str, Any] | None,
+) -> int:
+    transferable_keywords = _anchor_keywords(ROLE_THEME_TRANSFERABLE_ANCHORS)
+    score = 0
+    if step_4_payload is not None:
+        matches = step_4_payload.get("matches")
+        if isinstance(matches, list):
+            for match in matches:
+                if not isinstance(match, Mapping):
+                    continue
+                source_excerpt = _normalize_optional_text(match.get("source_excerpt"))
+                if source_excerpt is None:
+                    continue
+                hits = _keyword_hits(source_excerpt, transferable_keywords)
+                if hits > 0:
+                    score += hits
+    if step_6_payload is not None:
+        for entry in step_6_payload.get("technical_skills", []) or []:
+            items_text = " ".join(str(item) for item in entry.get("items") or [])
+            hits = _keyword_hits(items_text, transferable_keywords)
+            if hits > 0:
+                score += hits
+        for bullet in (step_6_payload.get("software_engineer") or {}).get("bullets") or []:
+            text = _normalize_optional_text(bullet.get("text"))
+            if text is None:
+                continue
+            hits = _keyword_hits(text, transferable_keywords)
+            if hits > 0:
+                score += hits + (1 if METRIC_RE.search(text) else 0)
+    return score
+
+
 def _candidate_focus_parts(
     raw_signal: str,
     normalized_focus: str,
@@ -4378,28 +4575,59 @@ def _select_role_theme_selection(
         ),
         None,
     )
-    background_overlap = any(candidate.background_score > 0 for candidate in ranked[:3])
     growth_overlap = any(candidate.growth_score > 0 for candidate in ranked[:3])
     provisional_selection = RoleThemeSelection(
         focus_phrase=focus_phrase,
         role_family=best_candidate.role_family,
         anchor_labels=anchor_labels,
         source_signals=tuple(candidate.raw_signal for candidate in ranked[:3]),
-        background_overlap=background_overlap,
+        background_overlap=False,
+        direct_background_overlap=False,
+        adjacent_background_overlap=False,
         growth_overlap=growth_overlap,
         growth_area_label=growth_area_label,
         overlap_sentence="",
     )
+    direct_background_overlap = (
+        _score_theme_direct_background_overlap(
+            provisional_selection,
+            step_4_payload=step_4_payload,
+            step_6_payload=step_6_payload,
+        )
+        > 0
+    )
+    adjacent_background_overlap = (
+        not direct_background_overlap
+        and _score_transferable_background_overlap(
+            step_4_payload=step_4_payload,
+            step_6_payload=step_6_payload,
+        )
+        > 0
+    )
+    background_overlap = direct_background_overlap or adjacent_background_overlap
     return RoleThemeSelection(
         focus_phrase=provisional_selection.focus_phrase,
         role_family=provisional_selection.role_family,
         anchor_labels=provisional_selection.anchor_labels,
         source_signals=provisional_selection.source_signals,
-        background_overlap=provisional_selection.background_overlap,
+        background_overlap=background_overlap,
+        direct_background_overlap=direct_background_overlap,
+        adjacent_background_overlap=adjacent_background_overlap,
         growth_overlap=provisional_selection.growth_overlap,
         growth_area_label=provisional_selection.growth_area_label,
         overlap_sentence=_theme_overlap_sentence(
-            provisional_selection,
+            RoleThemeSelection(
+                focus_phrase=provisional_selection.focus_phrase,
+                role_family=provisional_selection.role_family,
+                anchor_labels=provisional_selection.anchor_labels,
+                source_signals=provisional_selection.source_signals,
+                background_overlap=background_overlap,
+                direct_background_overlap=direct_background_overlap,
+                adjacent_background_overlap=adjacent_background_overlap,
+                growth_overlap=provisional_selection.growth_overlap,
+                growth_area_label=provisional_selection.growth_area_label,
+                overlap_sentence="",
+            ),
             growth_areas,
         ),
     )
@@ -4418,18 +4646,42 @@ def _theme_overlap_sentence(
         None,
     )
     if matched_area is not None:
-        if theme_selection.background_overlap and theme_selection.growth_overlap:
+        if theme_selection.direct_background_overlap and theme_selection.growth_overlap:
             return matched_area.combined_overlap_sentence
-        if theme_selection.background_overlap:
+        if theme_selection.direct_background_overlap:
             return matched_area.background_overlap_sentence
+        if theme_selection.adjacent_background_overlap and theme_selection.growth_overlap:
+            return (
+                "I see a real overlap with the systems work I've done, and "
+                f"{_growth_sentence_to_clause(matched_area.growth_overlap_sentence)}."
+            )
+        if theme_selection.adjacent_background_overlap:
+            return "I see a real overlap with the systems work I've done."
         if theme_selection.growth_overlap:
             return matched_area.growth_overlap_sentence
     label = ROLE_THEME_SENTENCE_LABELS.get(theme_selection.role_family or "", "systems")
-    if theme_selection.background_overlap and theme_selection.growth_overlap:
+    if theme_selection.direct_background_overlap and theme_selection.growth_overlap:
         return f"That lines up well with the kind of {label} work I've done and want to keep growing in."
-    if theme_selection.background_overlap:
+    if theme_selection.direct_background_overlap:
         return f"That lines up with the kind of {label} work I've been doing."
+    if theme_selection.adjacent_background_overlap and theme_selection.growth_overlap:
+        return (
+            "I see a real overlap with the systems work I've done, and "
+            f"it's the kind of {label} work I want to keep growing in."
+        )
+    if theme_selection.adjacent_background_overlap:
+        return "I see a real overlap with the systems work I've done."
     return f"That is the kind of {label} work I want to keep growing in."
+
+
+def _growth_sentence_to_clause(growth_sentence: str) -> str:
+    stripped = growth_sentence.strip().rstrip(".")
+    lowered = stripped.lower()
+    if lowered.startswith("that is "):
+        return "it's " + stripped[8:]
+    if lowered.startswith("that lines up "):
+        return "it lines up " + stripped[14:]
+    return stripped[:1].lower() + stripped[1:] if stripped else "it's a direction I want to keep growing in"
 
 
 def _select_theme_aligned_proof_point(
@@ -4942,6 +5194,17 @@ def _snippet_background_sentence(context: RoleTargetedDraftContext) -> str:
     focus = _snippet_focus_phrase(context)
     preposition = _snippet_focus_preposition(focus)
     proof_fragment = _snippet_proof_fragment(context)
+    if context.theme_selection.adjacent_background_overlap and not context.theme_selection.direct_background_overlap:
+        if context.theme_selection.growth_overlap:
+            sentence = (
+                f"His background overlaps well with the role's focus on {focus}, and he's intentionally "
+                "growing in that direction"
+            )
+        else:
+            sentence = f"His background overlaps well with the role's focus on {focus}"
+        if proof_fragment is not None:
+            return f"{sentence}, including {proof_fragment}."
+        return f"{sentence}."
     if context.recipient_type in {
         RECIPIENT_TYPE_HIRING_MANAGER,
         RECIPIENT_TYPE_ENGINEER,

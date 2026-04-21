@@ -1267,7 +1267,8 @@ def test_role_targeted_draft_batch_persists_messages_artifacts_and_transitions(t
         in recruiter_body
     )
     assert (
-        "He has experience in reliable backend and distributed systems for AI platform workloads, "
+        "His background overlaps well with the role's focus on reliable backend and distributed systems for AI platform workloads, "
+        "and he's intentionally growing in that direction, "
         "including building distributed Python and Scala data services processing 50M+ daily HL7 records at roughly 580 TPS for real-time analytics."
         in recruiter_body
     )
@@ -1304,7 +1305,8 @@ def test_role_targeted_draft_batch_persists_messages_artifacts_and_transitions(t
         in manager_body
     )
     assert (
-        "His background is in reliable backend and distributed systems for AI platform workloads, "
+        "His background overlaps well with the role's focus on reliable backend and distributed systems for AI platform workloads, "
+        "and he's intentionally growing in that direction, "
         "including building distributed Python and Scala data services processing 50M+ daily HL7 records at roughly 580 TPS for real-time analytics."
         in manager_body
     )
@@ -1691,7 +1693,7 @@ def test_role_targeted_composition_rewrites_security_jd_into_natural_theme(tmp_p
         "I'm reaching out about the Government Information Security Engineer role at Intel because I was "
         "interested in the role's focus on secure infrastructure, enterprise security systems, and "
         "government-focused security work. "
-        "That is an area I want to keep building depth in."
+        "I see a real overlap with the systems work I've done, and it's an area I want to keep building depth in."
         in body_text
     )
     assert "identifies, develops, plans, implements" not in body_text.lower()
@@ -1888,9 +1890,14 @@ def test_role_targeted_composition_prefers_full_cycle_ai_ml_delivery_over_uat_st
         in body_text
     )
     assert (
-        "That lines up well with the AI/ML systems work I've done and want to keep building depth in."
+        "I see a real overlap with the systems work I've done, and it's an area I want to keep building depth in."
         in body_text
     )
+    assert (
+        "His background overlaps well with the role's focus on full-cycle AI/ML delivery and AI/ML infrastructure evolution"
+        in body_text
+    )
+    assert "His background is in full-cycle AI/ML delivery" not in body_text
     assert "UAT and after go-live" not in body_text
     assert "standard operation practices" not in body_text
 
@@ -2028,6 +2035,142 @@ def test_role_targeted_composition_prefers_technical_jd_signals_over_generic_res
     assert "role's focus on REST APIs or microservices" in body_text
     assert "role's focus on contribute to design of new functionality" not in body_text
     assert "Communicate with Software Engineers" not in body_text
+
+    connection.close()
+
+
+def test_role_targeted_composition_rejects_mixed_ai_security_hook_when_backend_theme_is_better_supported(
+    tmp_path: Path,
+):
+    project_root, paths = bootstrap_project(tmp_path)
+    connection = connect_database(project_root / "job_hunt_copilot.db")
+    write_sender_profile(paths)
+    seed_posting(
+        connection,
+        company_name="American Express",
+        role_title="Software Engineer II",
+    )
+    seed_linked_contact(
+        connection,
+        contact_id="ct_amex",
+        job_posting_contact_id="jpc_amex",
+        display_name="Shawn Spence",
+        recipient_type=RECIPIENT_TYPE_ENGINEER,
+        current_working_email="shawn@amex.example",
+        created_at="2026-04-06T20:01:00Z",
+    )
+    connection.execute(
+        "UPDATE contacts SET position_title = ? WHERE contact_id = ?",
+        ("Software Engineer II", "ct_amex"),
+    )
+    connection.commit()
+    seed_approved_tailoring_run(
+        connection,
+        paths,
+        company_name="American Express",
+        role_title="Software Engineer II",
+    )
+    paths.tailoring_step_3_jd_signals_path(
+        "American Express",
+        "Software Engineer II",
+    ).write_text(
+        yaml.safe_dump(
+            {
+                "job_posting_id": "jp_outreach",
+                "resume_tailoring_run_id": "rtr_outreach",
+                "status": "generated",
+                "role_intent_summary": (
+                    "Build large-scale, cloud-native applications while leveraging modern "
+                    "developer productivity tools, including Generative AI-assisted development "
+                    "tools, in a secure transaction platform."
+                ),
+                "signals_by_priority": {
+                    "must_have": [],
+                    "core_responsibility": [
+                        {
+                            "signal": (
+                                "Leverage modern developer productivity tools, including "
+                                "Generative AI-assisted development tools, to accelerate coding, "
+                                "debugging, documentation, and testing while maintaining high "
+                                "standards of code quality and security."
+                            )
+                        },
+                        {
+                            "signal": (
+                                "Build and enhance scalable microservices and APIs that support "
+                                "fraud risk assessment and secure customer transaction processing."
+                            )
+                        },
+                        {
+                            "signal": (
+                                "Develop and optimize high-throughput data pipelines to improve "
+                                "system efficiency, reliability, and scalability."
+                            )
+                        },
+                    ],
+                    "nice_to_have": [],
+                    "informational": [],
+                },
+                "signals": [],
+            },
+            sort_keys=False,
+        ),
+        encoding="utf-8",
+    )
+    paths.tailoring_step_4_evidence_map_path(
+        "American Express",
+        "Software Engineer II",
+    ).write_text(
+        yaml.safe_dump(
+            {
+                "matches": [
+                    {
+                        "jd_signal": (
+                            "Build and enhance scalable microservices and APIs that support fraud "
+                            "risk assessment and secure customer transaction processing."
+                        ),
+                        "confidence": "high",
+                        "source_excerpt": (
+                            "Built and maintained distributed, high-availability data services in "
+                            "Python and Scala on AWS, processing 50M+ daily HL7 records (~580 TPS)."
+                        ),
+                    },
+                    {
+                        "jd_signal": (
+                            "Develop and optimize high-throughput data pipelines to improve system "
+                            "efficiency, reliability, and scalability."
+                        ),
+                        "confidence": "high",
+                        "source_excerpt": (
+                            "Developed ETL pipelines using Python and Apache Spark, reducing "
+                            "processing time by 40% on 2TB+ daily data."
+                        ),
+                    },
+                ]
+            },
+            sort_keys=False,
+        ),
+        encoding="utf-8",
+    )
+
+    result = generate_role_targeted_send_set_drafts(
+        connection,
+        project_root=project_root,
+        job_posting_id="jp_outreach",
+        current_time="2026-04-06T20:30:00Z",
+        local_timezone=ZoneInfo("UTC"),
+    )
+
+    body_text = Path(result.drafted_messages[0].body_text_artifact_path).read_text(encoding="utf-8")
+    assert "role's focus on backend APIs and services" in body_text
+    assert "machine learning and deep learning and secure infrastructure" not in body_text
+    assert "That lines up with the kind of systems work I've been doing." not in body_text
+    assert (
+        "That lines up well with the kind of backend and distributed systems work I've done and want to keep growing in."
+        in body_text
+    )
+    assert "His background is in machine learning and deep learning and secure infrastructure" not in body_text
+    assert "His background is in backend APIs and services" in body_text
 
     connection.close()
 
@@ -3072,6 +3215,12 @@ def test_role_targeted_composition_prefers_robotics_work_scope_over_full_stack_r
     assert "full-stack software developer" not in body_text.lower()
     assert "programming languages such as" not in body_text.lower()
     assert "robotic systems" in body_text.lower() or "robotic systems integration" in body_text.lower()
+    assert (
+        "I see a real overlap with the systems work I've done, and it's the kind of robotics and edge systems work "
+        "I want to keep growing in."
+        in body_text
+    )
+    assert "His background is in robotic systems integration" not in body_text
 
     connection.close()
 
