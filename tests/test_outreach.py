@@ -1267,9 +1267,9 @@ def test_role_targeted_draft_batch_persists_messages_artifacts_and_transitions(t
         in recruiter_body
     )
     assert (
-        "His background overlaps well with the role's focus on reliable backend and distributed systems for AI platform workloads, "
-        "and he's intentionally growing in that direction, "
-        "including building distributed Python and Scala data services processing 50M+ daily HL7 records at roughly 580 TPS for real-time analytics."
+        "He's actively building toward the role's focus on reliable backend and distributed systems for AI platform workloads "
+        "through academic and personal projects, while bringing supporting systems experience including building distributed "
+        "Python and Scala data services processing 50M+ daily HL7 records at roughly 580 TPS for real-time analytics."
         in recruiter_body
     )
     assert "Profile: www.linkedin.com/in/asonti" in recruiter_body
@@ -1305,9 +1305,9 @@ def test_role_targeted_draft_batch_persists_messages_artifacts_and_transitions(t
         in manager_body
     )
     assert (
-        "His background overlaps well with the role's focus on reliable backend and distributed systems for AI platform workloads, "
-        "and he's intentionally growing in that direction, "
-        "including building distributed Python and Scala data services processing 50M+ daily HL7 records at roughly 580 TPS for real-time analytics."
+        "He's actively building toward the role's focus on reliable backend and distributed systems for AI platform workloads "
+        "through academic and personal projects, while bringing supporting systems experience including building distributed "
+        "Python and Scala data services processing 50M+ daily HL7 records at roughly 580 TPS for real-time analytics."
         in manager_body
     )
 
@@ -1890,11 +1890,11 @@ def test_role_targeted_composition_prefers_full_cycle_ai_ml_delivery_over_uat_st
         in body_text
     )
     assert (
-        "I see a real overlap with the systems work I've done, and it's an area I want to keep building depth in."
+        "That is the kind of applied AI work I'm actively building toward through academic and personal projects, and I want to keep growing in."
         in body_text
     )
     assert (
-        "His background overlaps well with the role's focus on full-cycle AI/ML delivery and AI/ML infrastructure evolution"
+        "He's actively building toward the role's focus on full-cycle AI/ML delivery and AI/ML infrastructure evolution through academic and personal projects"
         in body_text
     )
     assert "His background is in full-cycle AI/ML delivery" not in body_text
@@ -2169,6 +2169,7 @@ def test_role_targeted_composition_rejects_mixed_ai_security_hook_when_backend_t
         "That lines up well with the kind of backend and distributed systems work I've done and want to keep growing in."
         in body_text
     )
+    assert "through academic and personal projects" not in body_text
     assert "His background is in machine learning and deep learning and secure infrastructure" not in body_text
     assert "His background is in backend APIs and services" in body_text
 

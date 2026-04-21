@@ -345,6 +345,7 @@ ROLE_THEME_TITLE_RULES: tuple[dict[str, Any], ...] = (
         "preferred_anchors": ("ai_ml", "perception", "edge", "data", "distributed"),
         "fallback_label": "AI/ML systems",
         "growth_area_ids": ("ai_ml_systems", "backend_distributed_systems", "platform_infrastructure"),
+        "interest_area_ids": ("agentic_ai", "applied_ai", "ai_platform_infrastructure"),
     },
     {
         "family": "robotics",
@@ -739,6 +740,15 @@ class SenderGrowthArea:
 
 
 @dataclass(frozen=True)
+class SenderInterestArea:
+    area_id: str
+    label: str
+    keywords: tuple[str, ...]
+    interest_overlap_sentence: str
+    snippet_interest_sentence: str
+
+
+@dataclass(frozen=True)
 class RoleThemeSelection:
     focus_phrase: str
     role_family: str | None
@@ -749,6 +759,10 @@ class RoleThemeSelection:
     adjacent_background_overlap: bool
     growth_overlap: bool
     growth_area_label: str | None
+    interest_overlap: bool
+    interest_area_label: str | None
+    interest_overlap_sentence: str | None
+    interest_snippet_sentence: str | None
     overlap_sentence: str
 
 
@@ -765,6 +779,7 @@ class _RoleThemeCandidate:
     specificity_score: int
     background_score: int
     growth_score: int
+    interest_score: int
     role_family: str | None
     growth_area_label: str | None
 
@@ -1803,6 +1818,7 @@ def _build_role_targeted_draft_context(
         contact_id=str(contact_row["contact_id"]),
     )
     growth_areas = _load_sender_growth_areas(paths)
+    interest_areas = _load_sender_interest_areas(paths)
     theme_selection = _select_role_theme_selection(
         tailoring_inputs["step_3_payload"],
         str(tailoring_inputs["jd_text"]),
@@ -1810,6 +1826,7 @@ def _build_role_targeted_draft_context(
         step_6_payload=tailoring_inputs["step_6_payload"],
         role_title=str(posting_row["role_title"]),
         growth_areas=growth_areas,
+        interest_areas=interest_areas,
     )
     if theme_selection is None:
         raise OutreachDraftingError(
@@ -3969,6 +3986,47 @@ def _load_sender_growth_areas(paths: ProjectPaths) -> tuple[SenderGrowthArea, ..
     return tuple(areas)
 
 
+def _load_sender_interest_areas(paths: ProjectPaths) -> tuple[SenderInterestArea, ...]:
+    interest_path = paths.assets_dir / "outreach" / "candidate-interest-areas.yaml"
+    if not interest_path.exists():
+        return ()
+    payload = _read_yaml_file(interest_path)
+    areas: list[SenderInterestArea] = []
+    for entry in payload.get("areas") or []:
+        if not isinstance(entry, Mapping):
+            continue
+        area_id = _normalize_optional_text(entry.get("area_id"))
+        label = _normalize_optional_text(entry.get("label"))
+        if area_id is None or label is None:
+            continue
+        keywords = tuple(
+            keyword.lower()
+            for keyword in (entry.get("keywords") or [])
+            if _normalize_optional_text(keyword) is not None
+        )
+        interest_sentence = _normalize_optional_text(entry.get("interest_overlap_sentence"))
+        snippet_sentence = _normalize_optional_text(entry.get("snippet_interest_sentence"))
+        if interest_sentence is None or snippet_sentence is None:
+            continue
+        areas.append(
+            SenderInterestArea(
+                area_id=area_id,
+                label=label,
+                keywords=keywords,
+                interest_overlap_sentence=interest_sentence,
+                snippet_interest_sentence=snippet_sentence,
+            )
+        )
+    return tuple(areas)
+
+
+def _format_interest_snippet_sentence(template: str, *, focus: str) -> str:
+    try:
+        return template.format(focus=focus)
+    except (IndexError, KeyError, ValueError):
+        return template
+
+
 def _tokenize_role_theme_text(text: str) -> set[str]:
     return {
         token
@@ -4083,6 +4141,52 @@ def _match_growth_area(
             if keyword in normalized_title:
                 score += 1
             if keyword in cleaned_signal.lower():
+                score += 2
+            if keyword in signal_terms:
+                score += 1
+        if score > best_score:
+            best_score = score
+            best_area = area
+    return best_score, best_area
+
+
+def _match_interest_area(
+    cleaned_signal: str,
+    *,
+    source_text: str | None,
+    role_title: str | None,
+    anchor_labels: Sequence[str],
+    interest_areas: Sequence[SenderInterestArea],
+) -> tuple[int, SenderInterestArea | None]:
+    if not interest_areas:
+        return 0, None
+    role_rule = _role_theme_rule(role_title)
+    if role_rule is None:
+        return 0, None
+    allowed_area_ids = tuple(role_rule.get("interest_area_ids") or ())
+    if not allowed_area_ids:
+        return 0, None
+    normalized_title = (_normalize_optional_text(role_title) or "").lower()
+    lowered_signal = cleaned_signal.lower()
+    lowered_source = (_normalize_optional_text(source_text) or "").lower()
+    signal_terms = (
+        _tokenize_role_theme_text(cleaned_signal)
+        | _tokenize_role_theme_text(lowered_source)
+        | _anchor_keywords(anchor_labels)
+    )
+    allowed_area_id_set = set(allowed_area_ids)
+    best_score = 0
+    best_area: SenderInterestArea | None = None
+    for area in interest_areas:
+        if area.area_id not in allowed_area_id_set:
+            continue
+        score = 0
+        for keyword in area.keywords:
+            if keyword in normalized_title:
+                score += 1
+            if keyword in lowered_signal:
+                score += 2
+            if keyword in lowered_source:
                 score += 2
             if keyword in signal_terms:
                 score += 1
@@ -4314,6 +4418,7 @@ def _build_role_theme_candidates(
     step_6_payload: Mapping[str, Any] | None,
     role_title: str | None,
     growth_areas: Sequence[SenderGrowthArea],
+    interest_areas: Sequence[SenderInterestArea],
 ) -> list[_RoleThemeCandidate]:
     candidate_signals: list[tuple[str, str]] = []
     for priority_key in ("must_have", "core_responsibility", "nice_to_have"):
@@ -4364,9 +4469,16 @@ def _build_role_theme_candidates(
             anchor_labels=anchor_labels,
             growth_areas=growth_areas,
         )
+        interest_score, _matched_interest_area = _match_interest_area(
+            normalized_focus,
+            source_text=raw_signal,
+            role_title=derived_role_title,
+            anchor_labels=anchor_labels,
+            interest_areas=interest_areas,
+        )
         if technical_score <= 0 or specificity_score <= 0:
             continue
-        if background_score <= 0 and growth_score <= 0:
+        if background_score <= 0 and growth_score <= 0 and interest_score <= 0:
             continue
         score = (
             technical_score * 100
@@ -4375,6 +4487,7 @@ def _build_role_theme_candidates(
             + ROLE_SIGNAL_SOURCE_PRIORITY.get(source_kind, 0) * 10
             + background_score * 5
             + growth_score * 5
+            + interest_score * 5
         )
         candidates.append(
             _RoleThemeCandidate(
@@ -4389,6 +4502,7 @@ def _build_role_theme_candidates(
                 specificity_score=specificity_score,
                 background_score=background_score,
                 growth_score=growth_score,
+                interest_score=interest_score,
                 role_family=_normalize_optional_text(
                     (_role_theme_rule(derived_role_title) or {}).get("family")
                     if _role_theme_rule(derived_role_title) is not None
@@ -4423,7 +4537,14 @@ def _build_role_theme_candidates(
             anchor_labels=anchor_labels,
             growth_areas=growth_areas,
         )
-        if background_score <= 0 and growth_score <= 0:
+        interest_score, _matched_interest_area = _match_interest_area(
+            normalized_focus,
+            source_text=stripped,
+            role_title=derived_role_title,
+            anchor_labels=anchor_labels,
+            interest_areas=interest_areas,
+        )
+        if background_score <= 0 and growth_score <= 0 and interest_score <= 0:
             continue
         title_score = _score_role_signal_title_alignment(normalized_focus, derived_role_title)
         technical_score = _role_signal_technical_priority(normalized_focus, stripped)
@@ -4443,12 +4564,14 @@ def _build_role_theme_candidates(
                     + title_score * 20
                     + background_score * 5
                     + growth_score * 5
+                    + interest_score * 5
                 ),
                 title_score=title_score,
                 technical_score=technical_score,
                 specificity_score=specificity_score,
                 background_score=background_score,
                 growth_score=growth_score,
+                interest_score=interest_score,
                 role_family=_normalize_optional_text(
                     (_role_theme_rule(derived_role_title) or {}).get("family")
                     if _role_theme_rule(derived_role_title) is not None
@@ -4546,6 +4669,7 @@ def _select_role_theme_selection(
     step_6_payload: Mapping[str, Any] | None,
     role_title: str | None,
     growth_areas: Sequence[SenderGrowthArea],
+    interest_areas: Sequence[SenderInterestArea],
 ) -> RoleThemeSelection | None:
     candidates = _build_role_theme_candidates(
         step_3_payload,
@@ -4554,6 +4678,7 @@ def _select_role_theme_selection(
         step_6_payload=step_6_payload,
         role_title=role_title,
         growth_areas=growth_areas,
+        interest_areas=interest_areas,
     )
     if not candidates:
         return None
@@ -4586,7 +4711,31 @@ def _select_role_theme_selection(
         adjacent_background_overlap=False,
         growth_overlap=growth_overlap,
         growth_area_label=growth_area_label,
+        interest_overlap=False,
+        interest_area_label=None,
+        interest_overlap_sentence=None,
+        interest_snippet_sentence=None,
         overlap_sentence="",
+    )
+    interest_score, matched_interest_area = _match_interest_area(
+        provisional_selection.focus_phrase,
+        source_text=" ".join(provisional_selection.source_signals),
+        role_title=role_title,
+        anchor_labels=provisional_selection.anchor_labels,
+        interest_areas=interest_areas,
+    )
+    interest_overlap = interest_score > 0
+    interest_area_label = matched_interest_area.label if matched_interest_area is not None else None
+    interest_overlap_sentence = (
+        matched_interest_area.interest_overlap_sentence if matched_interest_area is not None else None
+    )
+    interest_snippet_sentence = (
+        _format_interest_snippet_sentence(
+            matched_interest_area.snippet_interest_sentence,
+            focus=provisional_selection.focus_phrase,
+        )
+        if matched_interest_area is not None
+        else None
     )
     direct_background_overlap = (
         _score_theme_direct_background_overlap(
@@ -4615,6 +4764,10 @@ def _select_role_theme_selection(
         adjacent_background_overlap=adjacent_background_overlap,
         growth_overlap=provisional_selection.growth_overlap,
         growth_area_label=provisional_selection.growth_area_label,
+        interest_overlap=interest_overlap,
+        interest_area_label=interest_area_label,
+        interest_overlap_sentence=interest_overlap_sentence,
+        interest_snippet_sentence=interest_snippet_sentence,
         overlap_sentence=_theme_overlap_sentence(
             RoleThemeSelection(
                 focus_phrase=provisional_selection.focus_phrase,
@@ -4626,6 +4779,10 @@ def _select_role_theme_selection(
                 adjacent_background_overlap=adjacent_background_overlap,
                 growth_overlap=provisional_selection.growth_overlap,
                 growth_area_label=provisional_selection.growth_area_label,
+                interest_overlap=interest_overlap,
+                interest_area_label=interest_area_label,
+                interest_overlap_sentence=interest_overlap_sentence,
+                interest_snippet_sentence=interest_snippet_sentence,
                 overlap_sentence="",
             ),
             growth_areas,
@@ -4650,6 +4807,8 @@ def _theme_overlap_sentence(
             return matched_area.combined_overlap_sentence
         if theme_selection.direct_background_overlap:
             return matched_area.background_overlap_sentence
+        if theme_selection.interest_overlap and theme_selection.interest_overlap_sentence is not None:
+            return theme_selection.interest_overlap_sentence
         if theme_selection.adjacent_background_overlap and theme_selection.growth_overlap:
             return (
                 "I see a real overlap with the systems work I've done, and "
@@ -4664,6 +4823,8 @@ def _theme_overlap_sentence(
         return f"That lines up well with the kind of {label} work I've done and want to keep growing in."
     if theme_selection.direct_background_overlap:
         return f"That lines up with the kind of {label} work I've been doing."
+    if theme_selection.interest_overlap and theme_selection.interest_overlap_sentence is not None:
+        return theme_selection.interest_overlap_sentence
     if theme_selection.adjacent_background_overlap and theme_selection.growth_overlap:
         return (
             "I see a real overlap with the systems work I've done, and "
@@ -4732,6 +4893,7 @@ def _role_work_area(step_3_payload: Mapping[str, Any], jd_text: str) -> str | No
         step_6_payload=None,
         role_title=None,
         growth_areas=(),
+        interest_areas=(),
     )
     return None if selection is None else selection.focus_phrase
 
@@ -4744,6 +4906,7 @@ def _select_role_work_area(
     step_6_payload: Mapping[str, Any] | None,
     role_title: str | None,
     growth_areas: Sequence[SenderGrowthArea] = (),
+    interest_areas: Sequence[SenderInterestArea] = (),
 ) -> str | None:
     selection = _select_role_theme_selection(
         step_3_payload,
@@ -4752,6 +4915,7 @@ def _select_role_work_area(
         step_6_payload=step_6_payload,
         role_title=role_title,
         growth_areas=growth_areas,
+        interest_areas=interest_areas,
     )
     return None if selection is None else selection.focus_phrase
 
@@ -5194,6 +5358,14 @@ def _snippet_background_sentence(context: RoleTargetedDraftContext) -> str:
     focus = _snippet_focus_phrase(context)
     preposition = _snippet_focus_preposition(focus)
     proof_fragment = _snippet_proof_fragment(context)
+    if context.theme_selection.interest_overlap and not context.theme_selection.direct_background_overlap:
+        sentence = (
+            context.theme_selection.interest_snippet_sentence
+            or f"He's actively building toward the role's focus on {focus} through academic and personal projects."
+        ).rstrip(".")
+        if proof_fragment is not None:
+            return f"{sentence}, while bringing supporting systems experience including {proof_fragment}."
+        return f"{sentence}."
     if context.theme_selection.adjacent_background_overlap and not context.theme_selection.direct_background_overlap:
         if context.theme_selection.growth_overlap:
             sentence = (

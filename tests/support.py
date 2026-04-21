@@ -76,6 +76,31 @@ def create_minimal_project(root: Path) -> None:
         ),
         encoding="utf-8",
     )
+    (outreach_dir / "candidate-interest-areas.yaml").write_text(
+        "\n".join(
+            [
+                "version: 1",
+                "areas:",
+                "  - area_id: agentic_ai",
+                "    label: agentic AI systems",
+                "    keywords: [agentic ai, ai agent, ai agents, multi-agent, tool calling, tool use, workflow orchestration, planning, reasoning, copilots, assistants]",
+                "    interest_overlap_sentence: That is the kind of agentic AI work I'm actively building toward through academic and personal projects, and I want to keep growing in.",
+                "    snippet_interest_sentence: He's actively building toward the role's focus on {focus} through academic and personal projects.",
+                "  - area_id: applied_ai",
+                "    label: applied AI systems",
+                "    keywords: [applied ai, generative ai, machine learning, deep learning, llm, large language model, ai applications, ai products, model inference, model serving]",
+                "    interest_overlap_sentence: That is the kind of applied AI work I'm actively building toward through academic and personal projects, and I want to keep growing in.",
+                "    snippet_interest_sentence: He's actively building toward the role's focus on {focus} through academic and personal projects.",
+                "  - area_id: ai_platform_infrastructure",
+                "    label: AI platform and infrastructure",
+                "    keywords: [ai platform, ai infrastructure, mlops, llm platform, rag, vector database, vector search, evaluation, model serving, inference pipelines, prompt orchestration]",
+                "    interest_overlap_sentence: That is the kind of AI platform work I'm actively building toward through academic and personal projects, and I want to keep growing in.",
+                "    snippet_interest_sentence: He's actively building toward the role's focus on {focus} through academic and personal projects.",
+                "",
+            ]
+        ),
+        encoding="utf-8",
+    )
 
     secrets_dir = root / "secrets"
     secrets_dir.mkdir(parents=True, exist_ok=True)
