@@ -1458,7 +1458,7 @@ def test_email_discovery_stage_processes_all_pending_contacts_before_advancing(
     ]
 
 
-def test_email_discovery_stage_escalates_when_bounded_send_set_is_exhausted(
+def test_email_discovery_stage_waits_for_provider_cooldown_without_exhausting_contact(
     tmp_path: Path,
 ) -> None:
     project_root = bootstrap_project(tmp_path)
@@ -1502,13 +1502,18 @@ def test_email_discovery_stage_escalates_when_bounded_send_set_is_exhausted(
             email_finder_providers=(
                 FakeEmailFinderProvider(
                     provider_name="prospeo",
-                    requires_domain=True,
-                    responses=[],
+                    requires_domain=False,
+                    responses=[{"outcome": "rate_limited"}],
                 ),
                 FakeEmailFinderProvider(
                     provider_name="getprospect",
-                    requires_domain=True,
-                    responses=[],
+                    requires_domain=False,
+                    responses=[
+                        {
+                            "outcome": "provider_error",
+                            "message": "GetProspect request failed with HTTP 403.",
+                        }
+                    ],
                 ),
                 FakeEmailFinderProvider(
                     provider_name="hunter",
@@ -1546,6 +1551,105 @@ def test_email_discovery_stage_escalates_when_bounded_send_set_is_exhausted(
     assert execution.selected_work is not None
     assert execution.selected_work.action_id == ACTION_RUN_ROLE_TARGETED_EMAIL_DISCOVERY
     assert updated_run is not None
+    assert updated_run.run_status == RUN_STATUS_IN_PROGRESS
+    assert updated_run.current_stage == "email_discovery"
+    assert "provider cooldowns to expire" in (updated_run.run_summary or "")
+    assert posting_status == "requires_contacts"
+    assert dict(contact_row) == {
+        "contact_status": "identified",
+        "discovery_summary": "rate_limited",
+    }
+    assert link_row["link_level_status"] == "shortlisted"
+
+
+def test_email_discovery_stage_escalates_when_bounded_send_set_is_terminally_exhausted(
+    tmp_path: Path,
+) -> None:
+    project_root = bootstrap_project(tmp_path)
+    paths = ProjectPaths.from_root(project_root)
+    connection = connect_database(project_root / "job_hunt_copilot.db")
+    lead_id, job_posting_id = seed_role_targeted_posting(
+        connection,
+        posting_status="requires_contacts",
+    )
+    seed_approved_tailoring_run(connection, job_posting_id=job_posting_id)
+    seed_shortlisted_contact(
+        connection,
+        contact_id="ct_exhausted_terminal",
+        job_posting_contact_id="jpc_exhausted_terminal",
+        job_posting_id=job_posting_id,
+        display_name="Priya Recruiter",
+        recipient_type="recruiter",
+        position_title="Technical Recruiter",
+        provider_person_id="pp_exhausted_terminal",
+    )
+    resume_agent(
+        connection,
+        manual_command="jhc-agent-start",
+        timestamp="2026-04-08T00:17:30Z",
+    )
+    pipeline_run, _ = ensure_role_targeted_pipeline_run(
+        connection,
+        lead_id=lead_id,
+        job_posting_id=job_posting_id,
+        current_stage="email_discovery",
+        started_at="2026-04-08T00:18:00Z",
+    )
+
+    execution = run_supervisor_cycle(
+        connection,
+        paths,
+        trigger_type="launchd_heartbeat",
+        scheduler_name="launchd",
+        started_at="2026-04-08T00:19:00Z",
+        action_dependencies=SupervisorActionDependencies(
+            email_finder_providers=(
+                FakeEmailFinderProvider(
+                    provider_name="prospeo",
+                    requires_domain=False,
+                    responses=[{"outcome": "not_found"}],
+                ),
+                FakeEmailFinderProvider(
+                    provider_name="getprospect",
+                    requires_domain=False,
+                    responses=[{"outcome": "not_found"}],
+                ),
+                FakeEmailFinderProvider(
+                    provider_name="hunter",
+                    responses=[{"outcome": "not_found"}],
+                ),
+            ),
+        ),
+    )
+    updated_run = get_pipeline_run(connection, pipeline_run.pipeline_run_id)
+    posting_status = connection.execute(
+        """
+        SELECT posting_status
+        FROM job_postings
+        WHERE job_posting_id = ?
+        """,
+        (job_posting_id,),
+    ).fetchone()[0]
+    contact_row = connection.execute(
+        """
+        SELECT contact_status, discovery_summary
+        FROM contacts
+        WHERE contact_id = 'ct_exhausted_terminal'
+        """
+    ).fetchone()
+    link_row = connection.execute(
+        """
+        SELECT link_level_status
+        FROM job_posting_contacts
+        WHERE job_posting_contact_id = 'jpc_exhausted_terminal'
+        """
+    ).fetchone()
+    connection.close()
+
+    assert execution.cycle.result == SUPERVISOR_CYCLE_RESULT_SUCCESS
+    assert execution.selected_work is not None
+    assert execution.selected_work.action_id == ACTION_RUN_ROLE_TARGETED_EMAIL_DISCOVERY
+    assert updated_run is not None
     assert updated_run.run_status == RUN_STATUS_ESCALATED
     assert updated_run.current_stage == "email_discovery"
     assert "exhausted the current send set" in (updated_run.last_error_summary or "")
@@ -1555,6 +1659,92 @@ def test_email_discovery_stage_escalates_when_bounded_send_set_is_exhausted(
         "discovery_summary": "all_providers_exhausted",
     }
     assert link_row["link_level_status"] == "exhausted"
+
+
+def test_email_discovery_run_waiting_for_provider_cooldown_does_not_block_new_posting_bootstrap(
+    tmp_path: Path,
+) -> None:
+    project_root = bootstrap_project(tmp_path)
+    paths = ProjectPaths.from_root(project_root)
+    connection = connect_database(project_root / "job_hunt_copilot.db")
+    lead_id, job_posting_id = seed_role_targeted_posting(
+        connection,
+        company_name="Acme Robotics",
+        role_title="Staff Software Engineer / AI",
+        posting_status="requires_contacts",
+        timestamp="2026-04-08T00:00:00Z",
+    )
+    seed_approved_tailoring_run(
+        connection,
+        job_posting_id=job_posting_id,
+        timestamp="2026-04-08T00:01:00Z",
+    )
+    seed_shortlisted_contact(
+        connection,
+        contact_id="ct_cooldown_wait",
+        job_posting_contact_id="jpc_cooldown_wait",
+        job_posting_id=job_posting_id,
+        company_name="Acme Robotics",
+        display_name="Priya Recruiter",
+        recipient_type="recruiter",
+        position_title="Technical Recruiter",
+        created_at="2026-04-08T00:02:00Z",
+    )
+    connection.execute(
+        """
+        INSERT INTO provider_budget_state (
+          provider_name, remaining_credits, credit_limit, cooldown_until,
+          cooldown_reason, cooldown_set_at, updated_at
+        ) VALUES (?, ?, ?, ?, ?, ?, ?)
+        """,
+        (
+            "hunter",
+            0,
+            50,
+            "2026-04-08T00:30:00Z",
+            "rate_limited",
+            "2026-04-08T00:15:00Z",
+            "2026-04-08T00:15:00Z",
+        ),
+    )
+    resume_agent(
+        connection,
+        manual_command="jhc-agent-start",
+        timestamp="2026-04-08T00:16:00Z",
+    )
+    ensure_role_targeted_pipeline_run(
+        connection,
+        lead_id=lead_id,
+        job_posting_id=job_posting_id,
+        current_stage="email_discovery",
+        started_at="2026-04-08T00:17:00Z",
+    )
+    _, next_job_posting_id = seed_role_targeted_posting(
+        connection,
+        lead_id="ld_downstream_discovery_cooldown",
+        job_posting_id="jp_downstream_discovery_cooldown",
+        lead_identity_key="next-wave-systems|backend-engineer",
+        posting_identity_key="next-wave-systems|backend-engineer|remote",
+        company_name="Next Wave Systems",
+        role_title="Backend Engineer",
+        posting_status="sourced",
+        timestamp="2026-04-08T00:18:00Z",
+    )
+
+    execution = run_supervisor_cycle(
+        connection,
+        paths,
+        trigger_type="launchd_heartbeat",
+        scheduler_name="launchd",
+        started_at="2026-04-08T00:20:00Z",
+    )
+    connection.close()
+
+    assert execution.cycle.result == SUPERVISOR_CYCLE_RESULT_SUCCESS
+    assert execution.selected_work is not None
+    assert execution.selected_work.action_id == ACTION_BOOTSTRAP_ROLE_TARGETED_RUN
+    assert execution.selected_work.work_id == next_job_posting_id
+    assert execution.selected_work.job_posting_id == next_job_posting_id
 
 
 def test_sending_stage_drafts_ready_send_set_and_stays_active_while_more_sends_are_delayed(

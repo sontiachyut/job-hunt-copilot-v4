@@ -10,11 +10,15 @@ from job_hunt_copilot.bootstrap import run_bootstrap
 from job_hunt_copilot.email_discovery import (
     APOLLO_API_USER_AGENT,
     ApolloResolvedCompany,
+    CONTACT_STATUS_IDENTIFIED,
     CONTACT_STATUS_EXHAUSTED,
     CONTACT_STATUS_WORKING_EMAIL_FOUND,
     ConfiguredApolloClient,
     DISCOVERY_OUTCOME_DOMAIN_UNRESOLVED,
     DISCOVERY_OUTCOME_NOT_FOUND,
+    DISCOVERY_OUTCOME_PROVIDER_ERROR,
+    DISCOVERY_OUTCOME_QUOTA_EXHAUSTED,
+    DISCOVERY_OUTCOME_RATE_LIMITED,
     EmailDiscoveryError,
     EmailDiscoveryProviderResult,
     FEEDBACK_REUSE_PROVIDER_NAME,
@@ -1634,7 +1638,7 @@ def test_email_discovery_records_domain_unresolved_but_continues_hunter(tmp_path
     connection.close()
 
 
-def test_email_discovery_treats_domain_unresolved_as_provider_exhaustion(tmp_path: Path):
+def test_email_discovery_does_not_exhaust_contact_when_transient_provider_failure_remains(tmp_path: Path):
     project_root = bootstrap_project(tmp_path)
     paths = ProjectPaths.from_root(project_root)
     connection = connect_database(project_root / "job_hunt_copilot.db")
@@ -1685,8 +1689,8 @@ def test_email_discovery_treats_domain_unresolved_as_provider_exhaustion(tmp_pat
         """
     ).fetchone()
     assert dict(contact_row) == {
-        "contact_status": CONTACT_STATUS_EXHAUSTED,
-        "discovery_summary": "all_providers_exhausted",
+        "contact_status": CONTACT_STATUS_IDENTIFIED,
+        "discovery_summary": DISCOVERY_OUTCOME_DOMAIN_UNRESOLVED,
     }
 
     link_row = connection.execute(
@@ -1696,7 +1700,22 @@ def test_email_discovery_treats_domain_unresolved_as_provider_exhaustion(tmp_pat
         WHERE job_posting_contact_id = 'jpc_target'
         """
     ).fetchone()
-    assert link_row["link_level_status"] == POSTING_CONTACT_STATUS_EXHAUSTED
+    assert link_row["link_level_status"] == POSTING_CONTACT_STATUS_SHORTLISTED
+
+    hunter_budget_row = connection.execute(
+        """
+        SELECT provider_name, remaining_credits, credit_limit, cooldown_until, cooldown_reason
+        FROM provider_budget_state
+        WHERE provider_name = 'hunter'
+        """
+    ).fetchone()
+    assert dict(hunter_budget_row) == {
+        "provider_name": "hunter",
+        "remaining_credits": 0,
+        "credit_limit": 50,
+        "cooldown_until": "2026-04-06T22:02:30Z",
+        "cooldown_reason": DISCOVERY_OUTCOME_RATE_LIMITED,
+    }
 
     unresolved_row = connection.execute(
         """
@@ -1705,7 +1724,114 @@ def test_email_discovery_treats_domain_unresolved_as_provider_exhaustion(tmp_pat
         WHERE contact_id = 'ct_target'
         """
     ).fetchone()
-    assert unresolved_row["unresolved_reason"] == "contact_exhausted"
+    assert unresolved_row["unresolved_reason"] == "latest_outcome_domain_unresolved"
+
+    connection.close()
+
+
+def test_email_discovery_persists_provider_cooldown_for_transient_provider_unavailability(tmp_path: Path):
+    project_root = bootstrap_project(tmp_path)
+    paths = ProjectPaths.from_root(project_root)
+    connection = connect_database(project_root / "job_hunt_copilot.db")
+    seed_search_ready_posting(
+        connection,
+        paths,
+        source_url="https://www.linkedin.com/jobs/view/123",
+    )
+    seed_linked_contact(connection)
+
+    providers = (
+        FakeEmailFinderProvider(
+            provider_name="prospeo",
+            responses=[
+                {
+                    "outcome": DISCOVERY_OUTCOME_RATE_LIMITED,
+                    "remaining_credits": 12,
+                    "credit_limit": 100,
+                }
+            ],
+            requires_domain=False,
+        ),
+        FakeEmailFinderProvider(
+            provider_name="getprospect",
+            responses=[
+                {
+                    "outcome": DISCOVERY_OUTCOME_PROVIDER_ERROR,
+                    "message": "GetProspect request failed with HTTP 403.",
+                }
+            ],
+            requires_domain=False,
+        ),
+        FakeEmailFinderProvider(
+            provider_name="hunter",
+            responses=[
+                {
+                    "outcome": DISCOVERY_OUTCOME_QUOTA_EXHAUSTED,
+                    "remaining_credits": 0,
+                    "credit_limit": 50,
+                    "reset_at": "2026-04-07T00:00:00Z",
+                }
+            ],
+            requires_domain=False,
+        ),
+    )
+
+    result = run_email_discovery_for_contact(
+        project_root=project_root,
+        job_posting_id="jp_search",
+        contact_id="ct_target",
+        providers=providers,
+        current_time="2026-04-06T21:48:00Z",
+    )
+
+    contact_row = connection.execute(
+        """
+        SELECT contact_status, discovery_summary
+        FROM contacts
+        WHERE contact_id = 'ct_target'
+        """
+    ).fetchone()
+    link_row = connection.execute(
+        """
+        SELECT link_level_status
+        FROM job_posting_contacts
+        WHERE job_posting_contact_id = 'jpc_target'
+        """
+    ).fetchone()
+    budget_rows = [
+        dict(row)
+        for row in connection.execute(
+            """
+            SELECT provider_name, cooldown_until, cooldown_reason
+            FROM provider_budget_state
+            ORDER BY provider_name ASC
+            """
+        ).fetchall()
+    ]
+
+    assert result.outcome == DISCOVERY_OUTCOME_QUOTA_EXHAUSTED
+    assert dict(contact_row) == {
+        "contact_status": CONTACT_STATUS_IDENTIFIED,
+        "discovery_summary": DISCOVERY_OUTCOME_QUOTA_EXHAUSTED,
+    }
+    assert link_row["link_level_status"] == POSTING_CONTACT_STATUS_SHORTLISTED
+    assert budget_rows == [
+        {
+            "provider_name": "getprospect",
+            "cooldown_until": "2026-04-06T22:03:00Z",
+            "cooldown_reason": DISCOVERY_OUTCOME_PROVIDER_ERROR,
+        },
+        {
+            "provider_name": "hunter",
+            "cooldown_until": "2026-04-07T00:00:00Z",
+            "cooldown_reason": DISCOVERY_OUTCOME_QUOTA_EXHAUSTED,
+        },
+        {
+            "provider_name": "prospeo",
+            "cooldown_until": "2026-04-06T22:03:00Z",
+            "cooldown_reason": DISCOVERY_OUTCOME_RATE_LIMITED,
+        },
+    ]
 
     connection.close()
 

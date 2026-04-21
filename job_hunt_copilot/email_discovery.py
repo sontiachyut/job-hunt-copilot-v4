@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from copy import deepcopy
+from datetime import datetime, timedelta, timezone
 import html
 import json
 import re
@@ -86,6 +87,25 @@ PROSPEO_ACCOUNT_URL = "https://api.prospeo.io/account-information"
 GETPROSPECT_EMAIL_FINDER_URL = "https://api.getprospect.com/v2/email-finder"
 HUNTER_EMAIL_FINDER_URL = "https://api.hunter.io/v2/email-finder"
 HUNTER_ACCOUNT_URL = "https://api.hunter.io/v2/account"
+
+DISCOVERY_TRANSIENT_PROVIDER_COOLDOWN_MINUTES = 15
+DISCOVERY_QUOTA_EXHAUSTED_FALLBACK_COOLDOWN_HOURS = 24
+DISCOVERY_PROVIDER_COOLDOWN_OUTCOMES = frozenset(
+    {
+        DISCOVERY_OUTCOME_RATE_LIMITED,
+        DISCOVERY_OUTCOME_QUOTA_EXHAUSTED,
+        DISCOVERY_OUTCOME_NETWORK_ERROR,
+        DISCOVERY_OUTCOME_PROVIDER_ERROR,
+    }
+)
+DISCOVERY_PROVIDER_EXHAUSTION_OUTCOMES = frozenset(
+    {
+        DISCOVERY_OUTCOME_DOMAIN_UNRESOLVED,
+        DISCOVERY_OUTCOME_NOT_FOUND,
+        DISCOVERY_OUTCOME_BOUNCED_MATCH,
+        DISCOVERY_OUTCOME_SKIPPED_BOUNCED_PROVIDER,
+    }
+)
 
 OBFUSCATED_NAME_RE = re.compile(r"[*•·]|(?:[A-Za-z]{2,}\*{2,})|(?:\*{2,}[A-Za-z]{2,})")
 EMAIL_RE = re.compile(r"^[^@\s]+@[^@\s]+\.[^@\s]+$")
@@ -1710,6 +1730,22 @@ def run_email_discovery_for_contact(
                         )
                     continue
 
+                if _provider_cooldown_active(
+                    connection,
+                    provider_name=provider_name,
+                    current_time=timestamp,
+                ):
+                    provider_steps.append(
+                        _provider_step_payload(
+                            _build_provider_cooldown_skip_result(
+                                connection,
+                                provider_name=provider_name,
+                                current_time=timestamp,
+                            )
+                        )
+                    )
+                    continue
+
                 raw_result = provider.discover_email(
                     contact=target_row,
                     posting=target_row,
@@ -1907,6 +1943,22 @@ def run_general_learning_email_discovery(
                             contact_id=contact_id,
                             created_at=timestamp,
                         )
+                    continue
+
+                if _provider_cooldown_active(
+                    connection,
+                    provider_name=provider_name,
+                    current_time=timestamp,
+                ):
+                    provider_steps.append(
+                        _provider_step_payload(
+                            _build_provider_cooldown_skip_result(
+                                connection,
+                                provider_name=provider_name,
+                                current_time=timestamp,
+                            )
+                        )
+                    )
                     continue
 
                 raw_result = provider.discover_email(
@@ -2594,6 +2646,215 @@ def _build_default_email_finder_providers(paths: ProjectPaths) -> tuple[EmailFin
     )
 
 
+def _parse_iso_datetime(value: str) -> datetime:
+    normalized = value.strip()
+    if normalized.endswith("Z"):
+        normalized = normalized[:-1] + "+00:00"
+    parsed = datetime.fromisoformat(normalized)
+    if parsed.tzinfo is None:
+        parsed = parsed.replace(tzinfo=timezone.utc)
+    return parsed.astimezone(timezone.utc)
+
+
+def _isoformat_utc(value: datetime) -> str:
+    return value.astimezone(timezone.utc).replace(microsecond=0).isoformat().replace("+00:00", "Z")
+
+
+def _resolve_provider_cooldown_until(
+    *,
+    result: EmailDiscoveryProviderResult,
+    current_time: str,
+) -> str | None:
+    if result.outcome == DISCOVERY_OUTCOME_QUOTA_EXHAUSTED:
+        reset_at = _normalize_optional_text(result.reset_at)
+        if reset_at is not None:
+            try:
+                reset_dt = _parse_iso_datetime(reset_at)
+                if reset_dt > _parse_iso_datetime(current_time):
+                    return _isoformat_utc(reset_dt)
+            except ValueError:
+                pass
+        return _isoformat_utc(
+            _parse_iso_datetime(current_time)
+            + timedelta(hours=DISCOVERY_QUOTA_EXHAUSTED_FALLBACK_COOLDOWN_HOURS)
+        )
+    if result.outcome in {
+        DISCOVERY_OUTCOME_RATE_LIMITED,
+        DISCOVERY_OUTCOME_NETWORK_ERROR,
+        DISCOVERY_OUTCOME_PROVIDER_ERROR,
+    }:
+        return _isoformat_utc(
+            _parse_iso_datetime(current_time)
+            + timedelta(minutes=DISCOVERY_TRANSIENT_PROVIDER_COOLDOWN_MINUTES)
+        )
+    return None
+
+
+def _provider_cooldown_active(
+    connection: sqlite3.Connection,
+    *,
+    provider_name: str,
+    current_time: str,
+) -> bool:
+    row = connection.execute(
+        """
+        SELECT cooldown_until
+        FROM provider_budget_state
+        WHERE provider_name = ?
+        """,
+        (provider_name,),
+    ).fetchone()
+    if row is None:
+        return False
+    cooldown_until = _normalize_optional_text(row["cooldown_until"])
+    if cooldown_until is None:
+        return False
+    return _parse_iso_datetime(cooldown_until) > _parse_iso_datetime(current_time)
+
+
+def _build_provider_cooldown_skip_result(
+    connection: sqlite3.Connection,
+    *,
+    provider_name: str,
+    current_time: str,
+) -> EmailDiscoveryProviderResult:
+    row = connection.execute(
+        """
+        SELECT remaining_credits, credit_limit, reset_at, cooldown_until, cooldown_reason, cooldown_message
+        FROM provider_budget_state
+        WHERE provider_name = ?
+        """,
+        (provider_name,),
+    ).fetchone()
+    if row is None:
+        return EmailDiscoveryProviderResult(
+            provider_name=provider_name,
+            outcome=DISCOVERY_OUTCOME_PROVIDER_ERROR,
+            message="Provider cooldown is active for this provider.",
+        )
+    cooldown_until = _normalize_optional_text(row["cooldown_until"])
+    cooldown_reason = _normalize_optional_text(row["cooldown_reason"]) or DISCOVERY_OUTCOME_PROVIDER_ERROR
+    cooldown_message = _normalize_optional_text(row["cooldown_message"]) or "Provider cooldown is active."
+    if cooldown_until is not None:
+        cooldown_message = f"{cooldown_message} Cooldown active until {cooldown_until}."
+    return EmailDiscoveryProviderResult(
+        provider_name=provider_name,
+        outcome=cooldown_reason,
+        remaining_credits=_normalize_optional_int(row["remaining_credits"]),
+        credit_limit=_normalize_optional_int(row["credit_limit"]),
+        reset_at=_normalize_optional_text(row["reset_at"]),
+        message=cooldown_message,
+    )
+
+
+def _list_pending_email_discovery_contact_ids(
+    connection: sqlite3.Connection,
+    *,
+    job_posting_id: str,
+) -> list[str]:
+    rows = connection.execute(
+        """
+        SELECT c.contact_id
+        FROM job_posting_contacts jpc
+        JOIN contacts c
+          ON c.contact_id = jpc.contact_id
+        WHERE jpc.job_posting_id = ?
+          AND jpc.link_level_status IN ('identified', 'shortlisted')
+          AND c.contact_status <> 'exhausted'
+          AND (
+            c.current_working_email IS NULL
+            OR TRIM(c.current_working_email) = ''
+          )
+        ORDER BY jpc.created_at ASC, jpc.job_posting_contact_id ASC
+        """,
+        (job_posting_id,),
+    ).fetchall()
+    return [str(row["contact_id"]) for row in rows]
+
+
+def is_role_targeted_email_discovery_contact_actionable_now(
+    connection: sqlite3.Connection,
+    *,
+    project_root: Path | str,
+    job_posting_id: str,
+    contact_id: str,
+    current_time: str,
+    providers: Sequence[EmailFinderProvider] | None = None,
+) -> bool:
+    paths = ProjectPaths.from_root(project_root)
+    target_row = _load_discovery_ready_contact_row(
+        connection,
+        job_posting_id=job_posting_id,
+        contact_id=contact_id,
+    )
+    feedback_reuse_state = _load_contact_feedback_reuse_state(
+        connection,
+        contact_id=contact_id,
+    )
+    company_domain = (
+        _resolved_company_domain_from_people_search_payload(paths, target_row)
+        or _derive_company_domain(target_row)
+    )
+    provider_sequence = tuple(providers) if providers is not None else _build_default_email_finder_providers(paths)
+    saw_eligible_provider = False
+    for provider in provider_sequence:
+        provider_name = _normalize_optional_text(getattr(provider, "provider_name", None))
+        if provider_name is None:
+            raise EmailDiscoveryError("Email-finder providers must expose a non-empty `provider_name`.")
+        if provider_name in feedback_reuse_state["blocked_providers"]:
+            continue
+        if provider_name == PROVIDER_NAME_PROSPEO:
+            linkedin_url = _normalize_optional_text(target_row.get("linkedin_url"))
+            first_name, last_name = _contact_name_parts(target_row)
+            eligible = bool(linkedin_url or (company_domain and first_name and last_name))
+        elif provider_name == PROVIDER_NAME_GETPROSPECT:
+            eligible = bool(company_domain and _best_known_contact_name(target_row))
+        elif provider_name == PROVIDER_NAME_HUNTER:
+            first_name, last_name = _contact_name_parts(target_row)
+            company_name = _normalize_optional_text(target_row.get("company_name"))
+            eligible = bool(first_name and last_name and (company_domain or company_name))
+        else:
+            requires_domain = bool(getattr(provider, "requires_domain", False))
+            eligible = not requires_domain or company_domain is not None
+        if not eligible:
+            continue
+        saw_eligible_provider = True
+        if not _provider_cooldown_active(
+            connection,
+            provider_name=provider_name,
+            current_time=current_time,
+        ):
+            return True
+    return not saw_eligible_provider
+
+
+def is_role_targeted_email_discovery_actionable_now(
+    connection: sqlite3.Connection,
+    *,
+    project_root: Path | str,
+    job_posting_id: str,
+    current_time: str,
+    providers: Sequence[EmailFinderProvider] | None = None,
+) -> bool:
+    pending_contact_ids = _list_pending_email_discovery_contact_ids(
+        connection,
+        job_posting_id=job_posting_id,
+    )
+    if not pending_contact_ids:
+        return False
+    return any(
+        is_role_targeted_email_discovery_contact_actionable_now(
+            connection,
+            project_root=project_root,
+            job_posting_id=job_posting_id,
+            contact_id=contact_id,
+            current_time=current_time,
+            providers=providers,
+        )
+        for contact_id in pending_contact_ids
+    )
+
+
 def _normalize_email_finder_provider_result(
     payload: EmailDiscoveryProviderResult | Mapping[str, Any],
     *,
@@ -2918,7 +3179,8 @@ def _persist_provider_budget_signal(
 
     current_state = connection.execute(
         """
-        SELECT remaining_credits, credit_limit, reset_at
+        SELECT remaining_credits, credit_limit, reset_at, cooldown_until, cooldown_reason,
+               cooldown_message, cooldown_set_at
         FROM provider_budget_state
         WHERE provider_name = ?
         """,
@@ -2940,19 +3202,60 @@ def _persist_provider_budget_signal(
         if result.reset_at is not None
         else (_normalize_optional_text(current_state["reset_at"]) if current_state is not None else None)
     )
+    next_cooldown_until = None
+    next_cooldown_reason = None
+    next_cooldown_message = None
+    next_cooldown_set_at = None
+    cooldown_until = _resolve_provider_cooldown_until(
+        result=result,
+        current_time=created_at,
+    )
+    if cooldown_until is not None:
+        current_cooldown_until = (
+            _normalize_optional_text(current_state["cooldown_until"])
+            if current_state is not None
+            else None
+        )
+        if (
+            current_cooldown_until is not None
+            and _parse_iso_datetime(current_cooldown_until) > _parse_iso_datetime(cooldown_until)
+        ):
+            next_cooldown_until = current_cooldown_until
+            next_cooldown_reason = (
+                _normalize_optional_text(current_state["cooldown_reason"])
+                or result.outcome
+            )
+            next_cooldown_message = (
+                _normalize_optional_text(current_state["cooldown_message"])
+                or result.message
+            )
+            next_cooldown_set_at = (
+                _normalize_optional_text(current_state["cooldown_set_at"])
+                or created_at
+            )
+        else:
+            next_cooldown_until = cooldown_until
+            next_cooldown_reason = result.outcome
+            next_cooldown_message = result.message
+            next_cooldown_set_at = created_at
 
     if current_state is None:
         connection.execute(
             """
             INSERT INTO provider_budget_state (
-              provider_name, remaining_credits, credit_limit, reset_at, updated_at
-            ) VALUES (?, ?, ?, ?, ?)
+              provider_name, remaining_credits, credit_limit, reset_at, cooldown_until,
+              cooldown_reason, cooldown_message, cooldown_set_at, updated_at
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
             """,
             (
                 provider_name,
                 next_remaining,
                 next_limit,
                 next_reset,
+                next_cooldown_until,
+                next_cooldown_reason,
+                next_cooldown_message,
+                next_cooldown_set_at,
                 created_at,
             ),
         )
@@ -2960,13 +3263,18 @@ def _persist_provider_budget_signal(
         connection.execute(
             """
             UPDATE provider_budget_state
-            SET remaining_credits = ?, credit_limit = ?, reset_at = ?, updated_at = ?
+            SET remaining_credits = ?, credit_limit = ?, reset_at = ?, cooldown_until = ?,
+                cooldown_reason = ?, cooldown_message = ?, cooldown_set_at = ?, updated_at = ?
             WHERE provider_name = ?
             """,
             (
                 next_remaining,
                 next_limit,
                 next_reset,
+                next_cooldown_until,
+                next_cooldown_reason,
+                next_cooldown_message,
+                next_cooldown_set_at,
                 created_at,
                 provider_name,
             ),
@@ -3286,15 +3594,12 @@ def _all_email_finder_providers_exhausted(
         SELECT DISTINCT provider_name
         FROM provider_budget_events
         WHERE related_contact_id = ?
-          AND event_type IN (?, ?, ?, ?, ?, ?, ?)
+          AND event_type IN (?, ?, ?, ?)
         """,
         (
             contact_id,
             DISCOVERY_OUTCOME_DOMAIN_UNRESOLVED,
             DISCOVERY_OUTCOME_NOT_FOUND,
-            DISCOVERY_OUTCOME_RATE_LIMITED,
-            DISCOVERY_OUTCOME_QUOTA_EXHAUSTED,
-            DISCOVERY_OUTCOME_INVALID_API_KEY,
             DISCOVERY_OUTCOME_BOUNCED_MATCH,
             DISCOVERY_OUTCOME_SKIPPED_BOUNCED_PROVIDER,
         ),
