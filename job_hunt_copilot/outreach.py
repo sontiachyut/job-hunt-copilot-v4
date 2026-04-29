@@ -1327,7 +1327,7 @@ def evaluate_role_targeted_send_set(
             )
             for candidate in same_company_repeat_candidates
         )
-    ready_for_outreach = bool(selected_contacts) and all(
+    ready_for_outreach = any(
         contact.readiness_state == _CANDIDATE_STATE_READY for contact in selected_contacts
     )
 
@@ -1546,36 +1546,67 @@ def _select_send_set_candidates(
 ) -> list[tuple[str, str, _CandidateRow]]:
     selected: list[tuple[str, str, _CandidateRow]] = []
     selected_contact_ids: set[str] = set()
+    filled_primary_slots: set[str] = set()
 
-    for slot_name, recipient_types in SEND_SET_PRIMARY_SLOTS:
-        candidate = _pick_best_candidate(
-            candidates,
-            allowed_recipient_types=recipient_types,
-            selected_contact_ids=selected_contact_ids,
+    def append_primary_candidates(
+        *,
+        allowed_selection_states: frozenset[str],
+        selection_kind: str,
+    ) -> None:
+        for slot_name, recipient_types in SEND_SET_PRIMARY_SLOTS:
+            if len(selected) >= AUTOMATIC_SEND_SET_LIMIT:
+                return
+            if slot_name in filled_primary_slots:
+                continue
+            candidate = _pick_best_candidate(
+                candidates,
+                allowed_recipient_types=recipient_types,
+                selected_contact_ids=selected_contact_ids,
+                allowed_selection_states=allowed_selection_states,
+            )
+            if candidate is None:
+                continue
+            selected.append((slot_name, selection_kind, candidate))
+            selected_contact_ids.add(candidate.contact_id)
+            filled_primary_slots.add(slot_name)
+
+    def append_fallback_candidates(
+        *,
+        allowed_selection_states: frozenset[str],
+        selection_kind: str,
+    ) -> None:
+        fallback_candidates = sorted(
+            (
+                candidate
+                for candidate in candidates
+                if candidate.contact_id not in selected_contact_ids
+                and candidate.selection_state in allowed_selection_states
+            ),
+            key=_fallback_sort_key,
         )
-        if candidate is None:
-            continue
-        selected.append((slot_name, "preferred", candidate))
-        selected_contact_ids.add(candidate.contact_id)
+        for candidate in fallback_candidates:
+            if len(selected) >= AUTOMATIC_SEND_SET_LIMIT:
+                return
+            selected.append((f"fallback_{len(selected) + 1}", selection_kind, candidate))
+            selected_contact_ids.add(candidate.contact_id)
 
-    if len(selected) >= AUTOMATIC_SEND_SET_LIMIT:
-        return selected[:AUTOMATIC_SEND_SET_LIMIT]
-
-    fallback_candidates = sorted(
-        (
-            candidate
-            for candidate in candidates
-            if candidate.contact_id not in selected_contact_ids
-            and candidate.selection_state in {_CANDIDATE_STATE_READY, _CANDIDATE_STATE_NEEDS_EMAIL}
-        ),
-        key=_fallback_sort_key,
+    append_primary_candidates(
+        allowed_selection_states=frozenset({_CANDIDATE_STATE_READY}),
+        selection_kind="preferred",
     )
-    for candidate in fallback_candidates:
-        if len(selected) >= AUTOMATIC_SEND_SET_LIMIT:
-            break
-        selected.append((f"fallback_{len(selected) + 1}", "fallback", candidate))
-        selected_contact_ids.add(candidate.contact_id)
-    return selected
+    append_fallback_candidates(
+        allowed_selection_states=frozenset({_CANDIDATE_STATE_READY}),
+        selection_kind="fallback",
+    )
+    append_primary_candidates(
+        allowed_selection_states=frozenset({_CANDIDATE_STATE_NEEDS_EMAIL}),
+        selection_kind="preferred",
+    )
+    append_fallback_candidates(
+        allowed_selection_states=frozenset({_CANDIDATE_STATE_NEEDS_EMAIL}),
+        selection_kind="fallback",
+    )
+    return selected[:AUTOMATIC_SEND_SET_LIMIT]
 
 
 def _pick_best_candidate(
@@ -1583,13 +1614,16 @@ def _pick_best_candidate(
     *,
     allowed_recipient_types: Sequence[str],
     selected_contact_ids: set[str],
+    allowed_selection_states: frozenset[str] = frozenset(
+        {_CANDIDATE_STATE_READY, _CANDIDATE_STATE_NEEDS_EMAIL}
+    ),
 ) -> _CandidateRow | None:
     eligible_candidates = [
         candidate
         for candidate in candidates
         if candidate.contact_id not in selected_contact_ids
         and candidate.recipient_type in allowed_recipient_types
-        and candidate.selection_state in {_CANDIDATE_STATE_READY, _CANDIDATE_STATE_NEEDS_EMAIL}
+        and candidate.selection_state in allowed_selection_states
     ]
     if not eligible_candidates:
         return None

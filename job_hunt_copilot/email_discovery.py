@@ -4372,7 +4372,10 @@ def _promote_posting_ready_for_outreach_if_eligible(
         previous_state=current_status,
         new_state=JOB_POSTING_STATUS_READY_FOR_OUTREACH,
         transition_timestamp=current_time,
-        transition_reason="The active autonomous send set is fully ready with usable emails for each selected contact.",
+        transition_reason=(
+            "The active autonomous send slice reached the send-ready threshold with at least "
+            "one selected contact holding a usable email."
+        ),
         lead_id=lead_id,
         job_posting_id=job_posting_id,
         contact_id=None,

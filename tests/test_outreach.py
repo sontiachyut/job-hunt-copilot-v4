@@ -748,7 +748,7 @@ def test_gmail_api_outreach_sender_builds_message_and_attachment(tmp_path: Path)
     assert attachment_parts[0].get_filename() == "resume.pdf"
 
 
-def test_send_set_waits_for_selected_contact_without_usable_email(tmp_path: Path):
+def test_send_set_advances_with_ready_subset_when_selected_contact_needs_email(tmp_path: Path):
     project_root, _ = bootstrap_project(tmp_path)
     connection = connect_database(project_root / "job_hunt_copilot.db")
     seed_posting(connection)
@@ -787,10 +787,69 @@ def test_send_set_waits_for_selected_contact_without_usable_email(tmp_path: Path
         local_timezone=ZoneInfo("UTC"),
     )
 
-    assert plan.posting_status_after_evaluation == JOB_POSTING_STATUS_REQUIRES_CONTACTS
-    assert plan.ready_for_outreach is False
-    assert [contact.contact_id for contact in plan.selected_contacts] == ["ct_r1", "ct_m1", "ct_e1"]
+    assert plan.posting_status_after_evaluation == JOB_POSTING_STATUS_READY_FOR_OUTREACH
+    assert plan.ready_for_outreach is True
+    assert [contact.contact_id for contact in plan.selected_contacts] == ["ct_r1", "ct_e1", "ct_m1"]
     assert [contact.contact_id for contact in plan.selected_contacts if contact.blocking_reason] == ["ct_m1"]
+
+    connection.close()
+
+
+def test_send_set_prefers_ready_fallback_before_pending_primary_slot(tmp_path: Path):
+    project_root, _ = bootstrap_project(tmp_path)
+    connection = connect_database(project_root / "job_hunt_copilot.db")
+    seed_posting(connection)
+    seed_linked_contact(
+        connection,
+        contact_id="ct_r1",
+        job_posting_contact_id="jpc_r1",
+        display_name="Priya Recruiter",
+        recipient_type=RECIPIENT_TYPE_RECRUITER,
+        current_working_email="priya@acme.example",
+        created_at="2026-04-06T20:01:00Z",
+    )
+    seed_linked_contact(
+        connection,
+        contact_id="ct_m1",
+        job_posting_contact_id="jpc_m1",
+        display_name="Morgan Manager",
+        recipient_type=RECIPIENT_TYPE_HIRING_MANAGER,
+        current_working_email=None,
+        created_at="2026-04-06T20:02:00Z",
+    )
+    seed_linked_contact(
+        connection,
+        contact_id="ct_e1",
+        job_posting_contact_id="jpc_e1",
+        display_name="Jamie Engineer",
+        recipient_type=RECIPIENT_TYPE_ENGINEER,
+        current_working_email=None,
+        created_at="2026-04-06T20:03:00Z",
+    )
+    seed_linked_contact(
+        connection,
+        contact_id="ct_a1",
+        job_posting_contact_id="jpc_a1",
+        display_name="Alex Alumni",
+        recipient_type=RECIPIENT_TYPE_ALUMNI,
+        current_working_email="alex@acme.example",
+        created_at="2026-04-06T20:04:00Z",
+    )
+
+    plan = evaluate_role_targeted_send_set(
+        connection,
+        job_posting_id="jp_outreach",
+        current_time="2026-04-06T20:10:00Z",
+        local_timezone=ZoneInfo("UTC"),
+    )
+
+    assert plan.ready_for_outreach is True
+    assert [contact.contact_id for contact in plan.selected_contacts] == ["ct_r1", "ct_a1", "ct_m1"]
+    assert [contact.selection_kind for contact in plan.selected_contacts] == [
+        "preferred",
+        "fallback",
+        "preferred",
+    ]
 
     connection.close()
 

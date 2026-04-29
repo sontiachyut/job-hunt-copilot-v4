@@ -4131,6 +4131,7 @@ def _execute_selected_work_unit(
             JOB_POSTING_STATUS_READY_FOR_OUTREACH,
             JOB_POSTING_STATUS_REQUIRES_CONTACTS,
             _list_pending_email_discovery_contact_ids,
+            _promote_posting_ready_for_outreach_if_eligible,
             is_role_targeted_email_discovery_contact_actionable_now,
             refresh_same_company_contact_frontier,
             run_email_discovery_for_contact,
@@ -4138,6 +4139,7 @@ def _execute_selected_work_unit(
         from .outreach import evaluate_role_targeted_send_set
 
         job_posting_id = _require_text(selected_work.job_posting_id, "job_posting_id")
+        lead_id = _require_text(selected_work.lead_id, "lead_id")
         posting_row = connection.execute(
             """
             SELECT posting_status
@@ -4198,6 +4200,14 @@ def _execute_selected_work_unit(
                 ),
             )
 
+        def _promote_ready_for_outreach_if_eligible() -> str:
+            return _promote_posting_ready_for_outreach_if_eligible(
+                connection,
+                job_posting_id=job_posting_id,
+                lead_id=lead_id,
+                current_time=timestamp,
+            )
+
         if current_posting_status == JOB_POSTING_STATUS_READY_FOR_OUTREACH:
             next_stage = "sending"
             run_summary = (
@@ -4205,6 +4215,23 @@ def _execute_selected_work_unit(
                 "for outreach and advanced the durable pipeline run directly to sending."
             )
         elif current_posting_status == JOB_POSTING_STATUS_REQUIRES_CONTACTS:
+            current_posting_status = _promote_ready_for_outreach_if_eligible()
+            if current_posting_status == JOB_POSTING_STATUS_READY_FOR_OUTREACH:
+                next_stage = "sending"
+                run_summary = (
+                    "Supervisor detected that the current send slice already had a ready "
+                    "subset and advanced the durable pipeline run directly to sending while "
+                    "later discovery remains available for unresolved contacts."
+                )
+                pipeline_run = advance_pipeline_run(
+                    connection,
+                    selected_work.work_id,
+                    current_stage=next_stage,
+                    run_summary=run_summary,
+                    timestamp=timestamp,
+                )
+                return pipeline_run, None, None
+
             def _escalate_exhausted_email_discovery() -> tuple[PipelineRunRecord, None, None]:
                 return (
                     escalate_pipeline_run(
@@ -4273,12 +4300,28 @@ def _execute_selected_work_unit(
                 remaining_actionable_contact_ids = _load_actionable_email_discovery_contact_ids(
                     remaining_pending_contact_ids
                 )
+                current_posting_status = _promote_ready_for_outreach_if_eligible()
                 refreshed_send_set_plan = evaluate_role_targeted_send_set(
                     connection,
                     job_posting_id=job_posting_id,
                     current_time=timestamp,
                 )
-                if remaining_pending_contact_ids:
+                if current_posting_status == JOB_POSTING_STATUS_READY_FOR_OUTREACH:
+                    next_stage = "sending"
+                    if remaining_pending_contact_ids:
+                        run_summary = (
+                            "Supervisor ran full-frontier email discovery for "
+                            f"{len(actionable_contact_ids)} shortlisted contacts and advanced the durable "
+                            "pipeline run to sending because the active send slice now has a ready "
+                            "subset while other contacts remain pending for later discovery."
+                        )
+                    else:
+                        run_summary = (
+                            "Supervisor ran full-frontier email discovery for "
+                            f"{len(actionable_contact_ids)} shortlisted contacts and advanced the durable "
+                            "pipeline run to sending once discovery settled across the current frontier."
+                        )
+                elif remaining_pending_contact_ids:
                     _force_requires_contacts()
                     next_stage = "email_discovery"
                     if remaining_actionable_contact_ids:

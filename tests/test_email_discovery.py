@@ -1470,6 +1470,88 @@ def test_email_discovery_stops_on_first_usable_result_and_persists_budget_state(
     connection.close()
 
 
+def test_email_discovery_promotes_posting_when_ready_subset_exists_but_other_contacts_still_pending(
+    tmp_path: Path,
+):
+    project_root = bootstrap_project(tmp_path)
+    paths = ProjectPaths.from_root(project_root)
+    connection = connect_database(project_root / "job_hunt_copilot.db")
+    seed_search_ready_posting(connection, paths)
+    seed_linked_contact(
+        connection,
+        contact_id="ct_ready",
+        job_posting_contact_id="jpc_ready",
+        display_name="Priya Recruiter",
+        full_name="Priya Recruiter",
+        first_name="Priya",
+        last_name="Recruiter",
+        linkedin_url="https://linkedin.example/priya",
+        position_title="Technical Recruiter",
+        recipient_type=RECIPIENT_TYPE_RECRUITER,
+        provider_person_id="pp_ready",
+        identity_key="apollo_person|pp_ready",
+        created_at="2026-04-06T21:30:00Z",
+    )
+    seed_linked_contact(
+        connection,
+        contact_id="ct_pending",
+        job_posting_contact_id="jpc_pending",
+        display_name="Morgan Manager",
+        full_name="Morgan Manager",
+        first_name="Morgan",
+        last_name="Manager",
+        linkedin_url="https://linkedin.example/morgan",
+        position_title="Engineering Manager",
+        recipient_type=RECIPIENT_TYPE_HIRING_MANAGER,
+        provider_person_id="pp_pending",
+        identity_key="apollo_person|pp_pending",
+        created_at="2026-04-06T21:31:00Z",
+    )
+
+    finder = FakeEmailFinderProvider(
+        provider_name="getprospect",
+        responses=[
+            {
+                "outcome": "found",
+                "email": "priya@acmerobotics.com",
+                "provider_verification_status": "valid",
+                "provider_score": "0.94",
+                "detected_pattern": "first",
+            }
+        ],
+    )
+
+    result = run_email_discovery_for_contact(
+        project_root=project_root,
+        job_posting_id="jp_search",
+        contact_id="ct_ready",
+        providers=(finder,),
+        current_time="2026-04-06T21:46:00Z",
+    )
+
+    posting_status = connection.execute(
+        "SELECT posting_status FROM job_postings WHERE job_posting_id = 'jp_search'"
+    ).fetchone()[0]
+    pending_row = connection.execute(
+        """
+        SELECT current_working_email, contact_status
+        FROM contacts
+        WHERE contact_id = 'ct_pending'
+        """
+    ).fetchone()
+
+    assert len(finder.calls) == 1
+    assert result.outcome == "found"
+    assert result.posting_status == "ready_for_outreach"
+    assert posting_status == "ready_for_outreach"
+    assert dict(pending_row) == {
+        "current_working_email": None,
+        "contact_status": CONTACT_STATUS_IDENTIFIED,
+    }
+
+    connection.close()
+
+
 def test_email_discovery_reuses_known_working_email_without_provider_calls(tmp_path: Path):
     project_root = bootstrap_project(tmp_path)
     paths = ProjectPaths.from_root(project_root)

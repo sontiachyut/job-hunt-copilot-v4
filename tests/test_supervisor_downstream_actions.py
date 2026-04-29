@@ -1242,6 +1242,92 @@ def test_email_discovery_stage_runs_and_stays_active_until_send_set_is_ready(
     assert (project_root / discovery_artifact_path).exists()
 
 
+def test_email_discovery_stage_advances_directly_when_ready_subset_already_exists(
+    tmp_path: Path,
+) -> None:
+    project_root = bootstrap_project(tmp_path)
+    paths = ProjectPaths.from_root(project_root)
+    connection = connect_database(project_root / "job_hunt_copilot.db")
+    lead_id, job_posting_id = seed_role_targeted_posting(
+        connection,
+        posting_status="requires_contacts",
+    )
+    seed_approved_tailoring_run(connection, job_posting_id=job_posting_id)
+    seed_shortlisted_contact(
+        connection,
+        contact_id="ct_ready_r1",
+        job_posting_contact_id="jpc_ready_r1",
+        job_posting_id=job_posting_id,
+        display_name="Priya Recruiter",
+        recipient_type="recruiter",
+        current_working_email="priya@acme.example",
+        position_title="Technical Recruiter",
+        provider_person_id="pp_ready_r1",
+        created_at="2026-04-08T00:15:00Z",
+    )
+    seed_shortlisted_contact(
+        connection,
+        contact_id="ct_pending_m1",
+        job_posting_contact_id="jpc_pending_m1",
+        job_posting_id=job_posting_id,
+        display_name="Morgan Manager",
+        recipient_type="hiring_manager",
+        position_title="Engineering Manager",
+        provider_person_id="pp_pending_m1",
+        created_at="2026-04-08T00:16:00Z",
+    )
+    resume_agent(
+        connection,
+        manual_command="jhc-agent-start",
+        timestamp="2026-04-08T00:17:00Z",
+    )
+    pipeline_run, _ = ensure_role_targeted_pipeline_run(
+        connection,
+        lead_id=lead_id,
+        job_posting_id=job_posting_id,
+        current_stage="email_discovery",
+        started_at="2026-04-08T00:18:00Z",
+    )
+
+    execution = run_supervisor_cycle(
+        connection,
+        paths,
+        trigger_type="launchd_heartbeat",
+        scheduler_name="launchd",
+        started_at="2026-04-08T00:19:00Z",
+    )
+    updated_run = get_pipeline_run(connection, pipeline_run.pipeline_run_id)
+    posting_status = connection.execute(
+        """
+        SELECT posting_status
+        FROM job_postings
+        WHERE job_posting_id = ?
+        """,
+        (job_posting_id,),
+    ).fetchone()[0]
+    discovery_attempt_count = connection.execute(
+        """
+        SELECT COUNT(*)
+        FROM discovery_attempts
+        WHERE job_posting_id = ?
+        """,
+        (job_posting_id,),
+    ).fetchone()[0]
+    connection.close()
+
+    assert execution.cycle.result == SUPERVISOR_CYCLE_RESULT_SUCCESS
+    assert execution.selected_work is not None
+    assert execution.selected_work.work_id == pipeline_run.pipeline_run_id
+    assert execution.selected_work.action_id == ACTION_RUN_ROLE_TARGETED_EMAIL_DISCOVERY
+    assert execution.incident is None
+    assert execution.review_packet is None
+    assert updated_run is not None
+    assert updated_run.run_status == RUN_STATUS_IN_PROGRESS
+    assert updated_run.current_stage == "sending"
+    assert posting_status == "ready_for_outreach"
+    assert discovery_attempt_count == 0
+
+
 def test_email_discovery_stage_advances_to_sending_when_send_set_becomes_ready(
     tmp_path: Path,
 ) -> None:
@@ -1342,6 +1428,123 @@ def test_email_discovery_stage_advances_to_sending_when_send_set_becomes_ready(
         "current_working_email": "priya@acme.example",
         "contact_status": "working_email_found",
     }
+
+
+def test_email_discovery_stage_advances_to_sending_with_ready_subset_while_other_contacts_remain_pending(
+    tmp_path: Path,
+) -> None:
+    project_root = bootstrap_project(tmp_path)
+    paths = ProjectPaths.from_root(project_root)
+    connection = connect_database(project_root / "job_hunt_copilot.db")
+    lead_id, job_posting_id = seed_role_targeted_posting(
+        connection,
+        posting_status="requires_contacts",
+    )
+    seed_approved_tailoring_run(connection, job_posting_id=job_posting_id)
+    seed_shortlisted_contact(
+        connection,
+        contact_id="ct_ready_r1",
+        job_posting_contact_id="jpc_ready_r1",
+        job_posting_id=job_posting_id,
+        display_name="Priya Recruiter",
+        recipient_type="recruiter",
+        position_title="Technical Recruiter",
+        provider_person_id="pp_ready_r1",
+        created_at="2026-04-08T00:15:00Z",
+    )
+    seed_shortlisted_contact(
+        connection,
+        contact_id="ct_pending_m1",
+        job_posting_contact_id="jpc_pending_m1",
+        job_posting_id=job_posting_id,
+        display_name="Morgan Manager",
+        recipient_type="hiring_manager",
+        position_title="Engineering Manager",
+        provider_person_id="pp_pending_m1",
+        created_at="2026-04-08T00:16:00Z",
+    )
+    resume_agent(
+        connection,
+        manual_command="jhc-agent-start",
+        timestamp="2026-04-08T00:17:00Z",
+    )
+    pipeline_run, _ = ensure_role_targeted_pipeline_run(
+        connection,
+        lead_id=lead_id,
+        job_posting_id=job_posting_id,
+        current_stage="email_discovery",
+        started_at="2026-04-08T00:18:00Z",
+    )
+    finder = FakeEmailFinderProvider(
+        provider_name="getprospect",
+        requires_domain=False,
+        responses=[
+            {
+                "outcome": "found",
+                "email": "priya@acme.example",
+                "provider_verification_status": "valid",
+                "provider_score": "0.94",
+                "detected_pattern": "first",
+            },
+            {
+                "outcome": "rate_limited",
+                "message": "Provider asked us to back off.",
+            },
+        ],
+    )
+
+    execution = run_supervisor_cycle(
+        connection,
+        paths,
+        trigger_type="launchd_heartbeat",
+        scheduler_name="launchd",
+        started_at="2026-04-08T00:19:00Z",
+        action_dependencies=SupervisorActionDependencies(
+            email_finder_providers=(finder,),
+        ),
+    )
+    updated_run = get_pipeline_run(connection, pipeline_run.pipeline_run_id)
+    posting_status = connection.execute(
+        """
+        SELECT posting_status
+        FROM job_postings
+        WHERE job_posting_id = ?
+        """,
+        (job_posting_id,),
+    ).fetchone()[0]
+    contact_rows = connection.execute(
+        """
+        SELECT contact_id, current_working_email, contact_status
+        FROM contacts
+        WHERE contact_id IN ('ct_ready_r1', 'ct_pending_m1')
+        ORDER BY contact_id
+        """
+    ).fetchall()
+    connection.close()
+
+    assert execution.cycle.result == SUPERVISOR_CYCLE_RESULT_SUCCESS
+    assert execution.selected_work is not None
+    assert execution.selected_work.work_id == pipeline_run.pipeline_run_id
+    assert execution.selected_work.action_id == ACTION_RUN_ROLE_TARGETED_EMAIL_DISCOVERY
+    assert execution.incident is None
+    assert execution.review_packet is None
+    assert len(finder.calls) == 2
+    assert updated_run is not None
+    assert updated_run.run_status == RUN_STATUS_IN_PROGRESS
+    assert updated_run.current_stage == "sending"
+    assert posting_status == "ready_for_outreach"
+    assert [dict(row) for row in contact_rows] == [
+        {
+            "contact_id": "ct_pending_m1",
+            "current_working_email": None,
+            "contact_status": "identified",
+        },
+        {
+            "contact_id": "ct_ready_r1",
+            "current_working_email": "priya@acme.example",
+            "contact_status": "working_email_found",
+        },
+    ]
 
 
 def test_email_discovery_stage_processes_all_pending_contacts_before_advancing(
