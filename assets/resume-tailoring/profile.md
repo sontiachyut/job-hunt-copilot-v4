@@ -15,7 +15,7 @@
 ## Education
 
 - **Arizona State University, Tempe, USA** — MS in Computer Science, GPA 3.96/4.00 (Aug 2024 – May 2026)
-- **Manipal Institute of Technology, India** — BTech in Electrical and Electronics Engineering, GPA 7.1/10 (Jul 2017 – Aug 2021)
+- **Manipal Institute of Technology, India** — BTech in Electrical and Electronics Engineering (Jul 2017 – Aug 2021)
 - **Coursework:** Advanced Operating Systems, Cloud Computing, Foundation of Algorithms, Statistical Machine Learning, Mobile Computing, Computer Networks, Data Structures and Algorithms, OOP, C++
 
 ## Work Experience
@@ -69,7 +69,7 @@ Golang, Python, Java, Kubernetes, Docker, PostgreSQL, Jenkins, GitLab CI/CD, Pro
 - **Stack:** Python, AWS IoT Greengrass v2, EC2, MQTT, SQS, AWS Lambda, S3, MTCNN, FaceNet
 - Developed real-time edge computing pipeline deploying AWS IoT Greengrass Core on EC2 for MTCNN-based face detection via MQTT streaming, achieving 100% accuracy on 100 frames with sub-second latency
 
-### Student Loan Retirement Matching Platform (Oct 2025)
+### Student Loan Retirement Matching Platform — Fund the Future Spark Challenge (2nd Place, $2,000) (Oct 2025)
 - **Stack:** React, TypeScript, AWS Lambda, DynamoDB, S3, AWS Bedrock
 - Won 2nd place at TIAA Spark Challenge 2025: Developed full-stack web application with serverless APIs for 45M+ eligible Americans under SECURE 2.0
 
@@ -244,7 +244,7 @@ Golang, Python, Java, Kubernetes, Docker, PostgreSQL, Jenkins, GitLab CI/CD, Pro
 - **Data:** 60 National Parks, multi-category species taxonomies, park acreage data
 - **GitHub:** https://github.com/sontiachyut/data-visualization
 
-### Student Loan Retirement Matching Platform — TIAA Spark Challenge (Oct 2025)
+### Student Loan Retirement Matching Platform — Fund the Future Spark Challenge (2nd Place, $2,000) (Oct 2025)
 - **Stack:** React, TypeScript, Vite, TailwindCSS, Recharts, Python, AWS Lambda (6 functions), AWS API Gateway (REST + WebSocket), AWS S3, AWS DynamoDB, AWS Amplify, AWS CloudWatch, Supabase (Auth + PostgreSQL with Row-Level Security), boto3, bcrypt
 - **What it is:** Full-stack web platform helping ASU employees use SECURE 2.0 provisions to match student loan payments toward retirement savings — built in 72 hours at TIAA x ASU Fund the Future Spark Challenge 2025
 - **Award: 2nd Place ($2,000)** — Team Bit by Bit (3 developers, 72-hour hackathon)
