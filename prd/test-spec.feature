@@ -1712,11 +1712,12 @@ Feature: Job Hunt Copilot next-build acceptance
       When the same `gmail_message_id` is encountered again later
       Then the duplicate email is ignored instead of overwriting or creating another collected-email unit
 
-    Scenario: Autonomous Gmail intake uses a durable history checkpoint for incremental polling
+    Scenario: Autonomous Gmail intake uses direct sender search while preserving the durable checkpoint
       Given autonomous Gmail intake has already persisted a mailbox history checkpoint
       When the next Gmail intake poll runs
-      Then the poll resumes incrementally from that checkpoint when Gmail history is still valid
-      And the system does not rely only on a bounded recent-message search to find new alerts
+      Then the poll searches directly for recent messages from `jobalerts-noreply@linkedin.com`
+      And already-collected `gmail_message_id` values are ignored
+      And the durable mailbox history checkpoint may still be refreshed for audit or future optimization
 
     Scenario: Checkpoint seed without new leads is recorded as auditable no-work
       Given autonomous Gmail intake needs to seed or refresh the mailbox history checkpoint

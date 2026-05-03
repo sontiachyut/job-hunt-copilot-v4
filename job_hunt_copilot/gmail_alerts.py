@@ -394,48 +394,32 @@ class GmailLinkedInAlertMailboxCollector:
         service = self._service_factory()
         checkpoint_before = _normalize_optional_text(mailbox_history_checkpoint)
         checkpoint_after = _gmail_current_mailbox_history_id(service)
-        poll_strategy = "recent_search_bootstrap"
+        poll_strategy = "recent_sender_search"
+        message_refs = _list_uncollected_gmail_message_refs(
+            service,
+            senders=self._senders,
+            existing_message_ids=set(existing_index.keys()),
+            window_days=self._window_days,
+            max_new_messages=self._max_new_messages,
+            page_size=self._page_size,
+            max_scan_pages=self._max_scan_pages,
+        )
         if checkpoint_before:
-            try:
-                message_refs = _list_incremental_uncollected_gmail_message_refs(
-                    service,
-                    start_history_id=checkpoint_before,
-                    senders=self._senders,
-                    existing_message_ids=set(existing_index.keys()),
-                    max_new_messages=self._max_new_messages,
-                    page_size=self._page_size,
-                    max_scan_pages=self._max_scan_pages,
-                )
-                poll_strategy = "history_checkpoint"
-            except GmailMailboxHistoryCheckpointError:
-                message_refs = _list_uncollected_gmail_message_refs(
-                    service,
-                    senders=self._senders,
-                    existing_message_ids=set(existing_index.keys()),
-                    window_days=self._window_days,
-                    max_new_messages=self._max_new_messages,
-                    page_size=self._page_size,
-                    max_scan_pages=self._max_scan_pages,
-                )
-                poll_strategy = "history_checkpoint_reset_recent_search"
+            poll_strategy = "sender_search_with_history_checkpoint"
         else:
-            message_refs = _list_uncollected_gmail_message_refs(
-                service,
-                senders=self._senders,
-                existing_message_ids=set(existing_index.keys()),
-                window_days=self._window_days,
-                max_new_messages=self._max_new_messages,
-                page_size=self._page_size,
-                max_scan_pages=self._max_scan_pages,
-            )
+            poll_strategy = "recent_search_bootstrap"
         if not message_refs:
-            if checkpoint_before is None and checkpoint_after is not None:
+            if checkpoint_after is not None and checkpoint_after != checkpoint_before:
                 batch = GmailAlertBatch(
                     ingestion_run_id=ingestion_run_id,
                     messages=(),
-                    mailbox_history_id_before=None,
+                    mailbox_history_id_before=checkpoint_before,
                     mailbox_history_id_after=checkpoint_after,
-                    poll_strategy="history_checkpoint_seed",
+                    poll_strategy=(
+                        "history_checkpoint_seed"
+                        if checkpoint_before is None
+                        else "sender_search_checkpoint_refresh"
+                    ),
                 )
                 self._prepared_batches[ingestion_run_id] = batch
                 return batch

@@ -957,52 +957,36 @@ def test_gmail_mailbox_collector_prepares_batch_from_live_api_shape(tmp_path):
     assert batch.poll_strategy == "recent_search_bootstrap"
 
 
-def test_gmail_mailbox_collector_uses_history_checkpoint_for_incremental_polling(tmp_path):
+def test_gmail_mailbox_collector_uses_sender_search_with_history_checkpoint(tmp_path):
     project_root = bootstrap_project(tmp_path)
     paths = ProjectPaths.from_root(project_root)
 
     class FakeHistoryResource:
         def list(self, **kwargs):  # type: ignore[no-untyped-def]
+            raise AssertionError("direct sender search should not walk mailbox history")
+
+    class FakeMessagesResource:
+        def list(self, **kwargs):  # type: ignore[no-untyped-def]
             class _Request:
                 def execute(self_inner):  # type: ignore[no-untyped-def]
-                    assert kwargs["startHistoryId"] == "history-prev-001"
+                    assert kwargs["q"] == "from:jobalerts-noreply@linkedin.com newer_than:30d"
                     return {
-                        "history": [
+                        "messages": [
                             {
-                                "messagesAdded": [
-                                    {
-                                        "message": {
-                                            "id": "gmail-history-001",
-                                            "threadId": "thread-history-001",
-                                        }
-                                    }
-                                ]
+                                "id": "gmail-sender-001",
+                                "threadId": "thread-sender-001",
                             }
                         ]
                     }
 
             return _Request()
 
-    class FakeMessagesResource:
-        def list(self, **kwargs):  # type: ignore[no-untyped-def]
-            raise AssertionError("incremental history polling should not fall back to recent search")
-
         def get(self, **kwargs):  # type: ignore[no-untyped-def]
             class _Request:
                 def execute(self_inner):  # type: ignore[no-untyped-def]
-                    if kwargs.get("format") == "metadata":
-                        return {
-                            "id": "gmail-history-001",
-                            "threadId": "thread-history-001",
-                            "payload": {
-                                "headers": [
-                                    {"name": "From", "value": "LinkedIn <jobalerts-noreply@linkedin.com>"},
-                                ]
-                            },
-                        }
                     return {
-                        "id": "gmail-history-001",
-                        "threadId": "thread-history-001",
+                        "id": "gmail-sender-001",
+                        "threadId": "thread-sender-001",
                         "internalDate": "1775518200000",
                         "payload": {
                             "mimeType": "multipart/alternative",
@@ -1070,46 +1054,25 @@ def test_gmail_mailbox_collector_uses_history_checkpoint_for_incremental_polling
     assert batch is not None
     assert batch.mailbox_history_id_before == "history-prev-001"
     assert batch.mailbox_history_id_after == "history-current-002"
-    assert batch.poll_strategy == "history_checkpoint"
-    assert [message.gmail_message_id for message in batch.messages] == ["gmail-history-001"]
+    assert batch.poll_strategy == "sender_search_with_history_checkpoint"
+    assert [message.gmail_message_id for message in batch.messages] == ["gmail-sender-001"]
 
 
-def test_gmail_mailbox_collector_resets_to_recent_search_when_history_message_is_missing(tmp_path):
+def test_gmail_mailbox_collector_sender_search_is_not_limited_by_history_scan_window(tmp_path):
     project_root = bootstrap_project(tmp_path)
     paths = ProjectPaths.from_root(project_root)
 
-    class FakeHttpError(Exception):
-        def __init__(self, status: int, message: str) -> None:
-            super().__init__(message)
-            self.resp = type("Resp", (), {"status": status})()
-
     class FakeHistoryResource:
         def list(self, **kwargs):  # type: ignore[no-untyped-def]
-            class _Request:
-                def execute(self_inner):  # type: ignore[no-untyped-def]
-                    assert kwargs["startHistoryId"] == "history-prev-001"
-                    return {
-                        "history": [
-                            {
-                                "messagesAdded": [
-                                    {
-                                        "message": {
-                                            "id": "gmail-history-missing",
-                                            "threadId": "thread-history-missing",
-                                        }
-                                    }
-                                ]
-                            }
-                        ]
-                    }
-
-            return _Request()
+            raise AssertionError(
+                "sender-scoped Gmail intake should not miss alerts behind unrelated history pages"
+            )
 
     class FakeMessagesResource:
         def list(self, **kwargs):  # type: ignore[no-untyped-def]
             class _Request:
                 def execute(self_inner):  # type: ignore[no-untyped-def]
-                    assert "from:jobalerts-noreply@linkedin.com" in kwargs["q"]
+                    assert kwargs["q"] == "from:jobalerts-noreply@linkedin.com newer_than:30d"
                     return {
                         "messages": [
                             {
@@ -1124,19 +1087,6 @@ def test_gmail_mailbox_collector_resets_to_recent_search_when_history_message_is
         def get(self, **kwargs):  # type: ignore[no-untyped-def]
             class _Request:
                 def execute(self_inner):  # type: ignore[no-untyped-def]
-                    gmail_message_id = kwargs["id"]
-                    if kwargs.get("format") == "metadata":
-                        if gmail_message_id == "gmail-history-missing":
-                            raise FakeHttpError(404, "Requested entity was not found.")
-                        return {
-                            "id": "gmail-recent-001",
-                            "threadId": "thread-recent-001",
-                            "payload": {
-                                "headers": [
-                                    {"name": "From", "value": "LinkedIn <jobalerts-noreply@linkedin.com>"},
-                                ]
-                            },
-                        }
                     return {
                         "id": "gmail-recent-001",
                         "threadId": "thread-recent-001",
@@ -1207,8 +1157,61 @@ def test_gmail_mailbox_collector_resets_to_recent_search_when_history_message_is
     assert batch is not None
     assert batch.mailbox_history_id_before == "history-prev-001"
     assert batch.mailbox_history_id_after == "history-current-003"
-    assert batch.poll_strategy == "history_checkpoint_reset_recent_search"
+    assert batch.poll_strategy == "sender_search_with_history_checkpoint"
     assert [message.gmail_message_id for message in batch.messages] == ["gmail-recent-001"]
+
+
+def test_gmail_mailbox_collector_refreshes_checkpoint_when_sender_search_has_no_new_messages(tmp_path):
+    project_root = bootstrap_project(tmp_path)
+    paths = ProjectPaths.from_root(project_root)
+
+    class FakeMessagesResource:
+        def list(self, **kwargs):  # type: ignore[no-untyped-def]
+            class _Request:
+                def execute(self_inner):  # type: ignore[no-untyped-def]
+                    assert kwargs["q"] == "from:jobalerts-noreply@linkedin.com newer_than:30d"
+                    return {"messages": []}
+
+            return _Request()
+
+    class FakeUsersResource:
+        def __init__(self) -> None:
+            self._messages = FakeMessagesResource()
+
+        def messages(self) -> FakeMessagesResource:
+            return self._messages
+
+        def getProfile(self, **kwargs):  # type: ignore[no-untyped-def]
+            class _Request:
+                def execute(self_inner):  # type: ignore[no-untyped-def]
+                    assert kwargs["userId"] == "me"
+                    return {"historyId": "history-current-refresh"}
+
+            return _Request()
+
+    class FakeGmailService:
+        def __init__(self) -> None:
+            self._users = FakeUsersResource()
+
+        def users(self) -> FakeUsersResource:
+            return self._users
+
+    collector = GmailLinkedInAlertMailboxCollector(
+        paths,
+        service_factory=FakeGmailService,
+        max_new_messages=1,
+    )
+
+    batch = collector.prepare_batch(
+        current_time="2026-04-09T00:20:00Z",
+        mailbox_history_checkpoint="history-prev-001",
+    )
+
+    assert batch is not None
+    assert batch.messages == ()
+    assert batch.mailbox_history_id_before == "history-prev-001"
+    assert batch.mailbox_history_id_after == "history-current-refresh"
+    assert batch.poll_strategy == "sender_search_checkpoint_refresh"
 
 
 def test_gmail_mailbox_collector_seeds_history_checkpoint_when_bootstrap_finds_no_messages(tmp_path):
