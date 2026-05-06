@@ -159,6 +159,10 @@ ROLE_SIGNAL_NONTECHNICAL_PATTERNS: tuple[re.Pattern[str], ...] = (
     re.compile(r"^passionate about building great software", re.IGNORECASE),
 )
 ROLE_SIGNAL_INELIGIBLE_PATTERNS: tuple[re.Pattern[str], ...] = (
+    re.compile(r"\brole-targeted tailoring\b", re.IGNORECASE),
+    re.compile(r"\bpersisted jd mirror\b", re.IGNORECASE),
+    re.compile(r"\btailoring workspace\b", re.IGNORECASE),
+    re.compile(r"\bjd mirror\b", re.IGNORECASE),
     re.compile(r"\bmedical, dental(?:,? & vision| and vision)\b", re.IGNORECASE),
     re.compile(r"\b(?:401\(k\)|paid time off|pto|life insurance|wellness|tuition reimbursement)\b", re.IGNORECASE),
     re.compile(r"\bgrow a career\b", re.IGNORECASE),

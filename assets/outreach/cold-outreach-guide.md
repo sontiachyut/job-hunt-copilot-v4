@@ -81,6 +81,44 @@ Goal:
 - maximum follow-up count: 3
 - stop follow-up once the person replies
 
+## Unreplied Follow-Up Template
+
+For follow-ups to sent emails with no reply, use this as the only current follow-up template.
+Do not use the earlier terse JD-theme template that says only that the role focus looked relevant to the earlier note.
+
+```text
+Hi {first_name},
+
+I wanted to briefly follow up on my earlier note about the {role_title} role at {company_name}.
+
+I reached out because I believe the role could be a strong mutual fit with my background in {background_fit_areas}. I know you are busy, so I appreciate you taking the time to read this.
+
+If you are open to it, I would be grateful for a brief 15-minute conversation to hear your perspective on the role, the team, or what tends to matter in the process.
+
+If this is not relevant or not the right time, I completely understand and will not keep following up.
+
+Best,
+Achyutaram Sonti
+```
+
+Use 2-3 concise `background_fit_areas` grounded in the original email, JD, and resume/profile evidence, such as `Go/Golang services, backend APIs, and production engineering` or `data engineering, Spark/Python pipelines, and production analytics systems`. Do not repeat the full first-email proof point or the full contact block in follow-ups. Do not let unrelated roles collapse into the same generic background phrase across a batch.
+
+## Unreplied Follow-Up Operating Workflow
+
+When preparing follow-ups for a requested date or batch:
+
+1. Query sent outreach for the requested date or date range.
+2. Skip any message that has bounced or received a reply.
+3. Skip any contact that already has a later sent follow-up or later sent outreach.
+4. Load the original sent body and the linked JD artifact.
+5. Choose 2-3 concise `background_fit_areas` from the original email, JD, and resume/profile evidence.
+6. Draft locally under `ops/followups/<run-id>/` and create both per-email draft files and a combined `drafts.md`.
+7. Review the batch for repeated generic `background_fit_areas`; revise any role where the fit areas are not specific to that JD and the sender's actual profile.
+8. Show the owner sample drafts for review.
+9. Send only after the owner explicitly approves.
+10. Send as replies in the same Gmail threads, preserving the original thread context.
+11. Record each sent follow-up in `outreach_messages` as `role_targeted_followup` and write a batch `summary.md`.
+
 ## Tracking
 
 Cold outreach should be tracked systematically in a CRM-style way.

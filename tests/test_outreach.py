@@ -2864,6 +2864,131 @@ def test_role_targeted_composition_filters_marketing_slogans_from_focus_selectio
     connection.close()
 
 
+def test_role_targeted_composition_blocks_internal_tailoring_focus_leak(tmp_path: Path):
+    project_root, paths = bootstrap_project(tmp_path)
+    connection = connect_database(project_root / "job_hunt_copilot.db")
+    write_sender_profile(paths)
+    seed_posting(
+        connection,
+        company_name="Wells Fargo",
+        role_title="Full stack Java Developer (contract)",
+    )
+    seed_linked_contact(
+        connection,
+        contact_id="ct_wells_fullstack",
+        job_posting_contact_id="jpc_wells_fullstack",
+        display_name="Janani Engineer",
+        recipient_type=RECIPIENT_TYPE_ENGINEER,
+        current_working_email="janani@wells.example",
+        created_at="2026-04-06T20:01:00Z",
+    )
+    connection.execute(
+        "UPDATE contacts SET position_title = ? WHERE contact_id = ?",
+        ("Lead Software Engineer", "ct_wells_fullstack"),
+    )
+    connection.commit()
+    seed_approved_tailoring_run(
+        connection,
+        paths,
+        company_name="Wells Fargo",
+        role_title="Full stack Java Developer (contract)",
+    )
+    paths.tailoring_workspace_jd_path(
+        "Wells Fargo",
+        "Full stack Java Developer (contract)",
+    ).write_text(
+        "\n".join(
+            [
+                "# Full stack Java Developer (contract)",
+                "",
+                "## Required Skills",
+                "- Build full-stack applications using Java, Spring Boot, Angular, and REST APIs.",
+                "- Develop backend services and frontend integration for enterprise platforms.",
+            ]
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+    paths.tailoring_step_3_jd_signals_path(
+        "Wells Fargo",
+        "Full stack Java Developer (contract)",
+    ).write_text(
+        yaml.safe_dump(
+            {
+                "job_posting_id": "jp_outreach",
+                "resume_tailoring_run_id": "rtr_outreach",
+                "status": "generated",
+                "role_intent_summary": (
+                    "Role-targeted tailoring for Full stack Java Developer (contract) "
+                    "using the persisted JD mirror."
+                ),
+                "signals_by_priority": {
+                    "must_have": [
+                        {
+                            "signal": (
+                                "Build full-stack applications using Java, Spring Boot, "
+                                "Angular, and REST APIs."
+                            )
+                        }
+                    ],
+                    "core_responsibility": [
+                        {
+                            "signal": (
+                                "Develop backend services and frontend integration for "
+                                "enterprise platforms."
+                            )
+                        }
+                    ],
+                    "nice_to_have": [],
+                    "informational": [],
+                },
+                "signals": [],
+            },
+            sort_keys=False,
+        ),
+        encoding="utf-8",
+    )
+    paths.tailoring_step_4_evidence_map_path(
+        "Wells Fargo",
+        "Full stack Java Developer (contract)",
+    ).write_text(
+        yaml.safe_dump(
+            {
+                "matches": [
+                    {
+                        "jd_signal": (
+                            "Build full-stack applications using Java, Spring Boot, "
+                            "Angular, and REST APIs."
+                        ),
+                        "confidence": "high",
+                        "source_excerpt": (
+                            "Built backend APIs and full-stack services using Java, "
+                            "React, Node.js, and Kubernetes."
+                        ),
+                    }
+                ]
+            },
+            sort_keys=False,
+        ),
+        encoding="utf-8",
+    )
+
+    result = generate_role_targeted_send_set_drafts(
+        connection,
+        project_root=project_root,
+        job_posting_id="jp_outreach",
+        current_time="2026-04-06T20:30:00Z",
+        local_timezone=ZoneInfo("UTC"),
+    )
+
+    body_text = Path(result.drafted_messages[0].body_text_artifact_path).read_text(encoding="utf-8")
+    assert "role-targeted tailoring" not in body_text.lower()
+    assert "persisted jd mirror" not in body_text.lower()
+    assert "full-stack" in body_text.lower() or "REST APIs" in body_text
+
+    connection.close()
+
+
 def test_role_targeted_composition_summarizes_long_cloud_backend_signal(tmp_path: Path):
     project_root, paths = bootstrap_project(tmp_path)
     connection = connect_database(project_root / "job_hunt_copilot.db")

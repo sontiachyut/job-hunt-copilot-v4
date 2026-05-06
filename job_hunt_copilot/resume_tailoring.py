@@ -3604,7 +3604,7 @@ def _build_step_3_signal_artifact(
     role_intent_summary = (
         "; ".join(role_intent_signals)
         if role_intent_signals
-        else f"Role-targeted tailoring for {role_title} using the persisted JD mirror."
+        else _fallback_role_intent_summary_for_title(role_title)
     )
     return {
         "job_posting_id": posting_row["job_posting_id"],
@@ -3629,6 +3629,21 @@ def _build_step_3_signal_artifact(
         },
         "signals": signals,
     }
+
+
+def _fallback_role_intent_summary_for_title(role_title: str) -> str:
+    lowered = role_title.lower()
+    if any(token in lowered for token in ("full stack", "full-stack")):
+        return "full-stack application development, backend services, and frontend integration"
+    if any(token in lowered for token in ("cloud", "platform", "devops", "infrastructure")):
+        return "cloud infrastructure, backend services, and production reliability"
+    if any(token in lowered for token in ("data", "analytics", "etl", "spark")):
+        return "data engineering, backend services, and analytics infrastructure"
+    if any(token in lowered for token in ("ai", "machine learning", "ml", "generative")):
+        return "applied AI systems, backend services, and production engineering"
+    if any(token in lowered for token in ("backend", "java", "python", "golang", "go", "api")):
+        return "backend APIs and services, distributed systems, and production engineering"
+    return "software engineering, backend services, and production reliability"
 
 
 def _build_step_4_evidence_artifact(

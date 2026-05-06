@@ -947,6 +947,17 @@ def test_generate_tailoring_intelligence_filters_benefits_and_slogans_from_role_
     assert "grow a career" not in role_intent_summary
 
 
+def test_fallback_role_intent_summary_is_candidate_facing():
+    summary = resume_tailoring_module._fallback_role_intent_summary_for_title(
+        "Full stack Java Developer (contract)"
+    )
+
+    assert "role-targeted tailoring" not in summary.lower()
+    assert "persisted jd mirror" not in summary.lower()
+    assert "full-stack" in summary.lower()
+    assert "backend services" in summary.lower()
+
+
 def test_generate_tailoring_intelligence_handles_plain_jd_headings_and_location_constraints(
     tmp_path,
 ):
