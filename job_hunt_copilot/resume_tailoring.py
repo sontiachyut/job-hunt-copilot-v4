@@ -138,9 +138,9 @@ ROLE_FOCUS_CLOUD_PLATFORM = "cloud_platform"
 ROLE_FOCUS_BACKEND_SERVICE = "backend_service"
 ROLE_FOCUS_DISTRIBUTED = "distributed"
 
-HARD_DISQUALIFIER_EXPERIENCE = "experience_gt_5_years"
 HARD_DISQUALIFIER_CITIZENSHIP = "citizenship_required"
 HARD_DISQUALIFIER_SECURITY_CLEARANCE = "security_clearance_required"
+SOFT_FLAG_SENIORITY_MISMATCH = "seniority_mismatch"
 SOFT_FLAG_NO_SPONSORSHIP = "no_sponsorship"
 MISSING_FIELD_EXPERIENCE = "experience_requirement"
 MISSING_FIELD_AUTHORIZATION = "citizenship_or_clearance_requirement"
@@ -901,7 +901,7 @@ def evaluate_hard_eligibility(jd_text: str) -> EligibilityDecision:
             explicit_signal_found = True
             experience_signal_found = True
             if experience_lower_bound > 5:
-                _append_unique(hard_disqualifiers, HARD_DISQUALIFIER_EXPERIENCE)
+                _append_unique(soft_flags, SOFT_FLAG_SENIORITY_MISMATCH)
                 _append_unique(evidence_snippets, line)
         elif AMBIGUOUS_EXPERIENCE_RE.search(normalized):
             ambiguous_signal_found = True
@@ -944,19 +944,35 @@ def evaluate_hard_eligibility(jd_text: str) -> EligibilityDecision:
         )
 
     if soft_flags:
+        has_no_sponsorship = SOFT_FLAG_NO_SPONSORSHIP in soft_flags
+        has_seniority_mismatch = SOFT_FLAG_SENIORITY_MISMATCH in soft_flags
+        if has_no_sponsorship and has_seniority_mismatch:
+            decision_reason = (
+                "JD includes no-sponsorship and seniority-mismatch signals, so the posting "
+                "remains eligible with soft flags for downstream context."
+            )
+        elif has_seniority_mismatch:
+            decision_reason = (
+                "JD appears to require more than the current target years of experience, so "
+                "the posting remains eligible with a seniority-mismatch soft flag."
+            )
+        else:
+            decision_reason = (
+                "JD includes a no-sponsorship constraint, so the posting remains eligible with "
+                "a soft flag for downstream context."
+            )
         return EligibilityDecision(
             eligibility_status=ELIGIBILITY_STATUS_SOFT_FLAG,
             hard_disqualifiers_triggered=(),
             soft_flags=tuple(soft_flags),
             missing_data_fields=tuple(missing_data_fields),
-            decision_reason=(
-                "JD includes a no-sponsorship constraint, so the posting remains eligible with "
-                "a soft flag for downstream context."
-            ),
+            decision_reason=decision_reason,
             evidence_snippets=tuple(evidence_snippets),
             recommended_note=(
                 "Mention current OPT work authorization and the no-sponsorship constraint in "
                 "later operator-facing context."
+                if has_no_sponsorship
+                else None
             ),
         )
 
@@ -2234,6 +2250,8 @@ def _review_decision_slug(
 def _extract_experience_lower_bound(line: str) -> int | None:
     if "year" not in line and "yr" not in line:
         return None
+    if _looks_like_company_history_line(line):
+        return None
     if not EXPERIENCE_CONTEXT_RE.search(line):
         return None
 
@@ -2257,6 +2275,17 @@ def _extract_experience_lower_bound(line: str) -> int | None:
     if plain_match is not None:
         return int(plain_match.group("years"))
     return None
+
+
+def _looks_like_company_history_line(line: str) -> bool:
+    if not re.search(r"\b(?:for\s+)?(?:more than|over)\s+\d+\s+(?:years?|yrs?)\b", line):
+        return False
+    return bool(
+        re.search(
+            r"\b(?:we|we['’]?ve|our|company|global leader|headquartered|history|founded|served|helped)\b",
+            line,
+        )
+    )
 
 
 def _append_unique(values: list[str], candidate: str) -> None:

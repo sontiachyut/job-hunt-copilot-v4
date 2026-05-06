@@ -519,7 +519,6 @@ def test_hard_ineligible_posting_updates_posting_and_skips_run_creation(tmp_path
     )
     assert artifact_payload["eligibility_status"] == ELIGIBILITY_STATUS_HARD_INELIGIBLE
     assert artifact_payload["hard_disqualifiers_triggered"] == [
-        "experience_gt_5_years",
         "citizenship_required",
     ]
     assert artifact_payload["bootstrap_ready"] is False
@@ -537,6 +536,77 @@ def test_hard_ineligible_posting_updates_posting_and_skips_run_creation(tmp_path
         "new_state": JOB_POSTING_STATUS_HARD_INELIGIBLE,
         "stage": "posting_status",
     }
+
+
+def test_experience_over_threshold_is_soft_flag_and_allows_bootstrap(tmp_path):
+    project_root = bootstrap_project(tmp_path)
+    paths = ProjectPaths.from_root(project_root)
+    connection = connect_database(project_root / "job_hunt_copilot.db")
+    seed_posting(
+        connection,
+        paths,
+        jd_body=(
+            "# JD\n"
+            "Qualifications\n"
+            "- 7+ years of professional software engineering experience required.\n"
+            "- Build backend APIs and distributed services.\n"
+        ),
+    )
+
+    result = bootstrap_tailoring_run(
+        connection,
+        paths,
+        job_posting_id="jp_test",
+        timestamp="2026-04-06T20:10:00Z",
+    )
+
+    assert result.eligibility.eligibility_status == ELIGIBILITY_STATUS_SOFT_FLAG
+    assert result.eligibility.hard_disqualifiers_triggered == ()
+    assert result.eligibility.soft_flags == ("seniority_mismatch",)
+    assert result.run is not None
+    stored_posting = connection.execute(
+        "SELECT posting_status FROM job_postings WHERE job_posting_id = ?",
+        ("jp_test",),
+    ).fetchone()
+    assert stored_posting["posting_status"] == JOB_POSTING_STATUS_TAILORING_IN_PROGRESS
+
+    artifact_payload = yaml.safe_load(
+        result.eligibility_artifact.location.absolute_path.read_text(encoding="utf-8")
+    )
+    assert artifact_payload["eligibility_status"] == ELIGIBILITY_STATUS_SOFT_FLAG
+    assert artifact_payload["hard_disqualifiers_triggered"] == []
+    assert artifact_payload["soft_flags"] == ["seniority_mismatch"]
+    assert artifact_payload["bootstrap_ready"] is True
+
+
+def test_company_history_years_do_not_create_seniority_soft_flag(tmp_path):
+    project_root = bootstrap_project(tmp_path)
+    paths = ProjectPaths.from_root(project_root)
+    connection = connect_database(project_root / "job_hunt_copilot.db")
+    seed_posting(
+        connection,
+        paths,
+        jd_body=(
+            "# JD\n"
+            "Essential Skills\n"
+            "- At least 3 years of professional software engineering experience.\n"
+            "- At least 3 years of hands-on experience with OpenGL in a real-time or embedded context.\n"
+            "About Actalent\n"
+            "- For more than 40 years, we've helped visionary companies advance their goals through engineering services.\n"
+        ),
+    )
+
+    result = bootstrap_tailoring_run(
+        connection,
+        paths,
+        job_posting_id="jp_test",
+        timestamp="2026-04-06T20:10:00Z",
+    )
+
+    assert result.eligibility.eligibility_status == ELIGIBILITY_STATUS_ELIGIBLE
+    assert result.eligibility.hard_disqualifiers_triggered == ()
+    assert result.eligibility.soft_flags == ()
+    assert result.run is not None
 
 
 def test_unknown_eligibility_allows_bootstrap_when_hard_signals_are_missing(tmp_path):

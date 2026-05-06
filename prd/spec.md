@@ -2765,22 +2765,15 @@ The upstream Gmail-alert intake contract should include, at minimum:
   If any hard disqualifier is triggered, system shall mark application as hard-ineligible and skip downstream resume tailoring and outreach for that lead.
 
 #### 7.2.3.1 Hard Disqualifier Policy (Current)
-1. **Required experience threshold:** If the JD explicitly requires more than 5 years of experience, mark `hard-ineligible`.
-2. **Citizenship/clearance requirement:** If the JD explicitly requires citizenship or security clearance, mark `hard-ineligible`.
+1. **Citizenship/clearance requirement:** If the JD explicitly requires citizenship or security clearance, mark `hard-ineligible`.
 
-- **FR-RT-08A (Global Experience Threshold Rule):**
-  In the current build, the `>5 years` hard-disqualifier threshold is a single global rule rather than a role-family-specific configurable threshold.
-
-- **FR-RT-08B (Future Threshold-Override Gate):**
-  A future role-family-specific experience-threshold override shall not be introduced unless the system first has:
-  1. an explicit `role_family` taxonomy
-  2. versioned eligibility-policy configuration
-  3. validation evidence showing that the override improves outcomes without materially increasing bad-fit outreach
-  Until those prerequisites exist, the fixed global `>5 years` rule remains canonical.
+- **FR-RT-08A (Experience Threshold Soft-Flag Rule):**
+  In the current build, experience-year requirements shall not hard-stop a posting. If the JD appears to require more than 5 years of experience, classify that as a soft eligibility signal such as `seniority_mismatch` / `experience_gap`, persist the supporting evidence in the eligibility artifact, and continue normal downstream processing unless the owner manually rejects the posting.
 
 #### 7.2.3.2 Soft Qualifier Policy (Current)
 1. **No sponsorship language:** If JD says no sponsorship, do not hard-stop.
 2. Mark as `soft-flag` and include guidance to mention OPT work authorization in outreach/application context.
+3. **Experience-year mismatch:** If JD years of experience appear above the candidate's current target threshold, do not hard-stop. Mark as `seniority_mismatch` and keep the posting eligible for downstream review/outreach.
 
 #### 7.2.3.3 Missing Data Policy
 1. If eligibility signals are missing or ambiguous, classify as `unknown` and proceed like normal leads (do not fail closed).
