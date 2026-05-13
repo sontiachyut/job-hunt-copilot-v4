@@ -51,8 +51,9 @@ def test_bootstrap_materializes_support_dirs_secrets_and_db(tmp_path):
         ("0004_application_and_responder_tracking.sql",),
         ("0005_refresh_expert_review_queue_view.sql",),
         ("0006_email_discovery_provider_cooldown.sql",),
+        ("0007_followup_worker.sql",),
     ]
-    assert user_version == 6
+    assert user_version == 7
 
 
 def test_bootstrap_is_idempotent(tmp_path):
@@ -70,6 +71,7 @@ def test_bootstrap_is_idempotent(tmp_path):
         "0004_application_and_responder_tracking.sql",
         "0005_refresh_expert_review_queue_view.sql",
         "0006_email_discovery_provider_cooldown.sql",
+        "0007_followup_worker.sql",
     ]
     assert second_report["database"]["applied_migrations"] == []
     assert second_report["directories"]["created_paths"] == []

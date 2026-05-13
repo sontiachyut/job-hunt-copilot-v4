@@ -155,6 +155,10 @@ class ProjectPaths:
         return self.ops_launchd_dir / "job-hunt-copilot-feedback-sync.plist"
 
     @property
+    def followup_worker_plist_path(self) -> Path:
+        return self.ops_launchd_dir / "job-hunt-copilot-followups.plist"
+
+    @property
     def supervisor_stdout_log_path(self) -> Path:
         return self.ops_logs_dir / "supervisor.stdout.log"
 
@@ -169,6 +173,14 @@ class ProjectPaths:
     @property
     def feedback_sync_stderr_log_path(self) -> Path:
         return self.ops_logs_dir / "feedback-sync.stderr.log"
+
+    @property
+    def followup_worker_stdout_log_path(self) -> Path:
+        return self.ops_logs_dir / "followups.stdout.log"
+
+    @property
+    def followup_worker_stderr_log_path(self) -> Path:
+        return self.ops_logs_dir / "followups.stderr.log"
 
     @property
     def chat_sessions_log_path(self) -> Path:
@@ -199,6 +211,10 @@ class ProjectPaths:
         return self.ops_scripts_dir / "run_feedback_sync.py"
 
     @property
+    def run_followup_cycle_script_path(self) -> Path:
+        return self.ops_scripts_dir / "run_followup_cycle.py"
+
+    @property
     def chat_session_script_path(self) -> Path:
         return self.ops_scripts_dir / "chat_session.py"
 
@@ -217,6 +233,10 @@ class ProjectPaths:
     @property
     def feedback_sync_cycle_entrypoint_path(self) -> Path:
         return self.bin_dir / "jhc-feedback-sync-cycle"
+
+    @property
+    def followup_cycle_entrypoint_path(self) -> Path:
+        return self.bin_dir / "jhc-followup-cycle"
 
     @property
     def chat_entrypoint_path(self) -> Path:
@@ -512,6 +532,32 @@ class ProjectPaths:
 
     def outreach_latest_send_result_path(self, company_name: str, role_title: str) -> Path:
         return self.outreach_workspace_dir(company_name, role_title) / "send_result.json"
+
+    def outreach_message_followup_dir(
+        self,
+        company_name: str,
+        role_title: str,
+        outreach_message_id: str,
+        followup_sequence: int = 1,
+    ) -> Path:
+        return (
+            self.outreach_message_dir(company_name, role_title, outreach_message_id)
+            / "followups"
+            / f"followup-{followup_sequence}"
+        )
+
+    def fallback_followup_dir(
+        self,
+        original_outreach_message_id: str,
+        followup_sequence: int = 1,
+    ) -> Path:
+        return (
+            self.project_root
+            / "data"
+            / "outreach-followups"
+            / original_outreach_message_id
+            / f"followup-{followup_sequence}"
+        )
 
     def outreach_message_feedback_dir(
         self,

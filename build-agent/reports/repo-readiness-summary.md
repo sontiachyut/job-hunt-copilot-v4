@@ -1,6 +1,6 @@
 # Repo Readiness Summary
 
-- Generated at: `2026-04-13T01:33:00Z`
+- Generated at: `2026-05-12T23:58:35Z`
 - Project root: `/Users/achyutaramsonti/Projects/job-hunt-copilot-v4`
 - Repo surface status: `current`
 - Current build focus: `BA-10` / `BA-10-S3` / `build-lead`
@@ -10,7 +10,7 @@
 
 ## Latest Validation
 
-- Generated at: `2026-04-13T01:33:00Z`
+- Generated at: `2026-05-12T23:58:35Z`
 - Passed: `True`
 - Command count: `5`
 - Failed command count: `0`
@@ -20,9 +20,9 @@
 
 ## Acceptance Snapshot
 
-- Acceptance scenarios: `226`
+- Acceptance scenarios: `243`
 - Open acceptance scenarios: `0`
-- Acceptance status counts: `implemented`=224, `partial`=0, `gap`=0, `deferred_optional`=1, `excluded_from_required_acceptance`=1
+- Acceptance status counts: `implemented`=241, `partial`=0, `gap`=0, `deferred_optional`=1, `excluded_from_required_acceptance`=1
 - Open gap ids: 
 
 ## Remaining Gaps

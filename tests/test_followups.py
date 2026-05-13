@@ -1,0 +1,399 @@
+from __future__ import annotations
+
+import sqlite3
+from dataclasses import dataclass
+
+from job_hunt_copilot.bootstrap import run_bootstrap
+from job_hunt_copilot.followups import (
+    PLAN_STATUS_DRY_RUN_READY,
+    PLAN_STATUS_SENT,
+    SKIP_REASON_ALREADY_FOLLOWED_UP,
+    SKIP_REASON_REPLIED_IN_THREAD,
+    ThreadInspectionResult,
+    build_followup_dashboard_summary,
+    run_followup_cycle,
+    validate_followup_body,
+)
+from job_hunt_copilot.outreach import SEND_OUTCOME_SENT, SendAttemptOutcome
+from tests.support import create_minimal_project
+
+
+NOW = "2026-05-12T18:00:00Z"
+OLD_SENT_AT = "2026-05-01T16:00:00Z"
+
+
+@dataclass
+class FakeThreadInspector:
+    result: ThreadInspectionResult
+    calls: int = 0
+
+    def inspect_thread(self, candidate, *, current_time: str) -> ThreadInspectionResult:
+        self.calls += 1
+        return self.result
+
+
+@dataclass
+class FakeSender:
+    sent_bodies: list[str]
+
+    def send_followup(self, candidate, *, body_text: str) -> SendAttemptOutcome:
+        self.sent_bodies.append(body_text)
+        return SendAttemptOutcome(
+            outcome=SEND_OUTCOME_SENT,
+            thread_id=candidate.thread_id,
+            delivery_tracking_id="gmail_followup_1",
+            sent_at=NOW,
+        )
+
+
+def _bootstrap_connection(tmp_path):
+    project_root = tmp_path / "repo"
+    project_root.mkdir()
+    create_minimal_project(project_root)
+    run_bootstrap(project_root=project_root)
+    connection = sqlite3.connect(project_root / "job_hunt_copilot.db")
+    connection.row_factory = sqlite3.Row
+    connection.execute("PRAGMA foreign_keys = ON;")
+    return project_root, connection
+
+
+def _seed_sent_role_targeted_message(
+    connection: sqlite3.Connection,
+    *,
+    outreach_message_id: str = "om_original",
+    contact_id: str = "ct_1",
+    recipient_email: str = "alex@example.com",
+    thread_id: str = "thread_1",
+    sent_at: str = OLD_SENT_AT,
+    body_text: str | None = None,
+) -> None:
+    now = "2026-05-01T15:00:00Z"
+    body = body_text or (
+        "Hi Alex,\n\n"
+        "I'm reaching out about the Backend Developer role at ExampleCo because the work touches Java services, REST APIs, and AWS data pipelines.\n\n"
+        "Best,\nAchyutaram Sonti"
+    )
+    connection.execute(
+        """
+        INSERT INTO linkedin_leads (
+          lead_id, lead_identity_key, lead_status, lead_shape, split_review_status,
+          source_type, source_reference, source_mode, company_name, role_title,
+          created_at, updated_at
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        """,
+        (
+            "ld_1",
+            "exampleco|backend-developer",
+            "reviewed",
+            "posting_only",
+            "confident",
+            "manual_paste",
+            "paste/paste.txt",
+            "manual_paste",
+            "ExampleCo",
+            "Backend Developer",
+            now,
+            now,
+        ),
+    )
+    connection.execute(
+        """
+        INSERT INTO job_postings (
+          job_posting_id, lead_id, posting_identity_key, company_name, role_title,
+          posting_status, jd_artifact_path, created_at, updated_at
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+        """,
+        (
+            "jp_1",
+            "ld_1",
+            "exampleco|backend-developer|remote",
+            "ExampleCo",
+            "Backend Developer",
+            "outreach_in_progress",
+            None,
+            now,
+            now,
+        ),
+    )
+    connection.execute(
+        """
+        INSERT INTO contacts (
+          contact_id, identity_key, display_name, company_name, origin_component,
+          contact_status, full_name, first_name, current_working_email,
+          created_at, updated_at
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        """,
+        (
+            contact_id,
+            f"{contact_id}|exampleco",
+            "Alex Rivera",
+            "ExampleCo",
+            "linkedin_scraping",
+            "sent",
+            "Alex Rivera",
+            "Alex",
+            recipient_email,
+            now,
+            now,
+        ),
+    )
+    connection.execute(
+        """
+        INSERT INTO job_posting_contacts (
+          job_posting_contact_id, job_posting_id, contact_id, recipient_type,
+          relevance_reason, link_level_status, created_at, updated_at
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+        """,
+        ("jpc_1", "jp_1", contact_id, "recruiter", "recruiter", "outreach_done", now, now),
+    )
+    connection.execute(
+        """
+        INSERT INTO outreach_messages (
+          outreach_message_id, contact_id, outreach_mode, recipient_email,
+          message_status, job_posting_id, job_posting_contact_id, subject,
+          body_text, body_html, thread_id, delivery_tracking_id, sent_at,
+          created_at, updated_at
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        """,
+        (
+            outreach_message_id,
+            contact_id,
+            "role_targeted",
+            recipient_email,
+            "sent",
+            "jp_1",
+            "jpc_1",
+            "Backend Developer at ExampleCo",
+            body,
+            None,
+            thread_id,
+            "gmail_original_1",
+            sent_at,
+            now,
+            now,
+        ),
+    )
+    connection.commit()
+
+
+def test_dry_run_renders_strict_followup_without_sent_state(tmp_path):
+    project_root, connection = _bootstrap_connection(tmp_path)
+    _seed_sent_role_targeted_message(connection)
+    inspector = FakeThreadInspector(ThreadInspectionResult(result="clear", checked_at=NOW))
+
+    result = run_followup_cycle(
+        connection,
+        project_root=project_root,
+        current_time=NOW,
+        dry_run=True,
+        thread_inspector=inspector,
+    )
+
+    plan = connection.execute("SELECT * FROM outreach_followup_plans").fetchone()
+    followups = connection.execute(
+        "SELECT * FROM outreach_messages WHERE outreach_mode = 'role_targeted_followup'"
+    ).fetchall()
+    cycle = connection.execute("SELECT * FROM followup_cycle_runs").fetchone()
+
+    assert result.dry_run is True
+    assert result.drafts_created == 1
+    assert result.messages_sent == 0
+    assert plan["plan_status"] == PLAN_STATUS_DRY_RUN_READY
+    assert plan["sent_at"] is None
+    assert plan["draft_artifact_path"]
+    assert followups == []
+    assert cycle["candidates_examined"] == 1
+    draft_text = (project_root / plan["draft_artifact_path"]).read_text(encoding="utf-8")
+    assert "I wanted to briefly follow up on my earlier note about the Backend Developer role at ExampleCo." in draft_text
+    assert "Best,\nAchyutaram Sonti" in draft_text
+    assert "asonti1@asu.edu" not in draft_text
+    assert "50M+" not in draft_text
+
+
+def test_reply_in_thread_suppresses_followup(tmp_path):
+    project_root, connection = _bootstrap_connection(tmp_path)
+    _seed_sent_role_targeted_message(connection)
+    inspector = FakeThreadInspector(
+        ThreadInspectionResult(result="replied", checked_at=NOW, has_inbound_reply=True)
+    )
+
+    result = run_followup_cycle(
+        connection,
+        project_root=project_root,
+        current_time=NOW,
+        dry_run=True,
+        thread_inspector=inspector,
+    )
+
+    plan = connection.execute("SELECT * FROM outreach_followup_plans").fetchone()
+    assert result.skipped_replied == 1
+    assert plan["plan_status"] == "skipped"
+    assert plan["last_skip_reason"] == SKIP_REASON_REPLIED_IN_THREAD
+
+
+def test_existing_later_followup_suppresses_duplicate(tmp_path):
+    project_root, connection = _bootstrap_connection(tmp_path)
+    _seed_sent_role_targeted_message(connection)
+    connection.execute(
+        """
+        INSERT INTO outreach_messages (
+          outreach_message_id, contact_id, outreach_mode, recipient_email,
+          message_status, job_posting_id, job_posting_contact_id, subject,
+          body_text, body_html, thread_id, delivery_tracking_id, sent_at,
+          created_at, updated_at
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        """,
+        (
+            "om_existing_followup",
+            "ct_1",
+            "role_targeted_followup",
+            "alex@example.com",
+            "sent",
+            "jp_1",
+            "jpc_1",
+            "Backend Developer at ExampleCo",
+            "already followed up",
+            None,
+            "thread_1",
+            "gmail_followup_old",
+            "2026-05-08T16:00:00Z",
+            "2026-05-08T16:00:00Z",
+            "2026-05-08T16:00:00Z",
+        ),
+    )
+    connection.commit()
+
+    result = run_followup_cycle(
+        connection,
+        project_root=project_root,
+        current_time=NOW,
+        dry_run=True,
+        thread_inspector=FakeThreadInspector(ThreadInspectionResult(result="clear", checked_at=NOW)),
+    )
+
+    plan = connection.execute("SELECT * FROM outreach_followup_plans").fetchone()
+    assert result.skipped_already_followed_up == 1
+    assert plan["last_skip_reason"] == SKIP_REASON_ALREADY_FOLLOWED_UP
+
+
+def test_auto_send_uses_persisted_body_and_records_linked_followup(tmp_path):
+    project_root, connection = _bootstrap_connection(tmp_path)
+    _seed_sent_role_targeted_message(connection, sent_at="2026-05-01T00:00:00Z")
+    connection.execute(
+        "UPDATE agent_control_state SET control_value = 'true', updated_at = ? WHERE control_key = 'followup_auto_send_enabled'",
+        (NOW,),
+    )
+    connection.commit()
+    inspector = FakeThreadInspector(ThreadInspectionResult(result="clear", checked_at=NOW))
+    sender = FakeSender(sent_bodies=[])
+
+    result = run_followup_cycle(
+        connection,
+        project_root=project_root,
+        current_time=NOW,
+        dry_run=False,
+        thread_inspector=inspector,
+        sender=sender,
+    )
+
+    plan = connection.execute("SELECT * FROM outreach_followup_plans").fetchone()
+    sent = connection.execute(
+        "SELECT * FROM outreach_messages WHERE outreach_mode = 'role_targeted_followup'"
+    ).fetchone()
+
+    assert result.messages_sent == 1
+    assert inspector.calls == 2
+    assert plan["plan_status"] == PLAN_STATUS_SENT
+    assert plan["followup_outreach_message_id"] == sent["outreach_message_id"]
+    assert sent["thread_id"] == "thread_1"
+    assert sent["recipient_email"] == "alex@example.com"
+    assert sent["body_text"] == sender.sent_bodies[0]
+    assert sender.sent_bodies[0] == (project_root / plan["draft_artifact_path"]).read_text(encoding="utf-8").rstrip("\n")
+
+
+def test_auto_send_respects_global_pacing_queue(tmp_path):
+    project_root, connection = _bootstrap_connection(tmp_path)
+    _seed_sent_role_targeted_message(connection, sent_at="2026-05-01T00:00:00Z")
+    connection.execute(
+        "UPDATE agent_control_state SET control_value = 'true', updated_at = ? WHERE control_key = 'followup_auto_send_enabled'",
+        (NOW,),
+    )
+    connection.execute(
+        """
+        INSERT INTO outreach_messages (
+          outreach_message_id, contact_id, outreach_mode, recipient_email,
+          message_status, subject, body_text, thread_id, delivery_tracking_id,
+          sent_at, created_at, updated_at
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        """,
+        (
+            "om_recent",
+            "ct_1",
+            "role_targeted",
+            "other@example.com",
+            "sent",
+            "recent",
+            "recent",
+            "thread_recent",
+            "gmail_recent",
+            "2026-05-12T17:58:00Z",
+            "2026-05-12T17:58:00Z",
+            "2026-05-12T17:58:00Z",
+        ),
+    )
+    connection.commit()
+    sender = FakeSender(sent_bodies=[])
+
+    result = run_followup_cycle(
+        connection,
+        project_root=project_root,
+        current_time=NOW,
+        dry_run=False,
+        thread_inspector=FakeThreadInspector(ThreadInspectionResult(result="clear", checked_at=NOW)),
+        sender=sender,
+    )
+
+    plan = connection.execute(
+        "SELECT * FROM outreach_followup_plans WHERE original_outreach_message_id = 'om_original'"
+    ).fetchone()
+    assert result.messages_sent == 0
+    assert result.waiting_for_pacing_count == 1
+    assert sender.sent_bodies == []
+    assert plan["plan_status"] == "waiting_for_pacing"
+
+
+def test_followup_dashboard_summary_reports_compact_status(tmp_path):
+    project_root, connection = _bootstrap_connection(tmp_path)
+    _seed_sent_role_targeted_message(connection)
+    run_followup_cycle(
+        connection,
+        project_root=project_root,
+        current_time=NOW,
+        dry_run=True,
+        thread_inspector=FakeThreadInspector(ThreadInspectionResult(result="clear", checked_at=NOW)),
+    )
+
+    summary = build_followup_dashboard_summary(connection, current_time=NOW)
+
+    assert summary["due_now"] == 1
+    assert summary["waiting_for_pacing"] == 0
+    assert summary["sent_today"] == 0
+    assert summary["blocked_or_review"] == 0
+    assert summary["last_cycle_at"] == NOW
+    assert summary["last_cycle_result"] == "success"
+
+
+def test_template_validator_rejects_generic_or_metric_heavy_fit_areas():
+    valid_body = (
+        "Hi Alex,\n\n"
+        "I wanted to briefly follow up on my earlier note about the Backend Developer role at ExampleCo.\n\n"
+        "I reached out because I believe the role could be a strong mutual fit with my background in Java services and REST APIs. "
+        "I know you are busy, so I appreciate you taking the time to read this.\n\n"
+        "If you are open to it, I would be grateful for a brief 15-minute conversation to hear your perspective on the role, the team, or what tends to matter in the process.\n\n"
+        "If this is not relevant or not the right time, I completely understand and will not keep following up.\n\n"
+        "Best,\nAchyutaram Sonti"
+    )
+
+    assert validate_followup_body(valid_body, background_fit_areas="Java services and REST APIs")
+    assert not validate_followup_body(valid_body, background_fit_areas="software engineering")
+    assert not validate_followup_body(valid_body, background_fit_areas="50M+ records and REST APIs")

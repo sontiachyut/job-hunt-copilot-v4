@@ -72,6 +72,8 @@ Feature: Job Hunt Copilot next-build acceptance
       And the database contains `provider_budget_events`
       And the database contains `discovery_attempts`
       And the database contains `outreach_messages`
+      And the database contains `outreach_followup_plans`
+      And the database contains `followup_cycle_runs`
       And the database contains `delivery_feedback_events`
 
     Scenario: Build input pack is sufficient for a fresh build
@@ -1073,6 +1075,78 @@ Feature: Job Hunt Copilot next-build acceptance
       And that snippet stays small enough to be plausibly forwarded with little or no editing
       And that snippet is JD-aware rather than a generic skills list
 
+  @followups
+  Rule: Automated Follow-Up Worker behavior
+
+    Scenario: Follow-up candidates are selected from sent role-targeted emails, not postings
+      Given multiple `role_targeted` outreach messages have been sent
+      And some of those messages are more than 4 calendar days old in `America/Phoenix`
+      When the follow-up worker evaluates candidates
+      Then it starts from sent `outreach_messages` rather than job postings
+      And it considers only original sent `role_targeted` messages as follow-up roots
+      And it excludes `general_learning`, `manual_reply`, `follow_up`, and `role_targeted_followup` messages as new follow-up roots
+      And it processes due candidates oldest original sent email first
+      And it does not render follow-up draft bodies before the 4-calendar-day eligibility threshold
+
+    Scenario: Follow-up rendering uses the strict approved template
+      Given an eligible unreplied original `role_targeted` outreach message exists
+      And the original email body, role, company, recipient salutation, and grounding evidence are available
+      When the follow-up worker renders the follow-up draft
+      Then the body matches the approved warmer mutual-fit template shape
+      And the only filled fields are first name or preserved salutation, role title, company name, and `background_fit_areas`
+      And `background_fit_areas` contains 2 to 3 concise role-specific noun phrases grounded in allowed evidence
+      And the draft uses the short signature only
+      And the draft does not include attachments, quoted original content, full contact signature, retired terse JD-theme wording, internal artifact text, or metric-heavy proof paragraphs
+      And a generic ungrounded background phrase blocks or escalates the candidate rather than being sent
+
+    Scenario: Reply, bounce, and duplicate-follow-up guards suppress automatic follow-ups
+      Given an original sent `role_targeted` outreach message is due for follow-up
+      When the follow-up worker checks the original Gmail thread and canonical feedback state
+      Then a bounce tied to the original message, recipient, delivery tracking ID, or thread suppresses the follow-up
+      And any inbound reply in the same Gmail thread after the original `sent_at` suppresses the follow-up
+      And a later outbound message from the sender in the same Gmail thread suppresses the follow-up as already followed up
+      And existing `follow_up` or `role_targeted_followup` evidence suppresses another automatic follow-up for the same original thread
+      And unknown reply state does not permit automatic sending
+
+    Scenario: Follow-up send uses persisted same-thread content and immutable original outreach
+      Given an eligible follow-up has passed internal follow-up review gates
+      And the immediately-before-send Gmail-thread recheck still shows no reply, bounce, or later outbound follow-up
+      When automatic follow-up sending is enabled and the shared pacing queue permits a send
+      Then the worker sends a reply in the original Gmail thread rather than a new standalone email
+      And it preserves the original recipient envelope from the first sent email
+      And it sends the exact persisted follow-up draft body rather than regenerating text at send time
+      And it records a separate `role_targeted_followup` outreach message linked to the original
+      And it does not mutate the original `role_targeted` outreach message body, mode, sent timestamp, or delivery identity
+
+    Scenario: Dry-run validates follow-up behavior without sending or sent-state mutation
+      Given due follow-up candidates exist
+      When the follow-up worker runs in dry-run mode
+      Then it evaluates a bounded batch of 25 candidates ordered oldest original sent email first
+      And it may create or refresh `outreach_followup_plans` rows and dry-run artifacts with clear dry-run markers
+      And it renders and persists the actual draft text and agent-review evidence for would-send candidates
+      And it performs only read-only Gmail checks
+      And it does not call Gmail send APIs
+      And it does not set `sent_at`, `message_status = sent`, `plan_status = sent`, or successful send-result state
+
+    Scenario: Follow-up worker records plans, cycle audits, and reviewable failures
+      Given the follow-up worker runs a scheduled or manual cycle
+      When the cycle completes with sends, skips, pacing waits, retryable failures, or no-op results
+      Then a `followup_cycle_runs` audit row is written for that invocation
+      And one `outreach_followup_plans` row represents one allowed follow-up opportunity for one original sent outreach message
+      And uniqueness on `original_outreach_message_id` plus `followup_sequence` prevents duplicate first-follow-up plans
+      And structural same-thread failures or ambiguous may-have-sent states create blocked or reviewable follow-up state
+      And real-mode blocked, ambiguous, failed, or escalated cases include enough review-packet context to inspect the original email, draft if present, thread evidence, bounce evidence, grounding evidence, and recommended owner action
+
+    Scenario: Follow-up auto-send rollout is gated and paced
+      Given the follow-up worker is deployed for the first time
+      When runtime control state is inspected
+      Then automatic follow-up sending is disabled by default
+      And dry-run validation can run before enablement
+      When automatic sending is later explicitly enabled
+      Then follow-up sends share the global 6-to-10-minute send pacing queue with first emails
+      And the worker sends at most one follow-up per cycle
+      And the initial rollout pauses follow-up auto-send after 10 successful follow-up sends for inspection
+
   @delivery_feedback
   Rule: Delivery Feedback behavior
 
@@ -1287,11 +1361,23 @@ Feature: Job Hunt Copilot next-build acceptance
       When `jhc-agent-start` is invoked
       Then it runs the runtime-pack materialization step before enabling background execution
       And it ensures the supervisor plist is rendered with absolute project-root paths
+      And it ensures the follow-up worker plist is rendered with absolute project-root paths
       And it uses `launchctl bootstrap` or an equivalent idempotent load-if-needed step
       And it uses `launchctl kickstart -k gui/$UID/com.jobhuntcopilot.supervisor` for the immediate first heartbeat
+      And it manages the dedicated follow-up launchd job alongside the supervisor and feedback-sync jobs
       When `jhc-agent-stop` is invoked
       Then it writes disabled or stopped control state before unloading the job
       And it uses `launchctl bootout` or an equivalent idempotent unload step
+      And it stops or disables the dedicated follow-up launchd job as part of the normal stop path
+
+    Scenario: Dedicated follow-up worker has its own local runtime wiring
+      Given the current local helper entrypoints are installed
+      When follow-up worker runtime wiring is inspected
+      Then a dedicated launchd job exists for the follow-up worker
+      And it runs every 60 seconds without overriding shared send pacing
+      And it points to a manual cycle entrypoint such as `bin/jhc-followup-cycle`
+      And follow-up stdout and stderr are written to dedicated files under `ops/logs/`
+      And follow-up control state can be paused or resumed independently from the primary supervisor
 
     Scenario: jhc-chat is the direct Codex-backed operator entrypoint
       Given the expert wants to inspect or control the autonomous system
@@ -1318,6 +1404,7 @@ Feature: Job Hunt Copilot next-build acceptance
       And it always includes pending expert review items, open incidents, and maintenance state
       And it includes runtime totals for today, yesterday, and rolling average daily runtime
       And it includes successful run counts, successful send counts, bounce counts, and reply counts for today and yesterday
+      And it includes compact follow-up fields for `due_now`, `waiting_for_pacing`, `sent_today`, `blocked_or_review`, `last_cycle_at`, and `last_cycle_result`
 
     Scenario: Startup dashboard runtime metrics count only active autonomous execution
       Given the system has both active autonomous runtime and paused expert-interaction time

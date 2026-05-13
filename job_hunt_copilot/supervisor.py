@@ -220,6 +220,10 @@ CONTROL_DEFAULTS = MappingProxyType(
         "gmail_poll_last_history_id": "",
         "gmail_poll_last_checkpoint_at": "",
         "gmail_poll_last_strategy": "",
+        "followup_auto_send_enabled": "false",
+        "followup_auto_send_paused": "false",
+        "followup_initial_rollout_sent_count": "0",
+        "followup_initial_rollout_approved": "false",
     }
 )
 

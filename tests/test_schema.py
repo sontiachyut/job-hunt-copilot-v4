@@ -20,12 +20,14 @@ EXPECTED_TABLES = {
     "expert_review_decisions",
     "expert_review_packets",
     "feedback_sync_runs",
+    "followup_cycle_runs",
     "job_posting_contacts",
     "job_postings",
     "linkedin_lead_contacts",
     "linkedin_leads",
     "maintenance_change_batches",
     "outreach_messages",
+    "outreach_followup_plans",
     "override_events",
     "pipeline_runs",
     "provider_budget_events",
@@ -75,6 +77,9 @@ EXPECTED_INDEXES = {
     "idx_feedback_sync_runs_result",
     "idx_feedback_sync_runs_scheduler_name",
     "idx_feedback_sync_runs_started_at",
+    "idx_followup_cycle_runs_result",
+    "idx_followup_cycle_runs_scheduler_name",
+    "idx_followup_cycle_runs_started_at",
     "idx_job_posting_contacts_pair",
     "idx_job_posting_contacts_recipient_type",
     "idx_job_posting_contacts_status",
@@ -93,6 +98,13 @@ EXPECTED_INDEXES = {
     "idx_outreach_messages_job_posting",
     "idx_outreach_messages_sent_at",
     "idx_outreach_messages_status",
+    "idx_outreach_followup_plans_contact",
+    "idx_outreach_followup_plans_eligible_after",
+    "idx_outreach_followup_plans_followup_message",
+    "idx_outreach_followup_plans_job_posting",
+    "idx_outreach_followup_plans_original_message",
+    "idx_outreach_followup_plans_original_sequence",
+    "idx_outreach_followup_plans_status",
     "idx_override_events_object",
     "idx_override_events_timestamp",
     "idx_pipeline_runs_job_posting",
@@ -148,7 +160,7 @@ def test_bootstrap_materializes_canonical_schema_objects(tmp_path):
     assert EXPECTED_TABLES <= tables
     assert EXPECTED_VIEWS <= views
     assert EXPECTED_INDEXES <= indexes
-    assert user_version == 6
+    assert user_version == 7
 
 
 def test_review_views_are_queryable_from_canonical_state(tmp_path):

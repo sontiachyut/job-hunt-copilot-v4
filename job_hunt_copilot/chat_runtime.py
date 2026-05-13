@@ -4,6 +4,7 @@ import sqlite3
 from datetime import date, datetime, time, timedelta, timezone, tzinfo
 from typing import Any
 
+from .followups import build_followup_dashboard_summary
 from .paths import ProjectPaths
 from .review_queries import query_review_surfaces
 
@@ -621,6 +622,7 @@ def build_chat_startup_dashboard(
         "pause_reason": pause_reason,
         "runtime_metrics": runtime_metrics,
         "review_queue": review_queue,
+        "followups": build_followup_dashboard_summary(connection, current_time=current_time),
         "summary": {
             "pending_expert_review_count": group_index["pending_expert_review_packets"][
                 "total_count"
@@ -668,6 +670,15 @@ def render_chat_startup_dashboard(dashboard: dict[str, Any]) -> str:
             "- Replies: "
             f"today {runtime_metrics['today']['reply_count']} | "
             f"yesterday {runtime_metrics['yesterday']['reply_count']}"
+        ),
+        (
+            "- Follow-ups: "
+            f"due {dashboard['followups']['due_now']} | "
+            f"pacing {dashboard['followups']['waiting_for_pacing']} | "
+            f"sent today {dashboard['followups']['sent_today']} | "
+            f"blocked/review {dashboard['followups']['blocked_or_review']} | "
+            f"last cycle {dashboard['followups']['last_cycle_at'] or 'never'} "
+            f"({dashboard['followups']['last_cycle_result'] or 'none'})"
         ),
         "",
         "## Review Queue",

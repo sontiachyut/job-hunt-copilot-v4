@@ -17,6 +17,7 @@ CANONICAL_ID_PREFIXES = MappingProxyType(
         "state_transition_events": "ste",
         "override_events": "ovr",
         "feedback_sync_runs": "fsr",
+        "followup_cycle_runs": "fcr",
         "pipeline_runs": "pr",
         "supervisor_cycles": "sc",
         "agent_incidents": "inc",
@@ -27,6 +28,7 @@ CANONICAL_ID_PREFIXES = MappingProxyType(
         "provider_budget_events": "pbe",
         "discovery_attempts": "da",
         "outreach_messages": "msg",
+        "outreach_followup_plans": "fup",
         "delivery_feedback_events": "dfe",
     }
 )

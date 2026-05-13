@@ -4,8 +4,10 @@ set -euo pipefail
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 PLIST="$ROOT/ops/launchd/job-hunt-copilot-supervisor.plist"
 FEEDBACK_PLIST="$ROOT/ops/launchd/job-hunt-copilot-feedback-sync.plist"
+FOLLOWUP_PLIST="$ROOT/ops/launchd/job-hunt-copilot-followups.plist"
 LABEL="gui/$UID/com.jobhuntcopilot.supervisor"
 FEEDBACK_LABEL="gui/$UID/com.jobhuntcopilot.feedback-sync"
+FOLLOWUP_LABEL="gui/$UID/com.jobhuntcopilot.followups"
 PYTHON_BIN="${JHC_PYTHON_BIN:-}"
 if [[ -z "$PYTHON_BIN" && -x /opt/homebrew/opt/python@3.11/libexec/bin/python3 ]]; then
   PYTHON_BIN="/opt/homebrew/opt/python@3.11/libexec/bin/python3"
@@ -24,9 +26,13 @@ fi
 "$PYTHON_BIN" "$ROOT/scripts/ops/build_runtime_pack.py" --project-root "$ROOT" >/dev/null
 "$PYTHON_BIN" "$ROOT/scripts/ops/materialize_supervisor_plist.py" --project-root "$ROOT" >/dev/null
 "$PYTHON_BIN" "$ROOT/scripts/ops/materialize_feedback_sync_plist.py" --project-root "$ROOT" >/dev/null
+"$PYTHON_BIN" "$ROOT/scripts/ops/materialize_followup_plist.py" --project-root "$ROOT" >/dev/null
 "$PYTHON_BIN" "$ROOT/scripts/ops/control_agent.py" start --project-root "$ROOT" --manual-command jhc-agent-start >/dev/null
 
 rollback_start_failure() {
+  if launchctl print "$FOLLOWUP_LABEL" >/dev/null 2>&1; then
+    launchctl bootout "gui/$UID" "$FOLLOWUP_PLIST" >/dev/null || true
+  fi
   if launchctl print "$FEEDBACK_LABEL" >/dev/null 2>&1; then
     launchctl bootout "gui/$UID" "$FEEDBACK_PLIST" >/dev/null || true
   fi
@@ -44,10 +50,15 @@ fi
 if ! launchctl print "$FEEDBACK_LABEL" >/dev/null 2>&1; then
   launchctl bootstrap "gui/$UID" "$FEEDBACK_PLIST"
 fi
+if ! launchctl print "$FOLLOWUP_LABEL" >/dev/null 2>&1; then
+  launchctl bootstrap "gui/$UID" "$FOLLOWUP_PLIST"
+fi
 
 launchctl kickstart -k "$LABEL"
 launchctl kickstart -k "$FEEDBACK_LABEL"
+launchctl kickstart -k "$FOLLOWUP_LABEL"
 launchctl print "$LABEL" >/dev/null
 launchctl print "$FEEDBACK_LABEL" >/dev/null
+launchctl print "$FOLLOWUP_LABEL" >/dev/null
 trap - ERR
-echo "Job Hunt Copilot supervisor and delayed feedback sync started via $LABEL and $FEEDBACK_LABEL"
+echo "Job Hunt Copilot supervisor, delayed feedback sync, and follow-up worker started via $LABEL, $FEEDBACK_LABEL, and $FOLLOWUP_LABEL"

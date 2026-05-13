@@ -396,6 +396,22 @@ RULE_BLUEPRINTS: dict[str, RuleBlueprint] = {
         code_refs=("job_hunt_copilot/outreach.py",),
         test_refs=("tests/test_outreach.py",),
     ),
+    "Automated Follow-Up Worker behavior": RuleBlueprint(
+        owner_role="outreach-engineer",
+        epic_ids=("BA-08", "BA-09"),
+        code_refs=(
+            "job_hunt_copilot/followups.py",
+            "job_hunt_copilot/local_runtime.py",
+            "job_hunt_copilot/paths.py",
+            "scripts/ops/run_followup_cycle.py",
+            "bin/jhc-followup-cycle",
+        ),
+        test_refs=(
+            "tests/test_followups.py",
+            "tests/test_local_runtime.py",
+            "tests/test_schema.py",
+        ),
+    ),
     "Delivery Feedback behavior": RuleBlueprint(
         owner_role="outreach-engineer",
         epic_ids=("BA-03", "BA-09"),
@@ -853,6 +869,7 @@ _register_override(
         "jhc-agent-start and jhc-agent-stop use the current launchctl wiring",
         "jhc-chat is the direct Codex-backed operator entrypoint",
         "jhc-chat uses explicit session begin and end wiring in the current build",
+        "Dedicated follow-up worker has its own local runtime wiring",
         "Progress log, ops plan, and context snapshot use the current exact file shapes",
         "Opening jhc-chat immediately pauses autonomous work and safe checkpointing is strict",
     ),
