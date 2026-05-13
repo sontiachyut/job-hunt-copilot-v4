@@ -4674,6 +4674,7 @@ def test_repo_agent_wrappers_use_expected_repo_local_wiring():
     followup_cycle_wrapper = (REPO_ROOT / "bin" / "jhc-followup-cycle").read_text(encoding="utf-8")
     assert "scripts/ops/run_followup_cycle.py" in followup_cycle_wrapper
     assert '--project-root "$ROOT"' in followup_cycle_wrapper
+    assert 'export PYTHONPATH="$ROOT${PYTHONPATH:+:$PYTHONPATH}"' in followup_cycle_wrapper
 
     assert "scripts/ops/chat_session.py\" begin" in chat_wrapper
     assert "scripts/ops/chat_session.py\" end" in chat_wrapper
