@@ -312,6 +312,38 @@ def test_followup_prefers_original_email_role_company_and_records_review_gates(t
     assert evidence["grounding_sources"]["original_email_body"] is True
 
 
+def test_followup_recovers_opening_at_company_and_strips_subject_impact_suffix(tmp_path):
+    project_root, connection = _bootstrap_connection(tmp_path)
+    _seed_sent_role_targeted_message(
+        connection,
+        company_name="PayPal",
+        role_title="Sr Software Engineer",
+        subject="Sr Software Engineer at PayPal | Impact: 24",
+        body_text=(
+            "Hi Trevor,\n\n"
+            "I came across the Sr Software Engineer opening at PayPal, and the work touches Java services, REST APIs, and AWS data pipelines.\n\n"
+            "Best,\n"
+            "Achyutaram Sonti"
+        ),
+    )
+
+    run_followup_cycle(
+        connection,
+        project_root=project_root,
+        current_time=NOW,
+        dry_run=True,
+        thread_inspector=FakeThreadInspector(ThreadInspectionResult(result="clear", checked_at=NOW)),
+    )
+
+    plan = connection.execute("SELECT * FROM outreach_followup_plans").fetchone()
+    draft_text = (project_root / plan["draft_artifact_path"]).read_text(encoding="utf-8")
+    evidence = json.loads((project_root / plan["review_evidence_artifact_path"]).read_text(encoding="utf-8"))
+    assert "Sr Software Engineer role at PayPal." in draft_text
+    assert "Impact: 24" not in draft_text
+    assert evidence["company_name"] == "PayPal"
+    assert evidence["company_name_source"] == "original_email_body"
+
+
 def test_unreadable_optional_jd_artifact_does_not_fail_dry_run(tmp_path):
     project_root, connection = _bootstrap_connection(tmp_path)
     _seed_sent_role_targeted_message(connection)

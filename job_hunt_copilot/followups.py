@@ -1829,16 +1829,20 @@ def _clean_template_field(value: str | None) -> str | None:
 
 
 def _extract_role_company_from_original_body(body_text: str) -> dict[str, str | None]:
-    match = re.search(
-        r"about the (?P<role>.+?) role at (?P<company>[A-Z0-9][^\n.,;:!?]*?)(?:\s+because\b|[.\n,;:!?]|$)",
-        body_text,
-        re.IGNORECASE,
+    patterns = (
+        r"about the (?P<role>.+?) role at (?P<company>[A-Z0-9][^\n.,;:!?|]*?)(?:\s+because\b|[.\n,;:!?|]|$)",
+        r"the (?P<role>.+?) opening at (?P<company>[A-Z0-9][^\n.,;:!?|]*?)(?:\s+and\b|\s+because\b|[.\n,;:!?|]|$)",
     )
+    match = None
+    for pattern in patterns:
+        match = re.search(pattern, body_text, re.IGNORECASE)
+        if match:
+            break
     if not match:
         return {"role_title": None, "company_name": None}
     return {
         "role_title": _clean_template_field(match.group("role")),
-        "company_name": _clean_template_field(match.group("company")),
+        "company_name": _clean_company_name(match.group("company")),
     }
 
 
@@ -1852,7 +1856,7 @@ def _extract_role_company_from_subject(subject: str | None) -> dict[str, str | N
         return {"role_title": None, "company_name": None}
     return {
         "role_title": _clean_template_field(match.group("role")),
-        "company_name": _clean_template_field(match.group("company")),
+        "company_name": _clean_company_name(match.group("company")),
     }
 
 
@@ -1862,6 +1866,14 @@ def _strip_signature(body_text: str) -> str:
         if line.strip().lower() in {"best,", "best", "thanks,", "thank you,"}:
             return "\n".join(lines[:index]).strip()
     return body_text
+
+
+def _clean_company_name(value: str | None) -> str | None:
+    normalized = _clean_template_field(value)
+    if normalized is None:
+        return None
+    normalized = re.sub(r"\s*\|\s*Impact:\s*\d+\s*$", "", normalized, flags=re.IGNORECASE)
+    return _clean_template_field(normalized)
 
 
 def _extract_first_email(value: str) -> str | None:
