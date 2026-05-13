@@ -1,20 +1,27 @@
 from __future__ import annotations
 
+import base64
+import json
 import sqlite3
 from dataclasses import dataclass
+from email import message_from_bytes
 
 from job_hunt_copilot.bootstrap import run_bootstrap
 from job_hunt_copilot.followups import (
+    GmailSameThreadFollowUpSender,
     PLAN_STATUS_DRY_RUN_READY,
     PLAN_STATUS_SENT,
     SKIP_REASON_ALREADY_FOLLOWED_UP,
+    SKIP_REASON_MISSING_THREAD_CONTEXT,
     SKIP_REASON_REPLIED_IN_THREAD,
+    FollowUpCandidate,
     ThreadInspectionResult,
     build_followup_dashboard_summary,
     run_followup_cycle,
     validate_followup_body,
 )
 from job_hunt_copilot.outreach import SEND_OUTCOME_SENT, SendAttemptOutcome
+from job_hunt_copilot.paths import ProjectPaths
 from tests.support import create_minimal_project
 
 
@@ -46,6 +53,29 @@ class FakeSender:
         )
 
 
+class FakeGmailSendService:
+    def __init__(self):
+        self.sent_body = None
+
+    def users(self):
+        return self
+
+    def messages(self):
+        return self
+
+    def send(self, *, userId, body):
+        assert userId == "me"
+        self.sent_body = body
+        return self
+
+    def execute(self):
+        return {
+            "id": "gmail_followup_1",
+            "threadId": "thread_1",
+            "internalDate": "1778608800000",
+        }
+
+
 def _bootstrap_connection(tmp_path):
     project_root = tmp_path / "repo"
     project_root.mkdir()
@@ -57,6 +87,35 @@ def _bootstrap_connection(tmp_path):
     return project_root, connection
 
 
+def _candidate_for_sender(project_root) -> FollowUpCandidate:
+    return FollowUpCandidate(
+        outreach_followup_plan_id="fp_1",
+        original_outreach_message_id="om_original",
+        contact_id="ct_1",
+        job_posting_id="jp_1",
+        job_posting_contact_id="jpc_1",
+        recipient_email="alex@example.com",
+        outreach_mode="role_targeted",
+        subject="Backend Developer at ExampleCo",
+        body_text="Hi Alex,\n\nI'm reaching out about the Backend Developer role at ExampleCo because the work touches Java services and REST APIs.\n\nBest,\nAchyutaram Sonti",
+        thread_id="thread_1",
+        delivery_tracking_id="gmail_original_1",
+        sent_at=OLD_SENT_AT,
+        eligible_after=NOW,
+        followup_sequence=1,
+        contact_display_name="Alex Rivera",
+        contact_first_name="Alex",
+        contact_status="sent",
+        company_name="ExampleCo",
+        role_title="Backend Developer",
+        jd_artifact_path=None,
+        tailored_resume_path=None,
+        plan_status="pending",
+        retry_count=0,
+        next_retry_at=None,
+    )
+
+
 def _seed_sent_role_targeted_message(
     connection: sqlite3.Connection,
     *,
@@ -65,12 +124,15 @@ def _seed_sent_role_targeted_message(
     recipient_email: str = "alex@example.com",
     thread_id: str = "thread_1",
     sent_at: str = OLD_SENT_AT,
+    company_name: str = "ExampleCo",
+    role_title: str = "Backend Developer",
+    subject: str = "Backend Developer at ExampleCo",
     body_text: str | None = None,
 ) -> None:
     now = "2026-05-01T15:00:00Z"
     body = body_text or (
         "Hi Alex,\n\n"
-        "I'm reaching out about the Backend Developer role at ExampleCo because the work touches Java services, REST APIs, and AWS data pipelines.\n\n"
+        f"I'm reaching out about the {role_title} role at {company_name} because the work touches Java services, REST APIs, and AWS data pipelines.\n\n"
         "Best,\nAchyutaram Sonti"
     )
     connection.execute(
@@ -83,15 +145,15 @@ def _seed_sent_role_targeted_message(
         """,
         (
             "ld_1",
-            "exampleco|backend-developer",
+            f"{company_name.lower()}|{role_title.lower()}",
             "reviewed",
             "posting_only",
             "confident",
             "manual_paste",
             "paste/paste.txt",
             "manual_paste",
-            "ExampleCo",
-            "Backend Developer",
+            company_name,
+            role_title,
             now,
             now,
         ),
@@ -106,9 +168,9 @@ def _seed_sent_role_targeted_message(
         (
             "jp_1",
             "ld_1",
-            "exampleco|backend-developer|remote",
-            "ExampleCo",
-            "Backend Developer",
+            f"{company_name.lower()}|{role_title.lower()}|remote",
+            company_name,
+            role_title,
             "outreach_in_progress",
             None,
             now,
@@ -127,7 +189,7 @@ def _seed_sent_role_targeted_message(
             contact_id,
             f"{contact_id}|exampleco",
             "Alex Rivera",
-            "ExampleCo",
+            company_name,
             "linkedin_scraping",
             "sent",
             "Alex Rivera",
@@ -163,7 +225,7 @@ def _seed_sent_role_targeted_message(
             "sent",
             "jp_1",
             "jpc_1",
-            "Backend Developer at ExampleCo",
+            subject,
             body,
             None,
             thread_id,
@@ -210,6 +272,46 @@ def test_dry_run_renders_strict_followup_without_sent_state(tmp_path):
     assert "50M+" not in draft_text
 
 
+def test_followup_prefers_original_email_role_company_and_records_review_gates(tmp_path):
+    project_root, connection = _bootstrap_connection(tmp_path)
+    _seed_sent_role_targeted_message(
+        connection,
+        company_name="Canonical Corp",
+        role_title="Canonical Backend Developer",
+        subject="Canonical Backend Developer at Canonical Corp",
+        body_text=(
+            "Hi Alex,\n\n"
+            "I'm reaching out about the Staff Platform Engineer role at Acme Labs because the work touches Java services, REST APIs, and AWS data pipelines.\n\n"
+            "Best,\n"
+            "Achyutaram Sonti\n"
+            "https://www.linkedin.com/in/achyutaram-sonti\n"
+            "asonti1@asu.edu"
+        ),
+    )
+
+    run_followup_cycle(
+        connection,
+        project_root=project_root,
+        current_time=NOW,
+        dry_run=True,
+        thread_inspector=FakeThreadInspector(ThreadInspectionResult(result="clear", checked_at=NOW)),
+    )
+
+    plan = connection.execute("SELECT * FROM outreach_followup_plans").fetchone()
+    draft_text = (project_root / plan["draft_artifact_path"]).read_text(encoding="utf-8")
+    evidence = json.loads((project_root / plan["review_evidence_artifact_path"]).read_text(encoding="utf-8"))
+
+    assert "Staff Platform Engineer role at Acme Labs" in draft_text
+    assert "Canonical Backend Developer role at Canonical Corp" not in draft_text
+    assert evidence["role_title_source"] == "original_email_body"
+    assert evidence["company_name_source"] == "original_email_body"
+    assert evidence["guards"]["approved_template"] is True
+    assert evidence["guards"]["direct_thread_reply_check_clear"] is True
+    assert evidence["guards"]["no_prior_followup"] is True
+    assert evidence["guards"]["original_email_did_not_bounce"] is True
+    assert evidence["grounding_sources"]["original_email_body"] is True
+
+
 def test_reply_in_thread_suppresses_followup(tmp_path):
     project_root, connection = _bootstrap_connection(tmp_path)
     _seed_sent_role_targeted_message(connection)
@@ -229,6 +331,27 @@ def test_reply_in_thread_suppresses_followup(tmp_path):
     assert result.skipped_replied == 1
     assert plan["plan_status"] == "skipped"
     assert plan["last_skip_reason"] == SKIP_REASON_REPLIED_IN_THREAD
+
+
+def test_missing_thread_context_in_real_cycle_writes_review_packet(tmp_path):
+    project_root, connection = _bootstrap_connection(tmp_path)
+    _seed_sent_role_targeted_message(connection, thread_id=None)
+
+    result = run_followup_cycle(
+        connection,
+        project_root=project_root,
+        current_time=NOW,
+        dry_run=False,
+        thread_inspector=FakeThreadInspector(ThreadInspectionResult(result="clear", checked_at=NOW)),
+    )
+
+    plan = connection.execute("SELECT * FROM outreach_followup_plans").fetchone()
+    assert plan["plan_status"] == "held_for_review"
+    assert plan["last_skip_reason"] == SKIP_REASON_MISSING_THREAD_CONTEXT
+    assert result.artifact_paths
+    packet_text = (project_root / result.artifact_paths[0]).read_text(encoding="utf-8")
+    assert "missing_followup_thread_context" in packet_text
+    assert "Original Email" in packet_text
 
 
 def test_existing_later_followup_suppresses_duplicate(tmp_path):
@@ -309,6 +432,47 @@ def test_auto_send_uses_persisted_body_and_records_linked_followup(tmp_path):
     assert sent["recipient_email"] == "alex@example.com"
     assert sent["body_text"] == sender.sent_bodies[0]
     assert sender.sent_bodies[0] == (project_root / plan["draft_artifact_path"]).read_text(encoding="utf-8").rstrip("\n")
+
+
+def test_gmail_same_thread_sender_preserves_recoverable_cc_and_reply_headers(tmp_path):
+    project_root, _ = _bootstrap_connection(tmp_path)
+    candidate = _candidate_for_sender(project_root)
+    send_result_path = (
+        project_root
+        / "outreach"
+        / "output"
+        / "exampleco"
+        / "backend-developer"
+        / "messages"
+        / "om_original"
+        / "send_result.json"
+    )
+    send_result_path.parent.mkdir(parents=True, exist_ok=True)
+    send_result_path.write_text(
+        json.dumps(
+            {
+                "result": "success",
+                "cc_emails": ["lead@example.com", "team@example.com"],
+                "rfc_message_id": "<original-message@example.com>",
+            }
+        ),
+        encoding="utf-8",
+    )
+    service = FakeGmailSendService()
+
+    outcome = GmailSameThreadFollowUpSender(
+        ProjectPaths.from_root(project_root),
+        service_factory=lambda: service,
+    ).send_followup(candidate, body_text="Hi Alex,\n\nFollow-up body.\n\nBest,\nAchyutaram Sonti")
+
+    assert outcome.outcome == SEND_OUTCOME_SENT
+    assert service.sent_body["threadId"] == "thread_1"
+    decoded = base64.urlsafe_b64decode(service.sent_body["raw"])
+    message = message_from_bytes(decoded)
+    assert message["To"] == "alex@example.com"
+    assert message["Cc"] == "lead@example.com, team@example.com"
+    assert message["In-Reply-To"] == "<original-message@example.com>"
+    assert message["References"] == "<original-message@example.com>"
 
 
 def test_auto_send_respects_global_pacing_queue(tmp_path):

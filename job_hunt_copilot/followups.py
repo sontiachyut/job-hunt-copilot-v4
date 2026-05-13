@@ -120,9 +120,19 @@ class FollowUpCandidate:
     company_name: str | None
     role_title: str | None
     jd_artifact_path: str | None
+    tailored_resume_path: str | None
     plan_status: str
     retry_count: int
     next_retry_at: str | None
+
+
+@dataclass(frozen=True)
+class OriginalSendMetadata:
+    source_path: str | None
+    cc_emails: tuple[str, ...]
+    message_id_header: str | None
+    role_title: str | None
+    company_name: str | None
 
 
 @dataclass(frozen=True)
@@ -386,10 +396,16 @@ class GmailSameThreadFollowUpSender:
             )
         try:
             service = self._build_service()
+            original_metadata = _load_original_send_metadata(self._paths, candidate)
             mime_message = EmailMessage()
             mime_message["To"] = candidate.recipient_email
+            if original_metadata.cc_emails:
+                mime_message["Cc"] = ", ".join(original_metadata.cc_emails)
             if candidate.subject:
                 mime_message["Subject"] = candidate.subject
+            if original_metadata.message_id_header:
+                mime_message["In-Reply-To"] = original_metadata.message_id_header
+                mime_message["References"] = original_metadata.message_id_header
             mime_message.set_content(body_text)
             raw_payload = base64.urlsafe_b64encode(mime_message.as_bytes()).decode("ascii")
             response = (
@@ -481,7 +497,15 @@ def run_followup_cycle(
                 continue
             decision = _evaluate_candidate_stop_conditions(connection, candidate, effective_time)
             if decision is not None:
-                _apply_stop_decision(connection, candidate, decision, effective_time)
+                _apply_stop_decision(
+                    connection,
+                    paths,
+                    candidate,
+                    decision,
+                    effective_time,
+                    dry_run=dry_run,
+                    artifact_paths=artifact_paths,
+                )
                 _increment_count_for_reason(counts, decision["reason_code"])
                 continue
 
@@ -498,7 +522,15 @@ def run_followup_cycle(
                 )
                 continue
 
-            rendered = render_followup_draft(paths, candidate, current_time=effective_time, dry_run=dry_run)
+            rendered = render_followup_draft(
+                paths,
+                candidate,
+                current_time=effective_time,
+                dry_run=dry_run,
+                thread_check=pre_draft_check,
+                prior_followup_found=False,
+                bounce_found=False,
+            )
             if rendered is None:
                 _mark_plan_status(
                     connection,
@@ -646,17 +678,23 @@ def render_followup_draft(
     *,
     current_time: str,
     dry_run: bool,
+    thread_check: ThreadInspectionResult | None = None,
+    prior_followup_found: bool = False,
+    bounce_found: bool = False,
 ) -> RenderedFollowUpDraft | None:
     if not _normalize_optional_text(candidate.body_text):
         return None
-    role_title = _clean_template_field(candidate.role_title) or _extract_role_from_original_body(candidate.body_text)
-    company_name = _clean_template_field(candidate.company_name)
+    original_metadata = _load_original_send_metadata(paths, candidate)
+    role_choice = _resolve_role_company(candidate, original_metadata)
+    role_title = role_choice["role_title"]
+    company_name = role_choice["company_name"]
     if not role_title or not company_name:
         return None
     salutation = _resolve_salutation(candidate)
-    background_fit_areas = _derive_background_fit_areas(paths, candidate)
-    if background_fit_areas is None:
+    fit_choice = _derive_background_fit_areas(paths, candidate)
+    if fit_choice is None:
         return None
+    background_fit_areas = fit_choice["background_fit_areas"]
     body_text = (
         f"{salutation}\n\n"
         f"I wanted to briefly follow up on my earlier note about the {role_title} role at {company_name}.\n\n"
@@ -682,17 +720,33 @@ def render_followup_draft(
         "followup_sequence": candidate.followup_sequence,
         "template": "warmer_mutual_fit_first_followup",
         "role_title": role_title,
+        "role_title_source": role_choice["role_title_source"],
         "company_name": company_name,
+        "company_name_source": role_choice["company_name_source"],
         "salutation": salutation,
         "background_fit_areas": background_fit_areas,
+        "grounding_sources": fit_choice["grounding_sources"],
+        "grounding_fallbacks": fit_choice["grounding_fallbacks"],
+        "original_send_metadata": {
+            "source_path": original_metadata.source_path,
+            "cc_emails": list(original_metadata.cc_emails),
+            "message_id_header": original_metadata.message_id_header,
+        },
         "rendered_at": current_time,
         "guards": {
+            "approved_template": True,
             "short_signature": True,
             "no_attachments": True,
             "plain_text": True,
             "no_quoted_original": True,
             "no_metric_heavy_proof_points": True,
+            "no_retired_template": True,
+            "no_internal_artifact_text": True,
+            "original_email_did_not_bounce": not bounce_found,
+            "no_prior_followup": not prior_followup_found,
+            "direct_thread_reply_check_clear": thread_check.safe_to_send if thread_check else None,
         },
+        "thread_check": thread_check.as_dict() if thread_check else None,
     }
     write_json_contract(
         review_path,
@@ -855,7 +909,18 @@ def _load_candidate_plans(
           c.contact_status,
           jp.company_name,
           jp.role_title,
-          jp.jd_artifact_path
+          jp.jd_artifact_path,
+          (
+            SELECT rtr.final_resume_path
+            FROM resume_tailoring_runs rtr
+            WHERE rtr.job_posting_id = fp.job_posting_id
+              AND rtr.resume_review_status = 'approved'
+              AND rtr.final_resume_path IS NOT NULL
+              AND TRIM(rtr.final_resume_path) <> ''
+            ORDER BY COALESCE(rtr.completed_at, rtr.started_at, rtr.updated_at, rtr.created_at) DESC,
+                     rtr.resume_tailoring_run_id DESC
+            LIMIT 1
+          ) AS tailored_resume_path
         FROM outreach_followup_plans fp
         JOIN outreach_messages om
           ON om.outreach_message_id = fp.original_outreach_message_id
@@ -903,6 +968,7 @@ def _candidate_from_row(row: sqlite3.Row) -> FollowUpCandidate:
         company_name=_normalize_optional_text(row["company_name"]),
         role_title=_normalize_optional_text(row["role_title"]),
         jd_artifact_path=_normalize_optional_text(row["jd_artifact_path"]),
+        tailored_resume_path=_normalize_optional_text(row["tailored_resume_path"]),
         plan_status=str(row["plan_status"]),
         retry_count=int(row["retry_count"] or 0),
         next_retry_at=_normalize_optional_text(row["next_retry_at"]),
@@ -976,9 +1042,13 @@ def _has_existing_followup_evidence(connection: sqlite3.Connection, candidate: F
 
 def _apply_stop_decision(
     connection: sqlite3.Connection,
+    paths: ProjectPaths,
     candidate: FollowUpCandidate,
     decision: Mapping[str, str],
     current_time: str,
+    *,
+    dry_run: bool,
+    artifact_paths: list[str],
 ) -> None:
     _mark_plan_status(
         connection,
@@ -987,6 +1057,18 @@ def _apply_stop_decision(
         current_time,
         reason_code=decision["reason_code"],
     )
+    if not dry_run and decision["status"] in {PLAN_STATUS_BLOCKED, PLAN_STATUS_HELD_FOR_REVIEW, PLAN_STATUS_AMBIGUOUS}:
+        artifact_paths.append(
+            _write_followup_review_packet(
+                paths,
+                candidate,
+                current_time,
+                decision["reason_code"],
+                _review_message_for_reason(decision["reason_code"]),
+                None,
+                None,
+            )
+        )
 
 
 def _handle_thread_block(
@@ -1284,6 +1366,7 @@ def _write_followup_review_packet(
         f"- job_posting_id: {candidate.job_posting_id or ''}",
         f"- recipient_email: {candidate.recipient_email}",
         f"- thread_id: {candidate.thread_id or ''}",
+        f"- delivery_tracking_id: {candidate.delivery_tracking_id or ''}",
         f"- created_at: {current_time}",
         "",
         "## Recommended Action",
@@ -1294,11 +1377,32 @@ def _write_followup_review_packet(
         "",
     ]
     if rendered is not None:
-        lines.extend(["## Rendered Follow-Up Draft", rendered.body_text, ""])
+        lines.extend(
+            [
+                "## Rendered Follow-Up Draft",
+                rendered.body_text,
+                "",
+                "## Grounding Evidence",
+                "```json",
+                json.dumps(rendered.evidence, indent=2),
+                "```",
+                "",
+            ]
+        )
     if inspection is not None:
         lines.extend(["## Thread Check Evidence", "```json", json.dumps(inspection.as_dict(), indent=2), "```", ""])
     packet_path.write_text("\n".join(lines), encoding="utf-8")
     return str(paths.relative_to_root(packet_path))
+
+
+def _review_message_for_reason(reason_code: str) -> str:
+    messages = {
+        SKIP_REASON_MISSING_THREAD_CONTEXT: "Original same-thread Gmail metadata is missing or unusable.",
+        SKIP_REASON_MISSING_ORIGINAL_BODY: "Original sent email body is missing from canonical state.",
+        SKIP_REASON_GROUNDING_INSUFFICIENT: "Could not derive role-specific grounded background fit areas.",
+        SKIP_REASON_AMBIGUOUS_SEND: "Gmail send state is ambiguous.",
+    }
+    return messages.get(reason_code, "Follow-up candidate requires owner review before it can proceed.")
 
 
 def _evaluate_global_pacing(
@@ -1348,16 +1452,18 @@ def _determine_followup_gap_minutes(candidate: FollowUpCandidate, current_dt: da
     return MIN_INTER_SEND_GAP_MINUTES + (digest[0] % (MAX_INTER_SEND_GAP_MINUTES - MIN_INTER_SEND_GAP_MINUTES + 1))
 
 
-def _derive_background_fit_areas(paths: ProjectPaths, candidate: FollowUpCandidate) -> str | None:
-    evidence_text = "\n".join(
-        part
-        for part in (
-            candidate.body_text,
-            _read_optional_project_file(paths, candidate.jd_artifact_path),
-            _read_profile_skills(paths),
-        )
-        if part
-    ).lower()
+def _derive_background_fit_areas(paths: ProjectPaths, candidate: FollowUpCandidate) -> dict[str, Any] | None:
+    original_body = _strip_signature(candidate.body_text)
+    jd_text = _read_optional_project_file(paths, candidate.jd_artifact_path)
+    tailored_resume_text = _read_optional_project_file(paths, candidate.tailored_resume_path)
+    profile_text = "" if tailored_resume_text else _read_profile_skills(paths)
+    evidence_parts = [
+        ("original_email_body", original_body, True),
+        ("jd_artifact", jd_text, bool(jd_text)),
+        ("tailored_resume", tailored_resume_text, bool(tailored_resume_text)),
+        ("profile_fallback", profile_text, bool(profile_text)),
+    ]
+    evidence_text = "\n".join(part for _, part, include in evidence_parts if include and part).lower()
     phrase_specs: tuple[tuple[str, tuple[str, ...]], ...] = (
         ("Java services", ("java", "spring", "jakarta")),
         ("Go/Golang services", ("golang", " go ", "kubernetes resource")),
@@ -1388,7 +1494,57 @@ def _derive_background_fit_areas(paths: ProjectPaths, candidate: FollowUpCandida
         phrase = f"{selected[0]}, {selected[1]}, and {selected[2]}"
     if _normalize_phrase(phrase) in GENERIC_BACKGROUND_PHRASES:
         return None
-    return phrase
+    grounding_sources = {
+        "original_email_body": True,
+        "jd_artifact": bool(jd_text),
+        "tailored_resume": bool(tailored_resume_text),
+        "profile_fallback": bool(profile_text),
+    }
+    grounding_fallbacks: list[str] = []
+    if not jd_text:
+        grounding_fallbacks.append("missing_jd_artifact")
+    if not tailored_resume_text and profile_text:
+        grounding_fallbacks.append("profile_used_for_missing_tailored_resume")
+    if not tailored_resume_text and not profile_text:
+        grounding_fallbacks.append("original_email_only")
+    return {
+        "background_fit_areas": phrase,
+        "grounding_sources": grounding_sources,
+        "grounding_fallbacks": grounding_fallbacks,
+    }
+
+
+def _resolve_role_company(candidate: FollowUpCandidate, metadata: OriginalSendMetadata) -> dict[str, str | None]:
+    body_pair = _extract_role_company_from_original_body(candidate.body_text)
+    subject_pair = _extract_role_company_from_subject(candidate.subject)
+    role_title = body_pair.get("role_title") or subject_pair.get("role_title") or metadata.role_title or _clean_template_field(candidate.role_title)
+    company_name = body_pair.get("company_name") or subject_pair.get("company_name") or metadata.company_name or _clean_template_field(candidate.company_name)
+    return {
+        "role_title": role_title,
+        "role_title_source": (
+            "original_email_body"
+            if body_pair.get("role_title")
+            else "original_subject"
+            if subject_pair.get("role_title")
+            else "original_send_metadata"
+            if metadata.role_title
+            else "canonical_database"
+            if candidate.role_title
+            else None
+        ),
+        "company_name": company_name,
+        "company_name_source": (
+            "original_email_body"
+            if body_pair.get("company_name")
+            else "original_subject"
+            if subject_pair.get("company_name")
+            else "original_send_metadata"
+            if metadata.company_name
+            else "canonical_database"
+            if candidate.company_name
+            else None
+        ),
+    }
 
 
 def _resolve_salutation(candidate: FollowUpCandidate) -> str:
@@ -1440,6 +1596,85 @@ def _read_optional_project_file(paths: ProjectPaths, path_text: str | None) -> s
     if not path.exists() or not path.is_file():
         return ""
     return path.read_text(encoding="utf-8")
+
+
+def _load_original_send_metadata(paths: ProjectPaths, candidate: FollowUpCandidate) -> OriginalSendMetadata:
+    payload = _load_original_send_result_payload(paths, candidate)
+    if payload is None:
+        return OriginalSendMetadata(
+            source_path=None,
+            cc_emails=(),
+            message_id_header=None,
+            role_title=None,
+            company_name=None,
+        )
+    cc_values = _coerce_email_sequence(
+        payload.get("cc")
+        or payload.get("cc_emails")
+        or payload.get("recipient_cc")
+        or payload.get("recipient_cc_emails")
+    )
+    message_id_header = _normalize_optional_text(
+        payload.get("rfc_message_id")
+        or payload.get("message_id_header")
+        or payload.get("message_id")
+        or payload.get("Message-ID")
+    )
+    source_path = _normalize_optional_text(payload.get("_source_path"))
+    return OriginalSendMetadata(
+        source_path=source_path,
+        cc_emails=cc_values,
+        message_id_header=message_id_header,
+        role_title=_clean_template_field(payload.get("role_title")),
+        company_name=_clean_template_field(payload.get("company_name")),
+    )
+
+
+def _load_original_send_result_payload(paths: ProjectPaths, candidate: FollowUpCandidate) -> dict[str, Any] | None:
+    candidates: list[Path] = []
+    if candidate.company_name and candidate.role_title:
+        candidates.append(
+            paths.outreach_message_send_result_path(
+                candidate.company_name,
+                candidate.role_title,
+                candidate.original_outreach_message_id,
+            )
+        )
+    for path in paths.project_root.glob(f"outreach/output/*/*/messages/{candidate.original_outreach_message_id}/send_result.json"):
+        candidates.append(path)
+    seen: set[Path] = set()
+    for path in candidates:
+        if path in seen:
+            continue
+        seen.add(path)
+        if not path.exists() or not path.is_file():
+            continue
+        try:
+            payload = json.loads(path.read_text(encoding="utf-8"))
+        except (OSError, json.JSONDecodeError):
+            continue
+        if isinstance(payload, dict):
+            payload["_source_path"] = str(paths.relative_to_root(path))
+            return payload
+    return None
+
+
+def _coerce_email_sequence(value: Any) -> tuple[str, ...]:
+    if value is None:
+        return ()
+    if isinstance(value, str):
+        raw_values = re.split(r"[,;]", value)
+    elif isinstance(value, Sequence) and not isinstance(value, (bytes, bytearray)):
+        raw_values = [str(item) for item in value]
+    else:
+        raw_values = [str(value)]
+    emails: list[str] = []
+    for raw_value in raw_values:
+        for email in EMAIL_RE.findall(raw_value):
+            normalized = _normalize_email(email)
+            if normalized and normalized not in emails:
+                emails.append(normalized)
+    return tuple(emails)
 
 
 def _read_profile_skills(paths: ProjectPaths) -> str:
@@ -1590,11 +1825,40 @@ def _clean_template_field(value: str | None) -> str | None:
     return re.sub(r"\s+", " ", normalized)
 
 
-def _extract_role_from_original_body(body_text: str) -> str | None:
-    match = re.search(r"about the (?P<role>.+?) role at ", body_text, re.IGNORECASE)
-    if match:
-        return _clean_template_field(match.group("role"))
-    return None
+def _extract_role_company_from_original_body(body_text: str) -> dict[str, str | None]:
+    match = re.search(
+        r"about the (?P<role>.+?) role at (?P<company>[A-Z0-9][^\n.,;:!?]*?)(?:\s+because\b|[.\n,;:!?]|$)",
+        body_text,
+        re.IGNORECASE,
+    )
+    if not match:
+        return {"role_title": None, "company_name": None}
+    return {
+        "role_title": _clean_template_field(match.group("role")),
+        "company_name": _clean_template_field(match.group("company")),
+    }
+
+
+def _extract_role_company_from_subject(subject: str | None) -> dict[str, str | None]:
+    normalized = _normalize_optional_text(subject)
+    if normalized is None:
+        return {"role_title": None, "company_name": None}
+    cleaned = re.sub(r"^(?:re|fwd?):\s*", "", normalized, flags=re.IGNORECASE).strip()
+    match = re.match(r"(?P<role>.+?)\s+at\s+(?P<company>.+)$", cleaned, re.IGNORECASE)
+    if not match:
+        return {"role_title": None, "company_name": None}
+    return {
+        "role_title": _clean_template_field(match.group("role")),
+        "company_name": _clean_template_field(match.group("company")),
+    }
+
+
+def _strip_signature(body_text: str) -> str:
+    lines = body_text.splitlines()
+    for index, line in enumerate(lines):
+        if line.strip().lower() in {"best,", "best", "thanks,", "thank you,"}:
+            return "\n".join(lines[:index]).strip()
+    return body_text
 
 
 def _extract_first_email(value: str) -> str | None:
