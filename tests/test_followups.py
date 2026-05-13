@@ -344,6 +344,49 @@ def test_followup_recovers_opening_at_company_and_strips_subject_impact_suffix(t
     assert evidence["company_name_source"] == "original_email_body"
 
 
+def test_background_fit_prefers_role_specific_original_email_phrases(tmp_path):
+    project_root, connection = _bootstrap_connection(tmp_path)
+    _seed_sent_role_targeted_message(
+        connection,
+        company_name="Scribd, Inc.",
+        role_title="Software Engineer - Backend (Python)",
+        subject="Interest in the Software Engineer - Backend (Python) role at Scribd, Inc.",
+        body_text=(
+            "Hi Liam,\n\n"
+            "I'm reaching out about the Software Engineer - Backend (Python) role at Scribd, Inc. because I was interested "
+            "in the role's focus on implementing event-driven, distributed systems to extract, enrich, and process metadata "
+            "from large-scale document and media datasets. That is close to the kind of systems work I have been doing in production.\n\n"
+            "Given your role, I thought you might have useful perspective. In one recent role, I built high-availability Python "
+            "and Scala backend data services on AWS (EMR, S3), processing 50M+ daily records.\n\n"
+            "Best,\n"
+            "Achyutaram Sonti"
+        ),
+    )
+
+    run_followup_cycle(
+        connection,
+        project_root=project_root,
+        current_time=NOW,
+        dry_run=True,
+        thread_inspector=FakeThreadInspector(ThreadInspectionResult(result="clear", checked_at=NOW)),
+    )
+
+    plan = connection.execute("SELECT * FROM outreach_followup_plans").fetchone()
+    draft_text = (project_root / plan["draft_artifact_path"]).read_text(encoding="utf-8")
+    evidence = json.loads((project_root / plan["review_evidence_artifact_path"]).read_text(encoding="utf-8"))
+
+    assert (
+        "event-driven distributed systems, metadata processing, and large-scale document/media datasets"
+        in draft_text
+    )
+    assert "Java services, Go/Golang services, and Python systems" not in draft_text
+    assert evidence["selected_phrase_sources"] == {
+        "event-driven distributed systems": "original_email_body",
+        "metadata processing": "original_email_body",
+        "large-scale document/media datasets": "original_email_body",
+    }
+
+
 def test_unreadable_optional_jd_artifact_does_not_fail_dry_run(tmp_path):
     project_root, connection = _bootstrap_connection(tmp_path)
     _seed_sent_role_targeted_message(connection)

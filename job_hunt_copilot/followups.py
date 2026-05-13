@@ -727,6 +727,7 @@ def render_followup_draft(
         "background_fit_areas": background_fit_areas,
         "grounding_sources": fit_choice["grounding_sources"],
         "grounding_fallbacks": fit_choice["grounding_fallbacks"],
+        "selected_phrase_sources": fit_choice["selected_phrase_sources"],
         "original_send_metadata": {
             "source_path": original_metadata.source_path,
             "cc_emails": list(original_metadata.cc_emails),
@@ -1463,29 +1464,45 @@ def _derive_background_fit_areas(paths: ProjectPaths, candidate: FollowUpCandida
         ("tailored_resume", tailored_resume_text, bool(tailored_resume_text)),
         ("profile_fallback", profile_text, bool(profile_text)),
     ]
-    evidence_text = "\n".join(part for _, part, include in evidence_parts if include and part).lower()
-    phrase_specs: tuple[tuple[str, tuple[str, ...]], ...] = (
-        ("Java services", ("java", "spring", "jakarta")),
-        ("Go/Golang services", ("golang", " go ", "kubernetes resource")),
-        ("Python systems", ("python", "fastapi")),
-        ("Scala data services", ("scala",)),
-        ("AWS data pipelines", ("aws", "emr", "s3", "lambda", "sqs")),
-        ("Spark pipelines", ("spark", "etl", "databricks")),
-        ("REST APIs", ("rest", "api", "apis", "microservice")),
-        ("distributed systems", ("distributed", "high-availability", "event-driven", "grpc")),
-        ("Kubernetes infrastructure", ("kubernetes", "docker", "container")),
-        ("Terraform automation", ("terraform", "infrastructure provisioning")),
-        ("AI/ML systems", ("machine learning", " ai ", " llm", "generative ai", "ml ")),
-        ("production reliability", ("uptime", "monitoring", "reliability", "sla", "production")),
-        ("full-stack development", ("react", "typescript", "frontend", "full stack")),
-        ("security and identity", ("security", "identity", "iam", "oauth")),
+    support_text = "\n".join(part for name, part, include in evidence_parts if include and part and name != "original_email_body").lower()
+    original_text = original_body.lower()
+    phrase_specs: tuple[tuple[str, tuple[tuple[str, ...], ...]], ...] = (
+        ("event-driven distributed systems", (("event-driven", "event driven"), ("distributed",))),
+        ("metadata processing", (("metadata",), ("extract", "enrich", "process", "processing"))),
+        ("large-scale document/media datasets", (("large-scale", "large scale"), ("document", "media", "dataset", "datasets"))),
+        ("Python and Scala backend data services", (("python",), ("scala",), ("backend", "data services"))),
+        ("AWS data pipelines", (("aws", "emr", "s3", "lambda", "sqs"), ("pipeline", "pipelines", "data services", "analytics"))),
+        ("production reliability", (("uptime", "monitoring", "reliability", "sla", "production", "24/7"),)),
+        ("REST APIs", (("rest", "api", "apis", "microservice"),)),
+        ("Spark pipelines", (("spark", "etl", "databricks"),)),
+        ("Kubernetes infrastructure", (("kubernetes", "docker", "container"),)),
+        ("Terraform automation", (("terraform", "infrastructure provisioning"),)),
+        ("AI/ML systems", (("machine learning", " ai ", " llm", "generative ai", "ml "),)),
+        ("security and identity", (("security", "identity", "iam", "oauth"),)),
+        ("full-stack development", (("react", "typescript", "frontend", "full stack"),)),
+        ("Java services", (("java", "spring", "jakarta"),)),
+        ("Go/Golang services", (("golang", " go ", "kubernetes resource"),)),
+        ("Python systems", (("python", "fastapi"),)),
+        ("Scala data services", (("scala",),)),
+        ("distributed systems", (("distributed", "high-availability", "event-driven", "grpc"),)),
     )
     selected: list[str] = []
-    for phrase, keywords in phrase_specs:
-        if any(keyword in evidence_text for keyword in keywords):
+    selected_sources: dict[str, str] = {}
+    for phrase, keyword_groups in phrase_specs:
+        if _phrase_matches(original_text, keyword_groups):
             selected.append(phrase)
+            selected_sources[phrase] = "original_email_body"
         if len(selected) == 3:
             break
+    if len(selected) < 3:
+        for phrase, keyword_groups in phrase_specs:
+            if phrase in selected:
+                continue
+            if _phrase_matches(support_text, keyword_groups):
+                selected.append(phrase)
+                selected_sources[phrase] = "supporting_evidence"
+            if len(selected) == 3:
+                break
     if len(selected) < 2:
         return None
     if len(selected) == 2:
@@ -1511,7 +1528,12 @@ def _derive_background_fit_areas(paths: ProjectPaths, candidate: FollowUpCandida
         "background_fit_areas": phrase,
         "grounding_sources": grounding_sources,
         "grounding_fallbacks": grounding_fallbacks,
+        "selected_phrase_sources": selected_sources,
     }
+
+
+def _phrase_matches(text: str, keyword_groups: tuple[tuple[str, ...], ...]) -> bool:
+    return all(any(keyword in text for keyword in group) for group in keyword_groups)
 
 
 def _resolve_role_company(candidate: FollowUpCandidate, metadata: OriginalSendMetadata) -> dict[str, str | None]:
