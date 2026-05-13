@@ -312,6 +312,38 @@ def test_followup_prefers_original_email_role_company_and_records_review_gates(t
     assert evidence["grounding_sources"]["original_email_body"] is True
 
 
+def test_unreadable_optional_jd_artifact_does_not_fail_dry_run(tmp_path):
+    project_root, connection = _bootstrap_connection(tmp_path)
+    _seed_sent_role_targeted_message(connection)
+    jd_path = project_root / "linkedin-scraping" / "runtime" / "leads" / "exampleco" / "backend-developer" / "jd.md"
+    jd_path.parent.mkdir(parents=True, exist_ok=True)
+    jd_path.write_bytes(b"\xd0\x00\xff")
+    connection.execute(
+        "UPDATE job_postings SET jd_artifact_path = ?, updated_at = ? WHERE job_posting_id = ?",
+        (
+            "linkedin-scraping/runtime/leads/exampleco/backend-developer/jd.md",
+            NOW,
+            "jp_1",
+        ),
+    )
+    connection.commit()
+
+    result = run_followup_cycle(
+        connection,
+        project_root=project_root,
+        current_time=NOW,
+        dry_run=True,
+        thread_inspector=FakeThreadInspector(ThreadInspectionResult(result="clear", checked_at=NOW)),
+    )
+
+    plan = connection.execute("SELECT * FROM outreach_followup_plans").fetchone()
+    evidence = json.loads((project_root / plan["review_evidence_artifact_path"]).read_text(encoding="utf-8"))
+    assert result.result == "success"
+    assert result.drafts_created == 1
+    assert evidence["grounding_sources"]["jd_artifact"] is False
+    assert "missing_jd_artifact" in evidence["grounding_fallbacks"]
+
+
 def test_reply_in_thread_suppresses_followup(tmp_path):
     project_root, connection = _bootstrap_connection(tmp_path)
     _seed_sent_role_targeted_message(connection)

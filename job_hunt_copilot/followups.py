@@ -1595,7 +1595,10 @@ def _read_optional_project_file(paths: ProjectPaths, path_text: str | None) -> s
     path = paths.resolve_from_root(path_text)
     if not path.exists() or not path.is_file():
         return ""
-    return path.read_text(encoding="utf-8")
+    try:
+        return path.read_text(encoding="utf-8")
+    except (OSError, UnicodeDecodeError):
+        return ""
 
 
 def _load_original_send_metadata(paths: ProjectPaths, candidate: FollowUpCandidate) -> OriginalSendMetadata:
