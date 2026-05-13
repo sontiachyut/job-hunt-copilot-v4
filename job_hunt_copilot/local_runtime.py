@@ -1448,7 +1448,7 @@ def materialize_followup_worker_launchd_plist(
         "plist_path": str(paths.followup_worker_plist_path),
         "launchd_label": FOLLOWUP_LAUNCHD_LABEL,
         "interval_seconds": FOLLOWUP_INTERVAL_SECONDS,
-        "program_arguments": [str(paths.followup_cycle_entrypoint_path)],
+        "program_arguments": [str(paths.followup_cycle_entrypoint_path), "--send"],
         "stdout_log_path": str(paths.followup_worker_stdout_log_path),
         "stderr_log_path": str(paths.followup_worker_stderr_log_path),
         "created": created,
