@@ -1455,6 +1455,7 @@ def _determine_followup_gap_minutes(candidate: FollowUpCandidate, current_dt: da
 
 def _derive_background_fit_areas(paths: ProjectPaths, candidate: FollowUpCandidate) -> dict[str, Any] | None:
     original_body = _strip_signature(candidate.body_text)
+    original_sections = _split_original_email_fit_sections(original_body)
     jd_text = _read_optional_project_file(paths, candidate.jd_artifact_path)
     tailored_resume_text = _read_optional_project_file(paths, candidate.tailored_resume_path)
     profile_text = "" if tailored_resume_text else _read_profile_skills(paths)
@@ -1465,8 +1466,14 @@ def _derive_background_fit_areas(paths: ProjectPaths, candidate: FollowUpCandida
         ("profile_fallback", profile_text, bool(profile_text)),
     ]
     support_text = "\n".join(part for name, part, include in evidence_parts if include and part and name != "original_email_body").lower()
-    original_text = original_body.lower()
+    role_interest_text = original_sections["role_interest"].lower()
+    proof_point_text = original_sections["proof_point"].lower()
+    original_remaining_text = original_sections["remaining"].lower()
     phrase_specs: tuple[tuple[str, tuple[tuple[str, ...], ...]], ...] = (
+        ("enterprise security systems", (("enterprise security", "security systems"),)),
+        ("DevOps security workflows", (("devops", "devops principles"), ("security", "secure"))),
+        ("secure solutions", (("secure solutions",),)),
+        ("Agile security delivery", (("agile",), ("security", "secure"))),
         ("event-driven distributed systems", (("event-driven", "event driven"), ("distributed",))),
         ("metadata processing", (("metadata",), ("extract", "enrich", "process", "processing"))),
         ("large-scale document/media datasets", (("large-scale", "large scale"), ("document", "media", "dataset", "datasets"))),
@@ -1488,21 +1495,37 @@ def _derive_background_fit_areas(paths: ProjectPaths, candidate: FollowUpCandida
     )
     selected: list[str] = []
     selected_sources: dict[str, str] = {}
-    for phrase, keyword_groups in phrase_specs:
-        if _phrase_matches(original_text, keyword_groups):
-            selected.append(phrase)
-            selected_sources[phrase] = "original_email_body"
-        if len(selected) == 3:
-            break
-    if len(selected) < 3:
-        for phrase, keyword_groups in phrase_specs:
-            if phrase in selected:
-                continue
-            if _phrase_matches(support_text, keyword_groups):
-                selected.append(phrase)
-                selected_sources[phrase] = "supporting_evidence"
-            if len(selected) == 3:
-                break
+    _select_matching_phrases(
+        selected,
+        selected_sources,
+        phrase_specs,
+        role_interest_text,
+        source="original_email_role_interest",
+    )
+    if len(selected) < 2:
+        _select_matching_phrases(
+            selected,
+            selected_sources,
+            phrase_specs,
+            original_remaining_text,
+            source="original_email_context",
+        )
+    if len(selected) < 2:
+        _select_matching_phrases(
+            selected,
+            selected_sources,
+            phrase_specs,
+            proof_point_text,
+            source="original_email_proof_point",
+        )
+    if len(selected) < 2:
+        _select_matching_phrases(
+            selected,
+            selected_sources,
+            phrase_specs,
+            support_text,
+            source="supporting_evidence",
+        )
     if len(selected) < 2:
         return None
     if len(selected) == 2:
@@ -1534,6 +1557,72 @@ def _derive_background_fit_areas(paths: ProjectPaths, candidate: FollowUpCandida
 
 def _phrase_matches(text: str, keyword_groups: tuple[tuple[str, ...], ...]) -> bool:
     return all(any(keyword in text for keyword in group) for group in keyword_groups)
+
+
+def _select_matching_phrases(
+    selected: list[str],
+    selected_sources: dict[str, str],
+    phrase_specs: tuple[tuple[str, tuple[tuple[str, ...], ...]], ...],
+    text: str,
+    *,
+    source: str,
+) -> None:
+    if not text:
+        return
+    for phrase, keyword_groups in phrase_specs:
+        if len(selected) == 3:
+            return
+        if phrase in selected:
+            continue
+        if _phrase_matches(text, keyword_groups):
+            selected.append(phrase)
+            selected_sources[phrase] = source
+
+
+def _split_original_email_fit_sections(body_text: str) -> dict[str, str]:
+    paragraphs = [paragraph.strip() for paragraph in re.split(r"\n\s*\n", body_text) if paragraph.strip()]
+    role_interest: list[str] = []
+    proof_point: list[str] = []
+    remaining: list[str] = []
+    proof_markers = (
+        "one example",
+        "one recent role",
+        "built ",
+        "designed ",
+        "processing ",
+        "processed ",
+        "50m+",
+        "580 tps",
+        "24/7",
+        "uptime",
+        "[snippet]",
+    )
+    role_markers = (
+        "because",
+        "stood out",
+        "interested in",
+        "focus on",
+        "role's focus",
+        "team's focus",
+        "what stood out",
+        "came across",
+        "opening at",
+    )
+    for paragraph in paragraphs:
+        normalized = paragraph.lower()
+        if any(marker in normalized for marker in role_markers):
+            role_interest.append(paragraph)
+        elif any(marker in normalized for marker in proof_markers):
+            proof_point.append(paragraph)
+        else:
+            remaining.append(paragraph)
+    if not role_interest and paragraphs:
+        role_interest.append(paragraphs[0])
+    return {
+        "role_interest": "\n\n".join(role_interest),
+        "proof_point": "\n\n".join(proof_point),
+        "remaining": "\n\n".join(remaining),
+    }
 
 
 def _resolve_role_company(candidate: FollowUpCandidate, metadata: OriginalSendMetadata) -> dict[str, str | None]:

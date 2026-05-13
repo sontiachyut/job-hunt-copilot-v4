@@ -381,9 +381,49 @@ def test_background_fit_prefers_role_specific_original_email_phrases(tmp_path):
     )
     assert "Java services, Go/Golang services, and Python systems" not in draft_text
     assert evidence["selected_phrase_sources"] == {
-        "event-driven distributed systems": "original_email_body",
-        "metadata processing": "original_email_body",
-        "large-scale document/media datasets": "original_email_body",
+        "event-driven distributed systems": "original_email_role_interest",
+        "metadata processing": "original_email_role_interest",
+        "large-scale document/media datasets": "original_email_role_interest",
+    }
+
+
+def test_background_fit_uses_role_interest_before_resume_proof_point(tmp_path):
+    project_root, connection = _bootstrap_connection(tmp_path)
+    _seed_sent_role_targeted_message(
+        connection,
+        company_name="Intel",
+        role_title="Government Information Security Engineer",
+        subject="Interest in the Government Information Security Engineer role at Intel",
+        body_text=(
+            "Hi Cody,\n\n"
+            "I came across the Government Information Security Engineer opening at Intel, and what stood out to me was the "
+            "team's focus on identifying, developing, planning, implementing, and supporting enterprise security systems "
+            "using Agile methodologies and DevOps principles to improve secure solutions with a constant focus on security.\n\n"
+            "I'm reaching out to you specifically because your work seems tied to this team. One example of that overlap is "
+            "Built Python and Scala data services on AWS (EMR, S3), processing 50M+ daily HL7 records with 24/7 uptime.\n\n"
+            "Best,\n"
+            "Achyutaram Sonti"
+        ),
+    )
+
+    run_followup_cycle(
+        connection,
+        project_root=project_root,
+        current_time=NOW,
+        dry_run=True,
+        thread_inspector=FakeThreadInspector(ThreadInspectionResult(result="clear", checked_at=NOW)),
+    )
+
+    plan = connection.execute("SELECT * FROM outreach_followup_plans").fetchone()
+    draft_text = (project_root / plan["draft_artifact_path"]).read_text(encoding="utf-8")
+    evidence = json.loads((project_root / plan["review_evidence_artifact_path"]).read_text(encoding="utf-8"))
+
+    assert "enterprise security systems, DevOps security workflows, and secure solutions" in draft_text
+    assert "Python and Scala backend data services" not in draft_text
+    assert evidence["selected_phrase_sources"] == {
+        "enterprise security systems": "original_email_role_interest",
+        "DevOps security workflows": "original_email_role_interest",
+        "secure solutions": "original_email_role_interest",
     }
 
 
