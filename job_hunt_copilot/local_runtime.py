@@ -1418,7 +1418,7 @@ def render_followup_worker_launchd_plist_payload(paths: ProjectPaths) -> dict[st
         "StartInterval": FOLLOWUP_INTERVAL_SECONDS,
         "KeepAlive": False,
         "WorkingDirectory": str(paths.project_root),
-        "ProgramArguments": [str(paths.followup_cycle_entrypoint_path)],
+        "ProgramArguments": [str(paths.followup_cycle_entrypoint_path), "--send"],
         "StandardOutPath": str(paths.followup_worker_stdout_log_path),
         "StandardErrorPath": str(paths.followup_worker_stderr_log_path),
     }

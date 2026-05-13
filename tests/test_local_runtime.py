@@ -1346,7 +1346,7 @@ def test_materialize_followup_plist_script_renders_required_launchd_shape(tmp_pa
     assert payload["StartInterval"] == 60
     assert payload["KeepAlive"] is False
     assert payload["WorkingDirectory"] == str(project_root)
-    assert payload["ProgramArguments"] == [str(project_root / "bin" / "jhc-followup-cycle")]
+    assert payload["ProgramArguments"] == [str(project_root / "bin" / "jhc-followup-cycle"), "--send"]
     assert payload["StandardOutPath"] == str(project_root / "ops" / "logs" / "followups.stdout.log")
     assert payload["StandardErrorPath"] == str(project_root / "ops" / "logs" / "followups.stderr.log")
     assert plist_path.stat().st_mode & 0o777 == 0o644
@@ -4674,7 +4674,8 @@ def test_repo_agent_wrappers_use_expected_repo_local_wiring():
     followup_cycle_wrapper = (REPO_ROOT / "bin" / "jhc-followup-cycle").read_text(encoding="utf-8")
     assert "scripts/ops/run_followup_cycle.py" in followup_cycle_wrapper
     assert '--project-root "$ROOT"' in followup_cycle_wrapper
-    assert "/opt/homebrew/bin/python3" in followup_cycle_wrapper
+    assert "/opt/homebrew/opt/python@3.11/libexec/bin/python3" in followup_cycle_wrapper
+    assert "/opt/homebrew/bin/python3.11" in followup_cycle_wrapper
     assert 'export PYTHONPATH="$ROOT${PYTHONPATH:+:$PYTHONPATH}"' in followup_cycle_wrapper
 
     assert "scripts/ops/chat_session.py\" begin" in chat_wrapper
