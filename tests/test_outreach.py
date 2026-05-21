@@ -6,6 +6,7 @@ import sqlite3
 from email import policy
 from email.parser import BytesParser
 from pathlib import Path
+from typing import Any, Mapping
 from zoneinfo import ZoneInfo
 
 import pytest
@@ -252,6 +253,7 @@ def seed_approved_tailoring_run(
     role_title: str = "Staff Software Engineer / AI",
     job_posting_id: str = "jp_outreach",
     current_time: str = "2026-04-06T20:20:00Z",
+    step_6_payload: Mapping[str, Any] | None = None,
 ) -> None:
     workspace_dir = paths.tailoring_workspace_dir(company_name, role_title)
     workspace_dir.mkdir(parents=True, exist_ok=True)
@@ -324,7 +326,8 @@ def seed_approved_tailoring_run(
     step_6_path = paths.tailoring_step_6_candidate_bullets_path(company_name, role_title)
     step_6_path.write_text(
         yaml.safe_dump(
-            {
+            step_6_payload
+            or {
                 "job_posting_id": job_posting_id,
                 "resume_tailoring_run_id": "rtr_outreach",
                 "status": "generated",
@@ -1457,6 +1460,70 @@ def test_role_targeted_draft_batch_persists_messages_artifacts_and_transitions(t
         """
     ).fetchone()[0]
     assert artifact_count >= 9
+
+    connection.close()
+
+
+def test_role_targeted_draft_batch_normalizes_latex_resume_escapes_in_email_text(tmp_path: Path):
+    project_root, paths = bootstrap_project(tmp_path)
+    connection = connect_database(project_root / "job_hunt_copilot.db")
+    write_sender_profile(paths)
+    seed_posting(connection)
+    seed_linked_contact(
+        connection,
+        contact_id="ct_r1",
+        job_posting_contact_id="jpc_r1",
+        display_name="Priya Recruiter",
+        recipient_type=RECIPIENT_TYPE_RECRUITER,
+        current_working_email="priya@acme.example",
+        created_at="2026-04-06T20:01:00Z",
+    )
+    latex_step_6_payload: Mapping[str, Any] = {
+        "job_posting_id": "jp_outreach",
+        "resume_tailoring_run_id": "rtr_outreach",
+        "status": "generated",
+        "summary": "MS CS candidate with 3+ years building backend and distributed systems on AWS.",
+        "technical_skills": [
+            {
+                "category": "Languages",
+                "items": ["Python", "Spark", "AWS", "Kubernetes"],
+                "matched_signal_ids": ["signal_must_1", "signal_core_1"],
+            }
+        ],
+        "software_engineer": {
+            "bullets": [
+                {
+                    "text": (
+                        "Optimized 25+ Spark jobs on AWS EMR, improving throughput 50\\% "
+                        "(20K to 30K records/sec) and lowering monthly cloud spend by \\$15K "
+                        "while keeping production analytics delivery stable"
+                    ),
+                    "purpose": "scale-impact",
+                    "support_pointers": ["match_1"],
+                    "covered_signal_ids": ["signal_core_1"],
+                    "char_count": 156,
+                }
+            ]
+        },
+    }
+    seed_approved_tailoring_run(connection, paths, step_6_payload=latex_step_6_payload)
+
+    result = generate_role_targeted_send_set_drafts(
+        connection,
+        project_root=project_root,
+        job_posting_id="jp_outreach",
+        current_time="2026-04-06T20:30:00Z",
+        local_timezone=ZoneInfo("UTC"),
+    )
+
+    recruiter_body = Path(result.drafted_messages[0].body_text_artifact_path).read_text(
+        encoding="utf-8"
+    )
+
+    assert "50% (20K to 30K records/sec) and lowering monthly cloud spend by $15K" in recruiter_body
+    assert recruiter_body.count("50% (20K to 30K records/sec)") == 2
+    assert "\\%" not in recruiter_body
+    assert "\\$15K" not in recruiter_body
 
     connection.close()
 

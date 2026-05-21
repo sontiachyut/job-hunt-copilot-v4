@@ -4579,6 +4579,7 @@ Current imported guidance should include, at minimum:
 21. The current v4 default shared role-targeted template opens from a JD-faithful role / team / work-area hook rather than requiring recipient-background hooks, includes an explicit `why I am reaching out to you` line, includes one proof point of fit, includes the Job Hunt Copilot / AI-agent block, uses one 15-minute Zoom ask, and places the forwardable snippet directly below the routing-help line.
 22. In the current v4 default shared role-targeted template, the forwardable snippet remains factual, compact, and JD-aware, and it uses one strongest fit summary plus one strongest supporting proof fragment rather than a generic skills list.
 23. The current default shared role-targeted body does not rely on an education-status sentence such as `I am currently finishing my MS ...` as a default paragraph.
+24. When role-targeted drafting reuses tailored-resume or Step 6 bullet text inside email bodies or snippets, LaTeX-safe resume escapes are converted back to human-readable plain text before send, so recipients never see raw sequences such as `\%` or `\$`.
 
 ## 12.4 Delivery Feedback
 1. Post-send outcomes are persisted into the central SQLite database as event history rather than only a latest overwritten status.

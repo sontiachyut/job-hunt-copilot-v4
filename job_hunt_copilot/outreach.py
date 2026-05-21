@@ -1801,6 +1801,32 @@ def _normalize_optional_text(value: object) -> str | None:
     return normalized or None
 
 
+def _normalize_resume_text_for_email(value: object) -> str | None:
+    normalized = _normalize_optional_text(value)
+    if normalized is None:
+        return None
+    plain_text = normalized
+    for source, target in (
+        ("$\\geq$", ">="),
+        ("$\\leq$", "<="),
+        ("$\\approx$", "~"),
+        ("\\geq", ">="),
+        ("\\leq", "<="),
+        ("\\approx", "~"),
+        ("\\%", "%"),
+        ("\\$", "$"),
+        ("\\&", "&"),
+        ("\\#", "#"),
+        ("\\_", "_"),
+        ("\\textasciitilde{}", "~"),
+        ("\\textasciitilde", "~"),
+        ("---", " - "),
+    ):
+        plain_text = plain_text.replace(source, target)
+    plain_text = re.sub(r"\s{2,}", " ", plain_text).strip()
+    return plain_text or None
+
+
 def _is_usable_email(value: str | None) -> bool:
     return bool(value and "@" in value and "." in value.split("@", 1)[-1])
 
@@ -4024,8 +4050,8 @@ def _select_proof_point(step_6_payload: Mapping[str, Any]) -> str | None:
         return None
     candidate_entries = []
     for entry in bullets:
-        text = str(entry.get("text") or "").strip()
-        if not text:
+        text = _normalize_resume_text_for_email(entry.get("text"))
+        if text is None:
             continue
         candidate_entries.append(
             (
@@ -5062,7 +5088,7 @@ def _select_theme_aligned_proof_point(
         "reliability-operations": 3,
     }
     for entry in bullets:
-        text = _normalize_optional_text(entry.get("text"))
+        text = _normalize_resume_text_for_email(entry.get("text"))
         if text is None:
             continue
         overlap = target_terms & _tokenize_role_theme_text(text)
