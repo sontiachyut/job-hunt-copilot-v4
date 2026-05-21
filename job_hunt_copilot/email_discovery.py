@@ -112,6 +112,7 @@ EMAIL_RE = re.compile(r"^[^@\s]+@[^@\s]+\.[^@\s]+$")
 WORD_RE = re.compile(r"[A-Za-z0-9]+")
 HTML_TAG_RE = re.compile(r"<[^>]+>")
 HTML_WS_RE = re.compile(r"\s+")
+APOLLO_INSUFFICIENT_CREDITS_RE = re.compile(r"\binsufficient\b.*\bcredit", re.IGNORECASE | re.DOTALL)
 META_TAG_RE = re.compile(
     r"<meta\b[^>]*(?:property|name)\s*=\s*[\"'](?P<key>[^\"']+)[\"'][^>]*content\s*=\s*[\"'](?P<value>[^\"']*)[\"'][^>]*>",
     re.IGNORECASE,
@@ -559,7 +560,13 @@ def _request_json(
             response_body = response.read().decode("utf-8")
             status_code = response.getcode()
     except HTTPError as exc:  # pragma: no cover - covered via normalization logic only
-        reason_code = http_error_map.get(exc.code, DISCOVERY_OUTCOME_PROVIDER_ERROR)
+        response_body = exc.read().decode("utf-8", errors="replace")
+        reason_code = _provider_http_error_reason(
+            provider_label=provider_label,
+            status_code=exc.code,
+            response_body=response_body,
+            http_error_map=http_error_map,
+        )
         raise EmailDiscoveryError(
             f"{provider_label} request failed with HTTP {exc.code}.",
             reason_code=reason_code,
@@ -588,6 +595,22 @@ def _request_json(
             reason_code=DISCOVERY_OUTCOME_PROVIDER_ERROR,
         )
     return payload
+
+
+def _provider_http_error_reason(
+    *,
+    provider_label: str,
+    status_code: int,
+    response_body: str,
+    http_error_map: Mapping[int, str],
+) -> str:
+    if (
+        provider_label == "Apollo"
+        and status_code == 422
+        and APOLLO_INSUFFICIENT_CREDITS_RE.search(response_body)
+    ):
+        return DISCOVERY_OUTCOME_QUOTA_EXHAUSTED
+    return http_error_map.get(status_code, DISCOVERY_OUTCOME_PROVIDER_ERROR)
 
 
 def _load_provider_secret_payload(
@@ -1229,53 +1252,67 @@ def run_apollo_people_search(
         search_provider = provider or ConfiguredApolloClient.from_paths(paths)
         attempted_filters: list[dict[str, Any]] = []
 
-        resolved_company = _reuse_persisted_apollo_company(
-            connection,
-            paths=paths,
-            posting_row=posting_row,
-        )
-        if resolved_company is None:
-            resolved_company = search_provider.resolve_company(
-                company_name=posting_row["company_name"],
-                company_domain=company_domain,
-                company_website=company_website,
+        try:
+            resolved_company = _reuse_persisted_apollo_company(
+                connection,
+                paths=paths,
+                posting_row=posting_row,
             )
-        if resolved_company is not None and resolved_company.organization_id:
-            with connection:
-                promote_company_group_to_provider_key(
-                    connection,
-                    company_name=_normalize_optional_text(posting_row["company_name"]),
-                    provider_name=PROVIDER_NAME_APOLLO,
-                    provider_company_id=resolved_company.organization_id,
-                    current_time=timestamp,
+            if resolved_company is None:
+                resolved_company = search_provider.resolve_company(
+                    company_name=posting_row["company_name"],
+                    company_domain=company_domain,
+                    company_website=company_website,
                 )
-            posting_row = _load_search_ready_posting(connection, job_posting_id=job_posting_id)
-        attempted_filters.append(
-            {
-                "attempt": "primary",
-                "search_filters": deepcopy(search_filters),
-            }
-        )
-        raw_candidates = search_provider.search_people(
-            company_name=posting_row["company_name"],
-            resolved_company=resolved_company,
-            search_filters=search_filters,
-        )
-        if not raw_candidates and search_filters.get("locations"):
-            relaxed_filters = deepcopy(search_filters)
-            relaxed_filters["locations"] = []
+            if resolved_company is not None and resolved_company.organization_id:
+                with connection:
+                    promote_company_group_to_provider_key(
+                        connection,
+                        company_name=_normalize_optional_text(posting_row["company_name"]),
+                        provider_name=PROVIDER_NAME_APOLLO,
+                        provider_company_id=resolved_company.organization_id,
+                        current_time=timestamp,
+                    )
+                posting_row = _load_search_ready_posting(connection, job_posting_id=job_posting_id)
             attempted_filters.append(
                 {
-                    "attempt": "drop_location_after_zero_primary_candidates",
-                    "search_filters": deepcopy(relaxed_filters),
+                    "attempt": "primary",
+                    "search_filters": deepcopy(search_filters),
                 }
             )
             raw_candidates = search_provider.search_people(
                 company_name=posting_row["company_name"],
                 resolved_company=resolved_company,
-                search_filters=relaxed_filters,
+                search_filters=search_filters,
             )
-            search_filters = relaxed_filters
+            if not raw_candidates and search_filters.get("locations"):
+                relaxed_filters = deepcopy(search_filters)
+                relaxed_filters["locations"] = []
+                attempted_filters.append(
+                    {
+                        "attempt": "drop_location_after_zero_primary_candidates",
+                        "search_filters": deepcopy(relaxed_filters),
+                    }
+                )
+                raw_candidates = search_provider.search_people(
+                    company_name=posting_row["company_name"],
+                    resolved_company=resolved_company,
+                    search_filters=relaxed_filters,
+                )
+                search_filters = relaxed_filters
+        except EmailDiscoveryError as exc:
+            with connection:
+                _persist_provider_budget_signal(
+                    connection,
+                    result=_provider_result_from_error(
+                        provider_name=PROVIDER_NAME_APOLLO,
+                        error=exc,
+                    ),
+                    discovery_attempt_id=None,
+                    contact_id=None,
+                    created_at=timestamp,
+                )
+            raise
         candidates = tuple(_normalize_candidate_rows(raw_candidates))
         shortlist = select_initial_enrichment_shortlist(
             candidates,
@@ -1402,13 +1439,27 @@ def run_apollo_contact_enrichment(
             ):
                 if provider_client is None:
                     provider_client = ConfiguredApolloClient.from_paths(paths)
-                enriched_payload = provider_client.enrich_person(
-                    provider_person_id=_normalize_optional_text(refreshed_row["provider_person_id"]),
-                    linkedin_url=_normalize_optional_text(refreshed_row["linkedin_url"]),
-                    person_name=_best_known_contact_name(refreshed_row),
-                    company_domain=company_domain,
-                    company_name=_normalize_optional_text(posting_row["company_name"]),
-                )
+                try:
+                    enriched_payload = provider_client.enrich_person(
+                        provider_person_id=_normalize_optional_text(refreshed_row["provider_person_id"]),
+                        linkedin_url=_normalize_optional_text(refreshed_row["linkedin_url"]),
+                        person_name=_best_known_contact_name(refreshed_row),
+                        company_domain=company_domain,
+                        company_name=_normalize_optional_text(posting_row["company_name"]),
+                    )
+                except EmailDiscoveryError as exc:
+                    with connection:
+                        _persist_provider_budget_signal(
+                            connection,
+                            result=_provider_result_from_error(
+                                provider_name=PROVIDER_NAME_APOLLO,
+                                error=exc,
+                            ),
+                            discovery_attempt_id=None,
+                            contact_id=None,
+                            created_at=timestamp,
+                        )
+                    raise
                 normalized_enrichment = _normalize_enriched_person(enriched_payload)
                 if normalized_enrichment is not None:
                     with connection:
@@ -2510,7 +2561,7 @@ def _build_apollo_search_filters(
         "titles": _dedupe_preserve_order(title_hints),
         "functions": ["engineering", "recruiting"],
         "seniority_levels": _derive_seniority_levels(role_title, jd_text=jd_text),
-        "locations": [location] if location else [],
+        "locations": [location] if _should_apply_apollo_location_filter(location) else [],
         "target_classes": [
             RECIPIENT_TYPE_RECRUITER,
             RECIPIENT_TYPE_HIRING_MANAGER,
@@ -2553,6 +2604,32 @@ def _normalize_engineer_title(role_title: str) -> str:
     if "engineer" in normalized.lower():
         return normalized
     return f"{normalized} Engineer"
+
+
+def _should_apply_apollo_location_filter(location: str | None) -> bool:
+    normalized_location = _normalize_optional_text(location)
+    if normalized_location is None:
+        return False
+    lowered = normalized_location.lower()
+    if any(
+        token in lowered
+        for token in (
+            "remote",
+            "hybrid",
+            "distributed",
+            "work from home",
+            "wfh",
+            "anywhere",
+            "multiple locations",
+            "various locations",
+            "united states",
+            "u.s.",
+            "usa",
+            "north america",
+        )
+    ):
+        return False
+    return True
 
 
 def _derive_company_domain(posting_row: sqlite3.Row) -> str | None:
@@ -2956,6 +3033,18 @@ def is_role_targeted_email_discovery_actionable_now(
     )
 
 
+def is_role_targeted_people_search_actionable_now(
+    connection: sqlite3.Connection,
+    *,
+    current_time: str,
+) -> bool:
+    return not _provider_cooldown_active(
+        connection,
+        provider_name=PROVIDER_NAME_APOLLO,
+        current_time=current_time,
+    )
+
+
 def _normalize_email_finder_provider_result(
     payload: EmailDiscoveryProviderResult | Mapping[str, Any],
     *,
@@ -3266,12 +3355,24 @@ def _load_latest_found_attempt_for_email(
     ).fetchone()
 
 
+def _provider_result_from_error(
+    *,
+    provider_name: str,
+    error: EmailDiscoveryError,
+) -> EmailDiscoveryProviderResult:
+    return EmailDiscoveryProviderResult(
+        provider_name=provider_name,
+        outcome=_normalize_optional_text(error.reason_code) or DISCOVERY_OUTCOME_PROVIDER_ERROR,
+        message=str(error),
+    )
+
+
 def _persist_provider_budget_signal(
     connection: sqlite3.Connection,
     *,
     result: EmailDiscoveryProviderResult,
-    discovery_attempt_id: str,
-    contact_id: str,
+    discovery_attempt_id: str | None,
+    contact_id: str | None,
     created_at: str,
 ) -> None:
     provider_name = _normalize_optional_text(result.provider_name)

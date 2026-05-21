@@ -2,7 +2,9 @@ from __future__ import annotations
 
 import json
 import sqlite3
+from io import BytesIO
 from pathlib import Path
+from urllib.error import HTTPError
 
 import pytest
 
@@ -234,6 +236,27 @@ class LocationFallbackApolloProvider(FakeApolloProvider):
         if list(search_filters.get("locations") or []):
             return []
         return list(self.candidates)
+
+
+class QuotaExhaustedApolloProvider(FakeApolloProvider):
+    def resolve_company(
+        self,
+        *,
+        company_name: str,
+        company_domain: str | None,
+        company_website: str | None,
+    ) -> ApolloResolvedCompany | None:
+        self.resolve_calls.append(
+            {
+                "company_name": company_name,
+                "company_domain": company_domain,
+                "company_website": company_website,
+            }
+        )
+        raise EmailDiscoveryError(
+            "Apollo request failed with HTTP 422.",
+            reason_code=DISCOVERY_OUTCOME_QUOTA_EXHAUSTED,
+        )
 
 
 class FakeApolloEnrichmentProvider:
@@ -1451,6 +1474,98 @@ def test_apollo_people_search_retries_without_location_after_zero_primary_candid
     connection.close()
 
 
+def test_apollo_people_search_omits_broad_remote_location_filters(tmp_path: Path):
+    project_root = bootstrap_project(tmp_path)
+    paths = ProjectPaths.from_root(project_root)
+    connection = connect_database(project_root / "job_hunt_copilot.db")
+    seed_search_ready_posting(connection, paths)
+    connection.execute(
+        """
+        UPDATE job_postings
+        SET location = 'Remote, United States'
+        WHERE job_posting_id = 'jp_search'
+        """
+    )
+    connection.commit()
+
+    provider = LocationFallbackApolloProvider(
+        resolved_company=ApolloResolvedCompany(
+            organization_id="org_acme",
+            organization_name="Acme Robotics",
+            primary_domain="acmerobotics.com",
+        ),
+        candidates=[
+            build_candidate(
+                provider_person_id="pp_remote",
+                display_name="Priya Recruiter",
+                title="Technical Recruiter",
+            )
+        ],
+    )
+
+    result = run_apollo_people_search(
+        project_root=project_root,
+        job_posting_id="jp_search",
+        provider=provider,
+    )
+
+    assert len(provider.search_calls) == 1
+    assert provider.search_calls[0]["search_filters"]["locations"] == []
+    payload = json.loads(result.artifact_path.read_text(encoding="utf-8"))
+    assert len(payload["attempted_filters"]) == 1
+    assert payload["applied_filters"]["locations"] == []
+
+    connection.close()
+
+
+def test_apollo_people_search_persists_provider_cooldown_on_quota_exhaustion(tmp_path: Path):
+    project_root = bootstrap_project(tmp_path)
+    paths = ProjectPaths.from_root(project_root)
+    connection = connect_database(project_root / "job_hunt_copilot.db")
+    seed_search_ready_posting(connection, paths)
+
+    with pytest.raises(EmailDiscoveryError, match="HTTP 422"):
+        run_apollo_people_search(
+            project_root=project_root,
+            job_posting_id="jp_search",
+            provider=QuotaExhaustedApolloProvider(resolved_company=None, candidates=[]),
+            current_time="2026-04-06T21:45:00Z",
+        )
+
+    budget_row = connection.execute(
+        """
+        SELECT provider_name, cooldown_until, cooldown_reason
+        FROM provider_budget_state
+        WHERE provider_name = 'apollo'
+        """
+    ).fetchone()
+    event_rows = [
+        dict(row)
+        for row in connection.execute(
+            """
+            SELECT provider_name, event_type, remaining_credits_after
+            FROM provider_budget_events
+            WHERE provider_name = 'apollo'
+            ORDER BY created_at ASC, provider_budget_event_id ASC
+            """
+        ).fetchall()
+    ]
+    assert dict(budget_row) == {
+        "provider_name": "apollo",
+        "cooldown_until": "2026-04-07T21:45:00Z",
+        "cooldown_reason": DISCOVERY_OUTCOME_QUOTA_EXHAUSTED,
+    }
+    assert event_rows == [
+        {
+            "provider_name": "apollo",
+            "event_type": DISCOVERY_OUTCOME_QUOTA_EXHAUSTED,
+            "remaining_credits_after": None,
+        }
+    ]
+
+    connection.close()
+
+
 def test_configured_apollo_client_sends_custom_user_agent(monkeypatch: pytest.MonkeyPatch) -> None:
     captured_headers: list[dict[str, str]] = []
 
@@ -1467,6 +1582,27 @@ def test_configured_apollo_client_sends_custom_user_agent(monkeypatch: pytest.Mo
     assert len(captured_headers) == 2
     assert captured_headers[0]["User-agent"] == APOLLO_API_USER_AGENT
     assert captured_headers[1]["User-agent"] == APOLLO_API_USER_AGENT
+
+
+def test_configured_apollo_client_maps_insufficient_credit_422_to_quota_exhausted(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    def fake_urlopen(request, timeout):
+        raise HTTPError(
+            url=request.full_url,
+            code=422,
+            msg="Unprocessable Entity",
+            hdrs=None,
+            fp=BytesIO(b'{"message":"insufficient credits"}'),
+        )
+
+    monkeypatch.setattr("job_hunt_copilot.email_discovery.urlopen", fake_urlopen)
+    client = ConfiguredApolloClient(api_key="apollo-key")
+
+    with pytest.raises(EmailDiscoveryError) as exc_info:
+        client._post_json("https://api.apollo.io/api/v1/mixed_companies/search", {"page": 1})
+
+    assert exc_info.value.reason_code == DISCOVERY_OUTCOME_QUOTA_EXHAUSTED
 
 
 def test_email_discovery_stops_on_first_usable_result_and_persists_budget_state(tmp_path: Path):

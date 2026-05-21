@@ -6,6 +6,7 @@ from types import SimpleNamespace
 
 from job_hunt_copilot.bootstrap import run_bootstrap
 from job_hunt_copilot.delivery_feedback import EVENT_STATE_NOT_BOUNCED, sync_delivery_feedback
+from job_hunt_copilot.email_discovery import DISCOVERY_OUTCOME_QUOTA_EXHAUSTED, EmailDiscoveryError
 from job_hunt_copilot.outreach import (
     execute_role_targeted_send_set,
     generate_role_targeted_send_set_drafts,
@@ -326,6 +327,27 @@ class FakeApolloSearchProvider:
             }
         )
         return list(self.candidates)
+
+
+class QuotaExhaustedApolloSearchProvider(FakeApolloSearchProvider):
+    def resolve_company(
+        self,
+        *,
+        company_name: str,
+        company_domain: str | None,
+        company_website: str | None,
+    ) -> None:
+        self.resolve_calls.append(
+            {
+                "company_name": company_name,
+                "company_domain": company_domain,
+                "company_website": company_website,
+            }
+        )
+        raise EmailDiscoveryError(
+            "Apollo request failed with HTTP 422.",
+            reason_code=DISCOVERY_OUTCOME_QUOTA_EXHAUSTED,
+        )
 
 
 class FakeApolloEnrichmentProvider:
@@ -1149,6 +1171,87 @@ def test_people_search_stage_escalates_cleanly_when_no_contacts_are_found(tmp_pa
     assert updated_run.current_stage == "people_search"
     assert "did not identify any shortlisted internal contacts" in (updated_run.last_error_summary or "")
     assert posting_status == "requires_contacts"
+
+
+def test_people_search_stage_enters_apollo_cooldown_and_yields_to_new_bootstrap_work(
+    tmp_path: Path,
+) -> None:
+    project_root = bootstrap_project(tmp_path)
+    paths = ProjectPaths.from_root(project_root)
+    connection = connect_database(project_root / "job_hunt_copilot.db")
+    lead_id, job_posting_id = seed_role_targeted_posting(
+        connection,
+        posting_status="requires_contacts",
+    )
+    seed_approved_tailoring_run(connection, job_posting_id=job_posting_id)
+    resume_agent(
+        connection,
+        manual_command="jhc-agent-start",
+        timestamp="2026-04-08T00:10:00Z",
+    )
+    pipeline_run, _ = ensure_role_targeted_pipeline_run(
+        connection,
+        lead_id=lead_id,
+        job_posting_id=job_posting_id,
+        current_stage="people_search",
+        started_at="2026-04-08T00:11:00Z",
+    )
+    _, next_job_posting_id = seed_role_targeted_posting(
+        connection,
+        lead_id="ld_people_search_cooldown",
+        job_posting_id="jp_people_search_cooldown",
+        lead_identity_key="next-wave-systems|backend-engineer",
+        posting_identity_key="next-wave-systems|backend-engineer|remote",
+        company_name="Next Wave Systems",
+        role_title="Backend Engineer",
+        posting_status="sourced",
+        timestamp="2026-04-08T00:12:00Z",
+    )
+
+    first_execution = run_supervisor_cycle(
+        connection,
+        paths,
+        trigger_type="launchd_heartbeat",
+        scheduler_name="launchd",
+        started_at="2026-04-08T00:13:00Z",
+        action_dependencies=SupervisorActionDependencies(
+            apollo_people_search_provider=QuotaExhaustedApolloSearchProvider(candidates=[]),
+        ),
+    )
+    updated_run = get_pipeline_run(connection, pipeline_run.pipeline_run_id)
+    apollo_budget_row = connection.execute(
+        """
+        SELECT cooldown_until, cooldown_reason
+        FROM provider_budget_state
+        WHERE provider_name = 'apollo'
+        """
+    ).fetchone()
+
+    second_execution = run_supervisor_cycle(
+        connection,
+        paths,
+        trigger_type="launchd_heartbeat",
+        scheduler_name="launchd",
+        started_at="2026-04-08T00:14:00Z",
+    )
+    connection.close()
+
+    assert first_execution.cycle.result == SUPERVISOR_CYCLE_RESULT_SUCCESS
+    assert first_execution.selected_work is not None
+    assert first_execution.selected_work.work_id == pipeline_run.pipeline_run_id
+    assert first_execution.selected_work.action_id == ACTION_RUN_ROLE_TARGETED_PEOPLE_SEARCH
+    assert updated_run is not None
+    assert updated_run.run_status == RUN_STATUS_IN_PROGRESS
+    assert updated_run.current_stage == "people_search"
+    assert dict(apollo_budget_row) == {
+        "cooldown_until": "2026-04-09T00:13:00Z",
+        "cooldown_reason": DISCOVERY_OUTCOME_QUOTA_EXHAUSTED,
+    }
+
+    assert second_execution.cycle.result == SUPERVISOR_CYCLE_RESULT_SUCCESS
+    assert second_execution.selected_work is not None
+    assert second_execution.selected_work.action_id == ACTION_BOOTSTRAP_ROLE_TARGETED_RUN
+    assert second_execution.selected_work.work_id == next_job_posting_id
 
 
 def test_email_discovery_stage_runs_and_stays_active_until_send_set_is_ready(

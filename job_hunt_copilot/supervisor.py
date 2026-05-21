@@ -2840,6 +2840,21 @@ def _select_open_pipeline_run_work_unit(
                         current_time=current_time,
                     ):
                         continue
+        if pipeline_run.current_stage == "people_search":
+            job_posting_id = _optional_text(pipeline_run.job_posting_id)
+            if job_posting_id:
+                posting_status = _load_posting_status(
+                    connection,
+                    job_posting_id=job_posting_id,
+                )
+                if posting_status == "requires_contacts":
+                    from .email_discovery import is_role_targeted_people_search_actionable_now
+
+                    if not is_role_targeted_people_search_actionable_now(
+                        connection,
+                        current_time=current_time,
+                    ):
+                        continue
 
         action_id = ROLE_TARGETED_PIPELINE_STAGE_ACTIONS.get(pipeline_run.current_stage)
         return SupervisorWorkUnit(
@@ -3296,6 +3311,16 @@ def _validate_selected_work(
             return (
                 f"job_posting {job_posting_id!r} is not at the people-search boundary; "
                 f"found posting_status={posting_row[0]!r}."
+            )
+        from .email_discovery import is_role_targeted_people_search_actionable_now
+
+        if not is_role_targeted_people_search_actionable_now(
+            connection,
+            current_time=current_time,
+        ):
+            return (
+                f"pipeline_run {selected_work.work_id!r} is at people_search without "
+                "a callable Apollo provider now."
             )
         latest_run = connection.execute(
             """
@@ -4035,8 +4060,11 @@ def _execute_selected_work_unit(
 
     if catalog_entry.action_id == ACTION_RUN_ROLE_TARGETED_PEOPLE_SEARCH:
         from .email_discovery import (
+            DISCOVERY_PROVIDER_COOLDOWN_OUTCOMES,
             JOB_POSTING_STATUS_READY_FOR_OUTREACH,
             JOB_POSTING_STATUS_REQUIRES_CONTACTS,
+            EmailDiscoveryError,
+            is_role_targeted_people_search_actionable_now,
             run_apollo_contact_enrichment,
             run_apollo_people_search,
         )
@@ -4066,19 +4094,54 @@ def _execute_selected_work_unit(
                 "ready_for_outreach and advanced the durable pipeline run directly to sending."
             )
         elif current_posting_status == JOB_POSTING_STATUS_REQUIRES_CONTACTS:
-            search_result = run_apollo_people_search(
-                project_root=paths.project_root,
-                job_posting_id=job_posting_id,
-                provider=action_dependencies.apollo_people_search_provider,
+            if not is_role_targeted_people_search_actionable_now(
+                connection,
                 current_time=timestamp,
-            )
-            enrichment_result = run_apollo_contact_enrichment(
-                project_root=paths.project_root,
-                job_posting_id=job_posting_id,
-                provider=action_dependencies.apollo_contact_enrichment_provider,
-                recipient_profile_extractor=action_dependencies.recipient_profile_extractor,
-                current_time=timestamp,
-            )
+            ):
+                next_stage = "people_search"
+                run_summary = (
+                    "Supervisor kept the durable pipeline run at people_search "
+                    "because Apollo is in provider cooldown and is not callable yet."
+                )
+                pipeline_run = advance_pipeline_run(
+                    connection,
+                    selected_work.work_id,
+                    current_stage=next_stage,
+                    run_summary=run_summary,
+                    timestamp=timestamp,
+                )
+                return pipeline_run, None, None
+            try:
+                search_result = run_apollo_people_search(
+                    project_root=paths.project_root,
+                    job_posting_id=job_posting_id,
+                    provider=action_dependencies.apollo_people_search_provider,
+                    current_time=timestamp,
+                )
+                enrichment_result = run_apollo_contact_enrichment(
+                    project_root=paths.project_root,
+                    job_posting_id=job_posting_id,
+                    provider=action_dependencies.apollo_contact_enrichment_provider,
+                    recipient_profile_extractor=action_dependencies.recipient_profile_extractor,
+                    current_time=timestamp,
+                )
+            except EmailDiscoveryError as exc:
+                if _optional_text(exc.reason_code) in DISCOVERY_PROVIDER_COOLDOWN_OUTCOMES:
+                    next_stage = "people_search"
+                    run_summary = (
+                        "Supervisor kept the durable pipeline run at people_search "
+                        "because Apollo entered provider cooldown after a transient or "
+                        "quota-related failure."
+                    )
+                    pipeline_run = advance_pipeline_run(
+                        connection,
+                        selected_work.work_id,
+                        current_stage=next_stage,
+                        run_summary=run_summary,
+                        timestamp=timestamp,
+                    )
+                    return pipeline_run, None, None
+                raise
             if enrichment_result.posting_status == JOB_POSTING_STATUS_READY_FOR_OUTREACH:
                 next_stage = "sending"
             elif enrichment_result.posting_status == JOB_POSTING_STATUS_REQUIRES_CONTACTS:
@@ -5005,6 +5068,33 @@ def _validate_selected_work_result(
                 "People search left the pipeline_run outside in-progress state; found "
                 f"{pipeline_run.run_status!r}."
             )
+        if pipeline_run.current_stage == "people_search":
+            posting_row = connection.execute(
+                """
+                SELECT posting_status
+                FROM job_postings
+                WHERE job_posting_id = ?
+                """,
+                (pipeline_run.job_posting_id,),
+            ).fetchone()
+            if posting_row is None:
+                return "People search completed without a persisted job_posting row."
+            if posting_row[0] != "requires_contacts":
+                return (
+                    "People search cooldown waiting must leave the posting at "
+                    f"requires_contacts; found {posting_row[0]!r}."
+                )
+            from .email_discovery import is_role_targeted_people_search_actionable_now
+
+            if is_role_targeted_people_search_actionable_now(
+                connection,
+                current_time=current_time,
+            ):
+                return (
+                    "People search stayed at the same boundary even though Apollo "
+                    "was callable and downstream progression should have resumed."
+                )
+            return None
         if pipeline_run.current_stage not in {"email_discovery", "sending"}:
             return (
                 "People search did not advance the durable pipeline run to the next "
