@@ -1229,11 +1229,17 @@ def run_apollo_people_search(
         search_provider = provider or ConfiguredApolloClient.from_paths(paths)
         attempted_filters: list[dict[str, Any]] = []
 
-        resolved_company = search_provider.resolve_company(
-            company_name=posting_row["company_name"],
-            company_domain=company_domain,
-            company_website=company_website,
+        resolved_company = _reuse_persisted_apollo_company(
+            connection,
+            paths=paths,
+            posting_row=posting_row,
         )
+        if resolved_company is None:
+            resolved_company = search_provider.resolve_company(
+                company_name=posting_row["company_name"],
+                company_domain=company_domain,
+                company_website=company_website,
+            )
         if resolved_company is not None and resolved_company.organization_id:
             with connection:
                 promote_company_group_to_provider_key(
@@ -1363,6 +1369,12 @@ def run_apollo_contact_enrichment(
         posting_row = dict(_load_search_ready_posting(connection, job_posting_id=job_posting_id))
         shortlisted_rows = _load_shortlisted_contact_rows(connection, job_posting_id=job_posting_id)
         timestamp = current_time or now_utc_iso()
+        send_set_plan = evaluate_role_targeted_send_set(
+            connection,
+            job_posting_id=job_posting_id,
+            current_time=timestamp,
+        )
+        frontier_contact_ids = {contact.contact_id for contact in send_set_plan.selected_contacts}
 
         provider_client = provider
         profile_extractor = recipient_profile_extractor or LinkedInPublicProfileExtractor()
@@ -1384,7 +1396,10 @@ def run_apollo_contact_enrichment(
             processed_contact_ids.append(str(contact_row["contact_id"]))
             refreshed_row = contact_row
 
-            if _needs_apollo_contact_enrichment(refreshed_row):
+            if (
+                str(refreshed_row["contact_id"]) in frontier_contact_ids
+                and _needs_apollo_contact_enrichment(refreshed_row)
+            ):
                 if provider_client is None:
                     provider_client = ConfiguredApolloClient.from_paths(paths)
                 enriched_payload = provider_client.enrich_person(
@@ -2568,6 +2583,98 @@ def _derive_company_website(posting_row: sqlite3.Row) -> str | None:
     if source_url and "linkedin.com" not in source_url.lower():
         return source_url
     return None
+
+
+def _reuse_persisted_apollo_company(
+    connection: sqlite3.Connection,
+    *,
+    paths: ProjectPaths,
+    posting_row: Mapping[str, Any],
+) -> ApolloResolvedCompany | None:
+    direct_match = _apollo_resolved_company_from_company_keys(posting_row)
+    if direct_match is not None:
+        return direct_match
+
+    historical_match = _apollo_resolved_company_from_search_payload(
+        _load_people_search_payload(paths, posting_row)
+    )
+    if historical_match is not None:
+        return historical_match
+
+    current_company_key = posting_company_key_from_row(posting_row)
+    current_company_slug = workspace_slug(
+        _normalize_optional_text(_mapping_lookup(posting_row, "company_name")) or "unknown-company"
+    )
+    rows = connection.execute(
+        """
+        SELECT job_posting_id, company_name, canonical_company_key, provider_company_key
+        FROM job_postings
+        WHERE job_posting_id <> ?
+        ORDER BY COALESCE(updated_at, created_at) DESC, job_posting_id DESC
+        """,
+        (str(posting_row["job_posting_id"]),),
+    ).fetchall()
+    for row in rows:
+        row_company_slug = workspace_slug(_normalize_optional_text(row["company_name"]) or "unknown-company")
+        if (
+            _normalize_optional_text(row["canonical_company_key"]) != current_company_key
+            and row_company_slug != current_company_slug
+        ):
+            continue
+        reused_company = _apollo_resolved_company_from_company_keys(row)
+        if reused_company is not None:
+            return reused_company
+    return None
+
+
+def _apollo_resolved_company_from_company_keys(
+    row: Mapping[str, Any],
+) -> ApolloResolvedCompany | None:
+    for field_name in ("provider_company_key", "canonical_company_key"):
+        organization_id = _provider_company_id_from_key(
+            _normalize_optional_text(_mapping_lookup(row, field_name)),
+            provider_name=PROVIDER_NAME_APOLLO,
+        )
+        if organization_id is None:
+            continue
+        return ApolloResolvedCompany(
+            organization_id=organization_id,
+            organization_name=_normalize_optional_text(_mapping_lookup(row, "company_name")) or organization_id,
+        )
+    return None
+
+
+def _apollo_resolved_company_from_search_payload(
+    payload: Mapping[str, Any],
+) -> ApolloResolvedCompany | None:
+    resolved_company = payload.get("resolved_company")
+    if not isinstance(resolved_company, Mapping):
+        return None
+    organization_id = _normalize_optional_text(resolved_company.get("organization_id"))
+    if organization_id is None:
+        return None
+    return ApolloResolvedCompany(
+        organization_id=organization_id,
+        organization_name=_normalize_optional_text(resolved_company.get("organization_name")) or organization_id,
+        primary_domain=_normalize_optional_text(resolved_company.get("primary_domain")),
+        website_url=_normalize_optional_text(resolved_company.get("website_url")),
+        linkedin_url=_normalize_optional_text(resolved_company.get("linkedin_url")),
+    )
+
+
+def _provider_company_id_from_key(
+    provider_key: str | None,
+    *,
+    provider_name: str,
+) -> str | None:
+    normalized_key = _normalize_optional_text(provider_key)
+    if normalized_key is None:
+        return None
+    prefix = f"{workspace_slug(provider_name)}:"
+    if not normalized_key.startswith(prefix):
+        return None
+    provider_company_id = normalized_key[len(prefix):].strip()
+    return provider_company_id or None
 
 
 def _load_people_search_payload(
@@ -3996,6 +4103,18 @@ def _mapping_value_at_path(payload: Mapping[str, Any], path: Sequence[str]) -> A
             return None
         current = current.get(key)
     return current
+
+
+def _mapping_lookup(mapping: Mapping[str, Any], key: str) -> Any:
+    if hasattr(mapping, "keys"):
+        try:
+            return mapping[key]
+        except Exception:
+            return None
+    getter = getattr(mapping, "get", None)
+    if callable(getter):
+        return getter(key)
+    return None
 
 
 def _email_matches_company_domain(email: str, company_domain: str | None) -> bool:

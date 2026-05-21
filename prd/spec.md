@@ -3324,6 +3324,7 @@ For discovery-state persistence, the system shall use discovery-specific tables 
 - **FR-ED-00B (Apollo-First Contact Search):** The current first-build company-scoped people-search provider shall be Apollo.
 - **FR-ED-00B1 (Company Resolution Before Apollo People Search):** The Apollo path should first resolve the target company to an Apollo organization record and capture the resolved `organization_id` before broad people search begins.
 - **FR-ED-00B2 (Organization-ID-Anchored Search):** When Apollo organization resolution succeeds, people search should anchor on the resolved `organization_id` rather than relying only on company name or raw domain filters.
+- **FR-ED-00B2A (Resolved-Organization Reuse Rule):** When the posting or company group already carries a previously resolved Apollo company identifier such as `provider_company_key` or a saved `organization_id`, the Apollo path should reuse that persisted identifier and skip a fresh `mixed_companies/search` resolution call unless the persisted identifier is missing, malformed, or has been explicitly invalidated.
 - **FR-ED-00B3 (Company Resolution Artifact):** The people-search stage shall persist the resolved company-search outcome, including the chosen Apollo organization record when found, inside `people_search_result.json` so later review can see what company identity was actually searched.
 - **FR-ED-00C (Role-Targeted Search Filters):** Company-scoped people search should use the resolved company context plus title, function, and seniority filters derived from the JD and current outreach priorities. Engineering managers, recruiters, and role-relevant engineers are the primary target classes.
 - **FR-ED-00D (People-Search Materialization):** Company-scoped people-search results shall first persist the broad-search output in `people_search_result.json`. Canonical `contacts` and posting-contact links shall be created or updated only for shortlisted candidates that proceed into enrichment, identity clarification, or later outreach handling, even when a usable email is not yet available.
@@ -3333,6 +3334,7 @@ For discovery-state persistence, the system shall use discovery-specific tables 
 - **FR-ED-00D2 (Best-Known Name Materialization Rule):** When people search returns only a sparse display name, the contact record shall still preserve the best currently known human-readable name string as `display_name`, and may leave `full_name` empty until enrichment or another source reveals the non-obfuscated full name.
 - **FR-ED-00E (Skip Extra Email Lookup on Usable Provider Email):** If the selected people-search or enrichment provider already returns a usable work email for a selected contact, the system may skip separate person-scoped email-finder calls for that contact.
 - **FR-ED-00E1 (Selective Apollo Enrichment After Search):** After the broad Apollo search pass, the system should enrich only the shortlisted contacts that need fuller identity, LinkedIn URL, or a usable work email. It should not bulk-enrich every broad-search candidate by default.
+- **FR-ED-00E1A (Shortlist-Frontier Enrichment Rule):** In the current high-recall role-targeted flow, shortlist-time Apollo enrichment should be demand-driven rather than eager. The system should defer Apollo enrichment for shortlisted contacts until that specific contact is on the current send or discovery frontier and cannot proceed with the currently known sparse identity, LinkedIn context, or usable-email state. Shortlisted contacts that are not yet actionable for the current frontier should remain materialized but unenriched.
 - **FR-ED-00E2 (Search-To-Enrichment Boundary):** Apollo Search is the high-recall candidate-generation step. Apollo enrichment is the identity-clarification and optional email-returning step for selected contacts.
 - **FR-ED-00E2A (Enrichment-To-Email-Discovery Boundary):** Person-scoped email discovery shall begin only when shortlist-time enrichment has completed for that contact and still did not return a usable work email. Enrichment alone does not hand a contact into email discovery if it already produced a usable email.
 - **FR-ED-00E3 (Search-Stage Recipient Typing):** The search stage should infer a preliminary `recipient_type` and `relevance_reason` from the returned title and job context, such as `recruiter`, `hiring_manager`, `engineer`, or `other_internal`, before later ranking or wave selection narrows the final outreach set.
@@ -4520,30 +4522,32 @@ Current imported guidance should include, at minimum:
 ## 12.2 Email Discovery
 1. Given a role-targeted posting that needs internal contacts, the system can run Apollo-first company-scoped people search and persist the broad candidate search result for the posting.
 2. The Apollo path resolves the company to an organization record first and uses the resolved `organization_id` as the preferred anchor for people search when available.
-3. `people_search_result.json` is produced and preserves the resolved company record, applied search filters, and the broad candidate list returned by people search.
-4. The system correctly handles sparse Apollo search results, including candidates whose search-stage identity is only a partial or obfuscated display name plus stable Apollo person ID.
-5. Shortlist-stage contact materialization can proceed from stable provider identity such as Apollo person ID even before a non-obfuscated full name is known.
-6. After the broad search pass, the system enriches only shortlisted contacts that need fuller identity, LinkedIn URL, or a usable work email rather than enriching every broad-search candidate by default.
-7. In autonomous role-targeted mode, the initial enrichment shortlist is capped at 30 contacts and aims to cover recruiter, manager, and engineer recipient classes before lower-priority internals are used.
-8. When a saved broad Apollo people-search artifact exists, the system can later replay that artifact to backfill additional shortlisted contacts up to the current 30-contact limit without rerunning external people search immediately.
-9. When a location-filtered Apollo search yields no useful contacts, the search logic can retry with the location constraint relaxed rather than dead-ending on the first miss.
-10. When Apollo enrichment yields a LinkedIn URL for a shortlisted contact, the system can extract and persist a structured public-profile `recipient_profile.json` snapshot before drafting.
-11. If Apollo enrichment returns a usable work email for a selected contact, the system can skip the separate email-finder cascade for that contact.
-12. If enrichment does not return a usable work email, that contact can continue into the separate person-scoped email-discovery path.
-13. If a shortlisted candidate becomes a terminal dead end at the enrichment boundary and will not continue into email discovery or outreach, that candidate is dropped from canonical shortlist state rather than being retained as dead contact state.
-14. Given linked contact input, the system returns a discovered working email or an explicit unresolved/not-found outcome.
-15. Provider-specific `HTTP 200` no-match responses are normalized correctly, such as Prospeo `NO_MATCH`, GetProspect `success = false` with `status = not_found`, and Hunter responses with `data.email = null`.
-16. Discovery reuses an already known working email for the same clearly identified contact instead of rerunning provider discovery unnecessarily.
-17. Attempts, outcomes, provider-budget history, unresolved review data, and bounced-email review data are queryable from the same central SQLite store.
-18. Pattern-learning data is preserved so discovery quality can be improved in later iterations without redesigning storage.
-19. System can perform high-confidence cached discovery for eligible domains once readiness criteria are met.
-20. Pre-send confidence is provider-verified confidence.
-21. Post-send confidence is set to 100% only for sent emails with no bounce observed in the configured feedback window.
-22. Per-provider credit balances are auto-updated after each provider usage event when the provider exposes a reliable balance signal, and otherwise remain explicitly unknown rather than synthetic.
-23. Combined budget totals, when shown, are derived only from known provider balances rather than fabricated placeholders.
-24. Provider exhaustion automatically triggers fallback to remaining providers in cascade order.
-25. The autonomous LinkedIn-alert mode can use Apollo to gather a broad set of engineering managers, software engineers, recruiters, and other potentially helpful internal people before later filtering.
-26. `discovery_result.json` is produced as the machine handoff artifact for Drafting and includes the shared contract envelope, relevant root IDs, discovery outcome, discovered email when found, and the recipient-profile artifact reference when one exists.
+3. When the posting or company group already has a persisted Apollo company identifier from earlier work, the system reuses that identifier and skips a fresh company-resolution call unless that identifier is missing or invalid.
+4. `people_search_result.json` is produced and preserves the resolved company record, applied search filters, and the broad candidate list returned by people search.
+5. The system correctly handles sparse Apollo search results, including candidates whose search-stage identity is only a partial or obfuscated display name plus stable Apollo person ID.
+6. Shortlist-stage contact materialization can proceed from stable provider identity such as Apollo person ID even before a non-obfuscated full name is known.
+7. After the broad search pass, the system enriches only shortlisted contacts that need fuller identity, LinkedIn URL, or a usable work email rather than enriching every broad-search candidate by default.
+8. In the current high-recall role-targeted flow, Apollo enrichment for shortlisted contacts is demand-driven. Contacts that are not yet on the active send or discovery frontier remain shortlisted but are not eagerly enriched.
+9. In autonomous role-targeted mode, the initial enrichment shortlist is capped at 30 contacts and aims to cover recruiter, manager, and engineer recipient classes before lower-priority internals are used.
+10. When a saved broad Apollo people-search artifact exists, the system can later replay that artifact to backfill additional shortlisted contacts up to the current 30-contact limit without rerunning external people search immediately.
+11. When a location-filtered Apollo search yields no useful contacts, the search logic can retry with the location constraint relaxed rather than dead-ending on the first miss.
+12. When Apollo enrichment yields a LinkedIn URL for a shortlisted contact, the system can extract and persist a structured public-profile `recipient_profile.json` snapshot before drafting.
+13. If Apollo enrichment returns a usable work email for a selected contact, the system can skip the separate email-finder cascade for that contact.
+14. If enrichment does not return a usable work email, that contact can continue into the separate person-scoped email-discovery path.
+15. If a shortlisted candidate becomes a terminal dead end at the enrichment boundary and will not continue into email discovery or outreach, that candidate is dropped from canonical shortlist state rather than being retained as dead contact state.
+16. Given linked contact input, the system returns a discovered working email or an explicit unresolved/not-found outcome.
+17. Provider-specific `HTTP 200` no-match responses are normalized correctly, such as Prospeo `NO_MATCH`, GetProspect `success = false` with `status = not_found`, and Hunter responses with `data.email = null`.
+18. Discovery reuses an already known working email for the same clearly identified contact instead of rerunning provider discovery unnecessarily.
+19. Attempts, outcomes, provider-budget history, unresolved review data, and bounced-email review data are queryable from the same central SQLite store.
+20. Pattern-learning data is preserved so discovery quality can be improved in later iterations without redesigning storage.
+21. System can perform high-confidence cached discovery for eligible domains once readiness criteria are met.
+22. Pre-send confidence is provider-verified confidence.
+23. Post-send confidence is set to 100% only for sent emails with no bounce observed in the configured feedback window.
+24. Per-provider credit balances are auto-updated after each provider usage event when the provider exposes a reliable balance signal, and otherwise remain explicitly unknown rather than synthetic.
+25. Combined budget totals, when shown, are derived only from known provider balances rather than fabricated placeholders.
+26. Provider exhaustion automatically triggers fallback to remaining providers in cascade order.
+27. The autonomous LinkedIn-alert mode can use Apollo to gather a broad set of engineering managers, software engineers, recruiters, and other potentially helpful internal people before later filtering.
+28. `discovery_result.json` is produced as the machine handoff artifact for Drafting and includes the shared contract envelope, relevant root IDs, discovery outcome, discovered email when found, and the recipient-profile artifact reference when one exists.
 
 ## 12.3 Email Drafting and Sending
 1. Given role-targeted context, system produces a personalized outreach draft using job-posting context, tailored-resume context, and a discovered working email, with recipient-profile context incorporated when it is available and genuinely useful.
