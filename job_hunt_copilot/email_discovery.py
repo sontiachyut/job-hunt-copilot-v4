@@ -2858,25 +2858,18 @@ def _list_pending_email_discovery_contact_ids(
     connection: sqlite3.Connection,
     *,
     job_posting_id: str,
+    current_time: str,
 ) -> list[str]:
-    rows = connection.execute(
-        """
-        SELECT c.contact_id
-        FROM job_posting_contacts jpc
-        JOIN contacts c
-          ON c.contact_id = jpc.contact_id
-        WHERE jpc.job_posting_id = ?
-          AND jpc.link_level_status IN ('identified', 'shortlisted')
-          AND c.contact_status <> 'exhausted'
-          AND (
-            c.current_working_email IS NULL
-            OR TRIM(c.current_working_email) = ''
-          )
-        ORDER BY jpc.created_at ASC, jpc.job_posting_contact_id ASC
-        """,
-        (job_posting_id,),
-    ).fetchall()
-    return [str(row["contact_id"]) for row in rows]
+    send_set_plan = evaluate_role_targeted_send_set(
+        connection,
+        job_posting_id=job_posting_id,
+        current_time=current_time,
+    )
+    return [
+        contact.contact_id
+        for contact in send_set_plan.selected_contacts
+        if not contact.has_usable_email
+    ]
 
 
 def is_role_targeted_email_discovery_contact_actionable_now(
@@ -2946,6 +2939,7 @@ def is_role_targeted_email_discovery_actionable_now(
     pending_contact_ids = _list_pending_email_discovery_contact_ids(
         connection,
         job_posting_id=job_posting_id,
+        current_time=current_time,
     )
     if not pending_contact_ids:
         return False

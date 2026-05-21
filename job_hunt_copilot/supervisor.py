@@ -4169,6 +4169,7 @@ def _execute_selected_work_unit(
             return _list_pending_email_discovery_contact_ids(
                 connection,
                 job_posting_id=job_posting_id,
+                current_time=timestamp,
             )
 
         def _load_actionable_email_discovery_contact_ids(
