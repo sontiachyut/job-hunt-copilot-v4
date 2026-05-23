@@ -12,6 +12,7 @@ from job_hunt_copilot.followups import (
     PLAN_STATUS_DRY_RUN_READY,
     PLAN_STATUS_SENT,
     SKIP_REASON_ALREADY_FOLLOWED_UP,
+    SKIP_REASON_AUTO_SEND_DISABLED,
     SKIP_REASON_MISSING_THREAD_CONTEXT,
     SKIP_REASON_REPLIED_IN_THREAD,
     FollowUpCandidate,
@@ -309,7 +310,8 @@ def test_followup_prefers_original_email_role_company_and_records_review_gates(t
     assert evidence["guards"]["direct_thread_reply_check_clear"] is True
     assert evidence["guards"]["no_prior_followup"] is True
     assert evidence["guards"]["original_email_did_not_bounce"] is True
-    assert evidence["grounding_sources"]["original_email_body"] is True
+    assert evidence["template"] == "mutual_fit_followup_without_fit_areas"
+    assert "grounding_sources" not in evidence
 
 
 def test_followup_recovers_opening_at_company_and_strips_subject_impact_suffix(tmp_path):
@@ -344,7 +346,7 @@ def test_followup_recovers_opening_at_company_and_strips_subject_impact_suffix(t
     assert evidence["company_name_source"] == "original_email_body"
 
 
-def test_background_fit_prefers_role_specific_original_email_phrases(tmp_path):
+def test_followup_template_does_not_repeat_original_fit_phrases(tmp_path):
     project_root, connection = _bootstrap_connection(tmp_path)
     _seed_sent_role_targeted_message(
         connection,
@@ -375,19 +377,13 @@ def test_background_fit_prefers_role_specific_original_email_phrases(tmp_path):
     draft_text = (project_root / plan["draft_artifact_path"]).read_text(encoding="utf-8")
     evidence = json.loads((project_root / plan["review_evidence_artifact_path"]).read_text(encoding="utf-8"))
 
-    assert (
-        "event-driven distributed systems, metadata processing, and large-scale document/media datasets"
-        in draft_text
-    )
-    assert "Java services, Go/Golang services, and Python systems" not in draft_text
-    assert evidence["selected_phrase_sources"] == {
-        "event-driven distributed systems": "original_email_role_interest",
-        "metadata processing": "original_email_role_interest",
-        "large-scale document/media datasets": "original_email_role_interest",
-    }
+    assert "I reached out because I believe the role could be a strong mutual fit." in draft_text
+    assert "event-driven, distributed systems" not in draft_text
+    assert "50M+ daily records" not in draft_text
+    assert evidence["template"] == "mutual_fit_followup_without_fit_areas"
 
 
-def test_background_fit_uses_role_interest_before_resume_proof_point(tmp_path):
+def test_followup_template_stays_simple_for_security_roles(tmp_path):
     project_root, connection = _bootstrap_connection(tmp_path)
     _seed_sent_role_targeted_message(
         connection,
@@ -418,13 +414,10 @@ def test_background_fit_uses_role_interest_before_resume_proof_point(tmp_path):
     draft_text = (project_root / plan["draft_artifact_path"]).read_text(encoding="utf-8")
     evidence = json.loads((project_root / plan["review_evidence_artifact_path"]).read_text(encoding="utf-8"))
 
-    assert "enterprise security systems, DevOps security workflows, and secure solutions" in draft_text
-    assert "Python and Scala backend data services" not in draft_text
-    assert evidence["selected_phrase_sources"] == {
-        "enterprise security systems": "original_email_role_interest",
-        "DevOps security workflows": "original_email_role_interest",
-        "secure solutions": "original_email_role_interest",
-    }
+    assert "Government Information Security Engineer role at Intel" in draft_text
+    assert "enterprise security systems" not in draft_text
+    assert "Python and Scala data services" not in draft_text
+    assert evidence["template"] == "mutual_fit_followup_without_fit_areas"
 
 
 def test_unreadable_optional_jd_artifact_does_not_fail_dry_run(tmp_path):
@@ -455,8 +448,8 @@ def test_unreadable_optional_jd_artifact_does_not_fail_dry_run(tmp_path):
     evidence = json.loads((project_root / plan["review_evidence_artifact_path"]).read_text(encoding="utf-8"))
     assert result.result == "success"
     assert result.drafts_created == 1
-    assert evidence["grounding_sources"]["jd_artifact"] is False
-    assert "missing_jd_artifact" in evidence["grounding_fallbacks"]
+    assert evidence["template"] == "mutual_fit_followup_without_fit_areas"
+    assert "grounding_sources" not in evidence
 
 
 def test_reply_in_thread_suppresses_followup(tmp_path):
@@ -581,6 +574,98 @@ def test_auto_send_uses_persisted_body_and_records_linked_followup(tmp_path):
     assert sender.sent_bodies[0] == (project_root / plan["draft_artifact_path"]).read_text(encoding="utf-8").rstrip("\n")
 
 
+def test_auto_send_reenabled_releases_disabled_hold_and_sends(tmp_path):
+    project_root, connection = _bootstrap_connection(tmp_path)
+    _seed_sent_role_targeted_message(connection, sent_at="2026-05-01T00:00:00Z")
+
+    first_result = run_followup_cycle(
+        connection,
+        project_root=project_root,
+        current_time=NOW,
+        dry_run=False,
+        thread_inspector=FakeThreadInspector(ThreadInspectionResult(result="clear", checked_at=NOW)),
+        sender=FakeSender(sent_bodies=[]),
+    )
+
+    first_plan = connection.execute("SELECT * FROM outreach_followup_plans").fetchone()
+    assert first_result.messages_sent == 0
+    assert first_plan["plan_status"] == "held_for_review"
+    assert first_plan["last_skip_reason"] == SKIP_REASON_AUTO_SEND_DISABLED
+
+    reenabled_at = "2026-05-12T18:05:00Z"
+    connection.execute(
+        "UPDATE agent_control_state SET control_value = 'true', updated_at = ? WHERE control_key = 'followup_auto_send_enabled'",
+        (reenabled_at,),
+    )
+    connection.commit()
+
+    sender = FakeSender(sent_bodies=[])
+    second_result = run_followup_cycle(
+        connection,
+        project_root=project_root,
+        current_time=reenabled_at,
+        dry_run=False,
+        thread_inspector=FakeThreadInspector(
+            ThreadInspectionResult(result="clear", checked_at=reenabled_at)
+        ),
+        sender=sender,
+    )
+
+    second_plan = connection.execute("SELECT * FROM outreach_followup_plans").fetchone()
+    followup = connection.execute(
+        "SELECT * FROM outreach_messages WHERE outreach_mode = 'role_targeted_followup'"
+    ).fetchone()
+
+    assert second_result.messages_sent == 1
+    assert second_plan["plan_status"] == PLAN_STATUS_SENT
+    assert second_plan["followup_outreach_message_id"] == followup["outreach_message_id"]
+    assert second_plan["last_skip_reason"] is None
+    assert followup["body_text"] == sender.sent_bodies[0]
+
+
+def test_approved_followup_rollout_does_not_repause_after_cap(tmp_path):
+    project_root, connection = _bootstrap_connection(tmp_path)
+    _seed_sent_role_targeted_message(connection, sent_at="2026-05-01T00:00:00Z")
+    connection.executemany(
+        """
+        UPDATE agent_control_state
+        SET control_value = ?, updated_at = ?
+        WHERE control_key = ?
+        """,
+        (
+            ("true", NOW, "followup_auto_send_enabled"),
+            ("false", NOW, "followup_auto_send_paused"),
+            ("true", NOW, "followup_initial_rollout_approved"),
+            ("10", NOW, "followup_initial_rollout_sent_count"),
+        ),
+    )
+    connection.commit()
+
+    result = run_followup_cycle(
+        connection,
+        project_root=project_root,
+        current_time=NOW,
+        dry_run=False,
+        thread_inspector=FakeThreadInspector(ThreadInspectionResult(result="clear", checked_at=NOW)),
+        sender=FakeSender(sent_bodies=[]),
+    )
+
+    control_rows = {
+        row["control_key"]: row["control_value"]
+        for row in connection.execute(
+            """
+            SELECT control_key, control_value
+            FROM agent_control_state
+            WHERE control_key IN ('followup_auto_send_paused', 'followup_initial_rollout_sent_count')
+            """
+        )
+    }
+
+    assert result.messages_sent == 1
+    assert control_rows["followup_auto_send_paused"] == "false"
+    assert control_rows["followup_initial_rollout_sent_count"] == "11"
+
+
 def test_gmail_same_thread_sender_preserves_recoverable_cc_and_reply_headers(tmp_path):
     project_root, _ = _bootstrap_connection(tmp_path)
     candidate = _candidate_for_sender(project_root)
@@ -694,17 +779,21 @@ def test_followup_dashboard_summary_reports_compact_status(tmp_path):
     assert summary["last_cycle_result"] == "success"
 
 
-def test_template_validator_rejects_generic_or_metric_heavy_fit_areas():
+def test_template_validator_enforces_short_signature_and_no_contact_block():
     valid_body = (
         "Hi Alex,\n\n"
         "I wanted to briefly follow up on my earlier note about the Backend Developer role at ExampleCo.\n\n"
-        "I reached out because I believe the role could be a strong mutual fit with my background in Java services and REST APIs. "
+        "I reached out because I believe the role could be a strong mutual fit. "
         "I know you are busy, so I appreciate you taking the time to read this.\n\n"
         "If you are open to it, I would be grateful for a brief 15-minute conversation to hear your perspective on the role, the team, or what tends to matter in the process.\n\n"
         "If this is not relevant or not the right time, I completely understand and will not keep following up.\n\n"
         "Best,\nAchyutaram Sonti"
     )
 
-    assert validate_followup_body(valid_body, background_fit_areas="Java services and REST APIs")
-    assert not validate_followup_body(valid_body, background_fit_areas="software engineering")
-    assert not validate_followup_body(valid_body, background_fit_areas="50M+ records and REST APIs")
+    body_with_contact_block = valid_body.replace(
+        "Best,\nAchyutaram Sonti",
+        "Best,\nAchyutaram Sonti\nhttps://www.linkedin.com/in/asonti/",
+    )
+
+    assert validate_followup_body(valid_body)
+    assert not validate_followup_body(body_with_contact_block)

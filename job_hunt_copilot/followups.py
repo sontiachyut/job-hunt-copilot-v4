@@ -63,6 +63,7 @@ SKIP_REASON_TRANSIENT_RETRY = "transient_send_retry_cooldown"
 SKIP_REASON_AMBIGUOUS_SEND = "ambiguous_send_state"
 SKIP_REASON_GROUNDING_INSUFFICIENT = "grounding_evidence_insufficient"
 SKIP_REASON_CONTACT_HARD_STOP = "contact_hard_stop"
+SKIP_REASON_AUTO_SEND_DISABLED = "followup_auto_send_disabled"
 
 FOLLOWUP_AUTO_SEND_ENABLED_KEY = "followup_auto_send_enabled"
 FOLLOWUP_AUTO_SEND_PAUSED_KEY = "followup_auto_send_paused"
@@ -175,7 +176,6 @@ class ThreadInspectionResult:
 class RenderedFollowUpDraft:
     body_text: str
     first_name_or_salutation: str
-    background_fit_areas: str
     draft_artifact_path: str
     review_evidence_artifact_path: str
     evidence: Mapping[str, Any]
@@ -464,7 +464,8 @@ def run_followup_cycle(
     resolved_batch_size = batch_size or FOLLOWUP_DRY_RUN_BATCH_SIZE
     resolved_inspector = thread_inspector or GmailThreadInspector(paths)
     resolved_sender = sender or GmailSameThreadFollowUpSender(paths)
-    auto_send_enabled = (not dry_run) and _followup_auto_send_enabled(connection)
+    followup_auto_send_available = _followup_auto_send_enabled(connection)
+    auto_send_enabled = (not dry_run) and followup_auto_send_available
     counts = {
         "candidates_examined": 0,
         "drafts_created": 0,
@@ -489,6 +490,8 @@ def run_followup_cycle(
             local_timezone=ZoneInfo("America/Phoenix"),
             limit=resolved_batch_size,
         )
+        if followup_auto_send_available:
+            _release_auto_send_disabled_holds(connection, current_time=effective_time)
         candidates = _load_candidate_plans(connection, current_time=effective_time, limit=resolved_batch_size)
         for candidate in candidates:
             counts["candidates_examined"] += 1
@@ -565,7 +568,7 @@ def run_followup_cycle(
                     candidate.outreach_followup_plan_id,
                     PLAN_STATUS_HELD_FOR_REVIEW,
                     effective_time,
-                    reason_code="followup_auto_send_disabled",
+                    reason_code=SKIP_REASON_AUTO_SEND_DISABLED,
                     draft_artifact_path=rendered.draft_artifact_path,
                     review_evidence_artifact_path=rendered.review_evidence_artifact_path,
                     reply_check=pre_draft_check,
@@ -672,6 +675,27 @@ def run_followup_cycle(
     )
 
 
+def _release_auto_send_disabled_holds(connection: sqlite3.Connection, *, current_time: str) -> int:
+    with connection:
+        cursor = connection.execute(
+            """
+            UPDATE outreach_followup_plans
+            SET plan_status = ?,
+                last_skip_reason = NULL,
+                updated_at = ?
+            WHERE plan_status = ?
+              AND last_skip_reason = ?
+            """,
+            (
+                PLAN_STATUS_PENDING,
+                current_time,
+                PLAN_STATUS_HELD_FOR_REVIEW,
+                SKIP_REASON_AUTO_SEND_DISABLED,
+            ),
+        )
+    return int(cursor.rowcount or 0)
+
+
 def render_followup_draft(
     paths: ProjectPaths,
     candidate: FollowUpCandidate,
@@ -691,14 +715,10 @@ def render_followup_draft(
     if not role_title or not company_name:
         return None
     salutation = _resolve_salutation(candidate)
-    fit_choice = _derive_background_fit_areas(paths, candidate)
-    if fit_choice is None:
-        return None
-    background_fit_areas = fit_choice["background_fit_areas"]
     body_text = (
         f"{salutation}\n\n"
         f"I wanted to briefly follow up on my earlier note about the {role_title} role at {company_name}.\n\n"
-        f"I reached out because I believe the role could be a strong mutual fit with my background in {background_fit_areas}. "
+        "I reached out because I believe the role could be a strong mutual fit. "
         "I know you are busy, so I appreciate you taking the time to read this.\n\n"
         "If you are open to it, I would be grateful for a brief 15-minute conversation to hear your perspective on the role, "
         "the team, or what tends to matter in the process.\n\n"
@@ -706,7 +726,7 @@ def render_followup_draft(
         "Best,\n"
         "Achyutaram Sonti"
     )
-    if not validate_followup_body(body_text, background_fit_areas=background_fit_areas):
+    if not validate_followup_body(body_text):
         return None
     artifact_dir = _followup_artifact_dir(paths, candidate)
     artifact_dir.mkdir(parents=True, exist_ok=True)
@@ -718,16 +738,12 @@ def render_followup_draft(
         "original_outreach_message_id": candidate.original_outreach_message_id,
         "outreach_followup_plan_id": candidate.outreach_followup_plan_id,
         "followup_sequence": candidate.followup_sequence,
-        "template": "warmer_mutual_fit_first_followup",
+        "template": "mutual_fit_followup_without_fit_areas",
         "role_title": role_title,
         "role_title_source": role_choice["role_title_source"],
         "company_name": company_name,
         "company_name_source": role_choice["company_name_source"],
         "salutation": salutation,
-        "background_fit_areas": background_fit_areas,
-        "grounding_sources": fit_choice["grounding_sources"],
-        "grounding_fallbacks": fit_choice["grounding_fallbacks"],
-        "selected_phrase_sources": fit_choice["selected_phrase_sources"],
         "original_send_metadata": {
             "source_path": original_metadata.source_path,
             "cc_emails": list(original_metadata.cc_emails),
@@ -764,26 +780,18 @@ def render_followup_draft(
     return RenderedFollowUpDraft(
         body_text=body_text,
         first_name_or_salutation=salutation,
-        background_fit_areas=background_fit_areas,
         draft_artifact_path=str(paths.relative_to_root(draft_path)),
         review_evidence_artifact_path=str(paths.relative_to_root(review_path)),
         evidence=evidence,
     )
 
 
-def validate_followup_body(body_text: str, *, background_fit_areas: str) -> bool:
+def validate_followup_body(body_text: str) -> bool:
     if not body_text.strip().endswith("Best,\nAchyutaram Sonti"):
         return False
     if "https://www.linkedin.com" in body_text or "602-" in body_text or "asonti1@asu.edu" in body_text:
         return False
     if any(pattern.search(body_text) for pattern in PROHIBITED_TEMPLATE_LEAK_PATTERNS):
-        return False
-    if any(char.isdigit() for char in background_fit_areas):
-        return False
-    normalized_background = _normalize_phrase(background_fit_areas)
-    if normalized_background in GENERIC_BACKGROUND_PHRASES:
-        return False
-    if len([part.strip() for part in re.split(r",|\band\b", background_fit_areas) if part.strip()]) < 2:
         return False
     return True
 
@@ -1830,21 +1838,28 @@ def _followup_auto_send_enabled(connection: sqlite3.Connection) -> bool:
 
 
 def _increment_initial_rollout_count(connection: sqlite3.Connection, current_time: str) -> None:
-    row = connection.execute(
-        """
-        SELECT control_value
-        FROM agent_control_state
-        WHERE control_key = ?
-        """,
-        (FOLLOWUP_INITIAL_ROLLOUT_SENT_COUNT_KEY,),
-    ).fetchone()
+    rows = {
+        row["control_key"]: row["control_value"]
+        for row in connection.execute(
+            """
+            SELECT control_key, control_value
+            FROM agent_control_state
+            WHERE control_key IN (?, ?)
+            """,
+            (
+                FOLLOWUP_INITIAL_ROLLOUT_SENT_COUNT_KEY,
+                FOLLOWUP_INITIAL_ROLLOUT_APPROVED_KEY,
+            ),
+        )
+    }
     try:
-        count = int(row["control_value"]) if row is not None else 0
+        count = int(rows.get(FOLLOWUP_INITIAL_ROLLOUT_SENT_COUNT_KEY, "0"))
     except ValueError:
         count = 0
+    rollout_approved = rows.get(FOLLOWUP_INITIAL_ROLLOUT_APPROVED_KEY) == "true"
     count += 1
     updates = [(FOLLOWUP_INITIAL_ROLLOUT_SENT_COUNT_KEY, str(count), current_time)]
-    if count >= FOLLOWUP_INITIAL_AUTO_SEND_CAP:
+    if not rollout_approved and count >= FOLLOWUP_INITIAL_AUTO_SEND_CAP:
         updates.append((FOLLOWUP_AUTO_SEND_PAUSED_KEY, "true", current_time))
     with connection:
         connection.executemany(
