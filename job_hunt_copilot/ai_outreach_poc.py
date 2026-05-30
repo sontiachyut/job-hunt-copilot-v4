@@ -156,6 +156,19 @@ class GithubCoffeeChatDraftRequest:
 
 
 @dataclass(frozen=True)
+class GithubPersonalizedOutreachPocRequest:
+    contact_name: str
+    contact_company: str | None
+    contact_role: str | None
+    sender_background_summary: str
+    availability_window: str
+    linkedin_url: str | None = None
+    email: str | None = None
+    min_confidence_score: int = 70
+    model: str | None = None
+
+
+@dataclass(frozen=True)
 class AiOutreachPocRequest:
     jd_path: str
     resume_path: str
@@ -409,6 +422,24 @@ class GithubCoffeeChatDraftResult:
             "email_markdown_path": self.email_markdown_path,
             "codex_stdout_path": self.codex_stdout_path,
             "codex_stderr_path": self.codex_stderr_path,
+        }
+
+
+@dataclass(frozen=True)
+class GithubPersonalizedOutreachPocResult:
+    resolution: GithubProfileResolutionResult
+    research: GithubProfileResearch
+    selection: GithubProjectSelectionResult
+    analysis: GithubProjectAnalysisResult
+    draft: GithubCoffeeChatDraftResult
+
+    def as_dict(self) -> dict[str, Any]:
+        return {
+            "resolution": self.resolution.as_dict(),
+            "research": self.research.as_dict(),
+            "selection": self.selection.as_dict(),
+            "analysis": self.analysis.as_dict(),
+            "draft": self.draft.as_dict(),
         }
 
 
@@ -1100,6 +1131,98 @@ def generate_github_coffee_chat_draft(
     )
 
 
+def run_github_personalized_outreach_poc(
+    request: GithubPersonalizedOutreachPocRequest,
+    *,
+    project_root: Path | str,
+    codex_bin: str | None = None,
+    resolver: GithubProfileResolver | None = None,
+    researcher: GithubProfileResearcher | None = None,
+) -> GithubPersonalizedOutreachPocResult:
+    resolved_resolver = resolver or GithubProfileResolver()
+    resolution = resolved_resolver.resolve_profile(
+        GithubProfileResolutionRequest(
+            contact_name=request.contact_name,
+            contact_company=request.contact_company,
+            contact_role=request.contact_role,
+            linkedin_url=request.linkedin_url,
+            email=request.email,
+            min_confidence_score=request.min_confidence_score,
+        ),
+        project_root=project_root,
+    )
+    if resolution.resolved_github_url is None:
+        raise AiOutreachPocError(
+            f"GitHub profile could not be resolved for {request.contact_name}. See {resolution.resolution_json_path}."
+        )
+
+    resolved_researcher = researcher or GithubProfileResearcher()
+    research = resolved_researcher.fetch_profile_research(profile_url=resolution.resolved_github_url)
+    if not research.repo_candidates:
+        raise AiOutreachPocError(
+            f"Resolved GitHub profile has no public repos to analyze: {resolution.resolved_github_url}"
+        )
+
+    selection = generate_github_project_selection(
+        GithubProjectSelectionRequest(
+            contact_name=request.contact_name,
+            contact_company=request.contact_company,
+            contact_role=request.contact_role,
+            github_profile_url=research.profile_url,
+            github_profile_bio=research.bio,
+            sender_background_summary=request.sender_background_summary,
+            candidate_repos=research.repo_candidates,
+            model=request.model,
+        ),
+        project_root=project_root,
+        codex_bin=codex_bin,
+    )
+    selected_repo = _select_repo_candidate(
+        repo_candidates=research.repo_candidates,
+        repo_name=selection.selected_repo_name,
+        repo_url=selection.selected_repo_url,
+    )
+    analysis = generate_github_project_analysis(
+        GithubProjectAnalysisRequest(
+            contact_name=request.contact_name,
+            contact_company=request.contact_company,
+            contact_role=request.contact_role,
+            github_profile_bio=research.bio,
+            sender_background_summary=request.sender_background_summary,
+            selected_repo=selected_repo,
+            model=request.model,
+        ),
+        project_root=project_root,
+        codex_bin=codex_bin,
+    )
+    draft = generate_github_coffee_chat_draft(
+        GithubCoffeeChatDraftRequest(
+            contact_name=request.contact_name,
+            contact_company=request.contact_company,
+            contact_role=request.contact_role,
+            github_profile_url=research.profile_url,
+            github_profile_bio=research.bio,
+            selected_repo=selected_repo,
+            project_summary=analysis.project_summary,
+            engineering_problem=analysis.engineering_problem,
+            standout_observations=analysis.standout_observations,
+            connection_to_my_work=analysis.connection_to_my_work,
+            conversation_angle=analysis.conversation_angle,
+            availability_window=request.availability_window,
+            model=request.model,
+        ),
+        project_root=project_root,
+        codex_bin=codex_bin,
+    )
+    return GithubPersonalizedOutreachPocResult(
+        resolution=resolution,
+        research=research,
+        selection=selection,
+        analysis=analysis,
+        draft=draft,
+    )
+
+
 def generate_ai_outreach_draft(
     request: AiOutreachPocRequest,
     *,
@@ -1610,6 +1733,20 @@ def _truncate_for_prompt(text: str, *, max_chars: int) -> str:
     if len(stripped) <= max_chars:
         return stripped
     return stripped[: max_chars - 16].rstrip() + "\n[truncated]"
+
+
+def _select_repo_candidate(
+    *,
+    repo_candidates: Sequence[GithubRepoCandidate],
+    repo_name: str,
+    repo_url: str,
+) -> GithubRepoCandidate:
+    for repo in repo_candidates:
+        if repo.name == repo_name and repo.url == repo_url:
+            return repo
+    raise AiOutreachPocError(
+        f"Selected repo `{repo_name}` with URL `{repo_url}` was not present in the research candidate set."
+    )
 
 
 def _draft_output_schema() -> dict[str, Any]:

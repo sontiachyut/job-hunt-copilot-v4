@@ -6,18 +6,25 @@ from pathlib import Path
 
 from job_hunt_copilot.ai_outreach_poc import (
     AiOutreachPocRequest,
+    GithubProfileResearch,
     GithubProfileResolver,
     GithubProfileResolutionRequest,
+    GithubProfileResolutionResult,
     GithubProfileResearcher,
     GithubCoffeeChatDraftRequest,
+    GithubCoffeeChatDraftResult,
+    GithubPersonalizedOutreachPocRequest,
+    GithubProjectAnalysisResult,
     GithubProjectAnalysisRequest,
     GithubProjectSelectionRequest,
+    GithubProjectSelectionResult,
     GithubRepoCandidate,
     generate_github_coffee_chat_draft,
     build_ai_outreach_codex_exec_command,
     generate_github_project_analysis,
     generate_github_project_selection,
     generate_ai_outreach_draft,
+    run_github_personalized_outreach_poc,
     send_ai_outreach_draft,
 )
 
@@ -486,6 +493,136 @@ def test_generate_github_coffee_chat_draft_wraps_validated_email(monkeypatch, tm
     assert "Best," in email_text
     assert "Achyutaram Sonti" in email_text
     assert result.body_html is not None
+
+
+def test_run_github_personalized_outreach_poc_orchestrates_all_stages(monkeypatch, tmp_path: Path):
+    selected_repo = GithubRepoCandidate(
+        name="freeRTOS-visualizer",
+        url="https://github.com/hariharanragothaman/freeRTOS-visualizer",
+        description="Python Tool to visualize RTOS tasks in real-time",
+        language="Python",
+        topics=("freertos", "real-time"),
+        stars=25,
+        updated_at="2026-03-28T10:39:24Z",
+        readme_excerpt="Real-time visualization of FreeRTOS task states over serial. Automatic reconnect with exponential backoff. CSV export on exit.",
+    )
+
+    class FakeResolver:
+        def resolve_profile(self, request, *, project_root):  # type: ignore[no-untyped-def]
+            assert request.contact_name == "Hariharan Ragothaman"
+            return GithubProfileResolutionResult(
+                run_id="resolver-run",
+                run_dir=str(tmp_path / "ops" / "github-personalization-poc" / "resolver-run"),
+                contact_name=request.contact_name,
+                contact_company=request.contact_company,
+                request_path=str(tmp_path / "resolver-request.json"),
+                resolution_json_path=str(tmp_path / "resolver-resolution.json"),
+                resolved_github_url="https://github.com/hariharanragothaman",
+                resolved_login="hariharanragothaman",
+                confidence="high",
+                score=100,
+                why_matched=("GitHub display name exactly matches the contact name.",),
+                candidates=(),
+            )
+
+    class FakeResearcher:
+        def fetch_profile_research(self, *, profile_url):  # type: ignore[no-untyped-def]
+            assert profile_url == "https://github.com/hariharanragothaman"
+            return GithubProfileResearch(
+                profile_url=profile_url,
+                login="hariharanragothaman",
+                display_name="Hariharan Ragothaman",
+                company="@AMD",
+                bio="Member of Technical Staff @AMD",
+                blog="https://hariharanragothaman.github.io/",
+                location="Austin, TX",
+                repo_candidates=(selected_repo,),
+            )
+
+    def fake_generate_selection(request, *, project_root, codex_bin=None):  # type: ignore[no-untyped-def]
+        assert request.github_profile_url == "https://github.com/hariharanragothaman"
+        return GithubProjectSelectionResult(
+            run_id="selector-run",
+            run_dir=str(tmp_path / "ops" / "github-personalization-poc" / "selector-run"),
+            contact_name=request.contact_name,
+            contact_company=request.contact_company,
+            prompt_path=str(tmp_path / "selector-prompt.md"),
+            schema_path=str(tmp_path / "selector-schema.json"),
+            request_path=str(tmp_path / "selector-request.json"),
+            selection_json_path=str(tmp_path / "selector-selection.json"),
+            codex_stdout_path=str(tmp_path / "selector-stdout.txt"),
+            codex_stderr_path=str(tmp_path / "selector-stderr.txt"),
+            selected_repo_name=selected_repo.name,
+            selected_repo_url=selected_repo.url,
+            why_selected="Strong systems/tooling hook.",
+            observations=("observation one", "observation two"),
+            runner_up_repo_names=(),
+        )
+
+    def fake_generate_analysis(request, *, project_root, codex_bin=None):  # type: ignore[no-untyped-def]
+        assert request.selected_repo.name == "freeRTOS-visualizer"
+        return GithubProjectAnalysisResult(
+            run_id="analysis-run",
+            run_dir=str(tmp_path / "ops" / "github-personalization-poc" / "analysis-run"),
+            contact_name=request.contact_name,
+            contact_company=request.contact_company,
+            prompt_path=str(tmp_path / "analysis-prompt.md"),
+            schema_path=str(tmp_path / "analysis-schema.json"),
+            request_path=str(tmp_path / "analysis-request.json"),
+            analysis_json_path=str(tmp_path / "analysis.json"),
+            codex_stdout_path=str(tmp_path / "analysis-stdout.txt"),
+            codex_stderr_path=str(tmp_path / "analysis-stderr.txt"),
+            project_summary="A Python tool for visualizing FreeRTOS task states in real time over serial connections.",
+            engineering_problem="It turns low-level RTOS task-state output into a usable monitoring and debugging tool.",
+            standout_observations=("observation one", "observation two"),
+            why_it_is_a_good_hook="Clear systems/tooling story.",
+            connection_to_my_work="Overlap with turning a useful concept into a practical tool.",
+            conversation_angle="How he decides which reliability details are worth building in.",
+        )
+
+    def fake_generate_draft(request, *, project_root, codex_bin=None):  # type: ignore[no-untyped-def]
+        assert request.selected_repo.name == "freeRTOS-visualizer"
+        assert request.project_summary.startswith("A Python tool")
+        return GithubCoffeeChatDraftResult(
+            run_id="draft-run",
+            run_dir=str(tmp_path / "ops" / "github-personalization-poc" / "draft-run"),
+            contact_name=request.contact_name,
+            contact_company=request.contact_company,
+            subject="Question about freeRTOS-visualizer",
+            body_text="Hi Hariharan,\n\nBody.\n\nBest,\nAchyutaram Sonti\n",
+            body_html="<html><body><p>Body.</p></body></html>\n",
+            prompt_path=str(tmp_path / "draft-prompt.md"),
+            schema_path=str(tmp_path / "draft-schema.json"),
+            request_path=str(tmp_path / "draft-request.json"),
+            draft_json_path=str(tmp_path / "draft.json"),
+            email_markdown_path=str(tmp_path / "email.md"),
+            codex_stdout_path=str(tmp_path / "draft-stdout.txt"),
+            codex_stderr_path=str(tmp_path / "draft-stderr.txt"),
+        )
+
+    monkeypatch.setattr("job_hunt_copilot.ai_outreach_poc.generate_github_project_selection", fake_generate_selection)
+    monkeypatch.setattr("job_hunt_copilot.ai_outreach_poc.generate_github_project_analysis", fake_generate_analysis)
+    monkeypatch.setattr("job_hunt_copilot.ai_outreach_poc.generate_github_coffee_chat_draft", fake_generate_draft)
+
+    result = run_github_personalized_outreach_poc(
+        GithubPersonalizedOutreachPocRequest(
+            contact_name="Hariharan Ragothaman",
+            contact_company="AMD",
+            contact_role="MTS Software Engineer",
+            sender_background_summary="I am building Job Hunt Copilot and trying to push useful workflows toward production-minded systems.",
+            availability_window="10 AM and 5 PM MT",
+            email="hariharan.ragothaman@amd.com",
+        ),
+        project_root=tmp_path,
+        resolver=FakeResolver(),
+        researcher=FakeResearcher(),
+    )
+
+    assert result.resolution.resolved_login == "hariharanragothaman"
+    assert result.research.login == "hariharanragothaman"
+    assert result.selection.selected_repo_name == "freeRTOS-visualizer"
+    assert result.analysis.engineering_problem.startswith("It turns low-level")
+    assert result.draft.subject == "Question about freeRTOS-visualizer"
 
 
 def test_send_ai_outreach_draft_uses_requested_recipient_and_attachments(tmp_path: Path):
