@@ -6,6 +6,8 @@ from pathlib import Path
 
 from job_hunt_copilot.ai_outreach_poc import (
     AiOutreachPocRequest,
+    GithubProfileResolver,
+    GithubProfileResolutionRequest,
     GithubProfileResearcher,
     GithubCoffeeChatDraftRequest,
     GithubProjectAnalysisRequest,
@@ -186,6 +188,98 @@ def test_generate_github_project_selection_validates_payload_and_membership(monk
     assert Path(result.prompt_path).exists()
     assert Path(result.schema_path).exists()
     assert Path(result.selection_json_path).exists()
+
+
+def test_github_profile_resolver_scores_and_resolves_best_candidate(monkeypatch, tmp_path: Path):
+    def fake_run(command, **kwargs):  # type: ignore[no-untyped-def]
+        joined = " ".join(command)
+        if "/search/users?q=Hariharan+Ragothaman+AMD&per_page=10" in joined:
+            return subprocess.CompletedProcess(
+                command,
+                0,
+                stdout=json.dumps(
+                    {
+                        "items": [
+                            {"login": "hariharanragothaman"},
+                            {"login": "hari-rag"},
+                        ]
+                    }
+                ),
+                stderr="",
+            )
+        if "/search/users?q=Hariharan+Ragothaman&per_page=10" in joined:
+            return subprocess.CompletedProcess(
+                command,
+                0,
+                stdout=json.dumps({"items": [{"login": "hariharanragothaman"}]}),
+                stderr="",
+            )
+        if "/search/users?q=hariharanragothaman&per_page=10" in joined:
+            return subprocess.CompletedProcess(
+                command,
+                0,
+                stdout=json.dumps({"items": [{"login": "hariharanragothaman"}]}),
+                stderr="",
+            )
+        if joined.endswith("/users/hariharanragothaman"):
+            return subprocess.CompletedProcess(
+                command,
+                0,
+                stdout=json.dumps(
+                    {
+                        "login": "hariharanragothaman",
+                        "html_url": "https://github.com/hariharanragothaman",
+                        "name": "Hariharan Ragothaman",
+                        "company": "@AMD",
+                        "bio": "Member of Technical Staff @AMD",
+                        "blog": "https://hariharanragothaman.github.io/",
+                        "location": "Austin, TX",
+                    }
+                ),
+                stderr="",
+            )
+        if joined.endswith("/users/hari-rag"):
+            return subprocess.CompletedProcess(
+                command,
+                0,
+                stdout=json.dumps(
+                    {
+                        "login": "hari-rag",
+                        "html_url": "https://github.com/hari-rag",
+                        "name": "Hari Rag",
+                        "company": None,
+                        "bio": "Embedded tinkerer",
+                        "blog": None,
+                        "location": "Unknown",
+                    }
+                ),
+                stderr="",
+            )
+        raise AssertionError(f"Unexpected command: {command}")
+
+    monkeypatch.setattr("job_hunt_copilot.ai_outreach_poc.shutil.which", lambda name: f"/opt/homebrew/bin/{name}")
+    monkeypatch.setattr("job_hunt_copilot.ai_outreach_poc.subprocess.run", fake_run)
+
+    resolver = GithubProfileResolver()
+    result = resolver.resolve_profile(
+        GithubProfileResolutionRequest(
+            contact_name="Hariharan Ragothaman",
+            contact_company="AMD",
+            contact_role="MTS Software Engineer",
+            email="hariharan.ragothaman@amd.com",
+        ),
+        project_root=tmp_path,
+    )
+
+    assert result.resolved_login == "hariharanragothaman"
+    assert result.resolved_github_url == "https://github.com/hariharanragothaman"
+    assert result.confidence == "high"
+    assert result.score is not None and result.score >= 90
+    assert any("company field matches" in reason for reason in result.why_matched)
+    assert len(result.candidates) == 2
+    assert result.candidates[0].login == "hariharanragothaman"
+    assert Path(result.request_path).exists()
+    assert Path(result.resolution_json_path).exists()
 
 
 def test_github_profile_researcher_fetches_all_public_repos(monkeypatch):

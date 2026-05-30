@@ -11,6 +11,7 @@ from datetime import UTC, datetime
 from email.message import EmailMessage
 from pathlib import Path
 from typing import Any, Sequence
+from urllib.parse import urlencode
 
 from pydantic import BaseModel, ConfigDict, Field, ValidationError, field_validator
 
@@ -23,6 +24,7 @@ from .paths import ProjectPaths, workspace_slug
 
 
 AI_OUTREACH_POC_COMPONENT = "ai_outreach_poc"
+GITHUB_PROFILE_RESOLVER_POC_COMPONENT = "github_profile_resolver_poc"
 GITHUB_PROJECT_SELECTOR_POC_COMPONENT = "github_project_selector_poc"
 GITHUB_PROJECT_ANALYZER_POC_COMPONENT = "github_project_analyzer_poc"
 GITHUB_COFFEE_CHAT_DRAFTER_POC_COMPONENT = "github_coffee_chat_drafter_poc"
@@ -113,6 +115,16 @@ class GithubProjectSelectionRequest:
     sender_background_summary: str
     candidate_repos: Sequence[GithubRepoCandidate]
     model: str | None = None
+
+
+@dataclass(frozen=True)
+class GithubProfileResolutionRequest:
+    contact_name: str
+    contact_company: str | None
+    contact_role: str | None
+    linkedin_url: str | None = None
+    email: str | None = None
+    min_confidence_score: int = 70
 
 
 @dataclass(frozen=True)
@@ -303,6 +315,66 @@ class GithubProjectAnalysisResult:
             "why_it_is_a_good_hook": self.why_it_is_a_good_hook,
             "connection_to_my_work": self.connection_to_my_work,
             "conversation_angle": self.conversation_angle,
+        }
+
+
+@dataclass(frozen=True)
+class GithubProfileResolutionCandidate:
+    login: str
+    profile_url: str
+    display_name: str | None
+    company: str | None
+    bio: str | None
+    blog: str | None
+    location: str | None
+    score: int
+    match_reasons: tuple[str, ...]
+    matched_query_labels: tuple[str, ...]
+
+    def as_dict(self) -> dict[str, Any]:
+        return {
+            "login": self.login,
+            "profile_url": self.profile_url,
+            "display_name": self.display_name,
+            "company": self.company,
+            "bio": self.bio,
+            "blog": self.blog,
+            "location": self.location,
+            "score": self.score,
+            "match_reasons": list(self.match_reasons),
+            "matched_query_labels": list(self.matched_query_labels),
+        }
+
+
+@dataclass(frozen=True)
+class GithubProfileResolutionResult:
+    run_id: str
+    run_dir: str
+    contact_name: str
+    contact_company: str | None
+    request_path: str
+    resolution_json_path: str
+    resolved_github_url: str | None
+    resolved_login: str | None
+    confidence: str
+    score: int | None
+    why_matched: tuple[str, ...]
+    candidates: tuple[GithubProfileResolutionCandidate, ...]
+
+    def as_dict(self) -> dict[str, Any]:
+        return {
+            "run_id": self.run_id,
+            "run_dir": self.run_dir,
+            "contact_name": self.contact_name,
+            "contact_company": self.contact_company,
+            "request_path": self.request_path,
+            "resolution_json_path": self.resolution_json_path,
+            "resolved_github_url": self.resolved_github_url,
+            "resolved_login": self.resolved_login,
+            "confidence": self.confidence,
+            "score": self.score,
+            "why_matched": list(self.why_matched),
+            "candidates": [candidate.as_dict() for candidate in self.candidates],
         }
 
 
@@ -536,6 +608,142 @@ class GithubProfileResearcher:
                 f"`gh api` failed for `{endpoint}` with exit code {completed.returncode}: {completed.stderr.strip()}"
             )
         return completed.stdout
+
+
+class GithubProfileResolver:
+    def __init__(self, *, gh_bin: str | None = None) -> None:
+        self._gh_bin = gh_bin or _resolve_required_binary("gh")
+
+    def resolve_profile(
+        self,
+        request: GithubProfileResolutionRequest,
+        *,
+        project_root: Path | str,
+    ) -> GithubProfileResolutionResult:
+        if not request.contact_name.strip():
+            raise AiOutreachPocError("GitHub profile resolution requires a contact name.")
+
+        paths = ProjectPaths.from_root(project_root)
+        run_id = _build_run_id(
+            company_name=request.contact_company or "unknown-company",
+            role_title=f"{request.contact_name}-github-resolver",
+        )
+        run_dir = paths.ops_dir / "github-personalization-poc" / run_id
+        run_dir.mkdir(parents=True, exist_ok=True)
+
+        request_path = run_dir / "request.json"
+        resolution_path = run_dir / "resolution.json"
+
+        query_specs = _build_github_search_query_specs(request)
+        request_path.write_text(
+            json.dumps(
+                {
+                    "component": GITHUB_PROFILE_RESOLVER_POC_COMPONENT,
+                    "generated_at": _now_utc_iso(),
+                    "request": {
+                        "contact_name": request.contact_name,
+                        "contact_company": request.contact_company,
+                        "contact_role": request.contact_role,
+                        "linkedin_url": request.linkedin_url,
+                        "email": request.email,
+                        "min_confidence_score": request.min_confidence_score,
+                        "queries": [spec.as_dict() for spec in query_specs],
+                    },
+                },
+                indent=2,
+            )
+            + "\n",
+            encoding="utf-8",
+        )
+
+        search_hits_by_login: dict[str, set[str]] = {}
+        for query_spec in query_specs:
+            payload = self._gh_api_json(
+                "/search/users?" + urlencode({"q": query_spec.query, "per_page": 10})
+            )
+            items = payload.get("items", []) if isinstance(payload, dict) else []
+            for item in items:
+                if not isinstance(item, dict):
+                    continue
+                login = _normalize_non_empty_text(item.get("login"))
+                if login is None:
+                    continue
+                search_hits_by_login.setdefault(login, set()).add(query_spec.label)
+
+        candidates: list[GithubProfileResolutionCandidate] = []
+        for login, matched_query_labels in search_hits_by_login.items():
+            profile_payload = self._gh_api_json(f"/users/{login}")
+            candidate = _github_resolution_candidate_from_profile(
+                request=request,
+                profile_payload=profile_payload,
+                matched_query_labels=tuple(sorted(matched_query_labels)),
+            )
+            candidates.append(candidate)
+
+        ranked_candidates = tuple(sorted(candidates, key=lambda candidate: (-candidate.score, candidate.login)))
+        top_candidate = ranked_candidates[0] if ranked_candidates else None
+        second_candidate = ranked_candidates[1] if len(ranked_candidates) > 1 else None
+        resolved_candidate: GithubProfileResolutionCandidate | None = None
+        confidence = "unresolved"
+        if top_candidate is not None and top_candidate.score >= request.min_confidence_score:
+            if second_candidate is None or (top_candidate.score - second_candidate.score) >= 15:
+                resolved_candidate = top_candidate
+                confidence = _github_resolution_confidence_label(
+                    score=top_candidate.score,
+                    min_confidence_score=request.min_confidence_score,
+                )
+
+        resolution_payload = {
+            "component": GITHUB_PROFILE_RESOLVER_POC_COMPONENT,
+            "generated_at": _now_utc_iso(),
+            "resolved_github_url": resolved_candidate.profile_url if resolved_candidate else None,
+            "resolved_login": resolved_candidate.login if resolved_candidate else None,
+            "confidence": confidence,
+            "score": resolved_candidate.score if resolved_candidate else None,
+            "why_matched": list(resolved_candidate.match_reasons if resolved_candidate else ()),
+            "candidates": [candidate.as_dict() for candidate in ranked_candidates],
+        }
+        resolution_path.write_text(json.dumps(resolution_payload, indent=2) + "\n", encoding="utf-8")
+
+        return GithubProfileResolutionResult(
+            run_id=run_id,
+            run_dir=str(run_dir),
+            contact_name=request.contact_name,
+            contact_company=request.contact_company,
+            request_path=str(request_path),
+            resolution_json_path=str(resolution_path),
+            resolved_github_url=resolved_candidate.profile_url if resolved_candidate else None,
+            resolved_login=resolved_candidate.login if resolved_candidate else None,
+            confidence=confidence,
+            score=resolved_candidate.score if resolved_candidate else None,
+            why_matched=resolved_candidate.match_reasons if resolved_candidate else (),
+            candidates=ranked_candidates,
+        )
+
+    def _gh_api_json(self, endpoint: str) -> Any:
+        completed = subprocess.run(
+            [self._gh_bin, "api", endpoint],
+            text=True,
+            capture_output=True,
+            check=False,
+        )
+        if completed.returncode != 0:
+            raise AiOutreachPocError(
+                f"`gh api` failed for `{endpoint}` with exit code {completed.returncode}: {completed.stderr.strip()}"
+            )
+        try:
+            return json.loads(completed.stdout)
+        except json.JSONDecodeError as exc:
+            raise AiOutreachPocError(f"`gh api` returned non-JSON output for `{endpoint}`.") from exc
+
+
+@dataclass(frozen=True)
+class _GithubSearchQuerySpec:
+    label: str
+    query: str
+
+    def as_dict(self) -> dict[str, str]:
+        return {"label": self.label, "query": self.query}
 
 
 def build_ai_outreach_codex_exec_command(
@@ -1546,6 +1754,124 @@ def _github_login_from_url(url: str) -> str | None:
     if match is None:
         return None
     return match.group("login")
+
+
+def _build_github_search_query_specs(
+    request: GithubProfileResolutionRequest,
+) -> tuple[_GithubSearchQuerySpec, ...]:
+    seen_queries: set[str] = set()
+    query_specs: list[_GithubSearchQuerySpec] = []
+
+    def add_query(label: str, query: str | None) -> None:
+        normalized_query = _normalize_non_empty_text(query)
+        if normalized_query is None:
+            return
+        if normalized_query in seen_queries:
+            return
+        seen_queries.add(normalized_query)
+        query_specs.append(_GithubSearchQuerySpec(label=label, query=normalized_query))
+
+    add_query("name_company", " ".join(part for part in [request.contact_name, request.contact_company] if part))
+    add_query("name", request.contact_name)
+    compact_name = _normalize_identity_token(request.contact_name)
+    if compact_name:
+        add_query("name_compact", compact_name)
+    email_handle = _normalize_identity_token(_email_local_part(request.email))
+    if email_handle and email_handle != compact_name:
+        add_query("email_handle", email_handle)
+    return tuple(query_specs)
+
+
+def _github_resolution_candidate_from_profile(
+    *,
+    request: GithubProfileResolutionRequest,
+    profile_payload: dict[str, Any],
+    matched_query_labels: tuple[str, ...],
+) -> GithubProfileResolutionCandidate:
+    login = _normalize_non_empty_text(profile_payload.get("login"))
+    profile_url = _normalize_non_empty_text(profile_payload.get("html_url"))
+    if login is None or profile_url is None:
+        raise AiOutreachPocError("GitHub profile payload missing login or html_url during resolution.")
+
+    display_name = _normalize_non_empty_text(profile_payload.get("name"))
+    company = _normalize_non_empty_text(profile_payload.get("company"))
+    bio = _normalize_non_empty_text(profile_payload.get("bio"))
+    blog = _normalize_non_empty_text(profile_payload.get("blog"))
+    location = _normalize_non_empty_text(profile_payload.get("location"))
+
+    contact_name_token = _normalize_identity_token(request.contact_name)
+    display_name_token = _normalize_identity_token(display_name)
+    contact_company_token = _normalize_identity_token(request.contact_company)
+    company_token = _normalize_identity_token(company)
+    bio_token = _normalize_identity_token(bio)
+    login_token = _normalize_identity_token(login)
+    email_handle_token = _normalize_identity_token(_email_local_part(request.email))
+
+    score = 0
+    reasons: list[str] = []
+
+    if display_name_token and display_name_token == contact_name_token:
+        score += 55
+        reasons.append("GitHub display name exactly matches the contact name.")
+    elif display_name_token and contact_name_token and display_name_token in contact_name_token:
+        score += 35
+        reasons.append("GitHub display name partially matches the contact name.")
+
+    if login_token and contact_name_token and login_token == contact_name_token:
+        score += 25
+        reasons.append("GitHub login matches the compact contact name.")
+
+    if login_token and email_handle_token and login_token == email_handle_token:
+        score += 35
+        reasons.append("GitHub login matches the contact email handle.")
+
+    if "name_company" in matched_query_labels:
+        score += 15
+        reasons.append("GitHub account appeared in the name-plus-company search.")
+
+    if contact_company_token and company_token and contact_company_token in company_token:
+        score += 30
+        reasons.append("GitHub company field matches the contact company.")
+
+    if contact_company_token and bio_token and contact_company_token in bio_token:
+        score += 15
+        reasons.append("GitHub bio mentions the contact company.")
+
+    return GithubProfileResolutionCandidate(
+        login=login,
+        profile_url=profile_url,
+        display_name=display_name,
+        company=company,
+        bio=bio,
+        blog=blog,
+        location=location,
+        score=score,
+        match_reasons=tuple(reasons),
+        matched_query_labels=matched_query_labels,
+    )
+
+
+def _github_resolution_confidence_label(*, score: int, min_confidence_score: int) -> str:
+    if score >= max(min_confidence_score + 20, 90):
+        return "high"
+    if score >= min_confidence_score:
+        return "medium"
+    return "low"
+
+
+def _normalize_identity_token(value: object) -> str | None:
+    normalized = _normalize_non_empty_text(value)
+    if normalized is None:
+        return None
+    token = re.sub(r"[^a-z0-9]+", "", normalized.lower())
+    return token or None
+
+
+def _email_local_part(email: str | None) -> str | None:
+    normalized = _normalize_non_empty_text(email)
+    if normalized is None or "@" not in normalized:
+        return None
+    return normalized.split("@", 1)[0]
 
 
 def _now_utc_iso() -> str:
