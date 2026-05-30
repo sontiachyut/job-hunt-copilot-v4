@@ -465,7 +465,7 @@ class GithubProjectSelectionPayload(BaseModel):
     selected_repo_url: str = Field(min_length=1)
     why_selected: str = Field(min_length=1)
     observations: list[str] = Field(min_length=2, max_length=3)
-    runner_up_repo_names: list[str] = Field(default_factory=list, max_length=3)
+    runner_up_repo_names: list[str] = Field(max_length=3)
 
     @field_validator("selected_repo_name", "selected_repo_url", "why_selected")
     @classmethod
