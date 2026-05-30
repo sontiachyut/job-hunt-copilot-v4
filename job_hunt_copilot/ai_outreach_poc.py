@@ -536,7 +536,12 @@ class GithubProfileResearcher:
     def __init__(self, *, gh_bin: str | None = None) -> None:
         self._gh_bin = gh_bin or _resolve_required_binary("gh")
 
-    def fetch_profile_research(self, *, profile_url: str) -> GithubProfileResearch:
+    def fetch_profile_research(
+        self,
+        *,
+        profile_url: str,
+        include_readme_excerpts: bool = True,
+    ) -> GithubProfileResearch:
         login = _github_login_from_url(profile_url)
         if login is None:
             raise AiOutreachPocError(f"Unsupported GitHub profile URL: {profile_url}")
@@ -544,7 +549,11 @@ class GithubProfileResearcher:
         profile_payload = self._gh_api_json(f"/users/{login}")
         repo_payloads = self._fetch_all_repo_payloads(login=login)
         repo_candidates = tuple(
-            self._repo_candidate_from_payload(login=login, payload=repo_payload)
+            self._repo_candidate_from_payload(
+                login=login,
+                payload=repo_payload,
+                include_readme_excerpts=include_readme_excerpts,
+            )
             for repo_payload in repo_payloads
         )
         return GithubProfileResearch(
@@ -573,12 +582,38 @@ class GithubProfileResearcher:
             page += 1
         return payloads
 
-    def _repo_candidate_from_payload(self, *, login: str, payload: dict[str, Any]) -> GithubRepoCandidate:
+    def enrich_repo_candidate_with_readme(
+        self,
+        *,
+        login: str,
+        repo_candidate: GithubRepoCandidate,
+    ) -> GithubRepoCandidate:
+        readme_excerpt = self._fetch_repo_readme_excerpt(login=login, repo_name=repo_candidate.name)
+        return GithubRepoCandidate(
+            name=repo_candidate.name,
+            url=repo_candidate.url,
+            description=repo_candidate.description,
+            language=repo_candidate.language,
+            topics=repo_candidate.topics,
+            stars=repo_candidate.stars,
+            updated_at=repo_candidate.updated_at,
+            readme_excerpt=readme_excerpt,
+        )
+
+    def _repo_candidate_from_payload(
+        self,
+        *,
+        login: str,
+        payload: dict[str, Any],
+        include_readme_excerpts: bool,
+    ) -> GithubRepoCandidate:
         repo_name = _normalize_non_empty_text(payload.get("name"))
         repo_url = _normalize_non_empty_text(payload.get("html_url"))
         if repo_name is None or repo_url is None:
             raise AiOutreachPocError("GitHub repo payload missing name or html_url.")
-        readme_excerpt = self._fetch_repo_readme_excerpt(login=login, repo_name=repo_name)
+        readme_excerpt = None
+        if include_readme_excerpts:
+            readme_excerpt = self._fetch_repo_readme_excerpt(login=login, repo_name=repo_name)
         return GithubRepoCandidate(
             name=repo_name,
             url=repo_url,
@@ -1157,7 +1192,10 @@ def run_github_personalized_outreach_poc(
         )
 
     resolved_researcher = researcher or GithubProfileResearcher()
-    research = resolved_researcher.fetch_profile_research(profile_url=resolution.resolved_github_url)
+    research = resolved_researcher.fetch_profile_research(
+        profile_url=resolution.resolved_github_url,
+        include_readme_excerpts=False,
+    )
     if not research.repo_candidates:
         raise AiOutreachPocError(
             f"Resolved GitHub profile has no public repos to analyze: {resolution.resolved_github_url}"
@@ -1182,6 +1220,10 @@ def run_github_personalized_outreach_poc(
         repo_name=selection.selected_repo_name,
         repo_url=selection.selected_repo_url,
     )
+    enriched_selected_repo = resolved_researcher.enrich_repo_candidate_with_readme(
+        login=research.login,
+        repo_candidate=selected_repo,
+    )
     analysis = generate_github_project_analysis(
         GithubProjectAnalysisRequest(
             contact_name=request.contact_name,
@@ -1189,7 +1231,7 @@ def run_github_personalized_outreach_poc(
             contact_role=request.contact_role,
             github_profile_bio=research.bio,
             sender_background_summary=request.sender_background_summary,
-            selected_repo=selected_repo,
+            selected_repo=enriched_selected_repo,
             model=request.model,
         ),
         project_root=project_root,
@@ -1202,7 +1244,7 @@ def run_github_personalized_outreach_poc(
             contact_role=request.contact_role,
             github_profile_url=research.profile_url,
             github_profile_bio=research.bio,
-            selected_repo=selected_repo,
+            selected_repo=enriched_selected_repo,
             project_summary=analysis.project_summary,
             engineering_problem=analysis.engineering_problem,
             standout_observations=analysis.standout_observations,

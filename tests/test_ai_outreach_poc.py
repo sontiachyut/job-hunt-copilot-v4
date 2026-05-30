@@ -372,6 +372,77 @@ def test_github_profile_researcher_fetches_all_public_repos(monkeypatch):
     assert "reconnect" in (research.repo_candidates[0].readme_excerpt or "")
 
 
+def test_github_profile_researcher_can_skip_readmes_and_enrich_selected_repo(monkeypatch):
+    def fake_run(command, **kwargs):  # type: ignore[no-untyped-def]
+        joined = " ".join(command)
+        if "/users/hariharanragothaman/repos?per_page=100&page=1&sort=updated" in joined:
+            return subprocess.CompletedProcess(
+                command,
+                0,
+                stdout=json.dumps(
+                    [
+                        {
+                            "name": "freeRTOS-visualizer",
+                            "html_url": "https://github.com/hariharanragothaman/freeRTOS-visualizer",
+                            "description": "Python Tool to visualize RTOS tasks in real-time",
+                            "language": "Python",
+                            "topics": ["freertos", "real-time"],
+                            "stargazers_count": 25,
+                            "updated_at": "2026-03-28T10:39:24Z",
+                        }
+                    ]
+                ),
+                stderr="",
+            )
+        if "/users/hariharanragothaman/repos?per_page=100&page=2&sort=updated" in joined:
+            return subprocess.CompletedProcess(command, 0, stdout="[]", stderr="")
+        if joined.endswith("/users/hariharanragothaman"):
+            return subprocess.CompletedProcess(
+                command,
+                0,
+                stdout=json.dumps(
+                    {
+                        "html_url": "https://github.com/hariharanragothaman",
+                        "login": "hariharanragothaman",
+                        "name": "Hariharan Ragothaman",
+                        "company": "@amd",
+                        "bio": "Member of Technical Staff @AMD",
+                        "blog": "https://hariharanragothaman.github.io/",
+                        "location": "Austin, TX",
+                    }
+                ),
+                stderr="",
+            )
+        if "/repos/hariharanragothaman/freeRTOS-visualizer/readme" in joined and "--jq .download_url" in joined:
+            return subprocess.CompletedProcess(
+                command,
+                0,
+                stdout="https://raw.githubusercontent.com/hariharanragothaman/freeRTOS-visualizer/main/README.md\n",
+                stderr="",
+            )
+        if command[:2] == ["curl", "-L"] and "freeRTOS-visualizer" in command[2]:
+            return subprocess.CompletedProcess(command, 0, stdout="Realtime visualization over serial with reconnect handling.", stderr="")
+        raise AssertionError(f"Unexpected command: {command}")
+
+    monkeypatch.setattr("job_hunt_copilot.ai_outreach_poc.shutil.which", lambda name: f"/opt/homebrew/bin/{name}")
+    monkeypatch.setattr("job_hunt_copilot.ai_outreach_poc.subprocess.run", fake_run)
+
+    researcher = GithubProfileResearcher()
+    research = researcher.fetch_profile_research(
+        profile_url="https://github.com/hariharanragothaman",
+        include_readme_excerpts=False,
+    )
+
+    assert research.repo_candidates[0].readme_excerpt is None
+
+    enriched = researcher.enrich_repo_candidate_with_readme(
+        login=research.login,
+        repo_candidate=research.repo_candidates[0],
+    )
+
+    assert "reconnect" in (enriched.readme_excerpt or "")
+
+
 def test_generate_github_project_analysis_materializes_structured_analysis(monkeypatch, tmp_path: Path):
     def fake_run(command, **kwargs):  # type: ignore[no-untyped-def]
         output_path = Path(command[command.index("-o") + 1])
@@ -526,8 +597,9 @@ def test_run_github_personalized_outreach_poc_orchestrates_all_stages(monkeypatc
             )
 
     class FakeResearcher:
-        def fetch_profile_research(self, *, profile_url):  # type: ignore[no-untyped-def]
+        def fetch_profile_research(self, *, profile_url, include_readme_excerpts=True):  # type: ignore[no-untyped-def]
             assert profile_url == "https://github.com/hariharanragothaman"
+            assert include_readme_excerpts is False
             return GithubProfileResearch(
                 profile_url=profile_url,
                 login="hariharanragothaman",
@@ -538,6 +610,10 @@ def test_run_github_personalized_outreach_poc_orchestrates_all_stages(monkeypatc
                 location="Austin, TX",
                 repo_candidates=(selected_repo,),
             )
+
+        def enrich_repo_candidate_with_readme(self, *, login, repo_candidate):  # type: ignore[no-untyped-def]
+            assert login == "hariharanragothaman"
+            return repo_candidate
 
     def fake_generate_selection(request, *, project_root, codex_bin=None):  # type: ignore[no-untyped-def]
         assert request.github_profile_url == "https://github.com/hariharanragothaman"
