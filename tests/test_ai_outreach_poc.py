@@ -6,7 +6,15 @@ from pathlib import Path
 
 from job_hunt_copilot.ai_outreach_poc import (
     AiOutreachPocRequest,
+    GithubProfileResearcher,
+    GithubCoffeeChatDraftRequest,
+    GithubProjectAnalysisRequest,
+    GithubProjectSelectionRequest,
+    GithubRepoCandidate,
+    generate_github_coffee_chat_draft,
     build_ai_outreach_codex_exec_command,
+    generate_github_project_analysis,
+    generate_github_project_selection,
     generate_ai_outreach_draft,
     send_ai_outreach_draft,
 )
@@ -117,6 +125,273 @@ def test_generate_ai_outreach_draft_materializes_prompt_and_email(monkeypatch, t
     assert len(result.attachment_paths) == 2
     assert str(jd_path) in result.attachment_paths
     assert str(resume_path) in result.attachment_paths
+
+
+def test_generate_github_project_selection_validates_payload_and_membership(monkeypatch, tmp_path: Path):
+    def fake_run(command, **kwargs):  # type: ignore[no-untyped-def]
+        output_path = Path(command[command.index("-o") + 1])
+        output_path.write_text(
+            json.dumps(
+                {
+                    "selected_repo_name": "freeRTOS-visualizer",
+                    "selected_repo_url": "https://github.com/hariharanragothaman/freeRTOS-visualizer",
+                    "why_selected": "It has the clearest systems/tooling story and strong overlap with production-minded engineering.",
+                    "observations": [
+                        "it handles serial task-state parsing and keeps task-state history",
+                        "it includes automatic reconnect with exponential backoff",
+                        "it is packaged and tested like a usable tool rather than a one-off script",
+                    ],
+                    "runner_up_repo_names": ["dockpulse"],
+                }
+            ),
+            encoding="utf-8",
+        )
+        return subprocess.CompletedProcess(command, 0, stdout='{"ok":true}', stderr="")
+
+    monkeypatch.setattr("job_hunt_copilot.ai_outreach_poc.shutil.which", lambda name: f"/opt/homebrew/bin/{name}")
+    monkeypatch.setattr("job_hunt_copilot.ai_outreach_poc.subprocess.run", fake_run)
+
+    result = generate_github_project_selection(
+        GithubProjectSelectionRequest(
+            contact_name="Hariharan Ragothaman",
+            contact_company="AMD",
+            contact_role="MTS Software Engineer",
+            github_profile_url="https://github.com/hariharanragothaman",
+            github_profile_bio="Member of Technical Staff @AMD",
+            sender_background_summary="I am building Job Hunt Copilot and trying to push useful workflows toward more production-minded systems.",
+            candidate_repos=[
+                GithubRepoCandidate(
+                    name="freeRTOS-visualizer",
+                    url="https://github.com/hariharanragothaman/freeRTOS-visualizer",
+                    description="Python Tool to visualize RTOS tasks in real-time",
+                    language="Python",
+                    topics=("freertos", "real-time"),
+                    stars=25,
+                    updated_at="2026-03-28T10:39:24Z",
+                    readme_excerpt="Real-time visualization of FreeRTOS task states over serial with reconnect handling and CSV export.",
+                ),
+                GithubRepoCandidate(
+                    name="dockpulse",
+                    url="https://github.com/hariharanragothaman/dockpulse",
+                    description="Container Resource Profiler & Right-Sizer for Docker",
+                ),
+            ],
+        ),
+        project_root=tmp_path,
+    )
+
+    assert result.selected_repo_name == "freeRTOS-visualizer"
+    assert result.selected_repo_url == "https://github.com/hariharanragothaman/freeRTOS-visualizer"
+    assert len(result.observations) == 3
+    assert Path(result.prompt_path).exists()
+    assert Path(result.schema_path).exists()
+    assert Path(result.selection_json_path).exists()
+
+
+def test_github_profile_researcher_fetches_all_public_repos(monkeypatch):
+    def fake_run(command, **kwargs):  # type: ignore[no-untyped-def]
+        joined = " ".join(command)
+        if "/users/hariharanragothaman/repos?per_page=100&page=1&sort=updated" in joined:
+            return subprocess.CompletedProcess(
+                command,
+                0,
+                stdout=json.dumps(
+                    [
+                        {
+                            "name": "freeRTOS-visualizer",
+                            "html_url": "https://github.com/hariharanragothaman/freeRTOS-visualizer",
+                            "description": "Python Tool to visualize RTOS tasks in real-time",
+                            "language": "Python",
+                            "topics": ["freertos", "real-time"],
+                            "stargazers_count": 25,
+                            "updated_at": "2026-03-28T10:39:24Z",
+                        },
+                        {
+                            "name": "dockpulse",
+                            "html_url": "https://github.com/hariharanragothaman/dockpulse",
+                            "description": "Container Resource Profiler & Right-Sizer for Docker",
+                            "language": "Python",
+                            "topics": ["docker", "profiling"],
+                            "stargazers_count": 10,
+                            "updated_at": "2026-03-20T10:00:00Z",
+                        },
+                    ]
+                ),
+                stderr="",
+            )
+        if "/users/hariharanragothaman/repos?per_page=100&page=2&sort=updated" in joined:
+            return subprocess.CompletedProcess(command, 0, stdout="[]", stderr="")
+        if joined.endswith("/users/hariharanragothaman"):
+            return subprocess.CompletedProcess(
+                command,
+                0,
+                stdout=json.dumps(
+                    {
+                        "html_url": "https://github.com/hariharanragothaman",
+                        "login": "hariharanragothaman",
+                        "name": "Hariharan Ragothaman",
+                        "company": "@amd",
+                        "bio": "Member of Technical Staff @AMD",
+                        "blog": "https://hariharanragothaman.github.io/",
+                        "location": "Austin, TX",
+                    }
+                ),
+                stderr="",
+            )
+        if "/repos/hariharanragothaman/freeRTOS-visualizer/readme" in joined and "--jq .download_url" in joined:
+            return subprocess.CompletedProcess(
+                command,
+                0,
+                stdout="https://raw.githubusercontent.com/hariharanragothaman/freeRTOS-visualizer/main/README.md\n",
+                stderr="",
+            )
+        if "/repos/hariharanragothaman/dockpulse/readme" in joined and "--jq .download_url" in joined:
+            return subprocess.CompletedProcess(
+                command,
+                0,
+                stdout="https://raw.githubusercontent.com/hariharanragothaman/dockpulse/main/README.md\n",
+                stderr="",
+            )
+        if command[:2] == ["curl", "-L"] and "freeRTOS-visualizer" in command[2]:
+            return subprocess.CompletedProcess(command, 0, stdout="Realtime visualization over serial with reconnect handling.", stderr="")
+        if command[:2] == ["curl", "-L"] and "dockpulse" in command[2]:
+            return subprocess.CompletedProcess(command, 0, stdout="Profiler and right-sizer for Docker workloads.", stderr="")
+        raise AssertionError(f"Unexpected command: {command}")
+
+    monkeypatch.setattr("job_hunt_copilot.ai_outreach_poc.shutil.which", lambda name: f"/opt/homebrew/bin/{name}")
+    monkeypatch.setattr("job_hunt_copilot.ai_outreach_poc.subprocess.run", fake_run)
+
+    researcher = GithubProfileResearcher()
+    research = researcher.fetch_profile_research(profile_url="https://github.com/hariharanragothaman")
+
+    assert research.login == "hariharanragothaman"
+    assert research.display_name == "Hariharan Ragothaman"
+    assert len(research.repo_candidates) == 2
+    assert research.repo_candidates[0].name == "freeRTOS-visualizer"
+    assert "reconnect" in (research.repo_candidates[0].readme_excerpt or "")
+
+
+def test_generate_github_project_analysis_materializes_structured_analysis(monkeypatch, tmp_path: Path):
+    def fake_run(command, **kwargs):  # type: ignore[no-untyped-def]
+        output_path = Path(command[command.index("-o") + 1])
+        output_path.write_text(
+            json.dumps(
+                {
+                    "project_summary": "A Python tool for visualizing FreeRTOS task states in real time over serial connections.",
+                    "engineering_problem": "It turns low-level RTOS task-state output into a usable monitoring and debugging tool.",
+                    "standout_observations": [
+                        "it handles serial task-state parsing and keeps history rather than just showing a single live view",
+                        "it includes reconnect behavior and CSV export, which makes it feel operational rather than purely visual",
+                        "the repo shows packaging and testing discipline, which makes it easier to treat as a reusable tool",
+                    ],
+                    "why_it_is_a_good_hook": "The repo has a clear systems/tooling story and enough concrete implementation detail to support a specific outreach note.",
+                    "connection_to_my_work": "I am building Job Hunt Copilot and trying to push a workflow into something more reliable and production-minded, so the overlap is in turning a useful concept into a practical tool.",
+                    "conversation_angle": "I would ask how he decides which reliability and usability details are worth building into a tooling project like this.",
+                }
+            ),
+            encoding="utf-8",
+        )
+        return subprocess.CompletedProcess(command, 0, stdout='{\"ok\":true}', stderr='')
+
+    monkeypatch.setattr("job_hunt_copilot.ai_outreach_poc.shutil.which", lambda name: f"/opt/homebrew/bin/{name}")
+    monkeypatch.setattr("job_hunt_copilot.ai_outreach_poc.subprocess.run", fake_run)
+
+    result = generate_github_project_analysis(
+        GithubProjectAnalysisRequest(
+            contact_name="Hariharan Ragothaman",
+            contact_company="AMD",
+            contact_role="MTS Software Engineer",
+            github_profile_bio="Member of Technical Staff @AMD",
+            sender_background_summary="I am building Job Hunt Copilot and trying to make it more production-minded around orchestration, reliability, and usability.",
+            selected_repo=GithubRepoCandidate(
+                name="freeRTOS-visualizer",
+                url="https://github.com/hariharanragothaman/freeRTOS-visualizer",
+                description="Python Tool to visualize RTOS tasks in real-time",
+                language="Python",
+                topics=("freertos", "real-time"),
+                stars=25,
+                updated_at="2026-03-28T10:39:24Z",
+                readme_excerpt="Real-time visualization of FreeRTOS task states over serial. Automatic reconnect with exponential backoff. CSV export on exit.",
+            ),
+        ),
+        project_root=tmp_path,
+    )
+
+    assert "FreeRTOS task states" in result.project_summary
+    assert len(result.standout_observations) == 3
+    assert Path(result.prompt_path).exists()
+    assert Path(result.schema_path).exists()
+    assert Path(result.analysis_json_path).exists()
+
+
+def test_generate_github_coffee_chat_draft_wraps_validated_email(monkeypatch, tmp_path: Path):
+    _write_sender_profile(tmp_path)
+
+    def fake_run(command, **kwargs):  # type: ignore[no-untyped-def]
+        output_path = Path(command[command.index("-o") + 1])
+        output_path.write_text(
+            json.dumps(
+                {
+                    "subject": "Question about freeRTOS-visualizer",
+                    "body_markdown": "\n\n".join(
+                        [
+                            "I spent some time going through your freeRTOS-visualizer repo, and it stood out because it feels like a real engineering tool rather than a quick demo. The serial task-state parsing, reconnect handling, and CSV export made it clear you were thinking about actual debugging workflow and usability.",
+                            "I am building Job Hunt Copilot right now, and I am trying to push it in the same direction from useful prototype to something more robust and production-minded. I built it for my own job search to identify relevant roles and the right people to reach out to, parts of the workflow run autonomously, and I personally review every email before it goes out. This email is a live example of that workflow.",
+                            "If you would be open to it, I would really appreciate a short 15-minute coffee chat to hear how you think about building projects like this and what makes them genuinely useful in practice. Would you be available sometime in the next two weeks? I am usually free on weekdays between 10 AM and 5 PM MT, and I can be flexible on weekends if that is easier.",
+                        ]
+                    ),
+                }
+            ),
+            encoding="utf-8",
+        )
+        return subprocess.CompletedProcess(command, 0, stdout='{"ok":true}', stderr="")
+
+    monkeypatch.setattr("job_hunt_copilot.ai_outreach_poc.shutil.which", lambda name: f"/opt/homebrew/bin/{name}")
+    monkeypatch.setattr("job_hunt_copilot.ai_outreach_poc.subprocess.run", fake_run)
+
+    result = generate_github_coffee_chat_draft(
+        GithubCoffeeChatDraftRequest(
+            contact_name="Hariharan",
+            contact_company="AMD",
+            contact_role="MTS Software Engineer",
+            github_profile_url="https://github.com/hariharanragothaman",
+            github_profile_bio="Member of Technical Staff @AMD",
+            selected_repo=GithubRepoCandidate(
+                name="freeRTOS-visualizer",
+                url="https://github.com/hariharanragothaman/freeRTOS-visualizer",
+                description="Python Tool to visualize RTOS tasks in real-time",
+                language="Python",
+                topics=("freertos", "real-time"),
+                stars=25,
+                updated_at="2026-03-28T10:39:24Z",
+                readme_excerpt="Real-time visualization of FreeRTOS task states over serial. Automatic reconnect with exponential backoff. CSV export on exit.",
+            ),
+            project_summary="A Python tool for visualizing FreeRTOS task states in real time over serial connections.",
+            engineering_problem="It turns low-level RTOS task-state output into a usable monitoring and debugging tool.",
+            standout_observations=(
+                "it handles serial task-state parsing and keeps history rather than just showing a single live view",
+                "it includes reconnect behavior and CSV export, which makes it feel operational rather than purely visual",
+                "the repo shows packaging and testing discipline, which makes it easier to treat as a reusable tool",
+            ),
+            connection_to_my_work="I am building Job Hunt Copilot and trying to push a workflow into something more reliable and production-minded, so the overlap is in turning a useful concept into a practical tool.",
+            conversation_angle="I would ask how he decides which reliability and usability details are worth building into a tooling project like this.",
+            availability_window="10 AM and 5 PM MT",
+        ),
+        project_root=tmp_path,
+    )
+
+    assert result.subject == "Question about freeRTOS-visualizer"
+    assert Path(result.prompt_path).exists()
+    assert Path(result.schema_path).exists()
+    assert Path(result.draft_json_path).exists()
+    assert Path(result.email_markdown_path).exists()
+    email_text = Path(result.email_markdown_path).read_text(encoding="utf-8")
+    assert email_text.startswith("Hi Hariharan,")
+    assert "This email is a live example of that workflow." in email_text
+    assert "15-minute coffee chat" in email_text
+    assert "Best," in email_text
+    assert "Achyutaram Sonti" in email_text
+    assert result.body_html is not None
 
 
 def test_send_ai_outreach_draft_uses_requested_recipient_and_attachments(tmp_path: Path):

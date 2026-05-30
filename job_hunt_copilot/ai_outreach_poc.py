@@ -12,6 +12,8 @@ from email.message import EmailMessage
 from pathlib import Path
 from typing import Any, Sequence
 
+from pydantic import BaseModel, ConfigDict, Field, ValidationError, field_validator
+
 from .outreach import (
     SendAttemptOutcome,
     _job_hunt_copilot_pitch_lines,
@@ -21,6 +23,9 @@ from .paths import ProjectPaths, workspace_slug
 
 
 AI_OUTREACH_POC_COMPONENT = "ai_outreach_poc"
+GITHUB_PROJECT_SELECTOR_POC_COMPONENT = "github_project_selector_poc"
+GITHUB_PROJECT_ANALYZER_POC_COMPONENT = "github_project_analyzer_poc"
+GITHUB_COFFEE_CHAT_DRAFTER_POC_COMPONENT = "github_coffee_chat_drafter_poc"
 PROFILE_FIELD_RE = re.compile(r"^- \*\*(?P<label>[^*]+):\*\* (?P<value>.+?)\s*$")
 MARKDOWN_HEADING_RE = re.compile(r"^(?P<hashes>#{1,6})\s+(?P<title>.+?)\s*$")
 _TEXT_EXTENSIONS = {
@@ -42,12 +47,100 @@ class AiOutreachPocError(RuntimeError):
 
 
 @dataclass(frozen=True)
+class GithubProfileResearch:
+    profile_url: str
+    login: str
+    display_name: str | None
+    company: str | None
+    bio: str | None
+    blog: str | None
+    location: str | None
+    repo_candidates: tuple[GithubRepoCandidate, ...]
+
+    def as_dict(self) -> dict[str, Any]:
+        return {
+            "profile_url": self.profile_url,
+            "login": self.login,
+            "display_name": self.display_name,
+            "company": self.company,
+            "bio": self.bio,
+            "blog": self.blog,
+            "location": self.location,
+            "repo_candidates": [repo.as_dict() for repo in self.repo_candidates],
+        }
+
+
+@dataclass(frozen=True)
 class AiOutreachSenderIdentity:
     name: str
     email: str | None
     phone: str | None
     linkedin_url: str | None
     github_url: str | None
+
+
+@dataclass(frozen=True)
+class GithubRepoCandidate:
+    name: str
+    url: str
+    description: str | None = None
+    language: str | None = None
+    topics: tuple[str, ...] = ()
+    stars: int | None = None
+    updated_at: str | None = None
+    readme_excerpt: str | None = None
+
+    def as_dict(self) -> dict[str, Any]:
+        return {
+            "name": self.name,
+            "url": self.url,
+            "description": self.description,
+            "language": self.language,
+            "topics": list(self.topics),
+            "stars": self.stars,
+            "updated_at": self.updated_at,
+            "readme_excerpt": self.readme_excerpt,
+        }
+
+
+@dataclass(frozen=True)
+class GithubProjectSelectionRequest:
+    contact_name: str
+    contact_company: str | None
+    contact_role: str | None
+    github_profile_url: str | None
+    github_profile_bio: str | None
+    sender_background_summary: str
+    candidate_repos: Sequence[GithubRepoCandidate]
+    model: str | None = None
+
+
+@dataclass(frozen=True)
+class GithubProjectAnalysisRequest:
+    contact_name: str
+    contact_company: str | None
+    contact_role: str | None
+    github_profile_bio: str | None
+    sender_background_summary: str
+    selected_repo: GithubRepoCandidate
+    model: str | None = None
+
+
+@dataclass(frozen=True)
+class GithubCoffeeChatDraftRequest:
+    contact_name: str
+    contact_company: str | None
+    contact_role: str | None
+    github_profile_url: str | None
+    github_profile_bio: str | None
+    selected_repo: GithubRepoCandidate
+    project_summary: str
+    engineering_problem: str
+    standout_observations: Sequence[str]
+    connection_to_my_work: str
+    conversation_angle: str
+    availability_window: str
+    model: str | None = None
 
 
 @dataclass(frozen=True)
@@ -135,6 +228,316 @@ class AiOutreachSendResult:
         }
 
 
+@dataclass(frozen=True)
+class GithubProjectSelectionResult:
+    run_id: str
+    run_dir: str
+    contact_name: str
+    contact_company: str | None
+    prompt_path: str
+    schema_path: str
+    request_path: str
+    selection_json_path: str
+    codex_stdout_path: str
+    codex_stderr_path: str
+    selected_repo_name: str
+    selected_repo_url: str
+    why_selected: str
+    observations: tuple[str, ...]
+    runner_up_repo_names: tuple[str, ...]
+
+    def as_dict(self) -> dict[str, Any]:
+        return {
+            "run_id": self.run_id,
+            "run_dir": self.run_dir,
+            "contact_name": self.contact_name,
+            "contact_company": self.contact_company,
+            "prompt_path": self.prompt_path,
+            "schema_path": self.schema_path,
+            "request_path": self.request_path,
+            "selection_json_path": self.selection_json_path,
+            "codex_stdout_path": self.codex_stdout_path,
+            "codex_stderr_path": self.codex_stderr_path,
+            "selected_repo_name": self.selected_repo_name,
+            "selected_repo_url": self.selected_repo_url,
+            "why_selected": self.why_selected,
+            "observations": list(self.observations),
+            "runner_up_repo_names": list(self.runner_up_repo_names),
+        }
+
+
+@dataclass(frozen=True)
+class GithubProjectAnalysisResult:
+    run_id: str
+    run_dir: str
+    contact_name: str
+    contact_company: str | None
+    prompt_path: str
+    schema_path: str
+    request_path: str
+    analysis_json_path: str
+    codex_stdout_path: str
+    codex_stderr_path: str
+    project_summary: str
+    engineering_problem: str
+    standout_observations: tuple[str, ...]
+    why_it_is_a_good_hook: str
+    connection_to_my_work: str
+    conversation_angle: str
+
+    def as_dict(self) -> dict[str, Any]:
+        return {
+            "run_id": self.run_id,
+            "run_dir": self.run_dir,
+            "contact_name": self.contact_name,
+            "contact_company": self.contact_company,
+            "prompt_path": self.prompt_path,
+            "schema_path": self.schema_path,
+            "request_path": self.request_path,
+            "analysis_json_path": self.analysis_json_path,
+            "codex_stdout_path": self.codex_stdout_path,
+            "codex_stderr_path": self.codex_stderr_path,
+            "project_summary": self.project_summary,
+            "engineering_problem": self.engineering_problem,
+            "standout_observations": list(self.standout_observations),
+            "why_it_is_a_good_hook": self.why_it_is_a_good_hook,
+            "connection_to_my_work": self.connection_to_my_work,
+            "conversation_angle": self.conversation_angle,
+        }
+
+
+@dataclass(frozen=True)
+class GithubCoffeeChatDraftResult:
+    run_id: str
+    run_dir: str
+    contact_name: str
+    contact_company: str | None
+    subject: str
+    body_text: str
+    body_html: str | None
+    prompt_path: str
+    schema_path: str
+    request_path: str
+    draft_json_path: str
+    email_markdown_path: str
+    codex_stdout_path: str
+    codex_stderr_path: str
+
+    def as_dict(self) -> dict[str, Any]:
+        return {
+            "run_id": self.run_id,
+            "run_dir": self.run_dir,
+            "contact_name": self.contact_name,
+            "contact_company": self.contact_company,
+            "subject": self.subject,
+            "prompt_path": self.prompt_path,
+            "schema_path": self.schema_path,
+            "request_path": self.request_path,
+            "draft_json_path": self.draft_json_path,
+            "email_markdown_path": self.email_markdown_path,
+            "codex_stdout_path": self.codex_stdout_path,
+            "codex_stderr_path": self.codex_stderr_path,
+        }
+
+
+class AiOutreachDraftPayload(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    subject: str = Field(min_length=1)
+    body_markdown: str = Field(min_length=1)
+
+    @field_validator("subject", "body_markdown")
+    @classmethod
+    def _non_empty_text(cls, value: str) -> str:
+        stripped = value.strip()
+        if not stripped:
+            raise ValueError("field cannot be empty")
+        return stripped
+
+
+class GithubProjectSelectionPayload(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    selected_repo_name: str = Field(min_length=1)
+    selected_repo_url: str = Field(min_length=1)
+    why_selected: str = Field(min_length=1)
+    observations: list[str] = Field(min_length=2, max_length=3)
+    runner_up_repo_names: list[str] = Field(default_factory=list, max_length=3)
+
+    @field_validator("selected_repo_name", "selected_repo_url", "why_selected")
+    @classmethod
+    def _non_empty_scalar(cls, value: str) -> str:
+        stripped = value.strip()
+        if not stripped:
+            raise ValueError("field cannot be empty")
+        return stripped
+
+    @field_validator("observations", "runner_up_repo_names")
+    @classmethod
+    def _normalize_string_list(cls, value: list[str]) -> list[str]:
+        normalized = [item.strip() for item in value if item.strip()]
+        if not normalized and value:
+            raise ValueError("list cannot normalize to empty strings")
+        return normalized
+
+
+class GithubProjectAnalysisPayload(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    project_summary: str = Field(min_length=1)
+    engineering_problem: str = Field(min_length=1)
+    standout_observations: list[str] = Field(min_length=2, max_length=3)
+    why_it_is_a_good_hook: str = Field(min_length=1)
+    connection_to_my_work: str = Field(min_length=1)
+    conversation_angle: str = Field(min_length=1)
+
+    @field_validator(
+        "project_summary",
+        "engineering_problem",
+        "why_it_is_a_good_hook",
+        "connection_to_my_work",
+        "conversation_angle",
+    )
+    @classmethod
+    def _non_empty_analysis_text(cls, value: str) -> str:
+        stripped = value.strip()
+        if not stripped:
+            raise ValueError("field cannot be empty")
+        return stripped
+
+    @field_validator("standout_observations")
+    @classmethod
+    def _normalize_observations(cls, value: list[str]) -> list[str]:
+        normalized = [item.strip() for item in value if item.strip()]
+        if len(normalized) < 2:
+            raise ValueError("need at least two standout observations")
+        return normalized
+
+
+class GithubCoffeeChatDraftPayload(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    subject: str = Field(min_length=1)
+    body_markdown: str = Field(min_length=1)
+
+    @field_validator("subject", "body_markdown")
+    @classmethod
+    def _non_empty_draft_text(cls, value: str) -> str:
+        stripped = value.strip()
+        if not stripped:
+            raise ValueError("field cannot be empty")
+        return stripped
+
+
+class GithubProfileResearcher:
+    def __init__(self, *, gh_bin: str | None = None) -> None:
+        self._gh_bin = gh_bin or _resolve_required_binary("gh")
+
+    def fetch_profile_research(self, *, profile_url: str) -> GithubProfileResearch:
+        login = _github_login_from_url(profile_url)
+        if login is None:
+            raise AiOutreachPocError(f"Unsupported GitHub profile URL: {profile_url}")
+
+        profile_payload = self._gh_api_json(f"/users/{login}")
+        repo_payloads = self._fetch_all_repo_payloads(login=login)
+        repo_candidates = tuple(
+            self._repo_candidate_from_payload(login=login, payload=repo_payload)
+            for repo_payload in repo_payloads
+        )
+        return GithubProfileResearch(
+            profile_url=_normalize_non_empty_text(profile_payload.get("html_url")) or profile_url,
+            login=login,
+            display_name=_normalize_non_empty_text(profile_payload.get("name")),
+            company=_normalize_non_empty_text(profile_payload.get("company")),
+            bio=_normalize_non_empty_text(profile_payload.get("bio")),
+            blog=_normalize_non_empty_text(profile_payload.get("blog")),
+            location=_normalize_non_empty_text(profile_payload.get("location")),
+            repo_candidates=repo_candidates,
+        )
+
+    def _fetch_all_repo_payloads(self, *, login: str) -> list[dict[str, Any]]:
+        page = 1
+        payloads: list[dict[str, Any]] = []
+        while True:
+            page_payload = self._gh_api_json(f"/users/{login}/repos?per_page=100&page={page}&sort=updated")
+            if not isinstance(page_payload, list):
+                raise AiOutreachPocError("GitHub repos response was not a list.")
+            if not page_payload:
+                break
+            payloads.extend(item for item in page_payload if isinstance(item, dict))
+            if len(page_payload) < 100:
+                break
+            page += 1
+        return payloads
+
+    def _repo_candidate_from_payload(self, *, login: str, payload: dict[str, Any]) -> GithubRepoCandidate:
+        repo_name = _normalize_non_empty_text(payload.get("name"))
+        repo_url = _normalize_non_empty_text(payload.get("html_url"))
+        if repo_name is None or repo_url is None:
+            raise AiOutreachPocError("GitHub repo payload missing name or html_url.")
+        readme_excerpt = self._fetch_repo_readme_excerpt(login=login, repo_name=repo_name)
+        return GithubRepoCandidate(
+            name=repo_name,
+            url=repo_url,
+            description=_normalize_non_empty_text(payload.get("description")),
+            language=_normalize_non_empty_text(payload.get("language")),
+            topics=tuple(item for item in payload.get("topics", []) if isinstance(item, str) and item.strip()),
+            stars=_normalize_optional_int(payload.get("stargazers_count")),
+            updated_at=_normalize_non_empty_text(payload.get("updated_at")),
+            readme_excerpt=readme_excerpt,
+        )
+
+    def _fetch_repo_readme_excerpt(self, *, login: str, repo_name: str) -> str | None:
+        try:
+            download_url = self._gh_api_text(
+                f"/repos/{login}/{repo_name}/readme",
+                jq=".download_url",
+            ).strip()
+        except AiOutreachPocError:
+            return None
+        if not download_url:
+            return None
+        completed = subprocess.run(
+            ["curl", "-L", download_url],
+            text=True,
+            capture_output=True,
+            check=False,
+        )
+        if completed.returncode != 0:
+            return None
+        readme_text = _normalize_source_text(completed.stdout)
+        return _truncate_for_prompt(readme_text, max_chars=2400)
+
+    def _gh_api_json(self, endpoint: str) -> Any:
+        completed = subprocess.run(
+            [self._gh_bin, "api", endpoint],
+            text=True,
+            capture_output=True,
+            check=False,
+        )
+        if completed.returncode != 0:
+            raise AiOutreachPocError(
+                f"`gh api` failed for `{endpoint}` with exit code {completed.returncode}: {completed.stderr.strip()}"
+            )
+        try:
+            return json.loads(completed.stdout)
+        except json.JSONDecodeError as exc:
+            raise AiOutreachPocError(f"`gh api` returned non-JSON output for `{endpoint}`.") from exc
+
+    def _gh_api_text(self, endpoint: str, *, jq: str) -> str:
+        completed = subprocess.run(
+            [self._gh_bin, "api", endpoint, "--jq", jq],
+            text=True,
+            capture_output=True,
+            check=False,
+        )
+        if completed.returncode != 0:
+            raise AiOutreachPocError(
+                f"`gh api` failed for `{endpoint}` with exit code {completed.returncode}: {completed.stderr.strip()}"
+            )
+        return completed.stdout
+
+
 def build_ai_outreach_codex_exec_command(
     *,
     codex_bin: str,
@@ -164,6 +567,329 @@ def build_ai_outreach_codex_exec_command(
         ]
     )
     return command
+
+
+def generate_github_project_selection(
+    request: GithubProjectSelectionRequest,
+    *,
+    project_root: Path | str,
+    codex_bin: str | None = None,
+) -> GithubProjectSelectionResult:
+    paths = ProjectPaths.from_root(project_root)
+    candidate_repos = tuple(request.candidate_repos)
+    if not candidate_repos:
+        raise AiOutreachPocError("GitHub project selection requires at least one candidate repo.")
+
+    run_id = _build_run_id(
+        company_name=request.contact_company or "unknown-company",
+        role_title=f"{request.contact_name}-github-selector",
+    )
+    run_dir = paths.ops_dir / "github-personalization-poc" / run_id
+    run_dir.mkdir(parents=True, exist_ok=True)
+
+    request_path = run_dir / "request.json"
+    prompt_path = run_dir / "prompt.md"
+    schema_path = run_dir / "schema.json"
+    output_path = run_dir / "selection.json"
+    codex_stdout_path = run_dir / "codex.stdout.txt"
+    codex_stderr_path = run_dir / "codex.stderr.txt"
+
+    prompt = _build_github_project_selector_prompt(request=request)
+    schema = _github_project_selector_output_schema()
+    prompt_path.write_text(prompt, encoding="utf-8")
+    schema_path.write_text(json.dumps(schema, indent=2) + "\n", encoding="utf-8")
+    request_path.write_text(
+        json.dumps(
+            {
+                "component": GITHUB_PROJECT_SELECTOR_POC_COMPONENT,
+                "generated_at": _now_utc_iso(),
+                "request": {
+                    "contact_name": request.contact_name,
+                    "contact_company": request.contact_company,
+                    "contact_role": request.contact_role,
+                    "github_profile_url": request.github_profile_url,
+                    "github_profile_bio": request.github_profile_bio,
+                    "sender_background_summary": request.sender_background_summary,
+                    "model": request.model,
+                    "candidate_repos": [repo.as_dict() for repo in candidate_repos],
+                },
+            },
+            indent=2,
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+
+    resolved_codex_bin = codex_bin or _resolve_codex_bin()
+    command = build_ai_outreach_codex_exec_command(
+        codex_bin=resolved_codex_bin,
+        project_root=paths.project_root,
+        schema_path=schema_path,
+        output_path=output_path,
+        model=request.model,
+    )
+    completed = subprocess.run(
+        command,
+        input=prompt,
+        text=True,
+        capture_output=True,
+        check=False,
+    )
+    codex_stdout_path.write_text(completed.stdout, encoding="utf-8")
+    codex_stderr_path.write_text(completed.stderr, encoding="utf-8")
+    if completed.returncode != 0:
+        raise AiOutreachPocError(
+            f"`codex exec` failed with exit code {completed.returncode}. See {codex_stderr_path}."
+        )
+    if not output_path.exists():
+        raise AiOutreachPocError(
+            f"`codex exec` did not materialize a project-selection payload. Expected {output_path}."
+        )
+
+    try:
+        payload = GithubProjectSelectionPayload.model_validate_json(output_path.read_text(encoding="utf-8"))
+    except ValidationError as exc:
+        raise AiOutreachPocError(
+            f"Project-selection payload failed validation. See {output_path}. Errors: {exc}"
+        )
+
+    known_repo_pairs = {(repo.name, repo.url) for repo in candidate_repos}
+    if (payload.selected_repo_name, payload.selected_repo_url) not in known_repo_pairs:
+        raise AiOutreachPocError(
+            "Project-selection payload chose a repo that was not provided in the candidate set."
+        )
+
+    return GithubProjectSelectionResult(
+        run_id=run_id,
+        run_dir=str(run_dir),
+        contact_name=request.contact_name,
+        contact_company=request.contact_company,
+        prompt_path=str(prompt_path),
+        schema_path=str(schema_path),
+        request_path=str(request_path),
+        selection_json_path=str(output_path),
+        codex_stdout_path=str(codex_stdout_path),
+        codex_stderr_path=str(codex_stderr_path),
+        selected_repo_name=payload.selected_repo_name,
+        selected_repo_url=payload.selected_repo_url,
+        why_selected=payload.why_selected,
+        observations=tuple(payload.observations),
+        runner_up_repo_names=tuple(payload.runner_up_repo_names),
+    )
+
+
+def generate_github_project_analysis(
+    request: GithubProjectAnalysisRequest,
+    *,
+    project_root: Path | str,
+    codex_bin: str | None = None,
+) -> GithubProjectAnalysisResult:
+    paths = ProjectPaths.from_root(project_root)
+
+    run_id = _build_run_id(
+        company_name=request.contact_company or "unknown-company",
+        role_title=f"{request.contact_name}-github-analyzer",
+    )
+    run_dir = paths.ops_dir / "github-personalization-poc" / run_id
+    run_dir.mkdir(parents=True, exist_ok=True)
+
+    request_path = run_dir / "request.json"
+    prompt_path = run_dir / "prompt.md"
+    schema_path = run_dir / "schema.json"
+    output_path = run_dir / "analysis.json"
+    codex_stdout_path = run_dir / "codex.stdout.txt"
+    codex_stderr_path = run_dir / "codex.stderr.txt"
+
+    prompt = _build_github_project_analyzer_prompt(request=request)
+    schema = _github_project_analyzer_output_schema()
+    prompt_path.write_text(prompt, encoding="utf-8")
+    schema_path.write_text(json.dumps(schema, indent=2) + "\n", encoding="utf-8")
+    request_path.write_text(
+        json.dumps(
+            {
+                "component": GITHUB_PROJECT_ANALYZER_POC_COMPONENT,
+                "generated_at": _now_utc_iso(),
+                "request": {
+                    "contact_name": request.contact_name,
+                    "contact_company": request.contact_company,
+                    "contact_role": request.contact_role,
+                    "github_profile_bio": request.github_profile_bio,
+                    "sender_background_summary": request.sender_background_summary,
+                    "selected_repo": request.selected_repo.as_dict(),
+                    "model": request.model,
+                },
+            },
+            indent=2,
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+
+    resolved_codex_bin = codex_bin or _resolve_codex_bin()
+    command = build_ai_outreach_codex_exec_command(
+        codex_bin=resolved_codex_bin,
+        project_root=paths.project_root,
+        schema_path=schema_path,
+        output_path=output_path,
+        model=request.model,
+    )
+    completed = subprocess.run(
+        command,
+        input=prompt,
+        text=True,
+        capture_output=True,
+        check=False,
+    )
+    codex_stdout_path.write_text(completed.stdout, encoding="utf-8")
+    codex_stderr_path.write_text(completed.stderr, encoding="utf-8")
+    if completed.returncode != 0:
+        raise AiOutreachPocError(
+            f"`codex exec` failed with exit code {completed.returncode}. See {codex_stderr_path}."
+        )
+    if not output_path.exists():
+        raise AiOutreachPocError(
+            f"`codex exec` did not materialize a project-analysis payload. Expected {output_path}."
+        )
+
+    try:
+        payload = GithubProjectAnalysisPayload.model_validate_json(output_path.read_text(encoding="utf-8"))
+    except ValidationError as exc:
+        raise AiOutreachPocError(
+            f"Project-analysis payload failed validation. See {output_path}. Errors: {exc}"
+        )
+
+    return GithubProjectAnalysisResult(
+        run_id=run_id,
+        run_dir=str(run_dir),
+        contact_name=request.contact_name,
+        contact_company=request.contact_company,
+        prompt_path=str(prompt_path),
+        schema_path=str(schema_path),
+        request_path=str(request_path),
+        analysis_json_path=str(output_path),
+        codex_stdout_path=str(codex_stdout_path),
+        codex_stderr_path=str(codex_stderr_path),
+        project_summary=payload.project_summary,
+        engineering_problem=payload.engineering_problem,
+        standout_observations=tuple(payload.standout_observations),
+        why_it_is_a_good_hook=payload.why_it_is_a_good_hook,
+        connection_to_my_work=payload.connection_to_my_work,
+        conversation_angle=payload.conversation_angle,
+    )
+
+
+def generate_github_coffee_chat_draft(
+    request: GithubCoffeeChatDraftRequest,
+    *,
+    project_root: Path | str,
+    codex_bin: str | None = None,
+) -> GithubCoffeeChatDraftResult:
+    paths = ProjectPaths.from_root(project_root)
+    sender = _load_sender_identity(paths)
+
+    run_id = _build_run_id(
+        company_name=request.contact_company or "unknown-company",
+        role_title=f"{request.contact_name}-github-coffee-chat",
+    )
+    run_dir = paths.ops_dir / "github-personalization-poc" / run_id
+    run_dir.mkdir(parents=True, exist_ok=True)
+
+    request_path = run_dir / "request.json"
+    prompt_path = run_dir / "prompt.md"
+    schema_path = run_dir / "schema.json"
+    output_path = run_dir / "draft.json"
+    email_markdown_path = run_dir / "email.md"
+    codex_stdout_path = run_dir / "codex.stdout.txt"
+    codex_stderr_path = run_dir / "codex.stderr.txt"
+
+    prompt = _build_github_coffee_chat_drafting_prompt(request=request, sender=sender)
+    schema = _github_coffee_chat_draft_output_schema()
+    prompt_path.write_text(prompt, encoding="utf-8")
+    schema_path.write_text(json.dumps(schema, indent=2) + "\n", encoding="utf-8")
+    request_path.write_text(
+        json.dumps(
+            {
+                "component": GITHUB_COFFEE_CHAT_DRAFTER_POC_COMPONENT,
+                "generated_at": _now_utc_iso(),
+                "request": {
+                    "contact_name": request.contact_name,
+                    "contact_company": request.contact_company,
+                    "contact_role": request.contact_role,
+                    "github_profile_url": request.github_profile_url,
+                    "github_profile_bio": request.github_profile_bio,
+                    "selected_repo": request.selected_repo.as_dict(),
+                    "project_summary": request.project_summary,
+                    "engineering_problem": request.engineering_problem,
+                    "standout_observations": list(request.standout_observations),
+                    "connection_to_my_work": request.connection_to_my_work,
+                    "conversation_angle": request.conversation_angle,
+                    "availability_window": request.availability_window,
+                    "model": request.model,
+                },
+            },
+            indent=2,
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+
+    resolved_codex_bin = codex_bin or _resolve_codex_bin()
+    command = build_ai_outreach_codex_exec_command(
+        codex_bin=resolved_codex_bin,
+        project_root=paths.project_root,
+        schema_path=schema_path,
+        output_path=output_path,
+        model=request.model,
+    )
+    completed = subprocess.run(
+        command,
+        input=prompt,
+        text=True,
+        capture_output=True,
+        check=False,
+    )
+    codex_stdout_path.write_text(completed.stdout, encoding="utf-8")
+    codex_stderr_path.write_text(completed.stderr, encoding="utf-8")
+    if completed.returncode != 0:
+        raise AiOutreachPocError(
+            f"`codex exec` failed with exit code {completed.returncode}. See {codex_stderr_path}."
+        )
+    if not output_path.exists():
+        raise AiOutreachPocError(
+            f"`codex exec` did not materialize a coffee-chat draft payload. Expected {output_path}."
+        )
+
+    try:
+        payload = GithubCoffeeChatDraftPayload.model_validate_json(output_path.read_text(encoding="utf-8"))
+    except ValidationError as exc:
+        raise AiOutreachPocError(
+            f"Coffee-chat draft payload failed validation. See {output_path}. Errors: {exc}"
+        )
+
+    final_body = _compose_github_coffee_chat_email_body(
+        contact_name=request.contact_name,
+        body_markdown=payload.body_markdown,
+        sender=sender,
+    )
+    final_html = _render_markdown_email_html(final_body)
+    email_markdown_path.write_text(final_body, encoding="utf-8")
+
+    return GithubCoffeeChatDraftResult(
+        run_id=run_id,
+        run_dir=str(run_dir),
+        contact_name=request.contact_name,
+        contact_company=request.contact_company,
+        subject=payload.subject,
+        body_text=final_body,
+        body_html=final_html,
+        prompt_path=str(prompt_path),
+        schema_path=str(schema_path),
+        request_path=str(request_path),
+        draft_json_path=str(output_path),
+        email_markdown_path=str(email_markdown_path),
+        codex_stdout_path=str(codex_stdout_path),
+        codex_stderr_path=str(codex_stderr_path),
+    )
 
 
 def generate_ai_outreach_draft(
@@ -270,17 +996,16 @@ def generate_ai_outreach_draft(
             f"`codex exec` did not materialize a draft payload. Expected {output_path}."
         )
 
-    draft_payload = json.loads(output_path.read_text(encoding="utf-8"))
-    subject = _normalize_non_empty_text(draft_payload.get("subject"))
-    body_markdown = _normalize_non_empty_text(draft_payload.get("body_markdown"))
-    if subject is None or body_markdown is None:
+    try:
+        draft_payload = AiOutreachDraftPayload.model_validate_json(output_path.read_text(encoding="utf-8"))
+    except ValidationError as exc:
         raise AiOutreachPocError(
-            f"Draft payload is missing required fields. See {output_path}."
+            f"Draft payload failed validation. See {output_path}. Errors: {exc}"
         )
-    final_subject = f"{request.subject_prefix or ''}{subject}".strip()
+    final_subject = f"{request.subject_prefix or ''}{draft_payload.subject}".strip()
     final_body = _compose_full_email_body(
         contact_name=request.contact_name or "there",
-        fit_section_markdown=body_markdown,
+        fit_section_markdown=draft_payload.body_markdown,
         sender=sender,
     )
     final_html = _render_markdown_email_html(final_body)
@@ -478,6 +1203,200 @@ def _build_drafting_prompt(
     ).strip() + "\n"
 
 
+def _build_github_project_selector_prompt(
+    *,
+    request: GithubProjectSelectionRequest,
+) -> str:
+    repo_sections: list[str] = []
+    for index, repo in enumerate(request.candidate_repos, start=1):
+        repo_sections.extend(
+            [
+                f"Repo {index}: {repo.name}",
+                f"- URL: {repo.url}",
+                f"- Description: {repo.description or 'not provided'}",
+                f"- Primary language: {repo.language or 'not provided'}",
+                f"- Topics: {', '.join(repo.topics) if repo.topics else 'none listed'}",
+                f"- Stars: {repo.stars if repo.stars is not None else 'unknown'}",
+                f"- Updated at: {repo.updated_at or 'unknown'}",
+                f"- README excerpt: {_truncate_for_prompt(repo.readme_excerpt or 'not provided', max_chars=1800)}",
+                "",
+            ]
+        )
+
+    return "\n".join(
+        [
+            "Select the best GitHub project to mention in a cold coffee-chat email to an engineer.",
+            "",
+            "Return JSON only and obey the output schema exactly.",
+            "",
+            "Objective:",
+            "- Choose one repo that gives the strongest, most natural common ground for outreach.",
+            "- Prefer repos that show real engineering depth, concrete constraints, and clear overlap with the sender's work.",
+            "- Avoid selecting a repo only because it is popular or generic.",
+            "",
+            "Selection criteria:",
+            "- The repo should make it easy to write 1-2 specific observations that sound real.",
+            "- The repo should expose a clear engineering problem, tradeoff, or product/tooling shape.",
+            "- The repo should connect naturally to the sender's background or current project.",
+            "- Prefer practical systems or tooling over toy demos when possible.",
+            "",
+            "Output requirements:",
+            "- `selected_repo_name`: exact repo name from the candidate list",
+            "- `selected_repo_url`: exact repo URL from the candidate list",
+            "- `why_selected`: short explanation of why this is the strongest hook",
+            "- `observations`: 2 or 3 concrete technical observations worth mentioning in an email",
+            "- `runner_up_repo_names`: optional list of 0 to 3 repo names that were also plausible",
+            "",
+            "Contact context:",
+            f"- Contact name: {request.contact_name}",
+            f"- Contact company: {request.contact_company or 'unknown'}",
+            f"- Contact role: {request.contact_role or 'unknown'}",
+            f"- GitHub profile URL: {request.github_profile_url or 'unknown'}",
+            f"- GitHub profile bio: {request.github_profile_bio or 'not provided'}",
+            "",
+            "Sender context:",
+            request.sender_background_summary.strip(),
+            "",
+            "Candidate repos:",
+            *repo_sections,
+        ]
+    ).strip() + "\n"
+
+
+def _build_github_project_analyzer_prompt(
+    *,
+    request: GithubProjectAnalysisRequest,
+) -> str:
+    repo = request.selected_repo
+    return "\n".join(
+        [
+            "Analyze a GitHub project for personalized engineering outreach.",
+            "",
+            "Return JSON only and obey the output schema exactly.",
+            "",
+            "Your job is not to draft the email.",
+            "Your job is to produce the reasoning that will later be used to draft the email.",
+            "",
+            "Goal:",
+            "- Understand what engineering problem this repo is solving",
+            "- Identify 2-3 concrete technical details that are worth mentioning in a cold email",
+            "- Explain why this repo is a strong common-ground hook",
+            "- Connect the repo naturally to the sender's work",
+            "- Suggest what a 15-minute conversation with the contact could be about",
+            "",
+            "Constraints:",
+            "- Use only the evidence provided",
+            "- Do not invent facts",
+            "- Do not use generic praise",
+            "- Do not summarize the repo at a high level only",
+            "- Prefer concrete engineering details over broad compliments",
+            "- Focus on why this project feels like a real engineering system, tool, or workflow",
+            "- If the evidence is weak, say so directly in the analysis",
+            "",
+            "Contact context:",
+            f"- Contact name: {request.contact_name}",
+            f"- Contact company: {request.contact_company or 'unknown'}",
+            f"- Contact role: {request.contact_role or 'unknown'}",
+            f"- GitHub bio: {request.github_profile_bio or 'not provided'}",
+            "",
+            "Sender context:",
+            request.sender_background_summary.strip(),
+            "",
+            "Selected repo:",
+            f"- Name: {repo.name}",
+            f"- URL: {repo.url}",
+            f"- Description: {repo.description or 'not provided'}",
+            f"- Language: {repo.language or 'not provided'}",
+            f"- Topics: {', '.join(repo.topics) if repo.topics else 'none listed'}",
+            f"- Stars: {repo.stars if repo.stars is not None else 'unknown'}",
+            f"- Updated at: {repo.updated_at or 'unknown'}",
+            "- README excerpt:",
+            _truncate_for_prompt(repo.readme_excerpt or "not provided", max_chars=2800),
+        ]
+    ).strip() + "\n"
+
+
+def _build_github_coffee_chat_drafting_prompt(
+    *,
+    request: GithubCoffeeChatDraftRequest,
+    sender: AiOutreachSenderIdentity,
+) -> str:
+    repo = request.selected_repo
+    observations = "\n".join(
+        [f"- Observation {index}: {observation}" for index, observation in enumerate(request.standout_observations, start=1)]
+    )
+    return "\n".join(
+        [
+            "Write a cold coffee-chat email to an engineer.",
+            "",
+            "Return JSON only and obey the output schema exactly.",
+            "",
+            "Goal:",
+            "- Start from a GitHub-based common ground.",
+            "- Show that I spent real time understanding one of their projects.",
+            "- Connect that project to something I am building.",
+            "- Briefly establish my credibility through Job Hunt Copilot.",
+            "- Ask for a 15-minute conversation in the next two weeks.",
+            "",
+            "Required structure:",
+            "- Produce exactly 3 paragraphs in `body_markdown`.",
+            "- Do not include the greeting or signature. The system will add them.",
+            "- Paragraph 1: mention the selected GitHub repo by name and include 1 or 2 concrete technical observations. No generic praise.",
+            "- Paragraph 2: connect the repo to my work. Mention that I built Job Hunt Copilot for my own job search to identify relevant roles and the right people to reach out to, that parts of the workflow run autonomously, that I personally review every email before it goes out, and that this email is a live example of that workflow.",
+            "- Paragraph 3: ask for a short 15-minute coffee chat. Say I would like to hear how they think about building projects or systems like this and what makes them genuinely useful in practice. Ask whether they are available sometime in the next two weeks. Mention that I am usually free on weekdays between the provided availability window and can be flexible on weekends if needed.",
+            "",
+            "Subject requirements:",
+            "- Return a concise subject in `subject`.",
+            "- Keep it natural and low-pressure.",
+            "- Do not mention jobs, referrals, or hiring in the subject.",
+            "",
+            "Style requirements:",
+            "- Natural, concise, technical, and human.",
+            "- Not formal.",
+            "- Not overly enthusiastic.",
+            "- Not templated or robotic.",
+            "- No flattery.",
+            "- No exaggerated claims.",
+            "- No bullets inside the email body.",
+            "- Keep the email body under 220 words.",
+            "",
+            "Do not:",
+            "- Ask for a job.",
+            "- Ask for a referral.",
+            "- Say that I have been following their work unless the evidence explicitly supports that.",
+            "",
+            "Contact context:",
+            f"- Contact name: {request.contact_name}",
+            f"- Contact company: {request.contact_company or 'unknown'}",
+            f"- Contact role: {request.contact_role or 'unknown'}",
+            f"- GitHub profile URL: {request.github_profile_url or 'unknown'}",
+            f"- GitHub profile bio: {request.github_profile_bio or 'not provided'}",
+            "",
+            "Sender context:",
+            f"- Sender name: {sender.name}",
+            f"- Sender LinkedIn: {sender.linkedin_url or 'not provided'}",
+            f"- Sender GitHub: {sender.github_url or 'not provided'}",
+            "",
+            "Selected repo:",
+            f"- Name: {repo.name}",
+            f"- URL: {repo.url}",
+            f"- Description: {repo.description or 'not provided'}",
+            f"- Language: {repo.language or 'not provided'}",
+            f"- Topics: {', '.join(repo.topics) if repo.topics else 'none listed'}",
+            f"- Updated at: {repo.updated_at or 'unknown'}",
+            "",
+            "Selected repo analysis:",
+            f"- Project summary: {request.project_summary}",
+            f"- Engineering problem: {request.engineering_problem}",
+            observations,
+            f"- Connection to my work: {request.connection_to_my_work}",
+            f"- Conversation angle: {request.conversation_angle}",
+            "",
+            f"Availability window: {request.availability_window}",
+        ]
+    ).strip() + "\n"
+
+
 def _truncate_for_prompt(text: str, *, max_chars: int) -> str:
     stripped = text.strip()
     if len(stripped) <= max_chars:
@@ -486,15 +1405,19 @@ def _truncate_for_prompt(text: str, *, max_chars: int) -> str:
 
 
 def _draft_output_schema() -> dict[str, Any]:
-    return {
-        "type": "object",
-        "properties": {
-            "subject": {"type": "string"},
-            "body_markdown": {"type": "string"},
-        },
-        "required": ["subject", "body_markdown"],
-        "additionalProperties": False,
-    }
+    return AiOutreachDraftPayload.model_json_schema()
+
+
+def _github_project_selector_output_schema() -> dict[str, Any]:
+    return GithubProjectSelectionPayload.model_json_schema()
+
+
+def _github_project_analyzer_output_schema() -> dict[str, Any]:
+    return GithubProjectAnalysisPayload.model_json_schema()
+
+
+def _github_coffee_chat_draft_output_schema() -> dict[str, Any]:
+    return GithubCoffeeChatDraftPayload.model_json_schema()
 
 
 def _compose_full_email_body(
@@ -526,6 +1449,33 @@ def _compose_full_email_body(
                 *_job_hunt_copilot_pitch_lines(),
                 "",
                 ask_paragraph,
+                "",
+                *signature_lines,
+            ]
+        ).strip()
+        + "\n"
+    )
+
+
+def _compose_github_coffee_chat_email_body(
+    *,
+    contact_name: str,
+    body_markdown: str,
+    sender: AiOutreachSenderIdentity,
+) -> str:
+    signature_lines = ["Best,", sender.name]
+    if sender.linkedin_url:
+        signature_lines.append(sender.linkedin_url)
+    if sender.phone:
+        signature_lines.append(sender.phone)
+    if sender.email:
+        signature_lines.append(sender.email)
+    return (
+        "\n".join(
+            [
+                f"Hi {contact_name},",
+                "",
+                _strip_existing_signature(body_markdown).strip(),
                 "",
                 *signature_lines,
             ]
@@ -579,6 +1529,23 @@ def _normalize_non_empty_text(value: object) -> str | None:
         return None
     normalized = str(value).strip()
     return normalized or None
+
+
+def _normalize_optional_int(value: object) -> int | None:
+    if value is None:
+        return None
+    try:
+        return int(value)
+    except (TypeError, ValueError):
+        return None
+
+
+def _github_login_from_url(url: str) -> str | None:
+    normalized = url.strip().rstrip("/")
+    match = re.match(r"^https?://github\.com/(?P<login>[A-Za-z0-9_.-]+)$", normalized)
+    if match is None:
+        return None
+    return match.group("login")
 
 
 def _now_utc_iso() -> str:
