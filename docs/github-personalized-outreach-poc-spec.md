@@ -780,6 +780,9 @@ If independent GitHub search yields multiple plausible candidates and
 deterministic matching cannot confidently choose one profile, the workflow may
 use bounded AI only as a tie-breaker after deterministic search has already
 narrowed the candidate set.
+For this POC, Python should pass only the shortlisted plausible candidates plus
+their explicit match reasons into that tie-break stage, not the full raw search
+result set.
 
 ### 3. GitHub profile research
 
