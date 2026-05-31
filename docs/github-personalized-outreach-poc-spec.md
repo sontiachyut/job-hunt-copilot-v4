@@ -326,7 +326,8 @@ The draft should communicate, directly or equivalently:
 4. every email is reviewed personally before sending
 5. this email itself came through that workflow, or an equivalent paraphrase
 6. the email should include the `Job Hunt Copilot` repo link explicitly, near
-   the `Job Hunt Copilot` mention rather than somewhere unrelated in the email
+   the `Job Hunt Copilot` mention rather than somewhere unrelated in the email.
+   For this POC, that link should appear as the raw GitHub URL.
 
 These ideas do not need to appear as five separate sentences. The drafter may
 compress them into fewer sentences as long as the meaning is still covered.
