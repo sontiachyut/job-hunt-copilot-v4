@@ -47,6 +47,7 @@ The contact becomes draft-ready only when one of these research paths has comple
 2. no-GitHub company-research fallback path
 
 If neither path produces strong context, the workflow may still produce a minimal conservative draft rather than blocking outright, but it should not invent specific common ground.
+When any specific company or role observation is available, the minimal conservative draft should still use at least one such observation rather than staying fully generic.
 That minimal conservative draft should still ask about:
 
 1. engineering culture
