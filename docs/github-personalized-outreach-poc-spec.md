@@ -313,7 +313,11 @@ The CTA should point toward two conversation themes:
 1. a technical or project-related question anchored in the recipient's work
 2. a job-hunt or profile-positioning question relevant to the recipient's company, role, or career path
 
-The draft does not need to enumerate both questions explicitly every time, but the email should make both purposes plausible.
+The draft should make both purposes explicit. The ask should clearly signal that
+the sender is hoping for:
+
+1. one tip related to the recipient's work, engineering problems, or technical judgment
+2. one tip related to the sender's job hunt, profile positioning, or preparation
 
 ## Email Shape
 
