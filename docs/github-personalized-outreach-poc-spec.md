@@ -893,6 +893,9 @@ Implementation:
 - return structured JSON only
 
 The drafter should not perform new discovery. It should only write from the supplied evidence and analysis.
+For this POC, Python should pass only the structured outputs of earlier stages
+plus sender context into the drafter. It should not pass raw supporting
+excerpts for the drafter to re-analyze.
 
 When no GitHub profile exists, or when GitHub evidence is too weak to support a strong opener, the drafter may instead write from the company-research fallback inputs described above.
 
