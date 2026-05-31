@@ -237,6 +237,10 @@ If a usable GitHub profile exists, the system should prefer:
 
 The system should prefer a specific repository when one repository offers a stronger, more concrete hook than a broad theme.
 
+If a repeated engineering theme produces a cleaner, more natural opener than a
+repo-specific hook, a theme-based opener is still allowed in this POC. The
+workflow does not need to force a repo-based opener in every GitHub-backed case.
+
 When the opener is based on a repository hook, it should mention the repository
 name explicitly.
 
