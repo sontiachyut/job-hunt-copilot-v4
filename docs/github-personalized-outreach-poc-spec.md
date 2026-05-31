@@ -901,6 +901,9 @@ Implementation:
 
 For this POC, Python should pass only bounded structured evidence into this
 stage, not the full contact dossier.
+Python should pre-filter the evidence types using the fallback rules in this
+spec and pass only the currently eligible options into the selector, rather
+than every possible evidence type.
 
 ### 8. Project selection
 
