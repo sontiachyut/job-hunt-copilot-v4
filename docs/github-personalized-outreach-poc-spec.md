@@ -343,7 +343,8 @@ The sender should sound like someone building a real system, not someone pitchin
 The draft should communicate, directly or equivalently:
 
 1. `Job Hunt Copilot` was built for the sender's own job search
-2. it helps identify relevant roles and the right people to reach out to
+2. it helps identify both relevant roles and the right people to reach out to;
+   both ideas should be explicit in the draft
 3. parts of the workflow run autonomously
 4. every email is reviewed personally before sending, or a natural paraphrase
    that preserves that meaning
