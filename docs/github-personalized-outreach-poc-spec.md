@@ -334,10 +334,11 @@ In that case the draft should:
 1. reference the recipient's current role and company
 2. use company-focused research to understand what the company has been doing recently in software engineering
 3. infer likely team or domain context from the recipient's current role/title when that inference is reasonable
-3. say the sender is interested in joining the company and learning from strong engineers there
-4. explain that the recipient's profile came up in that context and is the reason for the outreach
-5. ask about engineering culture, current challenges, and how the sender should improve the profile to become a stronger candidate for that company
-6. connect the sender's interests and `Job Hunt Copilot` work to that context
+4. say the sender is interested in joining the company and learning from strong engineers there
+5. explain that the recipient's profile came up in that context and is the reason for the outreach
+6. ask about engineering culture, current challenges, and how the sender should improve the profile to become a stronger candidate for that company
+7. explicitly mention `Job Hunt Copilot` as part of the sender's credibility
+8. connect the sender's interests and `Job Hunt Copilot` work to that context
 
 ### Fallback matrix
 
@@ -361,8 +362,9 @@ That fallback style should:
 1. use the recipient's current company as the main anchor
 2. use bounded company research to identify what the company has been doing recently in software engineering
 3. infer likely team or domain signals from the recipient's current role/title when reasonable
-3. frame the email as a request for guidance from someone at the company rather than as a repo/project-based technical hook
-4. ask about:
+4. frame the email as a request for guidance from someone at the company rather than as a repo/project-based technical hook
+5. still mention `Job Hunt Copilot` explicitly as part of the sender's credibility
+6. ask about:
    - engineering culture
    - the kinds of challenges the company or team is solving
    - how the sender should improve the profile to become a stronger candidate for that company
