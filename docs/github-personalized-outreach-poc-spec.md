@@ -257,8 +257,9 @@ name explicitly.
 The opener should also include one or two concrete observations about that
 repository, depending on what reads more naturally.
 
-For this POC, the draft should mention the recipient repository by name only.
-It should not include the recipient repository URL in the email body.
+For this POC, the draft should mention the recipient repository by its exact
+name only. It should not include the recipient repository URL in the email
+body.
 
 ### Common-ground quality rules
 
