@@ -829,7 +829,8 @@ Input:
 
 - current company
 - current role
-- Apollo-enriched profile fields
+- selected Apollo fallback context, such as employment-history signals or
+  other bounded profile fields needed for fallback reasoning
 
 Behavior:
 
