@@ -17,6 +17,17 @@ The system should:
 
 This flow is distinct from role-targeted outreach and follow-up emails. It is not a direct job-ask email.
 
+## Operating Principle
+
+This POC should be spec-driven.
+
+That means:
+
+1. this document defines behavior and quality expectations
+2. prompts are implementation details that should follow the spec
+3. Python orchestration and Pydantic contracts should enforce the spec where possible
+4. tests should validate the spec, not just current prompt wording
+
 ## Primary Outcome
 
 Given one contact record, the system should produce a draft email that:
@@ -61,6 +72,35 @@ For one contact, the system may use:
 - sender identity and sender background summary
 - sender availability window
 
+## Required Sender Context
+
+The sender context passed into the system should be intentionally small and stable.
+
+For this POC, the sender context should include:
+
+- sender name
+- sender LinkedIn URL
+- sender GitHub URL when available
+- short background summary
+- short `Job Hunt Copilot` summary
+- availability window
+
+The sender context should not require full resume text for this flow.
+
+## Research Record
+
+Before any AI reasoning step runs, the deterministic pipeline should normalize the contact into a research record.
+
+That research record should support at least:
+
+- contact identity fields
+- GitHub resolution result
+- GitHub profile metadata when resolved
+- compact repo candidate list
+- sender context
+
+This research record is the source of truth for downstream selector, analyzer, and drafter stages.
+
 ## Research Goal
 
 The research step should not aim to collect "as many details as possible." Instead, it should collect enough evidence to support one high-quality outreach hook.
@@ -87,6 +127,8 @@ If a usable GitHub profile exists, the system should prefer:
 1. one specific repository, or
 2. one repeated engineering theme across repositories
 
+The system should prefer a specific repository when one repository offers a stronger, more concrete hook than a broad theme.
+
 ### Common-ground quality rules
 
 The chosen signal should:
@@ -95,6 +137,16 @@ The chosen signal should:
 2. reveal a real engineering problem, tool, workflow, or design choice
 3. overlap naturally with the sender's background or current project
 4. avoid empty compliments or generic praise
+5. support a real question the sender could ask in a 15-minute conversation
+
+### Project selection tie-break rules
+
+If more than one repository looks plausible, the system should prefer the repository that:
+
+1. exposes clearer engineering constraints or tradeoffs
+2. is easier to describe with 1 to 2 concrete observations
+3. overlaps more naturally with the sender's engineering background or `Job Hunt Copilot`
+4. feels like a real tool, workflow, or production-minded system rather than a toy demo
 
 ### Common-ground failure mode
 
@@ -104,6 +156,8 @@ If GitHub evidence is weak or absent, the common-ground should fall back to:
 2. the recipient's company
 3. curiosity about the kind of work the team is likely doing
 4. curiosity about how to become a stronger candidate for that company
+
+The fallback should remain specific to the role/company context and should not become a generic networking email.
 
 ## Credibility Rule
 
@@ -120,6 +174,8 @@ The credibility layer should come from:
 The draft must establish engineering credibility before the autonomous-email point becomes prominent.
 
 `Job Hunt Copilot` should support credibility, not dominate the email.
+
+The sender should sound like someone building a real system, not someone pitching a novelty tool.
 
 ### Required `Job Hunt Copilot` facts
 
@@ -147,6 +203,15 @@ The CTA should:
 3. include the sender's typical availability window
 4. remain easy to answer yes or no to
 
+### CTA topic rules
+
+The CTA should point toward two conversation themes:
+
+1. a technical or project-related question anchored in the recipient's work
+2. a job-hunt or profile-positioning question relevant to the recipient's company, role, or career path
+
+The draft does not need to enumerate both questions explicitly every time, but the email should make both purposes plausible.
+
 ## Email Shape
 
 The draft should follow this logical flow:
@@ -156,6 +221,16 @@ The draft should follow this logical flow:
 3. 15-minute ask
 
 The implementation may keep this as a 3-paragraph structure.
+
+### Paragraph intent
+
+If implemented as 3 paragraphs, the intended paragraph jobs are:
+
+1. `common_ground`
+2. `credibility_and_connection`
+3. `coffee_chat_cta`
+
+The system may add greeting and signature outside the AI drafting step.
 
 ## Email Content Rules
 
@@ -167,6 +242,8 @@ The email should:
 4. avoid inflated claims
 5. avoid sounding like a mass template
 6. avoid asking directly for a job or referral
+7. avoid overexplaining the automation
+8. stay concise enough to read quickly on email
 
 The email should not say:
 
@@ -174,6 +251,23 @@ The email should not say:
 2. "impressive profile"
 3. "great work" without a specific observation
 4. "I'd love to pick your brain"
+5. language that makes the recipient responsible for getting the sender a job
+
+### Tone rules
+
+The tone should be:
+
+- curious
+- technically aware
+- respectful
+- low-pressure
+
+The tone should not be:
+
+- pleading
+- overfamiliar
+- salesy
+- overly polished corporate outreach
 
 ## Fallback Behavior
 
@@ -186,6 +280,18 @@ In that case the draft should:
 3. ask about engineering culture, day-to-day work, or what makes candidates strong for that company
 4. connect the sender's interests and `Job Hunt Copilot` work to that context
 
+### Fallback matrix
+
+The system should follow this fallback order:
+
+1. `GitHub repo hook`
+2. `GitHub theme hook`
+3. `role/company hook`
+
+If step 1 is unavailable, the system should try step 2 before dropping to step 3.
+
+If all three are weak, the system should still draft conservatively rather than inventing details.
+
 ## System Architecture
 
 This POC should use a hybrid architecture:
@@ -195,6 +301,60 @@ This POC should use a hybrid architecture:
 - Pydantic contracts between stages
 
 The system should not use a free-form runtime agent for this workflow.
+
+## Runtime Data Contracts
+
+Each stage should pass structured data forward rather than unstructured prose when possible.
+
+### GitHub profile resolution result
+
+Should include at minimum:
+
+- resolved or unresolved status
+- confidence score
+- chosen GitHub URL when resolved
+- candidate matches
+- match reasons
+
+### GitHub repo candidate record
+
+Should include at minimum:
+
+- repo name
+- repo URL
+- description
+- primary language
+- topics
+- stars
+- updated time
+- README excerpt when available
+
+### Project selection result
+
+Should include at minimum:
+
+- selected repo name
+- selected repo URL
+- why selected
+- standout repo-level observations or shortlist reasoning
+
+### Project analysis result
+
+Should include at minimum:
+
+- project summary
+- engineering problem
+- 2 to 3 standout observations
+- why this is a good hook
+- connection to sender work
+- suggested conversation angle
+
+### Coffee-chat draft result
+
+Should include at minimum:
+
+- subject
+- body markdown
 
 ## Required Runtime Stages
 
@@ -214,6 +374,8 @@ Behavior:
 - score candidates using explicit matching reasons
 - return a resolved GitHub URL or unresolved state
 
+The resolver should not depend on AI for primary matching.
+
 ### 2. GitHub profile research
 
 Input:
@@ -227,6 +389,8 @@ Behavior:
 - produce compact repo candidate records
 - enrich the selected repo more deeply than the rest
 
+The research stage should collect all public repos, not only pinned or recent repos, unless future scale constraints require a spec change.
+
 ### 3. Project selection
 
 Behavior:
@@ -238,6 +402,8 @@ Implementation:
 
 - use `codex exec`
 - return structured JSON only
+
+The selector may use the full repo candidate set, but it should make one choice only.
 
 ### 4. Project analysis
 
@@ -254,6 +420,8 @@ Implementation:
 - use `codex exec`
 - return structured JSON only
 
+The analyzer should reason over the selected repo and profile context, not over the full repo set again.
+
 ### 5. Coffee-chat draft generation
 
 Behavior:
@@ -265,6 +433,8 @@ Implementation:
 
 - use `codex exec`
 - return structured JSON only
+
+The drafter should not perform new discovery. It should only write from the supplied evidence and analysis.
 
 ### 6. Human review
 
@@ -286,6 +456,8 @@ Python should:
 2. choose what evidence to pass
 3. validate returned JSON
 4. persist artifacts
+
+Python should also prevent stage drift by ensuring each later stage only receives the inputs that stage is supposed to reason over.
 
 ## Output Contracts
 
@@ -312,6 +484,14 @@ At minimum, the system should be able to produce:
 - subject
 - body markdown
 
+The draft contract may later be extended with internal diagnostics such as:
+
+- common-ground type
+- common-ground source
+- CTA intent
+
+But those are optional for this POC.
+
 ## Artifact Requirements
 
 Each `codex exec` stage should persist enough artifacts to debug quality and regressions.
@@ -327,6 +507,14 @@ Expected artifacts per stage should include:
 
 These artifacts should live under the existing POC runtime area.
 
+## Prompt Governance
+
+Prompts should be treated as implementation artifacts derived from this spec.
+
+Prompt changes should not silently introduce new behavior that is not described here.
+
+If a prompt requires behavior that is not already captured by this spec, the spec should be updated first.
+
 ## Acceptance Criteria
 
 A draft is acceptable for this POC if:
@@ -338,6 +526,8 @@ A draft is acceptable for this POC if:
 5. it asks for a 15-minute conversation with a concrete reason
 6. it does not ask directly for a job or referral
 7. it reads like a plausible human email
+8. it uses evidence that actually exists in the supplied inputs
+9. it remains useful even if the recipient does not have hiring influence
 
 ## Evaluation Questions
 
@@ -350,6 +540,28 @@ Each generated draft should be reviewable against these questions:
 5. Does `Job Hunt Copilot` support credibility without taking over the email?
 6. Is the coffee-chat ask concrete and low-pressure?
 7. Would this email still make sense if the recipient does not want to help with hiring directly?
+8. Did the system avoid inventing details that were not in the research record?
+
+## Test Strategy
+
+The POC should eventually have tests at three levels:
+
+1. deterministic unit tests for profile resolution, repo research, and record normalization
+2. stage-contract tests for selector, analyzer, and drafter payload validation
+3. end-to-end fixture tests that validate the email against the acceptance criteria
+
+Prompt text does not need literal snapshot-locking, but behavior should remain consistent with this spec.
+
+## Example Scenarios
+
+The spec should support at least these scenario types:
+
+1. GitHub-present engineer with one strong repo hook
+2. GitHub-present engineer with multiple plausible repos
+3. GitHub-present engineer with weak repos, forcing theme-level selection
+4. GitHub-missing contact, forcing role/company fallback
+
+The current Hariharan example is one useful validation case, but the spec should not be written so narrowly that it only fits that example.
 
 ## Near-Term Extensions
 
@@ -360,4 +572,3 @@ After the POC stabilizes, likely extensions are:
 3. role/company fallback drafts when GitHub is missing
 4. evaluation scoring for draft quality
 5. optional send path after human approval
-
