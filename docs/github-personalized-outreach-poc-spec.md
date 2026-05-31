@@ -411,7 +411,9 @@ When the draft asks about strengthening the sender's profile to join the
 company, it should mention the company name again explicitly rather than
 relying only on earlier context.
 It should use the company's exact name rather than a generic phrase like
-"your company."
+"your company." For this POC, company references in the body should preserve
+the exact official company name from the source data rather than cleaning minor
+suffixes.
 
 When the fallback/company-guidance branch is used, the draft should ask about
 both engineering culture and current challenges explicitly rather than leaving
@@ -518,6 +520,9 @@ Preference order:
 2. use a company-based subject for fallback drafts
 3. if the raw repo name is awkward, too long, or unclear, the subject may use a cleaned-up version of the repo name when that still feels recognizable
 4. if the repo name is still awkward after cleanup, fall back to the company-based subject
+
+When the subject uses a company-based pattern, it should preserve the exact
+official company name from the source data rather than cleaning minor suffixes.
 
 For this POC, the subject line should not reference:
 
