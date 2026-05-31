@@ -417,8 +417,16 @@ the sender is hoping for:
 1. one tip related to the recipient's work, engineering problems, or technical judgment
 2. one tip related to the sender's job hunt, profile positioning, or preparation
 
-For this POC, the guidance ask should explicitly cover all three of these every
-time:
+For GitHub-backed drafts, the guidance ask should explicitly cover all three of
+these every time:
+
+1. the recipient's project and engineering decisions
+2. what makes projects genuinely strong or useful
+3. how the sender can improve the sender's own profile/projects to build a
+   career like the recipient's and get into the company
+
+For fallback/company-guidance drafts, the guidance ask should explicitly cover
+all three of these every time:
 
 1. the recipient's experience and work at the company
 2. the company's engineering culture and current challenges
