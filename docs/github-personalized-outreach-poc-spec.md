@@ -90,7 +90,7 @@ For common-ground selection during drafting, the system should prefer:
 
 1. GitHub repository hook
 2. GitHub engineering-theme hook
-3. Apollo employment-history hook when GitHub is missing and the history is relevant
+3. Apollo employment-history hook when GitHub is missing or weak and the history is relevant
 4. role/company fallback hook
 
 ## Inputs
@@ -643,8 +643,8 @@ The system should not use a free-form runtime agent for this workflow.
 For this POC, Apollo collection, GitHub collection, and personal-site collection should all be handled by deterministic Python code rather than AI reasoning.
 One exception is allowed: bounded AI may be used as a GitHub identity tie-breaker when deterministic GitHub search returns multiple plausible candidates.
 
-When GitHub is missing, bounded `codex exec` company research may be used later in the flow to help draft the company-focused fallback email.
-When GitHub is missing, `codex exec` company research may use broader public web research and is not limited to official company sources.
+When GitHub is missing or weak, bounded `codex exec` company research may be used later in the flow to help draft the company-focused fallback email.
+When GitHub is missing or weak, `codex exec` company research may use broader public web research and is not limited to official company sources.
 
 ## Runtime Data Contracts
 
@@ -959,7 +959,7 @@ The POC should stop at draft generation unless an explicit send path is later ad
 
 For this POC, the intended `codex exec` stages are:
 
-1. company research fallback when GitHub is missing
+1. company research fallback when GitHub is missing or weak
 2. project selection for GitHub repo-hook cases
 3. project analysis for GitHub repo-hook cases
 4. email drafting
@@ -1097,6 +1097,6 @@ After the POC stabilizes, likely extensions are:
 
 1. structured badge normalization from LinkedIn job-alert cards
 2. personal-site and blog enrichment
-3. role/company fallback drafts when GitHub is missing
+3. role/company fallback drafts when GitHub is missing or weak
 4. evaluation scoring for draft quality
 5. optional send path after human approval
