@@ -277,6 +277,10 @@ The credibility section should mention both:
 1. a brief professional-background signal
 2. `Job Hunt Copilot`
 
+The professional-background mention should stay high level in this POC. The
+draft does not need to include concrete metrics or detailed proof points unless
+the implementation is later extended for that purpose.
+
 ### Ordering constraint
 
 The draft must establish engineering credibility before the autonomous-email point becomes prominent.
