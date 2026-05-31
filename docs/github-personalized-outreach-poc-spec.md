@@ -319,7 +319,7 @@ The credibility layer should come from:
 
 1. basic information about the sender's professional engineering background
 2. `Job Hunt Copilot` as a current project
-3. the fact that this outreach workflow is partially autonomous but human-reviewed
+3. the fact that this outreach workflow is autonomous, with personal review on each email before it goes out
 
 The credibility section should mention both:
 
@@ -347,7 +347,7 @@ The draft should communicate, directly or equivalently:
    long as the ownership is still clear
 2. it helps identify both relevant roles and the right people to reach out to;
    both ideas should be explicit in the draft
-3. parts of the workflow run autonomously
+3. the workflow runs autonomously
 4. every email is reviewed personally before sending, or a natural paraphrase
    that preserves that meaning
 5. this email itself came through that workflow, or an equivalent paraphrase
