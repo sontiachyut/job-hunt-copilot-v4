@@ -342,7 +342,9 @@ The sender should sound like someone building a real system, not someone pitchin
 
 The draft should communicate, directly or equivalently:
 
-1. `Job Hunt Copilot` was built for the sender's own job search
+1. `Job Hunt Copilot` was built for the sender's own job search, or a softer
+   phrasing like "I've been building Job Hunt Copilot for my job search" as
+   long as the ownership is still clear
 2. it helps identify both relevant roles and the right people to reach out to;
    both ideas should be explicit in the draft
 3. parts of the workflow run autonomously
