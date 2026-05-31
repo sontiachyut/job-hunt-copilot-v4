@@ -207,7 +207,6 @@ If a personal site or blog is discovered from GitHub, the system should gather a
 - page title
 - meta description or obvious about summary
 - obvious project, writing, or talk links
-- outbound identity links when present
 
 The workflow should not fail if no personal site is discovered.
 
