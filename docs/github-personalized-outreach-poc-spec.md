@@ -369,7 +369,10 @@ The draft should follow this logical flow:
 2. connection plus credibility
 3. 15-minute ask
 
-The implementation may keep this as a 3-paragraph structure.
+The implementation should prefer a concise 3-paragraph structure. A 4-paragraph
+draft is allowed when it reads more naturally, but concision remains the
+governing rule and the email should stay short enough that recipients do not
+skip it.
 
 ### Paragraph intent
 
