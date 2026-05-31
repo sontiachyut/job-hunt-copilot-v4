@@ -399,6 +399,13 @@ the sender is hoping for:
 1. one tip related to the recipient's work, engineering problems, or technical judgment
 2. one tip related to the sender's job hunt, profile positioning, or preparation
 
+For this POC, the guidance ask should explicitly cover all three of these every
+time:
+
+1. the recipient's work
+2. the company's engineering culture and current challenges
+3. how the sender can make the profile stronger in order to join the company
+
 When the fallback/company-guidance branch is used, the draft should ask about
 both engineering culture and current challenges explicitly rather than leaving
 either one implicit.
