@@ -47,20 +47,32 @@ This POC is not trying to:
 4. reproduce LinkedIn's private or personalized graph data
 5. operate as a free-form autonomous agent
 
-## Source Priority
+## Research Acquisition Order
 
-For this POC, the system should prefer public sources in this order:
+For this POC, the system should collect profile data in this order:
 
-1. GitHub profile and repositories
-2. contact role and company
-3. GitHub-missing fallback using role/company curiosity
+1. Apollo enrichment
+2. GitHub profile discovery and GitHub profile research
+3. personal-site or blog discovery from GitHub profile data
 
-The POC may use LinkedIn URL as an identity field, but the current personalization logic should not depend on private LinkedIn data.
+If no personal site or blog is discoverable from GitHub, the workflow should continue without it.
+
+The POC may use LinkedIn URL as an identity field when Apollo provides it, but the current personalization logic should not depend on private LinkedIn data.
+
+## Common-Ground Source Priority
+
+For common-ground selection during drafting, the system should prefer:
+
+1. GitHub repository hook
+2. GitHub engineering-theme hook
+3. personal-site or blog hook discovered from GitHub
+4. role/company fallback hook
 
 ## Inputs
 
 For one contact, the system may use:
 
+- Apollo-enriched person data
 - contact full name
 - email address
 - current role/title
@@ -69,6 +81,8 @@ For one contact, the system may use:
 - resolved GitHub profile URL when available
 - GitHub profile metadata
 - public GitHub repositories and compact repo evidence
+- personal-site or blog URL when discovered from GitHub
+- personal-site metadata and extracted page summaries when collected
 - sender identity and sender background summary
 - sender availability window
 
@@ -93,17 +107,47 @@ Before any AI reasoning step runs, the deterministic pipeline should normalize t
 
 That research record should support at least:
 
+- Apollo enrichment result
 - contact identity fields
 - GitHub resolution result
 - GitHub profile metadata when resolved
 - compact repo candidate list
+- personal-site resolution result when available
+- personal-site research result when available
 - sender context
 
 This research record is the source of truth for downstream selector, analyzer, and drafter stages.
 
 ## Research Goal
 
-The research step should not aim to collect "as many details as possible." Instead, it should collect enough evidence to support one high-quality outreach hook.
+The research step should not aim to scrape the open web broadly. Instead, it should deterministically collect as much useful structured data as is available from the approved source chain for one contact.
+
+For this POC, that means:
+
+1. collect all useful fields returned by Apollo enrichment that are relevant to identity, role, company, public profile, and work-email readiness
+2. resolve and collect all useful public GitHub profile data
+3. if GitHub exposes a blog or personal-site link, collect useful public data from that site
+
+### Apollo research expectations
+
+For Apollo-backed contacts, the research step should collect and normalize as much of the returned enrichment payload as is useful and safe to persist, including at minimum:
+
+- person/provider id
+- display name
+- full name
+- first name
+- last name
+- current title
+- location
+- company and organization identifiers when available
+- LinkedIn URL
+- work email when returned
+- email status when returned
+- headline when returned
+
+If additional Apollo fields such as GitHub URL, Twitter URL, photo URL, or employment history are available and the system decides to persist them later, that should be treated as an additive extension rather than a behavioral change.
+
+### GitHub research expectations
 
 For GitHub-backed contacts, the system should gather:
 
@@ -115,6 +159,18 @@ For GitHub-backed contacts, the system should gather:
 - all public repositories
 - compact metadata for each repository
 - README excerpt for the selected repository
+
+### Personal-site research expectations
+
+If a personal site or blog is discovered from GitHub, the system should gather a bounded summary of that site, such as:
+
+- canonical URL
+- page title
+- meta description or obvious about summary
+- obvious project, writing, or talk links
+- outbound identity links when present
+
+The workflow should not fail if no personal site is discovered.
 
 ## Common-Ground Rule
 
@@ -286,11 +342,12 @@ The system should follow this fallback order:
 
 1. `GitHub repo hook`
 2. `GitHub theme hook`
-3. `role/company hook`
+3. `personal-site/blog hook`
+4. `role/company hook`
 
-If step 1 is unavailable, the system should try step 2 before dropping to step 3.
+If step 1 is unavailable, the system should try step 2 before dropping to later fallback options.
 
-If all three are weak, the system should still draft conservatively rather than inventing details.
+If all four are weak, the system should still draft conservatively rather than inventing details.
 
 ## System Architecture
 
@@ -302,9 +359,25 @@ This POC should use a hybrid architecture:
 
 The system should not use a free-form runtime agent for this workflow.
 
+For this POC, Apollo collection, GitHub collection, and personal-site collection should all be handled by deterministic Python code rather than AI reasoning.
+
 ## Runtime Data Contracts
 
 Each stage should pass structured data forward rather than unstructured prose when possible.
+
+### Apollo enrichment result
+
+Should include at minimum:
+
+- provider person id
+- normalized display/full/first/last name fields
+- title
+- location
+- LinkedIn URL
+- work email when returned
+- email status when returned
+- headline when returned
+- organization identifiers when returned
 
 ### GitHub profile resolution result
 
@@ -356,9 +429,40 @@ Should include at minimum:
 - subject
 - body markdown
 
+### Personal-site resolution result
+
+Should include at minimum:
+
+- resolved or unresolved status
+- canonical URL when resolved
+- resolution source, such as GitHub profile `blog` field or README link
+
+### Personal-site research result
+
+Should include at minimum:
+
+- canonical URL
+- page title
+- summary text or about text when extractable
+- discovered project/blog/talk links when extractable
+
 ## Required Runtime Stages
 
-### 1. GitHub profile resolution
+### 1. Apollo enrichment ingestion
+
+Input:
+
+- contact identity fields already known to the system
+
+Behavior:
+
+- call Apollo enrichment through deterministic Python code
+- normalize the returned person payload
+- persist useful enrichment fields into the research record
+
+This stage should be treated as the first structured profile-data source for the POC.
+
+### 2. GitHub profile resolution
 
 Input:
 
@@ -376,7 +480,7 @@ Behavior:
 
 The resolver should not depend on AI for primary matching.
 
-### 2. GitHub profile research
+### 3. GitHub profile research
 
 Input:
 
@@ -391,7 +495,38 @@ Behavior:
 
 The research stage should collect all public repos, not only pinned or recent repos, unless future scale constraints require a spec change.
 
-### 3. Project selection
+### 4. Personal-site resolution
+
+Input:
+
+- GitHub profile data
+- GitHub profile blog field when present
+- relevant GitHub README links when present
+
+Behavior:
+
+- deterministically look for a personal-site or blog URL
+- prefer the GitHub profile `blog` field when it is a valid site URL
+- optionally fall back to obvious personal-site links from GitHub profile content or README content
+- return unresolved state if no trustworthy site is found
+
+This stage should not block the workflow when no site exists.
+
+### 5. Personal-site research
+
+Input:
+
+- resolved personal-site URL
+
+Behavior:
+
+- fetch a bounded set of public site pages
+- extract useful profile context
+- normalize the result into a compact site-research record
+
+This stage should remain deterministic and optional.
+
+### 6. Project selection
 
 Behavior:
 
@@ -405,7 +540,7 @@ Implementation:
 
 The selector may use the full repo candidate set, but it should make one choice only.
 
-### 4. Project analysis
+### 7. Project analysis
 
 Behavior:
 
@@ -422,7 +557,7 @@ Implementation:
 
 The analyzer should reason over the selected repo and profile context, not over the full repo set again.
 
-### 5. Coffee-chat draft generation
+### 8. Coffee-chat draft generation
 
 Behavior:
 
@@ -436,7 +571,7 @@ Implementation:
 
 The drafter should not perform new discovery. It should only write from the supplied evidence and analysis.
 
-### 6. Human review
+### 9. Human review
 
 The POC should stop at draft generation unless an explicit send path is later added.
 
