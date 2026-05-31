@@ -268,6 +268,10 @@ The fallback should remain specific to the role/company context and should not b
 In a fallback opener, the draft may lead with either the company name or the
 recipient's role/title, depending on what reads more naturally.
 
+That fallback opener should include one or two specific observations grounded in
+the role, company context, employment history, or company research, depending
+on what reads more naturally.
+
 If a GitHub profile exists but the repos do not produce a strong hook, the system does not need to force a GitHub-based opener. In that case, the selector may choose stronger fallback context such as employment history, company-research fallback, or a minimal conservative draft.
 This includes cases where Apollo or search resolves a GitHub profile successfully but the public repos are empty, thin, or otherwise not useful for outreach.
 
