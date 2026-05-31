@@ -705,6 +705,14 @@ Should include at minimum:
 - blog URL when present
 - profile README when available
 
+### Common-ground selection result
+
+Should include at minimum:
+
+- selected common-ground path, such as GitHub repo hook, GitHub theme hook, employment-history hook, or company-research fallback hook
+- why that path was selected
+- the primary supporting evidence chosen for that path
+
 ### Project selection result
 
 Should include at minimum:
@@ -874,7 +882,27 @@ The company-research fallback is not limited to official company sources. It may
 
 This stage should run only when no GitHub profile is available or when GitHub evidence exists but is too weak to support a strong outreach hook.
 
-### 7. Project selection
+### 7. Common-ground selection
+
+Behavior:
+
+- choose the common-ground path to use for the draft
+- choose between:
+  - GitHub repo hook
+  - GitHub theme hook
+  - employment-history hook
+  - company-research fallback hook
+- prefer the strongest path allowed by the rules in this spec
+
+Implementation:
+
+- use `codex exec`
+- return structured JSON only
+
+For this POC, Python should pass only bounded structured evidence into this
+stage, not the full contact dossier.
+
+### 8. Project selection
 
 Behavior:
 
@@ -894,7 +922,7 @@ It should receive at most one bounded README excerpt per repo.
 This stage applies only when the chosen common-ground path is a GitHub repo
 hook. Non-GitHub fallback paths bypass project selection.
 
-### 8. Project analysis
+### 9. Project analysis
 
 Behavior:
 
@@ -916,7 +944,7 @@ bounded README excerpts, not the full README text.
 This stage applies only when the chosen common-ground path is a GitHub repo
 hook. Theme-based GitHub hooks bypass project analysis.
 
-### 9. Coffee-chat draft generation
+### 10. Coffee-chat draft generation
 
 Behavior:
 
@@ -949,7 +977,7 @@ supporting repo names, and one or two supporting observations.
 
 When no GitHub profile exists, or when GitHub evidence is too weak to support a strong opener, the drafter may instead write from the company-research fallback inputs described above.
 
-### 10. Human review
+### 11. Human review
 
 The POC should stop at draft generation unless an explicit send path is later added.
 
@@ -960,9 +988,10 @@ The POC should stop at draft generation unless an explicit send path is later ad
 For this POC, the intended `codex exec` stages are:
 
 1. company research fallback when GitHub is missing or weak
-2. project selection for GitHub repo-hook cases
-3. project analysis for GitHub repo-hook cases
-4. email drafting
+2. common-ground selection
+3. project selection for GitHub repo-hook cases
+4. project analysis for GitHub repo-hook cases
+5. email drafting
 
 Python should:
 
@@ -983,6 +1012,12 @@ At minimum, the system should be able to produce:
 - explicit inferred team/domain statements kept separate from direct observations
 - a short summary of why this fallback context matters for drafting
 - a small suggested phrasing angle for how to frame the company interest naturally
+
+### Common-ground selection output
+
+- selected common-ground path
+- why it was selected
+- primary supporting evidence chosen for that path
 
 ### Project selection output
 
