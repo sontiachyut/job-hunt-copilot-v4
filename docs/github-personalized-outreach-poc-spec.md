@@ -332,7 +332,7 @@ If no GitHub profile can be resolved, the system should still be able to draft a
 In that case the draft should:
 
 1. reference the recipient's current role and company
-2. use company-focused research to understand what the company has been doing recently in software engineering
+2. use broader public web research to understand what the company has been doing recently in software engineering
 3. infer likely team or domain context from the recipient's current role/title when that inference is reasonable
 4. say the sender is interested in joining the company and learning from strong engineers there
 5. explain that the recipient's profile came up in that context and is the reason for the outreach
@@ -360,7 +360,7 @@ When no GitHub profile is found for the contact, the workflow should switch to a
 That fallback style should:
 
 1. use the recipient's current company as the main anchor
-2. use bounded company research to identify what the company has been doing recently in software engineering
+2. use broader public web research to identify what the company has been doing recently in software engineering
 3. infer likely team or domain signals from the recipient's current role/title when reasonable
 4. frame the email as a request for guidance from someone at the company rather than as a repo/project-based technical hook
 5. still mention `Job Hunt Copilot` explicitly as part of the sender's credibility
@@ -384,6 +384,7 @@ The system should not use a free-form runtime agent for this workflow.
 For this POC, Apollo collection, GitHub collection, and personal-site collection should all be handled by deterministic Python code rather than AI reasoning.
 
 When GitHub is missing, bounded `codex exec` company research may be used later in the flow to help draft the company-focused fallback email.
+When GitHub is missing, `codex exec` company research may use broader public web research and is not limited to official company sources.
 
 ## Runtime Data Contracts
 
@@ -566,6 +567,8 @@ Behavior:
 - gather recent company-level software-engineering context that can support the fallback draft
 - infer likely team or domain context from the recipient's title when that inference is reasonable and clearly framed
 - produce compact company-research notes for drafting
+
+The company-research fallback is not limited to official company sources. It may use broader public web research when useful.
 
 This stage should not run when a usable GitHub profile already exists.
 
