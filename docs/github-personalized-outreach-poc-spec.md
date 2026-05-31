@@ -850,6 +850,7 @@ Behavior:
 - infer likely team or domain context from the recipient's title when that inference is reasonable and clearly framed
 - consider Apollo employment history as a possible common-ground signal when it is more relevant than generic company context
 - produce compact company-research notes for drafting
+- separate direct company observations from inferred team/domain statements in the structured output
 
 The company-research fallback is not limited to official company sources. It may use broader public web research when useful.
 
@@ -938,6 +939,12 @@ Python should also prevent stage drift by ensuring each later stage only receive
 ## Output Contracts
 
 At minimum, the system should be able to produce:
+
+### Company research fallback output
+
+- compact direct company observations
+- explicit inferred team/domain statements kept separate from direct observations
+- notes on why the fallback context may be useful for drafting
 
 ### Project selection output
 
