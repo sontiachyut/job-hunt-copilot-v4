@@ -245,8 +245,8 @@ When the opener is theme-based, the draft should use whatever level of detail
 looks most natural. It does not need to force a fixed number of observations,
 but it should still stay grounded in real GitHub evidence and avoid generic
 theme praise.
-When the opener is theme-based, it should still mention at least one concrete
-repository name as supporting evidence.
+When the opener is theme-based, it should still mention one or two concrete
+repository names as supporting evidence, depending on what reads more naturally.
 
 When the opener is based on a repository hook, it should mention the repository
 name explicitly.
