@@ -928,8 +928,18 @@ Implementation:
 
 The drafter should not perform new discovery. It should only write from the supplied evidence and analysis.
 For this POC, Python should pass only the structured outputs of earlier stages
-plus sender context into the drafter. It should not pass raw supporting
-excerpts for the drafter to re-analyze.
+plus the specific sender fields actually used by the drafter:
+
+1. sender name
+2. sender LinkedIn URL
+3. sender phone
+4. sender email
+5. `Job Hunt Copilot` repo URL
+6. short background summary
+7. short `Job Hunt Copilot` summary
+8. availability window
+
+It should not pass raw supporting excerpts for the drafter to re-analyze.
 For theme-based GitHub hooks, Python may pass structured theme evidence
 directly into the drafter without a separate project-analysis step. That theme
 evidence should include the theme label, a short theme summary, one or two
