@@ -469,6 +469,8 @@ In that case the draft should:
 1. reference the recipient's current role and company
 2. use broader public web research to understand what the company has been doing recently in software engineering
 3. infer likely team or domain context from the recipient's current role/title when that inference is reasonable
+   and phrase it cautiously when used in the draft, for example with wording
+   like "it looks like your team may be working on..."
 4. communicate interest in the company and in learning from strong engineers there, with exact phrasing left to the drafter
 5. explain that the recipient's profile came up in that context and is the reason for the outreach
 6. ask about engineering culture, current challenges, and how the sender should improve the profile to become a stronger candidate for that company
