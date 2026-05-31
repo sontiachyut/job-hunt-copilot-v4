@@ -47,6 +47,11 @@ The contact becomes draft-ready only when one of these research paths has comple
 2. no-GitHub company-research fallback path
 
 If neither path produces strong context, the workflow may still produce a minimal conservative draft rather than blocking outright, but it should not invent specific common ground.
+That minimal conservative draft should still ask about:
+
+1. engineering culture
+2. current engineering challenges
+3. how the sender should improve the profile to become a stronger candidate
 
 ## Non-Goals
 
