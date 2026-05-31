@@ -482,6 +482,18 @@ Should include at minimum:
 - updated time
 - README excerpt when available
 
+### GitHub profile research result
+
+Should include at minimum:
+
+- GitHub profile URL
+- login
+- display name when available
+- bio
+- company
+- blog URL when present
+- profile README when available
+
 ### Project selection result
 
 Should include at minimum:
@@ -571,8 +583,10 @@ Input:
 Behavior:
 
 - fetch public profile data
+- normalize profile-level fields such as bio, company, and blog URL
 - fetch all public repos
 - produce compact repo candidate records
+- capture profile README when available
 - enrich the selected repo more deeply than the rest
 
 The research stage should collect all public repos, not only pinned or recent repos, unless future scale constraints require a spec change.
