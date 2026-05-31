@@ -673,7 +673,9 @@ Should include at minimum:
 - topics
 - stars
 - updated time
-- short problem statement extracted from available repo evidence
+- short problem statement extracted from available repo evidence; for this POC,
+  Python may derive it from the repo description, README evidence, and
+  lightweight top-level file/folder signals
 - engineering signals extracted from the repo, such as APIs, data pipelines, CI, packaging, orchestration, realtime behavior, retries, testing, or multi-service structure when present
 - polish signals extracted from the repo, such as strong README quality, tests, workflows, packaging, demo/docs, or releases when present
 - README excerpt when available
