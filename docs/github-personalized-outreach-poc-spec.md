@@ -668,10 +668,14 @@ Should include at minimum:
 - repo name
 - repo URL
 - description
+- repo type, such as app, tool, library, extension, infra, or data project when inferable
 - primary language
 - topics
 - stars
 - updated time
+- short problem statement extracted from available repo evidence
+- engineering signals extracted from the repo, such as APIs, data pipelines, CI, packaging, orchestration, realtime behavior, retries, testing, or multi-service structure when present
+- polish signals extracted from the repo, such as strong README quality, tests, workflows, packaging, demo/docs, or releases when present
 - README excerpt when available
 
 ### GitHub profile research result
@@ -779,10 +783,12 @@ Behavior:
 - normalize profile-level fields such as bio, company, and blog URL
 - fetch all public repos
 - produce compact repo candidate records
+- deterministically derive engineering-oriented repo summaries from repo metadata, README evidence, and lightweight repository signals
 - capture profile README when available
 - enrich the selected repo more deeply than the rest
 
 The research stage should collect all public repos, not only pinned or recent repos, unless future scale constraints require a spec change.
+These repo summaries should help later stages judge which project appears most representative, most technically meaningful, or most likely to be a project the recipient is proud of.
 
 ### 4. Personal-site resolution
 
@@ -841,6 +847,7 @@ Behavior:
 
 - choose the best repo or project theme to mention
 - prioritize concrete engineering depth and natural overlap
+- use the repo summaries to judge problem solved, engineering depth, polish, and likely representativeness rather than relying only on stars or recency
 
 Implementation:
 
