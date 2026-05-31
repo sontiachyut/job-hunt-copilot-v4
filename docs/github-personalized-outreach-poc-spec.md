@@ -293,7 +293,7 @@ The draft should communicate, directly or equivalently:
 2. it helps identify relevant roles and the right people to reach out to
 3. parts of the workflow run autonomously
 4. every email is reviewed personally before sending
-5. this email is a live example of that workflow
+5. this email itself came through that workflow, or an equivalent paraphrase
 
 ## Call-to-Action Rule
 
