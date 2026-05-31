@@ -868,6 +868,7 @@ Behavior:
 - consider Apollo employment history as a possible common-ground signal when it is more relevant than generic company context
 - produce compact company-research notes for drafting
 - separate direct company observations from inferred team/domain statements in the structured output
+- include a small suggested phrasing angle for how to frame the company interest naturally
 
 The company-research fallback is not limited to official company sources. It may use broader public web research when useful.
 
@@ -980,6 +981,7 @@ At minimum, the system should be able to produce:
 - compact direct company observations
 - explicit inferred team/domain statements kept separate from direct observations
 - a short summary of why this fallback context matters for drafting
+- a small suggested phrasing angle for how to frame the company interest naturally
 
 ### Project selection output
 
