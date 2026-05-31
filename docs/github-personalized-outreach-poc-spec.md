@@ -903,6 +903,7 @@ Behavior:
 - explain why it is a good outreach hook
 - connect it to the sender's work
 - propose a natural conversation angle
+- include a small suggested phrasing angle for the drafter
 
 Implementation:
 
@@ -998,6 +999,7 @@ At minimum, the system should be able to produce:
 - why it is a good hook
 - connection to sender work
 - conversation angle
+- suggested phrasing angle
 
 ### Draft output
 
