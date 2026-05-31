@@ -77,7 +77,8 @@ For common-ground selection during drafting, the system should prefer:
 1. GitHub repository hook
 2. GitHub engineering-theme hook
 3. personal-site or blog hook discovered from GitHub
-4. role/company fallback hook
+4. Apollo employment-history hook when GitHub is missing and the history is relevant
+5. role/company fallback hook
 
 ## Inputs
 
@@ -358,11 +359,12 @@ The system should follow this fallback order:
 1. `GitHub repo hook`
 2. `GitHub theme hook`
 3. `personal-site/blog hook`
-4. `role/company hook`
+4. `employment-history hook`
+5. `role/company hook`
 
 If step 1 is unavailable, the system should try step 2 before dropping to later fallback options.
 
-If all four are weak, the system should still draft conservatively rather than inventing details.
+If all five are weak, the system should still draft conservatively rather than inventing details.
 
 ### No-GitHub fallback drafting rule
 
@@ -373,9 +375,10 @@ That fallback style should:
 1. use the recipient's current company as the main anchor
 2. use broader public web research to identify what the company has been doing recently in software engineering
 3. infer likely team or domain signals from the recipient's current role/title when reasonable
-4. frame the email as a request for guidance from someone at the company rather than as a repo/project-based technical hook
-5. still mention `Job Hunt Copilot` explicitly as part of the sender's credibility
-6. ask about:
+4. use Apollo employment history as a possible common-ground hook when that history creates a stronger, more relevant signal than generic company context
+5. frame the email as a request for guidance from someone at the company rather than as a repo/project-based technical hook
+6. still mention `Job Hunt Copilot` explicitly as part of the sender's credibility
+7. ask about:
    - engineering culture
    - the kinds of challenges the company or team is solving
    - how the sender should improve the profile to become a stronger candidate for that company
@@ -586,6 +589,7 @@ Behavior:
 - run bounded company research only when no GitHub profile is available
 - gather recent company-level software-engineering context that can support the fallback draft
 - infer likely team or domain context from the recipient's title when that inference is reasonable and clearly framed
+- consider Apollo employment history as a possible common-ground signal when it is more relevant than generic company context
 - produce compact company-research notes for drafting
 
 The company-research fallback is not limited to official company sources. It may use broader public web research when useful.
