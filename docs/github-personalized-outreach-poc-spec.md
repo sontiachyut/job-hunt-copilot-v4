@@ -521,6 +521,9 @@ Preference order:
 3. if the raw repo name is awkward, too long, or unclear, the subject may use a cleaned-up version of the repo name when that still feels recognizable
 4. if the repo name is still awkward after cleanup, fall back to the company-based subject
 
+This subject-level cleanup rule does not change the body rule: the email body
+should still use the repository's exact name.
+
 When the subject uses a company-based pattern, it should preserve the exact
 official company name from the source data rather than cleaning minor suffixes.
 
