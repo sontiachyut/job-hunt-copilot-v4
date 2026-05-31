@@ -168,6 +168,8 @@ For this POC:
 3. `photo_url` should not be used as drafting evidence
 4. `twitter_url` should not be used as drafting evidence in this POC unless a later social-profile research stage is added
 
+When `employment_history` is used, the system may reference more than one past role if multiple roles create stronger and more relevant common ground than a single-role summary would.
+
 ### GitHub research expectations
 
 For GitHub-backed contacts, the system should gather:
