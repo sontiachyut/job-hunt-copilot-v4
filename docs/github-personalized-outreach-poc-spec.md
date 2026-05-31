@@ -299,6 +299,11 @@ That fallback opener should include one or two specific observations grounded in
 the role, company context, employment history, or company research, depending
 on what reads more naturally.
 
+When the opener is using role/company fallback rather than GitHub or
+employment-history common ground, it should stay anchored on one company/role
+pair. It may add one inferred company-research theme when that makes the opener
+more specific and natural.
+
 When company research is available, the opener does not need to mention the
 company-research theme explicitly every time. It should do so only when that
 theme creates a cleaner opener than role/title-led context.
