@@ -356,7 +356,7 @@ compress them into fewer sentences as long as the meaning is still covered.
 
 ## Call-to-Action Rule
 
-The call to action must be a low-pressure 15-minute coffee chat.
+The call to action must be a low-pressure 15-minute virtual coffee chat.
 
 The purpose of the conversation should be:
 
