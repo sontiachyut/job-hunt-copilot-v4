@@ -473,6 +473,9 @@ In that case the draft should:
    like "it looks like your team may be working on..."
    More than one such inferred statement is allowed when the company research
    genuinely supports it.
+   The draft may combine direct company-research observations and cautious
+   inferences in whatever way reads most naturally, as long as the distinction
+   stays clear in the wording.
 4. communicate interest in the company and in learning from strong engineers there, with exact phrasing left to the drafter
 5. explain that the recipient's profile came up in that context and is the reason for the outreach
 6. ask about engineering culture, current challenges, and how the sender should improve the profile to become a stronger candidate for that company
