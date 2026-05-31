@@ -357,7 +357,7 @@ In that case the draft should:
 1. reference the recipient's current role and company
 2. use broader public web research to understand what the company has been doing recently in software engineering
 3. infer likely team or domain context from the recipient's current role/title when that inference is reasonable
-4. say the sender is interested in joining the company and learning from strong engineers there
+4. communicate interest in the company and in learning from strong engineers there, with exact phrasing left to the drafter
 5. explain that the recipient's profile came up in that context and is the reason for the outreach
 6. ask about engineering culture, current challenges, and how the sender should improve the profile to become a stronger candidate for that company
 7. explicitly mention `Job Hunt Copilot` as part of the sender's credibility
@@ -393,6 +393,8 @@ That fallback style should:
    - engineering culture
    - the kinds of challenges the company or team is solving
    - how the sender should improve the profile to become a stronger candidate for that company
+
+The draft may phrase this as direct interest in joining the company or as softer interest in the company and its engineering work, depending on context, but it should remain clearly career-oriented.
 
 The no-GitHub fallback should still avoid asking directly for a job or referral.
 
