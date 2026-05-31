@@ -37,6 +37,17 @@ Given one contact record, the system should produce a draft email that:
 3. makes the sender sound worth replying to
 4. asks for a low-pressure 15-minute conversation
 
+## Outreach Readiness Rule
+
+For this POC, a usable recipient email address alone is not sufficient to make a contact actionable for outreach.
+
+The contact becomes draft-ready only when one of these research paths has completed with enough evidence to support the email:
+
+1. GitHub-backed path
+2. no-GitHub company-research fallback path
+
+If neither path produces enough context, the workflow should not treat the contact as ready for send.
+
 ## Non-Goals
 
 This POC is not trying to:
@@ -370,6 +381,15 @@ That fallback style should:
    - how the sender should improve the profile to become a stronger candidate for that company
 
 The no-GitHub fallback should still avoid asking directly for a job or referral.
+
+## Draft-Readiness Gate
+
+Before the system drafts or sends an outreach email, it should confirm that at least one of these is true:
+
+1. a usable GitHub-backed common-ground signal exists
+2. a usable no-GitHub company-research context exists
+
+A contact with only a work email and no sufficient research context should not proceed to final outreach drafting in this POC.
 
 ## System Architecture
 
