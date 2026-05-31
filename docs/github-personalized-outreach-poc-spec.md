@@ -216,6 +216,10 @@ Personal-site information should be treated as supporting context in this POC, n
 
 The email must begin from one specific common-ground signal.
 
+The opener should anchor on exactly one primary evidence source. Other evidence
+sources may appear later as supporting context, but the opener should not blend
+multiple independent hooks into one introduction.
+
 ### Preferred common-ground source
 
 If a usable GitHub profile exists, the system should prefer:
