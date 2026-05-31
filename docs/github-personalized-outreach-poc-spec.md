@@ -255,7 +255,7 @@ If GitHub evidence is weak or absent, the common-ground should fall back to:
 
 The fallback should remain specific to the role/company context and should not become a generic networking email.
 
-If a GitHub profile exists but the repos do not produce a strong hook, the system does not need to force a GitHub-based opener. In that case, the selector may choose stronger fallback context such as employment history or company context.
+If a GitHub profile exists but the repos do not produce a strong hook, the system does not need to force a GitHub-based opener. In that case, the selector may choose stronger fallback context such as employment history, company-research fallback, or a minimal conservative draft.
 This includes cases where Apollo or search resolves a GitHub profile successfully but the public repos are empty, thin, or otherwise not useful for outreach.
 
 ## Credibility Rule
@@ -642,7 +642,7 @@ Behavior:
 
 The company-research fallback is not limited to official company sources. It may use broader public web research when useful.
 
-This stage should not run when a usable GitHub profile already exists.
+This stage should run when no GitHub profile is available or when GitHub evidence exists but is too weak to support a strong outreach hook.
 
 ### 7. Project selection
 
@@ -689,7 +689,7 @@ Implementation:
 
 The drafter should not perform new discovery. It should only write from the supplied evidence and analysis.
 
-When no GitHub profile exists, the drafter should instead write from the company-research fallback inputs described above.
+When no GitHub profile exists, or when GitHub evidence is too weak to support a strong opener, the drafter may instead write from the company-research fallback inputs described above.
 
 ### 10. Human review
 
