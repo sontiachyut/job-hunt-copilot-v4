@@ -347,7 +347,8 @@ The draft should communicate, directly or equivalently:
    long as the ownership is still clear
 2. it helps identify both relevant roles and the right people to reach out to;
    both ideas should be explicit in the draft
-3. the workflow runs autonomously
+3. the workflow runs autonomously, or a natural paraphrase that keeps the
+   autonomy clear
 4. every email is reviewed personally before sending, or a natural paraphrase
    that preserves that meaning
 5. this email itself came through that workflow, or an equivalent paraphrase
