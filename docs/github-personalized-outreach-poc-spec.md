@@ -860,7 +860,7 @@ This stage should run only when no GitHub profile is available or when GitHub ev
 
 Behavior:
 
-- choose the best repo or project theme to mention
+- choose the best GitHub repo to mention
 - prioritize concrete engineering depth and natural overlap
 - use the repo summaries to judge problem solved, engineering depth, polish, and likely representativeness rather than relying only on stars or recency
 
@@ -873,6 +873,8 @@ The selector may use the full repo candidate set, but it should make one choice 
 For this POC, Python should pass all repos to the selector as compact summaries.
 The selector should not receive full README text for every repo.
 It should receive at most one bounded README excerpt per repo.
+This stage applies only when the chosen common-ground path is a GitHub repo
+hook. Non-GitHub fallback paths bypass project selection.
 
 ### 8. Project analysis
 
@@ -923,8 +925,8 @@ The POC should stop at draft generation unless an explicit send path is later ad
 For this POC, the intended `codex exec` stages are:
 
 1. company research fallback when GitHub is missing
-2. project selection
-3. project analysis
+2. project selection for GitHub repo-hook cases
+3. project analysis for GitHub repo-hook cases
 4. email drafting
 
 Python should:
