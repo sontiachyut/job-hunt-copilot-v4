@@ -46,7 +46,7 @@ The contact becomes draft-ready only when one of these research paths has comple
 1. GitHub-backed path
 2. no-GitHub company-research fallback path
 
-If neither path produces enough context, the workflow should not treat the contact as ready for send.
+If neither path produces strong context, the workflow may still produce a minimal conservative draft rather than blocking outright, but it should not invent specific common ground.
 
 ## Non-Goals
 
@@ -406,7 +406,7 @@ Before the system drafts or sends an outreach email, it should confirm that at l
 1. a usable GitHub-backed common-ground signal exists
 2. a usable no-GitHub company-research context exists
 
-A contact with only a work email and no sufficient research context should not proceed to final outreach drafting in this POC.
+A contact with only a work email and weak research context may still proceed to a minimal conservative draft, but that draft should avoid pretending stronger common ground exists.
 
 ## System Architecture
 
