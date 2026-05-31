@@ -412,7 +412,7 @@ the sender is hoping for:
 For this POC, the guidance ask should explicitly cover all three of these every
 time:
 
-1. the recipient's work
+1. the recipient's experience and work at the company
 2. the company's engineering culture and current challenges
 3. how the sender can make the profile stronger in order to join the company
 
@@ -563,11 +563,15 @@ In that case the draft should:
    The draft may combine direct company-research observations and cautious
    inferences in whatever way reads most naturally, as long as the distinction
    stays clear in the wording.
-4. communicate interest in the company and in learning from strong engineers there, with exact phrasing left to the drafter
+4. communicate interest in what the company has been doing and show that
+   interest through the company research included in the email, with exact
+   phrasing left to the drafter
 5. explicitly say that the sender came across the recipient's profile and that
    it is the reason for the outreach; the draft does not need to explain how
    the profile was found
-6. ask about engineering culture, current challenges, and how the sender should improve the profile to become a stronger candidate for that company and ultimately join it
+6. ask about the recipient's experience at the company, engineering culture,
+   current challenges, and how the sender should improve the profile to become
+   a stronger candidate for that company and ultimately join it
 7. explicitly mention `Job Hunt Copilot` as part of the sender's credibility
 8. connect the sender's interests and `Job Hunt Copilot` work to that context
 
@@ -600,6 +604,7 @@ That fallback style should:
 5. frame the email as a request for guidance from someone at the company rather than as a repo/project-based technical hook
 6. still mention `Job Hunt Copilot` explicitly as part of the sender's credibility
 7. ask about:
+   - the recipient's experience at the company
    - engineering culture
    - the kinds of challenges the company or team is solving
    - how the sender should improve the profile to become a stronger candidate for that company and ultimately join it
@@ -771,7 +776,10 @@ Behavior:
 The resolver should not depend on AI for primary matching.
 
 If Apollo returns a `github_url`, the workflow should trust that URL as the primary GitHub identity. If that URL is unusable or invalid, the workflow should fall back to independent GitHub search.
-If independent GitHub search yields multiple plausible candidates, the workflow may use bounded AI only as a tie-breaker after deterministic search has already narrowed the candidate set.
+If independent GitHub search yields multiple plausible candidates and
+deterministic matching cannot confidently choose one profile, the workflow may
+use bounded AI only as a tie-breaker after deterministic search has already
+narrowed the candidate set.
 
 ### 3. GitHub profile research
 
