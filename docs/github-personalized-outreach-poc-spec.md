@@ -394,6 +394,8 @@ The system should follow this fallback order:
 
 If step 1 is unavailable, the system should try step 2 before dropping to later fallback options.
 
+When GitHub evidence is weak and both employment-history context and company-research context are available, the system should prefer employment-history context before company-research context.
+
 If all four are weak, the system should still draft conservatively rather than inventing details.
 
 ### No-GitHub fallback drafting rule
