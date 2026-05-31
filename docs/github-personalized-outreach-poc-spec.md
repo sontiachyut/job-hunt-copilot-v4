@@ -48,6 +48,7 @@ The contact becomes draft-ready only when one of these research paths has comple
 
 If neither path produces strong context, the workflow may still produce a minimal conservative draft rather than blocking outright, but it should not invent specific common ground.
 When any specific company or role observation is available, the minimal conservative draft should still use at least one such observation rather than staying fully generic.
+If the conservative draft mentions the recipient's role/title, it should also mention the company name rather than referencing the role alone.
 That minimal conservative draft should still ask about:
 
 1. engineering culture
@@ -270,7 +271,9 @@ If GitHub evidence is weak or absent, the common-ground should fall back to:
 The fallback should remain specific to the role/company context and should not become a generic networking email.
 
 In a fallback opener, the draft may lead with either the company name or the
-recipient's role/title, depending on what reads more naturally.
+recipient's role/title, depending on what reads more naturally. If the opener
+mentions the recipient's role/title, it should also mention the company name
+rather than referencing the role alone.
 
 That fallback opener should include one or two specific observations grounded in
 the role, company context, employment history, or company research, depending
