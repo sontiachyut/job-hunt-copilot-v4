@@ -636,7 +636,7 @@ Input:
 
 Behavior:
 
-- run bounded company research only when no GitHub profile is available
+- run bounded company research only when no GitHub profile is available or when GitHub evidence is weak
 - gather recent company-level software-engineering context that can support the fallback draft
 - infer likely team or domain context from the recipient's title when that inference is reasonable and clearly framed
 - consider Apollo employment history as a possible common-ground signal when it is more relevant than generic company context
@@ -644,7 +644,7 @@ Behavior:
 
 The company-research fallback is not limited to official company sources. It may use broader public web research when useful.
 
-This stage should run when no GitHub profile is available or when GitHub evidence exists but is too weak to support a strong outreach hook.
+This stage should run only when no GitHub profile is available or when GitHub evidence exists but is too weak to support a strong outreach hook.
 
 ### 7. Project selection
 
