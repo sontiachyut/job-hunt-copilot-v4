@@ -969,7 +969,7 @@ At minimum, the system should be able to produce:
 
 - compact direct company observations
 - explicit inferred team/domain statements kept separate from direct observations
-- notes on why the fallback context may be useful for drafting
+- a short summary of why this fallback context matters for drafting
 
 ### Project selection output
 
