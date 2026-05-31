@@ -256,6 +256,7 @@ If GitHub evidence is weak or absent, the common-ground should fall back to:
 The fallback should remain specific to the role/company context and should not become a generic networking email.
 
 If a GitHub profile exists but the repos do not produce a strong hook, the system does not need to force a GitHub-based opener. In that case, the selector may choose stronger fallback context such as employment history or company context.
+This includes cases where Apollo or search resolves a GitHub profile successfully but the public repos are empty, thin, or otherwise not useful for outreach.
 
 ## Credibility Rule
 
