@@ -339,6 +339,12 @@ The CTA should:
 3. include the sender's typical availability window
 4. remain easy to answer yes or no to
 
+For this POC, the default availability window should be:
+
+1. weekdays from `8 AM MST` to `6 PM MST`
+2. anytime on weekends
+3. plus a short note that the sender can also try other times if the recipient prefers
+
 ### CTA topic rules
 
 The CTA should point toward two conversation themes:
