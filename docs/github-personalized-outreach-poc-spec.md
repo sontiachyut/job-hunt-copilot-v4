@@ -477,7 +477,8 @@ In that case the draft should:
    inferences in whatever way reads most naturally, as long as the distinction
    stays clear in the wording.
 4. communicate interest in the company and in learning from strong engineers there, with exact phrasing left to the drafter
-5. explain that the recipient's profile came up in that context and is the reason for the outreach
+5. explicitly say that the recipient's profile came up in that context and is
+   the reason for the outreach
 6. ask about engineering culture, current challenges, and how the sender should improve the profile to become a stronger candidate for that company
 7. explicitly mention `Job Hunt Copilot` as part of the sender's credibility
 8. connect the sender's interests and `Job Hunt Copilot` work to that context
