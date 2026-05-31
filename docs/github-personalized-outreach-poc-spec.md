@@ -492,6 +492,42 @@ The tone should not be:
 - salesy
 - overly polished corporate outreach
 
+## Subject Line Rules
+
+The draft should include a subject line.
+
+For this POC, the subject line should:
+
+1. stay short and low-pressure
+2. be about the recipient, not about the sender
+3. reference the recipient's repo, company, or engineering theme
+4. avoid job-application framing
+
+Allowed subject patterns are intentionally narrow:
+
+1. `Quick question about <repo>`
+2. `Question about <repo>`
+3. `<repo> and a quick question`
+4. `Quick question about <company> engineering`
+5. `Question about <company> engineering`
+
+Preference order:
+
+1. use a repo-based subject for GitHub-backed drafts when the repo name is clear
+2. use a company-based subject for fallback drafts
+3. if the repo name is awkward, too long, or unclear, fall back to the company-based subject
+
+For this POC, the subject line should not reference:
+
+1. `Job Hunt Copilot`
+2. the sender's job search
+3. `AI`
+4. `agent`
+5. `job`
+6. `referral`
+7. `application`
+8. `opportunity`
+
 ## Fallback Behavior
 
 If no GitHub profile can be resolved, the system should still be able to draft an email.
