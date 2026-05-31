@@ -159,6 +159,15 @@ For Apollo-backed contacts, the research step should collect and normalize as mu
 
 If additional Apollo fields such as GitHub URL, Twitter URL, photo URL, or employment history are available and the system decides to persist them later, that should be treated as an additive extension rather than a behavioral change.
 
+### Apollo field-usage boundary
+
+For this POC:
+
+1. `employment_history` may be used as drafting evidence in the no-GitHub branch
+2. `github_url` may be used as an identity handoff into GitHub research
+3. `photo_url` should not be used as drafting evidence
+4. `twitter_url` should not be used as drafting evidence in this POC unless a later social-profile research stage is added
+
 ### GitHub research expectations
 
 For GitHub-backed contacts, the system should gather:
