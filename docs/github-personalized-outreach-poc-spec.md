@@ -436,6 +436,7 @@ This POC should use a hybrid architecture:
 The system should not use a free-form runtime agent for this workflow.
 
 For this POC, Apollo collection, GitHub collection, and personal-site collection should all be handled by deterministic Python code rather than AI reasoning.
+One exception is allowed: bounded AI may be used as a GitHub identity tie-breaker when deterministic GitHub search returns multiple plausible candidates.
 
 When GitHub is missing, bounded `codex exec` company research may be used later in the flow to help draft the company-focused fallback email.
 When GitHub is missing, `codex exec` company research may use broader public web research and is not limited to official company sources.
@@ -572,6 +573,7 @@ Behavior:
 The resolver should not depend on AI for primary matching.
 
 If Apollo returns a `github_url`, the workflow should trust that URL as the primary GitHub identity. If that URL is unusable or invalid, the workflow should fall back to independent GitHub search.
+If independent GitHub search yields multiple plausible candidates, the workflow may use bounded AI only as a tie-breaker after deterministic search has already narrowed the candidate set.
 
 ### 3. GitHub profile research
 
