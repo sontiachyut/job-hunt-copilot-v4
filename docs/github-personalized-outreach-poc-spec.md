@@ -241,6 +241,11 @@ If a repeated engineering theme produces a cleaner, more natural opener than a
 repo-specific hook, a theme-based opener is still allowed in this POC. The
 workflow does not need to force a repo-based opener in every GitHub-backed case.
 
+When the opener is theme-based, the draft should use whatever level of detail
+looks most natural. It does not need to force a fixed number of observations,
+but it should still stay grounded in real GitHub evidence and avoid generic
+theme praise.
+
 When the opener is based on a repository hook, it should mention the repository
 name explicitly.
 
