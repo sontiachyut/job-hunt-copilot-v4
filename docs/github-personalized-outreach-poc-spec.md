@@ -76,9 +76,8 @@ For common-ground selection during drafting, the system should prefer:
 
 1. GitHub repository hook
 2. GitHub engineering-theme hook
-3. personal-site or blog hook discovered from GitHub
-4. Apollo employment-history hook when GitHub is missing and the history is relevant
-5. role/company fallback hook
+3. Apollo employment-history hook when GitHub is missing and the history is relevant
+4. role/company fallback hook
 
 ## Inputs
 
@@ -195,6 +194,8 @@ If a personal site or blog is discovered from GitHub, the system should gather a
 - outbound identity links when present
 
 The workflow should not fail if no personal site is discovered.
+
+Personal-site information should be treated as supporting context in this POC, not as the primary outreach hook. It may support both the GitHub-backed draft path and the no-GitHub fallback path.
 
 ## Common-Ground Rule
 
@@ -370,13 +371,12 @@ The system should follow this fallback order:
 
 1. `GitHub repo hook`
 2. `GitHub theme hook`
-3. `personal-site/blog hook`
-4. `employment-history hook`
-5. `role/company hook`
+3. `employment-history hook`
+4. `role/company hook`
 
 If step 1 is unavailable, the system should try step 2 before dropping to later fallback options.
 
-If all five are weak, the system should still draft conservatively rather than inventing details.
+If all four are weak, the system should still draft conservatively rather than inventing details.
 
 ### No-GitHub fallback drafting rule
 
