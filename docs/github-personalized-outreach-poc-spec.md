@@ -345,7 +345,8 @@ The draft should communicate, directly or equivalently:
 1. `Job Hunt Copilot` was built for the sender's own job search
 2. it helps identify relevant roles and the right people to reach out to
 3. parts of the workflow run autonomously
-4. every email is reviewed personally before sending
+4. every email is reviewed personally before sending, or a natural paraphrase
+   that preserves that meaning
 5. this email itself came through that workflow, or an equivalent paraphrase
 6. the email should include the `Job Hunt Copilot` repo link explicitly, near
    the `Job Hunt Copilot` mention rather than somewhere unrelated in the email.
