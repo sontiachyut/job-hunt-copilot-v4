@@ -733,6 +733,8 @@ Should include at minimum:
 - selected common-ground path, such as GitHub repo hook, GitHub theme hook, employment-history hook, or company-research fallback hook
 - why that path was selected
 - the primary supporting evidence chosen for that path
+- one short rejected-alternatives note explaining why the next-best eligible
+  hook was not chosen
 
 If the selected path is an employment-history hook, the structured result
 should carry only:
@@ -1066,6 +1068,7 @@ At minimum, the system should be able to produce:
 - selected common-ground path
 - why it was selected
 - primary supporting evidence chosen for that path
+- one short rejected-alternatives note for the next-best eligible hook
 
 ### Project selection output
 
