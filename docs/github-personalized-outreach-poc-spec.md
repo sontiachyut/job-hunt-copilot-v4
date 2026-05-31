@@ -349,8 +349,8 @@ The draft should communicate, directly or equivalently:
    both ideas should be explicit in the draft
 3. the workflow runs autonomously, or a natural paraphrase that keeps the
    autonomy clear
-4. every email is reviewed personally before sending, or a natural paraphrase
-   that preserves that meaning
+4. the sender personally reviews each email before sending; this should stay
+   explicit in the draft
 5. this email itself came through that workflow, or an equivalent paraphrase
 6. the email should include the `Job Hunt Copilot` repo link explicitly, near
    the `Job Hunt Copilot` mention rather than somewhere unrelated in the email.
