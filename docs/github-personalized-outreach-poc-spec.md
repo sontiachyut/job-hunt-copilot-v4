@@ -354,6 +354,9 @@ The draft should communicate, directly or equivalently:
 These ideas do not need to appear as five separate sentences. The drafter may
 compress them into fewer sentences as long as the meaning is still covered.
 
+When the draft refers to this workflow, it should use the word `email` rather
+than `message`.
+
 ## Call-to-Action Rule
 
 The call to action must be a low-pressure 15-minute virtual coffee chat.
