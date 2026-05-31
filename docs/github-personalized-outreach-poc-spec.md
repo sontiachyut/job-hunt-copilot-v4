@@ -247,7 +247,17 @@ If a usable GitHub profile exists, the system should prefer:
 1. one specific repository, or
 2. one repeated engineering theme across repositories
 
-The system should prefer a specific repository when one repository offers a stronger, more concrete hook than a broad theme.
+The system should prefer a specific repository when one repository offers a
+stronger, more concrete hook than a broad theme.
+Among GitHub-backed hooks, the system should optimize first for recipient-side
+strength and representativeness:
+
+1. something the recipient is likely proud of
+2. something that shows real engineering depth
+3. something specific enough to prove the sender did real research
+
+Only after those factors should the workflow consider sender overlap as a
+secondary tie-break.
 
 If a repeated engineering theme produces a cleaner, more natural opener than a
 repo-specific hook, a theme-based opener is still allowed in this POC. The
@@ -284,9 +294,12 @@ The chosen signal should:
 
 1. be concrete enough to mention specifically
 2. reveal a real engineering problem, tool, workflow, or design choice
-3. overlap naturally with the sender's background or current project
-4. avoid empty compliments or generic praise
-5. support a real question the sender could ask in a 15-minute conversation
+3. be likely to represent work the recipient cares about and would recognize as
+   meaningful
+4. overlap naturally with the sender's background or current project when that
+   improves the hook without weakening recipient-side strength
+5. avoid empty compliments or generic praise
+6. support a real question the sender could ask in a 15-minute conversation
 
 ### Project selection tie-break rules
 
@@ -907,6 +920,9 @@ Behavior:
   - employment-history hook
   - company-research fallback hook
 - prefer the strongest path allowed by the rules in this spec
+- optimize first for recipient-side strength and representativeness
+- use sender overlap only as a secondary tie-break when multiple eligible hooks
+  appear similarly strong
 
 Implementation:
 
@@ -918,14 +934,20 @@ stage, not the full contact dossier.
 Python should pre-filter the evidence types using the fallback rules in this
 spec and pass only the currently eligible options into the selector, rather
 than every possible evidence type.
+Python should not pass broad sender context into this stage. If any sender
+context is supplied at all, it should stay minimal and exist only to help
+resolve close tie-breaks after recipient-side evidence has already been judged.
 
 ### 8. Project selection
 
 Behavior:
 
 - choose the best GitHub repo to mention
-- prioritize concrete engineering depth and natural overlap
-- use the repo summaries to judge problem solved, engineering depth, polish, and likely representativeness rather than relying only on stars or recency
+- prioritize the repository most likely to feel strong and representative to the
+  recipient
+- use the repo summaries to judge problem solved, engineering depth, polish,
+  and likely representativeness rather than relying only on stars or recency
+- treat sender overlap as secondary to recipient-side strength
 
 Implementation:
 
