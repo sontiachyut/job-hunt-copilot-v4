@@ -389,6 +389,10 @@ the sender is hoping for:
 1. one tip related to the recipient's work, engineering problems, or technical judgment
 2. one tip related to the sender's job hunt, profile positioning, or preparation
 
+When the fallback/company-guidance branch is used, the draft should ask about
+both engineering culture and current challenges explicitly rather than leaving
+either one implicit.
+
 ## Email Shape
 
 The draft should follow this logical flow:
