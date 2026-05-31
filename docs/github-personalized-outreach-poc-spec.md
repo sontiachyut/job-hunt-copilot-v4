@@ -439,7 +439,9 @@ If implemented as 3 paragraphs, the intended paragraph jobs are:
 
 The system may add greeting and signature outside the AI drafting step.
 
-For this POC, the greeting should use the recipient's first name.
+For this POC, the greeting should use the recipient's first name. If
+first-name parsing is missing or looks unreliable, the greeting should fall
+back to the recipient's full name.
 
 The final email should include the full signature block. At minimum, that
 signature block should include:
