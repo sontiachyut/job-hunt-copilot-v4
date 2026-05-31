@@ -252,6 +252,8 @@ The system should prefer a specific repository when one repository offers a stro
 If a repeated engineering theme produces a cleaner, more natural opener than a
 repo-specific hook, a theme-based opener is still allowed in this POC. The
 workflow does not need to force a repo-based opener in every GitHub-backed case.
+For this POC, a theme-based GitHub hook does not need a separate analysis
+stage. Python may pass structured theme evidence directly into the drafter.
 
 When the opener is theme-based, the draft should use whatever level of detail
 looks most natural. It does not need to force a fixed number of observations,
@@ -894,6 +896,8 @@ Implementation:
 The analyzer should reason over the selected repo and profile context, not over the full repo set again.
 For this POC, Python should pass the selected repo's deterministic summary plus
 bounded README excerpts, not the full README text.
+This stage applies only when the chosen common-ground path is a GitHub repo
+hook. Theme-based GitHub hooks bypass project analysis.
 
 ### 9. Coffee-chat draft generation
 
@@ -911,6 +915,8 @@ The drafter should not perform new discovery. It should only write from the supp
 For this POC, Python should pass only the structured outputs of earlier stages
 plus sender context into the drafter. It should not pass raw supporting
 excerpts for the drafter to re-analyze.
+For theme-based GitHub hooks, Python may pass structured theme evidence
+directly into the drafter without a separate project-analysis step.
 
 When no GitHub profile exists, or when GitHub evidence is too weak to support a strong opener, the drafter may instead write from the company-research fallback inputs described above.
 
