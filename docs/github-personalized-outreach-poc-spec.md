@@ -62,6 +62,7 @@ This POC is not trying to:
 3. maximize research breadth across every possible source
 4. reproduce LinkedIn's private or personalized graph data
 5. operate as a free-form autonomous agent
+6. expand into broader social-profile research beyond Apollo, GitHub, and personal site from GitHub
 
 ## Research Acquisition Order
 
@@ -74,6 +75,12 @@ For this POC, the system should collect profile data in this order:
 If no personal site or blog is discoverable from GitHub, the workflow should continue without it.
 
 The POC may use LinkedIn URL as an identity field when Apollo provides it, but the current personalization logic should not depend on private LinkedIn data.
+
+This POC should remain bounded to these research sources only:
+
+1. Apollo
+2. GitHub
+3. personal site or blog discovered from GitHub
 
 ## Common-Ground Source Priority
 
