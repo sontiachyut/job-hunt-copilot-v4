@@ -345,8 +345,8 @@ The draft should communicate, directly or equivalently:
 1. `Job Hunt Copilot` should be clearly framed as the sender's own project for
    the sender's job search. That meaning may come through indirectly from the
    `Job Hunt Copilot` sentence as long as ownership is still clear
-2. it helps identify both relevant roles and the right people to reach out to;
-   both ideas should be explicit in the draft
+2. it helps identify the right people to reach out to; this idea should be
+   explicit in the draft
 3. the workflow runs autonomously, or a natural paraphrase that keeps the
    autonomy clear
 4. the sender personally reviews each email before sending; this should stay
