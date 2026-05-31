@@ -397,6 +397,9 @@ signature block should include:
 3. sender phone
 4. sender email
 
+For this POC, the sender LinkedIn URL should live in the signature rather than
+being called out separately in the body.
+
 ## Email Content Rules
 
 The email should:
