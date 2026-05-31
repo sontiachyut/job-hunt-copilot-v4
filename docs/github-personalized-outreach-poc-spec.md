@@ -406,6 +406,10 @@ time:
 2. the company's engineering culture and current challenges
 3. how the sender can make the profile stronger in order to join the company
 
+When the draft asks about strengthening the sender's profile to join the
+company, it should mention the company name again explicitly rather than
+relying only on earlier context.
+
 When the fallback/company-guidance branch is used, the draft should ask about
 both engineering culture and current challenges explicitly rather than leaving
 either one implicit.
