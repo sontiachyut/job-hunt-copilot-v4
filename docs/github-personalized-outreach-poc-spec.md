@@ -848,6 +848,8 @@ Implementation:
 - return structured JSON only
 
 The selector may use the full repo candidate set, but it should make one choice only.
+For this POC, Python should pass all repos to the selector as compact summaries.
+The selector should not receive full README text for every repo.
 
 ### 8. Project analysis
 
