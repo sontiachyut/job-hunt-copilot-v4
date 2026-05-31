@@ -985,6 +985,13 @@ evidence should include the theme label, a short theme summary, one or two
 supporting repo names, and one or two supporting observations.
 For employment-history hooks, Python should pass only the single chosen
 role/company pair plus at most one short supporting-history note.
+For company-research fallback hooks, Python should pass only the compact
+writing fields actually needed by the drafter:
+
+1. direct observations
+2. inferred statements
+3. why-this-matters summary
+4. phrasing angle
 
 When no GitHub profile exists, or when GitHub evidence is too weak to support a strong opener, the drafter may instead write from the company-research fallback inputs described above.
 
