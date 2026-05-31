@@ -146,6 +146,15 @@ That research record should support at least:
 
 This research record is the source of truth for downstream selector, analyzer, and drafter stages.
 
+The deterministic pipeline may also produce a full markdown profile dossier for
+one contact as a debugging and review artifact. That dossier may include
+clearly separated sections for Apollo data, GitHub profile data, repo
+summaries, profile README, personal-site summaries, and fallback company
+research when present.
+
+That full dossier is for storage, inspection, and human review. `codex exec`
+stages should not consume the full dossier by default.
+
 ## Research Goal
 
 The research step should not aim to scrape the open web broadly. Instead, it should deterministically collect as much useful structured data as is available from the approved source chain for one contact.
@@ -952,6 +961,12 @@ Prompts should be treated as implementation artifacts derived from this spec.
 Prompt changes should not silently introduce new behavior that is not described here.
 
 If a prompt requires behavior that is not already captured by this spec, the spec should be updated first.
+
+Each `codex exec` stage should receive a bounded, stage-specific evidence pack
+rather than the full contact dossier by default.
+
+Python should be responsible for slicing the research record into the smallest
+useful evidence pack for each stage.
 
 ## Acceptance Criteria
 
