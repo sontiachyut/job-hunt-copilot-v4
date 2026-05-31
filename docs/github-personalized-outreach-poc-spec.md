@@ -168,7 +168,11 @@ For Apollo-backed contacts, the research step should collect and normalize as mu
 - email status when returned
 - headline when returned
 
-If additional Apollo fields such as GitHub URL, Twitter URL, photo URL, or employment history are available and the system decides to persist them later, that should be treated as an additive extension rather than a behavioral change.
+The full raw Apollo enrichment payload should be persisted as an artifact.
+
+For this POC, the normalized research record should include the required normalized fields, but it should not attempt best-effort normalization of every additional Apollo-returned field.
+
+If additional Apollo fields such as GitHub URL, Twitter URL, photo URL, or employment history are available and the system decides to normalize more of them later, that should be treated as an additive extension rather than a behavioral change.
 
 ### Apollo field-usage boundary
 
