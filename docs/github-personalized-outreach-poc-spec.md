@@ -254,6 +254,12 @@ repo-specific hook, a theme-based opener is still allowed in this POC. The
 workflow does not need to force a repo-based opener in every GitHub-backed case.
 For this POC, a theme-based GitHub hook does not need a separate analysis
 stage. Python may pass structured theme evidence directly into the drafter.
+That structured theme evidence should stay compact and should include:
+
+1. the theme label
+2. a short theme summary
+3. one or two supporting repo names
+4. one or two supporting observations grounded in those repos
 
 When the opener is theme-based, the draft should use whatever level of detail
 looks most natural. It does not need to force a fixed number of observations,
@@ -719,6 +725,15 @@ Should include at minimum:
 - connection to sender work
 - suggested conversation angle
 
+### GitHub theme evidence result
+
+Should include at minimum:
+
+- theme label
+- short theme summary
+- one or two supporting repo names
+- one or two supporting observations
+
 ### Coffee-chat draft result
 
 Should include at minimum:
@@ -916,7 +931,9 @@ For this POC, Python should pass only the structured outputs of earlier stages
 plus sender context into the drafter. It should not pass raw supporting
 excerpts for the drafter to re-analyze.
 For theme-based GitHub hooks, Python may pass structured theme evidence
-directly into the drafter without a separate project-analysis step.
+directly into the drafter without a separate project-analysis step. That theme
+evidence should include the theme label, a short theme summary, one or two
+supporting repo names, and one or two supporting observations.
 
 When no GitHub profile exists, or when GitHub evidence is too weak to support a strong opener, the drafter may instead write from the company-research fallback inputs described above.
 
