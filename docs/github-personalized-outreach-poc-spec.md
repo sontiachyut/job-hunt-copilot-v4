@@ -53,7 +53,7 @@ That minimal conservative draft should still ask about:
 
 1. engineering culture
 2. current engineering challenges
-3. how the sender should improve the profile to become a stronger candidate
+3. how the sender should improve the profile to become a stronger candidate for the company and ultimately join it
 
 ## Non-Goals
 
@@ -286,7 +286,7 @@ If GitHub evidence is weak or absent, the common-ground should fall back to:
 1. the recipient's current role
 2. the recipient's company
 3. curiosity about the kind of work the team is likely doing
-4. curiosity about how to become a stronger candidate for that company
+4. curiosity about how to make the sender's profile stronger in order to join that company
 
 The fallback should remain specific to the role/company context and should not become a generic networking email.
 
@@ -381,7 +381,7 @@ For this POC, the default availability window should be:
 The CTA should point toward two conversation themes:
 
 1. a technical or project-related question anchored in the recipient's work
-2. a job-hunt or profile-positioning question relevant to the recipient's company, role, or career path
+2. a job-hunt or profile-positioning question about how the sender can make the profile stronger in order to join the recipient's company
 
 The draft should make both purposes explicit. The ask should clearly signal that
 the sender is hoping for:
@@ -480,7 +480,7 @@ In that case the draft should:
 5. explicitly say that the sender came across the recipient's profile and that
    it is the reason for the outreach; the draft does not need to explain how
    the profile was found
-6. ask about engineering culture, current challenges, and how the sender should improve the profile to become a stronger candidate for that company
+6. ask about engineering culture, current challenges, and how the sender should improve the profile to become a stronger candidate for that company and ultimately join it
 7. explicitly mention `Job Hunt Copilot` as part of the sender's credibility
 8. connect the sender's interests and `Job Hunt Copilot` work to that context
 
@@ -515,7 +515,7 @@ That fallback style should:
 7. ask about:
    - engineering culture
    - the kinds of challenges the company or team is solving
-   - how the sender should improve the profile to become a stronger candidate for that company
+   - how the sender should improve the profile to become a stronger candidate for that company and ultimately join it
 
 The draft may phrase this as direct interest in joining the company or as softer interest in the company and its engineering work, depending on context, but it should remain clearly career-oriented.
 
