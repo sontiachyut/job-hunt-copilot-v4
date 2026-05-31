@@ -185,6 +185,8 @@ For this POC:
 
 When `employment_history` is used, the system may reference more than one past role if multiple roles create stronger and more relevant common ground than a single-role summary would.
 When `employment_history` is used as the primary common-ground hook in the opener, the draft should mention both the company name and the role explicitly.
+That opener should also include one or two concrete observations about why that
+history feels relevant, depending on what reads more naturally.
 When GitHub exists, `employment_history` may still be used as supporting context, but it should not replace GitHub as the primary common-ground hook in this POC.
 
 ### GitHub research expectations
