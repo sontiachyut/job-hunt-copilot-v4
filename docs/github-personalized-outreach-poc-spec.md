@@ -229,6 +229,9 @@ If a usable GitHub profile exists, the system should prefer:
 
 The system should prefer a specific repository when one repository offers a stronger, more concrete hook than a broad theme.
 
+When the opener is based on a repository hook, it should mention the repository
+name explicitly.
+
 ### Common-ground quality rules
 
 The chosen signal should:
