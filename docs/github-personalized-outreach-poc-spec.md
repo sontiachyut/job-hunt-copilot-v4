@@ -351,7 +351,8 @@ The draft should communicate, directly or equivalently:
    autonomy clear
 4. the sender personally reviews each email before sending; this should stay
    explicit in the draft
-5. this email itself came through that workflow, or an equivalent paraphrase
+5. this specific email itself came through that workflow, or a natural
+   paraphrase as long as it is clearly about this email
 6. the email should include the `Job Hunt Copilot` repo link explicitly, near
    the `Job Hunt Copilot` mention rather than somewhere unrelated in the email.
    For this POC, that link should appear as the raw GitHub URL.
