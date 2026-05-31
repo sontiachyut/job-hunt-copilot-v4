@@ -120,6 +120,9 @@ For this POC, the sender context should include:
 - sender name
 - sender LinkedIn URL
 - sender GitHub URL when available
+- sender email
+- sender phone
+- `Job Hunt Copilot` repo URL
 - short background summary
 - short `Job Hunt Copilot` summary
 - availability window
@@ -322,6 +325,7 @@ The draft should communicate, directly or equivalently:
 3. parts of the workflow run autonomously
 4. every email is reviewed personally before sending
 5. this email itself came through that workflow, or an equivalent paraphrase
+6. the email should include the `Job Hunt Copilot` repo link explicitly
 
 These ideas do not need to appear as five separate sentences. The drafter may
 compress them into fewer sentences as long as the meaning is still covered.
@@ -383,6 +387,14 @@ If implemented as 3 paragraphs, the intended paragraph jobs are:
 3. `coffee_chat_cta`
 
 The system may add greeting and signature outside the AI drafting step.
+
+The final email should include the full signature block. At minimum, that
+signature block should include:
+
+1. sender name
+2. sender LinkedIn URL
+3. sender phone
+4. sender email
 
 ## Email Content Rules
 
