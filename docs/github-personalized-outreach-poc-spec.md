@@ -169,6 +169,7 @@ For this POC:
 4. `twitter_url` should not be used as drafting evidence in this POC unless a later social-profile research stage is added
 
 When `employment_history` is used, the system may reference more than one past role if multiple roles create stronger and more relevant common ground than a single-role summary would.
+When GitHub exists, `employment_history` may still be used as supporting context, but it should not replace GitHub as the primary common-ground hook in this POC.
 
 ### GitHub research expectations
 
