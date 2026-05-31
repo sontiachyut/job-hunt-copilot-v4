@@ -877,6 +877,8 @@ Implementation:
 - return structured JSON only
 
 The analyzer should reason over the selected repo and profile context, not over the full repo set again.
+For this POC, Python should pass the selected repo's deterministic summary plus
+bounded README excerpts, not the full README text.
 
 ### 9. Coffee-chat draft generation
 
