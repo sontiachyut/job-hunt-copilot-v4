@@ -713,6 +713,12 @@ Should include at minimum:
 - why that path was selected
 - the primary supporting evidence chosen for that path
 
+If the selected path is an employment-history hook, the structured result
+should carry only:
+
+- the single chosen role/company pair
+- at most one short supporting-history note
+
 ### Project selection result
 
 Should include at minimum:
@@ -977,6 +983,8 @@ For theme-based GitHub hooks, Python may pass structured theme evidence
 directly into the drafter without a separate project-analysis step. That theme
 evidence should include the theme label, a short theme summary, one or two
 supporting repo names, and one or two supporting observations.
+For employment-history hooks, Python should pass only the single chosen
+role/company pair plus at most one short supporting-history note.
 
 When no GitHub profile exists, or when GitHub evidence is too weak to support a strong opener, the drafter may instead write from the company-research fallback inputs described above.
 
