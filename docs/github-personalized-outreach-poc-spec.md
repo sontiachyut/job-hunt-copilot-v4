@@ -446,10 +446,11 @@ back to the recipient's full name.
 The final email should include the full signature block. At minimum, that
 signature block should include:
 
-1. sender name
-2. sender LinkedIn URL
-3. sender phone
-4. sender email
+1. fixed sign-off: `Best,`
+2. sender name
+3. sender LinkedIn URL
+4. sender phone
+5. sender email
 
 For this POC, the sender LinkedIn URL should live in the signature rather than
 being called out separately in the body.
