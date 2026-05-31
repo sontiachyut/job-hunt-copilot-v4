@@ -1018,8 +1018,8 @@ role/company pair plus at most one short supporting-history note.
 For company-research fallback hooks, Python should pass only the compact
 writing fields actually needed by the drafter:
 
-1. direct observations
-2. inferred statements
+1. up to two direct observations
+2. up to two inferred statements
 3. why-this-matters summary
 4. phrasing angle
 
@@ -1056,8 +1056,8 @@ At minimum, the system should be able to produce:
 
 ### Company research fallback output
 
-- compact direct company observations
-- explicit inferred team/domain statements kept separate from direct observations
+- up to two compact direct company observations
+- up to two explicit inferred team/domain statements kept separate from direct observations
 - a short summary of why this fallback context matters for drafting
 - a small suggested phrasing angle for how to frame the company interest naturally
 
