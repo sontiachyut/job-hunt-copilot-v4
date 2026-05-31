@@ -332,9 +332,11 @@ If no GitHub profile can be resolved, the system should still be able to draft a
 In that case the draft should:
 
 1. reference the recipient's current role and company
-2. show interest in the type of work the company or team is likely doing
-3. ask about engineering culture, day-to-day work, or what makes candidates strong for that company
-4. connect the sender's interests and `Job Hunt Copilot` work to that context
+2. use company-focused research to understand what the company has been doing recently in software engineering
+3. say the sender is interested in joining the company and learning from strong engineers there
+4. explain that the recipient's profile came up in that context and is the reason for the outreach
+5. ask about engineering culture, current challenges, and how the sender should improve the profile to become a stronger candidate for that company
+6. connect the sender's interests and `Job Hunt Copilot` work to that context
 
 ### Fallback matrix
 
@@ -349,6 +351,22 @@ If step 1 is unavailable, the system should try step 2 before dropping to later 
 
 If all four are weak, the system should still draft conservatively rather than inventing details.
 
+### No-GitHub fallback drafting rule
+
+When no GitHub profile is found for the contact, the workflow should switch to a different outreach style instead of pretending GitHub-based common ground exists.
+
+That fallback style should:
+
+1. use the recipient's current company as the main anchor
+2. use bounded company research to identify what the company has been doing recently in software engineering
+3. frame the email as a request for guidance from someone at the company rather than as a repo/project-based technical hook
+4. ask about:
+   - engineering culture
+   - the kinds of challenges the company or team is solving
+   - how the sender should improve the profile to become a stronger candidate for that company
+
+The no-GitHub fallback should still avoid asking directly for a job or referral.
+
 ## System Architecture
 
 This POC should use a hybrid architecture:
@@ -360,6 +378,8 @@ This POC should use a hybrid architecture:
 The system should not use a free-form runtime agent for this workflow.
 
 For this POC, Apollo collection, GitHub collection, and personal-site collection should all be handled by deterministic Python code rather than AI reasoning.
+
+When GitHub is missing, bounded `codex exec` company research may be used later in the flow to help draft the company-focused fallback email.
 
 ## Runtime Data Contracts
 
@@ -480,6 +500,8 @@ Behavior:
 
 The resolver should not depend on AI for primary matching.
 
+If Apollo returns a `github_url`, the workflow should trust that URL as the primary GitHub identity. If that URL is unusable or invalid, the workflow should fall back to independent GitHub search.
+
 ### 3. GitHub profile research
 
 Input:
@@ -526,7 +548,23 @@ Behavior:
 
 This stage should remain deterministic and optional.
 
-### 6. Project selection
+### 6. Company research fallback
+
+Input:
+
+- current company
+- current role
+- Apollo-enriched profile fields
+
+Behavior:
+
+- run bounded company research only when no GitHub profile is available
+- gather recent company-level software-engineering context that can support the fallback draft
+- produce compact company-research notes for drafting
+
+This stage should not run when a usable GitHub profile already exists.
+
+### 7. Project selection
 
 Behavior:
 
@@ -540,7 +578,7 @@ Implementation:
 
 The selector may use the full repo candidate set, but it should make one choice only.
 
-### 7. Project analysis
+### 8. Project analysis
 
 Behavior:
 
@@ -557,7 +595,7 @@ Implementation:
 
 The analyzer should reason over the selected repo and profile context, not over the full repo set again.
 
-### 8. Coffee-chat draft generation
+### 9. Coffee-chat draft generation
 
 Behavior:
 
@@ -571,7 +609,9 @@ Implementation:
 
 The drafter should not perform new discovery. It should only write from the supplied evidence and analysis.
 
-### 9. Human review
+When no GitHub profile exists, the drafter should instead write from the company-research fallback inputs described above.
+
+### 10. Human review
 
 The POC should stop at draft generation unless an explicit send path is later added.
 
@@ -581,9 +621,10 @@ The POC should stop at draft generation unless an explicit send path is later ad
 
 For this POC, the intended `codex exec` stages are:
 
-1. project selection
-2. project analysis
-3. email drafting
+1. company research fallback when GitHub is missing
+2. project selection
+3. project analysis
+4. email drafting
 
 Python should:
 
