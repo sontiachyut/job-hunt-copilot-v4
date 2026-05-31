@@ -409,6 +409,8 @@ time:
 When the draft asks about strengthening the sender's profile to join the
 company, it should mention the company name again explicitly rather than
 relying only on earlier context.
+It should use the company's exact name rather than a generic phrase like
+"your company."
 
 When the fallback/company-guidance branch is used, the draft should ask about
 both engineering culture and current challenges explicitly rather than leaving
