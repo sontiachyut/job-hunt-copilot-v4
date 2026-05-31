@@ -268,9 +268,14 @@ The email must establish why the sender is worth the recipient's time.
 
 The credibility layer should come from:
 
-1. the sender's broader engineering background
+1. basic information about the sender's professional engineering background
 2. `Job Hunt Copilot` as a current project
 3. the fact that this outreach workflow is partially autonomous but human-reviewed
+
+The credibility section should mention both:
+
+1. a brief professional-background signal
+2. `Job Hunt Copilot`
 
 ### Ordering constraint
 
