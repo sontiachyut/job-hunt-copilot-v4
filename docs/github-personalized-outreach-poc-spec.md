@@ -515,7 +515,8 @@ Preference order:
 
 1. use a repo-based subject for GitHub-backed drafts when the repo name is clear
 2. use a company-based subject for fallback drafts
-3. if the repo name is awkward, too long, or unclear, fall back to the company-based subject
+3. if the raw repo name is awkward, too long, or unclear, the subject may use a cleaned-up version of the repo name when that still feels recognizable
+4. if the repo name is still awkward after cleanup, fall back to the company-based subject
 
 For this POC, the subject line should not reference:
 
