@@ -333,6 +333,7 @@ In that case the draft should:
 
 1. reference the recipient's current role and company
 2. use company-focused research to understand what the company has been doing recently in software engineering
+3. infer likely team or domain context from the recipient's current role/title when that inference is reasonable
 3. say the sender is interested in joining the company and learning from strong engineers there
 4. explain that the recipient's profile came up in that context and is the reason for the outreach
 5. ask about engineering culture, current challenges, and how the sender should improve the profile to become a stronger candidate for that company
@@ -359,6 +360,7 @@ That fallback style should:
 
 1. use the recipient's current company as the main anchor
 2. use bounded company research to identify what the company has been doing recently in software engineering
+3. infer likely team or domain signals from the recipient's current role/title when reasonable
 3. frame the email as a request for guidance from someone at the company rather than as a repo/project-based technical hook
 4. ask about:
    - engineering culture
@@ -560,6 +562,7 @@ Behavior:
 
 - run bounded company research only when no GitHub profile is available
 - gather recent company-level software-engineering context that can support the fallback draft
+- infer likely team or domain context from the recipient's title when that inference is reasonable and clearly framed
 - produce compact company-research notes for drafting
 
 This stage should not run when a usable GitHub profile already exists.
