@@ -13,7 +13,7 @@ The system should:
 1. find a real common-ground signal from the recipient's public profile, ideally GitHub
 2. use that signal to write a specific, non-generic opener
 3. establish the sender's credibility through relevant engineering background and `Job Hunt Copilot`
-4. ask for a 15-minute coffee chat with a concrete purpose
+4. ask for a 15-minute virtual coffee chat with a concrete purpose
 
 This flow is distinct from role-targeted outreach and follow-up emails. It is not a direct job-ask email.
 
@@ -357,6 +357,7 @@ compress them into fewer sentences as long as the meaning is still covered.
 ## Call-to-Action Rule
 
 The call to action must be a low-pressure 15-minute virtual coffee chat.
+For this POC, the draft should use the literal phrase `virtual coffee chat`.
 
 The purpose of the conversation should be:
 
