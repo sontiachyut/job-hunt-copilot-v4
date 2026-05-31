@@ -232,6 +232,9 @@ The system should prefer a specific repository when one repository offers a stro
 When the opener is based on a repository hook, it should mention the repository
 name explicitly.
 
+The opener should also include one or two concrete observations about that
+repository, depending on what reads more naturally.
+
 ### Common-ground quality rules
 
 The chosen signal should:
