@@ -469,6 +469,8 @@ The implementation should prefer a concise 3-paragraph structure. A 4-paragraph
 draft is allowed when it reads more naturally, but concision remains the
 governing rule and the email should stay short enough that recipients do not
 skip it.
+For this POC, the body should target roughly 140 to 220 words, with slight
+variance allowed when needed for natural phrasing.
 
 ### Paragraph intent
 
