@@ -749,7 +749,8 @@ Should include at minimum:
 - selected repo name
 - selected repo URL
 - why selected
-- standout repo-level observations or shortlist reasoning
+- up to two standout repo-level observations
+- up to one short runner-up note
 
 ### Project analysis result
 
@@ -1075,7 +1076,8 @@ At minimum, the system should be able to produce:
 - selected repo name
 - selected repo URL
 - why it was selected
-- shortlist notes or runner-up repos
+- up to two standout repo-level observations
+- up to one short runner-up note
 
 ### Project analysis output
 
