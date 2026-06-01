@@ -51,9 +51,8 @@ When any specific company or role observation is available, the minimal conserva
 If the conservative draft mentions the recipient's role/title, it should also mention the company name rather than referencing the role alone.
 That minimal conservative draft should still ask about:
 
-1. engineering culture
-2. current engineering challenges
-3. how the sender should improve the profile to become a stronger candidate for the company and ultimately join it
+1. the recipient's experience at the company
+2. what advice the recipient would give someone trying to become a stronger candidate for that company
 
 ## Non-Goals
 
@@ -425,11 +424,10 @@ these every time:
    can better understand how to become a stronger candidate
 
 For fallback/company-guidance drafts, the guidance ask should explicitly cover
-all three of these every time:
+both of these every time:
 
 1. the recipient's experience and work at the company
-2. the company's engineering culture and current challenges
-3. how the sender can make the profile stronger in order to join the company
+2. what advice the recipient would give someone trying to become a stronger candidate for the company
 
 When the draft asks about strengthening the sender's profile to join the
 company, it should mention the company name again explicitly rather than
@@ -438,10 +436,6 @@ It should use the company's exact name rather than a generic phrase like
 "your company." For this POC, company references in the body should preserve
 the exact official company name from the source data rather than cleaning minor
 suffixes.
-
-When the fallback/company-guidance branch is used, the draft should ask about
-both engineering culture and current challenges explicitly rather than leaving
-either one implicit.
 
 ## Email Shape
 
@@ -484,6 +478,17 @@ GitHub-backed path:
 2. mention `Job Hunt Copilot`
 3. keep the autonomy and personal-review points in the same supporting role as
    they have in the GitHub-backed draft
+
+For fallback drafts, the three paragraph jobs should map to the email more
+concretely like this:
+
+1. mention the recipient's interesting career path into the current company,
+   include one or two short company-research sentences, and naturally make
+   clear that the sender came across the recipient's profile
+2. connect that context to the sender's background and `Job Hunt Copilot`
+3. ask for a 15-minute virtual coffee chat to hear a bit about the recipient's
+   experience at the company and what advice the recipient would give someone
+   trying to become a stronger candidate for that company
 
 The system may add greeting and signature outside the AI drafting step.
 
@@ -643,9 +648,7 @@ That fallback style should:
 6. still mention `Job Hunt Copilot` explicitly as part of the sender's credibility
 7. ask about:
    - the recipient's experience at the company
-   - engineering culture
-   - the kinds of challenges the company or team is solving
-   - how the sender should improve the profile to become a stronger candidate for that company and ultimately join it
+   - what advice the recipient would give someone trying to become a stronger candidate for that company
 
 When fallback Paragraph 1 is built from career-path context, it should:
 
