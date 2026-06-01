@@ -267,7 +267,7 @@ stage. Python may pass structured theme evidence directly into the drafter.
 That structured theme evidence should stay compact and should include:
 
 1. the theme label
-2. a short theme summary
+2. a short theme summary in one or two sentences
 3. one or two supporting repo names
 4. one or two supporting observations grounded in those repos
 
@@ -769,7 +769,7 @@ Should include at minimum:
 Should include at minimum:
 
 - theme label
-- short theme summary
+- short theme summary in one or two sentences
 - one or two supporting repo names
 - one or two supporting observations
 
@@ -1015,8 +1015,9 @@ plus the specific sender fields actually used by the drafter:
 It should not pass raw supporting excerpts for the drafter to re-analyze.
 For theme-based GitHub hooks, Python may pass structured theme evidence
 directly into the drafter without a separate project-analysis step. That theme
-evidence should include the theme label, a short theme summary, one or two
-supporting repo names, and one or two supporting observations.
+evidence should include the theme label, a short theme summary in one or two
+sentences, one or two supporting repo names, and one or two supporting
+observations. It should not include extra prose beyond those fields.
 For employment-history hooks, Python should pass only the single chosen
 role/company pair plus at most one short supporting-history note.
 For company-research fallback hooks, Python should pass only the compact
