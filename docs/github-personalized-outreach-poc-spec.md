@@ -798,7 +798,10 @@ Should include at minimum:
 
 - canonical URL
 - page title
-- summary text or about text when extractable
+- homepage summary when extractable, capped at roughly two to four sentences
+- first-level page summaries for obvious pages such as `About`, `Projects`,
+  `Blog`, or `Talks` when extractable, with each page summary capped at roughly
+  one to three sentences
 - discovered project/blog/talk links when extractable
 
 ## Required Runtime Stages
@@ -891,6 +894,8 @@ Behavior:
 - fetch a bounded set of public site pages
 - extract useful profile context
 - normalize the result into a compact site-research record
+- do not pass raw page text downstream; retain only bounded summaries and link
+  lists
 
 This stage should remain deterministic and optional.
 
