@@ -712,7 +712,9 @@ Should include at minimum:
   lightweight top-level file/folder signals
 - engineering signals extracted from the repo, such as APIs, data pipelines, CI, packaging, orchestration, realtime behavior, retries, testing, or multi-service structure when present; for this POC, Python may derive these from README evidence, top-level file/folder names, and a small set of known config/build files such as `package.json`, `pyproject.toml`, `docker-compose.yml`, or `.github/workflows/*`
 - polish signals extracted from the repo, such as strong README quality, tests, workflows, packaging, demo/docs, or releases when present; for this POC, Python may derive these from README evidence, tests/workflows/packaging presence, and demo/docs/release indicators when available
-- one bounded README excerpt when available
+- one bounded README excerpt when available, capped at roughly two to four
+  sentences and focused on the problem solved plus one engineering signal when
+  possible
 
 ### GitHub profile research result
 
@@ -961,7 +963,8 @@ Implementation:
 The selector may use the full repo candidate set, but it should make one choice only.
 For this POC, Python should pass all repos to the selector as compact summaries.
 The selector should not receive full README text for every repo.
-It should receive at most one bounded README excerpt per repo.
+It should receive at most one bounded README excerpt per repo, capped at
+roughly two to four sentences.
 This stage applies only when the chosen common-ground path is a GitHub repo
 hook. Non-GitHub fallback paths bypass project selection.
 
