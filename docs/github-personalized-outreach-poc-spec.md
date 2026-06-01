@@ -200,7 +200,9 @@ When `employment_history` is used, the system may reference more than one past r
 When `employment_history` is used as the primary common-ground hook in the opener, the draft should mention both the company name and the role explicitly.
 That opener should stay selective and concise. It may mention more than one
 role/company step when the recipient's career path itself is the interesting
-signal, but it should avoid turning the opener into a long chronology.
+signal, but it should avoid turning the opener into a long chronology. In
+practice, this should usually mean at most the most relevant two or three
+career steps.
 Even in that case, the opener should still mention the recipient's current
 company so the outreach stays anchored in the present role as well as the path.
 That opener should also include one or two concrete observations about why that
@@ -639,7 +641,7 @@ That fallback style should:
 
 When fallback Paragraph 1 is built from career-path context, it should:
 
-1. mention the interesting path from past role/company context into the current role
+1. mention only the most relevant two or three steps from the path into the current role
 2. still mention the current company explicitly
 3. include one or two short company-research sentences about what the current company is doing
 4. naturally include the idea that the sender came across the recipient's
