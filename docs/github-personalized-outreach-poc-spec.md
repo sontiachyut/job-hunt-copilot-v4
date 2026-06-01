@@ -542,9 +542,10 @@ The draft should include a subject line.
 For this POC, the subject line should:
 
 1. stay short and low-pressure
-2. be about the recipient, not about the sender
-3. reference the recipient's repo, company, or engineering theme
-4. avoid job-application framing
+2. target roughly 3 to 7 words, with up to 9 words allowed when needed
+3. be about the recipient, not about the sender
+4. reference the recipient's repo, company, or engineering theme
+5. avoid job-application framing
 
 Allowed subject patterns are intentionally narrow:
 
