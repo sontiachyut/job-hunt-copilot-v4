@@ -430,13 +430,13 @@ the sender is hoping for:
 1. one tip related to the recipient's work, engineering problems, or technical judgment
 2. one tip related to the sender's job hunt, profile positioning, or preparation
 
-For GitHub-backed drafts, the guidance ask should explicitly cover all three of
+For GitHub-backed drafts, the guidance ask should explicitly cover both of
 these every time:
 
-1. the recipient's project and engineering decisions
-2. what makes projects genuinely strong or useful
-3. how the sender can improve the sender's own profile/projects to build a
-   career like the recipient's and get into the company
+1. what the recipient learned from building the referenced project, repo, or
+   engineering theme
+2. what helped the recipient get into the company or grow there, so the sender
+   can better understand how to become a stronger candidate
 
 For fallback/company-guidance drafts, the guidance ask should explicitly cover
 all three of these every time:
@@ -479,6 +479,17 @@ If implemented as 3 paragraphs, the intended paragraph jobs are:
 1. `common_ground`
 2. `credibility_and_connection`
 3. `coffee_chat_cta`
+
+For strong GitHub-backed drafts, those paragraph jobs should map to the email
+more concretely like this:
+
+1. mention the recipient's repo/project/theme, include one or two specific
+   observations, and express grounded appreciation without drifting into generic
+   praise
+2. connect that work to the sender's background and `Job Hunt Copilot`
+3. ask for a 15-minute virtual coffee chat to hear what the recipient learned
+   from building that project and what helped the recipient get into or grow at
+   the company
 
 The system may add greeting and signature outside the AI drafting step.
 
