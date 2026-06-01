@@ -300,10 +300,11 @@ If GitHub evidence is weak or absent, the common-ground should fall back to:
 
 The fallback should remain specific to the role/company context and should not become a generic networking email.
 
-In a fallback opener, the draft may lead with either the company name or the
-recipient's role/title, depending on what reads more naturally. If the opener
-mentions the recipient's role/title, it should also mention the company name
-rather than referencing the role alone.
+In a fallback opener, the draft should prefer leading with the recipient's
+career path or current role/title when that produces a more personal hook than
+leading with the company alone. If the opener mentions the recipient's
+role/title, it should also mention the company name rather than referencing
+the role alone.
 
 That fallback opener should include one or two specific observations grounded in
 the role, company context, employment history, or company research, depending
@@ -592,9 +593,10 @@ In that case the draft should:
 4. communicate interest in what the company has been doing and show that
    interest through the company research included in the email, with exact
    phrasing left to the drafter
-5. explicitly say that the sender came across the recipient's profile and that
-   it is the reason for the outreach; the draft does not need to explain how
-   the profile was found
+5. explicitly make clear that the sender came across the recipient's profile
+   and that it is the reason for the outreach; this profile-reference does not
+   need to be the first words of the opener and may appear naturally after the
+   career-path hook
 6. ask about the recipient's experience at the company, engineering culture,
    current challenges, and how the sender should improve the profile to become
    a stronger candidate for that company and ultimately join it
@@ -640,6 +642,8 @@ When fallback Paragraph 1 is built from career-path context, it should:
 1. mention the interesting path from past role/company context into the current role
 2. still mention the current company explicitly
 3. include one or two short company-research sentences about what the current company is doing
+4. naturally include the idea that the sender came across the recipient's
+   profile, without forcing that phrase to lead the opener
 
 The draft may phrase this as direct interest in joining the company or as softer interest in the company and its engineering work, depending on context, but it should remain clearly career-oriented.
 
