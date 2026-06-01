@@ -738,6 +738,7 @@ Should include at minimum:
 Should include at minimum:
 
 - selected common-ground path, such as GitHub repo hook, GitHub theme hook, employment-history hook, or company-research fallback hook
+- confidence score, such as `high`, `medium`, or `low`
 - why that path was selected
 - the primary supporting evidence chosen for that path
 - one short rejected-alternatives note explaining why the next-best eligible
@@ -1087,6 +1088,7 @@ At minimum, the system should be able to produce:
 ### Common-ground selection output
 
 - selected common-ground path
+- confidence score
 - why it was selected
 - primary supporting evidence chosen for that path
 - one short rejected-alternatives note for the next-best eligible hook
