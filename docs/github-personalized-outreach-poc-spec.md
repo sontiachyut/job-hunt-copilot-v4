@@ -89,9 +89,8 @@ This POC should remain bounded to these research sources only:
 For common-ground selection during drafting, the system should prefer:
 
 1. GitHub repository hook
-2. GitHub engineering-theme hook
-3. Apollo employment-history hook when GitHub is missing or weak and the history is relevant
-4. role/company fallback hook
+2. Apollo employment-history hook when GitHub is missing or weak and the history is relevant
+3. company-research fallback hook
 
 ## Inputs
 
@@ -244,11 +243,8 @@ multiple independent hooks into one introduction.
 
 If a usable GitHub profile exists, the system should prefer:
 
-1. one specific repository, or
-2. one repeated engineering theme across repositories
+1. one specific repository
 
-The system should prefer a specific repository when one repository offers a
-stronger, more concrete hook than a broad theme.
 Among GitHub-backed hooks, the system should optimize first for recipient-side
 strength and representativeness:
 
@@ -258,25 +254,6 @@ strength and representativeness:
 
 Only after those factors should the workflow consider sender overlap as a
 secondary tie-break.
-
-If a repeated engineering theme produces a cleaner, more natural opener than a
-repo-specific hook, a theme-based opener is still allowed in this POC. The
-workflow does not need to force a repo-based opener in every GitHub-backed case.
-For this POC, a theme-based GitHub hook does not need a separate analysis
-stage. Python may pass structured theme evidence directly into the drafter.
-That structured theme evidence should stay compact and should include:
-
-1. the theme label
-2. a short theme summary in one or two sentences
-3. one or two supporting repo names
-4. one or two supporting observations grounded in those repos
-
-When the opener is theme-based, the draft should use whatever level of detail
-looks most natural. It does not need to force a fixed number of observations,
-but it should still stay grounded in real GitHub evidence and avoid generic
-theme praise.
-When the opener is theme-based, it should still mention one or two concrete
-repository names as supporting evidence, depending on what reads more naturally.
 
 When the opener is based on a repository hook, it should mention the repository
 name explicitly.
@@ -623,16 +600,16 @@ In that case the draft should:
 The system should follow this fallback order:
 
 1. `GitHub repo hook`
-2. `GitHub theme hook`
-3. `employment-history hook`
-4. `role/company hook`
+2. `employment-history hook`
+3. `company-research fallback hook`
 
-If step 1 is unavailable, the system should try step 2 before dropping to later fallback options.
+If step 1 is unavailable or too weak, the system should try step 2 before
+dropping to later fallback options.
 
 When GitHub evidence is weak and both employment-history context and company-research context are available, the system should prefer employment-history context before company-research context.
 If GitHub evidence is weak and employment-history context is also weak, the system should prefer company-research fallback before dropping to a minimal conservative draft.
 
-If all four are weak, the system should still draft conservatively rather than inventing details.
+If all three are weak, the system should still draft conservatively rather than inventing details.
 
 ### No-GitHub fallback drafting rule
 
@@ -748,7 +725,7 @@ Should include at minimum:
 
 Should include at minimum:
 
-- selected common-ground path, such as GitHub repo hook, GitHub theme hook, employment-history hook, or company-research fallback hook
+- selected common-ground path, such as GitHub repo hook, employment-history hook, or company-research fallback hook
 - confidence score, such as `high`, `medium`, or `low`
 - why that path was selected
 - the primary supporting evidence chosen for that path
@@ -784,15 +761,6 @@ Should include at minimum:
 - connection to sender work in one short paragraph
 - suggested conversation angle in one sentence
 - suggested phrasing angle in one short note
-
-### GitHub theme evidence result
-
-Should include at minimum:
-
-- theme label
-- short theme summary in one or two sentences
-- one or two supporting repo names
-- one or two supporting observations
 
 ### Coffee-chat draft result
 
@@ -946,7 +914,6 @@ Behavior:
 - choose the common-ground path to use for the draft
 - choose between:
   - GitHub repo hook
-  - GitHub theme hook
   - employment-history hook
   - company-research fallback hook
 - prefer the strongest path allowed by the rules in this spec
@@ -1017,7 +984,7 @@ should stay roughly within two to four sentences. When possible, one excerpt
 should emphasize the problem solved or architecture, and the other should
 emphasize engineering or polish signals.
 This stage applies only when the chosen common-ground path is a GitHub repo
-hook. Theme-based GitHub hooks bypass project analysis.
+hook.
 
 ### 10. Coffee-chat draft generation
 
@@ -1045,11 +1012,6 @@ plus the specific sender fields actually used by the drafter:
 8. availability window
 
 It should not pass raw supporting excerpts for the drafter to re-analyze.
-For theme-based GitHub hooks, Python may pass structured theme evidence
-directly into the drafter without a separate project-analysis step. That theme
-evidence should include the theme label, a short theme summary in one or two
-sentences, one or two supporting repo names, and one or two supporting
-observations. It should not include extra prose beyond those fields.
 For employment-history hooks, Python should pass only the single chosen
 role/company pair plus at most one short supporting-history note.
 For company-research fallback hooks, Python should pass only the compact
