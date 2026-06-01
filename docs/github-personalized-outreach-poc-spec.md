@@ -756,6 +756,7 @@ Should include at minimum:
 
 - selected repo name
 - selected repo URL
+- confidence score, such as `high`, `medium`, or `low`
 - why selected
 - up to two standout repo-level observations
 - up to one short runner-up note
@@ -1097,6 +1098,7 @@ At minimum, the system should be able to produce:
 
 - selected repo name
 - selected repo URL
+- confidence score
 - why it was selected
 - up to two standout repo-level observations
 - up to one short runner-up note
