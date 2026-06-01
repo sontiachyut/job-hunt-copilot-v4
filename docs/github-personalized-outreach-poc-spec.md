@@ -986,7 +986,10 @@ Implementation:
 
 The analyzer should reason over the selected repo and profile context, not over the full repo set again.
 For this POC, Python should pass the selected repo's deterministic summary plus
-bounded README excerpts, not the full README text.
+up to two bounded README excerpts, not the full README text. Each excerpt
+should stay roughly within two to four sentences. When possible, one excerpt
+should emphasize the problem solved or architecture, and the other should
+emphasize engineering or polish signals.
 This stage applies only when the chosen common-ground path is a GitHub repo
 hook. Theme-based GitHub hooks bypass project analysis.
 
