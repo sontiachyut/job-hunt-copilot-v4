@@ -756,12 +756,13 @@ Should include at minimum:
 
 Should include at minimum:
 
-- project summary
-- engineering problem
+- project summary in one or two sentences
+- engineering problem in one sentence
 - 2 to 3 standout observations
-- why this is a good hook
-- connection to sender work
-- suggested conversation angle
+- why this is a good hook in one short paragraph
+- connection to sender work in one short paragraph
+- suggested conversation angle in one sentence
+- suggested phrasing angle in one short note
 
 ### GitHub theme evidence result
 
@@ -1081,13 +1082,13 @@ At minimum, the system should be able to produce:
 
 ### Project analysis output
 
-- project summary
-- engineering problem
+- project summary in one or two sentences
+- engineering problem in one sentence
 - standout observations
-- why it is a good hook
-- connection to sender work
-- conversation angle
-- suggested phrasing angle
+- why it is a good hook in one short paragraph
+- connection to sender work in one short paragraph
+- conversation angle in one sentence
+- suggested phrasing angle in one short note
 
 ### Draft output
 
