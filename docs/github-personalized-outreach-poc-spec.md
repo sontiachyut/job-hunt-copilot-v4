@@ -765,6 +765,7 @@ Should include at minimum:
 
 Should include at minimum:
 
+- confidence score, such as `high`, `medium`, or `low`
 - project summary in one or two sentences
 - engineering problem in one sentence
 - 2 to 3 standout observations
@@ -1105,6 +1106,7 @@ At minimum, the system should be able to produce:
 
 ### Project analysis output
 
+- confidence score
 - project summary in one or two sentences
 - engineering problem in one sentence
 - standout observations
