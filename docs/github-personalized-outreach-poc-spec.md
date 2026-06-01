@@ -726,7 +726,9 @@ Should include at minimum:
 - bio
 - company
 - blog URL when present
-- profile README when available
+- bounded profile README summary when available, capped at roughly two to four
+  sentences and focused on what the recipient is building, interested in, or
+  emphasizing on the profile
 
 ### Common-ground selection result
 
@@ -943,6 +945,8 @@ than every possible evidence type.
 Python should not pass broad sender context into this stage. If any sender
 context is supplied at all, it should stay minimal and exist only to help
 resolve close tie-breaks after recipient-side evidence has already been judged.
+If GitHub profile-README context is passed into this stage, it should be a
+bounded summary rather than the full raw profile README text.
 
 ### 8. Project selection
 
