@@ -308,6 +308,10 @@ rather than referencing the role alone.
 That fallback opener should include one or two specific observations grounded in
 the role, company context, employment history, or company research, depending
 on what reads more naturally.
+When employment history is interesting enough to mention, the opener should
+pair that career-path context with one or two short sentences about what the
+recipient's current company is doing, rather than choosing only one of those
+two angles.
 
 When the opener is using role/company fallback rather than GitHub or
 employment-history common ground, it should stay anchored on one company/role
@@ -630,6 +634,12 @@ That fallback style should:
    - engineering culture
    - the kinds of challenges the company or team is solving
    - how the sender should improve the profile to become a stronger candidate for that company and ultimately join it
+
+When fallback Paragraph 1 is built from career-path context, it should:
+
+1. mention the interesting path from past role/company context into the current role
+2. still mention the current company explicitly
+3. include one or two short company-research sentences about what the current company is doing
 
 The draft may phrase this as direct interest in joining the company or as softer interest in the company and its engineering work, depending on context, but it should remain clearly career-oriented.
 
