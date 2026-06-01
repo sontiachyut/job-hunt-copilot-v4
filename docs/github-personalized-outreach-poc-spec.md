@@ -201,6 +201,8 @@ When `employment_history` is used as the primary common-ground hook in the opene
 That opener should stay selective and concise. It may mention more than one
 role/company step when the recipient's career path itself is the interesting
 signal, but it should avoid turning the opener into a long chronology.
+Even in that case, the opener should still mention the recipient's current
+company so the outreach stays anchored in the present role as well as the path.
 That opener should also include one or two concrete observations about why that
 history feels relevant, depending on what reads more naturally.
 When GitHub exists, `employment_history` may still be used as supporting context, but it should not replace GitHub as the primary common-ground hook in this POC.
