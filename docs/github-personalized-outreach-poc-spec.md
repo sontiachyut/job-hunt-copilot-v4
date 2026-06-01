@@ -477,6 +477,14 @@ more concretely like this:
    from building that project and what helped the recipient get into or grow at
    the company
 
+For fallback drafts, Paragraph 2 should use the same credibility pattern as the
+GitHub-backed path:
+
+1. connect the recipient context to the sender's background
+2. mention `Job Hunt Copilot`
+3. keep the autonomy and personal-review points in the same supporting role as
+   they have in the GitHub-backed draft
+
 The system may add greeting and signature outside the AI drafting step.
 
 For this POC, the greeting should use the recipient's first name. If
