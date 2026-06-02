@@ -420,8 +420,8 @@ these every time:
 
 1. what the recipient learned from building the referenced project, repo, or
    engineering theme
-2. what helped the recipient get into the company or grow there, so the sender
-   can better understand how to become a stronger candidate
+2. what advice the recipient would give someone trying to become a stronger
+   candidate for the company
 
 For fallback/company-guidance drafts, the guidance ask should explicitly cover
 both of these every time:
@@ -468,8 +468,8 @@ more concretely like this:
    praise
 2. connect that work to the sender's background and `Job Hunt Copilot`
 3. ask for a 15-minute virtual coffee chat to hear what the recipient learned
-   from building that project and what helped the recipient get into or grow at
-   the company
+   from building that project and what advice the recipient would give someone
+   trying to become a stronger candidate for the company
 
 For fallback drafts, Paragraph 2 should use the same credibility pattern as the
 GitHub-backed path:
