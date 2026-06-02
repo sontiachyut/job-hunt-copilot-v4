@@ -311,7 +311,7 @@ That fallback opener should include one or two specific observations grounded in
 the role, company context, employment history, or company research, depending
 on what reads more naturally.
 When employment history is interesting enough to mention, the opener should
-pair that career-path context with one or two short sentences about what the
+pair that career-path context with one short sentence about what the
 recipient's current company is doing, rather than choosing only one of those
 two angles.
 
@@ -483,7 +483,7 @@ For fallback drafts, the three paragraph jobs should map to the email more
 concretely like this:
 
 1. mention the recipient's interesting career path into the current company,
-   include one or two short company-research sentences, and naturally make
+   include one short company-research sentence, and naturally make
    clear that the sender came across the recipient's profile
 2. connect that context to the sender's background and `Job Hunt Copilot`
 3. ask for a 15-minute virtual coffee chat to hear a bit about the recipient's
@@ -654,7 +654,7 @@ When fallback Paragraph 1 is built from career-path context, it should:
 
 1. mention only the most relevant two or three steps from the path into the current role
 2. still mention the current company explicitly
-3. include one or two short company-research sentences about what the current company is doing
+3. include one short company-research sentence about what the current company is doing
 4. naturally include the idea that the sender came across the recipient's
    profile, without forcing that phrase to lead the opener
 
