@@ -653,9 +653,10 @@ That fallback style should:
 When fallback Paragraph 1 is built from career-path context, it should:
 
 1. mention only the most relevant two or three steps from the path into the current role
-2. still mention the current company explicitly
-3. include one short company-research sentence about what the current company is doing; that sentence may use a cautious team/domain inference when that is more specific and useful than a flat company fact, but it should be framed as interest or curiosity rather than appreciation. Mentioning a concrete technical or product area is enough; it does not need to force an additional challenge clause every time
-4. naturally include the idea that the sender came across the recipient's
+2. still mention the current title/role explicitly
+3. still mention the current company explicitly
+4. include one short company-research sentence about what the current company is doing; that sentence may use a cautious team/domain inference when that is more specific and useful than a flat company fact, but it should be framed as interest or curiosity rather than appreciation. Mentioning a concrete technical or product area is enough; it does not need to force an additional challenge clause every time
+5. naturally include the idea that the sender came across the recipient's
    profile, without forcing that phrase to lead the opener
 
 The draft may phrase this as direct interest in joining the company or as softer interest in the company and its engineering work, depending on context, but it should remain clearly career-oriented.
