@@ -612,9 +612,9 @@ In that case the draft should:
    and that it is the reason for the outreach; this profile-reference does not
    need to be the first words of the opener and may appear naturally after the
    career-path hook
-6. ask about the recipient's experience at the company, engineering culture,
-   current challenges, and how the sender should improve the profile to become
-   a stronger candidate for that company and ultimately join it
+6. ask about the recipient's experience at the company and what advice the
+   recipient would give someone trying to become a stronger candidate for that
+   company
 7. explicitly mention `Job Hunt Copilot` as part of the sender's credibility
 8. connect the sender's interests and `Job Hunt Copilot` work to that context
 
