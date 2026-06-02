@@ -654,7 +654,7 @@ When fallback Paragraph 1 is built from career-path context, it should:
 
 1. mention only the most relevant two or three steps from the path into the current role
 2. still mention the current company explicitly
-3. include one short company-research sentence about what the current company is doing; that sentence may use a cautious team/domain inference when that is more specific and useful than a flat company fact
+3. include one short company-research sentence about what the current company is doing; that sentence may use a cautious team/domain inference when that is more specific and useful than a flat company fact, but it should be framed as interest or curiosity rather than appreciation
 4. naturally include the idea that the sender came across the recipient's
    profile, without forcing that phrase to lead the opener
 
