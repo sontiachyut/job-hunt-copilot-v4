@@ -305,7 +305,8 @@ In a fallback opener, the draft should prefer leading with the recipient's
 career path or current role/title when that produces a more personal hook than
 leading with the company alone. If the opener mentions the recipient's
 role/title, it should also mention the company name rather than referencing
-the role alone.
+the role alone. When the current title/role is mentioned in this POC, it
+should use the exact sourced title rather than a shortened or cleaned variant.
 
 That fallback opener should include one or two specific observations grounded in
 the role, company context, employment history, or company research, depending
@@ -653,7 +654,7 @@ That fallback style should:
 When fallback Paragraph 1 is built from career-path context, it should:
 
 1. mention only the most relevant two or three steps from the path into the current role
-2. still mention the current title/role explicitly
+2. still mention the current title/role explicitly, using the exact sourced title
 3. still mention the current company explicitly
 4. include one short company-research sentence about what the current company is doing; that sentence may use a cautious team/domain inference when that is more specific and useful than a flat company fact, but it should be framed as interest or curiosity rather than appreciation. Mentioning a concrete technical or product area is enough; it does not need to force an additional challenge clause every time
 5. naturally include the idea that the sender came across the recipient's
