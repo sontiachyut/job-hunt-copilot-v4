@@ -2411,6 +2411,9 @@ def _build_managerial_role_split_prompt(context: RoleTargetedDraftContext) -> st
             "- It must be exactly 1 sentence.",
             f'- It must begin with: "I came across the {context.role_title} opening at {context.company_name} and wanted to reach out because..."',
             "- It should explain why the role looks closely aligned with the kind of role-relevant engineering problems I've been trying to work on.",
+            "- Choose one dominant role-fit theme that reads like a coherent kind of work, not a stitched-together list of JD signals.",
+            "- Do not combine unrelated JD themes just to increase coverage.",
+            "- Troubleshooting or root-cause language should usually stay in the problem_hypotheses bullets rather than becoming the main self-description in the opener, unless the role is clearly incident- or operations-heavy.",
             "- Keep it natural and concise.",
             "- Avoid a comma-heavy list of themes.",
             "- Prefer one clean closing idea over stacked buzzwords.",
@@ -2464,25 +2467,25 @@ def _build_managerial_role_split_prompt(context: RoleTargetedDraftContext) -> st
                 {
                     "role_alignment_sentence": (
                         f"I came across the {context.role_title} opening at {context.company_name} and wanted to reach out because the role "
-                        "looks closely aligned with the kind of workflow and systems problems I've been trying to work on."
+                        "looks closely aligned with the kind of backend services and integration work I've been trying to do more of in production systems."
                     ),
                     "problem_hypotheses": [
-                        "dependable AI workflows in production",
-                        "evaluation and failure testing",
-                        "observable low-latency systems",
+                        "backend service stability and maintainability",
+                        "internal and third-party systems integration",
+                        "root-cause debugging and preventative fixes",
                     ],
                     "relevant_background": [
-                        "distributed data services at ~580 TPS",
-                        "monitoring, alerting, and incident response",
+                        "distributed data services at ~580 TPS, 99.95% uptime",
+                        "monitoring, alerting, and production reliability",
                         f"built Job Hunt Copilot, an AI workflow automation tool from scratch: {JOB_HUNT_COPILOT_REPO_URL}",
                     ],
                     "selected_jd_signals": [
-                        "dependable production GenAI workflows",
-                        "evaluation and failure testing",
-                        "observability and uptime constraints",
+                        "backend APIs and services",
+                        "systems integration",
+                        "troubleshooting and root-cause fixes",
                     ],
                     "selected_resume_signals": [
-                        "~580 TPS production services",
+                        "~580 TPS at 99.95% uptime",
                         "monitoring and alerting",
                         "Job Hunt Copilot",
                     ],

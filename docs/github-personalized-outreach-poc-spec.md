@@ -697,6 +697,17 @@ So for this path, `codex exec` should return:
 4. `selected_jd_signals`
 5. `selected_resume_signals`
 
+When the outreach is tied to a concrete posting and a reliable public posting
+URL exists in canonical state, deterministic Python may also include that
+public posting URL in the rendered email so the recipient can reference the
+exact opening. For the current build, the LinkedIn job-posting URL is
+sufficient when no better public employer-hosted link is available.
+
+The current build does not require a separate employer-internal requisition ID,
+employee-searchable job ID, or req ID field in the managerial email. If the
+system has not captured one explicitly, it should not invent one or block on
+its absence.
+
 Suggested Pydantic shape:
 
 ```python
@@ -793,6 +804,8 @@ Sentence and bullet rules:
   "I came across the <Role Title> opening at <Company> and wanted to reach out because..."
 - role_alignment_sentence should explain why the role looks closely aligned with the kind of role-relevant engineering problems I've been trying to work on.
 - role_alignment_sentence should sound natural and concise, not stitched together.
+- role_alignment_sentence should choose one dominant role-fit theme rather than stacking unrelated JD signals for coverage.
+- troubleshooting or root-cause language should usually stay in the JD challenge bullets, not in the opener, unless the role is clearly incident- or operations-heavy.
 - problem_hypotheses must contain exactly 3 bullets.
 - each problem_hypotheses bullet should be short and easy to scan.
 - problem_hypotheses should infer likely team challenges from the JD without copying JD lines verbatim.

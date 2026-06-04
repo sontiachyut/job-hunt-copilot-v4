@@ -4061,6 +4061,9 @@ def test_codex_role_split_renderer_generates_managerial_path_body_and_debug_arti
         assert "kind of role-relevant engineering problems I've been trying to work on." in input
         assert "- sender_core_summary:" in input
         assert "production AI workflow problems" not in input
+        assert "Choose one dominant role-fit theme that reads like a coherent kind of work" in input
+        assert "Troubleshooting or root-cause language should usually stay in the problem_hypotheses bullets" in input
+        assert "dependable AI workflows in production" not in input
         output_path = Path(command[command.index("-o") + 1])
         payload = {
             "role_alignment_sentence": (
