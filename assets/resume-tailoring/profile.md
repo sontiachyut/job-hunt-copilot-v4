@@ -21,10 +21,11 @@
 ## Work Experience
 
 ### Software Engineer — Infinite Computer Solutions (Mar 2023 – Mar 2024)
-- Built and maintained distributed, high-availability data services in Python and Scala on AWS (EMR, S3), processing 50M+ daily HL7 records (~580 TPS) powering real-time clinical analytics for 1,500+ hospitals with 24/7 uptime
-- Developed ETL pipelines using Python, Apache Spark, and custom HL7 parsers, reducing processing time by 40% (6 hours to 3.6 hours) on 2TB+ daily data, enabling same-day analytics
-- Optimized 25+ Apache Spark jobs with parallel processing and caching on AWS EMR, improving throughput by 50% (20K to 30K records/second) and reducing AWS costs by $15K monthly
-- Designed monitoring and alerting for pipeline health, triaging data quality issues and resolving production incidents to meet SLAs
+- Built and maintained Azure-based data services and Databricks/Spark pipelines in Python and Scala, processing 50M+ daily HL7 records (~580 TPS) into governed analytics workloads for 1,500+ hospitals with 24/7 uptime
+- Developed ETL/ELT pipelines using Python, PySpark/Spark SQL, Azure Data Factory, Azure PostgreSQL, ADLS Gen2, and custom HL7 parsers, reducing processing time by 40% (6 hours to 3.6 hours) on 2TB+ daily data
+- Optimized 25+ Spark jobs and lakehouse pipeline stages with partitioning, caching, and SQL tuning, improving throughput by 50% (20K to 30K records/second) and reducing monthly cloud spend by $15K
+- Supported governed downstream data access for BI tools, REST APIs, ODBC connectors, and Kafka-based downstream consumers, with attention to lineage, cataloging, and secure clinical analytics delivery
+- Designed monitoring, alerting, and data-quality checks with Azure Log Analytics and Datadog-style observability, triaging production incidents and maintaining SLA compliance across regulated healthcare data workflows
 
 ### Associate Software Engineer — Infinite Computer Solutions (Aug 2021 – Feb 2023)
 
@@ -59,15 +60,11 @@ Golang, Python, Java, Kubernetes, Docker, PostgreSQL, Jenkins, GitLab CI/CD, Pro
 ### Software Intern — Infinite Computer Solutions (Feb 2021 – Aug 2021)
 - Deployed containerized job recruitment portal using React, Node.js, and Kubernetes across distributed clusters serving 5,000+ users
 
-### SCAI Grader, CSE 360 — Arizona State University (Aug 2025 – Present)
-- Served as a teaching assistant, conducting office hours and guiding 50+ students in building Java applications and debugging code
-- Graded assignments and collaborated with Prof. Lynn Robert Carter to develop course materials on software engineering and OOP
-
 ## Projects
 
 ### Distributed Edge Face Recognition Pipeline (Jan 2025 – Apr 2025)
 - **Stack:** Python, AWS IoT Greengrass v2, EC2, MQTT, SQS, AWS Lambda, S3, MTCNN, FaceNet
-- Developed real-time edge computing pipeline deploying AWS IoT Greengrass Core on EC2 for MTCNN-based face detection via MQTT streaming, achieving 100% accuracy on 100 frames with sub-second latency
+- Built a hybrid edge-cloud face-recognition pipeline that pushed MTCNN detection to AWS IoT Greengrass on EC2, reducing cloud-bound payloads while maintaining sub-second inference over MQTT streaming
 
 ### Student Loan Retirement Matching Platform — Fund the Future Spark Challenge (2nd Place, $2,000) (Oct 2025)
 - **Stack:** React, TypeScript, AWS Lambda, DynamoDB, S3, AWS Bedrock
@@ -84,8 +81,8 @@ Golang, Python, Java, Kubernetes, Docker, PostgreSQL, Jenkins, GitLab CI/CD, Pro
 ## Awards & Leadership
 
 - **2nd Place ($2,000) — TIAA Spark Challenge 2025:** Built secure financial planning system with AI-powered automation using React and AWS serverless architecture
-- **Most Technically Sophisticated Project — InnovationHacks 25 ASU:** Developed AI agent-powered solution recognized among 50+ competing projects
-- **Director of Technology (Volunteer) — AI Club at Thunderbird, ASU (Nov 2025 – Present):** Conduct workshops for 30+ graduate students on Agentic AI and tools like Lovable
+- **Most Technically Sophisticated Project — InnovationHacks 25 ASU:** Developed an AI-powered solution recognized among 50+ competing projects
+- **Director of Technology (Volunteer) — AI Club at Thunderbird, ASU (Nov 2025 – May 2026):** Conduct workshops for 30+ graduate students on applied AI tools and practical product-building workflows
 
 ## Skills
 
@@ -136,7 +133,6 @@ Golang, Python, Java, Kubernetes, Docker, PostgreSQL, Jenkins, GitLab CI/CD, Pro
 - **50+** competing projects beaten (InnovationHacks — Most Technically Sophisticated)
 
 ### Teaching & Leadership
-- **50+** students guided (SCAI Grader)
 - **30+** graduate students in workshops (AI Club)
 
 ## Additional Context
