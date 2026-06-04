@@ -935,7 +935,7 @@ class TechnicalRoleSplitDraftPayload(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     paragraph_1_text: str
-    selected_career_steps: list[str] = Field(default_factory=list)
+    selected_career_steps: list[str]
 
     @field_validator("paragraph_1_text")
     @classmethod
@@ -959,8 +959,8 @@ class ManagerialRoleSplitDraftPayload(BaseModel):
     role_alignment_sentence: str
     problem_hypotheses: list[str]
     relevant_background: list[str]
-    selected_jd_signals: list[str] = Field(default_factory=list)
-    selected_resume_signals: list[str] = Field(default_factory=list)
+    selected_jd_signals: list[str]
+    selected_resume_signals: list[str]
 
     @field_validator("role_alignment_sentence")
     @classmethod

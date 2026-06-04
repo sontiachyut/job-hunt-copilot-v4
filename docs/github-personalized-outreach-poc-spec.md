@@ -780,6 +780,9 @@ managerial-path Pydantic schema exactly, with no extra rationale or commentary
 outside the schema.
 It should not return markdown fences, prose outside the JSON object, or
 alternative formatting.
+Every declared top-level field in that schema, including debug fields, should be
+required in the emitted JSON Schema so `codex exec` can accept the schema
+without any local shim or provider-specific postprocessing.
 
 The managerial-path prompt should enforce these structural limits:
 

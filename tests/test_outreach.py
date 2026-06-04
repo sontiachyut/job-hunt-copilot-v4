@@ -41,6 +41,8 @@ from job_hunt_copilot.outreach import (
     RECIPIENT_TYPE_ENGINEER,
     RECIPIENT_TYPE_HIRING_MANAGER,
     RECIPIENT_TYPE_RECRUITER,
+    ManagerialRoleSplitDraftPayload,
+    TechnicalRoleSplitDraftPayload,
     _build_role_targeted_draft_context,
     _load_draft_contact_row,
     _load_role_targeted_draft_posting_row,
@@ -4122,6 +4124,14 @@ def test_codex_role_split_renderer_generates_managerial_path_body_and_debug_arti
     assert debug_payload["selected_jd_signals"] == ["backend reliability", "GenAI workflows"]
 
     connection.close()
+
+
+def test_role_split_payload_schemas_require_all_top_level_properties() -> None:
+    technical_schema = TechnicalRoleSplitDraftPayload.model_json_schema()
+    managerial_schema = ManagerialRoleSplitDraftPayload.model_json_schema()
+
+    assert set(technical_schema["required"]) == set(technical_schema["properties"].keys())
+    assert set(managerial_schema["required"]) == set(managerial_schema["properties"].keys())
 
 
 def test_send_execution_persists_sent_metadata_and_delays_remaining_wave(tmp_path: Path):
