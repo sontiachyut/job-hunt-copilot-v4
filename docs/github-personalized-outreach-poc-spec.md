@@ -504,9 +504,6 @@ The preferred managerial CTA wording is:
 
 `I've attached my resume for context. Would you be open to a brief 10-minute conversation? I'd love to better understand the challenges the team is actually focused on, and if helpful, I'd be happy to build a small proof of concept afterward and share the repo. If this is better routed elsewhere, I'd appreciate a forward to the right person internally.`
 
-This managerial path is intentionally provisional and will be tightened further
-in a later ambiguity pass.
-
 ## Credibility Rule
 
 The email must establish why the sender is worth replying to.
@@ -582,12 +579,8 @@ It should avoid:
 5. `AI`
 6. `agent`
 
-For now:
-
 1. technical-path subjects should stay fixed as `Learning from your career path`
 2. managerial-path subjects should stay fixed to the pattern `Interest in the <Role Title> role at <Company>`
-
-Exact subject patterns can be tightened in a later pass.
 
 ## Tone Rule
 

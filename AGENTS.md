@@ -43,7 +43,7 @@ Default workflow:
 4. Load the original sent message plus the linked JD artifact from `job_postings.jd_artifact_path`.
 5. Draft follow-ups using the warmer mutual-fit template, not the older terse JD-theme template.
 6. Save drafts under `ops/followups/<run-id>/` with a combined `drafts.md` and `summary.json`.
-7. Review the `background_fit_areas` across the batch before showing drafts. They must be grounded in the JD, original email, and resume/profile evidence, and should not collapse into the same generic phrase for unrelated roles.
+7. Review the batch wording before showing drafts so it does not collapse into the same generic follow-up language for unrelated roles.
 8. Show the owner one or more sample drafts for review before sending.
 9. Only send after the owner explicitly approves sending.
 10. Send follow-ups as replies in the original Gmail threads using the original `thread_id` and RFC `Message-ID` when available.
@@ -57,7 +57,7 @@ Hi {first_name},
 
 I wanted to briefly follow up on my earlier note about the {role_title} role at {company_name}.
 
-I reached out because I believe the role could be a strong mutual fit with my background in {background_fit_areas}. I know you are busy, so I appreciate you taking the time to read this.
+I reached out because I believe the role could be a strong mutual fit. I know you are busy, so I appreciate you taking the time to read this.
 
 If you are open to it, I would be grateful for a brief 15-minute conversation to hear your perspective on the role, the team, or what tends to matter in the process.
 
@@ -67,4 +67,4 @@ Best,
 Achyutaram Sonti
 ```
 
-Use 2-3 concise `background_fit_areas` grounded in the original email, JD, and resume/profile evidence. Do not repeat the full proof point from the first email, do not add the full LinkedIn / phone / email signature block in follow-ups, and do not reuse a generic default such as `cloud infrastructure, backend systems, and production engineering` across the batch unless that phrase is specifically justified for that role.
+Keep the follow-up brief and role-specific. Do not insert a separate `background_fit_areas` phrase, do not repeat the full proof point from the first email, and do not add the full LinkedIn / phone / email signature block in follow-ups.

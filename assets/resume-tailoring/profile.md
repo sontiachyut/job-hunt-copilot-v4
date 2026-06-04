@@ -14,7 +14,7 @@
 
 ## Education
 
-- **Arizona State University, Tempe, USA** — MS in Computer Science, GPA 3.96/4.00 (Aug 2024 – May 2026)
+- **Arizona State University, Tempe, USA** — MS in Computer Science, GPA 4.00/4.00 (Aug 2024 – May 2026)
 - **Manipal Institute of Technology, India** — BTech in Electrical and Electronics Engineering (Jul 2017 – Aug 2021)
 - **Coursework:** Advanced Operating Systems, Cloud Computing, Foundation of Algorithms, Statistical Machine Learning, Mobile Computing, Computer Networks, Data Structures and Algorithms, OOP, C++
 
