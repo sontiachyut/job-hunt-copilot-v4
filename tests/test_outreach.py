@@ -4060,6 +4060,8 @@ def test_codex_role_split_renderer_generates_managerial_path_body_and_debug_arti
     def fake_run(command, *, input, text, capture_output, check):  # type: ignore[no-untyped-def]
         assert "kind of role-relevant engineering problems I've been trying to work on." in input
         assert "- sender_core_summary:" in input
+        assert '- Then render the fixed posting-link line: "Posting link: https://careers.acme.example/jobs/123"' in input
+        assert "- public_posting_url: https://careers.acme.example/jobs/123" in input
         assert "production AI workflow problems" not in input
         assert "Choose one dominant role-fit theme that reads like a coherent kind of work" in input
         assert "Troubleshooting or root-cause language should usually stay in the problem_hypotheses bullets" in input
@@ -4106,6 +4108,7 @@ def test_codex_role_split_renderer_generates_managerial_path_body_and_debug_arti
     body = message.body_text
     assert message.subject == "Interest in the Software Engineer, GenAI role at Abridge"
     assert "I hope you're doing well." in body
+    assert "Posting link: https://careers.acme.example/jobs/123" in body
     assert "My read from the JD is that the team is likely working on:" in body
     assert "Relevant background from my side:" in body
     assert "**If helpful, I'd be happy to build a small proof of concept based on my understanding of the challenges the team is working on and share the repo.**" in body

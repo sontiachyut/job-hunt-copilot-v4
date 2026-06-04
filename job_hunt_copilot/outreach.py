@@ -888,6 +888,7 @@ class RoleTargetedDraftContext:
     lead_id: str
     company_name: str
     role_title: str
+    public_posting_url: str | None
     recipient_type: str
     contact_id: str
     display_name: str
@@ -2191,11 +2192,17 @@ def _compose_managerial_role_split_body(
 ) -> str:
     problem_lines = [f"- {bullet}" for bullet in payload.problem_hypotheses]
     background_lines = [f"- {bullet}" for bullet in payload.relevant_background]
+    posting_link_line = (
+        [f"Posting link: {context.public_posting_url}", ""]
+        if context.public_posting_url
+        else []
+    )
     body_lines = [
         f"Hi {_first_name(context.display_name)},",
         "",
         f"{MANAGERIAL_PATH_OPENER_SENTENCE_1} {payload.role_alignment_sentence.strip()} {MANAGERIAL_PATH_OPENER_SENTENCE_3}",
         "",
+        *posting_link_line,
         MANAGERIAL_PATH_JD_HEADING,
         *problem_lines,
         "",
@@ -2378,6 +2385,7 @@ def _build_technical_role_split_prompt(context: RoleTargetedDraftContext) -> str
 def _build_managerial_role_split_prompt(context: RoleTargetedDraftContext) -> str:
     bounded_jd_relevance_pack = json.dumps(list(context.bounded_jd_relevance_pack), indent=2)
     sender_evidence_pool = json.dumps(list(context.sender_evidence_pool), indent=2)
+    public_posting_url = context.public_posting_url or "none"
     return "\n".join(
         [
             "Draft the variable content for a concise managerial outreach email.",
@@ -2396,6 +2404,11 @@ def _build_managerial_role_split_prompt(context: RoleTargetedDraftContext) -> st
             f'- Opener sentence 1 is fixed: "{MANAGERIAL_PATH_OPENER_SENTENCE_1}"',
             "- Then insert role_alignment_sentence as opener sentence 2.",
             f'- Opener sentence 3 is fixed and bolded exactly as: "{MANAGERIAL_PATH_OPENER_SENTENCE_3}"',
+            (
+                f'- Then render the fixed posting-link line: "Posting link: {context.public_posting_url}"'
+                if context.public_posting_url
+                else "- No posting-link line will be rendered for this draft."
+            ),
             f'- Then render the fixed heading: "{MANAGERIAL_PATH_JD_HEADING}"',
             "- Then render the problem_hypotheses bullets.",
             f'- Then render the fixed heading: "{MANAGERIAL_PATH_BACKGROUND_HEADING}"',
@@ -2446,6 +2459,7 @@ def _build_managerial_role_split_prompt(context: RoleTargetedDraftContext) -> st
             "- Do not invent unsupported team challenges, technical specifics, or fit claims.",
             "- Problem hypotheses must come from reasoning over the JD only, not from outside assumptions.",
             "- Do not mention LinkedIn or GitHub in the variable content, except for the Job Hunt Copilot repo URL if that bullet is used.",
+            "- Do not mention the posting URL in the variable content. Deterministic Python will render that line separately when a public posting URL is available.",
             "- Do not add extra sections, extra CTA language, or extra questions.",
             "- The returned content should fit naturally into one concise email and should not feel like bits and pieces attached together.",
             "- selected_jd_signals and selected_resume_signals must reflect the signals actually used in the returned bullets and sentence.",
@@ -2458,6 +2472,7 @@ def _build_managerial_role_split_prompt(context: RoleTargetedDraftContext) -> st
             f"- recipient_name: {context.display_name}",
             f"- target_role_title: {context.role_title}",
             f"- target_company: {context.company_name}",
+            f"- public_posting_url: {public_posting_url}",
             f"- bounded_jd_relevance_pack: {bounded_jd_relevance_pack}",
             f"- sender_core_summary: {context.sender_core_summary}",
             f"- sender_evidence_pool: {sender_evidence_pool}",
@@ -2549,6 +2564,7 @@ def _build_role_targeted_draft_context(
         lead_id=str(posting_row["lead_id"]),
         company_name=str(posting_row["company_name"]),
         role_title=str(posting_row["role_title"]),
+        public_posting_url=_normalize_optional_text(posting_row["public_posting_url"]),
         recipient_type=str(contact_row["recipient_type"]),
         contact_id=str(contact_row["contact_id"]),
         display_name=str(contact_row["display_name"]),
@@ -4375,8 +4391,11 @@ def _load_role_targeted_draft_posting_row(
     row = connection.execute(
         """
         SELECT jp.job_posting_id, jp.lead_id, jp.company_name, jp.role_title, jp.posting_status,
-               jp.jd_artifact_path
+               jp.jd_artifact_path,
+               COALESCE(ll.source_url, jp.application_url) AS public_posting_url
         FROM job_postings jp
+        LEFT JOIN linkedin_leads ll
+          ON ll.lead_id = jp.lead_id
         WHERE jp.job_posting_id = ?
         """,
         (job_posting_id,),

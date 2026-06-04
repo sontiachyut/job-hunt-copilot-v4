@@ -703,6 +703,13 @@ public posting URL in the rendered email so the recipient can reference the
 exact opening. For the current build, the LinkedIn job-posting URL is
 sufficient when no better public employer-hosted link is available.
 
+When this line is present, deterministic Python should render it as:
+
+`Posting link: <public_posting_url>`
+
+and place it immediately after the fixed bold proof-of-concept sentence and
+before the `My read from the JD is that the team is likely working on:` section.
+
 The current build does not require a separate employer-internal requisition ID,
 employee-searchable job ID, or req ID field in the managerial email. If the
 system has not captured one explicitly, it should not invent one or block on
@@ -828,6 +835,7 @@ Hard constraints:
 - Do not use generic self-praise such as passionate, hardworking, fast learner, or excited unless directly grounded in evidence.
 - Keep the returned bullets short, readable, and non-redundant.
 - Do not mention LinkedIn or GitHub in the variable content. They belong in the signature only.
+- Do not mention the posting URL in the variable content. Deterministic Python should render that line separately when a public posting URL is available.
 - Optimize for a natural email voice. The draft should read like one person writing a concise note, not like bits and pieces attached together.
 
 Bounded evidence:
@@ -841,6 +849,7 @@ Bounded evidence:
   - Greeting line is fixed: "Hi <FirstName>,"
   - Opener sentence 1 is fixed: "I hope you're doing well."
   - Opener sentence 3 is fixed and bolded: "**If helpful, I'd be happy to build a small proof of concept based on my understanding of the challenges the team is working on and share the repo.**"
+  - If a public posting URL exists, deterministic Python renders one standalone line immediately after the bold sentence: "Posting link: <public_posting_url>"
   - JD heading is fixed: "My read from the JD is that the team is likely working on:"
   - Background heading is fixed: "Relevant background from my side:"
   - CTA block is fixed:
