@@ -75,6 +75,9 @@ Feature: Job Hunt Copilot next-build acceptance
       And the database contains `outreach_followup_plans`
       And the database contains `followup_cycle_runs`
       And the database contains `delivery_feedback_events`
+      And the database contains `contact_provider_profiles`
+      And the database contains `contact_employment_history`
+      And the database contains `job_posting_provider_contexts`
 
     Scenario: Build input pack is sufficient for a fresh build
       Given the build input pack contains `spec.md`
@@ -826,12 +829,33 @@ Feature: Job Hunt Copilot next-build acceptance
       And the system tolerates sparse candidate rows such as obfuscated names when stable provider identity exists
       And `people_search_result.json` preserves the resolved company record, applied filters, and returned candidate rows
 
+    Scenario: Apollo company resolution is persisted as posting-scoped provider context
+      Given Apollo resolves company identity for a role-targeted posting
+      When the resolved company context is persisted
+      Then `job_posting_provider_contexts` stores that raw Apollo company-resolution payload for the `job_posting_id`
+      And newer company-resolution payloads append newer provider-context rows rather than overwriting older raw snapshots
+
     Scenario: Initial enrichment stays selective and capped to the current shortlist policy
       Given a broad Apollo people search has returned many candidate contacts for a posting
       When the build chooses the first enrichment wave
       Then no more than 6 contacts are selected into the initial enrichment shortlist
       And that shortlist aims to cover recruiter, manager-adjacent, and engineer recipient classes before lower-priority internals
       And broad-search candidates outside that shortlist are not enriched by default
+
+    Scenario: Shortlisted Apollo contacts persist full person snapshots and structured employment history
+      Given a broad Apollo people search has yielded a shortlisted candidate for a posting
+      And Apollo search or enrichment returns person payload for that shortlisted candidate
+      When that candidate is materialized into canonical contact state
+      Then `contact_provider_profiles` stores the full Apollo person payload for that contact
+      And `contact_employment_history` stores any returned employment-history items as structured rows linked to the same `contact_id`
+      And downstream drafting may query that stored Apollo context without reparsing only the raw provider artifact
+
+    Scenario: Newer Apollo person payloads refresh latest employment history while preserving raw snapshot history
+      Given a canonical contact already has one persisted Apollo person snapshot and structured Apollo employment history
+      When a newer Apollo search or enrichment payload is persisted for that same contact
+      Then `contact_provider_profiles` preserves both raw Apollo snapshots as append-only history
+      And the contact's current structured Apollo employment history is refreshed to match the newest Apollo payload
+      And stale duplicate employment-history rows do not accumulate indefinitely
 
     Scenario: LinkedIn URL from enrichment can produce a recipient profile snapshot before drafting
       Given a shortlisted contact has completed enrichment successfully
@@ -954,6 +978,14 @@ Feature: Job Hunt Copilot next-build acceptance
       And the exact final sent subject and body are persisted
       And `send_result.json` is produced as the machine handoff artifact
 
+    Scenario: Role-targeted drafting chooses the current technical or managerial path by recipient type
+      Given a job posting is ready for role-targeted outreach
+      And a linked contact has a usable email
+      When Email Drafting and Sending chooses the current role-split playbook for that contact
+      Then technical individual contributors may use the technical path
+      And managers, recruiters, and routing-side contacts may use the managerial path
+      And the chosen path is recoverable from draft artifacts or review evidence
+
     Scenario: General learning outreach does not require a tailored resume or posting linkage
       Given a contact-rooted outreach is not tied to a specific job posting
       When Email Drafting and Sending runs in general learning mode
@@ -1036,10 +1068,11 @@ Feature: Job Hunt Copilot next-build acceptance
       Then successfully generated drafts from that same frontier may still proceed into sending
       And the failed draft case is surfaced for review
 
-    Scenario: Recruiter and team-adjacent outreach defaults to a short Zoom conversation ask
-      Given the recipient type is recruiter or another team-adjacent one-step outreach target
-      When a role-targeted outreach draft is generated
-      Then the default call to action is a short 15-minute Zoom conversation
+    Scenario: Managerial-path outreach uses the fixed concise 10-minute CTA
+      Given the recipient type is recruiter, manager, or another routing-side role-targeted target
+      When a managerial-path outreach draft is generated
+      Then the CTA uses the fixed brief 10-minute conversation ask
+      And the draft asks to better understand the team's real challenges
       And the draft does not default to a phone-call ask for that current-path recipient
 
     Scenario: Rich HTML outreach preserves readable fallback content and canonical message persistence
@@ -1055,25 +1088,43 @@ Feature: Job Hunt Copilot next-build acceptance
       When the resulting artifacts are inspected
       Then `email_draft.md` is available as a human-readable companion artifact
       And `send_result.json` is available as the machine handoff artifact
+      And a draft-debug artifact is available for role-split drafts
       And `send_result.json` includes the shared contract envelope and relevant stable IDs
 
-    Scenario: Default v4 shared template uses the current unified structure
-      Given a role-targeted draft is generated with the default v4 shared template
-      When the resulting draft is inspected
-      Then it opens from role, team, or work-area context rather than requiring recipient-background hooks
-      And it includes an explicit `why I am reaching out to you` line
-      And it includes one concrete proof point of fit
-      And it includes the Job Hunt Copilot / AI-agent block
-      And it uses one 15-minute Zoom ask
-      And the forwardable snippet is placed directly below the routing-help line
-      And the default body does not rely on an education-status sentence such as `I am currently finishing my MS ...`
+    Scenario: Technical-path draft is codex-generated only for the opener and reads Apollo history DB-first
+      Given a role-targeted technical-path draft is being created for a linked contact
+      And structured Apollo employment history exists for that contact in canonical state
+      When Email Drafting and Sending renders the technical-path body
+      Then `codex exec` generates only Technical Paragraph 1 plus debug fields
+      And deterministic rendering appends the fixed later paragraphs and standard signature
+      And the draft reads Apollo employment history from the structured database-backed provider store before falling back to artifact reparsing
+      And the subject is `Learning from your career path`
 
-    Scenario: The current shared role-targeted template includes a compact forwardable summary snippet
-      Given a role-targeted draft is generated with the current shared template
-      When the draft is inspected
-      Then the draft includes a compact forwardable summary snippet
-      And that snippet stays small enough to be plausibly forwarded with little or no editing
-      And that snippet is JD-aware rather than a generic skills list
+    Scenario: Managerial-path draft uses fixed deterministic structure around codex-generated reasoning
+      Given a role-targeted managerial-path draft is being created for a linked contact
+      When Email Drafting and Sending renders the managerial-path body
+      Then deterministic rendering emits the greeting and fixed `I hope you're doing well.` opener sentence
+      And `codex exec` generates the role-alignment sentence, exactly 3 JD-challenge bullets, exactly 3 relevant-background bullets, and debug fields
+      And deterministic rendering emits the fixed bold proof-of-concept sentence
+      And deterministic rendering emits the fixed CTA block and standard signature
+      And the JD-challenge bullets are JD-only inferred problem hypotheses rather than verbatim JD paste
+      And the relevant-background bullets come from real resume or project evidence
+      And the subject follows `Interest in the <Role Title> role at <Company>`
+
+    Scenario: Managerial-path posting link is rendered deterministically from canonical state
+      Given a managerial-path draft is being created for a concrete job posting
+      And a public posting URL is available in canonical state
+      When the body is rendered
+      Then the email includes one standalone `Posting link:` line
+      And that line appears immediately after the fixed bold proof-of-concept sentence
+      And the line uses the canonical public posting URL rather than model-generated URL text
+
+    Scenario: Role-split codex outputs are schema-validated before the draft is accepted
+      Given a role-split draft is generated through `codex exec`
+      When the structured output contract is inspected
+      Then the provider-facing JSON schema marks every top-level output field as required
+      And the draft is rejected if runtime validation fails
+      And accepted draft-debug artifacts record the selected JD, career-step, or sender-evidence signals actually used in the draft
 
   @followups
   Rule: Automated Follow-Up Worker behavior
