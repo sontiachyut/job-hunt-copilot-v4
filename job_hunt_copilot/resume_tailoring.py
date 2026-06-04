@@ -117,8 +117,8 @@ STEP_7_CHECK_IDS = (
     "line-budget",
     "compile-page-readiness",
 )
-STEP_6_BULLET_TARGET_MIN = 210
-STEP_6_BULLET_TARGET_MAX = 255
+STEP_6_BULLET_TARGET_MIN = 185
+STEP_6_BULLET_TARGET_MAX = 225
 STEP_6_BULLET_HARD_MIN = 100
 STEP_6_BULLET_HARD_MAX = 275
 LATEX_BIN_CANDIDATE_DIRS = (
@@ -217,11 +217,11 @@ SUMMARY_BLOCK_RE = re.compile(
     re.DOTALL,
 )
 TECHNICAL_SKILLS_BLOCK_RE = re.compile(
-    r"(?P<prefix>\\section\{TECHNICAL SKILLS\}\s*)(?P<skills>(?:\\begin\{onecolentry\}.*?\\end\{onecolentry\}\s*)+)(?P<suffix>\\end\{document\})",
+    r"(?P<prefix>\\section\{TECHNICAL SKILLS\}\s*)(?P<skills>.*?)(?P<suffix>\\end\{document\})",
     re.DOTALL,
 )
 TECHNICAL_SKILL_LINE_RE = re.compile(
-    r"\\begin\{onecolentry\}\s*\\textbf\{(?P<category>[^:]+):\}\s*(?P<items>.*?)\s*\\end\{onecolentry\}",
+    r"\\textbf\{(?P<category>[^:]+):\}\s*(?P<items>.*?)(?:\\\\|$)",
     re.DOTALL,
 )
 SOFTWARE_ENGINEER_BLOCK_RE = re.compile(
@@ -3136,16 +3136,19 @@ def _apply_step_6_payload_to_resume(content: str, step_6_payload: Mapping[str, A
 
 
 def _render_technical_skills_block(technical_skills: Sequence[Mapping[str, Any]]) -> str:
-    rendered_blocks = []
-    for entry in technical_skills:
+    rendered_lines: list[str] = []
+    for index, entry in enumerate(technical_skills):
         category = str(entry.get("category") or "").strip()
         items = ", ".join(str(item).strip() for item in entry.get("items") or [] if str(item).strip())
-        rendered_blocks.append(
-            "    \\begin{onecolentry}\n"
-            f"        \\textbf{{{category}:}} {items}\n"
-            "    \\end{onecolentry}\n"
-        )
-    return "\n".join(rendered_blocks).rstrip() + "\n\n"
+        suffix = " \\\\" if index < len(technical_skills) - 1 else ""
+        rendered_lines.append(f"        \\textbf{{{category}:}} {items}{suffix}")
+    return (
+        "    \\begin{onecolentry}\n"
+        "        {\\small\n"
+        + "\n".join(rendered_lines)
+        + "\n        }\n"
+        "    \\end{onecolentry}\n\n"
+    )
 
 
 def _extract_profile_skill_inventory(profile_text: str) -> list[dict[str, Any]]:
@@ -3225,26 +3228,26 @@ def _determine_role_focus(
 def _build_tailored_summary(role_focus: str) -> str:
     if role_focus == ROLE_FOCUS_AI_APPLICATION:
         return (
-            "MS CS candidate with 3+ years building production Python and AWS systems plus "
-            "hands-on LLM, RAG, and agentic AI projects, focused on automating user workflows "
-            "with reliable cloud-native services and measurable performance gains"
+            "Software engineer with 3+ years of experience building backend data platforms and "
+            "distributed production systems, plus hands-on AI workflow automation projects "
+            "focused on reliable user-facing automation and measurable performance gains"
         )
     if role_focus == ROLE_FOCUS_CLOUD_PLATFORM:
         return (
-            "MS CS candidate with 3+ years building cloud platforms and production data "
-            "services, focused on infrastructure automation, observability, reliability, and "
-            "cost-aware operations across containerized distributed systems"
+            "Software engineer with 3+ years of experience building backend data platforms and "
+            "distributed production systems, focused on infrastructure automation, "
+            "observability, reliability, and cost-aware operations"
         )
     if role_focus == ROLE_FOCUS_BACKEND_SERVICE:
         return (
-            "MS CS candidate with 3+ years building backend data services and distributed "
-            "systems, focused on Python and AWS delivery, production reliability, and "
-            "high-volume workflow automation"
+            "Software engineer with 3+ years of experience building backend data platforms and "
+            "distributed production systems, focused on production reliability, performance "
+            "optimization, and workflow automation"
         )
     return (
-        "MS CS candidate with 3+ years building distributed systems and production data "
-        "services, focused on reliable cloud infrastructure, performance optimization, and "
-        "operationally safe delivery"
+        "Software engineer with 3+ years of experience building backend data platforms and "
+        "distributed production systems, focusing on reliability, performance optimization, "
+        "and workflow automation"
     )
 
 
@@ -3264,12 +3267,33 @@ def _build_tailored_technical_skills(
         for entry in profile_skill_inventory
     }
 
+    def normalize_skill_item(item: str) -> str:
+        normalized = str(item).strip()
+        replacements = {
+            "Golang": "Go",
+            "JavaScript": "TypeScript",
+            "AWS (EMR, EC2, S3, Lambda, SQS, DynamoDB, API Gateway)": "AWS",
+            "React/Next.js": "React",
+            "Databricks/Spark": "Databricks",
+            "Agentic AI": "AI Agents",
+            "Workflow Automation": "Automation",
+            "Unit/Integration Testing": "Testing",
+            "Performance Profiling": "Profiling",
+        }
+        return replacements.get(normalized, normalized)
+
     def pick_items(category_names: Sequence[str], fallback: Sequence[str], *, limit: int = 6) -> list[str]:
         pool: list[str] = []
         for category_name in category_names:
             pool.extend(categories_by_name.get(category_name, []))
+        pool = [normalize_skill_item(item) for item in pool]
+        fallback = [normalize_skill_item(item) for item in fallback]
         if not pool:
             pool = list(fallback)
+        preferred_order = {
+            item.lower(): index
+            for index, item in enumerate(fallback)
+        }
         scored: list[tuple[int, str]] = []
         seen: set[str] = set()
         for item in pool:
@@ -3279,7 +3303,13 @@ def _build_tailored_technical_skills(
             seen.add(normalized)
             score = _score_skill_item_relevance(item, jd_tokens, role_focus)
             scored.append((score, item))
-        scored.sort(key=lambda pair: (-pair[0], pair[1].lower()))
+        scored.sort(
+            key=lambda pair: (
+                -pair[0],
+                preferred_order.get(pair[1].lower(), len(preferred_order) + 10),
+                pair[1].lower(),
+            )
+        )
         selected = [item for _, item in scored[:limit]]
         return selected or list(fallback[:limit])
 
@@ -3289,35 +3319,40 @@ def _build_tailored_technical_skills(
                 "category": "Languages",
                 "items": pick_items(
                     ["languages"],
-                    ["Python", "TypeScript", "JavaScript", "SQL", "Java", "Golang"],
+                    ["Python", "Go", "SQL", "Java", "Scala"],
+                    limit=5,
                 ),
             },
             {
-                "category": "AI \\& Data",
+                "category": "Backend \\& Systems",
                 "items": pick_items(
-                    ["ai & data", "systems"],
-                    ["LLMs", "Agentic AI", "Apache Spark", "Neo4j", "FAISS", "Redis"],
-                ),
-            },
-            {
-                "category": "Application \\& APIs",
-                "items": pick_items(
-                    ["frontend & mobile"],
-                    ["React", "Next.js", "Node.js", "FastAPI", "Android (Kotlin)", "Swift"],
+                    ["backend & systems"],
+                    ["FastAPI", "Node.js", "React", "Distributed Systems", "REST APIs"],
+                    limit=5,
                 ),
             },
             {
                 "category": "Cloud \\& DevOps",
                 "items": pick_items(
                     ["cloud & devops"],
-                    ["AWS (Lambda, S3, DynamoDB, API Gateway, EC2)", "Docker", "Kubernetes", "GitLab CI/CD", "Linux"],
+                    ["AWS", "Azure Data Factory", "ADLS Gen2", "Azure PostgreSQL", "Kubernetes", "Docker"],
+                    limit=6,
                 ),
             },
             {
-                "category": "Testing \\& Reliability",
+                "category": "Data \\& Storage",
                 "items": pick_items(
-                    ["testing & reliability"],
-                    ["Pytest", "Unit/Integration Testing", "Monitoring", "Debugging", "Performance Profiling"],
+                    ["data & storage"],
+                    ["Databricks", "PostgreSQL", "MySQL", "Neo4j", "SQLite"],
+                    limit=5,
+                ),
+            },
+            {
+                "category": "AI \\& Reliability",
+                "items": pick_items(
+                    ["ai & reliability"],
+                    ["AI Agents", "LLMs", "Automation", "PyTorch", "FAISS", "Monitoring"],
+                    limit=6,
                 ),
             },
         ]
@@ -3327,35 +3362,40 @@ def _build_tailored_technical_skills(
                 "category": "Languages",
                 "items": pick_items(
                     ["languages"],
-                    ["Python", "Golang", "Java", "Scala", "Bash", "SQL"],
+                    ["Python", "Go", "SQL", "Java", "Scala"],
+                    limit=5,
                 ),
             },
             {
                 "category": "Cloud \\& DevOps",
                 "items": pick_items(
                     ["cloud & devops"],
-                    ["AWS (EMR, EC2, S3, Lambda, SQS)", "Kubernetes", "Docker", "Terraform", "GitLab CI/CD", "Linux"],
+                    ["AWS", "Azure Data Factory", "ADLS Gen2", "Azure PostgreSQL", "Kubernetes", "Docker"],
+                    limit=6,
                 ),
             },
             {
-                "category": "Systems \\& Platform",
+                "category": "Backend \\& Systems",
                 "items": pick_items(
-                    ["systems"],
-                    ["Distributed Systems", "Microservices", "Load Balancing", "System Design", "gRPC", "Protocol Buffers"],
+                    ["backend & systems"],
+                    ["FastAPI", "Node.js", "React", "Distributed Systems", "REST APIs"],
+                    limit=5,
                 ),
             },
             {
                 "category": "Data \\& Storage",
                 "items": pick_items(
-                    ["ai & data"],
-                    ["Apache Spark", "PostgreSQL", "MySQL", "DynamoDB", "MongoDB", "Redis"],
+                    ["data & storage"],
+                    ["Databricks", "PostgreSQL", "MySQL", "Neo4j", "SQLite"],
+                    limit=5,
                 ),
             },
             {
-                "category": "Observability \\& Reliability",
+                "category": "AI \\& Reliability",
                 "items": pick_items(
-                    ["testing & reliability"],
-                    ["Monitoring", "Debugging", "Performance Profiling", "Pytest", "Unit/Integration Testing"],
+                    ["ai & reliability"],
+                    ["AI Agents", "LLMs", "Automation", "Monitoring", "Pytest", "Debugging"],
+                    limit=6,
                 ),
             },
         ]
@@ -3365,35 +3405,40 @@ def _build_tailored_technical_skills(
                 "category": "Languages",
                 "items": pick_items(
                     ["languages"],
-                    ["Python", "Golang", "Java", "Scala", "SQL", "Bash"],
+                    ["Python", "Go", "SQL", "Java", "Scala"],
+                    limit=5,
                 ),
             },
             {
-                "category": "Infrastructure \\& Systems",
+                "category": "Backend \\& Systems",
                 "items": pick_items(
-                    ["systems"],
-                    ["Distributed Systems", "Microservices", "Load Balancing", "System Design", "gRPC", "Protocol Buffers"],
+                    ["backend & systems"],
+                    ["FastAPI", "Node.js", "React", "Distributed Systems", "REST APIs"],
+                    limit=5,
                 ),
             },
             {
                 "category": "Cloud \\& DevOps",
                 "items": pick_items(
                     ["cloud & devops"],
-                    ["AWS (EMR, EC2, S3, Lambda, SQS)", "Kubernetes", "Docker", "Terraform", "GitLab CI/CD", "Linux"],
+                    ["AWS", "Azure Data Factory", "ADLS Gen2", "Azure PostgreSQL", "Kubernetes", "Docker"],
+                    limit=6,
                 ),
             },
             {
                 "category": "Data \\& Storage",
                 "items": pick_items(
-                    ["ai & data"],
-                    ["Apache Spark", "PostgreSQL", "MySQL", "DynamoDB", "MongoDB", "Redis"],
+                    ["data & storage"],
+                    ["Databricks", "PostgreSQL", "MySQL", "Neo4j", "SQLite"],
+                    limit=5,
                 ),
             },
             {
-                "category": "Testing \\& Reliability",
+                "category": "AI \\& Reliability",
                 "items": pick_items(
-                    ["testing & reliability"],
-                    ["Pytest", "Unit/Integration Testing", "Monitoring", "Debugging", "Performance Profiling"],
+                    ["ai & reliability"],
+                    ["Monitoring", "Pytest", "Debugging", "Automation", "LLMs", "AI Agents"],
+                    limit=6,
                 ),
             },
         ]
@@ -3414,42 +3459,30 @@ def _score_skill_item_relevance(item: str, jd_tokens: set[str], role_focus: str)
 
 def _build_tailored_stack_line(role_focus: str) -> str:
     if role_focus == ROLE_FOCUS_AI_APPLICATION:
-        return "Python, AWS (EMR, S3), Docker, monitoring, distributed services, production analytics"
+        return "Python, SQL, Scala, Databricks/Spark, Azure Data Factory, ADLS Gen2, Azure PostgreSQL, monitoring"
     if role_focus == ROLE_FOCUS_CLOUD_PLATFORM:
-        return "Python, AWS (EMR, S3), Terraform, Docker, Kubernetes, monitoring"
+        return "Python, SQL, Scala, Databricks/Spark, Azure Data Factory, ADLS Gen2, Azure PostgreSQL, CI/CD"
     if role_focus == ROLE_FOCUS_BACKEND_SERVICE:
-        return "Python, Scala, AWS (EMR, S3), distributed systems, monitoring, production reliability"
-    return "Python, Apache Spark, AWS (EMR, S3), Docker, monitoring, distributed systems"
+        return "Python, SQL, Scala, PySpark/Spark SQL, Databricks/Spark, Azure Data Factory, ADLS Gen2, Azure PostgreSQL, CI/CD"
+    return "Python, SQL, Scala, PySpark/Spark SQL, Databricks/Spark, Azure Data Factory, ADLS Gen2, Azure PostgreSQL, CI/CD"
 
 
 def _build_tailored_software_engineer_bullets(role_focus: str) -> list[str]:
-    if role_focus == ROLE_FOCUS_AI_APPLICATION:
-        return [
-            "Built Python and Scala data services on AWS (EMR, S3), processing 50M+ daily HL7 records (~580 TPS) and automating high-volume clinical data flows that powered real-time analytics across 1,500+ hospitals with 24/7 uptime",
-            "Developed Python and Apache Spark workflows with custom HL7 parsers, cutting end-to-end processing time 40\\% (6 hours to 3.6 hours) on 2TB+ daily data and reducing manual operational follow-up for downstream analytics teams",
-            "Optimized 25+ Spark jobs on AWS EMR, improving throughput 50\\% (20K to 30K records/sec) and lowering monthly cloud spend by \\$15K while keeping large-scale production data services reliable and cost efficient",
-            "Designed monitoring and alerting for production workflows, triaging data-quality issues and resolving incidents quickly enough to keep analytics and support operations dependable for 1,500+ hospitals in a 24/7 environment",
-        ]
-    if role_focus == ROLE_FOCUS_CLOUD_PLATFORM:
-        return [
-            "Built high-availability Python and Scala data services on AWS (EMR, S3), processing 50M+ daily HL7 records (~580 TPS) and supporting reliable shared analytics infrastructure across 1,500+ hospitals with 24/7 uptime",
-            "Developed Python and Apache Spark automation workflows with custom HL7 parsers, reducing processing time 40\\% (6 hours to 3.6 hours) on 2TB+ daily data and improving repeatable production operations",
-            "Optimized 25+ Spark jobs on AWS EMR, improving throughput 50\\% (20K to 30K records/sec) and lowering monthly cloud spend by \\$15K while strengthening cost-aware platform performance",
-            "Designed monitoring and alerting for production workflows, triaging data-quality issues and resolving incidents to keep operational reliability high in an always-on environment",
-        ]
-    if role_focus == ROLE_FOCUS_BACKEND_SERVICE:
-        return [
-            "Built high-availability Python and Scala backend data services on AWS (EMR, S3), processing 50M+ daily HL7 records (~580 TPS) for real-time analytics across 1,500+ hospitals with 24/7 uptime",
-            "Developed Python and Apache Spark pipelines with custom HL7 parsers, reducing end-to-end processing time 40\\% (6 hours to 3.6 hours) on 2TB+ daily data and enabling reliable same-day downstream decisions",
-            "Optimized 25+ Spark jobs on AWS EMR, improving throughput 50\\% (20K to 30K records/sec) and lowering monthly cloud spend by \\$15K while keeping large-scale services performant under production load",
-            "Owned monitoring and operational support for production workflows, triaging data-quality issues and resolving incidents to maintain SLA-aligned analytics delivery in a 24/7 environment",
-        ]
-    return [
-        "Built distributed, high-availability data services in Python and Scala on AWS (EMR, S3), processing 50M+ daily HL7 records (~580 TPS) for real-time analytics across 1,500+ hospitals with 24/7 uptime",
-        "Developed Python and Apache Spark ETL pipelines with custom HL7 parsers, reducing processing time 40\\% (6 hours to 3.6 hours) on 2TB+ daily healthcare data while preserving same-day analytics delivery",
-        "Optimized 25+ Spark jobs on AWS EMR, improving throughput 50\\% (20K to 30K records/sec) and lowering monthly cloud spend by \\$15K while keeping production analytics delivery stable",
-        "Designed monitoring and alerting for production workflows, triaging data-quality issues and resolving incidents to support reliable analytics delivery in a 24/7 environment",
+    common_bullets = [
+        "Built and maintained Azure-based data services and Databricks/Spark pipelines in Python and Scala, processing 50M+ daily HL7 records (~580 TPS) into governed analytics workloads for 1,500+ hospitals with 24/7 uptime",
+        "Developed ETL/ELT pipelines using Python, PySpark/Spark SQL, Azure Data Factory, Azure PostgreSQL, ADLS Gen2, and custom HL7 parsers, reducing processing time by 40\\% (6 hours to 3.6 hours) on 2TB+ daily data",
+        "Optimized 25+ Spark jobs and lakehouse pipeline stages with partitioning, caching, and SQL tuning, improving throughput by 50\\% (from 20K to 30K records/second) and reducing monthly cloud spend by \\$15K",
+        "Supported governed downstream data access for BI tools, REST APIs, ODBC connectors, and Kafka-based downstream consumers, with attention to lineage, cataloging, and secure clinical analytics delivery",
+        "Designed monitoring, alerting, and data quality checks with Azure Log Analytics and Datadog-style observability, triaging production incidents and maintaining SLA compliance across regulated healthcare data workflows",
     ]
+    if role_focus in {
+        ROLE_FOCUS_AI_APPLICATION,
+        ROLE_FOCUS_CLOUD_PLATFORM,
+        ROLE_FOCUS_BACKEND_SERVICE,
+        ROLE_FOCUS_DISTRIBUTED,
+    }:
+        return common_bullets
+    return common_bullets
 
 
 def _prioritized_matches(
@@ -3837,6 +3870,7 @@ def _build_step_6_candidate_payload(
         "scale-impact",
         "end-to-end-flow",
         "optimization",
+        "downstream-delivery",
         "reliability-operations",
     )
     matches = _prioritized_matches(
@@ -3844,7 +3878,7 @@ def _build_step_6_candidate_payload(
         role_focus=role_focus,
     )
     signals = list(step_3_payload.get("signals", []))
-    for index, bullet_text in enumerate(source_bullets[:4]):
+    for index, bullet_text in enumerate(source_bullets):
         support_pointers = _select_support_pointers_for_text(
             bullet_text,
             matches,
@@ -4079,9 +4113,12 @@ def _build_step_7_verification_artifact(
 
     line_notes: list[str] = []
     line_status = VERIFICATION_OUTCOME_PASS
-    if len(bullet_entries) != 4:
+    expected_bullet_count = len(resume_doc.software_engineer_bullets)
+    if len(bullet_entries) != expected_bullet_count:
         line_status = VERIFICATION_OUTCOME_FAIL
-        line_notes.append("Step 6 must contain exactly 4 software-engineer bullets.")
+        line_notes.append(
+            f"Step 6 must contain exactly {expected_bullet_count} software-engineer bullets."
+        )
     for entry in bullet_entries:
         char_count = int(entry.get("char_count") or len(str(entry.get("text") or "")))
         if char_count < STEP_6_BULLET_HARD_MIN or char_count > STEP_6_BULLET_HARD_MAX:

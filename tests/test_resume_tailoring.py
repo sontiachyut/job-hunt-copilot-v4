@@ -57,6 +57,23 @@ def bootstrap_project(tmp_path):
     return project_root
 
 
+def test_parse_real_base_resume_supports_compact_skills_and_five_bullets():
+    document = resume_tailoring_module._parse_resume_document(
+        REAL_BASE_RESUME_PATH.read_text(encoding="utf-8")
+    )
+
+    assert document.summary.startswith("Software engineer with 3+ years of experience")
+    assert len(document.technical_skills) == 5
+    assert [entry["category"] for entry in document.technical_skills] == [
+        "Languages",
+        "Backend \\& Systems",
+        "Cloud \\& DevOps",
+        "Data \\& Storage",
+        "AI \\& Reliability",
+    ]
+    assert len(document.software_engineer_bullets) == 5
+
+
 def test_resolve_latex_binary_falls_back_to_known_candidate_dirs(tmp_path, monkeypatch):
     fake_bin_dir = tmp_path / "texbin"
     fake_bin_dir.mkdir()
@@ -862,7 +879,7 @@ def test_generate_tailoring_intelligence_populates_step_artifacts_and_keeps_run_
     assert step_4_payload["status"] == "generated"
     assert step_4_payload["matches"]
     assert step_6_payload["status"] == "generated"
-    assert len(step_6_payload["software_engineer"]["bullets"]) == 4
+    assert len(step_6_payload["software_engineer"]["bullets"]) == 5
     assert step_7_payload["verification_outcome"] == "pass"
     assert "pending" not in {check["status"] for check in step_7_payload["checks"]}
 
@@ -973,7 +990,7 @@ def test_generate_tailoring_intelligence_filters_jd_noise_and_scores_ai_resume_f
     assert not any("internal applicants must" in signal for signal in signals)
     assert not any("equal employment opportunity" in signal for signal in signals)
     assert step_6_payload["selected_focus"] == "ai_application"
-    assert "agentic ai projects" in step_6_payload["summary"].lower()
+    assert "ai workflow automation projects" in step_6_payload["summary"].lower()
     assert result.verification_outcome == "pass"
     assert step_7_payload["verification_outcome"] == "pass"
     assert step_7_payload["agent_score"] >= 60
