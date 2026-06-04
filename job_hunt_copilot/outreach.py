@@ -5,7 +5,9 @@ import html
 import hashlib
 import json
 import re
+import shutil
 import sqlite3
+import subprocess
 from dataclasses import dataclass
 from datetime import UTC, date, datetime, time, timedelta, tzinfo
 from email.message import EmailMessage
@@ -13,12 +15,13 @@ from pathlib import Path
 from typing import Any, Mapping, Protocol, Sequence
 from zoneinfo import ZoneInfo
 
+from pydantic import BaseModel, ConfigDict, Field, ValidationError, field_validator
 import yaml
 
 from .artifacts import ArtifactLinkage, publish_json_artifact, register_artifact_record, write_json_contract
 from .company_keys import ensure_missing_posting_company_keys, posting_company_key_from_row
 from .delivery_feedback import MailboxFeedbackObserver, run_immediate_delivery_feedback_poll
-from .paths import ProjectPaths
+from .paths import ProjectPaths, workspace_slug
 from .records import lifecycle_timestamps, new_canonical_id
 
 OUTREACH_COMPONENT = "email_drafting_sending"
@@ -54,6 +57,42 @@ AUTOMATIC_POSTING_DAILY_SEND_CAP = 4
 MIN_INTER_SEND_GAP_MINUTES = 6
 MAX_INTER_SEND_GAP_MINUTES = 10
 JOB_HUNT_COPILOT_REPO_URL = "https://github.com/sontiachyut/job-hunt-copilot-v4"
+TECHNICAL_PATH_SUBJECT = "Learning from your career path"
+TECHNICAL_PATH_PARAGRAPH_2 = (
+    "I recently graduated from ASU with an MS in Computer Science. "
+    "I also have about three years of experience building large-scale systems, "
+    "including distributed high-availability data services in Python and Scala on Azure "
+    "that handled ~580 TPS in production while maintaining 99.95% uptime."
+)
+TECHNICAL_PATH_PARAGRAPH_3_TEMPLATE = (
+    "I'm passionate about learning new technology and building products, which is what led me to build Job Hunt Copilot. "
+    "It's an AI workflow automation tool I built to help me connect with strong engineers and technical leaders while supporting my job search. "
+    "This email is a live example of that autonomous workflow. "
+    "It's something I built from scratch and have been shaping with real production use in mind, not just as a one-off prototype. "
+    "If you're interested, the repo is here: {repo_url}"
+)
+TECHNICAL_PATH_PARAGRAPH_4 = (
+    "I'm currently in the job hunt process, and I'd really value your guidance. "
+    "I want to build a career like yours. "
+    "Would you be open to a 10-minute conversation sometime in the next week or two? "
+    "I'm usually free weekdays between 8 AM and 6 PM MST, and I'm flexible outside that too if another time works better for you."
+)
+MANAGERIAL_PATH_OPENER_SENTENCE_1 = "I hope you're doing well."
+MANAGERIAL_PATH_OPENER_SENTENCE_3 = (
+    "**If helpful, I'd be happy to build a small proof of concept based on my understanding "
+    "of the challenges the team is working on and share the repo.**"
+)
+MANAGERIAL_PATH_JD_HEADING = "My read from the JD is that the team is likely working on:"
+MANAGERIAL_PATH_BACKGROUND_HEADING = "Relevant background from my side:"
+MANAGERIAL_PATH_CTA_RESUME = "I've attached my resume for context."
+MANAGERIAL_PATH_CTA_QUESTION = "Would you be open to a brief 10-minute conversation?"
+MANAGERIAL_PATH_CTA_CONTEXT = (
+    "I'd love to better understand the challenges the team is actually focused on, and if helpful, "
+    "I'd be happy to build a small proof of concept afterward and share the repo."
+)
+MANAGERIAL_PATH_CTA_FORWARD = (
+    "If this is better routed elsewhere, I'd appreciate a forward to the right person internally."
+)
 
 SEND_SET_PRIMARY_SLOTS: tuple[tuple[str, tuple[str, ...]], ...] = (
     ("recruiter", (RECIPIENT_TYPE_RECRUITER,)),
@@ -839,6 +878,7 @@ class RenderedDraft:
     body_html: str | None
     include_forwardable_snippet: bool
     opener_decision: RoleTargetedOpenerDecision | None = None
+    debug_payload: Mapping[str, Any] | None = None
 
 
 @dataclass(frozen=True)
@@ -865,6 +905,12 @@ class RoleTargetedDraftContext:
     opener_decision: RoleTargetedOpenerDecision
     sender: SenderIdentity
     tailored_resume_path: str
+    apollo_employment_history_summary: tuple[str, ...]
+    bounded_jd_relevance_pack: tuple[Mapping[str, Any], ...]
+    sender_core_summary: str
+    sender_evidence_pool: tuple[Mapping[str, Any], ...]
+    relevant_skills_summary: str
+    job_hunt_copilot_summary: str
 
 
 @dataclass(frozen=True)
@@ -882,6 +928,64 @@ class RoleTargetedOpenerInputs:
     role_title: str
     technical_focus: str
     overlap_sentence: str
+
+
+class TechnicalRoleSplitDraftPayload(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    paragraph_1_text: str
+    selected_career_steps: list[str] = Field(default_factory=list)
+
+    @field_validator("paragraph_1_text")
+    @classmethod
+    def _validate_paragraph_1_text(cls, value: str) -> str:
+        if _count_sentences(value) != 2:
+            raise ValueError("technical paragraph_1_text must contain exactly 2 sentences")
+        return value.strip()
+
+    @field_validator("selected_career_steps")
+    @classmethod
+    def _validate_selected_career_steps(cls, value: list[str]) -> list[str]:
+        cleaned = [step.strip() for step in value if step and step.strip()]
+        if not cleaned:
+            raise ValueError("selected_career_steps must contain at least one company name")
+        return cleaned
+
+
+class ManagerialRoleSplitDraftPayload(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    role_alignment_sentence: str
+    problem_hypotheses: list[str]
+    relevant_background: list[str]
+    selected_jd_signals: list[str] = Field(default_factory=list)
+    selected_resume_signals: list[str] = Field(default_factory=list)
+
+    @field_validator("role_alignment_sentence")
+    @classmethod
+    def _validate_role_alignment_sentence(cls, value: str) -> str:
+        if _count_sentences(value) != 1:
+            raise ValueError("managerial role_alignment_sentence must contain exactly 1 sentence")
+        return value.strip()
+
+    @field_validator("problem_hypotheses", "relevant_background")
+    @classmethod
+    def _validate_managerial_bullets(cls, value: list[str], info: Any) -> list[str]:
+        cleaned = [item.strip() for item in value if item and item.strip()]
+        if len(cleaned) != 3:
+            raise ValueError(f"{info.field_name} must contain exactly 3 bullets")
+        for item in cleaned:
+            if _count_sentences(item) != 1:
+                raise ValueError(f"each {info.field_name} bullet must be exactly 1 sentence")
+        return cleaned
+
+    @field_validator("selected_jd_signals", "selected_resume_signals")
+    @classmethod
+    def _validate_debug_signals(cls, value: list[str]) -> list[str]:
+        cleaned = [item.strip() for item in value if item and item.strip()]
+        if len(cleaned) > 3:
+            raise ValueError("debug signal lists must contain no more than 3 items")
+        return cleaned
 
 
 @dataclass(frozen=True)
@@ -1910,6 +2014,484 @@ class DeterministicOutreachDraftRenderer(OutreachDraftRenderer):
         )
 
 
+class CodexRoleSplitOutreachDraftRenderer(OutreachDraftRenderer):
+    def __init__(
+        self,
+        *,
+        project_root: Path | str,
+        codex_bin: str | None = None,
+        model: str | None = None,
+    ) -> None:
+        self._paths = ProjectPaths.from_root(project_root)
+        self._codex_bin = codex_bin or _resolve_outreach_codex_bin()
+        self._model = model
+        self._fallback_renderer = DeterministicOutreachDraftRenderer()
+
+    def render_role_targeted(self, context: RoleTargetedDraftContext) -> RenderedDraft:
+        recipient_path = _select_role_split_recipient_path(context)
+        if recipient_path == "technical":
+            payload = _run_codex_technical_role_split_draft(
+                paths=self._paths,
+                codex_bin=self._codex_bin,
+                model=self._model,
+                context=context,
+            )
+            body_markdown = _compose_technical_role_split_body(context, payload)
+            debug_payload = {
+                "drafting_path": "technical",
+                "selected_career_steps": payload.selected_career_steps,
+                "employment_history_summary": list(context.apollo_employment_history_summary),
+            }
+            return RenderedDraft(
+                subject=TECHNICAL_PATH_SUBJECT,
+                body_markdown=body_markdown,
+                body_html=_render_markdown_email_html(body_markdown),
+                include_forwardable_snippet=False,
+                debug_payload=debug_payload,
+            )
+
+        payload = _run_codex_managerial_role_split_draft(
+            paths=self._paths,
+            codex_bin=self._codex_bin,
+            model=self._model,
+            context=context,
+        )
+        body_markdown = _compose_managerial_role_split_body(context, payload)
+        debug_payload = {
+            "drafting_path": "managerial",
+            "selected_jd_signals": payload.selected_jd_signals,
+            "selected_resume_signals": payload.selected_resume_signals,
+        }
+        return RenderedDraft(
+            subject=f"Interest in the {context.role_title} role at {context.company_name}",
+            body_markdown=body_markdown,
+            body_html=_render_markdown_email_html(body_markdown),
+            include_forwardable_snippet=False,
+            debug_payload=debug_payload,
+        )
+
+    def render_general_learning(self, context: GeneralLearningDraftContext) -> RenderedDraft:
+        return self._fallback_renderer.render_general_learning(context)
+
+
+def _resolve_outreach_codex_bin() -> str:
+    resolved = shutil.which("codex")
+    if resolved is None:
+        raise OutreachDraftingError("`codex` binary is required for role-split outreach drafting.")
+    return resolved
+
+
+def _build_outreach_codex_exec_command(
+    *,
+    codex_bin: str,
+    project_root: Path,
+    schema_path: Path,
+    output_path: Path,
+    model: str | None = None,
+) -> list[str]:
+    command = [codex_bin, "exec"]
+    if model:
+        command.extend(["--model", model])
+    command.extend(
+        [
+            "--ephemeral",
+            "--sandbox",
+            "workspace-write",
+            "-C",
+            str(project_root),
+            "--output-schema",
+            str(schema_path),
+            "-o",
+            str(output_path),
+            "-",
+        ]
+    )
+    return command
+
+
+def _count_sentences(value: str) -> int:
+    parts = [part.strip() for part in re.split(r"(?<=[.!?])\s+", value.strip()) if part.strip()]
+    return len(parts)
+
+
+def _select_role_split_recipient_path(context: RoleTargetedDraftContext) -> str:
+    title = (_recipient_current_title(context) or context.position_title or "").lower()
+    if any(token in title for token in ("recruit", "talent", "sourcer", "people ops")):
+        return "managerial"
+    if any(token in title for token in ("manager", "director", "head", "vp", "vice president", "chief", "founder", "co-founder", "cofounder")):
+        return "managerial"
+    if (
+        any(
+            token in title
+            for token in (
+                "engineer",
+                "developer",
+                "architect",
+                "software",
+                "technical lead",
+                "tech lead",
+                "staff",
+                "principal",
+                "machine learning",
+            )
+        )
+        or re.search(r"\b(ai|ml)\b", title)
+    ):
+        return "technical"
+    if context.recipient_type in {RECIPIENT_TYPE_RECRUITER, RECIPIENT_TYPE_HIRING_MANAGER, RECIPIENT_TYPE_FOUNDER}:
+        return "managerial"
+    return "technical"
+
+
+def _recipient_current_title(context: RoleTargetedDraftContext) -> str | None:
+    top_card = context.recipient_profile.get("top_card") if isinstance(context.recipient_profile, Mapping) else None
+    if isinstance(top_card, Mapping):
+        for key in ("current_title", "headline"):
+            normalized = _normalize_optional_text(top_card.get(key))
+            if normalized is not None:
+                return normalized
+    return context.position_title
+
+
+def _recipient_current_company(context: RoleTargetedDraftContext) -> str:
+    top_card = context.recipient_profile.get("top_card") if isinstance(context.recipient_profile, Mapping) else None
+    if isinstance(top_card, Mapping):
+        current_company = _normalize_optional_text(top_card.get("current_company"))
+        if current_company is not None:
+            return current_company
+    return context.company_name
+
+
+def _compose_technical_role_split_body(
+    context: RoleTargetedDraftContext,
+    payload: TechnicalRoleSplitDraftPayload,
+) -> str:
+    paragraph_3 = TECHNICAL_PATH_PARAGRAPH_3_TEMPLATE.format(repo_url=JOB_HUNT_COPILOT_REPO_URL)
+    body_lines = [
+        f"Hi {_first_name(context.display_name)},",
+        "",
+        payload.paragraph_1_text.strip(),
+        "",
+        TECHNICAL_PATH_PARAGRAPH_2,
+        "",
+        paragraph_3,
+        "",
+        TECHNICAL_PATH_PARAGRAPH_4,
+        "",
+        "Best,",
+        context.sender.name,
+        *_role_split_signature_lines(context.sender),
+    ]
+    return "\n".join(body_lines).strip() + "\n"
+
+
+def _compose_managerial_role_split_body(
+    context: RoleTargetedDraftContext,
+    payload: ManagerialRoleSplitDraftPayload,
+) -> str:
+    problem_lines = [f"- {bullet}" for bullet in payload.problem_hypotheses]
+    background_lines = [f"- {bullet}" for bullet in payload.relevant_background]
+    body_lines = [
+        f"Hi {_first_name(context.display_name)},",
+        "",
+        f"{MANAGERIAL_PATH_OPENER_SENTENCE_1} {payload.role_alignment_sentence.strip()} {MANAGERIAL_PATH_OPENER_SENTENCE_3}",
+        "",
+        MANAGERIAL_PATH_JD_HEADING,
+        *problem_lines,
+        "",
+        MANAGERIAL_PATH_BACKGROUND_HEADING,
+        *background_lines,
+        "",
+        MANAGERIAL_PATH_CTA_RESUME,
+        "",
+        f"{MANAGERIAL_PATH_CTA_QUESTION} {MANAGERIAL_PATH_CTA_CONTEXT} {MANAGERIAL_PATH_CTA_FORWARD}",
+        "",
+        "Best,",
+        context.sender.name,
+        *_role_split_signature_lines(context.sender),
+    ]
+    return "\n".join(body_lines).strip() + "\n"
+
+
+def _run_codex_technical_role_split_draft(
+    *,
+    paths: ProjectPaths,
+    codex_bin: str,
+    model: str | None,
+    context: RoleTargetedDraftContext,
+) -> TechnicalRoleSplitDraftPayload:
+    prompt = _build_technical_role_split_prompt(context)
+    return _run_codex_structured_payload(
+        paths=paths,
+        codex_bin=codex_bin,
+        model=model,
+        prompt=prompt,
+        schema=TechnicalRoleSplitDraftPayload.model_json_schema(),
+        model_class=TechnicalRoleSplitDraftPayload,
+        run_prefix="technical-role-split",
+        company_name=context.company_name,
+        role_title=context.role_title,
+        contact_id=context.contact_id,
+    )
+
+
+def _run_codex_managerial_role_split_draft(
+    *,
+    paths: ProjectPaths,
+    codex_bin: str,
+    model: str | None,
+    context: RoleTargetedDraftContext,
+) -> ManagerialRoleSplitDraftPayload:
+    prompt = _build_managerial_role_split_prompt(context)
+    return _run_codex_structured_payload(
+        paths=paths,
+        codex_bin=codex_bin,
+        model=model,
+        prompt=prompt,
+        schema=ManagerialRoleSplitDraftPayload.model_json_schema(),
+        model_class=ManagerialRoleSplitDraftPayload,
+        run_prefix="managerial-role-split",
+        company_name=context.company_name,
+        role_title=context.role_title,
+        contact_id=context.contact_id,
+    )
+
+
+def _run_codex_structured_payload(
+    *,
+    paths: ProjectPaths,
+    codex_bin: str,
+    model: str | None,
+    prompt: str,
+    schema: Mapping[str, Any],
+    model_class: type[BaseModel],
+    run_prefix: str,
+    company_name: str,
+    role_title: str,
+    contact_id: str,
+) -> Any:
+    run_dir = (
+        paths.ops_dir
+        / "outreach-role-split"
+        / f"{_now_utc_iso().replace(':', '').replace('-', '')}-{workspace_slug(company_name)}-{workspace_slug(role_title)}-{workspace_slug(contact_id)}-{workspace_slug(run_prefix)}"
+    )
+    run_dir.mkdir(parents=True, exist_ok=True)
+    prompt_path = run_dir / "prompt.md"
+    schema_path = run_dir / "schema.json"
+    output_path = run_dir / "output.json"
+    stdout_path = run_dir / "codex.stdout.txt"
+    stderr_path = run_dir / "codex.stderr.txt"
+    prompt_path.write_text(prompt, encoding="utf-8")
+    schema_path.write_text(json.dumps(schema, indent=2) + "\n", encoding="utf-8")
+    command = _build_outreach_codex_exec_command(
+        codex_bin=codex_bin,
+        project_root=paths.project_root,
+        schema_path=schema_path,
+        output_path=output_path,
+        model=model,
+    )
+    completed = subprocess.run(
+        command,
+        input=prompt,
+        text=True,
+        capture_output=True,
+        check=False,
+    )
+    stdout_path.write_text(completed.stdout, encoding="utf-8")
+    stderr_path.write_text(completed.stderr, encoding="utf-8")
+    if completed.returncode != 0:
+        raise OutreachDraftingError(
+            f"`codex exec` failed with exit code {completed.returncode}. See {stderr_path}."
+        )
+    if not output_path.exists():
+        raise OutreachDraftingError(
+            f"`codex exec` did not materialize a draft payload. Expected {output_path}."
+        )
+    try:
+        return model_class.model_validate_json(output_path.read_text(encoding="utf-8"))
+    except ValidationError as exc:
+        raise OutreachDraftingError(
+            f"Role-split draft payload failed validation. See {output_path}. Errors: {exc}"
+        ) from exc
+
+
+def _build_technical_role_split_prompt(context: RoleTargetedDraftContext) -> str:
+    employment_history_lines = "\n".join(
+        f"- {line}" for line in context.apollo_employment_history_summary
+    )
+    current_title = _recipient_current_title(context) or context.position_title or "Unknown title"
+    current_company = _recipient_current_company(context)
+    example_title = current_title if current_title != "Unknown title" else "Senior Software Engineer"
+    example_company = current_company or context.company_name
+    return "\n".join(
+        [
+            "Draft only Paragraph 1 of a technical outreach email.",
+            "",
+            "Return JSON only with these fields:",
+            "- paragraph_1_text",
+            "- selected_career_steps",
+            "",
+            "Rules for paragraph_1_text:",
+            "- Exactly 2 sentences.",
+            '- First sentence must begin: "I came across your LinkedIn profile and really admired your path..."',
+            "- Use the most relevant 2 or 3 past companies plus the recipient's current exact title and company when that history is available.",
+            "- When only partial career history is available, write the best truthful path sentence you can from the available evidence rather than inventing steps.",
+            "- selected_career_steps must contain only the past company names used for the path transitions.",
+            "- The second sentence should naturally express that the path stood out and that I'd love to grow in a similar direction and ship software at that level over time.",
+            "- Do not turn it into a long chronology.",
+            "- Do not make it sound like a referral ask.",
+            "",
+            "Hard constraints:",
+            "- Do not invent unsupported technical specifics about the recipient's work, stack, or responsibilities.",
+            "- Use only the employment-history summary provided below.",
+            "- Do not mention my background, Job Hunt Copilot, the repo, the autonomous workflow, the job hunt, guidance, a conversation ask, or availability.",
+            "- Do not restate or preempt the fixed later paragraphs.",
+            "",
+            "Recipient:",
+            f"- first_name: {_first_name(context.display_name)}",
+            f"- current_title: {current_title}",
+            f"- current_company: {current_company}",
+            "- employment_history_summary:",
+            employment_history_lines,
+            "",
+            "Fixed downstream context:",
+            f"- Paragraph 2 is fixed as: {TECHNICAL_PATH_PARAGRAPH_2}",
+            f"- Paragraph 3 is fixed as: {TECHNICAL_PATH_PARAGRAPH_3_TEMPLATE.format(repo_url=JOB_HUNT_COPILOT_REPO_URL)}",
+            f"- Paragraph 4 is fixed as: {TECHNICAL_PATH_PARAGRAPH_4}",
+            "",
+            "Valid JSON example:",
+            json.dumps(
+                {
+                    "paragraph_1_text": (
+                        f"I came across your LinkedIn profile and really admired your path from InsightRX to "
+                        f"{example_company} and now into your current role as {example_title} at {example_company}. "
+                        "That path really stood out to me, and I'd love to grow in a similar direction and ship software at that level over time."
+                    ),
+                    "selected_career_steps": ["InsightRX", example_company],
+                },
+                indent=2,
+            ),
+        ]
+    )
+
+
+def _build_managerial_role_split_prompt(context: RoleTargetedDraftContext) -> str:
+    bounded_jd_relevance_pack = json.dumps(list(context.bounded_jd_relevance_pack), indent=2)
+    sender_evidence_pool = json.dumps(list(context.sender_evidence_pool), indent=2)
+    return "\n".join(
+        [
+            "Draft the variable content for a concise managerial outreach email.",
+            "",
+            "Return JSON only. Do not return markdown fences. Do not return commentary.",
+            "",
+            "Output schema:",
+            "- role_alignment_sentence: string",
+            "- problem_hypotheses: list[string]",
+            "- relevant_background: list[string]",
+            "- selected_jd_signals: list[string]",
+            "- selected_resume_signals: list[string]",
+            "",
+            "Rendered email shape downstream:",
+            f'- Greeting is fixed: "Hi {_first_name(context.display_name)},"',
+            f'- Opener sentence 1 is fixed: "{MANAGERIAL_PATH_OPENER_SENTENCE_1}"',
+            "- Then insert role_alignment_sentence as opener sentence 2.",
+            f'- Opener sentence 3 is fixed and bolded exactly as: "{MANAGERIAL_PATH_OPENER_SENTENCE_3}"',
+            f'- Then render the fixed heading: "{MANAGERIAL_PATH_JD_HEADING}"',
+            "- Then render the problem_hypotheses bullets.",
+            f'- Then render the fixed heading: "{MANAGERIAL_PATH_BACKGROUND_HEADING}"',
+            "- Then render the relevant_background bullets.",
+            "- Then render the fixed CTA block exactly as:",
+            f'  - "{MANAGERIAL_PATH_CTA_RESUME}"',
+            f'  - "{MANAGERIAL_PATH_CTA_QUESTION}"',
+            f'  - "{MANAGERIAL_PATH_CTA_CONTEXT}"',
+            f'  - "{MANAGERIAL_PATH_CTA_FORWARD}"',
+            "- Signature is handled separately.",
+            "",
+            "Rules for role_alignment_sentence:",
+            "- It must be exactly 1 sentence.",
+            f'- It must begin with: "I came across the {context.role_title} opening at {context.company_name} and wanted to reach out because..."',
+            "- It should explain why the role looks closely aligned with the kind of role-relevant engineering problems I've been trying to work on.",
+            "- Keep it natural and concise.",
+            "- Avoid a comma-heavy list of themes.",
+            "- Prefer one clean closing idea over stacked buzzwords.",
+            "",
+            "Rules for problem_hypotheses:",
+            "- Return exactly 3 bullets.",
+            "- Each bullet should be short and easy to scan.",
+            "- Each bullet should be a compact phrase, not a long sentence.",
+            "- Infer likely team challenges from the JD only.",
+            "- Do not copy JD wording verbatim.",
+            "- Do not assume unsupported internal facts.",
+            "- Keep bullets specific enough to be useful, but cautious.",
+            "- Use lowercase unless a proper noun requires capitalization.",
+            "",
+            "Rules for relevant_background:",
+            "- Return exactly 3 bullets.",
+            "- Each bullet should be short and easy to scan.",
+            "- Each bullet should be a compact phrase, not a long sentence.",
+            "- For the first two bullets, prefer compressed shorthand metrics or concise reliability language when possible.",
+            "- Choose only from the sender evidence provided below.",
+            "- The three bullets should usually cover:",
+            "  1. strongest role-relevant production or scale proof",
+            "  2. strongest observability or reliability proof",
+            "  3. strongest relevant project proof",
+            f'- If you include Job Hunt Copilot, include the repo URL in that same bullet: {JOB_HUNT_COPILOT_REPO_URL}.',
+            "- Use lowercase unless a proper noun requires capitalization.",
+            "",
+            "Hard constraints:",
+            "- Use only the bounded JD relevance pack and sender evidence provided.",
+            "- Do not invent unsupported team challenges, technical specifics, or fit claims.",
+            "- Problem hypotheses must come from reasoning over the JD only, not from outside assumptions.",
+            "- Do not mention LinkedIn or GitHub in the variable content, except for the Job Hunt Copilot repo URL if that bullet is used.",
+            "- Do not add extra sections, extra CTA language, or extra questions.",
+            "- The returned content should fit naturally into one concise email and should not feel like bits and pieces attached together.",
+            "- selected_jd_signals and selected_resume_signals must reflect the signals actually used in the returned bullets and sentence.",
+            "",
+            "Target length guidance:",
+            "- The fixed parts of the email already consume most of the word budget.",
+            "- Keep the returned content compact enough that the assembled email body before the signature stays roughly in the 185 to 215 word range.",
+            "",
+            "Bounded evidence:",
+            f"- recipient_name: {context.display_name}",
+            f"- target_role_title: {context.role_title}",
+            f"- target_company: {context.company_name}",
+            f"- bounded_jd_relevance_pack: {bounded_jd_relevance_pack}",
+            f"- sender_core_summary: {context.sender_core_summary}",
+            f"- sender_evidence_pool: {sender_evidence_pool}",
+            "",
+            "Valid JSON example:",
+            json.dumps(
+                {
+                    "role_alignment_sentence": (
+                        f"I came across the {context.role_title} opening at {context.company_name} and wanted to reach out because the role "
+                        "looks closely aligned with the kind of workflow and systems problems I've been trying to work on."
+                    ),
+                    "problem_hypotheses": [
+                        "dependable AI workflows in production",
+                        "evaluation and failure testing",
+                        "observable low-latency systems",
+                    ],
+                    "relevant_background": [
+                        "distributed data services at ~580 TPS",
+                        "monitoring, alerting, and incident response",
+                        f"built Job Hunt Copilot, an AI workflow automation tool from scratch: {JOB_HUNT_COPILOT_REPO_URL}",
+                    ],
+                    "selected_jd_signals": [
+                        "dependable production GenAI workflows",
+                        "evaluation and failure testing",
+                        "observability and uptime constraints",
+                    ],
+                    "selected_resume_signals": [
+                        "~580 TPS production services",
+                        "monitoring and alerting",
+                        "Job Hunt Copilot",
+                    ],
+                },
+                indent=2,
+            ),
+        ]
+    )
+
 def _build_role_targeted_draft_context(
     connection: sqlite3.Connection,
     paths: ProjectPaths,
@@ -1953,6 +2535,11 @@ def _build_role_targeted_draft_context(
         role_intent_summary=_normalize_optional_text(tailoring_inputs.get("role_intent_summary")),
         theme_selection=theme_selection,
     )
+    apollo_candidate_payload = _load_apollo_candidate_payload(
+        paths,
+        posting_row=posting_row,
+        contact_row=contact_row,
+    )
     return RoleTargetedDraftContext(
         job_posting_id=str(posting_row["job_posting_id"]),
         job_posting_contact_id=str(contact_row["job_posting_contact_id"]),
@@ -1982,6 +2569,19 @@ def _build_role_targeted_draft_context(
         opener_decision=opener_decision,
         sender=sender,
         tailored_resume_path=str(tailoring_inputs["resume_path"]),
+        apollo_employment_history_summary=_build_apollo_employment_history_summary(
+            contact_row=contact_row,
+            recipient_profile=recipient_profile,
+            apollo_candidate_payload=apollo_candidate_payload,
+        ),
+        bounded_jd_relevance_pack=_build_bounded_jd_relevance_pack(
+            posting_row=posting_row,
+            tailoring_inputs=tailoring_inputs,
+        ),
+        sender_core_summary=_build_sender_core_summary(),
+        sender_evidence_pool=_build_sender_evidence_pool(tailoring_inputs),
+        relevant_skills_summary=_build_relevant_skills_summary(tailoring_inputs),
+        job_hunt_copilot_summary=_build_job_hunt_copilot_summary(),
     )
 
 
@@ -2238,13 +2838,19 @@ def _refresh_persisted_role_targeted_generated_draft(
         outreach_message_id=active_message.outreach_message_id,
     )
     if rendered.opener_decision is not None:
+        debug_payload = rendered.opener_decision.as_dict()
+    elif rendered.debug_payload is not None:
+        debug_payload = dict(rendered.debug_payload)
+    else:
+        debug_payload = None
+    if debug_payload is not None:
         if opener_decision_path.exists():
             write_json_contract(
                 opener_decision_path,
                 producer_component=OUTREACH_COMPONENT,
                 result="success",
                 linkage=linkage,
-                payload=rendered.opener_decision.as_dict(),
+                payload=debug_payload,
                 produced_at=current_time,
             )
         else:
@@ -2256,7 +2862,7 @@ def _refresh_persisted_role_targeted_generated_draft(
                 producer_component=OUTREACH_COMPONENT,
                 result="success",
                 linkage=linkage,
-                payload=rendered.opener_decision.as_dict(),
+                payload=debug_payload,
                 produced_at=current_time,
             )
         opener_decision_artifact_path = str(opener_decision_path.resolve())
@@ -2504,6 +3110,7 @@ def execute_role_targeted_send_set(
     sender: OutreachMessageSender,
     local_timezone: tzinfo | str | None = None,
     feedback_observer: MailboxFeedbackObserver | None = None,
+    renderer: OutreachDraftRenderer | None = None,
 ) -> RoleTargetedSendExecutionResult:
     paths = ProjectPaths.from_root(project_root)
     posting_row = _load_role_targeted_send_posting_row(connection, job_posting_id=job_posting_id)
@@ -2521,6 +3128,7 @@ def execute_role_targeted_send_set(
         project_root=project_root,
         job_posting_id=job_posting_id,
         current_time=current_time,
+        renderer=renderer,
     )
     active_wave = _load_active_role_targeted_wave(connection, job_posting_id=job_posting_id)
     if not active_wave:
@@ -4015,6 +4623,293 @@ def _load_recipient_profile(
     payload = _read_json_file(path)
     profile = payload.get("profile")
     return profile if isinstance(profile, Mapping) else None
+
+
+def _load_apollo_candidate_payload(
+    paths: ProjectPaths,
+    *,
+    posting_row: Mapping[str, Any],
+    contact_row: Mapping[str, Any],
+) -> Mapping[str, Any] | None:
+    artifact_path = (
+        paths.discovery_workspace_dir(str(posting_row["company_name"]), str(posting_row["role_title"]))
+        / "people_search_result.json"
+    )
+    if not artifact_path.exists():
+        return None
+    try:
+        payload = json.loads(artifact_path.read_text(encoding="utf-8"))
+    except json.JSONDecodeError:
+        return None
+    candidates = payload.get("candidates") if isinstance(payload, Mapping) else None
+    if not isinstance(candidates, list):
+        return None
+    target_contact_id = _mapping_optional_text(contact_row, "contact_id")
+    target_provider_person_id = _mapping_optional_text(contact_row, "provider_person_id")
+    for candidate in candidates:
+        if not isinstance(candidate, Mapping):
+            continue
+        if target_contact_id and _normalize_optional_text(candidate.get("contact_id")) == target_contact_id:
+            return candidate
+        if target_provider_person_id and _normalize_optional_text(candidate.get("provider_person_id")) == target_provider_person_id:
+            return candidate
+    return None
+
+
+def _build_apollo_employment_history_summary(
+    *,
+    contact_row: Mapping[str, Any],
+    recipient_profile: Mapping[str, Any] | None,
+    apollo_candidate_payload: Mapping[str, Any] | None,
+) -> tuple[str, ...]:
+    history_payload: Any = None
+    if isinstance(apollo_candidate_payload, Mapping):
+        for key in ("employment_history", "employment_histories", "experience_history", "career_history"):
+            value = apollo_candidate_payload.get(key)
+            if isinstance(value, list):
+                history_payload = value
+                break
+    lines: list[str] = []
+    if isinstance(history_payload, list):
+        for index, item in enumerate(history_payload, start=1):
+            if not isinstance(item, Mapping):
+                continue
+            company = _normalize_optional_text(
+                item.get("company_name")
+                or item.get("organization_name")
+                or item.get("company")
+            )
+            title = _normalize_optional_text(item.get("title") or item.get("position_title") or item.get("role"))
+            start_date = _normalize_optional_text(item.get("start_date") or item.get("started_at"))
+            end_date = _normalize_optional_text(item.get("end_date") or item.get("ended_at"))
+            current_flag = _coerce_bool(item.get("current")) or _coerce_bool(item.get("is_current"))
+            if company is None and title is None:
+                continue
+            base = " at ".join(part for part in (title, company) if part)
+            if current_flag or end_date in {None, "", "present", "current"}:
+                timeline = "current"
+                if start_date:
+                    timeline = f"current, start {start_date}"
+            else:
+                timeline_parts = [part for part in (start_date, end_date) if part]
+                timeline = " to ".join(timeline_parts) if timeline_parts else None
+            line = f"{index}. {base}"
+            if timeline:
+                line = f"{line} — {timeline}"
+            lines.append(line)
+    if lines:
+        return tuple(lines)
+
+    current_title = _recipient_profile_current_title(recipient_profile) or _mapping_optional_text(contact_row, "position_title")
+    current_company = _recipient_profile_current_company(recipient_profile) or _mapping_optional_text(contact_row, "company_name")
+    headline = _recipient_profile_headline(recipient_profile)
+    fallback_lines: list[str] = []
+    if current_title or current_company:
+        fallback_lines.append(
+            f"1. {' at '.join(part for part in (current_title, current_company) if part)} — current role"
+        )
+    if headline and headline != current_title:
+        fallback_lines.append(f"Profile headline: {headline}")
+    if not fallback_lines:
+        fallback_lines.append("Only the recipient's current title was available; no prior Apollo employment-history steps were available.")
+    return tuple(fallback_lines)
+
+
+def _build_bounded_jd_relevance_pack(
+    *,
+    posting_row: Mapping[str, Any],
+    tailoring_inputs: Mapping[str, Any],
+) -> tuple[Mapping[str, Any], ...]:
+    step_3_payload = tailoring_inputs.get("step_3_payload")
+    role_title = str(posting_row["role_title"])
+    items: list[dict[str, Any]] = [
+        {
+            "jd_signal": role_title,
+            "supporting_line": f"Target role title: {role_title}",
+            "theme_tags": _theme_tags_from_text(role_title),
+        }
+    ]
+    role_intent_summary = _normalize_optional_text(tailoring_inputs.get("role_intent_summary"))
+    if role_intent_summary:
+        items.append(
+            {
+                "jd_signal": role_intent_summary,
+                "supporting_line": role_intent_summary,
+                "theme_tags": _theme_tags_from_text(role_intent_summary),
+            }
+        )
+    if isinstance(step_3_payload, Mapping):
+        signals_by_priority = step_3_payload.get("signals_by_priority")
+        if isinstance(signals_by_priority, Mapping):
+            for bucket in ("must_have", "core_responsibility", "nice_to_have"):
+                bucket_items = signals_by_priority.get(bucket)
+                if not isinstance(bucket_items, list):
+                    continue
+                for signal_payload in bucket_items:
+                    if not isinstance(signal_payload, Mapping):
+                        continue
+                    signal = _normalize_optional_text(signal_payload.get("signal"))
+                    if signal is None:
+                        continue
+                    items.append(
+                        {
+                            "jd_signal": signal,
+                            "supporting_line": signal,
+                            "theme_tags": _theme_tags_from_text(signal),
+                        }
+                    )
+                    if len(items) >= 4:
+                        break
+                if len(items) >= 4:
+                    break
+    deduped: list[dict[str, Any]] = []
+    seen: set[str] = set()
+    for item in items:
+        key = item["jd_signal"].strip().lower()
+        if key in seen:
+            continue
+        seen.add(key)
+        deduped.append(item)
+    return tuple(deduped[:4])
+
+
+def _build_sender_core_summary() -> str:
+    return (
+        "I recently graduated from ASU with an MS in Computer Science and have about three years "
+        "of experience building production software systems."
+    )
+
+
+def _build_sender_evidence_pool(tailoring_inputs: Mapping[str, Any]) -> tuple[Mapping[str, Any], ...]:
+    step_6_payload = tailoring_inputs.get("step_6_payload")
+    evidence_items: list[dict[str, Any]] = []
+    if isinstance(step_6_payload, Mapping):
+        for value in step_6_payload.values():
+            if not isinstance(value, Mapping):
+                continue
+            bullets = value.get("bullets")
+            if not isinstance(bullets, list):
+                continue
+            for bullet in bullets:
+                if not isinstance(bullet, Mapping):
+                    continue
+                proof_line = _normalize_optional_text(bullet.get("text"))
+                if proof_line is None:
+                    continue
+                evidence_items.append(
+                    {
+                        "proof_line": proof_line,
+                        "metric_tags": _metric_tags_from_text(proof_line),
+                        "theme_tags": _theme_tags_from_text(proof_line),
+                        "source_label": "resume_tailoring_step_6",
+                    }
+                )
+    deduped: list[dict[str, Any]] = []
+    seen: set[str] = set()
+    for item in evidence_items:
+        key = item["proof_line"].strip().lower()
+        if key in seen:
+            continue
+        seen.add(key)
+        deduped.append(item)
+    return tuple(deduped[:8])
+
+
+def _build_relevant_skills_summary(tailoring_inputs: Mapping[str, Any]) -> str:
+    step_6_payload = tailoring_inputs.get("step_6_payload")
+    if not isinstance(step_6_payload, Mapping):
+        return "Python, Scala, Spark, Azure, distributed systems, reliability engineering"
+    technical_skills = step_6_payload.get("technical_skills")
+    if not isinstance(technical_skills, list):
+        return "Python, Scala, Spark, Azure, distributed systems, reliability engineering"
+    collected: list[str] = []
+    for category in technical_skills:
+        if not isinstance(category, Mapping):
+            continue
+        items = category.get("items")
+        if not isinstance(items, list):
+            continue
+        for item in items:
+            normalized = _normalize_optional_text(item)
+            if normalized is not None:
+                collected.append(normalized)
+        if len(collected) >= 8:
+            break
+    if not collected:
+        return "Python, Scala, Spark, Azure, distributed systems, reliability engineering"
+    return ", ".join(collected[:8])
+
+
+def _build_job_hunt_copilot_summary() -> str:
+    return (
+        "Built Job Hunt Copilot, an AI workflow automation tool from scratch with production use in mind. "
+        f"Repo: {JOB_HUNT_COPILOT_REPO_URL}"
+    )
+
+
+def _metric_tags_from_text(text: str) -> list[str]:
+    return [match.group(0) for match in METRIC_RE.finditer(text)]
+
+
+def _coerce_bool(value: Any) -> bool:
+    if isinstance(value, bool):
+        return value
+    if isinstance(value, (int, float)):
+        return bool(value)
+    if isinstance(value, str):
+        return value.strip().lower() in {"1", "true", "yes", "y", "current", "present"}
+    return False
+
+
+def _mapping_optional_text(mapping: Mapping[str, Any], key: str) -> str | None:
+    try:
+        value = mapping[key]
+    except Exception:
+        return None
+    return _normalize_optional_text(value)
+
+
+def _theme_tags_from_text(text: str) -> list[str]:
+    lowered = text.lower()
+    tags: list[str] = []
+    tag_rules = (
+        ("ai", ("ai", "llm", "generative", "agent", "workflow automation")),
+        ("backend", ("backend", "api", "service", "microservice")),
+        ("distributed", ("distributed", "throughput", "scale", "latency")),
+        ("reliability", ("reliability", "uptime", "sla", "incident", "observability", "monitoring")),
+        ("data", ("data", "spark", "pipeline", "etl", "analytics")),
+        ("cloud", ("azure", "aws", "gcp", "cloud")),
+        ("platform", ("platform", "infrastructure", "kubernetes", "docker")),
+    )
+    for tag, keywords in tag_rules:
+        if any(keyword in lowered for keyword in keywords):
+            tags.append(tag)
+    return tags
+
+
+def _recipient_profile_current_title(recipient_profile: Mapping[str, Any] | None) -> str | None:
+    top_card = recipient_profile.get("top_card") if isinstance(recipient_profile, Mapping) else None
+    if not isinstance(top_card, Mapping):
+        return None
+    return _normalize_optional_text(top_card.get("current_title"))
+
+
+def _recipient_profile_current_company(recipient_profile: Mapping[str, Any] | None) -> str | None:
+    top_card = recipient_profile.get("top_card") if isinstance(recipient_profile, Mapping) else None
+    if not isinstance(top_card, Mapping):
+        return None
+    return _normalize_optional_text(top_card.get("current_company"))
+
+
+def _recipient_profile_headline(recipient_profile: Mapping[str, Any] | None) -> str | None:
+    top_card = recipient_profile.get("top_card") if isinstance(recipient_profile, Mapping) else None
+    if not isinstance(top_card, Mapping):
+        return None
+    return _normalize_optional_text(top_card.get("headline"))
+
+
+def _now_utc_iso() -> str:
+    return datetime.now(UTC).isoformat(timespec="seconds").replace("+00:00", "Z")
 
 
 def _load_latest_contact_recipient_profile(
@@ -6189,6 +7084,19 @@ def _signature_lines(sender: SenderIdentity) -> list[str]:
     return lines
 
 
+def _role_split_signature_lines(sender: SenderIdentity) -> list[str]:
+    lines: list[str] = []
+    if sender.linkedin_url:
+        lines.append(sender.linkedin_url)
+    if sender.github_url:
+        lines.append(sender.github_url)
+    if sender.phone:
+        lines.append(sender.phone)
+    if sender.email:
+        lines.append(sender.email)
+    return lines
+
+
 def _job_hunt_copilot_pitch_lines() -> list[str]:
     return [
         "Lately, I have been spending time sharpening my Agentic AI skills.",
@@ -6383,7 +7291,12 @@ def _persist_rendered_draft(
         )
 
     opener_decision_artifact_path: str | None = None
+    debug_payload: Mapping[str, Any] | None = None
     if rendered.opener_decision is not None:
+        debug_payload = rendered.opener_decision.as_dict()
+    elif rendered.debug_payload is not None:
+        debug_payload = dict(rendered.debug_payload)
+    if debug_payload is not None:
         published_opener_decision = publish_json_artifact(
             connection,
             paths,
@@ -6392,7 +7305,7 @@ def _persist_rendered_draft(
             producer_component=OUTREACH_COMPONENT,
             result="success",
             linkage=linkage,
-            payload=rendered.opener_decision.as_dict(),
+            payload=debug_payload,
             produced_at=current_time,
         )
         opener_decision_artifact_path = str(published_opener_decision.location.absolute_path)

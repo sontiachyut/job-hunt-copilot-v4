@@ -3,6 +3,7 @@ from __future__ import annotations
 import base64
 import json
 import sqlite3
+import subprocess
 from email import policy
 from email.parser import BytesParser
 from pathlib import Path
@@ -15,6 +16,7 @@ import yaml
 from job_hunt_copilot.bootstrap import run_bootstrap
 from job_hunt_copilot.delivery_feedback import DeliveryFeedbackSignal, OBSERVATION_SCOPE_IMMEDIATE
 from job_hunt_copilot.outreach import (
+    CodexRoleSplitOutreachDraftRenderer,
     CONTACT_STATUS_EXHAUSTED,
     CONTACT_STATUS_OUTREACH_IN_PROGRESS,
     CONTACT_STATUS_SENT,
@@ -39,6 +41,11 @@ from job_hunt_copilot.outreach import (
     RECIPIENT_TYPE_ENGINEER,
     RECIPIENT_TYPE_HIRING_MANAGER,
     RECIPIENT_TYPE_RECRUITER,
+    _build_role_targeted_draft_context,
+    _load_draft_contact_row,
+    _load_role_targeted_draft_posting_row,
+    _load_sender_identity,
+    _load_tailoring_draft_inputs,
     _normalize_education_line,
     execute_general_learning_outreach,
     execute_role_targeted_send_set,
@@ -3893,6 +3900,220 @@ def test_general_learning_send_execution_drafts_sends_and_polls_feedback(tmp_pat
         "event_state": "bounced",
         "job_posting_id": None,
     }
+
+    connection.close()
+
+
+def test_codex_role_split_renderer_generates_technical_path_body_and_debug_artifact(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    project_root, paths = bootstrap_project(tmp_path)
+    connection = connect_database(project_root / "job_hunt_copilot.db")
+    write_sender_profile(paths)
+    seed_posting(
+        connection,
+        company_name="Lattice",
+        role_title="Software Engineer, Backend",
+    )
+    seed_linked_contact(
+        connection,
+        contact_id="ct_tech",
+        job_posting_contact_id="jpc_tech",
+        company_name="Lattice",
+        display_name="Ethan Herr",
+        recipient_type=RECIPIENT_TYPE_ENGINEER,
+        current_working_email="ethan@lattice.example",
+        created_at="2026-04-06T20:01:00Z",
+    )
+    connection.execute(
+        """
+        UPDATE contacts
+        SET position_title = ?, linkedin_url = ?, updated_at = ?
+        WHERE contact_id = ?
+        """,
+        (
+            "Senior Software Engineer",
+            "https://www.linkedin.com/in/ethan-herr/",
+            "2026-04-06T20:01:00Z",
+            "ct_tech",
+        ),
+    )
+    connection.commit()
+    seed_recipient_profile(
+        connection,
+        paths,
+        company_name="Lattice",
+        role_title="Software Engineer, Backend",
+        contact_id="ct_tech",
+        display_name="Ethan Herr",
+        current_title="Senior Software Engineer",
+        work_signal="backend platform systems",
+    )
+    seed_approved_tailoring_run(
+        connection,
+        paths,
+        company_name="Lattice",
+        role_title="Software Engineer, Backend",
+        current_time="2026-04-06T20:20:00Z",
+    )
+
+    def fake_run(command, *, input, text, capture_output, check):  # type: ignore[no-untyped-def]
+        output_path = Path(command[command.index("-o") + 1])
+        payload = {
+            "paragraph_1_text": (
+                "I came across your LinkedIn profile and really admired your path from InsightRX to Lattice "
+                "and now into your current role as Senior Software Engineer at Lattice. "
+                "That path really stood out to me, and I'd love to grow in a similar direction and ship software at that level over time."
+            ),
+            "selected_career_steps": ["InsightRX", "Lattice"],
+        }
+        output_path.write_text(json.dumps(payload), encoding="utf-8")
+        return subprocess.CompletedProcess(command, 0, stdout="{}", stderr="tokens used: 1111")
+
+    monkeypatch.setattr("job_hunt_copilot.outreach.subprocess.run", fake_run)
+
+    renderer = CodexRoleSplitOutreachDraftRenderer(
+        project_root=project_root,
+        codex_bin="codex",
+    )
+    result = generate_role_targeted_send_set_drafts(
+        connection,
+        project_root=project_root,
+        job_posting_id="jp_outreach",
+        current_time="2026-04-06T20:30:00Z",
+        local_timezone=ZoneInfo("UTC"),
+        renderer=renderer,
+    )
+
+    assert len(result.drafted_messages) == 1
+    message = result.drafted_messages[0]
+    body = message.body_text
+    assert message.subject == "Learning from your career path"
+    assert "I came across your LinkedIn profile and really admired your path from InsightRX to Lattice" in body
+    assert "I recently graduated from ASU with an MS in Computer Science." in body
+    assert "This email is a live example of that autonomous workflow." in body
+    assert "Would you be open to a 10-minute conversation sometime in the next week or two?" in body
+    assert "https://github.com/sontiachyut" in body
+    assert message.opener_decision_artifact_path is not None
+    debug_payload = json.loads(Path(message.opener_decision_artifact_path).read_text(encoding="utf-8"))
+    assert debug_payload["drafting_path"] == "technical"
+    assert debug_payload["selected_career_steps"] == ["InsightRX", "Lattice"]
+
+    connection.close()
+
+
+def test_codex_role_split_renderer_generates_managerial_path_body_and_debug_artifact(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    project_root, paths = bootstrap_project(tmp_path)
+    connection = connect_database(project_root / "job_hunt_copilot.db")
+    write_sender_profile(paths)
+    seed_posting(
+        connection,
+        company_name="Abridge",
+        role_title="Software Engineer, GenAI",
+    )
+    seed_linked_contact(
+        connection,
+        contact_id="ct_mgr",
+        job_posting_contact_id="jpc_mgr",
+        company_name="Abridge",
+        display_name="Jennifer Park",
+        recipient_type=RECIPIENT_TYPE_HIRING_MANAGER,
+        current_working_email="jennifer@abridge.example",
+        created_at="2026-04-06T20:01:00Z",
+    )
+    connection.execute(
+        """
+        UPDATE contacts
+        SET position_title = ?, linkedin_url = ?, updated_at = ?
+        WHERE contact_id = ?
+        """,
+        (
+            "Engineering Manager",
+            "https://www.linkedin.com/in/jennifer-park/",
+            "2026-04-06T20:01:00Z",
+            "ct_mgr",
+        ),
+    )
+    connection.commit()
+    seed_recipient_profile(
+        connection,
+        paths,
+        company_name="Abridge",
+        role_title="Software Engineer, GenAI",
+        contact_id="ct_mgr",
+        display_name="Jennifer Park",
+        current_title="Engineering Manager",
+        work_signal="GenAI workflows in production",
+    )
+    seed_approved_tailoring_run(
+        connection,
+        paths,
+        company_name="Abridge",
+        role_title="Software Engineer, GenAI",
+        current_time="2026-04-06T20:20:00Z",
+    )
+
+    def fake_run(command, *, input, text, capture_output, check):  # type: ignore[no-untyped-def]
+        assert "kind of role-relevant engineering problems I've been trying to work on." in input
+        assert "- sender_core_summary:" in input
+        assert "production AI workflow problems" not in input
+        output_path = Path(command[command.index("-o") + 1])
+        payload = {
+            "role_alignment_sentence": (
+                "I came across the Software Engineer, GenAI opening at Abridge and wanted to reach out because the role "
+                "looks closely aligned with the kind of workflow and systems problems I've been trying to work on."
+            ),
+            "problem_hypotheses": [
+                "dependable llm workflows for clinical use",
+                "evaluation and failure-mode stress testing",
+                "low-latency monitoring and guardrails",
+            ],
+            "relevant_background": [
+                "50M+ daily HL7 records, ~580 TPS, 24/7 uptime",
+                "monitoring, alerting, incident response, and data-quality triage",
+                "built Job Hunt Copilot, an AI workflow automation tool: https://github.com/sontiachyut/job-hunt-copilot-v4",
+            ],
+            "selected_jd_signals": ["backend reliability", "GenAI workflows"],
+            "selected_resume_signals": ["~580 TPS production services", "Job Hunt Copilot"],
+        }
+        output_path.write_text(json.dumps(payload), encoding="utf-8")
+        return subprocess.CompletedProcess(command, 0, stdout="{}", stderr="tokens used: 2222")
+
+    monkeypatch.setattr("job_hunt_copilot.outreach.subprocess.run", fake_run)
+
+    renderer = CodexRoleSplitOutreachDraftRenderer(
+        project_root=project_root,
+        codex_bin="codex",
+    )
+    result = generate_role_targeted_send_set_drafts(
+        connection,
+        project_root=project_root,
+        job_posting_id="jp_outreach",
+        current_time="2026-04-06T20:30:00Z",
+        local_timezone=ZoneInfo("UTC"),
+        renderer=renderer,
+    )
+
+    assert len(result.drafted_messages) == 1
+    message = result.drafted_messages[0]
+    body = message.body_text
+    assert message.subject == "Interest in the Software Engineer, GenAI role at Abridge"
+    assert "I hope you're doing well." in body
+    assert "My read from the JD is that the team is likely working on:" in body
+    assert "Relevant background from my side:" in body
+    assert "**If helpful, I'd be happy to build a small proof of concept based on my understanding of the challenges the team is working on and share the repo.**" in body
+    assert "built Job Hunt Copilot, an AI workflow automation tool: https://github.com/sontiachyut/job-hunt-copilot-v4" in body
+    assert "I've attached my resume for context." in body
+    assert "Would you be open to a brief 10-minute conversation?" in body
+    assert "If this is better routed elsewhere, I'd appreciate a forward to the right person internally." in body
+    assert message.opener_decision_artifact_path is not None
+    debug_payload = json.loads(Path(message.opener_decision_artifact_path).read_text(encoding="utf-8"))
+    assert debug_payload["drafting_path"] == "managerial"
+    assert debug_payload["selected_jd_signals"] == ["backend reliability", "GenAI workflows"]
 
     connection.close()
 

@@ -1,1220 +1,1029 @@
-# GitHub-Personalized Outreach POC Spec
+# Role-Split Outreach POC Spec
 
 ## Status
 
-Draft POC spec. This document defines the intended behavior of the GitHub-personalized coffee-chat outreach flow. Prompt wording and implementation details should follow this spec, not replace it.
+Draft POC spec. This document supersedes the earlier GitHub-first outreach
+strategy. The current strategy is simpler: classify the recipient by role type,
+draft the first email from Apollo-backed role and career-path data, and keep
+the ask focused on guidance rather than referrals.
 
 ## Purpose
 
-Build a separate outreach flow that drafts a short personalized coffee-chat email to an engineer using public profile signals.
+Build a first-touch outreach flow that sends a short email with one of two
+intent patterns:
 
-The system should:
+1. a manager-facing role-fit email
+2. a technical-contact career-guidance email
 
-1. find a real common-ground signal from the recipient's public profile, ideally GitHub
-2. use that signal to write a specific, non-generic opener
-3. establish the sender's credibility through relevant engineering background and `Job Hunt Copilot`
-4. ask for a 15-minute virtual coffee chat with a concrete purpose
+This flow is distinct from:
 
-This flow is distinct from role-targeted outreach and follow-up emails. It is not a direct job-ask email.
+1. direct referral requests
+2. follow-up emails
+3. GitHub-common-ground outreach
+
+The first email should earn attention, make the sender's goal clear, and ask
+for a small amount of time.
+
+For the current technical-path implementation, the body should target roughly
+225 to 240 words.
+
+For the current managerial-path implementation, the body should target roughly
+185 to 215 words.
+That target should include the greeting, opener, bullet sections, and fixed
+CTA block, but exclude the signature.
 
 ## Operating Principle
 
-This POC should be spec-driven.
+This POC should remain spec-driven.
 
 That means:
 
-1. this document defines behavior and quality expectations
-2. prompts are implementation details that should follow the spec
-3. Python orchestration and Pydantic contracts should enforce the spec where possible
-4. tests should validate the spec, not just current prompt wording
+1. this document defines behavior
+2. prompts implement the behavior
+3. deterministic Python should enforce classification and input boundaries
+4. tests should validate the behavior described here
 
 ## Primary Outcome
 
 Given one contact record, the system should produce a draft email that:
 
-1. starts from a real, specific common-ground signal
-2. sounds like a human who spent time looking at the recipient's work
-3. makes the sender sound worth replying to
-4. asks for a low-pressure 15-minute conversation
+1. is clearly tailored to the recipient type
+2. sounds human and respectful
+3. makes the sender's intent clear
+4. asks for a low-pressure conversation, not a referral
 
-## Outreach Readiness Rule
+## Core Strategy
 
-For this POC, a usable recipient email address alone is not sufficient to make a contact actionable for outreach.
+The workflow should no longer depend on GitHub research as the primary basis
+for the first email.
 
-The contact becomes draft-ready only when one of these research paths has completed with enough evidence to support the email:
+Instead, the workflow should:
 
-1. GitHub-backed path
-2. no-GitHub company-research fallback path
+1. enrich the contact with Apollo
+2. classify the contact as managerial or technical based on current title
+3. choose the matching email strategy
+4. draft a concise first email from that path
 
-If neither path produces strong context, the workflow may still produce a minimal conservative draft rather than blocking outright, but it should not invent specific common ground.
-When any specific company or role observation is available, the minimal conservative draft should still use at least one such observation rather than staying fully generic.
-If the conservative draft mentions the recipient's role/title, it should also mention the company name rather than referencing the role alone.
-That minimal conservative draft should still ask about:
+The first email should not ask directly for a referral.
 
-1. the recipient's experience at the company
-2. what advice the recipient would give someone trying to become a stronger candidate for that company
+## Recipient Classification Rule
 
-## Non-Goals
+The workflow should classify the recipient from the current Apollo title.
 
-This POC is not trying to:
+### Managerial path
 
-1. ask directly for a job
-2. ask directly for a referral
-3. maximize research breadth across every possible source
-4. reproduce LinkedIn's private or personalized graph data
-5. operate as a free-form autonomous agent
-6. expand into broader social-profile research beyond Apollo, GitHub, and personal site from GitHub
+Use the managerial path when the current title clearly indicates management or
+leadership, for example:
 
-## Research Acquisition Order
+- `manager`
+- `director`
+- `head`
+- `vp`
+- `vice president`
+- `chief`
 
-For this POC, the system should collect profile data in this order:
+### Technical path
+
+Use the technical path when the current title clearly indicates an individual
+technical builder or technical lead, for example:
+
+- `engineer`
+- `developer`
+- `architect`
+- `software`
+- `technical lead`
+- `tech lead`
+- `staff`
+- `principal`
+- `machine learning`
+- `ai`
+- `ml`
+
+### Recruiting titles
+
+Recruiting titles should currently route through the managerial path.
+
+If the current title looks primarily recruiting-oriented, for example:
+
+- `recruiter`
+- `talent`
+- `sourcer`
+- `people ops`
+
+the contact should be drafted through the managerial path by default.
+
+## Research Source Boundary
+
+For this simplified POC, drafting should rely primarily on:
 
 1. Apollo enrichment
-2. GitHub profile discovery and GitHub profile research
-3. personal-site or blog discovery from GitHub profile data
+2. existing job-posting and role context already in the system
 
-If no personal site or blog is discoverable from GitHub, the workflow should continue without it.
+This strategy does not require GitHub research, personal-site research, or
+broader company research for the first email.
 
-The POC may use LinkedIn URL as an identity field when Apollo provides it, but the current personalization logic should not depend on private LinkedIn data.
+The workflow may still store LinkedIn URL when Apollo provides it, but the
+drafting logic should not depend on private LinkedIn data.
 
-This POC should remain bounded to these research sources only:
+## Required Contact Data
 
-1. Apollo
-2. GitHub
-3. personal site or blog discovered from GitHub
+The deterministic pipeline should collect and normalize at least:
 
-## Common-Ground Source Priority
-
-For common-ground selection during drafting, the system should prefer:
-
-1. GitHub repository hook
-2. Apollo employment-history hook when GitHub is missing or weak and the history is relevant
-3. company-research fallback hook
-
-## Inputs
-
-For one contact, the system may use:
-
-- Apollo-enriched person data
-- contact full name
-- email address
-- current role/title
+- contact name
+- first name
+- current title
 - current company
+- location when available
+- current work email when available
 - LinkedIn URL when available
-- resolved GitHub profile URL when available
-- GitHub profile metadata
-- public GitHub repositories and compact repo evidence
-- personal-site or blog URL when discovered from GitHub
-- personal-site metadata and extracted page summaries when collected
-- sender identity and sender background summary
-- sender availability window
+- headline when available
+- Apollo person id
+- Apollo employment history when available
+
+For managerial-path drafts, the pipeline should also pass:
+
+- the job role being pursued
+- the target company/job-posting context
+
+When a job posting is the trigger for the outreach, the deterministic pipeline
+should also derive a compact JD summary from that posting for the managerial
+path.
+That JD summary should include only the parts most relevant to sender-fit
+selection, such as:
+
+- role title
+- core engineering responsibilities
+- key technical requirements
+- domain or product context
+
+The pipeline should not pass the full raw JD into the drafter when a compact
+summary can represent the relevant context.
+
+The full raw Apollo enrichment payload should still be persisted as an artifact.
 
 ## Required Sender Context
 
-The sender context passed into the system should be intentionally small and stable.
+The sender context passed into drafting should remain intentionally small and
+stable.
 
-For this POC, the sender context should include:
+For this POC, it should include:
 
 - sender name
 - sender LinkedIn URL
-- sender GitHub URL when available
 - sender email
 - sender phone
+- sender background summary
 - `Job Hunt Copilot` repo URL
-- short background summary
 - short `Job Hunt Copilot` summary
 - availability window
 
-The sender context should not require full resume text for this flow.
+The sender background summary should support these facts:
+
+1. recent `MS in CS` from `ASU`
+2. about `3 years` of experience building large-scale systems
+3. one additional short professional-background line
 
 ## Research Record
 
-Before any AI reasoning step runs, the deterministic pipeline should normalize the contact into a research record.
+Before any AI drafting step runs, deterministic Python should normalize the
+contact into a research record.
 
 That research record should support at least:
 
-- Apollo enrichment result
 - contact identity fields
-- GitHub resolution result
-- GitHub profile metadata when resolved
-- compact repo candidate list
-- personal-site resolution result when available
-- personal-site research result when available
+- current role/title
+- current company
+- Apollo employment history
+- job-posting context when applicable
 - sender context
+- selected recipient path
 
-This research record is the source of truth for downstream selector, analyzer, and drafter stages.
+The deterministic pipeline may also produce a full markdown dossier for
+debugging and review, but the drafter should receive only the bounded fields
+needed for the selected path.
 
-The deterministic pipeline may also produce a full markdown profile dossier for
-one contact as a debugging and review artifact. That dossier may include
-clearly separated sections for Apollo data, GitHub profile data, repo
-summaries, profile README, personal-site summaries, and fallback company
-research when present.
+## JD Relevance Extraction Rule
 
-That full dossier is for storage, inspection, and human review. `codex exec`
-stages should not consume the full dossier by default.
+When a job posting triggered the outreach for the managerial path,
+deterministic Python should reduce the JD into a bounded relevance pack before
+drafting.
 
-## Research Goal
+For this POC, Python may do that deterministically by selecting only:
 
-The research step should not aim to scrape the open web broadly. Instead, it should deterministically collect as much useful structured data as is available from the approved source chain for one contact.
+1. the role title
+2. the most relevant engineering responsibilities
+3. the most relevant technical skills or systems signals
+4. one short domain or product-context line when helpful
 
-For this POC, that means:
+Python should do this with bounded heuristics such as:
 
-1. collect all useful fields returned by Apollo enrichment that are relevant to identity, role, company, public profile, and work-email readiness
-2. resolve and collect all useful public GitHub profile data
-3. if GitHub exposes a blog or personal-site link, collect useful public data from that site
+1. heading detection
+2. bullet extraction
+3. keyword scoring for engineering responsibilities and technical requirements
+4. removal of known low-signal sections
 
-### Apollo research expectations
+It should cut obviously unnecessary sections such as:
 
-For Apollo-backed contacts, the research step should collect and normalize as much of the returned enrichment payload as is useful and safe to persist, including at minimum:
+1. generic equal-opportunity language
+2. broad benefits and perks
+3. repeated company marketing copy
+4. long legal or policy sections
 
-- person/provider id
-- display name
-- full name
-- first name
-- last name
-- current title
-- location
-- company and organization identifiers when available
-- LinkedIn URL
-- work email when returned
-- email status when returned
-- headline when returned
+The goal is not to summarize the whole JD. The goal is to pass only the
+minimum role-fit context needed to support the managerial draft.
 
-The full raw Apollo enrichment payload should be persisted as an artifact.
+This deterministic extraction should be treated as a bounded reduction step,
+not as a perfect semantic understanding step. It should work well for many JDs,
+but it should also have a safe fallback when the JD structure is noisy.
 
-For this POC, the normalized research record should include the required normalized fields, but it should not attempt best-effort normalization of every additional Apollo-returned field.
+If deterministic extraction cannot confidently identify clean responsibility and
+requirements sections, it should fall back to a minimal pack containing:
 
-If additional Apollo fields such as GitHub URL, Twitter URL, photo URL, or employment history are available and the system decides to normalize more of them later, that should be treated as an additive extension rather than a behavioral change.
+1. the role title
+2. up to three technical-looking requirement or responsibility lines
+3. one short domain or product-context line when available
 
-### Apollo field-usage boundary
+## Managerial Path Intent
 
-For this POC:
+The managerial path is for recipients who are closer to hiring, team
+leadership, or internal routing.
 
-1. `employment_history` may be used as drafting evidence in the no-GitHub branch
-2. `github_url` may be used as an identity handoff into GitHub research
-3. `photo_url` should not be used as drafting evidence
-4. `twitter_url` should not be used as drafting evidence in this POC unless a later social-profile research stage is added
+This includes recruiting-oriented recipients for now.
 
-When `employment_history` is used, the system may reference more than one past role if multiple roles create stronger and more relevant common ground than a single-role summary would.
-When `employment_history` is used as the primary common-ground hook in the opener, the draft should mention both the company name and the role explicitly.
-That opener should stay selective and concise. It may mention more than one
-role/company step when the recipient's career path itself is the interesting
-signal, but it should avoid turning the opener into a long chronology. In
-practice, this should usually mean at most the most relevant two or three
-career steps.
-Even in that case, the opener should still mention the recipient's current
-company so the outreach stays anchored in the present role as well as the path.
-That opener should also include one or two concrete observations about why that
-history feels relevant, depending on what reads more naturally.
-When GitHub exists, `employment_history` may still be used as supporting context, but it should not replace GitHub as the primary common-ground hook in this POC.
+The email should read like a short, respectful application-style note.
 
-### GitHub research expectations
+It should:
 
-For GitHub-backed contacts, the system should gather:
+1. reference the role the sender saw
+2. explain why the sender is a plausible fit
+3. mention the sender's relevant technical background and skills
+4. ask for a short conversation
+5. allow a polite request to forward the note to the right person when the
+   recipient is not the best owner
 
-- GitHub profile URL
-- profile name/login
-- bio
-- company
-- blog or personal site when present
-- all public repositories
-- compact metadata for each repository
-- README excerpt for the selected repository
+This path is job-role-centric rather than career-path-centric. It should sell
+fit directly through evidence rather than through broad networking language.
 
-### Personal-site research expectations
+## Technical Path Intent
 
-If a personal site or blog is discovered from GitHub, the system should gather a bounded summary of that site, such as:
+The technical path is for engineers, technical leads, staff/principal
+engineers, and other technical individual contributors.
 
-- canonical URL
-- page title
-- meta description or obvious about summary
-- obvious project, writing, or talk links
+The email should be a career-guidance email, not a cover letter.
 
-The workflow should not fail if no personal site is discovered.
+It should:
 
-Personal-site information should be treated as supporting context in this POC, not as the primary outreach hook. It may support both the GitHub-backed draft path and the no-GitHub fallback path.
+1. say the sender came across the recipient's LinkedIn profile
+2. express admiration for the recipient's career path and current role
+3. say the sender wants to grow in a similar way and ship software like the
+   recipient
+4. briefly introduce the sender
+5. mention `Job Hunt Copilot`
+6. make the sender's job-hunt guidance ask explicit
 
-## Common-Ground Rule
+## Technical Path Draft Shape
 
-The email must begin from one specific common-ground signal.
+The technical path should currently use a concise 4-paragraph structure.
 
-The opener should anchor on exactly one primary evidence source. Other evidence
-sources may appear later as supporting context, but the opener should not blend
-multiple independent hooks into one introduction.
+### Paragraph 1
 
-### Preferred common-ground source
+Paragraph 1 should:
 
-If a usable GitHub profile exists, the system should prefer:
+1. begin with `I came across your LinkedIn profile and really admired your path from ...`
+2. reference the recipient's career path from Apollo employment history
+3. mention the recipient's current role explicitly
+4. make clear that the sender admires that path and role
+5. say the sender wants to grow in a similar way and ship software like them
 
-1. one specific repository
+When this admiration line is written, it should stay focused on growing in a
+similar direction and shipping software at that level. It should not drift into
+phrasing about building teams.
 
-Among GitHub-backed hooks, the system should optimize first for recipient-side
-strength and representativeness:
+For this path, Paragraph 1 should usually mention the most relevant two or
+three past companies plus the current role. That is the preferred balance
+between showing real profile research and keeping the opener concise.
 
-1. something the recipient is likely proud of
-2. something that shows real engineering depth
-3. something specific enough to prove the sender did real research
+Those steps do not need to be the most recent ones. The drafter may choose any
+two or three relevant steps from the full Apollo employment history when that
+produces a stronger growth story.
 
-Only after those factors should the workflow consider sender overlap as a
-secondary tie-break.
+When possible, these earlier steps should be phrased primarily as company
+transitions, while the current step should use the recipient's exact current
+role and company. For the technical path, the current step should keep the
+exact sourced current title and company rather than a shortened variant. The
+opener should use just company names for past steps rather than past role
+titles.
 
-When the opener is based on a repository hook, it should mention the repository
-name explicitly.
+Earlier non-software steps do not have to be excluded automatically. The
+opener may include one when it makes the recipient's growth story more
+interesting or more meaningful, as long as the paragraph stays selective and
+concise.
 
-The opener should also include one or two concrete observations about that
-repository, depending on what reads more naturally.
+The preferred closing line for this opener is:
 
-For this POC, the draft should mention the recipient repository by its exact
-name only. It should not include the recipient repository URL in the email
-body.
+`I'd love to grow in a similar direction and ship software at that level over time.`
 
-### Common-ground quality rules
+Close variants with the same meaning are also allowed in the second sentence,
+as long as they keep the focus on the path standing out and the sender wanting
+to grow in a similar direction and ship software at that level over time.
 
-The chosen signal should:
+For this technical path, the emotional framing should stay closer to `admired`
+than to a softer word like `interesting`.
 
-1. be concrete enough to mention specifically
-2. reveal a real engineering problem, tool, workflow, or design choice
-3. be likely to represent work the recipient cares about and would recognize as
-   meaningful
-4. overlap naturally with the sender's background or current project when that
-   improves the hook without weakening recipient-side strength
-5. avoid empty compliments or generic praise
-6. support a real question the sender could ask in a 15-minute conversation
+This paragraph should stay personal and respectful.
 
-### Project selection tie-break rules
+It should not:
 
-If more than one repository looks plausible, the system should prefer the repository that:
+1. become a long chronology
+2. drift into generic praise
+3. sound like a referral ask
 
-1. exposes clearer engineering constraints or tradeoffs
-2. is easier to describe with 1 to 2 concrete observations
-3. overlaps more naturally with the sender's engineering background or `Job Hunt Copilot`
-4. feels like a real tool, workflow, or production-minded system rather than a toy demo
+### Paragraph 2
 
-### Common-ground failure mode
+Paragraph 2 should give sender background context.
 
-If GitHub evidence is weak or absent, the common-ground should fall back to:
+For the current technical-path POC, Paragraph 2 should stay fully fixed as:
 
-1. the recipient's current role
-2. the recipient's company
-3. curiosity about the kind of work the team is likely doing
-4. curiosity about how to make the sender's profile stronger in order to join that company
+`I recently graduated from ASU with an MS in Computer Science. I also have about three years of experience building large-scale systems, including distributed high-availability data services in Python and Scala on Azure that handled ~580 TPS in production while maintaining 99.95% uptime.`
 
-The fallback should remain specific to the role/company context and should not become a generic networking email.
+Deterministic Python should append this exact paragraph after the generated
+Paragraph 1. `codex exec` should not generate or rewrite Paragraph 2 for the
+technical path.
 
-In a fallback opener, the draft should prefer leading with the recipient's
-career path or current role/title when that produces a more personal hook than
-leading with the company alone. If the opener mentions the recipient's
-role/title, it should also mention the company name rather than referencing
-the role alone. When the current title/role is mentioned in this POC, it
-should use the exact sourced title rather than a shortened or cleaned variant.
+### Paragraph 3
 
-That fallback opener should include one or two specific observations grounded in
-the role, company context, employment history, or company research, depending
-on what reads more naturally.
-When employment history is interesting enough to mention, the opener should
-pair that career-path context with one short sentence about what the
-recipient's current company is doing, rather than choosing only one of those
-two angles.
+Paragraph 3 should explain the sender's current project.
 
-When the opener is using role/company fallback rather than GitHub or
-employment-history common ground, it should stay anchored on one company/role
-pair. It may add one inferred company-research theme when that makes the opener
-more specific and natural.
+It should include:
 
-When company research is available, the opener does not need to mention the
-company-research theme explicitly every time. It should do so only when that
-theme creates a cleaner opener than role/title-led context.
+1. `Job Hunt Copilot` as `an AI workflow automation tool`
+2. the idea that the sender has a passion for learning new technology and
+   building products, and that this is part of what led to building `Job Hunt
+   Copilot`
+3. the exact idea that the tool `helps me connect with strong engineers and
+   technical leaders while supporting my job search`
+4. the fact that this email is a live example of that autonomous workflow
+5. the raw repo URL near the `Job Hunt Copilot` mention
 
-If a GitHub profile exists but the repos do not produce a strong hook, the system does not need to force a GitHub-based opener. In that case, the selector may choose stronger fallback context such as employment history, company-research fallback, or a minimal conservative draft.
-This includes cases where Apollo or search resolves a GitHub profile successfully but the public repos are empty, thin, or otherwise not useful for outreach.
+This paragraph should use five fixed sentences, and the sentence order should stay
+fixed:
+
+1. passion for learning/building products led to `Job Hunt Copilot`
+2. what the tool does
+3. `This email is a live example of that autonomous workflow.`
+4. production-minded note
+5. repo link sentence
+
+The first sentence of this paragraph should stay fixed as:
+
+`I'm passionate about learning new technology and building products, which is what led me to build Job Hunt Copilot.`
+
+The second sentence of this paragraph should stay fixed as:
+
+`It's an AI workflow automation tool I built to help me connect with strong engineers and technical leaders while supporting my job search.`
+
+The third sentence of this paragraph should stay fixed as:
+
+`This email is a live example of that autonomous workflow.`
+
+The fourth sentence of this paragraph should stay fixed as:
+
+`It's something I built from scratch and have been shaping with real production use in mind, not just as a one-off prototype.`
+
+The fifth sentence of this paragraph should stay fixed as:
+
+`If you're interested, the repo is here: <repo_url>`
+
+So the full fixed Paragraph 3 is:
+
+`I'm passionate about learning new technology and building products, which is what led me to build Job Hunt Copilot. It's an AI workflow automation tool I built to help me connect with strong engineers and technical leaders while supporting my job search. This email is a live example of that autonomous workflow. It's something I built from scratch and have been shaping with real production use in mind, not just as a one-off prototype. If you're interested, the repo is here: <repo_url>`
+
+### Paragraph 4
+
+Paragraph 4 should:
+
+1. say the sender is currently in the job-hunt process
+2. say the sender would really value the recipient's guidance
+3. say the sender wants to build a career like the recipient's
+4. ask whether the recipient is open to a `10-minute` conversation in the next
+   week or two
+5. include the availability line in the same paragraph
+
+This paragraph should be low-pressure and easy to answer.
+
+For this path, the sentence `I'm currently in the job hunt process, and I'd
+really value your guidance.` should also stay fixed.
+
+For this path, the sentence `I want to build a career like yours.` should also
+stay fixed.
+
+For this path, the final question should stay fixed as:
+
+`Would you be open to a 10-minute conversation sometime in the next week or two?`
+
+The preferred availability line for this path is:
+
+`I'm usually free weekdays between 8 AM and 6 PM MST, and I'm flexible outside that too if another time works better for you.`
+
+So the full fixed Paragraph 4 is:
+
+`I'm currently in the job hunt process, and I'd really value your guidance. I want to build a career like yours. Would you be open to a 10-minute conversation sometime in the next week or two? I'm usually free weekdays between 8 AM and 6 PM MST, and I'm flexible outside that too if another time works better for you.`
+
+## Managerial Path Draft Shape
+
+The managerial path should currently use a concise problem-solver structure.
+
+### Paragraph 1
+
+Paragraph 1 should:
+
+1. reference the specific job role the sender saw
+2. mention the company
+3. briefly explain why the role caught the sender's attention
+4. include an early proof-of-concept offer so it appears high in inbox
+   preview text
+5. stay at exactly three sentences
+
+For this POC, managerial `paragraph_1` should stay at exactly three sentences:
+
+1. `I hope you're doing well.`
+2. `I came across the <Role Title> opening at <Company> and wanted to reach out because the role looks closely aligned with the kind of <role-relevant area> I've been trying to work on.`
+3. `**If helpful, I'd be happy to build a small proof of concept based on my understanding of the challenges the team is working on and share the repo.**`
+
+The phrase `I hope you're doing well.` should stay fixed, and the
+`<role-relevant area>` phrasing in sentence 2 may vary based on the role/JD so
+the opener reads less like a template.
+The proof-of-concept sentence should stay fixed in meaning and should be bolded
+in the rendered email body.
+
+### Problem Hypotheses
+
+This section should:
+
+1. be rendered under the fixed heading:
+   `My read from the JD is that the team is likely working on:`
+2. use exactly three short bullets
+3. stay specific and non-generic
+4. infer challenges cautiously from the JD rather than claiming certainty
+5. focus on concrete engineering challenges, not company boilerplate
+6. avoid repeating the exact same idea across all bullets
+
+### Relevant Background
+
+This section should:
+
+1. be rendered under the fixed heading:
+   `Relevant background from my side:`
+2. use exactly three short bullets
+3. stay highly scannable for managers
+4. choose bullets dynamically based on the role/JD and sender evidence
+5. prefer action-led bullets
+6. prefer one strongest professional proof, one second strong systems proof,
+   and an optional `Job Hunt Copilot` bullet when relevant
+7. include the repo URL in the same `Job Hunt Copilot` bullet when used
+8. explicitly mention `ASU` and `about three years of experience` somewhere in
+   this section when those facts do not already appear elsewhere in the body
+
+For the managerial path output contract, this section should be represented as
+a structured list of bullet strings rather than one preformatted paragraph
+string. Deterministic Python should render the heading and bullet formatting.
+
+### Paragraph 4
+
+Paragraph 4 should:
+
+1. mention the attached resume briefly
+2. ask for a `10-minute` conversation
+3. make clear the conversation is to understand the team's real challenges
+4. mention the sender may build a small proof of concept afterward if helpful
+5. include a polite forward-to-the-right-person note when the recipient is not
+   the best contact
+6. stay at exactly four sentences
+
+The preferred managerial CTA wording is:
+
+`I've attached my resume for context. Would you be open to a brief 10-minute conversation? I'd love to better understand the challenges the team is actually focused on, and if helpful, I'd be happy to build a small proof of concept afterward and share the repo. If this is better routed elsewhere, I'd appreciate a forward to the right person internally.`
+
+This managerial path is intentionally provisional and will be tightened further
+in a later ambiguity pass.
 
 ## Credibility Rule
 
-The email must establish why the sender is worth the recipient's time.
+The email must establish why the sender is worth replying to.
 
 The credibility layer should come from:
 
-1. basic information about the sender's professional engineering background
+1. concise professional background
 2. `Job Hunt Copilot` as a current project
-3. the fact that this outreach workflow is autonomous, with personal review on each email before it goes out
-
-The credibility section should mention both:
-
-1. a brief professional-background signal
-2. `Job Hunt Copilot`
-
-The professional-background mention should stay high level in this POC. The
-draft does not need to include concrete metrics or detailed proof points unless
-the implementation is later extended for that purpose.
-
-### Ordering constraint
-
-The draft must establish engineering credibility before the autonomous-email point becomes prominent.
+3. the fact that the workflow is autonomous and this email came through it
 
 `Job Hunt Copilot` should support credibility, not dominate the email.
 
-The sender should sound like someone building a real system, not someone pitching a novelty tool.
+The sender should sound like someone building a real system, not pitching a
+novelty tool.
 
-### Required `Job Hunt Copilot` facts
+## Required `Job Hunt Copilot` Facts
 
-The draft should communicate, directly or equivalently:
+When `Job Hunt Copilot` appears in the technical path, the draft should
+communicate, directly or equivalently:
 
-1. `Job Hunt Copilot` should be clearly framed as the sender's own project for
-   the sender's job search. That meaning may come through indirectly from the
-   `Job Hunt Copilot` sentence as long as ownership is still clear
-2. it helps identify the right people to reach out to; this idea should be
-   explicit in the draft
-3. the workflow runs autonomously, or a natural paraphrase that keeps the
-   autonomy clear
-4. the sender personally reviews each email before sending; this should stay
-   explicit in the draft
-5. this specific email itself came through that workflow, or a natural
-   paraphrase as long as it is clearly about this email
-6. the email should include the `Job Hunt Copilot` repo link explicitly, near
-   the `Job Hunt Copilot` mention rather than somewhere unrelated in the email.
-   For this POC, that link should appear as the raw GitHub URL.
+1. `Job Hunt Copilot` is the sender's own project
+2. it helps the sender connect with `strong engineers and technical leaders`
+3. it also supports the sender's job search
+4. the workflow runs autonomously
+5. the sender is using this email as a live example of that workflow
+6. the repo URL appears near the mention
 
-These ideas do not need to appear as five separate sentences. The drafter may
-compress them into fewer sentences as long as the meaning is still covered.
+The wording does not need to be identical every time, but the meaning should
+stay intact.
 
-When the draft refers to this workflow, it should use the word `email` rather
-than `message`.
+For the managerial path, `Job Hunt Copilot` should usually appear only as a
+concise builder-signal or project bullet when relevant to the role. The
+managerial path does not need to say that the workflow runs autonomously or
+that the email itself is a live example of the workflow.
 
 ## Call-to-Action Rule
 
-The call to action must be a low-pressure 15-minute virtual coffee chat.
-For this POC, the draft should use the literal phrase `virtual coffee chat`.
+The first email should ask for time and guidance, not for a referral.
 
-The purpose of the conversation should be:
+### Technical path CTA
 
-1. one tip about the kind of technical work the recipient does, builds, or thinks about
-2. one tip related to the sender's job hunt, profile positioning, or preparation
+For technical contacts, the CTA should:
 
-The CTA should:
+1. ask for `10 minutes`
+2. ask sometime in the next week or two
+3. frame the call as guidance during the sender's job hunt
+4. make clear that the sender wants to learn how to build a career like the
+   recipient's
 
-1. ask for 15 minutes
-2. ask for some time in the next two weeks
-3. include the sender's typical availability window
-4. remain easy to answer yes or no to
+### Managerial path CTA
 
-For this POC, the default availability window should be:
+For managerial contacts, the CTA should:
 
-1. weekdays from `8 AM MST` to `6 PM MST`
-2. anytime on weekends
-3. plus a short note that the sender can also try other times if the recipient prefers
+1. ask for `10 minutes`
+2. frame the call around understanding the team's real challenges
+3. mention that the sender may build a small proof of concept afterward if helpful
+4. allow a polite forward-to-the-right-person request
 
-### CTA topic rules
+## Subject Line Rule
 
-The CTA should point toward two conversation themes:
+The subject line should stay:
 
-1. a technical or project-related question anchored in the recipient's work
-2. a job-hunt or profile-positioning question about how the sender can make the profile stronger in order to join the recipient's company
+1. short
+2. low-pressure
+3. recipient-focused
 
-The draft should make both purposes explicit. The ask should clearly signal that
-the sender is hoping for:
+It should avoid:
 
-1. one tip related to the recipient's work, engineering problems, or technical judgment
-2. one tip related to the sender's job hunt, profile positioning, or preparation
+1. `job`
+2. `referral`
+3. `application`
+4. `opportunity`
+5. `AI`
+6. `agent`
 
-For GitHub-backed drafts, the guidance ask should explicitly cover both of
-these every time:
+For now:
 
-1. what the recipient learned from building the referenced project, repo, or
-   engineering theme
-2. what advice the recipient would give someone trying to become a stronger
-   candidate for the company
+1. technical-path subjects should stay fixed as `Learning from your career path`
+2. managerial-path subjects should stay fixed to the pattern `Interest in the <Role Title> role at <Company>`
 
-For fallback/company-guidance drafts, the guidance ask should explicitly cover
-both of these every time:
+Exact subject patterns can be tightened in a later pass.
 
-1. the recipient's experience and work at the company
-2. what advice the recipient would give someone trying to become a stronger candidate for the company
+## Tone Rule
 
-When the draft asks about strengthening the sender's profile to join the
-company, it should mention the company name again explicitly rather than
-relying only on earlier context.
-It should use the company's exact name rather than a generic phrase like
-"your company." For this POC, company references in the body should preserve
-the exact official company name from the source data rather than cleaning minor
-suffixes.
+The email should be:
 
-## Email Shape
-
-The draft should follow this logical flow:
-
-1. common ground
-2. connection plus credibility
-3. 15-minute ask
-
-The implementation should prefer a concise 3-paragraph structure. A 4-paragraph
-draft is allowed when it reads more naturally, but concision remains the
-governing rule and the email should stay short enough that recipients do not
-skip it.
-For this POC, the body should target roughly 140 to 180 words, with slight
-variance allowed when needed for natural phrasing.
-
-### Paragraph intent
-
-If implemented as 3 paragraphs, the intended paragraph jobs are:
-
-1. `common_ground`
-2. `credibility_and_connection`
-3. `coffee_chat_cta`
-
-For strong GitHub-backed drafts, those paragraph jobs should map to the email
-more concretely like this:
-
-1. mention the recipient's repo/project/theme, include one or two specific
-   observations, and express grounded appreciation without drifting into generic
-   praise
-2. connect that work to the sender's background and `Job Hunt Copilot`
-3. ask for a 15-minute virtual coffee chat to hear what the recipient learned
-   from building that project and what advice the recipient would give someone
-   trying to become a stronger candidate for the company
-
-For fallback drafts, Paragraph 2 should use the same credibility pattern as the
-GitHub-backed path:
-
-1. connect the recipient context to the sender's background
-2. mention `Job Hunt Copilot`
-3. keep the autonomy and personal-review points in the same supporting role as
-   they have in the GitHub-backed draft
-
-For fallback drafts, the three paragraph jobs should map to the email more
-concretely like this:
-
-1. mention the recipient's interesting career path into the current company,
-   include one short company-research sentence, and naturally make
-   clear that the sender came across the recipient's profile
-2. connect that context to the sender's background and `Job Hunt Copilot`
-3. ask for a 15-minute virtual coffee chat to hear a bit about the recipient's
-   experience at the company and what advice the recipient would give someone
-   trying to become a stronger candidate for that company
-
-The system may add greeting and signature outside the AI drafting step.
-
-For this POC, the greeting should use the recipient's first name. If
-first-name parsing is missing or looks unreliable, the greeting should fall
-back to the recipient's full name.
-
-The final email should include the full signature block. At minimum, that
-signature block should include:
-
-1. fixed sign-off: `Best,`
-2. sender name
-3. sender LinkedIn URL
-4. sender phone
-5. sender email
-
-For this POC, the sender LinkedIn URL should live in the signature rather than
-being called out separately in the body.
-
-## Email Content Rules
-
-The email should:
-
-1. sound natural and specific
-2. mention a real project, repo, theme, or role signal
-3. avoid generic praise
-4. avoid inflated claims
-5. avoid sounding like a mass template
-6. avoid asking directly for a job or referral
-7. avoid overexplaining the automation
-8. stay concise enough to read quickly on email
-
-The email should not say:
-
-1. "I have been following your work" unless explicitly supported by evidence
-2. "impressive profile"
-3. "great work" without a specific observation
-4. "I'd love to pick your brain"
-5. language that makes the recipient responsible for getting the sender a job
-
-### Tone rules
-
-The tone should be:
-
-- curious
-- technically aware
 - respectful
-- low-pressure
+- concise
+- human
+- clear about intent
+- naturally written as a complete email rather than as stitched-together pieces
 
-The tone should not be:
+The email should not be:
 
+- overly flattering
+- generic
 - pleading
-- overfamiliar
 - salesy
-- overly polished corporate outreach
+- an indirect referral ask
+- overly compressed into abstract or noun-heavy phrasing that feels assembled
 
-## Subject Line Rules
+## Runtime Boundaries
 
-The draft should include a subject line.
-
-For this POC, the subject line should:
+### Deterministic Python
 
-1. stay short and low-pressure
-2. target roughly 3 to 7 words, with up to 9 words allowed when needed
-3. be about the recipient, not about the sender
-4. reference the recipient's repo, company, or engineering theme
-5. avoid job-application framing
-
-Allowed subject patterns are intentionally narrow:
-
-1. `Quick question about <repo>`
-2. `Question about <repo>`
-3. `<repo> and a quick question`
-4. `Quick question about <company> engineering`
-5. `Question about <company> engineering`
+Deterministic Python should handle:
 
-Preference order:
+1. Apollo enrichment
+2. employment-history normalization
+3. recipient classification
+4. job-posting context loading
+5. deterministic JD relevance extraction for the managerial path
+6. sender-context assembly
+7. bounded drafting input assembly
+8. output validation and persistence
 
-1. use a repo-based subject for GitHub-backed drafts when the repo name is clear
-2. use a company-based subject for fallback drafts
-3. if the raw repo name is awkward, too long, or unclear, the subject may use a cleaned-up version of the repo name when that still feels recognizable
-4. if the repo name is still awkward after cleanup, fall back to the company-based subject
+### `codex exec`
 
-This subject-level cleanup rule does not change the body rule: the email body
-should still use the repository's exact name.
+`codex exec` should be used for:
 
-When the subject uses a company-based pattern, it should preserve the exact
-official company name from the source data rather than cleaning minor suffixes.
+1. managerial-path drafting
+2. technical-path Paragraph 1 generation
 
-For this POC, the subject line should not reference:
+This simplified strategy does not require GitHub analysis, project selection,
+or company-research fallback stages.
 
-1. `Job Hunt Copilot`
-2. the sender's job search
-3. `AI`
-4. `agent`
-5. `job`
-6. `referral`
-7. `application`
-8. `opportunity`
+## Structured Output Contract
 
-## Fallback Behavior
+All `codex exec` outputs should be validated by Pydantic.
 
-If no GitHub profile can be resolved, the system should still be able to draft an email.
+### Technical path contract
 
-In that case the draft should:
+For the technical path, `codex exec` should not generate the full email body.
+Instead, it should return only the dynamic content needed for Paragraph 1.
+Deterministic Python should append the fixed Paragraph 2, Paragraph 3, and
+Paragraph 4 afterward.
 
-1. reference the recipient's current role and company
-2. use broader public web research to understand what the company has been doing recently in software engineering
-3. infer likely team or domain context from the recipient's current role/title when that inference is reasonable
-   and phrase it cautiously when used in the draft, for example with wording
-   like "it looks like your team may be working on..."
-   More than one such inferred statement is allowed when the company research
-   genuinely supports it.
-   The draft may combine direct company-research observations and cautious
-   inferences in whatever way reads most naturally, as long as the distinction
-   stays clear in the wording.
-4. communicate interest in what the company has been doing and show that
-   interest through the company research included in the email, with exact
-   phrasing left to the drafter
-5. explicitly make clear that the sender came across the recipient's profile
-   and that it is the reason for the outreach; this profile-reference does not
-   need to be the first words of the opener and may appear naturally after the
-   career-path hook
-6. ask about the recipient's experience at the company and what advice the
-   recipient would give someone trying to become a stronger candidate for that
-   company
-7. explicitly mention `Job Hunt Copilot` as part of the sender's credibility
-8. connect the sender's interests and `Job Hunt Copilot` work to that context
+Required fields:
 
-### Fallback matrix
+1. `paragraph_1_text`
+2. `selected_career_steps`
 
-The system should follow this fallback order:
+Required Pydantic shape:
 
-1. `GitHub repo hook`
-2. `employment-history hook`
-3. `company-research fallback hook`
+```python
+class TechnicalDraftSlots(BaseModel):
+    paragraph_1_text: str
+    selected_career_steps: list[str]
+```
+
+`paragraph_1_text` should be returned exactly as it should appear in the final
+email as the full final Paragraph 1, and it should follow the fixed Paragraph 1
+rules in this spec.
+
+Deterministic Python should not rewrite the generated Paragraph 1. It should
+only validate it, persist the debug fields, and append the fixed Paragraph 2,
+Paragraph 3, and Paragraph 4.
+
+For this path, `codex exec` should return JSON only, matching the Pydantic
+schema exactly, with no extra rationale or commentary outside the schema.
+
+For the technical path, `paragraph_1_text` should stay at exactly two
+sentences.
+`selected_career_steps` is for debugging and traceability and should store
+only the company names chosen for the path transitions.
+
+The technical-path prompt should include one short realistic example of valid
+JSON output that matches this schema. It should not include multiple examples.
+
+### Managerial path contract
+
+For the managerial path, `codex exec` should generate only the variable
+problem-solver content. Deterministic Python should own:
 
-If step 1 is unavailable or too weak, the system should try step 2 before
-dropping to later fallback options.
-
-When GitHub evidence is weak and both employment-history context and company-research context are available, the system should prefer employment-history context before company-research context.
-If GitHub evidence is weak and employment-history context is also weak, the system should prefer company-research fallback before dropping to a minimal conservative draft.
-
-If all three are weak, the system should still draft conservatively rather than inventing details.
-
-### No-GitHub fallback drafting rule
-
-When no GitHub profile is found for the contact, the workflow should switch to a different outreach style instead of pretending GitHub-based common ground exists.
-
-That fallback style should:
-
-1. use the recipient's current company as the main anchor
-2. use broader public web research to identify what the company has been doing recently in software engineering
-3. infer likely team or domain signals from the recipient's current role/title when reasonable
-4. use Apollo employment history as a possible common-ground hook when that history creates a stronger, more relevant signal than generic company context
-5. frame the email as a request for guidance from someone at the company rather than as a repo/project-based technical hook
-6. still mention `Job Hunt Copilot` explicitly as part of the sender's credibility
-7. ask about:
-   - the recipient's experience at the company
-   - what advice the recipient would give someone trying to become a stronger candidate for that company
-
-When fallback Paragraph 1 is built from career-path context, it should:
-
-1. mention only the most relevant two or three steps from the path into the current role
-2. still mention the current title/role explicitly, using the exact sourced title
-3. still mention the current company explicitly
-4. include one short company-research sentence about what the current company is doing; that sentence may use a cautious team/domain inference when that is more specific and useful than a flat company fact, but it should be framed as interest or curiosity rather than appreciation. Mentioning a concrete technical or product area is enough; it does not need to force an additional challenge clause every time
-5. naturally include the idea that the sender came across the recipient's
-   profile, without forcing that phrase to lead the opener
-
-The draft may phrase this as direct interest in joining the company or as softer interest in the company and its engineering work, depending on context, but it should remain clearly career-oriented.
-
-The no-GitHub fallback should still avoid asking directly for a job or referral.
-
-## Draft-Readiness Gate
-
-Before the system drafts or sends an outreach email, it should confirm that at least one of these is true:
-
-1. a usable GitHub-backed common-ground signal exists
-2. a usable no-GitHub company-research context exists
-
-A contact with only a work email and weak research context may still proceed to a minimal conservative draft, but that draft should avoid pretending stronger common ground exists.
-
-## System Architecture
-
-This POC should use a hybrid architecture:
-
-- deterministic Python for orchestration, fetching, normalization, artifact writing, and validation
-- bounded `codex exec` reasoning steps for judgment-heavy tasks
-- Pydantic contracts between stages
-
-The system should not use a free-form runtime agent for this workflow.
-
-For this POC, Apollo collection, GitHub collection, and personal-site collection should all be handled by deterministic Python code rather than AI reasoning.
-One exception is allowed: bounded AI may be used as a GitHub identity tie-breaker when deterministic GitHub search returns multiple plausible candidates.
-
-When GitHub is missing or weak, bounded `codex exec` company research may be used later in the flow to help draft the company-focused fallback email.
-When GitHub is missing or weak, `codex exec` company research may use broader public web research and is not limited to official company sources.
-
-## Runtime Data Contracts
-
-Each stage should pass structured data forward rather than unstructured prose when possible.
-
-### Apollo enrichment result
-
-Should include at minimum:
-
-- provider person id
-- normalized display/full/first/last name fields
-- title
-- location
-- LinkedIn URL
-- work email when returned
-- email status when returned
-- headline when returned
-- organization identifiers when returned
-
-### GitHub profile resolution result
-
-Should include at minimum:
-
-- resolved or unresolved status
-- confidence score
-- chosen GitHub URL when resolved
-- candidate matches
-- match reasons
-
-### GitHub repo candidate record
-
-Should include at minimum:
-
-- repo name
-- repo URL
-- description
-- repo type, such as app, tool, library, extension, infra, or data project when inferable
-- primary language
-- topics
-- stars
-- updated time
-- short problem statement extracted from available repo evidence; for this POC,
-  Python may derive it from the repo description, README evidence, and
-  lightweight top-level file/folder signals
-- engineering signals extracted from the repo, such as APIs, data pipelines, CI, packaging, orchestration, realtime behavior, retries, testing, or multi-service structure when present; for this POC, Python may derive these from README evidence, top-level file/folder names, and a small set of known config/build files such as `package.json`, `pyproject.toml`, `docker-compose.yml`, or `.github/workflows/*`
-- polish signals extracted from the repo, such as strong README quality, tests, workflows, packaging, demo/docs, or releases when present; for this POC, Python may derive these from README evidence, tests/workflows/packaging presence, and demo/docs/release indicators when available
-- one bounded README excerpt when available, capped at roughly two to four
-  sentences and focused on the problem solved plus one engineering signal when
-  possible
-
-### GitHub profile research result
-
-Should include at minimum:
-
-- GitHub profile URL
-- login
-- display name when available
-- bio
-- company
-- blog URL when present
-- bounded profile README summary when available, capped at roughly two to four
-  sentences and focused on what the recipient is building, interested in, or
-  emphasizing on the profile
-
-### Common-ground selection result
-
-Should include at minimum:
-
-- selected common-ground path, such as GitHub repo hook, employment-history hook, or company-research fallback hook
-- confidence score, such as `high`, `medium`, or `low`
-- why that path was selected
-- the primary supporting evidence chosen for that path
-- one short rejected-alternatives note explaining why the next-best eligible
-  hook was not chosen
-
-If the selected path is an employment-history hook, the structured result
-should carry only:
-
-- the single chosen role/company pair
-- at most one short supporting-history note
-
-### Project selection result
-
-Should include at minimum:
-
-- selected repo name
-- selected repo URL
-- confidence score, such as `high`, `medium`, or `low`
-- why selected
-- up to two standout repo-level observations
-- up to one short runner-up note
-
-### Project analysis result
-
-Should include at minimum:
-
-- confidence score, such as `high`, `medium`, or `low`
-- project summary in one or two sentences
-- engineering problem in one sentence
-- 2 to 3 standout observations
-- why this is a good hook in one short paragraph
-- connection to sender work in one short paragraph
-- suggested conversation angle in one sentence
-- suggested phrasing angle in one short note
-
-### Coffee-chat draft result
-
-Should include at minimum:
-
-- subject
-- body markdown
-
-### Personal-site resolution result
-
-Should include at minimum:
-
-- resolved or unresolved status
-- canonical URL when resolved
-- resolution source, such as GitHub profile `blog` field or README link
-
-### Personal-site research result
-
-Should include at minimum:
-
-- canonical URL
-- page title
-- homepage summary when extractable, capped at roughly two to four sentences
-- first-level page summaries for obvious pages such as `About`, `Projects`,
-  `Blog`, or `Talks` when extractable, with each page summary capped at roughly
-  one to three sentences
-- discovered project/blog/talk links when extractable
-
-## Required Runtime Stages
-
-### 1. Apollo enrichment ingestion
-
-Input:
-
-- contact identity fields already known to the system
-
-Behavior:
-
-- call Apollo enrichment through deterministic Python code
-- normalize the returned person payload
-- persist useful enrichment fields into the research record
-
-This stage should be treated as the first structured profile-data source for the POC.
-
-### 2. GitHub profile resolution
-
-Input:
-
-- contact name
-- company
-- title
-- optional LinkedIn URL
-- optional email
-
-Behavior:
-
-- deterministically search for GitHub candidates
-- score candidates using explicit matching reasons
-- return a resolved GitHub URL or unresolved state
-
-The resolver should not depend on AI for primary matching.
-
-If Apollo returns a `github_url`, the workflow should trust that URL as the primary GitHub identity. If that URL is unusable or invalid, the workflow should fall back to independent GitHub search.
-If independent GitHub search yields multiple plausible candidates and
-deterministic matching cannot confidently choose one profile, the workflow may
-use bounded AI only as a tie-breaker after deterministic search has already
-narrowed the candidate set.
-For this POC, Python should pass only the shortlisted plausible candidates plus
-their explicit match reasons into that tie-break stage, not the full raw search
-result set.
-
-### 3. GitHub profile research
-
-Input:
-
-- resolved GitHub profile URL
-
-Behavior:
-
-- fetch public profile data
-- normalize profile-level fields such as bio, company, and blog URL
-- fetch all public repos
-- produce compact repo candidate records
-- deterministically derive engineering-oriented repo summaries from repo metadata, README evidence, and lightweight repository signals
-- capture profile README when available
-- enrich the selected repo more deeply than the rest
-
-The research stage should collect all public repos, not only pinned or recent repos, unless future scale constraints require a spec change.
-These repo summaries should help later stages judge which project appears most representative, most technically meaningful, or most likely to be a project the recipient is proud of.
-
-### 4. Personal-site resolution
-
-Input:
-
-- GitHub profile data
-- GitHub profile blog field when present
-- relevant GitHub README links when present
-
-Behavior:
-
-- deterministically look for a personal-site or blog URL
-- prefer the GitHub profile `blog` field when it is a valid site URL
-- optionally fall back to obvious personal-site links from GitHub profile content or README content
-- return unresolved state if no trustworthy site is found
-
-This stage should not block the workflow when no site exists.
-
-### 5. Personal-site research
-
-Input:
-
-- resolved personal-site URL
-
-Behavior:
-
-- fetch a bounded set of public site pages
-- extract useful profile context
-- normalize the result into a compact site-research record
-- do not pass raw page text downstream; retain only bounded summaries and link
-  lists
-
-This stage should remain deterministic and optional.
-
-### 6. Company research fallback
-
-Input:
-
-- current company
-- current role
-- selected Apollo fallback context, such as employment-history signals or
-  other bounded profile fields needed for fallback reasoning
-
-Behavior:
-
-- run bounded company research only when no GitHub profile is available or when GitHub evidence is weak
-- gather recent company-level software-engineering context that can support the fallback draft
-- infer likely team or domain context from the recipient's title when that inference is reasonable and clearly framed
-- consider Apollo employment history as a possible common-ground signal when it is more relevant than generic company context
-- produce compact company-research notes for drafting
-- separate direct company observations from inferred team/domain statements in the structured output
-- include a small suggested phrasing angle for how to frame the company interest naturally
-
-The company-research fallback is not limited to official company sources. It may use broader public web research when useful.
-
-This stage should run only when no GitHub profile is available or when GitHub evidence exists but is too weak to support a strong outreach hook.
-
-### 7. Common-ground selection
-
-Behavior:
-
-- choose the common-ground path to use for the draft
-- choose between:
-  - GitHub repo hook
-  - employment-history hook
-  - company-research fallback hook
-- prefer the strongest path allowed by the rules in this spec
-- optimize first for recipient-side strength and representativeness
-- use sender overlap only as a secondary tie-break when multiple eligible hooks
-  appear similarly strong
-
-Implementation:
-
-- use `codex exec`
-- return structured JSON only
-
-For this POC, Python should pass only bounded structured evidence into this
-stage, not the full contact dossier.
-Python should pre-filter the evidence types using the fallback rules in this
-spec and pass only the currently eligible options into the selector, rather
-than every possible evidence type.
-Python should not pass broad sender context into this stage. If any sender
-context is supplied at all, it should stay minimal and exist only to help
-resolve close tie-breaks after recipient-side evidence has already been judged.
-If GitHub profile-README context is passed into this stage, it should be a
-bounded summary rather than the full raw profile README text.
-
-### 8. Project selection
-
-Behavior:
-
-- choose the best GitHub repo to mention
-- prioritize the repository most likely to feel strong and representative to the
-  recipient
-- use the repo summaries to judge problem solved, engineering depth, polish,
-  and likely representativeness rather than relying only on stars or recency
-- treat sender overlap as secondary to recipient-side strength
-
-Implementation:
-
-- use `codex exec`
-- return structured JSON only
-
-The selector may use the full repo candidate set, but it should make one choice only.
-For this POC, Python should pass all repos to the selector as compact summaries.
-The selector should not receive full README text for every repo.
-It should receive at most one bounded README excerpt per repo, capped at
-roughly two to four sentences.
-This stage applies only when the chosen common-ground path is a GitHub repo
-hook. Non-GitHub fallback paths bypass project selection.
-
-### 9. Project analysis
-
-Behavior:
-
-- explain what engineering problem the chosen repo addresses
-- identify specific details worth mentioning
-- explain why it is a good outreach hook
-- connect it to the sender's work
-- propose a natural conversation angle
-- include a small suggested phrasing angle for the drafter
-
-Implementation:
-
-- use `codex exec`
-- return structured JSON only
-
-The analyzer should reason over the selected repo and profile context, not over the full repo set again.
-For this POC, Python should pass the selected repo's deterministic summary plus
-up to two bounded README excerpts, not the full README text. Each excerpt
-should stay roughly within two to four sentences. When possible, one excerpt
-should emphasize the problem solved or architecture, and the other should
-emphasize engineering or polish signals.
-This stage applies only when the chosen common-ground path is a GitHub repo
-hook.
-
-### 10. Coffee-chat draft generation
-
-Behavior:
-
-- produce the final outreach draft from the selected common-ground and analysis
-- follow the email rules in this spec
-
-Implementation:
-
-- use `codex exec`
-- return structured JSON only
-
-The drafter should not perform new discovery. It should only write from the supplied evidence and analysis.
-For this POC, Python should pass only the structured outputs of earlier stages
-plus the specific sender fields actually used by the drafter:
-
-1. sender name
-2. sender LinkedIn URL
-3. sender phone
-4. sender email
-5. `Job Hunt Copilot` repo URL
-6. short background summary
-7. short `Job Hunt Copilot` summary
-8. availability window
-
-It should not pass raw supporting excerpts for the drafter to re-analyze.
-For employment-history hooks, Python should pass only the single chosen
-role/company pair plus at most one short supporting-history note.
-For company-research fallback hooks, Python should pass only the compact
-writing fields actually needed by the drafter:
-
-1. up to two direct observations
-2. up to two inferred statements
-3. why-this-matters summary
-4. phrasing angle
-
-When no GitHub profile exists, or when GitHub evidence is too weak to support a strong opener, the drafter may instead write from the company-research fallback inputs described above.
-
-### 11. Human review
-
-The POC should stop at draft generation unless an explicit send path is later added.
-
-## `codex exec` Usage Rule
-
-`codex exec` should be invoked only for bounded reasoning stages, not for general crawling or orchestration.
-
-For this POC, the intended `codex exec` stages are:
-
-1. company research fallback when GitHub is missing or weak
-2. common-ground selection
-3. project selection for GitHub repo-hook cases
-4. project analysis for GitHub repo-hook cases
-5. email drafting
-
-Python should:
-
-1. gather the evidence
-2. choose what evidence to pass
-3. validate returned JSON
-4. persist artifacts
-
-Python should also prevent stage drift by ensuring each later stage only receives the inputs that stage is supposed to reason over.
-
-## Output Contracts
-
-At minimum, the system should be able to produce:
-
-### Company research fallback output
-
-- up to two compact direct company observations
-- up to two explicit inferred team/domain statements kept separate from direct observations
-- a short summary of why this fallback context matters for drafting
-- a small suggested phrasing angle for how to frame the company interest naturally
-
-### Common-ground selection output
-
-- selected common-ground path
-- confidence score
-- why it was selected
-- primary supporting evidence chosen for that path
-- one short rejected-alternatives note for the next-best eligible hook
-
-### Project selection output
-
-- selected repo name
-- selected repo URL
-- confidence score
-- why it was selected
-- up to two standout repo-level observations
-- up to one short runner-up note
-
-### Project analysis output
-
-- confidence score
-- project summary in one or two sentences
-- engineering problem in one sentence
-- standout observations
-- why it is a good hook in one short paragraph
-- connection to sender work in one short paragraph
-- conversation angle in one sentence
-- suggested phrasing angle in one short note
-
-### Draft output
-
-- subject
-- body markdown
-
-The draft contract may later be extended with internal diagnostics such as:
-
-- common-ground type
-- common-ground source
-- CTA intent
-
-But those are optional for this POC.
-
-## Artifact Requirements
-
-Each `codex exec` stage should persist enough artifacts to debug quality and regressions.
-
-Expected artifacts per stage should include:
-
-- request payload
-- prompt
-- output schema
-- stage result JSON
-- stdout
-- stderr
-
-These artifacts should live under the existing POC runtime area.
-
-## Prompt Governance
-
-Prompts should be treated as implementation artifacts derived from this spec.
-
-Prompt changes should not silently introduce new behavior that is not described here.
-
-If a prompt requires behavior that is not already captured by this spec, the spec should be updated first.
-
-Each `codex exec` stage should receive a bounded, stage-specific evidence pack
-rather than the full contact dossier by default.
-
-Python should be responsible for slicing the research record into the smallest
-useful evidence pack for each stage.
-
-## Acceptance Criteria
-
-A draft is acceptable for this POC if:
-
-1. it contains one real common-ground signal
-2. the common ground is specific, not generic
-3. it connects that signal to the sender's background or `Job Hunt Copilot`
-4. it establishes credibility before leaning on the autonomous-email gimmick
-5. it asks for a 15-minute conversation with a concrete reason
-6. it does not ask directly for a job or referral
-7. it reads like a plausible human email
-8. it uses evidence that actually exists in the supplied inputs
-9. it remains useful even if the recipient does not have hiring influence
-
-## Evaluation Questions
-
-Each generated draft should be reviewable against these questions:
-
-1. What specific signal did the system choose as common ground?
-2. Is that signal genuinely interesting and technically discussable?
-3. Does the draft show evidence that the sender actually looked at the project or role?
-4. Does the draft make the sender sound worth replying to?
-5. Does `Job Hunt Copilot` support credibility without taking over the email?
-6. Is the coffee-chat ask concrete and low-pressure?
-7. Would this email still make sense if the recipient does not want to help with hiring directly?
-8. Did the system avoid inventing details that were not in the research record?
-
-## Test Strategy
-
-The POC should eventually have tests at three levels:
-
-1. deterministic unit tests for profile resolution, repo research, and record normalization
-2. stage-contract tests for selector, analyzer, and drafter payload validation
-3. end-to-end fixture tests that validate the email against the acceptance criteria
-
-Prompt text does not need literal snapshot-locking, but behavior should remain consistent with this spec.
-
-## Example Scenarios
-
-The spec should support at least these scenario types:
-
-1. GitHub-present engineer with one strong repo hook
-2. GitHub-present engineer with multiple plausible repos
-3. GitHub-present engineer with weak repos, forcing theme-level selection
-4. GitHub-missing contact, forcing role/company fallback
-
-The current Hariharan example is one useful validation case, but the spec should not be written so narrowly that it only fits that example.
-
-## Near-Term Extensions
-
-After the POC stabilizes, likely extensions are:
-
-1. structured badge normalization from LinkedIn job-alert cards
-2. personal-site and blog enrichment
-3. role/company fallback drafts when GitHub is missing or weak
-4. evaluation scoring for draft quality
-5. optional send path after human approval
+1. the fixed subject
+2. the greeting line
+3. the fixed bold proof-of-concept sentence
+4. the fixed JD-challenge heading
+5. the fixed relevant-background heading
+6. the fixed resume / CTA paragraph
+7. the signature block
+
+So for this path, `codex exec` should return:
+
+1. `role_alignment_sentence`
+2. `problem_hypotheses`
+3. `relevant_background`
+4. `selected_jd_signals`
+5. `selected_resume_signals`
+
+Suggested Pydantic shape:
+
+```python
+class ManagerialDraftPayload(BaseModel):
+    role_alignment_sentence: str
+    problem_hypotheses: list[str]
+    relevant_background: list[str]
+    selected_jd_signals: list[str]
+    selected_resume_signals: list[str]
+```
+
+Those debug fields should explain what the draft was anchored on, such as:
+
+1. selected JD signals
+2. selected sender-background or resume signals
+
+For now, the managerial-path debug payload should keep only:
+
+1. `selected_jd_signals`
+2. `selected_resume_signals`
+
+Both fields should be simple lists of short strings rather than richer nested
+objects.
+Each list should normally contain no more than three items.
+`selected_jd_signals` should use normalized short strings taken from the
+bounded JD relevance pack that actually informed the draft.
+`selected_resume_signals` should use normalized short strings tied to the
+sender-evidence items that actually informed the draft, rather than vague
+theme labels unrelated to the written paragraphs.
+These debug lists should reflect only the JD and sender signals that actually
+appear in or directly support the returned sentence and bullets. They should
+not include unused extra context.
+
+Unlike the technical path, the managerial path is a bounded partial-drafting
+path with attached debug metadata.
+
+The managerial-path prompt should include one short realistic JSON example that
+matches the eventual managerial-path schema. It should not include multiple
+examples.
+That example should use a software or AI-adjacent role context rather than an
+unrelated domain example.
+The preferred example context is an `AI Engineer` style role.
+In that example and in real drafts, a `Job Hunt Copilot` bullet should appear
+only when the role is clearly AI-relevant or when that project materially
+strengthens fit for the role.
+The preferred managerial example should show three JD-challenge bullets and
+three relevant-background bullets so the maximum intended shape is explicit.
+That example should also populate `selected_jd_signals` and
+`selected_resume_signals` with realistic short strings rather than placeholder
+labels.
+
+The managerial-path prompt should prefer a stable section order:
+
+1. task statement
+2. output schema
+3. sentence and bullet rules
+4. hard constraints
+5. bounded evidence
+6. one valid JSON example
+
+For the managerial path, `codex exec` should return JSON only, matching the
+managerial-path Pydantic schema exactly, with no extra rationale or commentary
+outside the schema.
+It should not return markdown fences, prose outside the JSON object, or
+alternative formatting.
+
+The managerial-path prompt should enforce these structural limits:
+
+1. `role_alignment_sentence` stays at exactly one sentence
+2. `problem_hypotheses` contains exactly three short bullets
+3. `relevant_background` contains exactly three short bullets
+4. both bullet lists should stay easy to scan and should not read like pasted JD
+   or resume sentences
+5. the assembled managerial body before the signature should target roughly
+   `185-215` words
+
+The preferred exact managerial-path prompt should follow this shape:
+
+```text
+Draft the variable content for a concise managerial outreach email.
+
+Return JSON only. Do not return markdown fences. Do not return commentary.
+
+Output schema:
+- role_alignment_sentence: string
+- problem_hypotheses: list[string]
+- relevant_background: list[string]
+- selected_jd_signals: list[string]
+- selected_resume_signals: list[string]
+
+Sentence and bullet rules:
+- role_alignment_sentence must be exactly 1 sentence.
+- role_alignment_sentence should begin with:
+  "I came across the <Role Title> opening at <Company> and wanted to reach out because..."
+- role_alignment_sentence should explain why the role looks closely aligned with the kind of role-relevant engineering problems I've been trying to work on.
+- role_alignment_sentence should sound natural and concise, not stitched together.
+- problem_hypotheses must contain exactly 3 bullets.
+- each problem_hypotheses bullet should be short and easy to scan.
+- problem_hypotheses should infer likely team challenges from the JD without copying JD lines verbatim.
+- problem_hypotheses should be grounded only in the JD and should not assume unsupported internal facts.
+- relevant_background must contain exactly 3 bullets.
+- each relevant_background bullet should be short and easy to scan.
+- relevant_background should be chosen from my real resume evidence, including experience and projects when relevant.
+- relevant_background should prefer this order:
+  1. strongest directly role-relevant professional proof
+  2. second strongest professional or systems proof
+  3. optional project proof such as Job Hunt Copilot when relevant
+- if a Job Hunt Copilot bullet is included, it should include the repo URL in that same bullet.
+- the assembled managerial body before the signature should target roughly 185 to 215 words.
+
+Hard constraints:
+- Use only the bounded JD relevance pack and sender evidence provided.
+- Do not invent unsupported team challenges, technical specifics, or fit claims.
+- Problem hypotheses must come from reasoning over the JD only, not from outside assumptions.
+- Do not copy-paste JD bullets or wording into the returned bullets.
+- Do not use generic self-praise such as passionate, hardworking, fast learner, or excited unless directly grounded in evidence.
+- Keep the returned bullets short, readable, and non-redundant.
+- Do not mention LinkedIn or GitHub in the variable content. They belong in the signature only.
+- Optimize for a natural email voice. The draft should read like one person writing a concise note, not like bits and pieces attached together.
+
+Bounded evidence:
+- recipient_name: {recipient_name}
+- target_role_title: {target_role_title}
+- target_company: {target_company}
+- bounded_jd_relevance_pack: {bounded_jd_relevance_pack}
+- sender_core_summary: {sender_core_summary}
+- sender_evidence_pool: {sender_evidence_pool}
+- fixed_downstream_context:
+  - Greeting line is fixed: "Hi <FirstName>,"
+  - Opener sentence 1 is fixed: "I hope you're doing well."
+  - Opener sentence 3 is fixed and bolded: "**If helpful, I'd be happy to build a small proof of concept based on my understanding of the challenges the team is working on and share the repo.**"
+  - JD heading is fixed: "My read from the JD is that the team is likely working on:"
+  - Background heading is fixed: "Relevant background from my side:"
+  - CTA block is fixed:
+    - "I've attached my resume for context."
+    - "Would you be open to a brief 10-minute conversation?"
+    - "I'd love to better understand the challenges the team is actually focused on, and if helpful, I'd be happy to build a small proof of concept afterward and share the repo."
+    - "If this is better routed elsewhere, I'd appreciate a forward to the right person internally."
+  - Signature context: LinkedIn and GitHub are in the signature only. Resume is attached separately.
+
+Valid JSON example:
+{...}
+```
+
+The preferred managerial-path JSON example is:
+
+```json
+{
+  "role_alignment_sentence": "I came across the AI Engineer opening at Elicit and wanted to reach out because the role looks closely aligned with the kind of workflow and systems problems I've been trying to work on.",
+  "problem_hypotheses": [
+    "dependable AI workflows in production",
+    "evaluation and failure testing for model behavior",
+    "observable systems with low-latency reliability constraints"
+  ],
+  "relevant_background": [
+    "built distributed data services handling ~580 TPS at 99.95% uptime",
+    "worked on monitoring, alerting, and production reliability for backend/data workflows",
+    "built Job Hunt Copilot, an AI workflow automation tool from scratch: https://github.com/sontiachyut/job-hunt-copilot-v4"
+  ],
+  "selected_jd_signals": [
+    "backend reliability",
+    "evaluation of AI workflows",
+    "production GenAI systems"
+  ],
+  "selected_resume_signals": [
+    "~580 TPS at 99.95% uptime",
+    "monitoring and alerting",
+    "Job Hunt Copilot"
+  ]
+}
+```
+
+Deterministic Python should assemble the final managerial-path email in this
+fixed order:
+
+1. greeting line
+2. fixed opener sentence 1
+3. `role_alignment_sentence`
+4. fixed bold proof-of-concept sentence
+5. rendered `My read from the JD is that the team is likely working on:` section
+6. rendered `Relevant background from my side:` section
+7. fixed CTA block
+
+## Prompt-Budget Rule
+
+The drafter should receive only the compact evidence needed for the selected
+path.
+
+### Technical path evidence pack
+
+The technical drafter for Paragraph 1 should receive:
+
+1. recipient name
+2. current title
+3. current company
+4. the full Apollo employment-history summary
+
+It should also receive the fixed email shape so Paragraph 1 reads naturally
+beside the fixed Paragraph 2, Paragraph 3, and Paragraph 4.
+
+The technical-path prompt should include:
+
+1. the technical-path evidence pack
+2. the fixed Paragraph 1 rule
+3. one short realistic JSON example matching the technical-path schema
+
+The technical-path prompt should also explicitly tell `codex exec` not to
+invent unsupported technical specifics about the recipient's work, stack, or
+responsibilities. It should use only what is directly supported by the full
+Apollo employment-history summary provided.
+
+The technical-path prompt should also explicitly tell `codex exec` not to
+restate, paraphrase, or preempt the fixed Paragraph 2, Paragraph 3, and
+Paragraph 4 content inside `paragraph_1_text`. Paragraph 1 should stay focused
+on the recipient's path only.
+
+Deterministic Python should assemble the final technical-path email from:
+
+1. generated `paragraph_1_text`
+2. fixed Paragraph 2
+3. fixed Paragraph 3
+4. fixed Paragraph 4
+
+### Managerial path evidence pack
+
+The managerial drafter should receive:
+
+1. recipient name
+2. current title
+3. current company
+4. target role and company context
+5. bounded JD relevance pack
+6. a short fixed sender core summary
+7. a bounded sender evidence pool curated from the sender's resume/background
+8. relevant skills summary
+9. `Job Hunt Copilot` summary when included
+10. availability window
+11. signature-link context, including that LinkedIn and GitHub live in the
+    signature and the resume is attached separately
+
+The bounded JD relevance pack should also be structured rather than passed as
+an untyped blob. For this POC, each JD evidence item should prefer a shape such
+as:
+
+1. `jd_signal`
+2. `supporting_line`
+3. optional `theme_tags`
+
+The drafter should not receive the full raw Apollo payload.
+It also should not receive the full raw resume or an unbounded sender-profile
+blob when a bounded sender evidence pool can represent the relevant proof
+points more cleanly.
+
+That fixed sender core summary should carry the stable sender facts the model
+should not have to reconstruct from scattered evidence lines, such as:
+
+1. recent `MS in CS` from `ASU`
+2. about `3 years` of experience
+3. one short systems/software background sentence
+
+That bounded sender evidence pool should include short proof lines plus
+lightweight metric or theme tags so deterministic Python and `codex exec` can
+select the strongest role-relevant evidence without needing the full resume.
+
+For this POC, each bounded sender evidence item should be represented as a
+small structured object rather than one flat tagged string. The preferred
+shape is:
+
+1. `proof_line`
+2. `metric_tags`
+3. `theme_tags`
+4. optional `source_label`
+
+This keeps the prompt compact while still letting deterministic Python inspect,
+filter, and validate the sender-evidence pool before sending it to the
+managerial drafter.
+
+When practical, deterministic Python should normalize `theme_tags` from a
+small controlled vocabulary so evidence selection stays consistent across
+drafts. That vocabulary can include themes such as:
+
+1. `backend`
+2. `distributed_systems`
+3. `reliability`
+4. `performance`
+5. `data_processing`
+6. `production_engineering`
+7. `ai_workflows`
+8. `product_building`
+
+`metric_tags` should also stay short and normalized when possible, for example
+`~580 TPS`, `99.95% uptime`, or `40% processing-time reduction`.
+
+For consistency, `selected_jd_signals` in the managerial debug payload should
+be drawn from the normalized `jd_signal` values used in this bounded JD pack.
+
+For the managerial path, LinkedIn and GitHub should stay in the signature and
+do not need to be mentioned explicitly in the body.
+
+The managerial-path prompt should explicitly tell `codex exec` not to invent
+unsupported team challenges, technical specifics, or fit claims. Any inferred
+team/problem statement should stay cautious and be grounded in the bounded JD
+relevance pack and the provided sender background or resume signals.
+The managerial-path prompt should also explicitly limit that inferred
+team/problem statement to the `problem_hypotheses` section rather than
+repeating speculative challenge language across the draft.
+
+The managerial-path prompt should also explicitly tell `codex exec` to avoid
+generic self-praise language such as `passionate`, `hardworking`, `fast
+learner`, or `excited` unless the phrasing is directly grounded in evidence and
+meaningfully helps role fit.
+
+The managerial-path prompt should also explicitly tell `codex exec` that
+LinkedIn and GitHub belong in the signature only, while the resume is attached
+separately and will be mentioned briefly in the fixed CTA block rendered by
+deterministic Python.
+
+The managerial-path draft should keep the only explicit question in the body
+inside the fixed CTA block. Earlier paragraphs should stay declarative.
+
+## Remaining Implementation Work
+
+The main remaining work is now implementation and validation rather than major
+spec ambiguity:
+
+1. implement deterministic JD relevance extraction and sender-evidence
+   normalization
+2. wire the managerial and technical prompt contracts into the drafting flow
+3. add regression coverage for schema validation, section ordering, and email
+   length targets
