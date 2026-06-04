@@ -18,6 +18,10 @@
 - **Manipal Institute of Technology, India** — BTech in Electrical and Electronics Engineering (Jul 2017 – Aug 2021)
 - **Coursework:** Advanced Operating Systems, Cloud Computing, Foundation of Algorithms, Statistical Machine Learning, Mobile Computing, Computer Networks, Data Structures and Algorithms, OOP, C++
 
+## Summary
+
+- Software engineer with 3+ years of experience building backend data platforms and distributed production systems, focusing on reliability, performance optimization, and workflow automation
+
 ## Work Experience
 
 ### Software Engineer — Infinite Computer Solutions (Mar 2023 – Mar 2024)
@@ -62,6 +66,10 @@ Golang, Python, Java, Kubernetes, Docker, PostgreSQL, Jenkins, GitLab CI/CD, Pro
 
 ## Projects
 
+### Job Hunt Copilot v4 (Apr 2026 – Present)
+- **Stack:** Python, SQLite, Agentic AI, Multi-Agent Orchestration, Gmail API
+- Built an autonomous job-search system that identifies relevant roles, tailors resumes, discovers internal contacts, drafts targeted outreach, and tracks delivery outcomes using SQLite-backed workflow orchestration
+
 ### Distributed Edge Face Recognition Pipeline (Jan 2025 – Apr 2025)
 - **Stack:** Python, AWS IoT Greengrass v2, EC2, MQTT, SQS, AWS Lambda, S3, MTCNN, FaceNet
 - Built a hybrid edge-cloud face-recognition pipeline that pushed MTCNN detection to AWS IoT Greengrass on EC2, reducing cloud-bound payloads while maintaining sub-second inference over MQTT streaming
@@ -87,11 +95,10 @@ Golang, Python, Java, Kubernetes, Docker, PostgreSQL, Jenkins, GitLab CI/CD, Pro
 ## Skills
 
 - **Languages:** Python, Golang, TypeScript, JavaScript, Java, Kotlin, Scala, C++, SQL, Bash
-- **Frontend & Mobile:** React, Next.js, Node.js, Android (Kotlin), Swift
-- **Cloud & DevOps:** AWS (EMR, EC2, S3, Lambda, SQS, DynamoDB, API Gateway), GCP, Kubernetes, Docker, Terraform, GitLab CI/CD, Linux
-- **AI & Data:** LLMs, Agentic AI, Apache Spark, PostgreSQL, MySQL, DynamoDB, MongoDB, Redis
-- **Systems:** Distributed Systems, Microservices, Load Balancing, gRPC, Protocol Buffers, System Design
-- **Testing & Reliability:** Pytest, JUnit, Unit/Integration Testing, Monitoring, Debugging, Performance Profiling
+- **Backend & Systems:** FastAPI, Node.js, React, Next.js, Distributed Systems, Microservices, REST APIs, gRPC, Protocol Buffers, System Design
+- **Cloud & DevOps:** AWS (EMR, EC2, S3, Lambda, SQS, DynamoDB, API Gateway), Azure Data Factory, ADLS Gen2, Azure PostgreSQL, Databricks/Spark, GCP, Kubernetes, Docker, Terraform, GitLab CI/CD, Linux
+- **Data & Storage:** PostgreSQL, MySQL, DynamoDB, MongoDB, Redis, Neo4j, SQLite
+- **AI & Reliability:** LLMs, Agentic AI, Workflow Automation, PyTorch, scikit-learn, FAISS, Pytest, JUnit, Unit/Integration Testing, Monitoring, Debugging, Performance Profiling
 
 ## Metrics Bank
 
@@ -124,7 +131,7 @@ Golang, Python, Java, Kubernetes, Docker, PostgreSQL, Jenkins, GitLab CI/CD, Pro
 - **5,000+** users served
 
 ### Projects
-- **100%** accuracy on 100 frames, sub-second latency (Edge Face Recognition)
+- **Sub-second** inference with reduced cloud-bound payloads (Edge Face Recognition)
 - **45M+** eligible Americans under SECURE 2.0 (TIAA Platform)
 - **2nd place, $2,000** prize (TIAA Spark Challenge)
 - **NDCG 0.78** recommendation accuracy (LinkedIn Assistant)
@@ -179,7 +186,7 @@ Golang, Python, Java, Kubernetes, Docker, PostgreSQL, Jenkins, GitLab CI/CD, Pro
   - **Bronze:** raw or curated-raw data for replay/reprocessing/audit
   - **Silver:** cleaned/standardized data (FHIR/OMOP standardization path in design docs)
   - **Gold:** business aggregates/features for analytics and downstream products
-- **Consumption/egress patterns:** ODBC connectors, REST-style service endpoints, and Kafka-style subscription connectors were explicitly identified as target egress mechanisms.
+- **Consumption/egress patterns:** ODBC connectors, REST-style service endpoints, and Kafka-based downstream consumers were explicitly identified as target egress mechanisms.
 - **Operating mode:** Architecture explicitly supports both **batch** and **streaming/near-real-time** workflows.
 
 #### Product Outputs
