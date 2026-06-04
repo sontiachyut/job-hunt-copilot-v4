@@ -8,6 +8,7 @@ from job_hunt_copilot.bootstrap import run_bootstrap
 from job_hunt_copilot.delivery_feedback import EVENT_STATE_NOT_BOUNCED, sync_delivery_feedback
 from job_hunt_copilot.email_discovery import DISCOVERY_OUTCOME_QUOTA_EXHAUSTED, EmailDiscoveryError
 from job_hunt_copilot.outreach import (
+    DeterministicOutreachDraftRenderer,
     execute_role_targeted_send_set,
     generate_role_targeted_send_set_drafts,
 )
@@ -60,6 +61,13 @@ def connect_database(db_path: Path) -> sqlite3.Connection:
     connection.row_factory = sqlite3.Row
     connection.execute("PRAGMA foreign_keys = ON;")
     return connection
+
+
+def build_action_dependencies(**overrides: object) -> SupervisorActionDependencies:
+    return SupervisorActionDependencies(
+        role_targeted_draft_renderer=DeterministicOutreachDraftRenderer(),
+        **overrides,
+    )
 
 
 def seed_role_targeted_posting(
@@ -1067,7 +1075,7 @@ def test_people_search_stage_executes_and_advances_to_email_discovery(tmp_path: 
         trigger_type="launchd_heartbeat",
         scheduler_name="launchd",
         started_at="2026-04-08T00:12:00Z",
-        action_dependencies=SupervisorActionDependencies(
+        action_dependencies=build_action_dependencies(
             apollo_people_search_provider=search_provider,
             apollo_contact_enrichment_provider=enrichment_provider,
         ),
@@ -1149,7 +1157,7 @@ def test_people_search_stage_escalates_cleanly_when_no_contacts_are_found(tmp_pa
         trigger_type="launchd_heartbeat",
         scheduler_name="launchd",
         started_at="2026-04-08T00:12:00Z",
-        action_dependencies=SupervisorActionDependencies(
+        action_dependencies=build_action_dependencies(
             apollo_people_search_provider=FakeApolloSearchProvider(candidates=[]),
             apollo_contact_enrichment_provider=FakeApolloEnrichmentProvider({}),
         ),
@@ -1214,7 +1222,7 @@ def test_people_search_stage_enters_apollo_cooldown_and_yields_to_new_bootstrap_
         trigger_type="launchd_heartbeat",
         scheduler_name="launchd",
         started_at="2026-04-08T00:13:00Z",
-        action_dependencies=SupervisorActionDependencies(
+        action_dependencies=build_action_dependencies(
             apollo_people_search_provider=QuotaExhaustedApolloSearchProvider(candidates=[]),
         ),
     )
@@ -1306,7 +1314,7 @@ def test_email_discovery_stage_runs_and_stays_active_until_send_set_is_ready(
         trigger_type="launchd_heartbeat",
         scheduler_name="launchd",
         started_at="2026-04-08T00:14:00Z",
-        action_dependencies=SupervisorActionDependencies(
+        action_dependencies=build_action_dependencies(
             email_finder_providers=(finder,),
         ),
     )
@@ -1484,7 +1492,7 @@ def test_email_discovery_stage_advances_to_sending_when_send_set_becomes_ready(
         trigger_type="launchd_heartbeat",
         scheduler_name="launchd",
         started_at="2026-04-08T00:17:00Z",
-        action_dependencies=SupervisorActionDependencies(
+        action_dependencies=build_action_dependencies(
             email_finder_providers=(finder,),
         ),
     )
@@ -1602,7 +1610,7 @@ def test_email_discovery_stage_advances_to_sending_with_ready_subset_while_other
         trigger_type="launchd_heartbeat",
         scheduler_name="launchd",
         started_at="2026-04-08T00:19:00Z",
-        action_dependencies=SupervisorActionDependencies(
+        action_dependencies=build_action_dependencies(
             email_finder_providers=(finder,),
         ),
     )
@@ -1722,7 +1730,7 @@ def test_email_discovery_stage_processes_all_pending_contacts_before_advancing(
         trigger_type="launchd_heartbeat",
         scheduler_name="launchd",
         started_at="2026-04-08T00:19:00Z",
-        action_dependencies=SupervisorActionDependencies(
+        action_dependencies=build_action_dependencies(
             email_finder_providers=(finder,),
         ),
     )
@@ -1848,7 +1856,7 @@ def test_email_discovery_stage_limits_paid_discovery_to_current_send_frontier(
         trigger_type="launchd_heartbeat",
         scheduler_name="launchd",
         started_at="2026-04-08T00:21:00Z",
-        action_dependencies=SupervisorActionDependencies(
+        action_dependencies=build_action_dependencies(
             email_finder_providers=(finder,),
         ),
     )
@@ -1933,7 +1941,7 @@ def test_email_discovery_stage_waits_for_provider_cooldown_without_exhausting_co
         trigger_type="launchd_heartbeat",
         scheduler_name="launchd",
         started_at="2026-04-08T00:19:00Z",
-        action_dependencies=SupervisorActionDependencies(
+        action_dependencies=build_action_dependencies(
             email_finder_providers=(
                 FakeEmailFinderProvider(
                     provider_name="prospeo",
@@ -2037,7 +2045,7 @@ def test_email_discovery_stage_escalates_when_bounded_send_set_is_terminally_exh
         trigger_type="launchd_heartbeat",
         scheduler_name="launchd",
         started_at="2026-04-08T00:19:00Z",
-        action_dependencies=SupervisorActionDependencies(
+        action_dependencies=build_action_dependencies(
             email_finder_providers=(
                 FakeEmailFinderProvider(
                     provider_name="prospeo",
@@ -2260,7 +2268,7 @@ def test_sending_stage_drafts_ready_send_set_and_stays_active_while_more_sends_a
         trigger_type="launchd_heartbeat",
         scheduler_name="launchd",
         started_at="2026-04-08T00:25:00Z",
-        action_dependencies=SupervisorActionDependencies(
+        action_dependencies=build_action_dependencies(
             outreach_sender=sender,
             local_timezone="UTC",
         ),
@@ -2387,7 +2395,7 @@ def test_sending_stage_retries_transient_gmail_failures_only_after_cooldown(
         trigger_type="launchd_heartbeat",
         scheduler_name="launchd",
         started_at="2026-04-08T00:25:00Z",
-        action_dependencies=SupervisorActionDependencies(
+        action_dependencies=build_action_dependencies(
             outreach_sender=sender,
             local_timezone="UTC",
         ),
@@ -2421,7 +2429,7 @@ def test_sending_stage_retries_transient_gmail_failures_only_after_cooldown(
         trigger_type="launchd_heartbeat",
         scheduler_name="launchd",
         started_at="2026-04-08T00:35:00Z",
-        action_dependencies=SupervisorActionDependencies(
+        action_dependencies=build_action_dependencies(
             outreach_sender=sender,
             local_timezone="UTC",
         ),
@@ -2435,7 +2443,7 @@ def test_sending_stage_retries_transient_gmail_failures_only_after_cooldown(
         trigger_type="launchd_heartbeat",
         scheduler_name="launchd",
         started_at="2026-04-08T00:41:00Z",
-        action_dependencies=SupervisorActionDependencies(
+        action_dependencies=build_action_dependencies(
             outreach_sender=sender,
             local_timezone="UTC",
         ),
@@ -2514,7 +2522,7 @@ def test_sending_stage_advances_to_delivery_feedback_after_terminal_sent_wave(
         trigger_type="launchd_heartbeat",
         scheduler_name="launchd",
         started_at="2026-04-08T00:31:00Z",
-        action_dependencies=SupervisorActionDependencies(
+        action_dependencies=build_action_dependencies(
             outreach_sender=sender,
             feedback_observer=observer,
             local_timezone="UTC",
@@ -2684,7 +2692,7 @@ def test_sending_stage_returns_to_sending_when_future_untouched_contacts_remain(
         trigger_type="launchd_heartbeat",
         scheduler_name="launchd",
         started_at="2026-04-08T00:50:00Z",
-        action_dependencies=SupervisorActionDependencies(
+        action_dependencies=build_action_dependencies(
             outreach_sender=OutreachRecordingSender(),
             local_timezone="UTC",
         ),
@@ -2831,7 +2839,7 @@ def test_sending_stage_returns_to_email_discovery_when_later_contacts_need_email
         trigger_type="launchd_heartbeat",
         scheduler_name="launchd",
         started_at="2026-04-08T01:00:00Z",
-        action_dependencies=SupervisorActionDependencies(
+        action_dependencies=build_action_dependencies(
             outreach_sender=OutreachRecordingSender(),
             local_timezone="UTC",
         ),
@@ -2912,7 +2920,7 @@ def test_sending_stage_completes_review_worthy_run_when_terminal_wave_has_no_sen
         trigger_type="launchd_heartbeat",
         scheduler_name="launchd",
         started_at="2026-04-08T00:38:00Z",
-        action_dependencies=SupervisorActionDependencies(
+        action_dependencies=build_action_dependencies(
             outreach_sender=sender,
             local_timezone="UTC",
         ),
@@ -3044,7 +3052,7 @@ def test_contact_rooted_general_learning_contact_is_selected_and_sent_without_pi
         trigger_type="launchd_heartbeat",
         scheduler_name="launchd",
         started_at="2026-04-08T00:06:00Z",
-        action_dependencies=SupervisorActionDependencies(
+        action_dependencies=build_action_dependencies(
             outreach_sender=sender,
             feedback_observer=observer,
         ),
@@ -3148,7 +3156,7 @@ def test_contact_rooted_general_learning_email_discovery_advances_to_send_ready_
         trigger_type="launchd_heartbeat",
         scheduler_name="launchd",
         started_at="2026-04-08T00:06:00Z",
-        action_dependencies=SupervisorActionDependencies(
+        action_dependencies=build_action_dependencies(
             email_finder_providers=(finder,),
         ),
     )
@@ -3179,7 +3187,7 @@ def test_contact_rooted_general_learning_email_discovery_advances_to_send_ready_
         trigger_type="launchd_heartbeat",
         scheduler_name="launchd",
         started_at="2026-04-08T00:08:00Z",
-        action_dependencies=SupervisorActionDependencies(
+        action_dependencies=build_action_dependencies(
             outreach_sender=sender,
             feedback_observer=observer,
         ),
@@ -3271,7 +3279,7 @@ def test_contact_rooted_general_learning_delayed_feedback_is_left_to_feedback_wo
         trigger_type="launchd_heartbeat",
         scheduler_name="launchd",
         started_at="2026-04-08T00:06:00Z",
-        action_dependencies=SupervisorActionDependencies(
+        action_dependencies=build_action_dependencies(
             outreach_sender=sender,
         ),
     )
@@ -3353,7 +3361,7 @@ def test_contact_rooted_general_learning_delayed_feedback_records_not_bounced_an
         trigger_type="launchd_heartbeat",
         scheduler_name="launchd",
         started_at="2026-04-08T00:06:00Z",
-        action_dependencies=SupervisorActionDependencies(
+        action_dependencies=build_action_dependencies(
             outreach_sender=sender,
         ),
     )
@@ -3430,7 +3438,7 @@ def test_new_role_targeted_posting_is_selected_before_general_learning_contact(
         trigger_type="launchd_heartbeat",
         scheduler_name="launchd",
         started_at="2026-04-08T00:06:00Z",
-        action_dependencies=SupervisorActionDependencies(
+        action_dependencies=build_action_dependencies(
             outreach_sender=OutreachRecordingSender()
         ),
     )
@@ -3875,7 +3883,7 @@ def test_delivery_feedback_stage_prefers_actionable_retryable_sending(
         trigger_type="launchd_heartbeat",
         scheduler_name="launchd",
         started_at="2026-04-08T00:40:00Z",
-        action_dependencies=SupervisorActionDependencies(
+        action_dependencies=build_action_dependencies(
             outreach_sender=sender,
             local_timezone="UTC",
         ),
@@ -4165,7 +4173,7 @@ def test_dormant_delivery_feedback_retry_frontier_does_not_block_new_posting_boo
         trigger_type="launchd_heartbeat",
         scheduler_name="launchd",
         started_at="2026-04-08T00:30:00Z",
-        action_dependencies=SupervisorActionDependencies(local_timezone="UTC"),
+        action_dependencies=build_action_dependencies(local_timezone="UTC"),
     )
     connection.close()
 
@@ -4327,7 +4335,7 @@ def test_sending_run_waiting_for_next_day_quota_does_not_block_new_posting_boots
         trigger_type="launchd_heartbeat",
         scheduler_name="launchd",
         started_at="2026-04-08T14:10:00Z",
-        action_dependencies=SupervisorActionDependencies(local_timezone="UTC"),
+        action_dependencies=build_action_dependencies(local_timezone="UTC"),
     )
     connection.close()
 
@@ -4442,7 +4450,7 @@ def test_outreach_in_progress_sending_run_waiting_for_next_day_quota_does_not_bl
         trigger_type="launchd_heartbeat",
         scheduler_name="launchd",
         started_at="2026-04-08T14:10:00Z",
-        action_dependencies=SupervisorActionDependencies(local_timezone="UTC"),
+        action_dependencies=build_action_dependencies(local_timezone="UTC"),
     )
     connection.close()
 

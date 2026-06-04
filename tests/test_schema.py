@@ -15,6 +15,8 @@ EXPECTED_TABLES = {
     "agent_runtime_leases",
     "artifact_records",
     "contacts",
+    "contact_employment_history",
+    "contact_provider_profiles",
     "delivery_feedback_events",
     "discovery_attempts",
     "expert_review_decisions",
@@ -22,6 +24,7 @@ EXPECTED_TABLES = {
     "feedback_sync_runs",
     "followup_cycle_runs",
     "job_posting_contacts",
+    "job_posting_provider_contexts",
     "job_postings",
     "linkedin_lead_contacts",
     "linkedin_leads",
@@ -56,6 +59,11 @@ EXPECTED_INDEXES = {
     "idx_artifact_records_lead",
     "idx_artifact_records_message",
     "idx_artifact_records_type",
+    "idx_contact_employment_history_contact_provider_sort",
+    "idx_contact_provider_profiles_contact_provider_created",
+    "idx_contact_provider_profiles_provider_person",
+    "idx_contacts_apollo_org_id",
+    "idx_contacts_apollo_person_id",
     "idx_contacts_identity_key",
     "idx_contacts_linkedin_url",
     "idx_contacts_origin_component",
@@ -83,6 +91,7 @@ EXPECTED_INDEXES = {
     "idx_job_posting_contacts_pair",
     "idx_job_posting_contacts_recipient_type",
     "idx_job_posting_contacts_status",
+    "idx_job_posting_provider_contexts_posting_provider_stage_created",
     "idx_job_postings_application_state",
     "idx_job_postings_company_key",
     "idx_job_postings_identity_key",
@@ -160,7 +169,7 @@ def test_bootstrap_materializes_canonical_schema_objects(tmp_path):
     assert EXPECTED_TABLES <= tables
     assert EXPECTED_VIEWS <= views
     assert EXPECTED_INDEXES <= indexes
-    assert user_version == 7
+    assert user_version == 8
 
 
 def test_review_views_are_queryable_from_canonical_state(tmp_path):

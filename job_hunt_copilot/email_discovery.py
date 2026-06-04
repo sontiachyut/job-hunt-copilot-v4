@@ -167,6 +167,8 @@ class ApolloResolvedCompany:
     primary_domain: str | None = None
     website_url: str | None = None
     linkedin_url: str | None = None
+    raw_payload: Mapping[str, Any] | None = None
+    provider_observed_at: str | None = None
 
     def as_dict(self) -> dict[str, Any]:
         return {
@@ -190,6 +192,8 @@ class PeopleSearchCandidate:
     email: str | None
     has_direct_phone: bool
     last_refreshed_at: str | None
+    employment_history: tuple[Mapping[str, Any], ...] = ()
+    raw_payload: Mapping[str, Any] | None = None
 
     @classmethod
     def from_mapping(cls, payload: Mapping[str, Any]) -> "PeopleSearchCandidate":
@@ -228,6 +232,8 @@ class PeopleSearchCandidate:
             last_refreshed_at=_normalize_optional_text(
                 payload.get("last_refreshed_at") or payload.get("updated_at")
             ),
+            employment_history=_normalize_candidate_employment_history(payload),
+            raw_payload=deepcopy(dict(payload)),
         )
 
     @property
@@ -298,7 +304,37 @@ class PeopleSearchCandidate:
         }
         if contact_id:
             payload["contact_id"] = contact_id
+        if self.employment_history:
+            payload["employment_history"] = list(self.employment_history)
         return payload
+
+
+def _normalize_candidate_employment_history(payload: Mapping[str, Any]) -> tuple[Mapping[str, Any], ...]:
+    return _extract_apollo_employment_history_items(payload) or ()
+
+
+def _extract_apollo_employment_history_items(
+    payload: Mapping[str, Any] | None,
+) -> tuple[Mapping[str, Any], ...] | None:
+    if not isinstance(payload, Mapping):
+        return None
+    payloads_to_check: list[Mapping[str, Any]] = [payload]
+    person_payload = payload.get("person")
+    if isinstance(person_payload, Mapping):
+        payloads_to_check.insert(0, person_payload)
+    for source_payload in payloads_to_check:
+        for key in ("employment_history", "employment_histories", "experience_history", "career_history"):
+            if key not in source_payload:
+                continue
+            value = source_payload.get(key)
+            if not isinstance(value, list):
+                return ()
+            normalized: list[Mapping[str, Any]] = []
+            for item in value:
+                if isinstance(item, Mapping):
+                    normalized.append(deepcopy(dict(item)))
+            return tuple(normalized)
+    return None
 
 
 @dataclass(frozen=True)
@@ -341,6 +377,9 @@ class ApolloEnrichedPerson:
     headline: str | None
     organization_id: str | None
     organization_name: str | None
+    employment_history: tuple[Mapping[str, Any], ...] = ()
+    raw_payload: Mapping[str, Any] | None = None
+    last_refreshed_at: str | None = None
 
     @classmethod
     def from_mapping(cls, payload: Mapping[str, Any]) -> "ApolloEnrichedPerson | None":
@@ -397,6 +436,14 @@ class ApolloEnrichedPerson:
             headline=_normalize_optional_text(person_payload.get("headline")),
             organization_id=organization_id,
             organization_name=organization_name,
+            employment_history=_extract_apollo_employment_history_items(payload) or (),
+            raw_payload=deepcopy(dict(payload)),
+            last_refreshed_at=_normalize_optional_text(
+                person_payload.get("last_refreshed_at")
+                or person_payload.get("updated_at")
+                or payload.get("last_refreshed_at")
+                or payload.get("updated_at")
+            ),
         )
 
     @property
@@ -707,6 +754,10 @@ class ConfiguredApolloClient:
             ),
             linkedin_url=_normalize_optional_text(
                 top_result.get("linkedin_url") or top_result.get("linkedin_company_url")
+            ),
+            raw_payload=deepcopy(dict(top_result)),
+            provider_observed_at=_normalize_optional_text(
+                top_result.get("last_refreshed_at") or top_result.get("updated_at")
             ),
         )
 
@@ -1251,6 +1302,7 @@ def run_apollo_people_search(
         company_website = _derive_company_website(posting_row)
         search_provider = provider or ConfiguredApolloClient.from_paths(paths)
         attempted_filters: list[dict[str, Any]] = []
+        resolved_company_from_provider_call = False
 
         try:
             resolved_company = _reuse_persisted_apollo_company(
@@ -1264,6 +1316,7 @@ def run_apollo_people_search(
                     company_domain=company_domain,
                     company_website=company_website,
                 )
+                resolved_company_from_provider_call = resolved_company is not None
             if resolved_company is not None and resolved_company.organization_id:
                 with connection:
                     promote_company_group_to_provider_key(
@@ -1272,8 +1325,24 @@ def run_apollo_people_search(
                         provider_name=PROVIDER_NAME_APOLLO,
                         provider_company_id=resolved_company.organization_id,
                         current_time=timestamp,
-                    )
+                )
                 posting_row = _load_search_ready_posting(connection, job_posting_id=job_posting_id)
+            if (
+                resolved_company_from_provider_call
+                and resolved_company is not None
+                and isinstance(resolved_company.raw_payload, Mapping)
+            ):
+                with connection:
+                    _persist_job_posting_provider_context(
+                        connection,
+                        job_posting_id=str(posting_row["job_posting_id"]),
+                        provider_name=PROVIDER_NAME_APOLLO,
+                        context_stage="apollo_company_resolution",
+                        provider_organization_id=resolved_company.organization_id,
+                        raw_payload=resolved_company.raw_payload,
+                        provider_observed_at=resolved_company.provider_observed_at,
+                        current_time=timestamp,
+                    )
             attempted_filters.append(
                 {
                     "attempt": "primary",
@@ -2668,6 +2737,32 @@ def _reuse_persisted_apollo_company(
     paths: ProjectPaths,
     posting_row: Mapping[str, Any],
 ) -> ApolloResolvedCompany | None:
+    persisted_context = connection.execute(
+        """
+        SELECT raw_payload_json
+        FROM job_posting_provider_contexts
+        WHERE job_posting_id = ?
+          AND provider_name = ?
+          AND context_stage = ?
+        ORDER BY created_at DESC, job_posting_provider_context_id DESC
+        LIMIT 1
+        """,
+        (
+            str(posting_row["job_posting_id"]),
+            PROVIDER_NAME_APOLLO,
+            "apollo_company_resolution",
+        ),
+    ).fetchone()
+    if persisted_context is not None and persisted_context["raw_payload_json"]:
+        try:
+            payload = json.loads(str(persisted_context["raw_payload_json"]))
+        except json.JSONDecodeError:
+            payload = None
+        if isinstance(payload, Mapping):
+            direct_context_match = _apollo_resolved_company_from_search_payload({"resolved_company": payload})
+            if direct_context_match is not None:
+                return direct_context_match
+
     direct_match = _apollo_resolved_company_from_company_keys(posting_row)
     if direct_match is not None:
         return direct_match
@@ -2736,6 +2831,10 @@ def _apollo_resolved_company_from_search_payload(
         primary_domain=_normalize_optional_text(resolved_company.get("primary_domain")),
         website_url=_normalize_optional_text(resolved_company.get("website_url")),
         linkedin_url=_normalize_optional_text(resolved_company.get("linkedin_url")),
+        raw_payload=deepcopy(dict(resolved_company)),
+        provider_observed_at=_normalize_optional_text(
+            resolved_company.get("last_refreshed_at") or resolved_company.get("updated_at")
+        ),
     )
 
 
@@ -4212,6 +4311,188 @@ def _mapping_lookup(mapping: Mapping[str, Any], key: str) -> Any:
     return None
 
 
+def _serialize_provider_payload(payload: Mapping[str, Any]) -> str:
+    return json.dumps(payload, ensure_ascii=False)
+
+
+def _apollo_provider_organization_id(payload: Mapping[str, Any] | None) -> str | None:
+    if not isinstance(payload, Mapping):
+        return None
+    organization_payload = payload.get("organization")
+    if isinstance(organization_payload, Mapping):
+        organization_id = _normalize_optional_text(
+            organization_payload.get("id") or organization_payload.get("organization_id")
+        )
+        if organization_id:
+            return organization_id
+    return _normalize_optional_text(payload.get("organization_id") or payload.get("company_id"))
+
+
+def _apollo_provider_company_label(
+    payload: Mapping[str, Any] | None,
+    *,
+    fallback_company_name: str | None = None,
+) -> str | None:
+    if isinstance(payload, Mapping):
+        organization_payload = payload.get("organization")
+        if isinstance(organization_payload, Mapping):
+            company_name = _normalize_optional_text(
+                organization_payload.get("name") or organization_payload.get("organization_name")
+            )
+            if company_name:
+                return company_name
+        for key in ("organization_name", "company_name", "company", "organization"):
+            value = payload.get(key)
+            if isinstance(value, str):
+                company_name = _normalize_optional_text(value)
+                if company_name:
+                    return company_name
+    return _normalize_optional_text(fallback_company_name)
+
+
+def _apollo_history_dates(history_item: Mapping[str, Any]) -> tuple[str | None, str | None]:
+    start_date = _normalize_optional_text(
+        history_item.get("start_date")
+        or history_item.get("started_at")
+        or history_item.get("from_date")
+    )
+    end_date = _normalize_optional_text(
+        history_item.get("end_date")
+        or history_item.get("ended_at")
+        or history_item.get("to_date")
+    )
+    return start_date, end_date
+
+
+def _apollo_history_current_flag(history_item: Mapping[str, Any]) -> int | None:
+    current_value = history_item.get("current")
+    if current_value is None:
+        current_value = history_item.get("is_current")
+    if current_value is None:
+        return None
+    return 1 if _coerce_bool(current_value) else 0
+
+
+def _persist_job_posting_provider_context(
+    connection: sqlite3.Connection,
+    *,
+    job_posting_id: str,
+    provider_name: str,
+    context_stage: str,
+    provider_organization_id: str | None,
+    raw_payload: Mapping[str, Any],
+    provider_observed_at: str | None,
+    current_time: str,
+) -> None:
+    timestamps = lifecycle_timestamps(current_time)
+    connection.execute(
+        """
+        INSERT INTO job_posting_provider_contexts (
+          job_posting_provider_context_id, job_posting_id, provider_name, context_stage,
+          provider_organization_id, raw_payload_json, provider_observed_at, created_at, updated_at
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+        """,
+        (
+            new_canonical_id("job_posting_provider_contexts"),
+            job_posting_id,
+            provider_name,
+            context_stage,
+            provider_organization_id,
+            _serialize_provider_payload(raw_payload),
+            provider_observed_at,
+            timestamps["created_at"],
+            timestamps["updated_at"],
+        ),
+    )
+
+
+def _persist_contact_provider_profile(
+    connection: sqlite3.Connection,
+    *,
+    contact_id: str,
+    provider_name: str,
+    provider_person_id: str | None,
+    provider_organization_id: str | None,
+    profile_stage: str,
+    raw_payload: Mapping[str, Any],
+    provider_observed_at: str | None,
+    current_time: str,
+) -> None:
+    timestamps = lifecycle_timestamps(current_time)
+    connection.execute(
+        """
+        INSERT INTO contact_provider_profiles (
+          contact_provider_profile_id, contact_id, provider_name, provider_person_id,
+          provider_organization_id, profile_stage, raw_payload_json, provider_observed_at,
+          created_at, updated_at
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        """,
+        (
+            new_canonical_id("contact_provider_profiles"),
+            contact_id,
+            provider_name,
+            provider_person_id,
+            provider_organization_id,
+            profile_stage,
+            _serialize_provider_payload(raw_payload),
+            provider_observed_at,
+            timestamps["created_at"],
+            timestamps["updated_at"],
+        ),
+    )
+
+
+def _refresh_contact_employment_history(
+    connection: sqlite3.Connection,
+    *,
+    contact_id: str,
+    provider_name: str,
+    provider_person_id: str | None,
+    employment_history_items: Sequence[Mapping[str, Any]] | None,
+    current_time: str,
+) -> None:
+    if employment_history_items is None:
+        return
+    connection.execute(
+        """
+        DELETE FROM contact_employment_history
+        WHERE contact_id = ? AND provider_name = ?
+        """,
+        (contact_id, provider_name),
+    )
+    timestamps = lifecycle_timestamps(current_time)
+    for index, history_item in enumerate(employment_history_items, start=1):
+        company_label = _apollo_provider_company_label(history_item)
+        role_title = _normalize_optional_text(
+            history_item.get("title") or history_item.get("position_title") or history_item.get("role")
+        )
+        start_date, end_date = _apollo_history_dates(history_item)
+        connection.execute(
+            """
+            INSERT INTO contact_employment_history (
+              contact_employment_history_id, contact_id, provider_name, provider_person_id,
+              company_label, role_title, start_date, end_date, is_current,
+              source_sort_index, raw_payload_json, created_at, updated_at
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """,
+            (
+                new_canonical_id("contact_employment_history"),
+                contact_id,
+                provider_name,
+                provider_person_id,
+                company_label,
+                role_title,
+                start_date,
+                end_date,
+                _apollo_history_current_flag(history_item),
+                index,
+                _serialize_provider_payload(history_item),
+                timestamps["created_at"],
+                timestamps["updated_at"],
+            ),
+        )
+
+
 def _email_matches_company_domain(email: str, company_domain: str | None) -> bool:
     if company_domain is None:
         return True
@@ -4283,6 +4564,7 @@ def _apply_contact_enrichment(
     )
     title = enrichment.title or _normalize_optional_text(contact_row.get("position_title"))
     location = enrichment.location or _normalize_optional_text(contact_row.get("location"))
+    company_name = enrichment.organization_name or _normalize_optional_text(posting_row.get("company_name"))
     identity_key = _contact_identity_key(
         provider_person_id=provider_person_id,
         linkedin_url=linkedin_url,
@@ -4296,13 +4578,16 @@ def _apply_contact_enrichment(
             full_name = ?, first_name = ?, last_name = ?, linkedin_url = ?,
             position_title = ?, location = ?, discovery_summary = ?, current_working_email = ?,
             identity_source = ?, provider_name = ?, provider_person_id = ?, name_quality = ?,
+            apollo_person_id = ?, apollo_organization_id = ?, apollo_current_title = ?,
+            apollo_current_company = ?, apollo_headline = ?, apollo_location = ?,
+            apollo_linkedin_url = ?, apollo_work_email = ?, apollo_last_refreshed_at = ?,
             updated_at = ?
         WHERE contact_id = ?
         """,
         (
             identity_key,
             display_name,
-            posting_row["company_name"],
+            company_name,
             _normalize_optional_text(contact_row.get("origin_component")) or EMAIL_DISCOVERY_COMPONENT,
             full_name if full_name and not _name_is_obfuscated(full_name) else None,
             first_name,
@@ -4316,9 +4601,38 @@ def _apply_contact_enrichment(
             PROVIDER_NAME_APOLLO,
             provider_person_id,
             _derive_name_quality(display_name, full_name),
+            provider_person_id,
+            enrichment.organization_id,
+            title,
+            company_name,
+            enrichment.headline,
+            location,
+            linkedin_url,
+            current_working_email,
+            enrichment.last_refreshed_at,
             current_time,
             contact_row["contact_id"],
         ),
+    )
+    if isinstance(enrichment.raw_payload, Mapping):
+        _persist_contact_provider_profile(
+            connection,
+            contact_id=str(contact_row["contact_id"]),
+            provider_name=PROVIDER_NAME_APOLLO,
+            provider_person_id=provider_person_id,
+            provider_organization_id=enrichment.organization_id,
+            profile_stage="apollo_enrichment",
+            raw_payload=enrichment.raw_payload,
+            provider_observed_at=enrichment.last_refreshed_at,
+            current_time=current_time,
+        )
+    _refresh_contact_employment_history(
+        connection,
+        contact_id=str(contact_row["contact_id"]),
+        provider_name=PROVIDER_NAME_APOLLO,
+        provider_person_id=provider_person_id,
+        employment_history_items=_extract_apollo_employment_history_items(enrichment.raw_payload),
+        current_time=current_time,
     )
 
 
@@ -4617,6 +4931,11 @@ def _materialize_shortlisted_candidate(
     current_time: str,
 ) -> dict[str, str]:
     existing_contact = _find_reusable_contact(connection, candidate)
+    apollo_organization_id = _apollo_provider_organization_id(candidate.raw_payload)
+    apollo_current_company = _apollo_provider_company_label(
+        candidate.raw_payload,
+        fallback_company_name=_normalize_optional_text(posting_row["company_name"]),
+    )
     if existing_contact is None:
         contact_id = new_canonical_id("contacts")
         timestamps = lifecycle_timestamps(current_time)
@@ -4626,8 +4945,10 @@ def _materialize_shortlisted_candidate(
               contact_id, identity_key, display_name, company_name, origin_component, contact_status,
               full_name, first_name, last_name, linkedin_url, position_title, location,
               discovery_summary, current_working_email, identity_source, provider_name,
-              provider_person_id, name_quality, created_at, updated_at
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+              provider_person_id, name_quality, apollo_person_id, apollo_organization_id,
+              apollo_current_title, apollo_current_company, apollo_headline, apollo_location,
+              apollo_linkedin_url, apollo_work_email, apollo_last_refreshed_at, created_at, updated_at
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """,
             (
                 contact_id,
@@ -4648,6 +4969,15 @@ def _materialize_shortlisted_candidate(
                 PROVIDER_NAME_APOLLO,
                 candidate.provider_person_id,
                 candidate.name_quality,
+                candidate.provider_person_id,
+                apollo_organization_id,
+                candidate.title,
+                apollo_current_company,
+                None,
+                candidate.location,
+                candidate.linkedin_url,
+                candidate.email if _is_usable_email(candidate.email) else None,
+                candidate.last_refreshed_at,
                 timestamps["created_at"],
                 timestamps["updated_at"],
             ),
@@ -4662,7 +4992,15 @@ def _materialize_shortlisted_candidate(
                 position_title = ?, location = COALESCE(?, location),
                 discovery_summary = ?, current_working_email = COALESCE(?, current_working_email),
                 identity_source = ?, provider_name = ?, provider_person_id = COALESCE(?, provider_person_id),
-                name_quality = ?, updated_at = ?
+                name_quality = ?, apollo_person_id = COALESCE(?, apollo_person_id),
+                apollo_organization_id = COALESCE(?, apollo_organization_id),
+                apollo_current_title = COALESCE(?, apollo_current_title),
+                apollo_current_company = COALESCE(?, apollo_current_company),
+                apollo_location = COALESCE(?, apollo_location),
+                apollo_linkedin_url = COALESCE(?, apollo_linkedin_url),
+                apollo_work_email = COALESCE(?, apollo_work_email),
+                apollo_last_refreshed_at = COALESCE(?, apollo_last_refreshed_at),
+                updated_at = ?
             WHERE contact_id = ?
             """,
             (
@@ -4682,6 +5020,14 @@ def _materialize_shortlisted_candidate(
                 PROVIDER_NAME_APOLLO,
                 candidate.provider_person_id,
                 candidate.name_quality,
+                candidate.provider_person_id,
+                apollo_organization_id,
+                candidate.title,
+                apollo_current_company,
+                candidate.location,
+                candidate.linkedin_url,
+                candidate.email if _is_usable_email(candidate.email) else None,
+                candidate.last_refreshed_at,
                 current_time,
                 contact_id,
             ),
@@ -4754,6 +5100,27 @@ def _materialize_shortlisted_candidate(
                 timestamps["updated_at"],
             ),
         )
+
+    if isinstance(candidate.raw_payload, Mapping):
+        _persist_contact_provider_profile(
+            connection,
+            contact_id=contact_id,
+            provider_name=PROVIDER_NAME_APOLLO,
+            provider_person_id=candidate.provider_person_id,
+            provider_organization_id=apollo_organization_id,
+            profile_stage="apollo_search",
+            raw_payload=candidate.raw_payload,
+            provider_observed_at=candidate.last_refreshed_at,
+            current_time=current_time,
+        )
+    _refresh_contact_employment_history(
+        connection,
+        contact_id=contact_id,
+        provider_name=PROVIDER_NAME_APOLLO,
+        provider_person_id=candidate.provider_person_id,
+        employment_history_items=_extract_apollo_employment_history_items(candidate.raw_payload),
+        current_time=current_time,
+    )
 
     return {
         "contact_id": contact_id,

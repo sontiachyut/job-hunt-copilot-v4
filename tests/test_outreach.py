@@ -3941,6 +3941,54 @@ def test_codex_role_split_renderer_generates_technical_path_body_and_debug_artif
             "ct_tech",
         ),
     )
+    connection.execute(
+        """
+        INSERT INTO contact_employment_history (
+          contact_employment_history_id, contact_id, provider_name, provider_person_id,
+          company_label, role_title, start_date, end_date, is_current,
+          source_sort_index, raw_payload_json, created_at, updated_at
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        """,
+        (
+            "ceh_1",
+            "ct_tech",
+            "apollo",
+            "pp_ethan",
+            "InsightRX",
+            "Software Engineer",
+            "2021-01-01",
+            "2023-12-31",
+            0,
+            1,
+            json.dumps({"company_name": "InsightRX", "title": "Software Engineer"}),
+            "2026-04-06T20:01:00Z",
+            "2026-04-06T20:01:00Z",
+        ),
+    )
+    connection.execute(
+        """
+        INSERT INTO contact_employment_history (
+          contact_employment_history_id, contact_id, provider_name, provider_person_id,
+          company_label, role_title, start_date, end_date, is_current,
+          source_sort_index, raw_payload_json, created_at, updated_at
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        """,
+        (
+            "ceh_2",
+            "ct_tech",
+            "apollo",
+            "pp_ethan",
+            "Lattice",
+            "Senior Software Engineer",
+            "2024-01-01",
+            None,
+            1,
+            2,
+            json.dumps({"company_name": "Lattice", "title": "Senior Software Engineer", "current": True}),
+            "2026-04-06T20:01:00Z",
+            "2026-04-06T20:01:00Z",
+        ),
+    )
     connection.commit()
     seed_recipient_profile(
         connection,
@@ -3961,6 +4009,9 @@ def test_codex_role_split_renderer_generates_technical_path_body_and_debug_artif
     )
 
     def fake_run(command, *, input, text, capture_output, check):  # type: ignore[no-untyped-def]
+        assert "- employment_history_summary:" in input
+        assert "1. Software Engineer at InsightRX — 2021-01-01 to 2023-12-31" in input
+        assert "2. Senior Software Engineer at Lattice — current, start 2024-01-01" in input
         output_path = Path(command[command.index("-o") + 1])
         payload = {
             "paragraph_1_text": (

@@ -2554,9 +2554,14 @@ def _build_role_targeted_draft_context(
         theme_selection=theme_selection,
     )
     apollo_candidate_payload = _load_apollo_candidate_payload(
+        connection,
         paths,
         posting_row=posting_row,
         contact_row=contact_row,
+    )
+    apollo_employment_history_rows = _load_apollo_employment_history_rows(
+        connection,
+        contact_id=str(contact_row["contact_id"]),
     )
     return RoleTargetedDraftContext(
         job_posting_id=str(posting_row["job_posting_id"]),
@@ -2592,6 +2597,7 @@ def _build_role_targeted_draft_context(
             contact_row=contact_row,
             recipient_profile=recipient_profile,
             apollo_candidate_payload=apollo_candidate_payload,
+            apollo_employment_history_rows=apollo_employment_history_rows,
         ),
         bounded_jd_relevance_pack=_build_bounded_jd_relevance_pack(
             posting_row=posting_row,
@@ -4648,11 +4654,31 @@ def _load_recipient_profile(
 
 
 def _load_apollo_candidate_payload(
+    connection: sqlite3.Connection,
     paths: ProjectPaths,
     *,
     posting_row: Mapping[str, Any],
     contact_row: Mapping[str, Any],
 ) -> Mapping[str, Any] | None:
+    snapshot_row = connection.execute(
+        """
+        SELECT raw_payload_json
+        FROM contact_provider_profiles
+        WHERE contact_id = ?
+          AND provider_name = 'apollo'
+        ORDER BY created_at DESC, contact_provider_profile_id DESC
+        LIMIT 1
+        """,
+        (str(contact_row["contact_id"]),),
+    ).fetchone()
+    if snapshot_row is not None and snapshot_row["raw_payload_json"]:
+        try:
+            payload = json.loads(str(snapshot_row["raw_payload_json"]))
+        except json.JSONDecodeError:
+            payload = None
+        if isinstance(payload, Mapping):
+            return payload
+
     artifact_path = (
         paths.discovery_workspace_dir(str(posting_row["company_name"]), str(posting_row["role_title"]))
         / "people_search_result.json"
@@ -4678,37 +4704,44 @@ def _load_apollo_candidate_payload(
     return None
 
 
+def _load_apollo_employment_history_rows(
+    connection: sqlite3.Connection,
+    *,
+    contact_id: str,
+) -> tuple[Mapping[str, Any], ...]:
+    rows = connection.execute(
+        """
+        SELECT company_label, role_title, start_date, end_date, is_current, source_sort_index
+        FROM contact_employment_history
+        WHERE contact_id = ?
+          AND provider_name = 'apollo'
+        ORDER BY source_sort_index ASC, contact_employment_history_id ASC
+        """,
+        (contact_id,),
+    ).fetchall()
+    return tuple(dict(row) for row in rows)
+
+
 def _build_apollo_employment_history_summary(
     *,
     contact_row: Mapping[str, Any],
     recipient_profile: Mapping[str, Any] | None,
     apollo_candidate_payload: Mapping[str, Any] | None,
+    apollo_employment_history_rows: Sequence[Mapping[str, Any]],
 ) -> tuple[str, ...]:
-    history_payload: Any = None
-    if isinstance(apollo_candidate_payload, Mapping):
-        for key in ("employment_history", "employment_histories", "experience_history", "career_history"):
-            value = apollo_candidate_payload.get(key)
-            if isinstance(value, list):
-                history_payload = value
-                break
     lines: list[str] = []
-    if isinstance(history_payload, list):
-        for index, item in enumerate(history_payload, start=1):
-            if not isinstance(item, Mapping):
-                continue
-            company = _normalize_optional_text(
-                item.get("company_name")
-                or item.get("organization_name")
-                or item.get("company")
-            )
-            title = _normalize_optional_text(item.get("title") or item.get("position_title") or item.get("role"))
-            start_date = _normalize_optional_text(item.get("start_date") or item.get("started_at"))
-            end_date = _normalize_optional_text(item.get("end_date") or item.get("ended_at"))
-            current_flag = _coerce_bool(item.get("current")) or _coerce_bool(item.get("is_current"))
+    if apollo_employment_history_rows:
+        for index, item in enumerate(apollo_employment_history_rows, start=1):
+            company = _normalize_optional_text(item.get("company_label"))
+            title = _normalize_optional_text(item.get("role_title"))
+            start_date = _normalize_optional_text(item.get("start_date"))
+            end_date = _normalize_optional_text(item.get("end_date"))
+            current_flag = item.get("is_current")
+            is_current = current_flag == 1 or current_flag is True
             if company is None and title is None:
                 continue
             base = " at ".join(part for part in (title, company) if part)
-            if current_flag or end_date in {None, "", "present", "current"}:
+            if is_current or end_date in {None, "", "present", "current"}:
                 timeline = "current"
                 if start_date:
                     timeline = f"current, start {start_date}"
@@ -4719,6 +4752,47 @@ def _build_apollo_employment_history_summary(
             if timeline:
                 line = f"{line} — {timeline}"
             lines.append(line)
+    elif isinstance(apollo_candidate_payload, Mapping):
+        history_payload: Any = None
+        payloads_to_check: list[Mapping[str, Any]] = [apollo_candidate_payload]
+        person_payload = apollo_candidate_payload.get("person")
+        if isinstance(person_payload, Mapping):
+            payloads_to_check.insert(0, person_payload)
+        for source_payload in payloads_to_check:
+            for key in ("employment_history", "employment_histories", "experience_history", "career_history"):
+                value = source_payload.get(key)
+                if isinstance(value, list):
+                    history_payload = value
+                    break
+            if history_payload is not None:
+                break
+        if isinstance(history_payload, list):
+            for index, item in enumerate(history_payload, start=1):
+                if not isinstance(item, Mapping):
+                    continue
+                company = _normalize_optional_text(
+                    item.get("company_name")
+                    or item.get("organization_name")
+                    or item.get("company")
+                )
+                title = _normalize_optional_text(item.get("title") or item.get("position_title") or item.get("role"))
+                start_date = _normalize_optional_text(item.get("start_date") or item.get("started_at"))
+                end_date = _normalize_optional_text(item.get("end_date") or item.get("ended_at"))
+                current_flag = _coerce_bool(item.get("current")) or _coerce_bool(item.get("is_current"))
+                if company is None and title is None:
+                    continue
+                base = " at ".join(part for part in (title, company) if part)
+                if current_flag or end_date in {None, "", "present", "current"}:
+                    timeline = "current"
+                    if start_date:
+                        timeline = f"current, start {start_date}"
+                else:
+                    timeline_parts = [part for part in (start_date, end_date) if part]
+                    timeline = " to ".join(timeline_parts) if timeline_parts else None
+                line = f"{index}. {base}"
+                if timeline:
+                    line = f"{line} — {timeline}"
+                lines.append(line)
     if lines:
         return tuple(lines)
 

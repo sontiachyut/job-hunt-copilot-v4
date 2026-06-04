@@ -579,6 +579,7 @@ class SupervisorActionDependencies:
     recipient_profile_extractor: object | None = None
     email_finder_providers: tuple[object, ...] | None = None
     outreach_sender: object | None = None
+    role_targeted_draft_renderer: object | None = None
     feedback_observer: object | None = None
     local_timezone: object | str | None = None
     maintenance_dependencies: MaintenanceDependencies | None = None
@@ -4432,6 +4433,7 @@ def _execute_selected_work_unit(
     if catalog_entry.action_id == ACTION_RUN_ROLE_TARGETED_SENDING:
         from .email_discovery import refresh_same_company_contact_frontier
         from .outreach import (
+            CodexRoleSplitOutreachDraftRenderer,
             JOB_POSTING_STATUS_COMPLETED,
             JOB_POSTING_STATUS_OUTREACH_IN_PROGRESS,
             JOB_POSTING_STATUS_READY_FOR_OUTREACH,
@@ -4470,6 +4472,12 @@ def _execute_selected_work_unit(
         blocked_count = 0
         failed_count = 0
         delayed_count = 0
+        role_targeted_renderer = (
+            action_dependencies.role_targeted_draft_renderer
+            or CodexRoleSplitOutreachDraftRenderer(
+                project_root=paths.project_root,
+            )
+        )
 
         latest_posting_status = current_posting_status
         if current_posting_status == JOB_POSTING_STATUS_READY_FOR_OUTREACH:
@@ -4486,6 +4494,7 @@ def _execute_selected_work_unit(
                     job_posting_id=job_posting_id,
                     current_time=timestamp,
                     local_timezone=action_dependencies.local_timezone,
+                    renderer=role_targeted_renderer,
                 )
                 drafted_count = len(draft_batch.drafted_messages)
 
@@ -4500,6 +4509,7 @@ def _execute_selected_work_unit(
                 project_root=paths.project_root,
                 job_posting_id=job_posting_id,
                 current_time=timestamp,
+                renderer=role_targeted_renderer,
             )
             if is_role_targeted_sending_actionable_now(
                 connection,
@@ -4519,6 +4529,7 @@ def _execute_selected_work_unit(
                     ),
                     local_timezone=action_dependencies.local_timezone,
                     feedback_observer=action_dependencies.feedback_observer,
+                    renderer=role_targeted_renderer,
                 )
                 latest_posting_status = send_result.posting_status_after_execution
                 sent_count = len(send_result.sent_messages)

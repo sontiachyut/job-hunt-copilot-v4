@@ -59,9 +59,9 @@
     }
   },
   "summary": {
-    "acceptance_scenario_count": 243,
+    "acceptance_scenario_count": 249,
     "acceptance_status_counts": {
-      "implemented": 241,
+      "implemented": 247,
       "partial": 0,
       "gap": 0,
       "deferred_optional": 1,

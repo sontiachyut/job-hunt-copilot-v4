@@ -160,8 +160,9 @@ def build_candidate(
     email: str | None = None,
     linkedin_url: str | None = None,
     last_refreshed_at: str = "2026-04-06T21:20:00Z",
+    employment_history: list[dict[str, object]] | None = None,
 ) -> dict[str, object]:
-    return {
+    payload: dict[str, object] = {
         "provider_person_id": provider_person_id,
         "display_name": display_name,
         "title": title,
@@ -171,6 +172,9 @@ def build_candidate(
         "has_direct_phone": False,
         "last_refreshed_at": last_refreshed_at,
     }
+    if employment_history is not None:
+        payload["employment_history"] = employment_history
+    return payload
 
 
 class FakeApolloProvider:
@@ -550,9 +554,29 @@ def test_apollo_people_search_persists_broad_result_and_shortlists_only_selected
             primary_domain="acmerobotics.com",
             website_url="https://acmerobotics.com",
             linkedin_url="https://www.linkedin.com/company/acme-robotics",
+            raw_payload={
+                "organization_id": "org_acme",
+                "organization_name": "Acme Robotics",
+                "primary_domain": "acmerobotics.com",
+                "website_url": "https://acmerobotics.com",
+                "linkedin_url": "https://www.linkedin.com/company/acme-robotics",
+            },
         ),
         candidates=[
-            build_candidate(provider_person_id="pp_r1", display_name="Isaiah Lo***e", title="Corporate Recruiter", has_email=True),
+            build_candidate(
+                provider_person_id="pp_r1",
+                display_name="Isaiah Lo***e",
+                title="Corporate Recruiter",
+                has_email=True,
+                employment_history=[
+                    {
+                        "company_name": "Acme Robotics",
+                        "title": "Corporate Recruiter",
+                        "start_date": "2024-01-01",
+                        "current": True,
+                    }
+                ],
+            ),
             build_candidate(provider_person_id="pp_r2", display_name="Priya Recruiter", title="Technical Recruiter"),
             build_candidate(provider_person_id="pp_r3", display_name="Taylor Recruiter", title="Talent Acquisition Partner"),
             build_candidate(provider_person_id="pp_m1", display_name="Morgan De***s", title="Director of Engineering"),
@@ -607,6 +631,47 @@ def test_apollo_people_search_persists_broad_result_and_shortlists_only_selected
 
     assert connection.execute("SELECT COUNT(*) FROM contacts").fetchone()[0] == 9
     assert connection.execute("SELECT COUNT(*) FROM job_posting_contacts").fetchone()[0] == 9
+    assert connection.execute("SELECT COUNT(*) FROM contact_provider_profiles").fetchone()[0] == 9
+    assert connection.execute("SELECT COUNT(*) FROM contact_employment_history").fetchone()[0] == 1
+    provider_context_row = connection.execute(
+        """
+        SELECT provider_name, context_stage, provider_organization_id
+        FROM job_posting_provider_contexts
+        WHERE job_posting_id = 'jp_search'
+        """
+    ).fetchone()
+    assert dict(provider_context_row) == {
+        "provider_name": PROVIDER_NAME_APOLLO,
+        "context_stage": "apollo_company_resolution",
+        "provider_organization_id": "org_acme",
+    }
+    provider_profile_row = connection.execute(
+        """
+        SELECT provider_name, profile_stage, provider_person_id
+        FROM contact_provider_profiles
+        WHERE provider_person_id = 'pp_r1'
+        ORDER BY created_at DESC
+        LIMIT 1
+        """
+    ).fetchone()
+    assert dict(provider_profile_row) == {
+        "provider_name": PROVIDER_NAME_APOLLO,
+        "profile_stage": "apollo_search",
+        "provider_person_id": "pp_r1",
+    }
+    history_row = connection.execute(
+        """
+        SELECT company_label, role_title, is_current
+        FROM contact_employment_history
+        ORDER BY source_sort_index ASC
+        LIMIT 1
+        """
+    ).fetchone()
+    assert dict(history_row) == {
+        "company_label": "Acme Robotics",
+        "role_title": "Corporate Recruiter",
+        "is_current": 1,
+    }
     assert connection.execute(
         "SELECT COUNT(*) FROM contacts WHERE provider_person_id = 'pp_o1'"
     ).fetchone()[0] == 1
@@ -1344,6 +1409,14 @@ def test_apollo_contact_enrichment_only_enriches_current_send_frontier(tmp_path:
                     "email_status": "verified",
                     "organization_id": "org_acme",
                     "organization_name": "Acme Robotics",
+                    "employment_history": [
+                        {
+                            "company_name": "Acme Robotics",
+                            "title": "Updated Title",
+                            "start_date": "2025-01-01",
+                            "current": True,
+                        }
+                    ],
                 }
             }
             for provider_person_id in ("pp_r1", "pp_r2", "pp_m1", "pp_e1", "pp_o1")
@@ -1376,6 +1449,22 @@ def test_apollo_contact_enrichment_only_enriches_current_send_frontier(tmp_path:
         "current_working_email": None,
         "linkedin_url": None,
     }
+    enriched_profile_count = connection.execute(
+        """
+        SELECT COUNT(*)
+        FROM contact_provider_profiles
+        WHERE profile_stage = 'apollo_enrichment'
+        """
+    ).fetchone()[0]
+    assert enriched_profile_count == len(frontier_provider_ids)
+    enriched_history_count = connection.execute(
+        """
+        SELECT COUNT(*)
+        FROM contact_employment_history
+        WHERE provider_name = 'apollo'
+        """
+    ).fetchone()[0]
+    assert enriched_history_count == len(frontier_provider_ids)
 
     connection.close()
 
