@@ -154,7 +154,7 @@
     \section{SUMMARY}
 
     \begin{onecolentry}
-        MS CS candidate with 3+ years of experience building large-scale distributed systems and infrastructure, focusing on system reliability, performance optimization, and cost-efficient cloud architecture
+        Software engineer with 3+ years of experience building backend data platforms and distributed production systems, focusing on reliability, performance optimization, and workflow automation
     \end{onecolentry}
 
     % -------------------- Education --------------------
@@ -162,7 +162,7 @@
 
     \begin{twocolentry}{
     \textbf{August 2024 - May 2026}}
-        \textbf{Arizona State University, Tempe, USA,} \textit{Master of Science in Computer Science,} GPA: \textbf{3.96/4.00}
+        \textbf{Arizona State University, Tempe, USA,} \textit{Master of Science in Computer Science,} GPA: \textbf{4.00/4.00}
     \end{twocolentry}
 
 
@@ -183,21 +183,6 @@
     \section{EXPERIENCE}
 
     \begin{twocolentry}{
-    \textbf{August 2025 - Present}}
-        \textbf{SCAI Grader, CSE 360: Introduction to Software Engineering} $|$ \textit{Arizona State University, Tempe, USA}
-    \end{twocolentry}
-
-    \vspace{0.05cm}
-
-    \begin{onecolentry}
-        \begin{highlights}
-            \item Guided 50+ students in building Java applications and debugging code; developed course materials on software engineering and OOP
-        \end{highlights}
-    \end{onecolentry}
-
-    \vspace{0.06cm}
-
-    \begin{twocolentry}{
     \textbf{March 2023 - March 2024}}
         \textbf{Software Engineer} $|$ \textit{Infinite Computer Solutions, Bengaluru, India}
     \end{twocolentry}
@@ -205,12 +190,13 @@
     \vspace{0.05cm}
 
     \begin{onecolentry}
-        \textit{Python, Apache Spark, PostgreSQL, AWS (S3, EMR), Terraform, Docker, GitLab CI/CD}
+        \textit{Python, SQL, Scala, PySpark/Spark SQL, Databricks/Spark, Azure Data Factory, ADLS Gen2, Azure PostgreSQL, CI/CD}
         \begin{highlights}
-            \item Built and maintained distributed, high-availability data services in Python and Scala on AWS (EMR, S3), processing 50M+ daily HL7 records (~580 TPS) powering real-time clinical analytics for 1,500+ hospitals with 24/7 uptime
-            \item Developed ETL pipelines using Python, Apache Spark, and custom HL7 parsers, reducing processing time by 40\% (6 hours to 3.6 hours) on 2TB+ daily data, enabling same-day analytics
-            \item Optimized 25+ Apache Spark jobs with parallel processing and caching on AWS EMR, improving throughput by 50\% (from 20K to 30K records/second) and reducing AWS costs by \$15K monthly
-            \item Designed monitoring and alerting for pipeline health, triaging data quality issues and resolving production incidents across HL7 workflows to maintain SLA compliance and support reliable same-day clinical analytics delivery
+            \item Built and maintained Azure-based data services and Databricks/Spark pipelines in Python and Scala, processing 50M+ daily HL7 records (~580 TPS) into governed analytics workloads for 1,500+ hospitals with 24/7 uptime
+            \item Developed ETL/ELT pipelines using Python, PySpark/Spark SQL, Azure Data Factory, Azure PostgreSQL, ADLS Gen2, and custom HL7 parsers, reducing processing time by 40\% (6 hours to 3.6 hours) on 2TB+ daily data
+            \item Optimized 25+ Spark jobs and lakehouse pipeline stages with partitioning, caching, and SQL tuning, improving throughput by 50\% (from 20K to 30K records/second) and reducing monthly cloud spend by \$15K
+            \item Supported governed downstream data access for BI tools, REST APIs, ODBC connectors, and Kafka-based downstream consumers, with attention to lineage, cataloging, and secure clinical analytics delivery
+            \item Designed monitoring, alerting, and data quality checks with Azure Log Analytics and Datadog-style observability, triaging production incidents and maintaining SLA compliance across regulated healthcare data workflows
         \end{highlights}
     \end{onecolentry}
 
@@ -252,6 +238,21 @@
     % -------------------- Projects --------------------
     \section{PROJECTS}
 
+    \begin{twocolentrywide}{
+    \textbf{April 2026 - Present}}
+        \textbf{Job Hunt Copilot v4} $|$ \href{https://github.com/sontiachyut/job-hunt-copilot-v4}{Code} $|$ \textit{Python, SQLite, Agentic AI, Multi-Agent Orchestration, Gmail API}
+    \end{twocolentrywide}
+
+    \vspace{0.05cm}
+
+    \begin{onecolentry}
+        \begin{highlights}
+            \item Built an autonomous job-search system that identifies relevant roles, tailors resumes, discovers internal contacts, drafts targeted outreach, and tracks delivery outcomes using SQLite-backed workflow orchestration
+        \end{highlights}
+    \end{onecolentry}
+
+    \vspace{0.06cm}
+
     \begin{twocolentry}{
     \textbf{January 2025 - April 2025}}
         \textbf{Distributed Edge Face Recognition Pipeline} $|$ \href{https://github.com/sontiachyut/CSE546-Cloud-Computing.git}{Code} $|$ \textit{Python, PyTorch, EC2, Lambda, SQS, Docker}
@@ -261,7 +262,7 @@
 
     \begin{onecolentry}
         \begin{highlights}
-            \item Developed real-time edge computing pipeline deploying AWS IoT Greengrass Core on EC2 for MTCNN-based face detection via MQTT streaming, achieving 100\% accuracy on 100 frames with sub-second latency
+            \item Built a hybrid edge-cloud face-recognition pipeline that pushed MTCNN detection to AWS IoT Greengrass on EC2, reducing cloud-bound payloads while maintaining sub-second inference over MQTT streaming
         \end{highlights}
     \end{onecolentry}
 
@@ -299,36 +300,20 @@
         \end{highlights}
     \end{onecolentry}
 
-    \vspace{0.06cm}
-
-    \begin{twocolentrywide}{
-    \textbf{August 2025 - November 2025}}
-        \textbf{Context-Aware Health Monitoring App} $|$ \href{https://github.com/sontiachyut/CSE535-Project1-Context-Monitoring-App}{Code} $|$ \textit{Kotlin, Android, Room, Coroutines}
-    \end{twocolentrywide}
-
-    \vspace{0.05cm}
-
-    \begin{onecolentry}
-        \begin{highlights}
-            \item Built an Android app measuring heart rate via camera-based PPG and respiratory rate via accelerometer data, with symptom tracking persisted in Room database using Repository pattern
-        \end{highlights}
-    \end{onecolentry}
-
-
     % -------------------- Awards and Leadership --------------------
     \section{AWARDS AND LEADERSHIP}
 
     \begin{onecolentry}
         \begin{highlights}
             \item \textbf{2nd Place (\$2,000) - Fund the Future Spark Challenge (TIAA)} $|$ \href{https://www.linkedin.com/posts/asonti_tiaa-asu-fundthefuture-activity-7385160181057277952-9Y5S}{Post}: Built secure financial planning system with AI-powered automation using React and AWS serverless architecture \hfill {\fontsize{8.5pt}{10pt}\selectfont\textbf{October 2025}}
-            \item \textbf{Most Technically Sophisticated Project - InnovationHacks 25 ASU:} Developed AI AGENT-powered solution recognized for technical sophistication among 50+ competing projects \hfill {\fontsize{8.5pt}{10pt}\selectfont\textbf{April 2025}}
+            \item \textbf{Most Technically Sophisticated Project - InnovationHacks 25 ASU:} Developed an AI-powered solution recognized for technical sophistication among 50+ competing projects \hfill {\fontsize{8.5pt}{10pt}\selectfont\textbf{April 2025}}
         \end{highlights}
     \end{onecolentry}
 
     \vspace{0.06cm}
 
     \begin{twocolentry}{
-    \textbf{November 2025 - Present}}
+    \textbf{Nov 2025 - May 2026}}
         \textbf{Director of Technology (Volunteer), AI Club at Thunderbird} $|$ \textit{Arizona State University, Phoenix, USA}
     \end{twocolentry}
 
@@ -336,7 +321,7 @@
 
     \begin{onecolentry}
         \begin{highlights}
-            \item Conduct workshops for 30+ graduate students on latest AI trends like Agentic AI and tools like Lovable to build portfolio websites
+            \item Conduct workshops for 30+ graduate students on applied AI tools and practical product-building workflows
         \end{highlights}
     \end{onecolentry}
 
@@ -344,23 +329,13 @@
     \section{TECHNICAL SKILLS}
 
     \begin{onecolentry}
-        \textbf{Languages:} Python, Golang, C++, Java, Scala, SQL, Bash
-    \end{onecolentry}
-
-    \begin{onecolentry}
-        \textbf{Infrastructure \& Systems:} Distributed Systems, Microservices, Load Balancing, gRPC, Protocol Buffers, System Design
-    \end{onecolentry}
-
-    \begin{onecolentry}
-        \textbf{Cloud \& DevOps:} AWS (EMR, EC2, S3, Lambda, SQS), GCP, Kubernetes, Docker, Terraform, GitLab CI/CD, Linux
-    \end{onecolentry}
-
-    \begin{onecolentry}
-        \textbf{Data \& Storage:} Apache Spark, PostgreSQL, MySQL, DynamoDB, MongoDB, Redis
-    \end{onecolentry}
-
-    \begin{onecolentry}
-        \textbf{Testing \& Reliability:} Pytest, JUnit, Unit/Integration Testing, Monitoring, Debugging, Performance Profiling
+        {\small
+        \textbf{Languages:} Python, Go, SQL, Java, Scala, TypeScript, Bash \\
+        \textbf{Backend \& Systems:} FastAPI, Node.js, React/Next.js, Distributed Systems, Microservices, REST APIs, System Design \\
+        \textbf{Cloud \& DevOps:} AWS, Azure Data Factory, ADLS Gen2, Azure PostgreSQL, Kubernetes, Docker, CI/CD, Linux \\
+        \textbf{Data \& Storage:} Databricks/Spark, PostgreSQL, MySQL, MongoDB, Neo4j, DynamoDB, SQLite \\
+        \textbf{AI \& Reliability:} Agentic AI, LLMs, Workflow Automation, PyTorch, scikit-learn, FAISS, Monitoring, Prometheus, Debugging, Pytest, JUnit
+        }
     \end{onecolentry}
 
 
