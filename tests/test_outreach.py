@@ -48,8 +48,8 @@ from job_hunt_copilot.outreach import (
     _build_role_targeted_draft_context,
     _build_outreach_codex_exec_env,
     _load_draft_contact_row,
-    _load_role_targeted_draft_posting_row,
     _load_sender_identity,
+    _load_role_targeted_draft_posting_row,
     _load_tailoring_draft_inputs,
     _normalize_education_line,
     _resolve_outreach_codex_bin,
@@ -4088,6 +4088,41 @@ def test_resolve_outreach_codex_bin_uses_homebrew_fallback_when_path_is_missing(
     )
 
     assert _resolve_outreach_codex_bin() == "/opt/homebrew/bin/codex"
+
+
+def test_load_sender_identity_keeps_personal_github_when_projects_define_other_github_links(
+    tmp_path: Path,
+) -> None:
+    project_root, paths = bootstrap_project(tmp_path)
+    profile_path = paths.assets_dir / "resume-tailoring" / "profile.md"
+    profile_path.parent.mkdir(parents=True, exist_ok=True)
+    profile_path.write_text(
+        "\n".join(
+            [
+                "# Achyutaram Sonti — Master Profile",
+                "",
+                "## Personal",
+                "- **Name:** Achyutaram Sonti",
+                "- **Email:** asonti1@asu.edu",
+                "- **Phone:** 602-768-6071",
+                "- **LinkedIn:** https://www.linkedin.com/in/asonti/",
+                "- **GitHub:** https://github.com/sontiachyut",
+                "",
+                "## Projects",
+                "### Distributed Content Rec",
+                "- **GitHub:** /Users/achyutaramsonti/Desktop/Academics/Distributed Systems/Distributed-Content-Rec-engine-main",
+                "### Another Project",
+                "- **GitHub:** https://github.com/sontiachyut/some-project",
+            ]
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+
+    sender = _load_sender_identity(paths)
+
+    assert sender.github_url == "https://github.com/sontiachyut"
+    assert sender.linkedin_url == "https://www.linkedin.com/in/asonti/"
 
 
 def test_build_outreach_codex_exec_env_includes_codex_dir_and_runtime_fallbacks(

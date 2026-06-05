@@ -4656,8 +4656,11 @@ def _load_sender_identity(paths: ProjectPaths) -> SenderIdentity:
             current_heading = heading_match.group("title").strip().lower()
             continue
         field_match = PROFILE_FIELD_RE.match(stripped)
-        if field_match is not None:
-            fields[field_match.group("label").strip().lower()] = field_match.group("value").strip()
+        if field_match is not None and current_heading == "personal":
+            fields.setdefault(
+                field_match.group("label").strip().lower(),
+                field_match.group("value").strip(),
+            )
             continue
         if current_heading == "education" and stripped.startswith("- ") and education_line is None:
             education_line = stripped[2:].strip()

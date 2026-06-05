@@ -1014,6 +1014,13 @@ Feature: Job Hunt Copilot next-build acceptance
       And the scheduler does not crash only because `codex` was absent from the ambient PATH
       And the drafter also supplies a runtime PATH that can resolve the local `node` launcher dependency when `codex` is a Node-based script
 
+    Scenario: Sender signature keeps the public GitHub profile URL
+      Given the sender master profile contains a personal GitHub profile URL in `Personal`
+      And later project sections also contain project-specific `GitHub` bullets
+      When role-targeted drafting loads the sender signature
+      Then the signature uses the personal GitHub profile URL
+      And the signature does not substitute a project repository URL or local filesystem path
+
     Scenario: Later postings at the same company proactively skip an already-contacted person
       Given one posting at a company has already sent automatic outreach to a canonical contact
       And a later posting at that same company links that same canonical contact plus other eligible company contacts
