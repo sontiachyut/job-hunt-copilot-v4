@@ -461,7 +461,7 @@ in the rendered email body.
 This section should:
 
 1. be rendered under the fixed heading:
-   `My read from the JD is that the team is likely working on:`
+   `Would it be fair to say the team is likely working on the following?`
 2. use exactly three short bullets
 3. stay specific and non-generic
 4. infer challenges cautiously from the JD rather than claiming certainty
@@ -502,7 +502,7 @@ Paragraph 4 should:
 
 The preferred managerial CTA wording is:
 
-`I've attached my resume for context. Would you be open to a brief 10-minute conversation? I'd love to better understand the challenges the team is actually focused on, and if helpful, I'd be happy to build a small proof of concept afterward and share the repo. If this is better routed elsewhere, I'd appreciate a forward to the right person internally.`
+`I've attached my resume for context. Would you be open to a brief 10-minute conversation? I'd love to better understand the challenges the team is actually focused on. If this is better routed elsewhere, I'd appreciate a forward to the right person internally.`
 
 ## Credibility Rule
 
@@ -701,7 +701,7 @@ When this line is present, deterministic Python should render it as:
 `Posting link: <public_posting_url>`
 
 and place it immediately after the fixed bold proof-of-concept sentence and
-before the `My read from the JD is that the team is likely working on:` section.
+before the `Would it be fair to say the team is likely working on the following?` section.
 
 The current build does not require a separate employer-internal requisition ID,
 employee-searchable job ID, or req ID field in the managerial email. If the
@@ -846,12 +846,12 @@ Bounded evidence:
   - Opener sentence 1 is fixed: "I hope you're doing well."
   - Opener sentence 3 is fixed and bolded: "**If helpful, I'd be happy to build a small proof of concept based on my understanding of the challenges the team is working on and share the repo.**"
   - If a public posting URL exists, deterministic Python renders one standalone line immediately after the bold sentence: "Posting link: <public_posting_url>"
-  - JD heading is fixed: "My read from the JD is that the team is likely working on:"
+  - JD heading is fixed: "Would it be fair to say the team is likely working on the following?"
   - Background heading is fixed: "Relevant background from my side:"
   - CTA block is fixed:
     - "I've attached my resume for context."
     - "Would you be open to a brief 10-minute conversation?"
-    - "I'd love to better understand the challenges the team is actually focused on, and if helpful, I'd be happy to build a small proof of concept afterward and share the repo."
+    - "I'd love to better understand the challenges the team is actually focused on."
     - "If this is better routed elsewhere, I'd appreciate a forward to the right person internally."
   - Signature context: LinkedIn and GitHub are in the signature only. Resume is attached separately.
 
@@ -894,7 +894,7 @@ fixed order:
 2. fixed opener sentence 1
 3. `role_alignment_sentence`
 4. fixed bold proof-of-concept sentence
-5. rendered `My read from the JD is that the team is likely working on:` section
+5. rendered `Would it be fair to say the team is likely working on the following?` section
 6. rendered `Relevant background from my side:` section
 7. fixed CTA block
 

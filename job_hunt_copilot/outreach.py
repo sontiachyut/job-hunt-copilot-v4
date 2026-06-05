@@ -83,14 +83,11 @@ MANAGERIAL_PATH_OPENER_SENTENCE_3 = (
     "**If helpful, I'd be happy to build a small proof of concept based on my understanding "
     "of the challenges the team is working on and share the repo.**"
 )
-MANAGERIAL_PATH_JD_HEADING = "My read from the JD is that the team is likely working on:"
+MANAGERIAL_PATH_JD_HEADING = "Would it be fair to say the team is likely working on the following?"
 MANAGERIAL_PATH_BACKGROUND_HEADING = "Relevant background from my side:"
 MANAGERIAL_PATH_CTA_RESUME = "I've attached my resume for context."
 MANAGERIAL_PATH_CTA_QUESTION = "Would you be open to a brief 10-minute conversation?"
-MANAGERIAL_PATH_CTA_CONTEXT = (
-    "I'd love to better understand the challenges the team is actually focused on, and if helpful, "
-    "I'd be happy to build a small proof of concept afterward and share the repo."
-)
+MANAGERIAL_PATH_CTA_CONTEXT = "I'd love to better understand the challenges the team is actually focused on."
 MANAGERIAL_PATH_CTA_FORWARD = (
     "If this is better routed elsewhere, I'd appreciate a forward to the right person internally."
 )
@@ -8382,6 +8379,7 @@ def _render_markdown_email_html(body_markdown: str) -> str:
     html_blocks: list[str] = []
     paragraph_lines: list[str] = []
     blockquote_lines: list[str] = []
+    list_items: list[str] = []
     pitch_lines = _job_hunt_copilot_pitch_lines()
     snippet_intro_line = "I've included a short snippet below that you can paste into an IM/Email:"
 
@@ -8401,6 +8399,16 @@ def _render_markdown_email_html(body_markdown: str) -> str:
             )
             blockquote_lines = []
 
+    def flush_list() -> None:
+        nonlocal list_items
+        if list_items:
+            html_blocks.append(
+                "<ul>"
+                + "".join(f"<li>{html.escape(item)}</li>" for item in list_items)
+                + "</ul>"
+            )
+            list_items = []
+
     body_lines = body_markdown.splitlines()
     index = 0
     while index < len(body_lines):
@@ -8409,11 +8417,13 @@ def _render_markdown_email_html(body_markdown: str) -> str:
         if not stripped:
             flush_paragraph()
             flush_blockquote()
+            flush_list()
             index += 1
             continue
         if stripped == snippet_intro_line:
             flush_paragraph()
             flush_blockquote()
+            flush_list()
             html_blocks.append(f"<p>{html.escape(snippet_intro_line)}</p>")
             index += 1
             if index < len(body_lines) and body_lines[index].strip() == "[snippet]":
@@ -8431,6 +8441,7 @@ def _render_markdown_email_html(body_markdown: str) -> str:
         if stripped == "Best,":
             flush_paragraph()
             flush_blockquote()
+            flush_list()
             signature_lines = ["Best,"]
             index += 1
             while index < len(body_lines):
@@ -8444,6 +8455,7 @@ def _render_markdown_email_html(body_markdown: str) -> str:
         if stripped == "[snippet]":
             flush_paragraph()
             flush_blockquote()
+            flush_list()
             snippet_lines: list[str] = []
             index += 1
             while index < len(body_lines):
@@ -8458,19 +8470,29 @@ def _render_markdown_email_html(body_markdown: str) -> str:
         if body_lines[index : index + len(pitch_lines)] == pitch_lines:
             flush_paragraph()
             flush_blockquote()
+            flush_list()
             html_blocks.append(_render_job_hunt_copilot_callout_html())
             index += len(pitch_lines)
             continue
         if stripped.startswith("> "):
             flush_paragraph()
+            flush_list()
             blockquote_lines.append(stripped[2:])
             index += 1
             continue
+        if stripped.startswith("- "):
+            flush_paragraph()
+            flush_blockquote()
+            list_items.append(stripped[2:].strip())
+            index += 1
+            continue
         flush_blockquote()
+        flush_list()
         paragraph_lines.append(stripped)
         index += 1
     flush_paragraph()
     flush_blockquote()
+    flush_list()
     return "<html><body>" + "".join(html_blocks) + "</body></html>\n"
 
 

@@ -4339,13 +4339,18 @@ def test_codex_role_split_renderer_generates_managerial_path_body_and_debug_arti
     assert message.subject == "Interest in the Software Engineer, GenAI role at Abridge"
     assert "I hope you're doing well." in body
     assert "Posting link: https://careers.acme.example/jobs/123" in body
-    assert "My read from the JD is that the team is likely working on:" in body
+    assert "Would it be fair to say the team is likely working on the following?" in body
     assert "Relevant background from my side:" in body
     assert "**If helpful, I'd be happy to build a small proof of concept based on my understanding of the challenges the team is working on and share the repo.**" in body
     assert "built Job Hunt Copilot, an AI workflow automation tool: https://github.com/sontiachyut/job-hunt-copilot-v4" in body
     assert "I've attached my resume for context." in body
     assert "Would you be open to a brief 10-minute conversation?" in body
+    assert "I'd love to better understand the challenges the team is actually focused on." in body
+    assert "I'd be happy to build a small proof of concept afterward and share the repo." not in body
     assert "If this is better routed elsewhere, I'd appreciate a forward to the right person internally." in body
+    assert message.body_html is not None
+    assert "<ul>" in message.body_html
+    assert "<li>dependable llm workflows for clinical use</li>" in message.body_html
     assert message.opener_decision_artifact_path is not None
     debug_payload = json.loads(Path(message.opener_decision_artifact_path).read_text(encoding="utf-8"))
     assert debug_payload["drafting_path"] == "managerial"

@@ -1136,6 +1136,8 @@ Feature: Job Hunt Copilot next-build acceptance
       And `codex exec` generates the role-alignment sentence, exactly 3 JD-challenge bullets, exactly 3 relevant-background bullets, and debug fields
       And deterministic rendering emits the fixed bold proof-of-concept sentence
       And deterministic rendering emits the fixed CTA block and standard signature
+      And the fixed JD heading is phrased as a question rather than a statement
+      And the fixed CTA block mentions the proof-of-concept offer only once in the whole email body
       And the JD-challenge bullets are JD-only inferred problem hypotheses rather than verbatim JD paste
       And the relevant-background bullets come from real resume or project evidence
       And the subject follows `Interest in the <Role Title> role at <Company>`
@@ -1147,6 +1149,12 @@ Feature: Job Hunt Copilot next-build acceptance
       Then the email includes one standalone `Posting link:` line
       And that line appears immediately after the fixed bold proof-of-concept sentence
       And the line uses the canonical public posting URL rather than model-generated URL text
+
+    Scenario: Managerial-path bullets render as real lists in HTML
+      Given a managerial-path draft contains exactly 3 JD-challenge bullets and exactly 3 relevant-background bullets
+      When the draft is rendered to HTML for Gmail delivery
+      Then each section is rendered as a list rather than a flattened paragraph
+      And each bullet remains visually separate under its heading
 
     Scenario: Role-split codex outputs are schema-validated before the draft is accepted
       Given a role-split draft is generated through `codex exec`
