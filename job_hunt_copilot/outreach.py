@@ -13,7 +13,7 @@ from dataclasses import dataclass
 from datetime import UTC, date, datetime, time, timedelta, tzinfo
 from email.message import EmailMessage
 from pathlib import Path
-from typing import Any, Mapping, Protocol, Sequence
+from typing import Any, Callable, Mapping, Protocol, Sequence
 from zoneinfo import ZoneInfo
 
 from pydantic import BaseModel, ConfigDict, Field, ValidationError, field_validator
@@ -2167,8 +2167,16 @@ def _build_outreach_codex_exec_command(
 
 
 def _count_sentences(value: str) -> int:
-    parts = [part.strip() for part in re.split(r"(?<=[.!?])\s+", value.strip()) if part.strip()]
-    return len(parts)
+    return len(_split_sentences(value))
+
+
+def _split_sentences(value: str) -> list[str]:
+    return [part.strip() for part in re.split(r"(?<=[.!?])\s+", value.strip()) if part.strip()]
+
+
+TECHNICAL_ROLE_SPLIT_FIXED_SECOND_SENTENCE = (
+    "That path really stood out to me, and I'd love to grow in a similar direction and ship software at that level over time."
+)
 
 
 def _select_role_split_recipient_path(context: RoleTargetedDraftContext) -> str:
@@ -2291,6 +2299,10 @@ def _run_codex_technical_role_split_draft(
         prompt=prompt,
         schema=TechnicalRoleSplitDraftPayload.model_json_schema(),
         model_class=TechnicalRoleSplitDraftPayload,
+        payload_normalizer=lambda payload: _normalize_technical_role_split_payload_dict(
+            payload,
+            employment_history_summary=context.apollo_employment_history_summary,
+        ),
         run_prefix="technical-role-split",
         company_name=context.company_name,
         role_title=context.role_title,
@@ -2313,6 +2325,7 @@ def _run_codex_managerial_role_split_draft(
         prompt=prompt,
         schema=ManagerialRoleSplitDraftPayload.model_json_schema(),
         model_class=ManagerialRoleSplitDraftPayload,
+        payload_normalizer=_normalize_managerial_role_split_payload_dict,
         run_prefix="managerial-role-split",
         company_name=context.company_name,
         role_title=context.role_title,
@@ -2328,6 +2341,7 @@ def _run_codex_structured_payload(
     prompt: str,
     schema: Mapping[str, Any],
     model_class: type[BaseModel],
+    payload_normalizer: Callable[[dict[str, Any]], dict[str, Any]] | None = None,
     run_prefix: str,
     company_name: str,
     role_title: str,
@@ -2372,11 +2386,113 @@ def _run_codex_structured_payload(
             f"`codex exec` did not materialize a draft payload. Expected {output_path}."
         )
     try:
-        return model_class.model_validate_json(output_path.read_text(encoding="utf-8"))
+        payload = json.loads(output_path.read_text(encoding="utf-8"))
+        if not isinstance(payload, dict):
+            raise OutreachDraftingError(
+                f"Role-split draft payload must be a JSON object. See {output_path}."
+            )
+        if payload_normalizer is not None:
+            payload = payload_normalizer(dict(payload))
+            output_path.write_text(json.dumps(payload, indent=2) + "\n", encoding="utf-8")
+        return model_class.model_validate(payload)
     except ValidationError as exc:
         raise OutreachDraftingError(
             f"Role-split draft payload failed validation. See {output_path}. Errors: {exc}"
         ) from exc
+
+
+def _normalize_managerial_role_split_payload_dict(payload: dict[str, Any]) -> dict[str, Any]:
+    normalized = dict(payload)
+    for key in ("selected_jd_signals", "selected_resume_signals"):
+        value = normalized.get(key)
+        if not isinstance(value, list):
+            continue
+        cleaned = [str(item).strip() for item in value if str(item).strip()]
+        normalized[key] = cleaned[:3]
+    return normalized
+
+
+def _normalize_technical_role_split_payload_dict(
+    payload: dict[str, Any],
+    *,
+    employment_history_summary: Sequence[str],
+) -> dict[str, Any]:
+    normalized = dict(payload)
+    paragraph = str(normalized.get("paragraph_1_text") or "").strip()
+    if paragraph:
+        sentences = _split_sentences(paragraph)
+        if len(sentences) > 2:
+            paragraph = " ".join(sentences[:2])
+        elif len(sentences) == 1:
+            first_sentence = sentences[0]
+            if first_sentence[-1:] not in ".!?":
+                first_sentence = f"{first_sentence}."
+            paragraph = f"{first_sentence} {TECHNICAL_ROLE_SPLIT_FIXED_SECOND_SENTENCE}"
+        normalized["paragraph_1_text"] = paragraph
+
+    selected_career_steps = normalized.get("selected_career_steps")
+    cleaned_steps = (
+        [str(step).strip() for step in selected_career_steps if str(step).strip()]
+        if isinstance(selected_career_steps, list)
+        else []
+    )
+    if not cleaned_steps:
+        cleaned_steps = _infer_selected_career_steps_from_history(
+            paragraph,
+            employment_history_summary=employment_history_summary,
+        )
+    normalized["selected_career_steps"] = cleaned_steps
+    return normalized
+
+
+def _infer_selected_career_steps_from_history(
+    paragraph_1_text: str,
+    *,
+    employment_history_summary: Sequence[str],
+) -> list[str]:
+    company_names = _extract_employment_history_company_names(employment_history_summary)
+    if not company_names:
+        return []
+    lowered_paragraph = paragraph_1_text.casefold()
+    matched = [
+        company
+        for company in company_names
+        if company.casefold() in lowered_paragraph
+    ]
+    if matched:
+        deduped: list[str] = []
+        seen: set[str] = set()
+        for company in matched:
+            key = company.casefold()
+            if key in seen:
+                continue
+            seen.add(key)
+            deduped.append(company)
+        return deduped
+    return [company_names[0]]
+
+
+def _extract_employment_history_company_names(employment_history_summary: Sequence[str]) -> list[str]:
+    company_names: list[str] = []
+    seen: set[str] = set()
+    for line in employment_history_summary:
+        stripped = str(line).strip()
+        if not stripped:
+            continue
+        if ". " in stripped:
+            stripped = stripped.split(". ", 1)[1]
+        base = stripped.split("—", 1)[0].strip()
+        if " at " not in base:
+            continue
+        company = base.rsplit(" at ", 1)[1].strip()
+        if not company:
+            continue
+        key = company.casefold()
+        if key in seen:
+            continue
+        seen.add(key)
+        company_names.append(company)
+    return company_names
 
 
 def _build_technical_role_split_prompt(context: RoleTargetedDraftContext) -> str:
@@ -2401,6 +2517,7 @@ def _build_technical_role_split_prompt(context: RoleTargetedDraftContext) -> str
             "- Use the most relevant 2 or 3 past companies plus the recipient's current exact title and company when that history is available.",
             "- When only partial career history is available, write the best truthful path sentence you can from the available evidence rather than inventing steps.",
             "- selected_career_steps must contain only the past company names used for the path transitions.",
+            "- selected_career_steps must never be empty when employment history contains at least one company.",
             "- The second sentence should naturally express that the path stood out and that I'd love to grow in a similar direction and ship software at that level over time.",
             "- Do not turn it into a long chronology.",
             "- Do not make it sound like a referral ask.",
@@ -2520,6 +2637,8 @@ def _build_managerial_role_split_prompt(context: RoleTargetedDraftContext) -> st
             "- Do not add extra sections, extra CTA language, or extra questions.",
             "- The returned content should fit naturally into one concise email and should not feel like bits and pieces attached together.",
             "- selected_jd_signals and selected_resume_signals must reflect the signals actually used in the returned bullets and sentence.",
+            "- selected_jd_signals must contain no more than 3 items.",
+            "- selected_resume_signals must contain no more than 3 items.",
             "",
             "Target length guidance:",
             "- The fixed parts of the email already consume most of the word budget.",

@@ -51,7 +51,9 @@ from job_hunt_copilot.outreach import (
     _load_sender_identity,
     _load_role_targeted_draft_posting_row,
     _load_tailoring_draft_inputs,
+    _normalize_managerial_role_split_payload_dict,
     _normalize_education_line,
+    _normalize_technical_role_split_payload_dict,
     _resolve_outreach_codex_bin,
     _run_codex_structured_payload,
     execute_general_learning_outreach,
@@ -4123,6 +4125,53 @@ def test_load_sender_identity_keeps_personal_github_when_projects_define_other_g
 
     assert sender.github_url == "https://github.com/sontiachyut"
     assert sender.linkedin_url == "https://www.linkedin.com/in/asonti/"
+
+
+def test_normalize_managerial_role_split_payload_truncates_debug_signal_lists() -> None:
+    payload = {
+        "role_alignment_sentence": "I came across the role and wanted to reach out because it looks closely aligned with the kind of backend systems work I've been trying to do more of.",
+        "problem_hypotheses": [
+            "backend service stability",
+            "systems integration",
+            "preventative fixes",
+        ],
+        "relevant_background": [
+            "distributed data services at ~580 TPS",
+            "monitoring and alerting",
+            "governed downstream APIs",
+        ],
+        "selected_jd_signals": ["a", "b", "c", "d", "e"],
+        "selected_resume_signals": ["x", "y", "z", "q"],
+    }
+
+    normalized = _normalize_managerial_role_split_payload_dict(payload)
+    validated = ManagerialRoleSplitDraftPayload.model_validate(normalized)
+
+    assert validated.selected_jd_signals == ["a", "b", "c"]
+    assert validated.selected_resume_signals == ["x", "y", "z"]
+
+
+def test_normalize_technical_role_split_payload_recovers_shape_and_career_steps() -> None:
+    payload = {
+        "paragraph_1_text": (
+            "I came across your LinkedIn profile and really admired your path from InsightRX to Lattice and now into your current role as Senior Software Engineer at Lattice. "
+            "That path really stood out to me, and I'd love to grow in a similar direction and ship software at that level over time. "
+            "I also admire the product surface you work on."
+        ),
+        "selected_career_steps": [],
+    }
+
+    normalized = _normalize_technical_role_split_payload_dict(
+        payload,
+        employment_history_summary=(
+            "1. Software Engineer at InsightRX — 2021-01-01 to 2023-12-31",
+            "2. Senior Software Engineer at Lattice — current, start 2024-01-01",
+        ),
+    )
+    validated = TechnicalRoleSplitDraftPayload.model_validate(normalized)
+
+    assert validated.paragraph_1_text.count(". ") == 1
+    assert validated.selected_career_steps == ["InsightRX", "Lattice"]
 
 
 def test_build_outreach_codex_exec_env_includes_codex_dir_and_runtime_fallbacks(

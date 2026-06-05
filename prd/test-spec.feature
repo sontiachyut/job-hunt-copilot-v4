@@ -1021,6 +1021,20 @@ Feature: Job Hunt Copilot next-build acceptance
       Then the signature uses the personal GitHub profile URL
       And the signature does not substitute a project repository URL or local filesystem path
 
+    Scenario: Technical role-split payload drift is normalized before persistence
+      Given the technical drafter returns a truthful opener that still drifts on debug scaffolding
+      And the payload leaves `selected_career_steps` empty or returns more than two opener sentences
+      When deterministic runtime validates the technical role-split payload
+      Then runtime infers at least one supported career-step company from bounded employment history
+      And runtime restores the exact two-sentence opener shape before the draft is persisted
+
+    Scenario: Managerial debug lists are truncated instead of failing the draft
+      Given the managerial drafter returns a valid email body payload
+      But the managerial debug signal lists contain more than three items
+      When deterministic runtime validates the managerial role-split payload
+      Then runtime truncates those debug lists to the first three non-empty items
+      And the draft is not failed solely because of oversized debug lists
+
     Scenario: Later postings at the same company proactively skip an already-contacted person
       Given one posting at a company has already sent automatic outreach to a canonical contact
       And a later posting at that same company links that same canonical contact plus other eligible company contacts
