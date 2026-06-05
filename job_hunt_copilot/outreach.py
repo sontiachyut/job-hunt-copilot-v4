@@ -4,6 +4,7 @@ import base64
 import html
 import hashlib
 import json
+import os
 import re
 import shutil
 import sqlite3
@@ -2076,10 +2077,39 @@ class CodexRoleSplitOutreachDraftRenderer(OutreachDraftRenderer):
 
 
 def _resolve_outreach_codex_bin() -> str:
+    override_names = (
+        "JHC_OUTREACH_CODEX_BIN",
+        "JHC_CODEX_BIN",
+        "CODEX_BIN",
+    )
+    for env_name in override_names:
+        candidate = os.environ.get(env_name)
+        if candidate and _is_executable_binary(candidate):
+            return candidate
+
     resolved = shutil.which("codex")
-    if resolved is None:
-        raise OutreachDraftingError("`codex` binary is required for role-split outreach drafting.")
-    return resolved
+    if resolved and _is_executable_binary(resolved):
+        return resolved
+
+    fallback_candidates = (
+        "/opt/homebrew/bin/codex",
+        "/usr/local/bin/codex",
+        str(Path.home() / ".local" / "bin" / "codex"),
+        str(Path.home() / ".codex" / "bin" / "codex"),
+    )
+    for candidate in fallback_candidates:
+        if _is_executable_binary(candidate):
+            return candidate
+
+    raise OutreachDraftingError(
+        "`codex` binary is required for role-split outreach drafting. "
+        "Set JHC_OUTREACH_CODEX_BIN or install `codex` in a supported location."
+    )
+
+
+def _is_executable_binary(path: str | os.PathLike[str]) -> bool:
+    candidate = Path(path).expanduser()
+    return candidate.is_file() and os.access(candidate, os.X_OK)
 
 
 def _build_outreach_codex_exec_command(

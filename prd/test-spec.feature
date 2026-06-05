@@ -1006,6 +1006,13 @@ Feature: Job Hunt Copilot next-build acceptance
       And additional same-posting sends are delayed or queued for a later allowed send window
       And any two automatic sends are separated by the current randomized 6-to-10-minute pacing gap rather than sent back-to-back
 
+    Scenario: Scheduled role-targeted drafting resolves Codex outside the scheduler PATH
+      Given the launchd environment does not expose the full interactive shell PATH
+      And the local machine still has a valid `codex` binary in a deterministic install location
+      When scheduled role-targeted drafting enters the send stage
+      Then the drafter still resolves the `codex` executable successfully
+      And the scheduler does not crash only because `codex` was absent from the ambient PATH
+
     Scenario: Later postings at the same company proactively skip an already-contacted person
       Given one posting at a company has already sent automatic outreach to a canonical contact
       And a later posting at that same company links that same canonical contact plus other eligible company contacts

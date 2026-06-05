@@ -49,6 +49,7 @@ from job_hunt_copilot.outreach import (
     _load_sender_identity,
     _load_tailoring_draft_inputs,
     _normalize_education_line,
+    _resolve_outreach_codex_bin,
     execute_general_learning_outreach,
     execute_role_targeted_send_set,
     evaluate_role_targeted_send_set,
@@ -4054,6 +4055,35 @@ def test_codex_role_split_renderer_generates_technical_path_body_and_debug_artif
     assert debug_payload["selected_career_steps"] == ["InsightRX", "Lattice"]
 
     connection.close()
+
+
+def test_resolve_outreach_codex_bin_prefers_explicit_override(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    codex_stub = tmp_path / "codex"
+    codex_stub.write_text("#!/bin/sh\nexit 0\n", encoding="utf-8")
+    codex_stub.chmod(0o755)
+
+    monkeypatch.setenv("JHC_OUTREACH_CODEX_BIN", str(codex_stub))
+    monkeypatch.setenv("PATH", "")
+
+    assert _resolve_outreach_codex_bin() == str(codex_stub)
+
+
+def test_resolve_outreach_codex_bin_uses_homebrew_fallback_when_path_is_missing(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.delenv("JHC_OUTREACH_CODEX_BIN", raising=False)
+    monkeypatch.delenv("JHC_CODEX_BIN", raising=False)
+    monkeypatch.delenv("CODEX_BIN", raising=False)
+    monkeypatch.setattr("job_hunt_copilot.outreach.shutil.which", lambda name: None)
+    monkeypatch.setattr(
+        "job_hunt_copilot.outreach._is_executable_binary",
+        lambda path: str(path) == "/opt/homebrew/bin/codex",
+    )
+
+    assert _resolve_outreach_codex_bin() == "/opt/homebrew/bin/codex"
 
 
 def test_codex_role_split_renderer_generates_managerial_path_body_and_debug_artifact(
