@@ -2112,6 +2112,32 @@ def _is_executable_binary(path: str | os.PathLike[str]) -> bool:
     return candidate.is_file() and os.access(candidate, os.X_OK)
 
 
+def _build_outreach_codex_exec_env(codex_bin: str) -> dict[str, str]:
+    env = dict(os.environ)
+    existing_path = env.get("PATH", "")
+    candidate_entries = [
+        str(Path(codex_bin).expanduser().parent),
+        "/opt/homebrew/bin",
+        "/usr/local/bin",
+        str(Path.home() / ".local" / "bin"),
+        str(Path.home() / ".codex" / "bin"),
+    ]
+    if existing_path:
+        candidate_entries.extend(existing_path.split(os.pathsep))
+    candidate_entries.extend(("/usr/bin", "/bin", "/usr/sbin", "/sbin"))
+
+    deduped_entries: list[str] = []
+    seen: set[str] = set()
+    for entry in candidate_entries:
+        normalized = entry.strip()
+        if not normalized or normalized in seen:
+            continue
+        seen.add(normalized)
+        deduped_entries.append(normalized)
+    env["PATH"] = os.pathsep.join(deduped_entries)
+    return env
+
+
 def _build_outreach_codex_exec_command(
     *,
     codex_bin: str,
@@ -2333,6 +2359,7 @@ def _run_codex_structured_payload(
         text=True,
         capture_output=True,
         check=False,
+        env=_build_outreach_codex_exec_env(codex_bin),
     )
     stdout_path.write_text(completed.stdout, encoding="utf-8")
     stderr_path.write_text(completed.stderr, encoding="utf-8")

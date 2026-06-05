@@ -1012,6 +1012,7 @@ Feature: Job Hunt Copilot next-build acceptance
       When scheduled role-targeted drafting enters the send stage
       Then the drafter still resolves the `codex` executable successfully
       And the scheduler does not crash only because `codex` was absent from the ambient PATH
+      And the drafter also supplies a runtime PATH that can resolve the local `node` launcher dependency when `codex` is a Node-based script
 
     Scenario: Later postings at the same company proactively skip an already-contacted person
       Given one posting at a company has already sent automatic outreach to a canonical contact

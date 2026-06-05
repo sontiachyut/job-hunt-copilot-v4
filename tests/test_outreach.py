@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import base64
 import json
+import os
 import sqlite3
 import subprocess
 from email import policy
@@ -12,6 +13,7 @@ from zoneinfo import ZoneInfo
 
 import pytest
 import yaml
+from pydantic import BaseModel
 
 from job_hunt_copilot.bootstrap import run_bootstrap
 from job_hunt_copilot.delivery_feedback import DeliveryFeedbackSignal, OBSERVATION_SCOPE_IMMEDIATE
@@ -44,12 +46,14 @@ from job_hunt_copilot.outreach import (
     ManagerialRoleSplitDraftPayload,
     TechnicalRoleSplitDraftPayload,
     _build_role_targeted_draft_context,
+    _build_outreach_codex_exec_env,
     _load_draft_contact_row,
     _load_role_targeted_draft_posting_row,
     _load_sender_identity,
     _load_tailoring_draft_inputs,
     _normalize_education_line,
     _resolve_outreach_codex_bin,
+    _run_codex_structured_payload,
     execute_general_learning_outreach,
     execute_role_targeted_send_set,
     evaluate_role_targeted_send_set,
@@ -4009,7 +4013,7 @@ def test_codex_role_split_renderer_generates_technical_path_body_and_debug_artif
         current_time="2026-04-06T20:20:00Z",
     )
 
-    def fake_run(command, *, input, text, capture_output, check):  # type: ignore[no-untyped-def]
+    def fake_run(command, *, input, text, capture_output, check, env):  # type: ignore[no-untyped-def]
         assert "- employment_history_summary:" in input
         assert "1. Software Engineer at InsightRX — 2021-01-01 to 2023-12-31" in input
         assert "2. Senior Software Engineer at Lattice — current, start 2024-01-01" in input
@@ -4086,6 +4090,65 @@ def test_resolve_outreach_codex_bin_uses_homebrew_fallback_when_path_is_missing(
     assert _resolve_outreach_codex_bin() == "/opt/homebrew/bin/codex"
 
 
+def test_build_outreach_codex_exec_env_includes_codex_dir_and_runtime_fallbacks(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("PATH", "")
+
+    env = _build_outreach_codex_exec_env("/opt/homebrew/bin/codex")
+    entries = env["PATH"].split(os.pathsep)
+
+    assert entries[0] == "/opt/homebrew/bin"
+    assert "/usr/bin" in entries
+    assert "/bin" in entries
+
+
+def test_run_codex_structured_payload_supplies_runtime_env_for_node_launcher(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    class MiniPayload(BaseModel):
+        ok: str
+
+    project_root, paths = bootstrap_project(tmp_path)
+    monkeypatch.setenv("PATH", "")
+    captured: dict[str, Any] = {}
+
+    def fake_run(
+        command: list[str],
+        *,
+        input: str,
+        text: bool,
+        capture_output: bool,
+        check: bool,
+        env: Mapping[str, str],
+    ) -> subprocess.CompletedProcess[str]:
+        output_path = Path(command[command.index("-o") + 1])
+        output_path.write_text(json.dumps({"ok": "yes"}) + "\n", encoding="utf-8")
+        captured["env"] = dict(env)
+        return subprocess.CompletedProcess(command, 0, stdout="", stderr="")
+
+    monkeypatch.setattr("job_hunt_copilot.outreach.subprocess.run", fake_run)
+
+    result = _run_codex_structured_payload(
+        paths=paths,
+        codex_bin="/opt/homebrew/bin/codex",
+        model=None,
+        prompt="hello",
+        schema={"type": "object"},
+        model_class=MiniPayload,
+        run_prefix="test-role-split",
+        company_name="Acme",
+        role_title="Platform Engineer",
+        contact_id="ct_test",
+    )
+
+    assert result.ok == "yes"
+    runtime_entries = captured["env"]["PATH"].split(os.pathsep)
+    assert runtime_entries[0] == "/opt/homebrew/bin"
+    assert "/usr/bin" in runtime_entries
+
+
 def test_codex_role_split_renderer_generates_managerial_path_body_and_debug_artifact(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
@@ -4140,7 +4203,7 @@ def test_codex_role_split_renderer_generates_managerial_path_body_and_debug_arti
         current_time="2026-04-06T20:20:00Z",
     )
 
-    def fake_run(command, *, input, text, capture_output, check):  # type: ignore[no-untyped-def]
+    def fake_run(command, *, input, text, capture_output, check, env):  # type: ignore[no-untyped-def]
         assert "kind of role-relevant engineering problems I've been trying to work on." in input
         assert "- sender_core_summary:" in input
         assert '- Then render the fixed posting-link line: "Posting link: https://careers.acme.example/jobs/123"' in input
