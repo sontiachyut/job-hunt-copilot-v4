@@ -196,6 +196,9 @@ ROLE_TARGETED_PIPELINE_STAGE_ACTIONS = MappingProxyType(
         "delivery_feedback": ACTION_RUN_ROLE_TARGETED_DELIVERY_FEEDBACK,
     }
 )
+OUTREACH_SIDE_PIPELINE_STAGES = frozenset(
+    {"people_search", "email_discovery", "sending", "delivery_feedback"}
+)
 
 CONTROL_DEFAULTS = MappingProxyType(
     {
@@ -1713,6 +1716,48 @@ def escalate_agent_incident(
                 current_timestamp,
                 agent_incident_id,
             ),
+    )
+    return _require_agent_incident(connection, agent_incident_id)
+
+
+def suppress_agent_incident(
+    connection: sqlite3.Connection,
+    agent_incident_id: str,
+    *,
+    suppression_reason: str,
+    timestamp: str | None = None,
+    repair_attempt_summary: str | None = None,
+) -> AgentIncidentRecord:
+    if not suppression_reason.strip():
+        raise SupervisorStateError("Suppression reason is required.")
+    incident = _require_agent_incident(connection, agent_incident_id)
+    if incident.status in {INCIDENT_STATUS_RESOLVED, INCIDENT_STATUS_SUPPRESSED}:
+        return incident
+
+    current_timestamp = timestamp or now_utc_iso()
+    updated_repair_summary = repair_attempt_summary
+    if updated_repair_summary is None and incident.repair_attempt_summary:
+        updated_repair_summary = incident.repair_attempt_summary
+
+    with connection:
+        connection.execute(
+            """
+            UPDATE agent_incidents
+            SET status = ?,
+                resolved_at = ?,
+                escalation_reason = ?,
+                repair_attempt_summary = ?,
+                updated_at = ?
+            WHERE agent_incident_id = ?
+            """,
+            (
+                INCIDENT_STATUS_SUPPRESSED,
+                current_timestamp,
+                suppression_reason,
+                updated_repair_summary,
+                current_timestamp,
+                agent_incident_id,
+            ),
         )
     return _require_agent_incident(connection, agent_incident_id)
 
@@ -2258,6 +2303,10 @@ def run_supervisor_cycle(
             lease_status=lease_result.status,
         )
 
+    _quarantine_postings_with_unapproved_latest_tailoring(
+        connection,
+        current_time=cycle_started_at,
+    )
     control_state = read_agent_control_state(connection, timestamp=cycle_started_at)
     selected_work: SupervisorWorkUnit | None = None
     action_id: str | None = None
@@ -2609,6 +2658,211 @@ def _detect_auto_pause_condition(
                 selected_work_id=cluster_key,
             )
     return None
+
+
+def _latest_tailoring_run_gate_row(
+    connection: sqlite3.Connection,
+    *,
+    job_posting_id: str,
+) -> sqlite3.Row | None:
+    return connection.execute(
+        """
+        SELECT resume_tailoring_run_id, tailoring_status, resume_review_status
+        FROM resume_tailoring_runs
+        WHERE job_posting_id = ?
+        ORDER BY COALESCE(completed_at, updated_at, created_at, started_at) DESC,
+                 resume_tailoring_run_id DESC
+        LIMIT 1
+        """,
+        (job_posting_id,),
+    ).fetchone()
+
+
+def _posting_status_for_unapproved_tailoring_run(latest_run: sqlite3.Row | None) -> str | None:
+    if latest_run is None:
+        return None
+    review_status = _optional_text(latest_run["resume_review_status"])
+    if review_status == "approved":
+        return None
+    if review_status == "resume_review_pending":
+        return "resume_review_pending"
+    return "tailoring_in_progress"
+
+
+def _record_state_transition(
+    connection: sqlite3.Connection,
+    *,
+    object_type: str,
+    object_id: str,
+    stage: str,
+    previous_state: str,
+    new_state: str,
+    transition_timestamp: str,
+    transition_reason: str | None,
+    lead_id: str | None,
+    job_posting_id: str | None,
+    contact_id: str | None,
+    caused_by: str | None = None,
+) -> None:
+    connection.execute(
+        """
+        INSERT INTO state_transition_events (
+          state_transition_event_id, object_type, object_id, stage,
+          previous_state, new_state, transition_timestamp, transition_reason,
+          caused_by, lead_id, job_posting_id, contact_id
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        """,
+        (
+            new_canonical_id("state_transition_events"),
+            object_type,
+            object_id,
+            stage,
+            previous_state,
+            new_state,
+            transition_timestamp,
+            transition_reason,
+            caused_by,
+            lead_id,
+            job_posting_id,
+            contact_id,
+        ),
+    )
+
+
+def _quarantine_postings_with_unapproved_latest_tailoring(
+    connection: sqlite3.Connection,
+    *,
+    current_time: str,
+) -> int:
+    rows = connection.execute(
+        f"""
+        SELECT DISTINCT pr.pipeline_run_id, pr.run_status, pr.current_stage, pr.job_posting_id,
+               pr.lead_id, jp.posting_status
+        FROM pipeline_runs pr
+        JOIN job_postings jp
+          ON jp.job_posting_id = pr.job_posting_id
+        WHERE pr.job_posting_id IS NOT NULL
+          AND pr.current_stage IN ({", ".join("?" for _ in OUTREACH_SIDE_PIPELINE_STAGES)})
+          AND pr.run_status IN (?, ?, ?)
+        ORDER BY pr.updated_at ASC, pr.started_at ASC
+        """,
+        (
+            *sorted(OUTREACH_SIDE_PIPELINE_STAGES),
+            RUN_STATUS_IN_PROGRESS,
+            RUN_STATUS_PAUSED,
+            RUN_STATUS_ESCALATED,
+        ),
+    ).fetchall()
+    quarantined_postings: set[str] = set()
+    for row in rows:
+        job_posting_id = _optional_text(row["job_posting_id"])
+        if job_posting_id is None or job_posting_id in quarantined_postings:
+            continue
+        latest_run = _latest_tailoring_run_gate_row(connection, job_posting_id=job_posting_id)
+        target_posting_status = _posting_status_for_unapproved_tailoring_run(latest_run)
+        if target_posting_status is None:
+            continue
+
+        posting_status = _require_text(_optional_text(row["posting_status"]), "posting_status")
+        lead_id = _optional_text(row["lead_id"])
+        latest_run_id = _optional_text(latest_run["resume_tailoring_run_id"]) if latest_run is not None else None
+        latest_tailoring_status = _optional_text(latest_run["tailoring_status"]) if latest_run is not None else None
+        latest_review_status = _optional_text(latest_run["resume_review_status"]) if latest_run is not None else None
+        if posting_status != target_posting_status:
+            with connection:
+                connection.execute(
+                    """
+                    UPDATE job_postings
+                    SET posting_status = ?, updated_at = ?
+                    WHERE job_posting_id = ?
+                    """,
+                    (target_posting_status, current_time, job_posting_id),
+                )
+                _record_state_transition(
+                    connection,
+                    object_type="job_posting",
+                    object_id=job_posting_id,
+                    stage="posting_status",
+                    previous_state=posting_status,
+                    new_state=target_posting_status,
+                    transition_timestamp=current_time,
+                    transition_reason=(
+                        "Supervisor quarantined the posting after a newer retailoring run "
+                        f"({latest_run_id or 'unknown'}) left Outreach without an approved tailoring gate "
+                        f"(tailoring_status={latest_tailoring_status!r}, resume_review_status={latest_review_status!r})."
+                    ),
+                    caused_by=SUPERVISOR_COMPONENT,
+                    lead_id=lead_id,
+                    job_posting_id=job_posting_id,
+                    contact_id=None,
+                )
+
+        active_runs = connection.execute(
+            f"""
+            SELECT pipeline_run_id, run_status
+            FROM pipeline_runs
+            WHERE job_posting_id = ?
+              AND current_stage IN ({", ".join("?" for _ in OUTREACH_SIDE_PIPELINE_STAGES)})
+              AND run_status IN (?, ?, ?)
+            ORDER BY updated_at ASC, started_at ASC
+            """,
+            (
+                job_posting_id,
+                *sorted(OUTREACH_SIDE_PIPELINE_STAGES),
+                RUN_STATUS_IN_PROGRESS,
+                RUN_STATUS_PAUSED,
+                RUN_STATUS_ESCALATED,
+            ),
+        ).fetchall()
+        suppression_reason = (
+            "Supervisor quarantined this posting after a newer retailoring run removed "
+            "the approved Outreach gate."
+        )
+        for run_row in active_runs:
+            if run_row["run_status"] in {RUN_STATUS_IN_PROGRESS, RUN_STATUS_PAUSED}:
+                fail_pipeline_run(
+                    connection,
+                    str(run_row["pipeline_run_id"]),
+                    current_stage="resume_tailoring",
+                    error_summary=(
+                        f"Job posting {job_posting_id!r} has a newer retailoring run "
+                        f"(tailoring_status={latest_tailoring_status!r}, "
+                        f"resume_review_status={latest_review_status!r}) and was returned "
+                        "to retailoring before Outreach could continue."
+                    ),
+                    run_summary=(
+                        "Supervisor retired stale Outreach-side pipeline work after a newer "
+                        "retailoring run removed the approved tailoring gate."
+                    ),
+                    timestamp=current_time,
+                )
+
+        unresolved_incidents = connection.execute(
+            """
+            SELECT ai.agent_incident_id
+            FROM agent_incidents ai
+            WHERE ai.job_posting_id = ?
+              AND ai.status IN (?, ?, ?)
+              AND ai.incident_type IN ('supervisor_prerequisite_failed', 'supervisor_action_execution_failed')
+            ORDER BY ai.created_at ASC
+            """,
+            (
+                job_posting_id,
+                INCIDENT_STATUS_OPEN,
+                INCIDENT_STATUS_IN_REPAIR,
+                INCIDENT_STATUS_ESCALATED,
+            ),
+        ).fetchall()
+        for incident_row in unresolved_incidents:
+            suppress_agent_incident(
+                connection,
+                str(incident_row["agent_incident_id"]),
+                suppression_reason=suppression_reason,
+                timestamp=current_time,
+                repair_attempt_summary=suppression_reason,
+            )
+        quarantined_postings.add(job_posting_id)
+    return len(quarantined_postings)
 
 
 def _select_gmail_alert_collection_work_unit(

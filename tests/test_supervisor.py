@@ -26,6 +26,7 @@ from job_hunt_copilot.supervisor import (
     INCIDENT_SEVERITY_CRITICAL,
     INCIDENT_SEVERITY_MEDIUM,
     INCIDENT_STATUS_ESCALATED,
+    INCIDENT_STATUS_SUPPRESSED,
     REVIEW_PACKET_STATUS_NOT_READY,
     REVIEW_PACKET_STATUS_PENDING,
     REVIEW_PACKET_STATUS_REVIEWED,
@@ -268,6 +269,97 @@ def seed_role_targeted_posting(
     )
     connection.commit()
     return "ld_test", "jp_test"
+
+
+def seed_named_role_targeted_posting(
+    connection: sqlite3.Connection,
+    *,
+    lead_id: str,
+    job_posting_id: str,
+    company_name: str,
+    role_title: str,
+    posting_status: str,
+    timestamp: str,
+) -> tuple[str, str]:
+    connection.execute(
+        """
+        INSERT INTO linkedin_leads (
+          lead_id, lead_identity_key, lead_status, lead_shape, split_review_status,
+          source_type, source_reference, source_mode, company_name, role_title,
+          created_at, updated_at
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        """,
+        (
+            lead_id,
+            f"{company_name.lower()}|{role_title.lower()}",
+            "reviewed",
+            "posting_plus_contacts",
+            "confident",
+            "manual_paste",
+            f"paste/{lead_id}.txt",
+            "manual_paste",
+            company_name,
+            role_title,
+            timestamp,
+            timestamp,
+        ),
+    )
+    connection.execute(
+        """
+        INSERT INTO job_postings (
+          job_posting_id, lead_id, posting_identity_key, company_name, role_title,
+          posting_status, created_at, updated_at
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+        """,
+        (
+            job_posting_id,
+            lead_id,
+            f"{company_name.lower()}|{role_title.lower()}|{job_posting_id}",
+            company_name,
+            role_title,
+            posting_status,
+            timestamp,
+            timestamp,
+        ),
+    )
+    connection.commit()
+    return lead_id, job_posting_id
+
+
+def seed_tailoring_run(
+    connection: sqlite3.Connection,
+    *,
+    run_id: str,
+    job_posting_id: str,
+    tailoring_status: str,
+    resume_review_status: str,
+    verification_outcome: str,
+    final_resume_path: str | None,
+    timestamp: str,
+) -> None:
+    connection.execute(
+        """
+        INSERT INTO resume_tailoring_runs (
+          resume_tailoring_run_id, job_posting_id, base_used, tailoring_status,
+          resume_review_status, workspace_path, final_resume_path, verification_outcome,
+          started_at, completed_at, created_at, updated_at
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        """,
+        (
+            run_id,
+            job_posting_id,
+            "generalist",
+            tailoring_status,
+            resume_review_status,
+            f"resume-tailoring/output/{run_id}",
+            final_resume_path,
+            verification_outcome,
+            timestamp,
+            timestamp,
+            timestamp,
+            timestamp,
+        ),
+    )
 
 
 def test_control_state_helpers_persist_running_pause_stop_and_replanning_modes(tmp_path):
@@ -1427,6 +1519,125 @@ def test_run_supervisor_cycle_auto_pauses_on_critical_unresolved_incident(tmp_pa
     assert control_state.agent_mode == AGENT_MODE_PAUSED
     assert control_state.pause_reason is not None
     assert "canonical_state_integrity" in control_state.pause_reason
+
+
+def test_run_supervisor_cycle_quarantines_failed_refreshed_tailoring_without_pausing_unrelated_work(
+    tmp_path,
+):
+    project_root = bootstrap_project(tmp_path)
+    paths = ProjectPaths.from_root(project_root)
+    connection = connect_database(project_root / "job_hunt_copilot.db")
+    resume_agent(
+        connection,
+        manual_command="jhc-agent-start",
+        timestamp="2026-04-06T00:20:00Z",
+    )
+
+    stale_lead_id, stale_job_posting_id = seed_named_role_targeted_posting(
+        connection,
+        lead_id="ld_stale",
+        job_posting_id="jp_stale",
+        company_name="BrokenCo",
+        role_title="Platform Engineer",
+        posting_status="requires_contacts",
+        timestamp="2026-04-06T00:00:00Z",
+    )
+    seed_tailoring_run(
+        connection,
+        run_id="rtr_stale_old_approved",
+        job_posting_id=stale_job_posting_id,
+        tailoring_status="tailored",
+        resume_review_status="approved",
+        verification_outcome="pass",
+        final_resume_path="resume-tailoring/output/history/brokenco/platform-engineer/approved.pdf",
+        timestamp="2026-04-06T00:01:00Z",
+    )
+    seed_tailoring_run(
+        connection,
+        run_id="rtr_stale_new_failed",
+        job_posting_id=stale_job_posting_id,
+        tailoring_status="needs_revision",
+        resume_review_status="not_ready",
+        verification_outcome="needs_revision",
+        final_resume_path=None,
+        timestamp="2026-04-06T00:10:00Z",
+    )
+    stale_run, _ = ensure_role_targeted_pipeline_run(
+        connection,
+        lead_id=stale_lead_id,
+        job_posting_id=stale_job_posting_id,
+        current_stage="people_search",
+        started_at="2026-04-06T00:11:00Z",
+    )
+    stale_incident = create_agent_incident(
+        connection,
+        incident_type="supervisor_prerequisite_failed",
+        severity=INCIDENT_SEVERITY_MEDIUM,
+        summary=(
+            f"job_posting {stale_job_posting_id!r} is not backed by an approved tailoring "
+            "review for people search."
+        ),
+        pipeline_run_id=stale_run.pipeline_run_id,
+        lead_id=stale_lead_id,
+        job_posting_id=stale_job_posting_id,
+        created_at="2026-04-06T00:12:00Z",
+    )
+
+    valid_lead_id, valid_job_posting_id = seed_named_role_targeted_posting(
+        connection,
+        lead_id="ld_valid",
+        job_posting_id="jp_valid",
+        company_name="HealthyCo",
+        role_title="Backend Engineer",
+        posting_status="sourced",
+        timestamp="2026-04-06T00:05:00Z",
+    )
+    valid_run, _ = ensure_role_targeted_pipeline_run(
+        connection,
+        lead_id=valid_lead_id,
+        job_posting_id=valid_job_posting_id,
+        current_stage="lead_handoff",
+        started_at="2026-04-06T00:13:00Z",
+    )
+
+    execution = run_supervisor_cycle(
+        connection,
+        paths,
+        trigger_type="launchd_heartbeat",
+        scheduler_name="launchd",
+        started_at="2026-04-06T00:14:00Z",
+    )
+    updated_stale_run = get_pipeline_run(connection, stale_run.pipeline_run_id)
+    updated_valid_run = get_pipeline_run(connection, valid_run.pipeline_run_id)
+    persisted_incident = get_agent_incident(connection, stale_incident.agent_incident_id)
+    stale_posting = connection.execute(
+        """
+        SELECT posting_status
+        FROM job_postings
+        WHERE job_posting_id = ?
+        """,
+        (stale_job_posting_id,),
+    ).fetchone()
+    control_state = read_agent_control_state(connection, timestamp="2026-04-06T00:14:00Z")
+    connection.close()
+
+    assert execution.cycle.result == SUPERVISOR_CYCLE_RESULT_SUCCESS
+    assert execution.selected_work is not None
+    assert execution.selected_work.action_id == "checkpoint_pipeline_run"
+    assert execution.pipeline_run is not None
+    assert execution.pipeline_run.pipeline_run_id == valid_run.pipeline_run_id
+
+    assert stale_posting is not None
+    assert stale_posting["posting_status"] == "tailoring_in_progress"
+    assert updated_stale_run is not None
+    assert updated_stale_run.run_status == "failed"
+    assert updated_stale_run.current_stage == "resume_tailoring"
+    assert persisted_incident is not None
+    assert persisted_incident.status == INCIDENT_STATUS_SUPPRESSED
+
+    assert updated_valid_run is not None
+    assert updated_valid_run.current_stage == "resume_tailoring"
+    assert control_state.agent_mode == AGENT_MODE_RUNNING
 
 
 @pytest.mark.parametrize(

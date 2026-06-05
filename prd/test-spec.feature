@@ -1370,6 +1370,16 @@ Feature: Job Hunt Copilot next-build acceptance
       Then the system also auto-pauses
       And new pipeline runs and new automatic sends do not begin while that auto-pause remains active
 
+    Scenario: Failed refreshed tailoring is quarantined without pausing unrelated postings
+      Given posting A previously reached `people_search`, `email_discovery`, `sending`, or `delivery_feedback`
+      And posting A now has a newer `resume_tailoring_runs` row with `tailoring_status = needs_revision` and `resume_review_status = not_ready`
+      And posting B still has independently actionable role-targeted pipeline work
+      When the supervisor reconciles open pipeline work before normal progression
+      Then posting A returns to `tailoring_in_progress`
+      And any active Outreach-side pipeline run for posting A is retired from the runnable queue
+      And the supervisor does not let posting A create a blocking prerequisite-incident cluster
+      And the supervisor may continue selecting posting B work
+
     Scenario: Paused and stopped modes have different operational boundaries
       Given the supervisor control state is persisted canonically
       When `agent_mode = paused`
