@@ -1346,6 +1346,7 @@ Feature: Job Hunt Copilot next-build acceptance
       Then control-state changes outrank all other work
       And open incidents and health-critical failures outrank ordinary pipeline advancement
       And due sends and due feedback polling outrank new Gmail ingestion and maintenance
+      And actionable role-targeted sending outranks older ordinary discovery backlog
       And bounded maintenance work remains the lowest default priority
 
     Scenario: Supervisor chooses only registered catalog actions and escalates unknown needs

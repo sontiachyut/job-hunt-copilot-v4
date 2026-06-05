@@ -76,6 +76,7 @@ from job_hunt_copilot.supervisor import (
     start_supervisor_cycle,
     stop_agent,
     SupervisorActionDependencies,
+    _select_open_pipeline_run_work_unit,
 )
 from tests.support import create_minimal_project, initialize_git_repository
 
@@ -360,6 +361,77 @@ def seed_tailoring_run(
             timestamp,
         ),
     )
+
+
+def test_select_open_pipeline_run_prioritizes_actionable_sending_over_older_email_discovery(
+    tmp_path,
+    monkeypatch,
+):
+    import job_hunt_copilot.email_discovery as email_discovery_module
+    import job_hunt_copilot.outreach as outreach_module
+
+    project_root = bootstrap_project(tmp_path)
+    connection = connect_database(project_root / "job_hunt_copilot.db")
+
+    _, discovery_job_posting_id = seed_named_role_targeted_posting(
+        connection,
+        lead_id="ld_discovery",
+        job_posting_id="jp_discovery",
+        company_name="DiscoveryCo",
+        role_title="Backend Engineer",
+        posting_status="requires_contacts",
+        timestamp="2026-06-01T12:00:00Z",
+    )
+    _, sending_job_posting_id = seed_named_role_targeted_posting(
+        connection,
+        lead_id="ld_sending",
+        job_posting_id="jp_sending",
+        company_name="SendingCo",
+        role_title="AI Engineer",
+        posting_status="ready_for_outreach",
+        timestamp="2026-06-04T18:00:00Z",
+    )
+
+    older_discovery_run, _ = ensure_role_targeted_pipeline_run(
+        connection,
+        lead_id="ld_discovery",
+        job_posting_id=discovery_job_posting_id,
+        current_stage="email_discovery",
+        started_at="2026-06-01T12:06:47Z",
+        run_summary="Older June discovery backlog.",
+    )
+    newer_sending_run, _ = ensure_role_targeted_pipeline_run(
+        connection,
+        lead_id="ld_sending",
+        job_posting_id=sending_job_posting_id,
+        current_stage="sending",
+        started_at="2026-06-04T18:03:47Z",
+        run_summary="Newer June send-stage work that is actionable now.",
+    )
+
+    monkeypatch.setattr(
+        email_discovery_module,
+        "is_role_targeted_email_discovery_actionable_now",
+        lambda *args, **kwargs: True,
+    )
+    monkeypatch.setattr(
+        outreach_module,
+        "is_role_targeted_sending_actionable_now",
+        lambda connection, *, job_posting_id, **kwargs: job_posting_id == sending_job_posting_id,
+    )
+
+    selected_work = _select_open_pipeline_run_work_unit(
+        connection,
+        project_root=project_root,
+        current_time="2026-06-05T20:00:00Z",
+        local_timezone="UTC",
+    )
+    connection.close()
+
+    assert selected_work is not None
+    assert selected_work.pipeline_run_id == newer_sending_run.pipeline_run_id
+    assert selected_work.current_stage == "sending"
+    assert selected_work.work_id != older_discovery_run.pipeline_run_id
 
 
 def test_control_state_helpers_persist_running_pause_stop_and_replanning_modes(tmp_path):

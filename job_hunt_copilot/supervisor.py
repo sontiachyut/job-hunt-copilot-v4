@@ -3009,31 +3009,78 @@ def _select_open_pipeline_run_work_unit(
             RUN_STATUS_PAUSED,
         ),
     ).fetchall()
-    for row in rows:
-        pipeline_run = _pipeline_run_from_row(row)
+
+    pipeline_runs = [_pipeline_run_from_row(row) for row in rows]
+
+    def _build_actionable_sending_work_unit(
+        pipeline_run: PipelineRunRecord,
+    ) -> SupervisorWorkUnit | None:
+        job_posting_id = _optional_text(pipeline_run.job_posting_id)
+        if not job_posting_id:
+            return None
+        if pipeline_run.current_stage == "delivery_feedback":
+            if is_role_targeted_sending_actionable_now(
+                connection,
+                project_root=project_root,
+                job_posting_id=job_posting_id,
+                current_time=current_time,
+                local_timezone=local_timezone,
+            ):
+                return SupervisorWorkUnit(
+                    work_type=WORK_TYPE_PIPELINE_RUN,
+                    work_id=pipeline_run.pipeline_run_id,
+                    action_id=ACTION_RUN_ROLE_TARGETED_SENDING,
+                    summary=(
+                        "Resume actionable retryable sending work before delayed "
+                        "feedback finalization closes the durable pipeline run."
+                    ),
+                    lead_id=pipeline_run.lead_id,
+                    job_posting_id=pipeline_run.job_posting_id,
+                    pipeline_run_id=pipeline_run.pipeline_run_id,
+                    current_stage=pipeline_run.current_stage,
+                )
+            return None
+        if pipeline_run.current_stage != "sending":
+            return None
+        posting_status = _load_posting_status(
+            connection,
+            job_posting_id=job_posting_id,
+        )
+        if posting_status not in {"ready_for_outreach", "outreach_in_progress"}:
+            return None
+        if not is_role_targeted_sending_actionable_now(
+            connection,
+            project_root=project_root,
+            job_posting_id=job_posting_id,
+            current_time=current_time,
+            local_timezone=local_timezone,
+        ):
+            return None
+        return SupervisorWorkUnit(
+            work_type=WORK_TYPE_PIPELINE_RUN,
+            work_id=pipeline_run.pipeline_run_id,
+            action_id=ACTION_RUN_ROLE_TARGETED_SENDING,
+            summary=(
+                "Resume actionable send-stage work before older discovery backlog "
+                "so ready postings can draft and send."
+            ),
+            lead_id=pipeline_run.lead_id,
+            job_posting_id=pipeline_run.job_posting_id,
+            pipeline_run_id=pipeline_run.pipeline_run_id,
+            current_stage=pipeline_run.current_stage,
+        )
+
+    for pipeline_run in pipeline_runs:
+        prioritized_sending_work = _build_actionable_sending_work_unit(pipeline_run)
+        if prioritized_sending_work is not None:
+            return prioritized_sending_work
+
+    for pipeline_run in pipeline_runs:
         if pipeline_run.current_stage == "delivery_feedback":
             job_posting_id = _optional_text(pipeline_run.job_posting_id)
             if job_posting_id:
-                if is_role_targeted_sending_actionable_now(
-                    connection,
-                    project_root=project_root,
-                    job_posting_id=job_posting_id,
-                    current_time=current_time,
-                    local_timezone=local_timezone,
-                ):
-                    return SupervisorWorkUnit(
-                        work_type=WORK_TYPE_PIPELINE_RUN,
-                        work_id=pipeline_run.pipeline_run_id,
-                        action_id=ACTION_RUN_ROLE_TARGETED_SENDING,
-                        summary=(
-                            "Resume actionable retryable sending work before delayed "
-                            "feedback finalization closes the durable pipeline run."
-                        ),
-                        lead_id=pipeline_run.lead_id,
-                        job_posting_id=pipeline_run.job_posting_id,
-                        pipeline_run_id=pipeline_run.pipeline_run_id,
-                        current_stage=pipeline_run.current_stage,
-                    )
+                if _build_actionable_sending_work_unit(pipeline_run) is not None:
+                    continue
                 sent_message_ids = _list_posting_sent_outreach_message_ids(
                     connection,
                     job_posting_id=job_posting_id,
@@ -3065,21 +3112,7 @@ def _select_open_pipeline_run_work_unit(
                     if next_frontier is not None:
                         continue
         if pipeline_run.current_stage == "sending":
-            job_posting_id = _optional_text(pipeline_run.job_posting_id)
-            if job_posting_id:
-                posting_status = _load_posting_status(
-                    connection,
-                    job_posting_id=job_posting_id,
-                )
-                if posting_status in {"ready_for_outreach", "outreach_in_progress"}:
-                    if not is_role_targeted_sending_actionable_now(
-                        connection,
-                        project_root=project_root,
-                        job_posting_id=job_posting_id,
-                        current_time=current_time,
-                        local_timezone=local_timezone,
-                    ):
-                        continue
+            continue
         if pipeline_run.current_stage == "email_discovery":
             job_posting_id = _optional_text(pipeline_run.job_posting_id)
             if job_posting_id:
