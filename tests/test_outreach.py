@@ -4351,6 +4351,8 @@ def test_codex_role_split_renderer_generates_managerial_path_body_and_debug_arti
     assert message.body_html is not None
     assert "<ul>" in message.body_html
     assert "<li>dependable llm workflows for clinical use</li>" in message.body_html
+    assert "<strong>If helpful, I&#x27;d be happy to build a small proof of concept based on my understanding of the challenges the team is working on and share the repo.</strong>" in message.body_html
+    assert "**If helpful, I'd be happy to build a small proof of concept based on my understanding of the challenges the team is working on and share the repo.**" not in message.body_html
     assert message.opener_decision_artifact_path is not None
     debug_payload = json.loads(Path(message.opener_decision_artifact_path).read_text(encoding="utf-8"))
     assert debug_payload["drafting_path"] == "managerial"

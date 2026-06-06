@@ -8386,7 +8386,7 @@ def _render_markdown_email_html(body_markdown: str) -> str:
     def flush_paragraph() -> None:
         nonlocal paragraph_lines
         if paragraph_lines:
-            html_blocks.append(f"<p>{html.escape(' '.join(paragraph_lines))}</p>")
+            html_blocks.append(f"<p>{_render_inline_markdown_html(' '.join(paragraph_lines))}</p>")
             paragraph_lines = []
 
     def flush_blockquote() -> None:
@@ -8394,7 +8394,7 @@ def _render_markdown_email_html(body_markdown: str) -> str:
         if blockquote_lines:
             html_blocks.append(
                 "<blockquote>"
-                + "".join(f"<p>{html.escape(line)}</p>" for line in blockquote_lines)
+                + "".join(f"<p>{_render_inline_markdown_html(line)}</p>" for line in blockquote_lines)
                 + "</blockquote>"
             )
             blockquote_lines = []
@@ -8404,7 +8404,7 @@ def _render_markdown_email_html(body_markdown: str) -> str:
         if list_items:
             html_blocks.append(
                 "<ul>"
-                + "".join(f"<li>{html.escape(item)}</li>" for item in list_items)
+                + "".join(f"<li>{_render_inline_markdown_html(item)}</li>" for item in list_items)
                 + "</ul>"
             )
             list_items = []
@@ -8494,6 +8494,19 @@ def _render_markdown_email_html(body_markdown: str) -> str:
     flush_blockquote()
     flush_list()
     return "<html><body>" + "".join(html_blocks) + "</body></html>\n"
+
+
+def _render_inline_markdown_html(text: str) -> str:
+    if "**" not in text:
+        return html.escape(text)
+    parts = re.split(r"(\*\*.*?\*\*)", text)
+    rendered_parts: list[str] = []
+    for part in parts:
+        if part.startswith("**") and part.endswith("**") and len(part) > 4:
+            rendered_parts.append(f"<strong>{html.escape(part[2:-2])}</strong>")
+        else:
+            rendered_parts.append(html.escape(part))
+    return "".join(rendered_parts)
 
 
 def _render_job_hunt_copilot_callout_html() -> str:
