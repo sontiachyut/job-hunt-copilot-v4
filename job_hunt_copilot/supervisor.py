@@ -2575,6 +2575,16 @@ def select_next_supervisor_work_unit(
     if incident_work is not None:
         return incident_work
 
+    generated_sending_work = _select_open_pipeline_run_work_unit(
+        connection,
+        project_root=project_root,
+        current_time=current_time,
+        local_timezone=action_dependencies.local_timezone,
+        generated_frontier_only=True,
+    )
+    if generated_sending_work is not None:
+        return generated_sending_work
+
     gmail_alert_work = _select_gmail_alert_collection_work_unit(
         current_time=current_time,
         gmail_alert_collector=action_dependencies.gmail_alert_collector,
@@ -2986,9 +2996,11 @@ def _select_open_pipeline_run_work_unit(
     project_root: Path | str,
     current_time: str,
     local_timezone: object | str | None = None,
+    generated_frontier_only: bool = False,
 ) -> SupervisorWorkUnit | None:
     from .email_discovery import is_role_targeted_email_discovery_actionable_now
     from .outreach import (
+        MESSAGE_STATUS_GENERATED,
         _find_next_send_frontier_message,
         _load_active_role_targeted_wave,
         _load_role_targeted_send_posting_row,
@@ -3012,42 +3024,21 @@ def _select_open_pipeline_run_work_unit(
 
     pipeline_runs = [_pipeline_run_from_row(row) for row in rows]
 
-    def _build_actionable_sending_work_unit(
+    def _classify_actionable_sending_frontier(
         pipeline_run: PipelineRunRecord,
-    ) -> SupervisorWorkUnit | None:
+    ) -> str | None:
         job_posting_id = _optional_text(pipeline_run.job_posting_id)
         if not job_posting_id:
             return None
-        if pipeline_run.current_stage == "delivery_feedback":
-            if is_role_targeted_sending_actionable_now(
+        if pipeline_run.current_stage not in {"sending", "delivery_feedback"}:
+            return None
+        if pipeline_run.current_stage == "sending":
+            posting_status = _load_posting_status(
                 connection,
-                project_root=project_root,
                 job_posting_id=job_posting_id,
-                current_time=current_time,
-                local_timezone=local_timezone,
-            ):
-                return SupervisorWorkUnit(
-                    work_type=WORK_TYPE_PIPELINE_RUN,
-                    work_id=pipeline_run.pipeline_run_id,
-                    action_id=ACTION_RUN_ROLE_TARGETED_SENDING,
-                    summary=(
-                        "Resume actionable retryable sending work before delayed "
-                        "feedback finalization closes the durable pipeline run."
-                    ),
-                    lead_id=pipeline_run.lead_id,
-                    job_posting_id=pipeline_run.job_posting_id,
-                    pipeline_run_id=pipeline_run.pipeline_run_id,
-                    current_stage=pipeline_run.current_stage,
-                )
-            return None
-        if pipeline_run.current_stage != "sending":
-            return None
-        posting_status = _load_posting_status(
-            connection,
-            job_posting_id=job_posting_id,
-        )
-        if posting_status not in {"ready_for_outreach", "outreach_in_progress"}:
-            return None
+            )
+            if posting_status not in {"ready_for_outreach", "outreach_in_progress"}:
+                return None
         if not is_role_targeted_sending_actionable_now(
             connection,
             project_root=project_root,
@@ -3056,14 +3047,58 @@ def _select_open_pipeline_run_work_unit(
             local_timezone=local_timezone,
         ):
             return None
+        posting_row = _load_role_targeted_send_posting_row(
+            connection,
+            job_posting_id=job_posting_id,
+        )
+        active_wave = _load_active_role_targeted_wave(
+            connection,
+            job_posting_id=job_posting_id,
+        )
+        next_frontier, _ = _find_next_send_frontier_message(
+            connection,
+            ProjectPaths.from_root(project_root),
+            posting_row=posting_row,
+            active_wave=active_wave,
+            current_time=current_time,
+        )
+        if next_frontier is None:
+            return "draft_generation"
+        if next_frontier.message_status == MESSAGE_STATUS_GENERATED:
+            return "generated_frontier"
+        return "existing_frontier"
+
+    def _build_actionable_sending_work_unit(
+        pipeline_run: PipelineRunRecord,
+    ) -> SupervisorWorkUnit | None:
+        job_posting_id = _optional_text(pipeline_run.job_posting_id)
+        if not job_posting_id:
+            return None
+        frontier_kind = _classify_actionable_sending_frontier(pipeline_run)
+        if frontier_kind is None:
+            return None
+        if generated_frontier_only and frontier_kind != "generated_frontier":
+            return None
+        if frontier_kind == "generated_frontier":
+            summary = (
+                "Resume an already-generated send frontier before Gmail polling "
+                "or fresh draft generation so send-ready outreach drains first."
+            )
+        elif pipeline_run.current_stage == "delivery_feedback":
+            summary = (
+                "Resume actionable retryable sending work before delayed "
+                "feedback finalization closes the durable pipeline run."
+            )
+        else:
+            summary = (
+                "Resume actionable send-stage work before older discovery backlog "
+                "so ready postings can draft and send."
+            )
         return SupervisorWorkUnit(
             work_type=WORK_TYPE_PIPELINE_RUN,
             work_id=pipeline_run.pipeline_run_id,
             action_id=ACTION_RUN_ROLE_TARGETED_SENDING,
-            summary=(
-                "Resume actionable send-stage work before older discovery backlog "
-                "so ready postings can draft and send."
-            ),
+            summary=summary,
             lead_id=pipeline_run.lead_id,
             job_posting_id=pipeline_run.job_posting_id,
             pipeline_run_id=pipeline_run.pipeline_run_id,

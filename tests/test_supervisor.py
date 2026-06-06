@@ -72,6 +72,7 @@ from job_hunt_copilot.supervisor import (
     release_runtime_lease,
     resume_agent,
     run_supervisor_cycle,
+    select_next_supervisor_work_unit,
     set_pipeline_run_review_packet_status,
     start_supervisor_cycle,
     stop_agent,
@@ -669,6 +670,133 @@ def test_open_pipeline_run_lookup_rejects_duplicate_non_terminal_rows(tmp_path):
         get_open_pipeline_run_for_posting(connection, job_posting_id)
 
     connection.close()
+
+
+def seed_send_ready_contact_with_generated_message(
+    connection: sqlite3.Connection,
+    *,
+    contact_id: str,
+    job_posting_contact_id: str,
+    job_posting_id: str,
+    company_name: str,
+    display_name: str,
+    recipient_email: str,
+    created_at: str,
+) -> None:
+    connection.execute(
+        """
+        INSERT INTO contacts (
+          contact_id, identity_key, display_name, company_name, origin_component, contact_status,
+          full_name, current_working_email, position_title, created_at, updated_at
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        """,
+        (
+            contact_id,
+            f"{company_name.lower()}|{display_name.lower().replace(' ', '-')}",
+            display_name,
+            company_name,
+            "email_discovery",
+            "working_email_found",
+            display_name,
+            recipient_email,
+            "Engineering Manager",
+            created_at,
+            created_at,
+        ),
+    )
+    connection.execute(
+        """
+        INSERT INTO job_posting_contacts (
+          job_posting_contact_id, job_posting_id, contact_id, recipient_type, relevance_reason,
+          link_level_status, created_at, updated_at
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+        """,
+        (
+            job_posting_contact_id,
+            job_posting_id,
+            contact_id,
+            "hiring_manager",
+            "Selected for bounded supervisor sending coverage.",
+            "outreach_in_progress",
+            created_at,
+            created_at,
+        ),
+    )
+    connection.execute(
+        """
+        INSERT INTO outreach_messages (
+          outreach_message_id, contact_id, outreach_mode, recipient_email, message_status,
+          job_posting_id, job_posting_contact_id, subject, body_text, created_at, updated_at
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        """,
+        (
+            f"msg_{contact_id}",
+            contact_id,
+            "role_targeted",
+            recipient_email,
+            "generated",
+            job_posting_id,
+            job_posting_contact_id,
+            f"Interest in the role at {company_name}",
+            "Draft body",
+            created_at,
+            created_at,
+        ),
+    )
+    connection.commit()
+
+
+def seed_send_ready_contact_without_message(
+    connection: sqlite3.Connection,
+    *,
+    contact_id: str,
+    job_posting_contact_id: str,
+    job_posting_id: str,
+    company_name: str,
+    display_name: str,
+    recipient_email: str,
+    created_at: str,
+) -> None:
+    connection.execute(
+        """
+        INSERT INTO contacts (
+          contact_id, identity_key, display_name, company_name, origin_component, contact_status,
+          full_name, current_working_email, position_title, created_at, updated_at
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        """,
+        (
+            contact_id,
+            f"{company_name.lower()}|{display_name.lower().replace(' ', '-')}",
+            display_name,
+            company_name,
+            "email_discovery",
+            "working_email_found",
+            display_name,
+            recipient_email,
+            "Recruiter",
+            created_at,
+            created_at,
+        ),
+    )
+    connection.execute(
+        """
+        INSERT INTO job_posting_contacts (
+          job_posting_contact_id, job_posting_id, contact_id, recipient_type, relevance_reason,
+          link_level_status, created_at, updated_at
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+        """,
+        (
+            job_posting_contact_id,
+            job_posting_id,
+            contact_id,
+            "recruiter",
+            "Selected for bounded supervisor sending coverage.",
+            "shortlisted",
+            created_at,
+            created_at,
+        ),
+    )
+    connection.commit()
 
 
 def test_supervisor_cycles_and_runtime_leases_support_deferral_and_stale_recovery(tmp_path):
@@ -1310,6 +1438,105 @@ def test_run_supervisor_cycle_seeds_gmail_history_checkpoint_without_collection_
     assert seed_payload["ingestion_run_id"] == "gmail-auto-20260406T000100Z"
     assert seed_payload["mailbox_history_id_after"] == "history-after-seed-001"
     assert seed_payload["seeded_without_messages"] is True
+
+
+def test_select_next_supervisor_work_unit_prefers_generated_send_frontier_over_gmail_and_draft_generation(
+    tmp_path,
+):
+    project_root = bootstrap_project(tmp_path)
+    connection = connect_database(project_root / "job_hunt_copilot.db")
+    resume_agent(
+        connection,
+        manual_command="jhc-agent-start",
+        timestamp="2026-04-06T00:00:00Z",
+    )
+
+    seed_named_role_targeted_posting(
+        connection,
+        lead_id="ld_generated",
+        job_posting_id="jp_generated",
+        company_name="Generated Co",
+        role_title="Backend Engineer",
+        posting_status="ready_for_outreach",
+        timestamp="2026-04-06T00:01:00Z",
+    )
+    generated_run, _ = ensure_role_targeted_pipeline_run(
+        connection,
+        lead_id="ld_generated",
+        job_posting_id="jp_generated",
+        current_stage="sending",
+        started_at="2026-04-06T00:02:00Z",
+    )
+    seed_send_ready_contact_with_generated_message(
+        connection,
+        contact_id="ct_generated",
+        job_posting_contact_id="jpc_generated",
+        job_posting_id="jp_generated",
+        company_name="Generated Co",
+        display_name="Jordan Manager",
+        recipient_email="jordan@generated.example",
+        created_at="2026-04-06T00:03:00Z",
+    )
+
+    seed_named_role_targeted_posting(
+        connection,
+        lead_id="ld_draft_only",
+        job_posting_id="jp_draft_only",
+        company_name="Draft Only Co",
+        role_title="Data Engineer",
+        posting_status="ready_for_outreach",
+        timestamp="2026-04-06T00:04:00Z",
+    )
+    ensure_role_targeted_pipeline_run(
+        connection,
+        lead_id="ld_draft_only",
+        job_posting_id="jp_draft_only",
+        current_stage="sending",
+        started_at="2026-04-06T00:05:00Z",
+    )
+    seed_send_ready_contact_without_message(
+        connection,
+        contact_id="ct_draft_only",
+        job_posting_contact_id="jpc_draft_only",
+        job_posting_id="jp_draft_only",
+        company_name="Draft Only Co",
+        display_name="Riley Recruiter",
+        recipient_email="riley@draftonly.example",
+        created_at="2026-04-06T00:06:00Z",
+    )
+
+    gmail_collector = FakeGmailAlertCollector(
+        GmailAlertBatch(
+            ingestion_run_id="gmail-auto-20260406T000700Z",
+            messages=(
+                {
+                    "gmail_message_id": "gm_test_001",
+                    "subject": "LinkedIn Jobs: 1 new role",
+                },
+            ),
+            mailbox_history_id_before=None,
+            mailbox_history_id_after="history-after-002",
+            poll_strategy="history_checkpoint",
+        )
+    )
+
+    selected_work = select_next_supervisor_work_unit(
+        connection,
+        project_root=project_root,
+        current_time="2026-04-06T00:07:00Z",
+        action_dependencies=SupervisorActionDependencies(
+            gmail_alert_collector=gmail_collector,
+            local_timezone="UTC",
+        ),
+    )
+    connection.close()
+
+    assert selected_work is not None
+    assert selected_work.work_type == "pipeline_run"
+    assert selected_work.action_id == "run_role_targeted_sending"
+    assert selected_work.pipeline_run_id == generated_run.pipeline_run_id
+    assert selected_work.job_posting_id == "jp_generated"
+    assert "already-generated send frontier" in selected_work.summary
 
 
 def test_run_supervisor_cycle_ignores_empty_gmail_batch_without_checkpoint(

@@ -1150,6 +1150,14 @@ Feature: Job Hunt Copilot next-build acceptance
       And that line appears immediately after the fixed bold proof-of-concept sentence
       And the line uses the canonical public posting URL rather than model-generated URL text
 
+    Scenario: Generated send-ready work outranks new draft generation and Gmail polling
+      Given one role-targeted `sending` run has an already-generated send frontier actionable now
+      And another role-targeted `sending` run is actionable only for fresh draft generation
+      And routine Gmail alert polling is also due
+      When the supervisor selects the next work unit
+      Then it chooses the generated send-ready `sending` run first
+      And it does not choose the Gmail alert batch for that heartbeat
+
     Scenario: Managerial-path bullets render as real lists in HTML
       Given a managerial-path draft contains exactly 3 JD-challenge bullets and exactly 3 relevant-background bullets
       When the draft is rendered to HTML for Gmail delivery
