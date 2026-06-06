@@ -1128,6 +1128,9 @@ Feature: Job Hunt Copilot next-build acceptance
       And deterministic rendering appends the fixed later paragraphs and standard signature
       And the draft reads Apollo employment history from the structured database-backed provider store before falling back to artifact reparsing
       And the subject is `Learning from your career path`
+      And the opener says `admired your path` rather than `really admired your path`
+      And the fixed Job Hunt Copilot paragraph does not use a standalone `repo is here` sentence
+      And HTML rendering hyperlinks the `Job Hunt Copilot` label itself in that paragraph
 
     Scenario: Managerial-path draft uses fixed deterministic structure around codex-generated reasoning
       Given a role-targeted managerial-path draft is being created for a linked contact

@@ -66,11 +66,10 @@ TECHNICAL_PATH_PARAGRAPH_2 = (
     "that handled ~580 TPS in production while maintaining 99.95% uptime."
 )
 TECHNICAL_PATH_PARAGRAPH_3_TEMPLATE = (
-    "I'm passionate about learning new technology and building products, which is what led me to build Job Hunt Copilot. "
+    "I'm passionate about learning new technology and building products, which is what led me to build Job Hunt Copilot ({repo_url}). "
     "It's an AI workflow automation tool I built to help me connect with strong engineers and technical leaders while supporting my job search. "
     "This email is a live example of that autonomous workflow. "
-    "It's something I built from scratch and have been shaping with real production use in mind, not just as a one-off prototype. "
-    "If you're interested, the repo is here: {repo_url}"
+    "It's something I built from scratch and have been shaping with real production use in mind, not just as a one-off prototype."
 )
 TECHNICAL_PATH_PARAGRAPH_4 = (
     "I'm currently in the job hunt process, and I'd really value your guidance. "
@@ -2172,7 +2171,7 @@ def _split_sentences(value: str) -> list[str]:
 
 
 TECHNICAL_ROLE_SPLIT_FIXED_SECOND_SENTENCE = (
-    "That path really stood out to me, and I'd love to grow in a similar direction and ship software at that level over time."
+    "That path stood out to me, and I'd love to grow in a similar direction and ship software at that level over time."
 )
 
 
@@ -2510,7 +2509,7 @@ def _build_technical_role_split_prompt(context: RoleTargetedDraftContext) -> str
             "",
             "Rules for paragraph_1_text:",
             "- Exactly 2 sentences.",
-            '- First sentence must begin: "I came across your LinkedIn profile and really admired your path..."',
+            '- First sentence must begin: "I came across your LinkedIn profile and admired your path..."',
             "- Use the most relevant 2 or 3 past companies plus the recipient's current exact title and company when that history is available.",
             "- When only partial career history is available, write the best truthful path sentence you can from the available evidence rather than inventing steps.",
             "- selected_career_steps must contain only the past company names used for the path transitions.",
@@ -2541,9 +2540,9 @@ def _build_technical_role_split_prompt(context: RoleTargetedDraftContext) -> str
             json.dumps(
                 {
                     "paragraph_1_text": (
-                        f"I came across your LinkedIn profile and really admired your path from InsightRX to "
+                        f"I came across your LinkedIn profile and admired your path from InsightRX to "
                         f"{example_company} and now into your current role as {example_title} at {example_company}. "
-                        "That path really stood out to me, and I'd love to grow in a similar direction and ship software at that level over time."
+                        "That path stood out to me, and I'd love to grow in a similar direction and ship software at that level over time."
                     ),
                     "selected_career_steps": ["InsightRX", example_company],
                 },
@@ -8497,15 +8496,37 @@ def _render_markdown_email_html(body_markdown: str) -> str:
 
 
 def _render_inline_markdown_html(text: str) -> str:
-    if "**" not in text:
-        return html.escape(text)
-    parts = re.split(r"(\*\*.*?\*\*)", text)
+    strong_pattern = re.compile(r"\*\*(.*?)\*\*")
     rendered_parts: list[str] = []
-    for part in parts:
-        if part.startswith("**") and part.endswith("**") and len(part) > 4:
-            rendered_parts.append(f"<strong>{html.escape(part[2:-2])}</strong>")
-        else:
-            rendered_parts.append(html.escape(part))
+    cursor = 0
+    for match in strong_pattern.finditer(text):
+        if match.start() > cursor:
+            rendered_parts.append(
+                _render_plain_inline_email_html(text[cursor:match.start()])
+            )
+        rendered_parts.append(f"<strong>{_render_plain_inline_email_html(match.group(1))}</strong>")
+        cursor = match.end()
+    if cursor < len(text):
+        rendered_parts.append(_render_plain_inline_email_html(text[cursor:]))
+    return "".join(rendered_parts)
+
+
+def _render_plain_inline_email_html(text: str) -> str:
+    jhc_pattern = re.compile(
+        rf"Job Hunt Copilot\s*\(\s*({re.escape(JOB_HUNT_COPILOT_REPO_URL)})\s*\)"
+    )
+    rendered_parts: list[str] = []
+    cursor = 0
+    for match in jhc_pattern.finditer(text):
+        if match.start() > cursor:
+            rendered_parts.append(html.escape(text[cursor:match.start()]))
+        repo_url = html.escape(match.group(1), quote=True)
+        rendered_parts.append(
+            f'<a href="{repo_url}" style="color:#1d4ed8;text-decoration:none;font-weight:600;">Job Hunt Copilot</a>'
+        )
+        cursor = match.end()
+    if cursor < len(text):
+        rendered_parts.append(html.escape(text[cursor:]))
     return "".join(rendered_parts)
 
 

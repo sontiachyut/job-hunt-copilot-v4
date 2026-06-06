@@ -289,7 +289,7 @@ The technical path should currently use a concise 4-paragraph structure.
 
 Paragraph 1 should:
 
-1. begin with `I came across your LinkedIn profile and really admired your path from ...`
+1. begin with `I came across your LinkedIn profile and admired your path from ...`
 2. reference the recipient's career path from Apollo employment history
 3. mention the recipient's current role explicitly
 4. make clear that the sender admires that path and role
@@ -363,20 +363,19 @@ It should include:
 3. the exact idea that the tool `helps me connect with strong engineers and
    technical leaders while supporting my job search`
 4. the fact that this email is a live example of that autonomous workflow
-5. the raw repo URL near the `Job Hunt Copilot` mention
+5. the repo URL folded into the `Job Hunt Copilot` mention rather than a separate closing sentence
 
-This paragraph should use five fixed sentences, and the sentence order should stay
+This paragraph should use four fixed sentences, and the sentence order should stay
 fixed:
 
 1. passion for learning/building products led to `Job Hunt Copilot`
 2. what the tool does
 3. `This email is a live example of that autonomous workflow.`
 4. production-minded note
-5. repo link sentence
 
 The first sentence of this paragraph should stay fixed as:
 
-`I'm passionate about learning new technology and building products, which is what led me to build Job Hunt Copilot.`
+`I'm passionate about learning new technology and building products, which is what led me to build Job Hunt Copilot (<repo_url>).`
 
 The second sentence of this paragraph should stay fixed as:
 
@@ -390,13 +389,9 @@ The fourth sentence of this paragraph should stay fixed as:
 
 `It's something I built from scratch and have been shaping with real production use in mind, not just as a one-off prototype.`
 
-The fifth sentence of this paragraph should stay fixed as:
-
-`If you're interested, the repo is here: <repo_url>`
-
 So the full fixed Paragraph 3 is:
 
-`I'm passionate about learning new technology and building products, which is what led me to build Job Hunt Copilot. It's an AI workflow automation tool I built to help me connect with strong engineers and technical leaders while supporting my job search. This email is a live example of that autonomous workflow. It's something I built from scratch and have been shaping with real production use in mind, not just as a one-off prototype. If you're interested, the repo is here: <repo_url>`
+`I'm passionate about learning new technology and building products, which is what led me to build Job Hunt Copilot (<repo_url>). It's an AI workflow automation tool I built to help me connect with strong engineers and technical leaders while supporting my job search. This email is a live example of that autonomous workflow. It's something I built from scratch and have been shaping with real production use in mind, not just as a one-off prototype.`
 
 ### Paragraph 4
 

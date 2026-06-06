@@ -4022,9 +4022,9 @@ def test_codex_role_split_renderer_generates_technical_path_body_and_debug_artif
         output_path = Path(command[command.index("-o") + 1])
         payload = {
             "paragraph_1_text": (
-                "I came across your LinkedIn profile and really admired your path from InsightRX to Lattice "
+                "I came across your LinkedIn profile and admired your path from InsightRX to Lattice "
                 "and now into your current role as Senior Software Engineer at Lattice. "
-                "That path really stood out to me, and I'd love to grow in a similar direction and ship software at that level over time."
+                "That path stood out to me, and I'd love to grow in a similar direction and ship software at that level over time."
             ),
             "selected_career_steps": ["InsightRX", "Lattice"],
         }
@@ -4049,12 +4049,17 @@ def test_codex_role_split_renderer_generates_technical_path_body_and_debug_artif
     assert len(result.drafted_messages) == 1
     message = result.drafted_messages[0]
     body = message.body_text
+    body_html = Path(message.body_html_artifact_path).read_text(encoding="utf-8")
     assert message.subject == "Learning from your career path"
-    assert "I came across your LinkedIn profile and really admired your path from InsightRX to Lattice" in body
+    assert "I came across your LinkedIn profile and admired your path from InsightRX to Lattice" in body
     assert "I recently graduated from ASU with an MS in Computer Science." in body
     assert "This email is a live example of that autonomous workflow." in body
     assert "Would you be open to a 10-minute conversation sometime in the next week or two?" in body
-    assert "https://github.com/sontiachyut" in body
+    assert "Job Hunt Copilot (https://github.com/sontiachyut/job-hunt-copilot-v4)." in body
+    assert "If you're interested, the repo is here:" not in body
+    assert 'href="https://github.com/sontiachyut/job-hunt-copilot-v4"' in body_html
+    assert ">Job Hunt Copilot</a>" in body_html
+    assert "If you&#x27;re interested, the repo is here:" not in body_html
     assert message.opener_decision_artifact_path is not None
     debug_payload = json.loads(Path(message.opener_decision_artifact_path).read_text(encoding="utf-8"))
     assert debug_payload["drafting_path"] == "technical"
@@ -4154,8 +4159,8 @@ def test_normalize_managerial_role_split_payload_truncates_debug_signal_lists() 
 def test_normalize_technical_role_split_payload_recovers_shape_and_career_steps() -> None:
     payload = {
         "paragraph_1_text": (
-            "I came across your LinkedIn profile and really admired your path from InsightRX to Lattice and now into your current role as Senior Software Engineer at Lattice. "
-            "That path really stood out to me, and I'd love to grow in a similar direction and ship software at that level over time. "
+            "I came across your LinkedIn profile and admired your path from InsightRX to Lattice and now into your current role as Senior Software Engineer at Lattice. "
+            "That path stood out to me, and I'd love to grow in a similar direction and ship software at that level over time. "
             "I also admire the product surface you work on."
         ),
         "selected_career_steps": [],
