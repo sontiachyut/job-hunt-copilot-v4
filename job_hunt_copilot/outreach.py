@@ -83,7 +83,7 @@ MANAGERIAL_PATH_OPENER_SENTENCE_3 = (
     "**If helpful, I'd be happy to build a small proof of concept based on my understanding "
     "of the challenges the team is working on and share the repo.**"
 )
-MANAGERIAL_PATH_JD_HEADING = "Would it be fair to say the team is likely working on the following?"
+MANAGERIAL_PATH_JD_HEADING = "Based on the JD, would it be fair to say the team is likely working on the following?"
 MANAGERIAL_PATH_BACKGROUND_HEADING = "Relevant background from my side:"
 MANAGERIAL_PATH_CTA_RESUME = "I've attached my resume for context."
 MANAGERIAL_PATH_CTA_QUESTION = "Would you be open to a brief 10-minute conversation?"

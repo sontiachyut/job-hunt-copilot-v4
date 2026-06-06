@@ -461,7 +461,7 @@ in the rendered email body.
 This section should:
 
 1. be rendered under the fixed heading:
-   `Would it be fair to say the team is likely working on the following?`
+   `Based on the JD, would it be fair to say the team is likely working on the following?`
 2. use exactly three short bullets
 3. stay specific and non-generic
 4. infer challenges cautiously from the JD rather than claiming certainty
@@ -701,7 +701,7 @@ When this line is present, deterministic Python should render it as:
 `Posting link: <public_posting_url>`
 
 and place it immediately after the fixed bold proof-of-concept sentence and
-before the `Would it be fair to say the team is likely working on the following?` section.
+before the `Based on the JD, would it be fair to say the team is likely working on the following?` section.
 
 The current build does not require a separate employer-internal requisition ID,
 employee-searchable job ID, or req ID field in the managerial email. If the
@@ -846,7 +846,7 @@ Bounded evidence:
   - Opener sentence 1 is fixed: "I hope you're doing well."
   - Opener sentence 3 is fixed and bolded: "**If helpful, I'd be happy to build a small proof of concept based on my understanding of the challenges the team is working on and share the repo.**"
   - If a public posting URL exists, deterministic Python renders one standalone line immediately after the bold sentence: "Posting link: <public_posting_url>"
-  - JD heading is fixed: "Would it be fair to say the team is likely working on the following?"
+  - JD heading is fixed: "Based on the JD, would it be fair to say the team is likely working on the following?"
   - Background heading is fixed: "Relevant background from my side:"
   - CTA block is fixed:
     - "I've attached my resume for context."
@@ -894,7 +894,7 @@ fixed order:
 2. fixed opener sentence 1
 3. `role_alignment_sentence`
 4. fixed bold proof-of-concept sentence
-5. rendered `Would it be fair to say the team is likely working on the following?` section
+5. rendered `Based on the JD, would it be fair to say the team is likely working on the following?` section
 6. rendered `Relevant background from my side:` section
 7. fixed CTA block
 

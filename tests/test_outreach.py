@@ -4339,7 +4339,7 @@ def test_codex_role_split_renderer_generates_managerial_path_body_and_debug_arti
     assert message.subject == "Interest in the Software Engineer, GenAI role at Abridge"
     assert "I hope you're doing well." in body
     assert "Posting link: https://careers.acme.example/jobs/123" in body
-    assert "Would it be fair to say the team is likely working on the following?" in body
+    assert "Based on the JD, would it be fair to say the team is likely working on the following?" in body
     assert "Relevant background from my side:" in body
     assert "**If helpful, I'd be happy to build a small proof of concept based on my understanding of the challenges the team is working on and share the repo.**" in body
     assert "built Job Hunt Copilot, an AI workflow automation tool: https://github.com/sontiachyut/job-hunt-copilot-v4" in body
