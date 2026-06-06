@@ -64,6 +64,7 @@ from job_hunt_copilot.outreach import (
     is_role_targeted_sending_actionable_now,
     refresh_role_targeted_generated_drafts,
 )
+from job_hunt_copilot.llm_usage import parse_codex_usage
 from job_hunt_copilot.paths import ProjectPaths
 from tests.support import create_minimal_project
 
@@ -4227,15 +4228,54 @@ def test_run_codex_structured_payload_supplies_runtime_env_for_node_launcher(
         schema={"type": "object"},
         model_class=MiniPayload,
         run_prefix="test-role-split",
+        lead_id=None,
+        job_posting_id=None,
         company_name="Acme",
         role_title="Platform Engineer",
-        contact_id="ct_test",
+        contact_id=None,
     )
 
     assert result.ok == "yes"
     runtime_entries = captured["env"]["PATH"].split(os.pathsep)
     assert runtime_entries[0] == "/opt/homebrew/bin"
     assert "/usr/bin" in runtime_entries
+    connection = connect_database(project_root / "job_hunt_copilot.db")
+    usage_row = connection.execute(
+        """
+        SELECT component_name, operation_name, invocation_status, exit_code, total_tokens, usage_parse_status
+        FROM llm_usage_events
+        ORDER BY created_at DESC
+        LIMIT 1
+        """
+    ).fetchone()
+    connection.close()
+    assert usage_row["component_name"] == "email_drafting_sending"
+    assert usage_row["operation_name"] == "test-role-split"
+    assert usage_row["invocation_status"] == "succeeded"
+    assert usage_row["exit_code"] == 0
+    assert usage_row["total_tokens"] is None
+    assert usage_row["usage_parse_status"] == "missing"
+
+
+def test_parse_codex_usage_handles_comma_formatted_totals() -> None:
+    parsed = parse_codex_usage(
+        "\n".join(
+            [
+                "model: gpt-5.4",
+                "provider: openai",
+                "session id: abc123",
+                "tokens used",
+                "1,06,915",
+            ]
+        )
+    )
+
+    assert parsed.model_name == "gpt-5.4"
+    assert parsed.provider_name == "openai"
+    assert parsed.session_id == "abc123"
+    assert parsed.total_tokens == 106915
+    assert parsed.usage_parse_status == "reported"
+    assert parsed.raw_usage_text == "1,06,915"
 
 
 def test_codex_role_split_renderer_generates_managerial_path_body_and_debug_artifact(

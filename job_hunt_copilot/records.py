@@ -29,6 +29,7 @@ CANONICAL_ID_PREFIXES = MappingProxyType(
         "maintenance_change_batches": "mcb",
         "windows": "win",
         "provider_budget_events": "pbe",
+        "llm_usage_events": "lue",
         "discovery_attempts": "da",
         "outreach_messages": "msg",
         "outreach_followup_plans": "fup",

@@ -26,6 +26,7 @@ EXPECTED_TABLES = {
     "job_posting_contacts",
     "job_posting_provider_contexts",
     "job_postings",
+    "llm_usage_events",
     "linkedin_lead_contacts",
     "linkedin_leads",
     "maintenance_change_batches",
@@ -103,6 +104,10 @@ EXPECTED_INDEXES = {
     "idx_linkedin_leads_identity_key",
     "idx_linkedin_leads_split_review_status",
     "idx_linkedin_leads_status",
+    "idx_llm_usage_events_component_operation",
+    "idx_llm_usage_events_contact",
+    "idx_llm_usage_events_created_at",
+    "idx_llm_usage_events_job_posting",
     "idx_outreach_messages_contact",
     "idx_outreach_messages_job_posting",
     "idx_outreach_messages_sent_at",
@@ -169,7 +174,7 @@ def test_bootstrap_materializes_canonical_schema_objects(tmp_path):
     assert EXPECTED_TABLES <= tables
     assert EXPECTED_VIEWS <= views
     assert EXPECTED_INDEXES <= indexes
-    assert user_version == 8
+    assert user_version == 9
 
 
 def test_review_views_are_queryable_from_canonical_state(tmp_path):

@@ -22,6 +22,7 @@ import yaml
 from .artifacts import ArtifactLinkage, publish_json_artifact, register_artifact_record, write_json_contract
 from .company_keys import ensure_missing_posting_company_keys, posting_company_key_from_row
 from .delivery_feedback import MailboxFeedbackObserver, run_immediate_delivery_feedback_poll
+from .llm_usage import record_codex_usage_event
 from .paths import ProjectPaths, workspace_slug
 from .records import lifecycle_timestamps, new_canonical_id
 
@@ -2300,6 +2301,8 @@ def _run_codex_technical_role_split_draft(
             employment_history_summary=context.apollo_employment_history_summary,
         ),
         run_prefix="technical-role-split",
+        lead_id=context.lead_id,
+        job_posting_id=context.job_posting_id,
         company_name=context.company_name,
         role_title=context.role_title,
         contact_id=context.contact_id,
@@ -2323,6 +2326,8 @@ def _run_codex_managerial_role_split_draft(
         model_class=ManagerialRoleSplitDraftPayload,
         payload_normalizer=_normalize_managerial_role_split_payload_dict,
         run_prefix="managerial-role-split",
+        lead_id=context.lead_id,
+        job_posting_id=context.job_posting_id,
         company_name=context.company_name,
         role_title=context.role_title,
         contact_id=context.contact_id,
@@ -2339,14 +2344,16 @@ def _run_codex_structured_payload(
     model_class: type[BaseModel],
     payload_normalizer: Callable[[dict[str, Any]], dict[str, Any]] | None = None,
     run_prefix: str,
+    lead_id: str | None,
+    job_posting_id: str | None,
     company_name: str,
     role_title: str,
-    contact_id: str,
+    contact_id: str | None,
 ) -> Any:
     run_dir = (
         paths.ops_dir
         / "outreach-role-split"
-        / f"{_now_utc_iso().replace(':', '').replace('-', '')}-{workspace_slug(company_name)}-{workspace_slug(role_title)}-{workspace_slug(contact_id)}-{workspace_slug(run_prefix)}"
+        / f"{_now_utc_iso().replace(':', '').replace('-', '')}-{workspace_slug(company_name)}-{workspace_slug(role_title)}-{workspace_slug(contact_id or 'unknown-contact')}-{workspace_slug(run_prefix)}"
     )
     run_dir.mkdir(parents=True, exist_ok=True)
     prompt_path = run_dir / "prompt.md"
@@ -2373,6 +2380,22 @@ def _run_codex_structured_payload(
     )
     stdout_path.write_text(completed.stdout, encoding="utf-8")
     stderr_path.write_text(completed.stderr, encoding="utf-8")
+    record_codex_usage_event(
+        paths,
+        component_name=OUTREACH_COMPONENT,
+        operation_name=run_prefix,
+        invocation_status="succeeded" if completed.returncode == 0 else "failed",
+        exit_code=completed.returncode,
+        stderr_text=completed.stderr,
+        run_directory_path=run_dir,
+        prompt_artifact_path=prompt_path,
+        output_artifact_path=output_path,
+        stdout_artifact_path=stdout_path,
+        stderr_artifact_path=stderr_path,
+        lead_id=lead_id,
+        job_posting_id=job_posting_id,
+        contact_id=contact_id,
+    )
     if completed.returncode != 0:
         raise OutreachDraftingError(
             f"`codex exec` failed with exit code {completed.returncode}. See {stderr_path}."

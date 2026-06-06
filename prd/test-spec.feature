@@ -70,6 +70,7 @@ Feature: Job Hunt Copilot next-build acceptance
       And the database contains `windows`
       And the database contains `provider_budget_state`
       And the database contains `provider_budget_events`
+      And the database contains `llm_usage_events`
       And the database contains `discovery_attempts`
       And the database contains `outreach_messages`
       And the database contains `outreach_followup_plans`
@@ -1131,6 +1132,14 @@ Feature: Job Hunt Copilot next-build acceptance
       And the opener says `admired your path` rather than `really admired your path`
       And the fixed Job Hunt Copilot paragraph does not use a standalone `repo is here` sentence
       And HTML rendering hyperlinks the `Job Hunt Copilot` label itself in that paragraph
+
+    Scenario: Live role-split codex calls persist token usage events
+      Given a live role-targeted role-split drafting call invokes `codex exec`
+      When the subprocess completes and writes its stderr usage footer
+      Then the system persists one `llm_usage_events` row for that call
+      And the row records invocation success or failure plus the exit code
+      And the row records the total token count when stderr reports it
+      And the row still exists with an explicit missing-usage status when stderr omits token usage
 
     Scenario: Managerial-path draft uses fixed deterministic structure around codex-generated reasoning
       Given a role-targeted managerial-path draft is being created for a linked contact

@@ -1391,6 +1391,33 @@ This section defines the next-build logical schema shape for `job_hunt_copilot.d
   - `related_discovery_attempt_id`
   - `related_contact_id`
 
+**`llm_usage_events`**
+- Primary key:
+  - `llm_usage_event_id`
+- Required columns:
+  - `llm_usage_event_id`
+  - `component_name`
+  - `operation_name`
+  - `invocation_status`
+  - `exit_code`
+  - `usage_parse_status`
+  - `run_directory_path`
+  - `stderr_artifact_path`
+  - `created_at`
+- Optional columns:
+  - `provider_name`
+  - `model_name`
+  - `session_id`
+  - `total_tokens`
+  - `raw_usage_text`
+  - `prompt_artifact_path`
+  - `output_artifact_path`
+  - `stdout_artifact_path`
+  - `lead_id`
+  - `job_posting_id`
+  - `contact_id`
+  - `outreach_message_id`
+
 **`discovery_attempts`**
 - Primary key:
   - `discovery_attempt_id`
@@ -1586,12 +1613,17 @@ This section defines the next-build logical schema shape for `job_hunt_copilot.d
 18. `provider_budget_events`:
    - index on `provider_name`
    - index on `created_at`
-19. `outreach_messages`:
+19. `llm_usage_events`:
+   - index on `created_at`
+   - index on (`component_name`, `operation_name`, `created_at`)
+   - index on `job_posting_id`
+   - index on `contact_id`
+20. `outreach_messages`:
    - index on `contact_id`
    - index on `job_posting_id`
    - index on `message_status`
    - index on `sent_at`
-20. `outreach_followup_plans`:
+21. `outreach_followup_plans`:
    - unique index on (`original_outreach_message_id`, `followup_sequence`)
    - index on `original_outreach_message_id`
    - index on `followup_outreach_message_id`
@@ -1599,7 +1631,7 @@ This section defines the next-build logical schema shape for `job_hunt_copilot.d
    - index on `job_posting_id`
    - index on `plan_status`
    - index on `eligible_after`
-21. `delivery_feedback_events`:
+22. `delivery_feedback_events`:
    - index on `outreach_message_id`
    - index on `event_state`
    - index on `event_timestamp`
@@ -3766,6 +3798,8 @@ Achyutaram Sonti
 - **FR-EM-12C6J (Prompt Contract Rule):** All role-split `codex exec` calls shall use JSON-only structured outputs validated by Pydantic or equivalent runtime validation before the draft is accepted for persistence or sending.
 - **FR-EM-12C6J1 (Codex Output Schema Compatibility Rule):** Role-split output schemas handed to `codex exec` shall be directly provider-compatible JSON schemas. In particular, every declared top-level output property, including debug fields and list fields, shall appear in the schema's `required` array rather than relying on optional/defaulted fields that the provider may reject.
 - **FR-EM-12C6J2 (Managerial Debug-List Normalization Rule):** Managerial debug signal lists are review aids rather than user-facing copy. Before persisting a managerial-path draft, deterministic runtime may truncate `selected_jd_signals` and `selected_resume_signals` to the first three non-empty items so an otherwise valid draft does not fail solely because the model returned oversized debug lists.
+- **FR-EM-12C6J3 (Role-Split Token Usage Audit Rule):** Each live role-split `codex exec` invocation shall persist a canonical `llm_usage_events` record capturing at least the component name, operation name, invocation status, exit code, available provider/model/session metadata, and the total token count when the CLI reports it. The event shall also retain stable artifact paths and available posting/contact linkage so token consumption is queryable over time.
+- **FR-EM-12C6J3A (Explicit Missing-Usage Rule):** If the current Codex CLI invocation does not report a token count, the system shall still persist the `llm_usage_events` row with an explicit non-reported parse status rather than silently skipping usage accounting for that call.
 - **FR-EM-12D (Two-Step Learning-First Outreach):** In the two-step approach, the email shall not begin with the direct role-oriented ask. Instead, it shall open from genuine curiosity about the recipient's work and ask for a brief learning conversation.
 - **FR-EM-12E (Two-Step Learning Ask):** When the two-step mode is used, the ask should be framed as a short learning conversation, approximately 15 minutes, centered on something specific the sender wants to understand from the recipient's work or experience.
 - **FR-EM-12E1 (General Learning Outreach Posture):** When outreach is not tied to a specific job posting, it should default to a learning-first posture centered on curiosity, learning, and a short coffee-chat-style conversation rather than behaving like a direct application email.

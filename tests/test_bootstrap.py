@@ -53,8 +53,9 @@ def test_bootstrap_materializes_support_dirs_secrets_and_db(tmp_path):
         ("0006_email_discovery_provider_cooldown.sql",),
         ("0007_followup_worker.sql",),
         ("0008_apollo_provider_persistence.sql",),
+        ("0009_llm_usage_events.sql",),
     ]
-    assert user_version == 8
+    assert user_version == 9
 
 
 def test_bootstrap_is_idempotent(tmp_path):
@@ -74,6 +75,7 @@ def test_bootstrap_is_idempotent(tmp_path):
         "0006_email_discovery_provider_cooldown.sql",
         "0007_followup_worker.sql",
         "0008_apollo_provider_persistence.sql",
+        "0009_llm_usage_events.sql",
     ]
     assert second_report["database"]["applied_migrations"] == []
     assert second_report["directories"]["created_paths"] == []
