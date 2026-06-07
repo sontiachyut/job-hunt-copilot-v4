@@ -2857,6 +2857,101 @@ def test_sending_stage_returns_to_email_discovery_when_later_contacts_need_email
     assert posting_status == "requires_contacts"
 
 
+def test_sending_stage_demotes_stale_ready_posting_back_to_email_discovery_when_no_draftable_contacts(
+    tmp_path: Path,
+) -> None:
+    project_root = bootstrap_project(tmp_path)
+    paths = ProjectPaths.from_root(project_root)
+    write_sender_profile(paths)
+    connection = connect_database(project_root / "job_hunt_copilot.db")
+    lead_id, job_posting_id = seed_role_targeted_posting(
+        connection,
+        company_name="Acme Robotics",
+        role_title="Staff Software Engineer / AI",
+        posting_status="ready_for_outreach",
+        timestamp="2026-04-08T00:42:00Z",
+    )
+    seed_outreach_ready_tailoring_run(
+        connection,
+        paths,
+        company_name="Acme Robotics",
+        role_title="Staff Software Engineer / AI",
+        job_posting_id=job_posting_id,
+        current_time="2026-04-08T00:43:00Z",
+    )
+    seed_shortlisted_contact(
+        connection,
+        contact_id="ct_send_m1",
+        job_posting_contact_id="jpc_send_m1",
+        job_posting_id=job_posting_id,
+        company_name="Acme Robotics",
+        display_name="Morgan Manager",
+        recipient_type="hiring_manager",
+        current_working_email=None,
+        position_title="Engineering Manager",
+        created_at="2026-04-08T00:45:00Z",
+    )
+    seed_shortlisted_contact(
+        connection,
+        contact_id="ct_send_e1",
+        job_posting_contact_id="jpc_send_e1",
+        job_posting_id=job_posting_id,
+        company_name="Acme Robotics",
+        display_name="Jamie Engineer",
+        recipient_type="engineer",
+        current_working_email=None,
+        position_title="Staff Software Engineer",
+        created_at="2026-04-08T00:46:00Z",
+    )
+    seed_shortlisted_contact(
+        connection,
+        contact_id="ct_send_a1",
+        job_posting_contact_id="jpc_send_a1",
+        job_posting_id=job_posting_id,
+        company_name="Acme Robotics",
+        display_name="Alex Alumni",
+        recipient_type="alumni",
+        current_working_email=None,
+        position_title="Senior Software Engineer",
+        created_at="2026-04-08T00:47:00Z",
+    )
+    resume_agent(
+        connection,
+        manual_command="jhc-agent-start",
+        timestamp="2026-04-08T00:50:00Z",
+    )
+    pipeline_run, _ = ensure_role_targeted_pipeline_run(
+        connection,
+        lead_id=lead_id,
+        job_posting_id=job_posting_id,
+        current_stage="sending",
+        started_at="2026-04-08T00:51:00Z",
+    )
+
+    execution = run_supervisor_cycle(
+        connection,
+        paths,
+        trigger_type="launchd_heartbeat",
+        scheduler_name="launchd",
+        started_at="2026-04-08T01:00:00Z",
+        action_dependencies=build_action_dependencies(
+            outreach_sender=OutreachRecordingSender(),
+            local_timezone="UTC",
+        ),
+    )
+    updated_run = get_pipeline_run(connection, pipeline_run.pipeline_run_id)
+    posting_status = connection.execute(
+        "SELECT posting_status FROM job_postings WHERE job_posting_id = ?",
+        (job_posting_id,),
+    ).fetchone()[0]
+    connection.close()
+
+    assert execution.cycle.result == SUPERVISOR_CYCLE_RESULT_SUCCESS
+    assert updated_run is not None
+    assert updated_run.current_stage == "email_discovery"
+    assert posting_status == "requires_contacts"
+
+
 def test_sending_stage_completes_review_worthy_run_when_terminal_wave_has_no_sent_messages(
     tmp_path: Path,
 ) -> None:

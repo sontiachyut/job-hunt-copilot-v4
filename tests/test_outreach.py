@@ -1213,6 +1213,66 @@ def test_send_set_pacing_reports_global_gap_and_posting_daily_cap(tmp_path: Path
     connection.close()
 
 
+def test_sending_stays_selectable_when_selected_frontier_still_needs_email(tmp_path: Path):
+    project_root, _ = bootstrap_project(tmp_path)
+    connection = connect_database(project_root / "job_hunt_copilot.db")
+    seed_posting(connection)
+    connection.execute(
+        "UPDATE job_postings SET posting_status = ?, updated_at = ? WHERE job_posting_id = ?",
+        (JOB_POSTING_STATUS_READY_FOR_OUTREACH, "2026-04-06T20:00:00Z", "jp_outreach"),
+    )
+    seed_linked_contact(
+        connection,
+        contact_id="ct_m1",
+        job_posting_contact_id="jpc_m1",
+        display_name="Morgan Manager",
+        recipient_type=RECIPIENT_TYPE_HIRING_MANAGER,
+        current_working_email=None,
+        created_at="2026-04-06T20:02:00Z",
+    )
+    seed_linked_contact(
+        connection,
+        contact_id="ct_e1",
+        job_posting_contact_id="jpc_e1",
+        display_name="Jamie Engineer",
+        recipient_type=RECIPIENT_TYPE_ENGINEER,
+        current_working_email=None,
+        created_at="2026-04-06T20:03:00Z",
+    )
+    seed_linked_contact(
+        connection,
+        contact_id="ct_a1",
+        job_posting_contact_id="jpc_a1",
+        display_name="Alex Alumni",
+        recipient_type=RECIPIENT_TYPE_ALUMNI,
+        current_working_email=None,
+        created_at="2026-04-06T20:04:00Z",
+    )
+
+    plan = evaluate_role_targeted_send_set(
+        connection,
+        job_posting_id="jp_outreach",
+        current_time="2026-04-06T20:10:00Z",
+        local_timezone=ZoneInfo("UTC"),
+    )
+
+    assert plan.ready_for_outreach is False
+    assert [contact.blocking_reason for contact in plan.selected_contacts] == [
+        "waiting_for_usable_email",
+        "waiting_for_usable_email",
+        "waiting_for_usable_email",
+    ]
+    assert is_role_targeted_sending_actionable_now(
+        connection,
+        project_root=project_root,
+        job_posting_id="jp_outreach",
+        current_time="2026-04-06T20:10:00Z",
+        local_timezone=ZoneInfo("UTC"),
+    ) is True
+
+    connection.close()
+
+
 def test_send_set_ignores_exhausted_contacts_when_filling_slots(tmp_path: Path):
     project_root, _ = bootstrap_project(tmp_path)
     connection = connect_database(project_root / "job_hunt_copilot.db")

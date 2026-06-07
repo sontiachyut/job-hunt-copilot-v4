@@ -604,6 +604,15 @@ Feature: Job Hunt Copilot next-build acceptance
       And it keeps the durable run at `sending`
       And it stops the rest of the current posting wave immediately
 
+    Scenario: A stale sending run falls back to discovery when the next frontier still needs emails
+      Given a role-targeted posting is still marked `ready_for_outreach`
+      And its durable run is at `sending`
+      And reevaluating the next selected frontier finds no draftable ready contacts because those contacts still need usable emails
+      When the supervisor executes that sending work
+      Then it does not call drafting for that stale send frontier
+      And it persists the posting back to `requires_contacts`
+      And it moves the durable run back to `email_discovery`
+
     Scenario: Transient send retries wait for cooldown and stay bounded
       Given a role-targeted message is `blocked` because of a transient Gmail auth or transport failure
       When less than 15 minutes have passed since the latest blocked attempt

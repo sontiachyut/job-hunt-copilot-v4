@@ -3568,7 +3568,7 @@ def _validate_selected_work(
             return f"pipeline_run {selected_work.work_id!r} is missing job_posting_id."
         posting_row = connection.execute(
             """
-            SELECT posting_status
+            SELECT lead_id, posting_status
             FROM job_postings
             WHERE job_posting_id = ?
             """,
@@ -3576,10 +3576,10 @@ def _validate_selected_work(
         ).fetchone()
         if posting_row is None:
             return f"job_posting {job_posting_id!r} no longer exists."
-        if posting_row[0] != "resume_review_pending":
+        if posting_row[1] != "resume_review_pending":
             return (
                 f"job_posting {job_posting_id!r} is not at the mandatory review boundary; "
-                f"found posting_status={posting_row[0]!r}."
+                f"found posting_status={posting_row[1]!r}."
             )
         latest_run = connection.execute(
             """
@@ -3623,7 +3623,7 @@ def _validate_selected_work(
             return f"pipeline_run {selected_work.work_id!r} is missing job_posting_id."
         posting_row = connection.execute(
             """
-            SELECT posting_status
+            SELECT lead_id, posting_status
             FROM job_postings
             WHERE job_posting_id = ?
             """,
@@ -3631,12 +3631,12 @@ def _validate_selected_work(
         ).fetchone()
         if posting_row is None:
             return f"job_posting {job_posting_id!r} no longer exists."
-        if posting_row[0] == "ready_for_outreach":
+        if posting_row[1] == "ready_for_outreach":
             return None
-        if posting_row[0] != "requires_contacts":
+        if posting_row[1] != "requires_contacts":
             return (
                 f"job_posting {job_posting_id!r} is not at the people-search boundary; "
-                f"found posting_status={posting_row[0]!r}."
+                f"found posting_status={posting_row[1]!r}."
             )
         from .email_discovery import is_role_targeted_people_search_actionable_now
 
@@ -3687,7 +3687,7 @@ def _validate_selected_work(
             return f"pipeline_run {selected_work.work_id!r} is missing job_posting_id."
         posting_row = connection.execute(
             """
-            SELECT posting_status
+            SELECT lead_id, posting_status
             FROM job_postings
             WHERE job_posting_id = ?
             """,
@@ -3695,10 +3695,10 @@ def _validate_selected_work(
         ).fetchone()
         if posting_row is None:
             return f"job_posting {job_posting_id!r} no longer exists."
-        if posting_row[0] not in {"requires_contacts", "ready_for_outreach"}:
+        if posting_row[1] not in {"requires_contacts", "ready_for_outreach"}:
             return (
                 f"job_posting {job_posting_id!r} is not at the email-discovery boundary; "
-                f"found posting_status={posting_row[0]!r}."
+                f"found posting_status={posting_row[1]!r}."
             )
         latest_run = connection.execute(
             """
@@ -3717,7 +3717,7 @@ def _validate_selected_work(
                 "review for email discovery."
             )
         if (
-            posting_row[0] == "requires_contacts"
+            posting_row[1] == "requires_contacts"
             and not is_role_targeted_email_discovery_actionable_now(
                 connection,
                 project_root=project_root,
@@ -3752,7 +3752,7 @@ def _validate_selected_work(
             return f"pipeline_run {selected_work.work_id!r} is missing job_posting_id."
         posting_row = connection.execute(
             """
-            SELECT posting_status
+            SELECT lead_id, posting_status
             FROM job_postings
             WHERE job_posting_id = ?
             """,
@@ -3760,10 +3760,7 @@ def _validate_selected_work(
         ).fetchone()
         if posting_row is None:
             return f"job_posting {job_posting_id!r} no longer exists."
-        posting_status = _require_text(
-            _optional_text(posting_row[0]),
-            "posting_status",
-        )
+        posting_status = _require_text(_optional_text(posting_row[1]), "posting_status")
         if posting_status not in {
             "ready_for_outreach",
             "outreach_in_progress",
@@ -4398,7 +4395,7 @@ def _execute_selected_work_unit(
         job_posting_id = _require_text(selected_work.job_posting_id, "job_posting_id")
         posting_row = connection.execute(
             """
-            SELECT posting_status
+            SELECT lead_id, posting_status
             FROM job_postings
             WHERE job_posting_id = ?
             """,
@@ -4408,7 +4405,7 @@ def _execute_selected_work_unit(
             raise SupervisorStateError(f"job_posting {job_posting_id!r} no longer exists.")
 
         current_posting_status = _require_text(
-            _optional_text(posting_row[0]),
+            _optional_text(posting_row[1]),
             "posting_status",
         )
         next_stage: str
@@ -4535,7 +4532,7 @@ def _execute_selected_work_unit(
         lead_id = _require_text(selected_work.lead_id, "lead_id")
         posting_row = connection.execute(
             """
-            SELECT posting_status
+            SELECT lead_id, posting_status
             FROM job_postings
             WHERE job_posting_id = ?
             """,
@@ -4544,10 +4541,8 @@ def _execute_selected_work_unit(
         if posting_row is None:  # pragma: no cover - validated earlier
             raise SupervisorStateError(f"job_posting {job_posting_id!r} no longer exists.")
 
-        current_posting_status = _require_text(
-            _optional_text(posting_row[0]),
-            "posting_status",
-        )
+        current_posting_status = _require_text(_optional_text(posting_row[1]), "posting_status")
+        posting_lead_id = _optional_text(posting_row[0])
         refresh_same_company_contact_frontier(
             project_root=paths.project_root,
             job_posting_id=job_posting_id,
@@ -4773,7 +4768,7 @@ def _execute_selected_work_unit(
         job_posting_id = _require_text(selected_work.job_posting_id, "job_posting_id")
         posting_row = connection.execute(
             """
-            SELECT posting_status
+            SELECT lead_id, posting_status
             FROM job_postings
             WHERE job_posting_id = ?
             """,
@@ -4782,10 +4777,8 @@ def _execute_selected_work_unit(
         if posting_row is None:  # pragma: no cover - validated earlier
             raise SupervisorStateError(f"job_posting {job_posting_id!r} no longer exists.")
 
-        current_posting_status = _require_text(
-            _optional_text(posting_row[0]),
-            "posting_status",
-        )
+        current_posting_status = _require_text(_optional_text(posting_row[1]), "posting_status")
+        posting_lead_id = _optional_text(posting_row[0])
         refresh_same_company_contact_frontier(
             project_root=paths.project_root,
             job_posting_id=job_posting_id,
@@ -4805,6 +4798,39 @@ def _execute_selected_work_unit(
         )
 
         latest_posting_status = current_posting_status
+
+        def _persist_posting_status_transition(next_status: str, transition_reason: str) -> str:
+            previous_status = _load_posting_status(connection, job_posting_id=job_posting_id)
+            if previous_status == next_status:
+                return previous_status
+            with connection:
+                connection.execute(
+                    """
+                    UPDATE job_postings
+                    SET posting_status = ?, updated_at = ?
+                    WHERE job_posting_id = ?
+                    """,
+                    (
+                        next_status,
+                        timestamp,
+                        job_posting_id,
+                    ),
+                )
+                _record_state_transition(
+                    connection,
+                    object_type="job_posting",
+                    object_id=job_posting_id,
+                    stage="posting_status",
+                    previous_state=previous_status,
+                    new_state=next_status,
+                    transition_timestamp=timestamp,
+                    transition_reason=transition_reason,
+                    lead_id=posting_lead_id,
+                    job_posting_id=job_posting_id,
+                    contact_id=None,
+                )
+            return next_status
+
         if current_posting_status == JOB_POSTING_STATUS_READY_FOR_OUTREACH:
             send_set_plan = evaluate_role_targeted_send_set(
                 connection,
@@ -4812,7 +4838,24 @@ def _execute_selected_work_unit(
                 current_time=timestamp,
                 local_timezone=action_dependencies.local_timezone,
             )
-            if send_set_plan.selected_contacts:
+            if not send_set_plan.ready_for_outreach:
+                latest_posting_status = _persist_posting_status_transition(
+                    JOB_POSTING_STATUS_REQUIRES_CONTACTS,
+                    "Supervisor reevaluated the current send frontier and returned the posting to requires_contacts because the next selected contacts still need usable email discovery.",
+                )
+                pipeline_run = advance_pipeline_run(
+                    connection,
+                    selected_work.work_id,
+                    current_stage="email_discovery",
+                    run_summary=(
+                        "Supervisor reevaluated the stale ready_for_outreach send frontier "
+                        "and moved the durable pipeline run back to email_discovery because "
+                        "the next selected contacts still need usable emails."
+                    ),
+                    timestamp=timestamp,
+                )
+                return pipeline_run, None, None
+            elif send_set_plan.selected_contacts:
                 draft_batch = generate_role_targeted_send_set_drafts(
                     connection,
                     project_root=paths.project_root,
@@ -5593,13 +5636,6 @@ def _validate_selected_work_result(
             job_posting_id=pipeline_run.job_posting_id,
             message_status="sent",
         )
-        if posting_status != "ready_for_outreach" and (
-            message_row_count <= 0 or send_result_artifact_count <= 0
-        ):
-            return (
-                "Sending completed without persisting outreach messages and send_result "
-                "artifacts for the selected posting."
-            )
         if posting_status == "ready_for_outreach":
             if pipeline_run.run_status != RUN_STATUS_IN_PROGRESS:
                 return (
@@ -5624,6 +5660,11 @@ def _validate_selected_work_result(
                     f"contacts still need emails, but found {pipeline_run.current_stage!r}."
                 )
             return None
+        if message_row_count <= 0 or send_result_artifact_count <= 0:
+            return (
+                "Sending completed without persisting outreach messages and send_result "
+                "artifacts for the selected posting."
+            )
         if posting_status == "outreach_in_progress":
             if pipeline_run.run_status != RUN_STATUS_IN_PROGRESS:
                 return (
