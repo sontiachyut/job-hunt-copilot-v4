@@ -1539,6 +1539,73 @@ def test_select_next_supervisor_work_unit_prefers_generated_send_frontier_over_g
     assert "already-generated send frontier" in selected_work.summary
 
 
+def test_generated_frontier_only_prepass_returns_none_instead_of_falling_back_to_discovery(
+    tmp_path,
+):
+    project_root = bootstrap_project(tmp_path)
+    connection = connect_database(project_root / "job_hunt_copilot.db")
+    resume_agent(
+        connection,
+        manual_command="jhc-agent-start",
+        timestamp="2026-04-06T00:00:00Z",
+    )
+
+    seed_named_role_targeted_posting(
+        connection,
+        lead_id="ld_draft_only",
+        job_posting_id="jp_draft_only",
+        company_name="Draft Only Co",
+        role_title="Data Engineer",
+        posting_status="ready_for_outreach",
+        timestamp="2026-04-06T00:01:00Z",
+    )
+    ensure_role_targeted_pipeline_run(
+        connection,
+        lead_id="ld_draft_only",
+        job_posting_id="jp_draft_only",
+        current_stage="sending",
+        started_at="2026-04-06T00:02:00Z",
+    )
+    seed_send_ready_contact_without_message(
+        connection,
+        contact_id="ct_draft_only",
+        job_posting_contact_id="jpc_draft_only",
+        job_posting_id="jp_draft_only",
+        company_name="Draft Only Co",
+        display_name="Riley Recruiter",
+        recipient_email="riley@draftonly.example",
+        created_at="2026-04-06T00:03:00Z",
+    )
+
+    seed_named_role_targeted_posting(
+        connection,
+        lead_id="ld_discovery",
+        job_posting_id="jp_discovery",
+        company_name="Discovery Co",
+        role_title="Backend Engineer",
+        posting_status="requires_contacts",
+        timestamp="2026-04-06T00:04:00Z",
+    )
+    ensure_role_targeted_pipeline_run(
+        connection,
+        lead_id="ld_discovery",
+        job_posting_id="jp_discovery",
+        current_stage="email_discovery",
+        started_at="2026-04-06T00:05:00Z",
+    )
+
+    selected_work = _select_open_pipeline_run_work_unit(
+        connection,
+        project_root=project_root,
+        current_time="2026-04-06T00:06:00Z",
+        local_timezone="UTC",
+        generated_frontier_only=True,
+    )
+    connection.close()
+
+    assert selected_work is None
+
+
 def test_run_supervisor_cycle_ignores_empty_gmail_batch_without_checkpoint(
     tmp_path,
 ):

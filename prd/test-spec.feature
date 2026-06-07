@@ -1169,6 +1169,7 @@ Feature: Job Hunt Copilot next-build acceptance
       When the supervisor selects the next work unit
       Then it chooses the generated send-ready `sending` run first
       And it does not choose the Gmail alert batch for that heartbeat
+      And the generated-frontier-only pre-pass does not fall through to unrelated pipeline work when no generated frontier exists
 
     Scenario: Managerial-path bullets render as real lists in HTML
       Given a managerial-path draft contains exactly 3 JD-challenge bullets and exactly 3 relevant-background bullets

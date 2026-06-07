@@ -3110,6 +3110,9 @@ def _select_open_pipeline_run_work_unit(
         if prioritized_sending_work is not None:
             return prioritized_sending_work
 
+    if generated_frontier_only:
+        return None
+
     for pipeline_run in pipeline_runs:
         if pipeline_run.current_stage == "delivery_feedback":
             job_posting_id = _optional_text(pipeline_run.job_posting_id)
