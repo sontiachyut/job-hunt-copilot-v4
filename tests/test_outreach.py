@@ -5297,7 +5297,7 @@ def test_transient_send_retry_exhaustion_leaves_message_blocked_and_not_actionab
     connection.close()
 
 
-def test_cleared_ambiguous_blocked_send_retries_successfully(
+def test_cross_posting_unsent_history_does_not_block_role_targeted_send(
     tmp_path: Path,
 ):
     project_root, paths = bootstrap_project(tmp_path)
@@ -5417,53 +5417,11 @@ def test_cleared_ambiguous_blocked_send_retries_successfully(
     )
     connection.commit()
 
-    first_result = execute_role_targeted_send_set(
+    result = execute_role_targeted_send_set(
         connection,
         project_root=project_root,
         job_posting_id="jp_outreach",
         current_time="2026-04-06T20:40:00Z",
-        local_timezone=ZoneInfo("UTC"),
-        sender=sender,
-    )
-
-    blocked_payload = json.loads(
-        paths.outreach_message_send_result_path(
-            "Acme Robotics",
-            "Staff Software Engineer / AI",
-            message_id,
-        ).read_text(encoding="utf-8")
-    )
-    blocked_row = connection.execute(
-        """
-        SELECT message_status
-        FROM outreach_messages
-        WHERE outreach_message_id = ?
-        """,
-        (message_id,),
-    ).fetchone()
-    assert [issue.outreach_message_id for issue in first_result.blocked_messages] == [message_id]
-    assert blocked_row["message_status"] == MESSAGE_STATUS_BLOCKED
-    assert blocked_payload["reason_code"] == "ambiguous_send_state"
-
-    connection.execute(
-        """
-        UPDATE outreach_messages
-        SET message_status = ?, updated_at = ?
-        WHERE outreach_message_id = ?
-        """,
-        (
-            MESSAGE_STATUS_FAILED,
-            "2026-04-06T20:50:00Z",
-            "msg_duplicate",
-        ),
-    )
-    connection.commit()
-
-    second_result = execute_role_targeted_send_set(
-        connection,
-        project_root=project_root,
-        job_posting_id="jp_outreach",
-        current_time="2026-04-06T20:55:00Z",
         local_timezone=ZoneInfo("UTC"),
         sender=sender,
     )
@@ -5476,14 +5434,131 @@ def test_cleared_ambiguous_blocked_send_retries_successfully(
         """,
         (message_id,),
     ).fetchone()
-    assert [message.outreach_message_id for message in second_result.sent_messages] == [message_id]
-    assert second_result.blocked_messages == ()
-    assert second_result.failed_messages == ()
+    assert [message.outreach_message_id for message in result.sent_messages] == [message_id]
+    assert result.blocked_messages == ()
+    assert result.failed_messages == ()
     assert dict(sent_row) == {
         "message_status": MESSAGE_STATUS_SENT,
-        "sent_at": "2026-04-06T20:55:00Z",
+        "sent_at": "2026-04-06T20:40:00Z",
         "thread_id": "thread-recovered",
         "delivery_tracking_id": "delivery-recovered",
+    }
+
+    duplicate_row = connection.execute(
+        """
+        SELECT message_status
+        FROM outreach_messages
+        WHERE outreach_message_id = ?
+        """,
+        ("msg_duplicate",),
+    ).fetchone()
+    assert duplicate_row["message_status"] == MESSAGE_STATUS_GENERATED
+
+    connection.close()
+
+
+def test_same_posting_duplicate_generated_message_blocks_send(
+    tmp_path: Path,
+):
+    project_root, paths = bootstrap_project(tmp_path)
+    connection = connect_database(project_root / "job_hunt_copilot.db")
+    write_sender_profile(paths)
+    seed_posting(connection)
+    seed_linked_contact(
+        connection,
+        contact_id="ct_primary",
+        job_posting_contact_id="jpc_primary",
+        display_name="Priya Recruiter",
+        recipient_type=RECIPIENT_TYPE_RECRUITER,
+        current_working_email="priya@acme.example",
+        created_at="2026-04-06T20:01:00Z",
+    )
+    seed_approved_tailoring_run(connection, paths)
+    draft_batch = generate_role_targeted_send_set_drafts(
+        connection,
+        project_root=project_root,
+        job_posting_id="jp_outreach",
+        current_time="2026-04-06T20:30:00Z",
+        local_timezone=ZoneInfo("UTC"),
+    )
+    message_id = draft_batch.drafted_messages[0].outreach_message_id
+    sender = SequencedOutreachSender(
+        {
+            message_id: [
+                SendAttemptOutcome(
+                    outcome="sent",
+                    thread_id="thread-recovered",
+                    delivery_tracking_id="delivery-recovered",
+                )
+            ]
+        }
+    )
+
+    connection.execute(
+        """
+        INSERT INTO outreach_messages (
+          outreach_message_id, contact_id, outreach_mode, recipient_email, message_status,
+          job_posting_id, job_posting_contact_id, subject, body_text, created_at, updated_at
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        """,
+        (
+            "msg_duplicate",
+            "ct_primary",
+            "role_targeted",
+            "priya@acme.example",
+            MESSAGE_STATUS_GENERATED,
+            "jp_outreach",
+            "jpc_primary",
+            "Earlier outreach",
+            "Earlier outreach body",
+            "2026-04-06T20:31:00Z",
+            "2026-04-06T20:31:00Z",
+        ),
+    )
+    connection.commit()
+
+    first_result = execute_role_targeted_send_set(
+        connection,
+        project_root=project_root,
+        job_posting_id="jp_outreach",
+        current_time="2026-04-06T20:40:00Z",
+        local_timezone=ZoneInfo("UTC"),
+        sender=sender,
+    )
+
+    blocked_message_id = first_result.blocked_messages[0].outreach_message_id
+    blocked_payload = json.loads(
+        paths.outreach_message_send_result_path(
+            "Acme Robotics",
+            "Staff Software Engineer / AI",
+            blocked_message_id,
+        ).read_text(encoding="utf-8")
+    )
+    blocked_row = connection.execute(
+        """
+        SELECT message_status
+        FROM outreach_messages
+        WHERE outreach_message_id = ?
+        """,
+        (blocked_message_id,),
+    ).fetchone()
+    assert blocked_message_id in {message_id, "msg_duplicate"}
+    assert blocked_row["message_status"] == MESSAGE_STATUS_BLOCKED
+    assert blocked_payload["reason_code"] == "ambiguous_send_state"
+
+    original_row = connection.execute(
+        """
+        SELECT message_status, sent_at, thread_id, delivery_tracking_id
+        FROM outreach_messages
+        WHERE outreach_message_id = ?
+        """,
+        (message_id,),
+    ).fetchone()
+    assert dict(original_row) == {
+        "message_status": MESSAGE_STATUS_GENERATED,
+        "sent_at": None,
+        "thread_id": None,
+        "delivery_tracking_id": None,
     }
 
     connection.close()

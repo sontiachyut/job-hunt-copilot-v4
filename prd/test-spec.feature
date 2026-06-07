@@ -589,6 +589,13 @@ Feature: Job Hunt Copilot next-build acceptance
       Then it does not automatically resend when a prior successful send cannot be ruled out
       And the case is surfaced for review rather than risking a duplicate outreach
 
+    Scenario: Cross-posting unsent outreach history does not block a new role-targeted send
+      Given a contact has older unsent generated, blocked, or failed role-targeted outreach rows from other postings
+      And the current posting has a fresh role-targeted draft for that same contact
+      When automatic sending evaluates duplicate-send ambiguity for the current posting
+      Then those older unsent rows from other postings do not by themselves create `ambiguous_send_state`
+      And prior successful sent history may still trigger repeat-outreach review
+
     Scenario: Transient Gmail send failures are blocked and retried later
       Given a role-targeted automatic send hits a clearly transient Gmail auth or transport failure
       When the system persists that send outcome

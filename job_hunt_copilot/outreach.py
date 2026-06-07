@@ -4103,11 +4103,13 @@ def _evaluate_send_guardrails(
             FROM outreach_messages
             WHERE contact_id = ?
               AND outreach_message_id <> ?
+              AND job_posting_id = ?
               AND message_status IN (?, ?)
             """,
             (
                 active_message.contact_id,
                 active_message.outreach_message_id,
+                str(posting_row["job_posting_id"]),
                 MESSAGE_STATUS_GENERATED,
                 MESSAGE_STATUS_BLOCKED,
             ),
