@@ -50,6 +50,7 @@ from job_hunt_copilot.supervisor import (
     escalate_agent_incident,
     escalate_pipeline_run,
     ensure_role_targeted_pipeline_run,
+    fail_pipeline_run,
     finalize_review_worthy_pipeline_run,
     finish_supervisor_cycle,
     generate_expert_review_packet,
@@ -1148,6 +1149,263 @@ def test_run_supervisor_cycle_seeds_gmail_history_checkpoint_without_collection_
     assert seed_payload["seeded_without_messages"] is True
 
 
+def test_select_next_supervisor_work_unit_prefers_generated_send_frontier_over_gmail_and_draft_generation(
+    tmp_path,
+):
+    project_root = bootstrap_project(tmp_path)
+    connection = connect_database(project_root / "job_hunt_copilot.db")
+    resume_agent(
+        connection,
+        manual_command="jhc-agent-start",
+        timestamp="2026-04-06T00:00:00Z",
+    )
+
+    seed_named_role_targeted_posting(
+        connection,
+        lead_id="ld_generated",
+        job_posting_id="jp_generated",
+        company_name="Generated Co",
+        role_title="Backend Engineer",
+        posting_status="ready_for_outreach",
+        timestamp="2026-04-06T00:01:00Z",
+    )
+    generated_run, _ = ensure_role_targeted_pipeline_run(
+        connection,
+        lead_id="ld_generated",
+        job_posting_id="jp_generated",
+        current_stage="sending",
+        started_at="2026-04-06T00:02:00Z",
+    )
+    seed_send_ready_contact_with_generated_message(
+        connection,
+        contact_id="ct_generated",
+        job_posting_contact_id="jpc_generated",
+        job_posting_id="jp_generated",
+        company_name="Generated Co",
+        display_name="Jordan Manager",
+        recipient_email="jordan@generated.example",
+        created_at="2026-04-06T00:03:00Z",
+    )
+
+    seed_named_role_targeted_posting(
+        connection,
+        lead_id="ld_draft_only",
+        job_posting_id="jp_draft_only",
+        company_name="Draft Only Co",
+        role_title="Data Engineer",
+        posting_status="ready_for_outreach",
+        timestamp="2026-04-06T00:04:00Z",
+    )
+    ensure_role_targeted_pipeline_run(
+        connection,
+        lead_id="ld_draft_only",
+        job_posting_id="jp_draft_only",
+        current_stage="sending",
+        started_at="2026-04-06T00:05:00Z",
+    )
+    seed_send_ready_contact_without_message(
+        connection,
+        contact_id="ct_draft_only",
+        job_posting_contact_id="jpc_draft_only",
+        job_posting_id="jp_draft_only",
+        company_name="Draft Only Co",
+        display_name="Riley Recruiter",
+        recipient_email="riley@draftonly.example",
+        created_at="2026-04-06T00:06:00Z",
+    )
+
+    gmail_collector = FakeGmailAlertCollector(
+        GmailAlertBatch(
+            ingestion_run_id="gmail-auto-20260406T000700Z",
+            messages=(
+                {
+                    "gmail_message_id": "gm_test_001",
+                    "subject": "LinkedIn Jobs: 1 new role",
+                },
+            ),
+            mailbox_history_id_before=None,
+            mailbox_history_id_after="history-after-002",
+            poll_strategy="history_checkpoint",
+        )
+    )
+
+    selected_work = select_next_supervisor_work_unit(
+        connection,
+        project_root=project_root,
+        current_time="2026-04-06T00:07:00Z",
+        action_dependencies=SupervisorActionDependencies(
+            gmail_alert_collector=gmail_collector,
+            local_timezone="UTC",
+        ),
+    )
+    connection.close()
+
+    assert selected_work is not None
+    assert selected_work.work_type == "pipeline_run"
+    assert selected_work.action_id == "run_role_targeted_sending"
+    assert selected_work.pipeline_run_id == generated_run.pipeline_run_id
+    assert selected_work.job_posting_id == "jp_generated"
+    assert "already-generated send frontier" in selected_work.summary
+
+
+def test_select_next_supervisor_work_unit_recovers_orphaned_send_stage_before_discovery(
+    tmp_path,
+):
+    project_root = bootstrap_project(tmp_path)
+    connection = connect_database(project_root / "job_hunt_copilot.db")
+    resume_agent(
+        connection,
+        manual_command="jhc-agent-start",
+        timestamp="2026-04-06T00:00:00Z",
+    )
+
+    orphaned_lead_id, orphaned_job_posting_id = seed_named_role_targeted_posting(
+        connection,
+        lead_id="ld_orphaned",
+        job_posting_id="jp_orphaned",
+        company_name="Recovered Co",
+        role_title="Machine Learning Engineer",
+        posting_status="outreach_in_progress",
+        timestamp="2026-04-06T00:01:00Z",
+    )
+    seed_tailoring_run(
+        connection,
+        run_id="rtr_orphaned_approved",
+        job_posting_id=orphaned_job_posting_id,
+        tailoring_status="tailored",
+        resume_review_status="approved",
+        verification_outcome="pass",
+        final_resume_path="resume-tailoring/output/rtr_orphaned_approved/final.pdf",
+        timestamp="2026-04-06T00:02:00Z",
+    )
+    orphaned_run, _ = ensure_role_targeted_pipeline_run(
+        connection,
+        lead_id=orphaned_lead_id,
+        job_posting_id=orphaned_job_posting_id,
+        current_stage="sending",
+        started_at="2026-04-06T00:03:00Z",
+    )
+    fail_pipeline_run(
+        connection,
+        orphaned_run.pipeline_run_id,
+        current_stage="sending",
+        error_summary="retired while June backlog was reprioritized",
+        timestamp="2026-04-06T00:04:00Z",
+    )
+    seed_send_ready_contact_with_generated_message(
+        connection,
+        contact_id="ct_orphaned",
+        job_posting_contact_id="jpc_orphaned",
+        job_posting_id=orphaned_job_posting_id,
+        company_name="Recovered Co",
+        display_name="Taylor Hiring Manager",
+        recipient_email="taylor@recovered.example",
+        created_at="2026-04-06T00:05:00Z",
+    )
+
+    _, discovery_job_posting_id = seed_named_role_targeted_posting(
+        connection,
+        lead_id="ld_discovery",
+        job_posting_id="jp_discovery",
+        company_name="Discovery Co",
+        role_title="Backend Engineer",
+        posting_status="requires_contacts",
+        timestamp="2026-04-06T00:06:00Z",
+    )
+    discovery_run, _ = ensure_role_targeted_pipeline_run(
+        connection,
+        lead_id="ld_discovery",
+        job_posting_id=discovery_job_posting_id,
+        current_stage="email_discovery",
+        started_at="2026-04-06T00:07:00Z",
+    )
+
+    selected_work = select_next_supervisor_work_unit(
+        connection,
+        project_root=project_root,
+        current_time="2026-04-06T00:08:00Z",
+        action_dependencies=SupervisorActionDependencies(local_timezone="UTC"),
+    )
+    connection.close()
+
+    assert selected_work is not None
+    assert selected_work.work_type == "job_posting"
+    assert selected_work.action_id == "bootstrap_role_targeted_run"
+    assert selected_work.work_id == orphaned_job_posting_id
+    assert selected_work.job_posting_id == orphaned_job_posting_id
+    assert selected_work.current_stage == "sending"
+    assert selected_work.pipeline_run_id is None
+    assert "orphaned generated send frontier" in selected_work.summary
+    assert selected_work.work_id != discovery_job_posting_id
+    assert selected_work.work_id != discovery_run.pipeline_run_id
+
+
+def test_generated_frontier_only_prepass_returns_none_instead_of_falling_back_to_discovery(
+    tmp_path,
+):
+    project_root = bootstrap_project(tmp_path)
+    connection = connect_database(project_root / "job_hunt_copilot.db")
+    resume_agent(
+        connection,
+        manual_command="jhc-agent-start",
+        timestamp="2026-04-06T00:00:00Z",
+    )
+
+    seed_named_role_targeted_posting(
+        connection,
+        lead_id="ld_draft_only",
+        job_posting_id="jp_draft_only",
+        company_name="Draft Only Co",
+        role_title="Data Engineer",
+        posting_status="ready_for_outreach",
+        timestamp="2026-04-06T00:01:00Z",
+    )
+    ensure_role_targeted_pipeline_run(
+        connection,
+        lead_id="ld_draft_only",
+        job_posting_id="jp_draft_only",
+        current_stage="sending",
+        started_at="2026-04-06T00:02:00Z",
+    )
+    seed_send_ready_contact_without_message(
+        connection,
+        contact_id="ct_draft_only",
+        job_posting_contact_id="jpc_draft_only",
+        job_posting_id="jp_draft_only",
+        company_name="Draft Only Co",
+        display_name="Riley Recruiter",
+        recipient_email="riley@draftonly.example",
+        created_at="2026-04-06T00:03:00Z",
+    )
+
+    seed_named_role_targeted_posting(
+        connection,
+        lead_id="ld_discovery",
+        job_posting_id="jp_discovery",
+        company_name="Discovery Co",
+        role_title="Backend Engineer",
+        posting_status="requires_contacts",
+        timestamp="2026-04-06T00:04:00Z",
+    )
+    ensure_role_targeted_pipeline_run(
+        connection,
+        lead_id="ld_discovery",
+        job_posting_id="jp_discovery",
+        current_stage="email_discovery",
+        started_at="2026-04-06T00:05:00Z",
+    )
+
+    selected_work = _select_open_pipeline_run_work_unit(
+        connection,
+        project_root=project_root,
+        current_time="2026-04-06T00:06:00Z",
+        local_timezone="UTC",
+        generated_frontier_only=True,
+    )
+    connection.close()
+
+    assert selected_work is None
+
 def test_run_supervisor_cycle_ignores_empty_gmail_batch_without_checkpoint(
     tmp_path,
 ):
@@ -1187,6 +1445,110 @@ def test_run_supervisor_cycle_ignores_empty_gmail_batch_without_checkpoint(
     assert execution.selected_work is None
     assert incident_count == 0
     assert not (paths.gmail_runtime_dir / "_checkpoint-seeds" / "gmail-auto-20260406T000100Z.json").exists()
+
+
+def test_run_supervisor_cycle_recovers_orphaned_send_stage_run_into_sending(tmp_path):
+    project_root = bootstrap_project(tmp_path)
+    paths = ProjectPaths.from_root(project_root)
+    connection = connect_database(project_root / "job_hunt_copilot.db")
+    orphaned_lead_id, orphaned_job_posting_id = seed_named_role_targeted_posting(
+        connection,
+        lead_id="ld_orphaned",
+        job_posting_id="jp_orphaned",
+        company_name="Recovered Co",
+        role_title="Machine Learning Engineer",
+        posting_status="outreach_in_progress",
+        timestamp="2026-04-06T00:00:00Z",
+    )
+    seed_tailoring_run(
+        connection,
+        run_id="rtr_orphaned_approved",
+        job_posting_id=orphaned_job_posting_id,
+        tailoring_status="tailored",
+        resume_review_status="approved",
+        verification_outcome="pass",
+        final_resume_path="resume-tailoring/output/rtr_orphaned_approved/final.pdf",
+        timestamp="2026-04-06T00:01:00Z",
+    )
+    original_run, _ = ensure_role_targeted_pipeline_run(
+        connection,
+        lead_id=orphaned_lead_id,
+        job_posting_id=orphaned_job_posting_id,
+        current_stage="sending",
+        started_at="2026-04-06T00:02:00Z",
+    )
+    fail_pipeline_run(
+        connection,
+        original_run.pipeline_run_id,
+        current_stage="sending",
+        error_summary="retired while June backlog was reprioritized",
+        timestamp="2026-04-06T00:03:00Z",
+    )
+    seed_send_ready_contact_with_generated_message(
+        connection,
+        contact_id="ct_orphaned",
+        job_posting_contact_id="jpc_orphaned",
+        job_posting_id=orphaned_job_posting_id,
+        company_name="Recovered Co",
+        display_name="Taylor Hiring Manager",
+        recipient_email="taylor@recovered.example",
+        created_at="2026-04-06T00:04:00Z",
+    )
+    resume_agent(
+        connection,
+        manual_command="jhc-agent-start",
+        timestamp="2026-04-06T00:05:00Z",
+    )
+
+    execution = run_supervisor_cycle(
+        connection,
+        paths,
+        trigger_type="launchd_heartbeat",
+        scheduler_name="launchd",
+        started_at="2026-04-06T00:06:00Z",
+        action_dependencies=SupervisorActionDependencies(local_timezone="UTC"),
+    )
+    pipeline_runs = connection.execute(
+        """
+        SELECT pipeline_run_id, run_status, current_stage, run_summary
+        FROM pipeline_runs
+        WHERE job_posting_id = ?
+        ORDER BY started_at ASC, pipeline_run_id ASC
+        """,
+        (orphaned_job_posting_id,),
+    ).fetchall()
+    connection.close()
+
+    assert execution.cycle.result == SUPERVISOR_CYCLE_RESULT_SUCCESS
+    assert execution.selected_work is not None
+    assert execution.selected_work.action_id == "bootstrap_role_targeted_run"
+    assert execution.selected_work.work_id == orphaned_job_posting_id
+    assert execution.selected_work.current_stage == "sending"
+    assert execution.pipeline_run is not None
+    assert execution.pipeline_run.pipeline_run_id != original_run.pipeline_run_id
+    assert execution.pipeline_run.current_stage == "sending"
+    assert execution.pipeline_run.run_status == RUN_STATUS_IN_PROGRESS
+    assert execution.pipeline_run.run_summary == (
+        "Supervisor recovered orphaned send-stage work by recreating a durable "
+        "role-targeted run at sending."
+    )
+    assert [dict(row) for row in pipeline_runs] == [
+        {
+            "pipeline_run_id": original_run.pipeline_run_id,
+            "run_status": "failed",
+            "current_stage": "sending",
+            "run_summary": None,
+        },
+        {
+            "pipeline_run_id": execution.pipeline_run.pipeline_run_id,
+            "run_status": "in_progress",
+            "current_stage": "sending",
+            "run_summary": (
+                "Supervisor recovered orphaned send-stage work by recreating a durable "
+                "role-targeted run at sending."
+            ),
+        },
+    ]
 
 
 def test_run_supervisor_cycle_repairs_stale_blocked_gmail_lead(tmp_path, monkeypatch):

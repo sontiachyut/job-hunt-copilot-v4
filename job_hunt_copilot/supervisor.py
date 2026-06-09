@@ -182,6 +182,9 @@ TERMINAL_DELIVERY_FEEDBACK_EVENT_STATES = frozenset(
 )
 
 ELIGIBLE_POSTING_STATUSES_FOR_NEW_RUN = frozenset({"resume_review_pending", "sourced"})
+ORPHANED_SEND_STAGE_RECOVERY_POSTING_STATUSES = frozenset(
+    {"ready_for_outreach", "outreach_in_progress", "completed"}
+)
 SUPPORTED_PIPELINE_CHECKPOINT_STAGES = frozenset(
     {"agent_review", "lead_handoff", "resume_tailoring"}
 )
@@ -631,15 +634,15 @@ SUPERVISOR_ACTION_CATALOG = MappingProxyType(
         ACTION_BOOTSTRAP_ROLE_TARGETED_RUN: SupervisorActionCatalogEntry(
             action_id=ACTION_BOOTSTRAP_ROLE_TARGETED_RUN,
             work_type=WORK_TYPE_JOB_POSTING,
-            description="Create a durable role-targeted pipeline run from eligible posting state.",
+            description="Create or recover a durable role-targeted pipeline run from eligible posting state.",
             prerequisites=(
                 "job_posting exists in canonical state",
-                "job_posting.posting_status is eligible for a new role-targeted run",
+                "job_posting.posting_status is eligible for first-run bootstrap or orphaned downstream recovery",
                 "no non-terminal pipeline_run already exists for the same job_posting_id",
             ),
             expected_outputs=(
                 "one pipeline_run exists for the selected job_posting_id",
-                "the pipeline_run is in_progress at the lead_handoff stage",
+                "the pipeline_run is in_progress at the bootstrap boundary derived from posting state",
                 "the cycle row links the selected job_posting_id to the created pipeline_run_id",
             ),
             validation_references=(
@@ -2521,6 +2524,25 @@ def select_next_supervisor_work_unit(
     if incident_work is not None:
         return incident_work
 
+    generated_sending_work = _select_open_pipeline_run_work_unit(
+        connection,
+        project_root=project_root,
+        current_time=current_time,
+        local_timezone=action_dependencies.local_timezone,
+        generated_frontier_only=True,
+    )
+    if generated_sending_work is not None:
+        return generated_sending_work
+
+    orphaned_generated_sending_work = _select_orphaned_send_stage_posting_work_unit(
+        connection,
+        project_root=project_root,
+        current_time=current_time,
+        local_timezone=action_dependencies.local_timezone,
+        generated_frontier_only=True,
+    )
+    if orphaned_generated_sending_work is not None:
+        return orphaned_generated_sending_work
     gmail_alert_work = _select_gmail_alert_collection_work_unit(
         current_time=current_time,
         gmail_alert_collector=action_dependencies.gmail_alert_collector,
@@ -2541,6 +2563,15 @@ def select_next_supervisor_work_unit(
     )
     if pipeline_run_work is not None:
         return pipeline_run_work
+
+    orphaned_send_stage_work = _select_orphaned_send_stage_posting_work_unit(
+        connection,
+        project_root=project_root,
+        current_time=current_time,
+        local_timezone=action_dependencies.local_timezone,
+    )
+    if orphaned_send_stage_work is not None:
+        return orphaned_send_stage_work
 
     posting_work = _select_new_posting_work_unit(connection)
     if posting_work is not None:
@@ -2853,6 +2884,157 @@ def _select_open_pipeline_run_work_unit(
     return None
 
 
+def _classify_orphaned_send_stage_recovery(
+    connection: sqlite3.Connection,
+    *,
+    project_root: Path | str,
+    job_posting_id: str,
+    current_time: str,
+    local_timezone: object | str | None = None,
+) -> tuple[str, str] | None:
+    from .outreach import (
+        MESSAGE_STATUS_GENERATED,
+        _find_next_send_frontier_message,
+        _load_active_role_targeted_wave,
+        _load_role_targeted_send_posting_row,
+        is_role_targeted_sending_actionable_now,
+    )
+
+    posting_status = _load_posting_status(connection, job_posting_id=job_posting_id)
+    if posting_status not in ORPHANED_SEND_STAGE_RECOVERY_POSTING_STATUSES:
+        return None
+    if get_open_pipeline_run_for_posting(connection, job_posting_id) is not None:
+        return None
+
+    posting_row = _load_role_targeted_send_posting_row(
+        connection,
+        job_posting_id=job_posting_id,
+    )
+    active_wave = _load_active_role_targeted_wave(
+        connection,
+        job_posting_id=job_posting_id,
+    )
+    next_frontier, _ = _find_next_send_frontier_message(
+        connection,
+        ProjectPaths.from_root(project_root),
+        posting_row=posting_row,
+        active_wave=active_wave,
+        current_time=current_time,
+    )
+    frontier_kind = (
+        "draft_generation"
+        if next_frontier is None
+        else (
+            "generated_frontier"
+            if next_frontier.message_status == MESSAGE_STATUS_GENERATED
+            else "existing_frontier"
+        )
+    )
+    send_actionable = is_role_targeted_sending_actionable_now(
+        connection,
+        project_root=project_root,
+        job_posting_id=job_posting_id,
+        current_time=current_time,
+        local_timezone=local_timezone,
+    )
+
+    if posting_status in {"ready_for_outreach", "outreach_in_progress"}:
+        if not send_actionable:
+            return None
+        return "sending", frontier_kind
+
+    sent_message_ids = _list_posting_sent_outreach_message_ids(
+        connection,
+        job_posting_id=job_posting_id,
+    )
+    if send_actionable:
+        return "delivery_feedback", frontier_kind
+    if not sent_message_ids:
+        return None
+    pending_feedback_message_ids = (
+        _list_posting_sent_outreach_message_ids_without_terminal_feedback(
+            connection,
+            job_posting_id=job_posting_id,
+        )
+    )
+    if pending_feedback_message_ids or next_frontier is not None:
+        return None
+    return "delivery_feedback", "feedback_only"
+
+
+def _select_orphaned_send_stage_posting_work_unit(
+    connection: sqlite3.Connection,
+    *,
+    project_root: Path | str,
+    current_time: str,
+    local_timezone: object | str | None = None,
+    generated_frontier_only: bool = False,
+) -> SupervisorWorkUnit | None:
+    placeholders = ", ".join("?" for _ in ORPHANED_SEND_STAGE_RECOVERY_POSTING_STATUSES)
+    rows = connection.execute(
+        f"""
+        SELECT jp.job_posting_id, jp.lead_id, jp.posting_status, jp.company_name, jp.role_title
+        FROM job_postings jp
+        WHERE jp.posting_status IN ({placeholders})
+          AND NOT EXISTS (
+            SELECT 1
+            FROM pipeline_runs pr
+            WHERE pr.job_posting_id = jp.job_posting_id
+              AND pr.run_status IN (?, ?)
+          )
+        ORDER BY jp.updated_at ASC, jp.created_at ASC, jp.job_posting_id ASC
+        """,
+        (
+            *sorted(ORPHANED_SEND_STAGE_RECOVERY_POSTING_STATUSES),
+            RUN_STATUS_IN_PROGRESS,
+            RUN_STATUS_PAUSED,
+        ),
+    ).fetchall()
+    for row in rows:
+        recovery = _classify_orphaned_send_stage_recovery(
+            connection,
+            project_root=project_root,
+            job_posting_id=row[0],
+            current_time=current_time,
+            local_timezone=local_timezone,
+        )
+        if recovery is None:
+            continue
+        recovery_stage, recovery_kind = recovery
+        if generated_frontier_only and recovery_kind != "generated_frontier":
+            continue
+        if recovery_stage == "sending" and recovery_kind == "generated_frontier":
+            summary = (
+                "Recreate an orphaned generated send frontier before Gmail polling "
+                "or older discovery backlog so send-ready outreach can drain."
+            )
+        elif recovery_stage == "sending":
+            summary = (
+                "Recreate an orphaned send-stage run so actionable outreach resumes "
+                "before older discovery backlog."
+            )
+        elif recovery_kind == "feedback_only":
+            summary = (
+                "Recreate an orphaned delivery-feedback run so completed outreach can "
+                "close cleanly once pending feedback has settled."
+            )
+        else:
+            summary = (
+                "Recreate an orphaned delivery-feedback run so retryable send-stage "
+                "work for a completed posting can resume."
+            )
+        return SupervisorWorkUnit(
+            work_type=WORK_TYPE_JOB_POSTING,
+            work_id=row[0],
+            action_id=ACTION_BOOTSTRAP_ROLE_TARGETED_RUN,
+            summary=summary,
+            lead_id=_optional_text(row[1]),
+            job_posting_id=row[0],
+            current_stage=recovery_stage,
+        )
+    return None
+
+
 def _select_new_posting_work_unit(
     connection: sqlite3.Connection,
 ) -> SupervisorWorkUnit | None:
@@ -3138,11 +3320,6 @@ def _validate_selected_work(
         ).fetchone()
         if posting_row is None:
             return f"job_posting {selected_work.work_id!r} no longer exists."
-        if posting_row[1] not in ELIGIBLE_POSTING_STATUSES_FOR_NEW_RUN:
-            return (
-                f"job_posting {selected_work.work_id!r} is not eligible for run bootstrap "
-                f"from posting_status={posting_row[1]!r}."
-            )
         existing_run = get_open_pipeline_run_for_posting(connection, selected_work.work_id)
         if existing_run is not None:
             return (
@@ -3151,6 +3328,57 @@ def _validate_selected_work(
             )
         if not _optional_text(posting_row[0]):
             return f"job_posting {selected_work.work_id!r} is missing lead linkage."
+        bootstrap_stage = selected_work.current_stage or "lead_handoff"
+        posting_status = _require_text(_optional_text(posting_row[1]), "posting_status")
+        if bootstrap_stage == "lead_handoff":
+            if posting_status not in ELIGIBLE_POSTING_STATUSES_FOR_NEW_RUN:
+                return (
+                    f"job_posting {selected_work.work_id!r} is not eligible for run bootstrap "
+                    f"from posting_status={posting_status!r}."
+                )
+            return None
+        if bootstrap_stage not in {"sending", "delivery_feedback"}:
+            return (
+                "Role-targeted bootstrap selected an unsupported downstream recovery "
+                f"stage {bootstrap_stage!r}."
+            )
+        if posting_status not in ORPHANED_SEND_STAGE_RECOVERY_POSTING_STATUSES:
+            return (
+                f"job_posting {selected_work.work_id!r} is not eligible for orphaned "
+                f"downstream recovery from posting_status={posting_status!r}."
+            )
+        latest_run = connection.execute(
+            """
+            SELECT 1
+            FROM resume_tailoring_runs
+            WHERE job_posting_id = ?
+              AND resume_review_status = 'approved'
+            LIMIT 1
+            """,
+            (selected_work.work_id,),
+        ).fetchone()
+        if latest_run is None:
+            return (
+                f"job_posting {selected_work.work_id!r} is not backed by an approved tailoring "
+                "review for downstream bootstrap recovery."
+            )
+        recovery = _classify_orphaned_send_stage_recovery(
+            connection,
+            project_root=project_root,
+            job_posting_id=selected_work.work_id,
+            current_time=current_time,
+            local_timezone=action_dependencies.local_timezone,
+        )
+        if recovery is None:
+            return (
+                f"job_posting {selected_work.work_id!r} no longer has orphaned actionable "
+                "downstream send-stage work to recover."
+            )
+        if recovery[0] != bootstrap_stage:
+            return (
+                f"job_posting {selected_work.work_id!r} now requires downstream recovery "
+                f"at {recovery[0]!r}, not {bootstrap_stage!r}."
+            )
         return None
 
     if catalog_entry.action_id == ACTION_CHECKPOINT_PIPELINE_RUN:
@@ -3804,15 +4032,31 @@ def _execute_selected_work_unit(
         return None, None, None
 
     if catalog_entry.action_id == ACTION_BOOTSTRAP_ROLE_TARGETED_RUN:
+        bootstrap_stage = selected_work.current_stage or "lead_handoff"
+        if bootstrap_stage == "lead_handoff":
+            run_summary = "Supervisor bootstrapped a durable role-targeted run from posting state."
+        elif bootstrap_stage == "sending":
+            run_summary = (
+                "Supervisor recovered orphaned send-stage work by recreating a durable "
+                "role-targeted run at sending."
+            )
+        elif bootstrap_stage == "delivery_feedback":
+            run_summary = (
+                "Supervisor recovered orphaned downstream outreach state by recreating a "
+                "durable role-targeted run at delivery_feedback."
+            )
+        else:  # pragma: no cover - validated earlier
+            raise SupervisorStateError(
+                "Role-targeted bootstrap selected an unsupported execution stage "
+                f"{bootstrap_stage!r}."
+            )
         pipeline_run, _ = ensure_role_targeted_pipeline_run(
             connection,
             lead_id=_require_text(selected_work.lead_id, "lead_id"),
             job_posting_id=selected_work.work_id,
-            current_stage="lead_handoff",
+            current_stage=bootstrap_stage,
             started_at=timestamp,
-            run_summary=(
-                "Supervisor bootstrapped a durable role-targeted run from posting state."
-            ),
+            run_summary=run_summary,
         )
         return pipeline_run, None, None
 
@@ -4761,9 +5005,10 @@ def _validate_selected_work_result(
                 "Supervisor created a pipeline_run for the wrong job_posting_id: "
                 f"{pipeline_run.job_posting_id!r}."
             )
-        if pipeline_run.current_stage != "lead_handoff":
+        expected_stage = selected_work.current_stage or "lead_handoff"
+        if pipeline_run.current_stage != expected_stage:
             return (
-                "Bootstrapped pipeline_run did not start at lead_handoff; found "
+                "Bootstrapped pipeline_run did not start at the expected boundary; found "
                 f"{pipeline_run.current_stage!r}."
             )
         return None
