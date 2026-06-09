@@ -1,0 +1,104 @@
+{
+  "batch_id": "batch-004",
+  "company_count": 10,
+  "status_counts": {
+    "no_structured_board_found": 8,
+    "detected_structured_board": 2
+  },
+  "trackability_counts": {
+    "unknown": 8,
+    "structured_board": 2
+  },
+  "companies": [
+    {
+      "queue_position": "1",
+      "company_name": "Axle",
+      "previous_trackability": "custom_page",
+      "recheck_trackability": "unknown",
+      "recheck_board_type": "",
+      "recheck_confirmation_status": "no_structured_board_found",
+      "recheck_job_count": "0"
+    },
+    {
+      "queue_position": "2",
+      "company_name": "Azalea Robotics Corporation",
+      "previous_trackability": "custom_page",
+      "recheck_trackability": "structured_board",
+      "recheck_board_type": "dover",
+      "recheck_confirmation_status": "detected_structured_board",
+      "recheck_job_count": "0"
+    },
+    {
+      "queue_position": "3",
+      "company_name": "Banner",
+      "previous_trackability": "custom_page",
+      "recheck_trackability": "unknown",
+      "recheck_board_type": "",
+      "recheck_confirmation_status": "no_structured_board_found",
+      "recheck_job_count": "0"
+    },
+    {
+      "queue_position": "4",
+      "company_name": "Baud Labs",
+      "previous_trackability": "custom_page",
+      "recheck_trackability": "unknown",
+      "recheck_board_type": "",
+      "recheck_confirmation_status": "no_structured_board_found",
+      "recheck_job_count": "0"
+    },
+    {
+      "queue_position": "5",
+      "company_name": "Bayesline",
+      "previous_trackability": "custom_page",
+      "recheck_trackability": "unknown",
+      "recheck_board_type": "",
+      "recheck_confirmation_status": "no_structured_board_found",
+      "recheck_job_count": "0"
+    },
+    {
+      "queue_position": "6",
+      "company_name": "Beam",
+      "previous_trackability": "custom_page",
+      "recheck_trackability": "unknown",
+      "recheck_board_type": "",
+      "recheck_confirmation_status": "no_structured_board_found",
+      "recheck_job_count": "0"
+    },
+    {
+      "queue_position": "7",
+      "company_name": "Berry",
+      "previous_trackability": "custom_page",
+      "recheck_trackability": "structured_board",
+      "recheck_board_type": "notion",
+      "recheck_confirmation_status": "detected_structured_board",
+      "recheck_job_count": "0"
+    },
+    {
+      "queue_position": "8",
+      "company_name": "Besimple AI",
+      "previous_trackability": "custom_page",
+      "recheck_trackability": "unknown",
+      "recheck_board_type": "",
+      "recheck_confirmation_status": "no_structured_board_found",
+      "recheck_job_count": "0"
+    },
+    {
+      "queue_position": "9",
+      "company_name": "Blank Bio",
+      "previous_trackability": "custom_page",
+      "recheck_trackability": "unknown",
+      "recheck_board_type": "",
+      "recheck_confirmation_status": "no_structured_board_found",
+      "recheck_job_count": "0"
+    },
+    {
+      "queue_position": "10",
+      "company_name": "Bloom",
+      "previous_trackability": "custom_page",
+      "recheck_trackability": "unknown",
+      "recheck_board_type": "",
+      "recheck_confirmation_status": "no_structured_board_found",
+      "recheck_job_count": "0"
+    }
+  ]
+}

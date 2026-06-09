@@ -1,0 +1,21 @@
+{
+  "batch_id": "slugs-gusto",
+  "company_count": 1,
+  "status_counts": {
+    "live_jobs": 1
+  },
+  "trackability_counts": {
+    "api_native": 1
+  },
+  "companies": [
+    {
+      "queue_position": "1",
+      "company_name": "Gusto",
+      "previous_trackability": "custom_page",
+      "recheck_trackability": "api_native",
+      "recheck_board_type": "greenhouse",
+      "recheck_confirmation_status": "live_jobs",
+      "recheck_job_count": "78"
+    }
+  ]
+}

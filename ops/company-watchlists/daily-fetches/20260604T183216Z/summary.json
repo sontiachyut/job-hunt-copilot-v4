@@ -1,0 +1,21 @@
+{
+  "run_id": "20260604T183216Z",
+  "fetched_at_utc": "2026-06-04T18:32:16Z",
+  "watchlist_rows_total": 356,
+  "configured_rows_total": 235,
+  "job_rows_total": 3607,
+  "company_fetch_status_counts": {
+    "live_jobs": 235
+  },
+  "jobs_by_board_type": {
+    "ashby": 2331,
+    "greenhouse": 1011,
+    "lever": 224,
+    "workable": 41
+  },
+  "jobs_by_segment_primary": {
+    "yc": 3607
+  },
+  "jobs_csv": "/Users/achyutaramsonti/Projects/job-hunt-copilot-v4/ops/company-watchlists/daily-fetches/20260604T183216Z/jobs.csv",
+  "company_results_csv": "/Users/achyutaramsonti/Projects/job-hunt-copilot-v4/ops/company-watchlists/daily-fetches/20260604T183216Z/company-results.csv"
+}

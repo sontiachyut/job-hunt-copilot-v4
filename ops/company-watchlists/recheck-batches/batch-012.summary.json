@@ -1,0 +1,106 @@
+{
+  "batch_id": "batch-012",
+  "company_count": 10,
+  "status_counts": {
+    "detected_structured_board": 2,
+    "no_structured_board_found": 7,
+    "live_jobs": 1
+  },
+  "trackability_counts": {
+    "structured_board": 2,
+    "unknown": 7,
+    "api_native": 1
+  },
+  "companies": [
+    {
+      "queue_position": "1",
+      "company_name": "Finta",
+      "previous_trackability": "custom_page",
+      "recheck_trackability": "structured_board",
+      "recheck_board_type": "notion",
+      "recheck_confirmation_status": "detected_structured_board",
+      "recheck_job_count": "0"
+    },
+    {
+      "queue_position": "2",
+      "company_name": "Fleetline",
+      "previous_trackability": "custom_page",
+      "recheck_trackability": "unknown",
+      "recheck_board_type": "",
+      "recheck_confirmation_status": "no_structured_board_found",
+      "recheck_job_count": "0"
+    },
+    {
+      "queue_position": "3",
+      "company_name": "FleetWorks",
+      "previous_trackability": "custom_page",
+      "recheck_trackability": "unknown",
+      "recheck_board_type": "",
+      "recheck_confirmation_status": "no_structured_board_found",
+      "recheck_job_count": "0"
+    },
+    {
+      "queue_position": "4",
+      "company_name": "Flexport",
+      "previous_trackability": "custom_page",
+      "recheck_trackability": "api_native",
+      "recheck_board_type": "greenhouse",
+      "recheck_confirmation_status": "live_jobs",
+      "recheck_job_count": "103"
+    },
+    {
+      "queue_position": "5",
+      "company_name": "Flick",
+      "previous_trackability": "custom_page",
+      "recheck_trackability": "unknown",
+      "recheck_board_type": "",
+      "recheck_confirmation_status": "no_structured_board_found",
+      "recheck_job_count": "0"
+    },
+    {
+      "queue_position": "6",
+      "company_name": "Flock Safety",
+      "previous_trackability": "custom_page",
+      "recheck_trackability": "unknown",
+      "recheck_board_type": "",
+      "recheck_confirmation_status": "no_structured_board_found",
+      "recheck_job_count": "0"
+    },
+    {
+      "queue_position": "7",
+      "company_name": "Floot",
+      "previous_trackability": "custom_page",
+      "recheck_trackability": "unknown",
+      "recheck_board_type": "",
+      "recheck_confirmation_status": "no_structured_board_found",
+      "recheck_job_count": "0"
+    },
+    {
+      "queue_position": "8",
+      "company_name": "Flowtel",
+      "previous_trackability": "custom_page",
+      "recheck_trackability": "unknown",
+      "recheck_board_type": "",
+      "recheck_confirmation_status": "no_structured_board_found",
+      "recheck_job_count": "0"
+    },
+    {
+      "queue_position": "9",
+      "company_name": "Fondo",
+      "previous_trackability": "custom_page",
+      "recheck_trackability": "structured_board",
+      "recheck_board_type": "notion",
+      "recheck_confirmation_status": "detected_structured_board",
+      "recheck_job_count": "0"
+    },
+    {
+      "queue_position": "10",
+      "company_name": "Function of Beauty",
+      "previous_trackability": "custom_page",
+      "recheck_trackability": "unknown",
+      "recheck_board_type": "",
+      "recheck_confirmation_status": "no_structured_board_found",
+      "recheck_job_count": "0"
+    }
+  ]
+}

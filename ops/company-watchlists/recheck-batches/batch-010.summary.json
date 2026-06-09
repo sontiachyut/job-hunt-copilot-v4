@@ -1,0 +1,104 @@
+{
+  "batch_id": "batch-010",
+  "company_count": 10,
+  "status_counts": {
+    "detected_structured_board": 4,
+    "no_structured_board_found": 6
+  },
+  "trackability_counts": {
+    "structured_board": 4,
+    "unknown": 6
+  },
+  "companies": [
+    {
+      "queue_position": "1",
+      "company_name": "Ditto",
+      "previous_trackability": "custom_page",
+      "recheck_trackability": "structured_board",
+      "recheck_board_type": "notion",
+      "recheck_confirmation_status": "detected_structured_board",
+      "recheck_job_count": "0"
+    },
+    {
+      "queue_position": "2",
+      "company_name": "Dodo",
+      "previous_trackability": "custom_page",
+      "recheck_trackability": "unknown",
+      "recheck_board_type": "",
+      "recheck_confirmation_status": "no_structured_board_found",
+      "recheck_job_count": "0"
+    },
+    {
+      "queue_position": "3",
+      "company_name": "DoorDash",
+      "previous_trackability": "custom_page",
+      "recheck_trackability": "unknown",
+      "recheck_board_type": "",
+      "recheck_confirmation_status": "no_structured_board_found",
+      "recheck_job_count": "0"
+    },
+    {
+      "queue_position": "4",
+      "company_name": "Dots \ud83d\udcb8",
+      "previous_trackability": "custom_page",
+      "recheck_trackability": "structured_board",
+      "recheck_board_type": "dover",
+      "recheck_confirmation_status": "detected_structured_board",
+      "recheck_job_count": "0"
+    },
+    {
+      "queue_position": "5",
+      "company_name": "Draftwise",
+      "previous_trackability": "custom_page",
+      "recheck_trackability": "structured_board",
+      "recheck_board_type": "dover",
+      "recheck_confirmation_status": "detected_structured_board",
+      "recheck_job_count": "0"
+    },
+    {
+      "queue_position": "6",
+      "company_name": "Dream3D",
+      "previous_trackability": "custom_page",
+      "recheck_trackability": "unknown",
+      "recheck_board_type": "",
+      "recheck_confirmation_status": "no_structured_board_found",
+      "recheck_job_count": "0"
+    },
+    {
+      "queue_position": "7",
+      "company_name": "DreamCraft Entertainment, Inc.",
+      "previous_trackability": "custom_page",
+      "recheck_trackability": "unknown",
+      "recheck_board_type": "",
+      "recheck_confirmation_status": "no_structured_board_found",
+      "recheck_job_count": "0"
+    },
+    {
+      "queue_position": "8",
+      "company_name": "Educato",
+      "previous_trackability": "custom_page",
+      "recheck_trackability": "structured_board",
+      "recheck_board_type": "notion",
+      "recheck_confirmation_status": "detected_structured_board",
+      "recheck_job_count": "0"
+    },
+    {
+      "queue_position": "9",
+      "company_name": "EffiGov",
+      "previous_trackability": "custom_page",
+      "recheck_trackability": "unknown",
+      "recheck_board_type": "",
+      "recheck_confirmation_status": "no_structured_board_found",
+      "recheck_job_count": "0"
+    },
+    {
+      "queue_position": "10",
+      "company_name": "ego",
+      "previous_trackability": "custom_page",
+      "recheck_trackability": "unknown",
+      "recheck_board_type": "",
+      "recheck_confirmation_status": "no_structured_board_found",
+      "recheck_job_count": "0"
+    }
+  ]
+}

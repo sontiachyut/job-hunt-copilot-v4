@@ -1,0 +1,25 @@
+{
+  "total_companies": 1168,
+  "trackability_counts": {
+    "unknown": 428,
+    "custom_page": 347,
+    "structured_board": 126,
+    "api_native": 267
+  },
+  "board_counts": {
+    "ashby": 189,
+    "ukg_ultipro": 64,
+    "greenhouse": 47,
+    "workday": 42,
+    "notion": 31,
+    "lever": 26,
+    "rippling": 9,
+    "workable": 5,
+    "linkedin_jobs": 4,
+    "icims": 3,
+    "bamboohr": 3,
+    "jazzhr": 2,
+    "breezy": 2,
+    "recruitee": 1
+  }
+}

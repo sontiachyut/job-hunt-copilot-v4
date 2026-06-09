@@ -1,0 +1,37 @@
+{
+  "total_api_native_companies": 267,
+  "status_counts": {
+    "live_jobs": 234,
+    "unresolved_board_token": 10,
+    "endpoint_error": 18,
+    "board_reachable_zero_jobs": 5
+  },
+  "board_totals": {
+    "ashby": 189,
+    "greenhouse": 47,
+    "lever": 26,
+    "workable": 5
+  },
+  "board_status_counts": {
+    "ashby": {
+      "live_jobs": 178,
+      "unresolved_board_token": 3,
+      "endpoint_error": 8
+    },
+    "greenhouse": {
+      "live_jobs": 31,
+      "unresolved_board_token": 7,
+      "endpoint_error": 6,
+      "board_reachable_zero_jobs": 3
+    },
+    "lever": {
+      "endpoint_error": 4,
+      "live_jobs": 20,
+      "board_reachable_zero_jobs": 2
+    },
+    "workable": {
+      "live_jobs": 5
+    }
+  },
+  "confirmed_live_jobs_total": 234
+}
