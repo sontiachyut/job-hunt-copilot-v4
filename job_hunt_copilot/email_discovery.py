@@ -127,7 +127,7 @@ DEFAULT_SHORTLIST_LIMIT = 10
 SHORTLIST_PRIORITY_ORDER = (
     {
         "bucket": "manager_adjacent",
-        "recipient_types": (RECIPIENT_TYPE_HIRING_MANAGER, RECIPIENT_TYPE_FOUNDER),
+        "recipient_types": (RECIPIENT_TYPE_HIRING_MANAGER,),
         "description": "Prefer as many manager-adjacent internal contacts as available.",
     },
     {
@@ -139,16 +139,6 @@ SHORTLIST_PRIORITY_ORDER = (
         "bucket": "engineer",
         "recipient_types": (RECIPIENT_TYPE_ENGINEER,),
         "description": "Then prefer other software engineers and role-relevant engineers.",
-    },
-    {
-        "bucket": "recruiter",
-        "recipient_types": (RECIPIENT_TYPE_RECRUITER,),
-        "description": "Only then fall back to recruiters when manager and technical coverage is thin.",
-    },
-    {
-        "bucket": "other_internal",
-        "recipient_types": (RECIPIENT_TYPE_OTHER_INTERNAL, RECIPIENT_TYPE_ALUMNI),
-        "description": "Finally fall back to other helpful internal contacts when needed.",
     },
 )
 STOPWORD_TOKENS = frozenset(
@@ -2279,7 +2269,7 @@ def select_initial_enrichment_shortlist(
         (
             (index, candidate)
             for index, candidate in enumerate(candidates)
-            if index not in excluded_indices
+            if index not in excluded_indices and _candidate_is_shortlist_eligible(candidate)
         ),
         key=lambda item: (_shortlist_priority_key(item[1]), item[0]),
     )
@@ -2291,9 +2281,16 @@ def select_initial_enrichment_shortlist(
     return tuple(candidates[index] for index in selected_indices)
 
 
+def _candidate_is_shortlist_eligible(candidate: PeopleSearchCandidate) -> bool:
+    return candidate.recipient_type in {
+        RECIPIENT_TYPE_HIRING_MANAGER,
+        RECIPIENT_TYPE_ENGINEER,
+    }
+
+
 def _shortlist_priority_key(candidate: PeopleSearchCandidate) -> int:
     recipient_type = candidate.recipient_type
-    if recipient_type in {RECIPIENT_TYPE_HIRING_MANAGER, RECIPIENT_TYPE_FOUNDER}:
+    if recipient_type == RECIPIENT_TYPE_HIRING_MANAGER:
         return 0
     if recipient_type == RECIPIENT_TYPE_ENGINEER and _is_senior_engineer_title(
         (candidate.title or "").lower()
@@ -2301,11 +2298,7 @@ def _shortlist_priority_key(candidate: PeopleSearchCandidate) -> int:
         return 1
     if recipient_type == RECIPIENT_TYPE_ENGINEER:
         return 2
-    if recipient_type == RECIPIENT_TYPE_RECRUITER:
-        return 3
-    if recipient_type in {RECIPIENT_TYPE_OTHER_INTERNAL, RECIPIENT_TYPE_ALUMNI}:
-        return 4
-    return 5
+    return 3
 
 
 def _is_senior_engineer_title(title: str) -> bool:
