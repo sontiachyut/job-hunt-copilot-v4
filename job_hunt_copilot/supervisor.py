@@ -2610,14 +2610,15 @@ def select_next_supervisor_work_unit(
     if stale_gmail_repair_work is not None:
         return stale_gmail_repair_work
 
-    pipeline_run_work = _select_open_pipeline_run_work_unit(
+    priority_pipeline_run_work = _select_open_pipeline_run_work_unit(
         connection,
         project_root=project_root,
         current_time=current_time,
         local_timezone=action_dependencies.local_timezone,
+        defer_ordinary_discovery_backlog=True,
     )
-    if pipeline_run_work is not None:
-        return pipeline_run_work
+    if priority_pipeline_run_work is not None:
+        return priority_pipeline_run_work
 
     orphaned_send_stage_work = _select_orphaned_send_stage_posting_work_unit(
         connection,
@@ -2627,6 +2628,15 @@ def select_next_supervisor_work_unit(
     )
     if orphaned_send_stage_work is not None:
         return orphaned_send_stage_work
+
+    pipeline_run_work = _select_open_pipeline_run_work_unit(
+        connection,
+        project_root=project_root,
+        current_time=current_time,
+        local_timezone=action_dependencies.local_timezone,
+    )
+    if pipeline_run_work is not None:
+        return pipeline_run_work
 
     posting_work = _select_new_posting_work_unit(connection)
     if posting_work is not None:
@@ -3019,6 +3029,7 @@ def _select_open_pipeline_run_work_unit(
     current_time: str,
     local_timezone: object | str | None = None,
     generated_frontier_only: bool = False,
+    defer_ordinary_discovery_backlog: bool = False,
 ) -> SupervisorWorkUnit | None:
     from .email_discovery import is_role_targeted_email_discovery_actionable_now
     from .outreach import (
@@ -3205,7 +3216,7 @@ def _select_open_pipeline_run_work_unit(
                         continue
 
         action_id = ROLE_TARGETED_PIPELINE_STAGE_ACTIONS.get(pipeline_run.current_stage)
-        return SupervisorWorkUnit(
+        work_unit = SupervisorWorkUnit(
             work_type=WORK_TYPE_PIPELINE_RUN,
             work_id=pipeline_run.pipeline_run_id,
             action_id=action_id,
@@ -3217,6 +3228,12 @@ def _select_open_pipeline_run_work_unit(
             pipeline_run_id=pipeline_run.pipeline_run_id,
             current_stage=pipeline_run.current_stage,
         )
+        if (
+            defer_ordinary_discovery_backlog
+            and pipeline_run.current_stage in {"email_discovery", "people_search"}
+        ):
+            continue
+        return work_unit
     return None
 
 
@@ -3295,6 +3312,23 @@ def _classify_orphaned_send_stage_recovery(
     )
     if pending_feedback_message_ids or next_frontier is not None:
         return None
+    already_closed_run = connection.execute(
+        """
+        SELECT 1
+        FROM pipeline_runs
+        WHERE job_posting_id = ?
+          AND run_status = ?
+          AND current_stage = 'completed'
+        ORDER BY COALESCE(completed_at, updated_at, started_at) DESC, pipeline_run_id DESC
+        LIMIT 1
+        """,
+        (
+            job_posting_id,
+            RUN_STATUS_COMPLETED,
+        ),
+    ).fetchone()
+    if already_closed_run is not None:
+        return None
     return "delivery_feedback", "feedback_only"
 
 
@@ -3309,7 +3343,8 @@ def _select_orphaned_send_stage_posting_work_unit(
     placeholders = ", ".join("?" for _ in ORPHANED_SEND_STAGE_RECOVERY_POSTING_STATUSES)
     rows = connection.execute(
         f"""
-        SELECT jp.job_posting_id, jp.lead_id, jp.posting_status, jp.company_name, jp.role_title
+        SELECT jp.job_posting_id, jp.lead_id, jp.posting_status, jp.company_name, jp.role_title,
+               jp.created_at, jp.updated_at
         FROM job_postings jp
         WHERE jp.posting_status IN ({placeholders})
           AND NOT EXISTS (
@@ -3326,6 +3361,7 @@ def _select_orphaned_send_stage_posting_work_unit(
             RUN_STATUS_PAUSED,
         ),
     ).fetchall()
+    best_candidate: tuple[tuple[int, str, str, str], sqlite3.Row, str, str] | None = None
     for row in rows:
         recovery = _classify_orphaned_send_stage_recovery(
             connection,
@@ -3339,36 +3375,60 @@ def _select_orphaned_send_stage_posting_work_unit(
         recovery_stage, recovery_kind = recovery
         if generated_frontier_only and recovery_kind != "generated_frontier":
             continue
-        if recovery_stage == "sending" and recovery_kind == "generated_frontier":
-            summary = (
-                "Recreate an orphaned generated send frontier before Gmail polling "
-                "or older discovery backlog so send-ready outreach can drain."
-            )
-        elif recovery_stage == "sending":
-            summary = (
-                "Recreate an orphaned send-stage run so actionable outreach resumes "
-                "before older discovery backlog."
-            )
-        elif recovery_kind == "feedback_only":
-            summary = (
-                "Recreate an orphaned delivery-feedback run so completed outreach can "
-                "close cleanly once pending feedback has settled."
-            )
-        else:
-            summary = (
-                "Recreate an orphaned delivery-feedback run so retryable send-stage "
-                "work for a completed posting can resume."
-            )
-        return SupervisorWorkUnit(
-            work_type=WORK_TYPE_JOB_POSTING,
-            work_id=row[0],
-            action_id=ACTION_BOOTSTRAP_ROLE_TARGETED_RUN,
-            summary=summary,
-            lead_id=_optional_text(row[1]),
-            job_posting_id=row[0],
-            current_stage=recovery_stage,
+        recovery_priority = (
+            0
+            if recovery_kind == "generated_frontier"
+            else 1
+            if recovery_kind != "feedback_only"
+            else 2
         )
-    return None
+        candidate_sort_key = (
+            recovery_priority,
+            str(row["updated_at"]),
+            str(row["created_at"]),
+            str(row["job_posting_id"]),
+        )
+        if best_candidate is None or candidate_sort_key < best_candidate[0]:
+            best_candidate = (
+                candidate_sort_key,
+                row,
+                recovery_stage,
+                recovery_kind,
+            )
+    if best_candidate is None:
+        return None
+    _, selected_row, recovery_stage, recovery_kind = best_candidate
+    row = selected_row
+    if recovery_stage == "sending" and recovery_kind == "generated_frontier":
+        summary = (
+            "Recreate an orphaned generated send frontier before Gmail polling "
+            "or older discovery backlog so send-ready outreach can drain."
+        )
+    elif recovery_kind == "feedback_only":
+        summary = (
+            "Recreate an orphaned delivery-feedback run so completed outreach can "
+            "close cleanly once pending feedback has settled."
+        )
+    elif recovery_stage == "sending":
+        summary = (
+            "Recreate an orphaned send-stage run so actionable outreach resumes "
+            "before feedback-only cleanup or older discovery backlog."
+        )
+    else:
+        summary = (
+            "Recreate an orphaned delivery-feedback run so retryable send-stage "
+            "work for a completed posting can resume before feedback-only cleanup "
+            "or older discovery backlog."
+        )
+    return SupervisorWorkUnit(
+        work_type=WORK_TYPE_JOB_POSTING,
+        work_id=row[0],
+        action_id=ACTION_BOOTSTRAP_ROLE_TARGETED_RUN,
+        summary=summary,
+        lead_id=_optional_text(row[1]),
+        job_posting_id=row[0],
+        current_stage=recovery_stage,
+    )
 
 
 def _select_new_posting_work_unit(
