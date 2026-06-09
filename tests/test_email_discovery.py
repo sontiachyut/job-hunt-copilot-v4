@@ -16,6 +16,7 @@ from job_hunt_copilot.email_discovery import (
     CONTACT_STATUS_EXHAUSTED,
     CONTACT_STATUS_WORKING_EMAIL_FOUND,
     ConfiguredApolloClient,
+    DEFAULT_SHORTLIST_LIMIT,
     DISCOVERY_OUTCOME_DOMAIN_UNRESOLVED,
     DISCOVERY_OUTCOME_NOT_FOUND,
     DISCOVERY_OUTCOME_PROVIDER_ERROR,
@@ -28,6 +29,7 @@ from job_hunt_copilot.email_discovery import (
     POSTING_CONTACT_STATUS_IDENTIFIED,
     POSTING_CONTACT_STATUS_OUTREACH_DONE,
     POSTING_CONTACT_STATUS_SHORTLISTED,
+    PeopleSearchCandidate,
     PROVIDER_NAME_APOLLO,
     RECIPIENT_TYPE_ENGINEER,
     RECIPIENT_TYPE_HIRING_MANAGER,
@@ -42,6 +44,7 @@ from job_hunt_copilot.email_discovery import (
     run_apollo_people_search,
     run_email_discovery_for_contact,
     run_general_learning_email_discovery,
+    select_initial_enrichment_shortlist,
 )
 from job_hunt_copilot.outreach import evaluate_role_targeted_send_set
 from job_hunt_copilot.paths import ProjectPaths
@@ -338,6 +341,78 @@ class FakeEmailFinderProvider:
         if not self.responses:
             raise AssertionError(f"Fake provider {self.provider_name} ran out of responses.")
         return self.responses.pop(0)
+
+
+def test_select_initial_enrichment_shortlist_prefers_managers_then_senior_engineers_then_engineers():
+    shortlist = select_initial_enrichment_shortlist(
+        [
+            PeopleSearchCandidate.from_mapping(candidate)
+            for candidate in [
+            build_candidate(provider_person_id="pp_r1", display_name="Taylor Recruiter", title="Recruiter"),
+            build_candidate(provider_person_id="pp_e1", display_name="Casey Engineer", title="Software Engineer"),
+            build_candidate(provider_person_id="pp_m1", display_name="Morgan Manager", title="Engineering Manager"),
+            build_candidate(provider_person_id="pp_se1", display_name="Jamie Senior", title="Senior Software Engineer"),
+            build_candidate(provider_person_id="pp_a1", display_name="Pat Architect", title="Platform Architect"),
+            build_candidate(provider_person_id="pp_r2", display_name="Avery Recruiter", title="Technical Recruiter"),
+            build_candidate(provider_person_id="pp_m2", display_name="Drew Director", title="Director of Engineering"),
+            build_candidate(provider_person_id="pp_e2", display_name="Jordan Engineer", title="Software Engineer II"),
+            build_candidate(provider_person_id="pp_o1", display_name="Rowan Internal", title="Product Operations"),
+            build_candidate(provider_person_id="pp_f1", display_name="Sky Founder", title="Founder"),
+            ]
+        ],
+        limit=7,
+    )
+
+    assert [candidate.provider_person_id for candidate in shortlist] == [
+        "pp_m1",
+        "pp_m2",
+        "pp_f1",
+        "pp_se1",
+        "pp_a1",
+        "pp_e1",
+        "pp_e2",
+    ]
+
+
+def test_run_apollo_people_search_uses_default_shortlist_limit_of_ten(tmp_path: Path):
+    project_root = bootstrap_project(tmp_path)
+    paths = ProjectPaths.from_root(project_root)
+    connection = connect_database(project_root / "job_hunt_copilot.db")
+    seed_search_ready_posting(connection, paths)
+    connection.close()
+
+    provider = FakeApolloProvider(
+        resolved_company=ApolloResolvedCompany(
+            organization_id="org_acme",
+            organization_name="Acme Robotics",
+            primary_domain="acmerobotics.com",
+        ),
+        candidates=[
+            build_candidate(provider_person_id="pp_r1", display_name="Taylor Recruiter", title="Recruiter"),
+            build_candidate(provider_person_id="pp_e1", display_name="Casey Engineer", title="Software Engineer"),
+            build_candidate(provider_person_id="pp_m1", display_name="Morgan Manager", title="Engineering Manager"),
+            build_candidate(provider_person_id="pp_se1", display_name="Jamie Senior", title="Senior Software Engineer"),
+            build_candidate(provider_person_id="pp_a1", display_name="Pat Architect", title="Platform Architect"),
+            build_candidate(provider_person_id="pp_r2", display_name="Avery Recruiter", title="Technical Recruiter"),
+            build_candidate(provider_person_id="pp_m2", display_name="Drew Director", title="Director of Engineering"),
+            build_candidate(provider_person_id="pp_e2", display_name="Jordan Engineer", title="Software Engineer II"),
+            build_candidate(provider_person_id="pp_o1", display_name="Rowan Internal", title="Product Operations"),
+            build_candidate(provider_person_id="pp_f1", display_name="Sky Founder", title="Founder"),
+            build_candidate(provider_person_id="pp_e3", display_name="Riley Staff", title="Staff Software Engineer"),
+            build_candidate(provider_person_id="pp_r3", display_name="Quinn Recruiter", title="Recruiter"),
+        ],
+    )
+
+    result = run_apollo_people_search(
+        project_root=project_root,
+        job_posting_id="jp_search",
+        provider=provider,
+    )
+
+    assert len(result.shortlisted_contact_ids) == DEFAULT_SHORTLIST_LIMIT
+    artifact_payload = json.loads(result.artifact_path.read_text(encoding="utf-8"))
+    assert artifact_payload["shortlist_limit"] == DEFAULT_SHORTLIST_LIMIT
+    assert len(artifact_payload["shortlisted_contact_ids"]) == DEFAULT_SHORTLIST_LIMIT
 
 
 def seed_linked_contact(
@@ -1003,11 +1078,11 @@ def test_refresh_same_company_contact_frontier_exhausts_reused_contact_and_backf
     )
     assert len(initial.shortlisted_contact_ids) == 3
 
-    recruiter_contact_id = connection.execute(
+    manager_contact_id = connection.execute(
         """
         SELECT contact_id
         FROM contacts
-        WHERE provider_person_id = 'pp_r1'
+        WHERE provider_person_id = 'pp_m1'
         """
     ).fetchone()["contact_id"]
     connection.execute(
@@ -1018,10 +1093,10 @@ def test_refresh_same_company_contact_frontier_exhausts_reused_contact_and_backf
         ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
         """,
         (
-            "jpc_other_r1",
+            "jpc_other_m1",
             "jp_other",
-            recruiter_contact_id,
-            RECIPIENT_TYPE_RECRUITER,
+            manager_contact_id,
+            RECIPIENT_TYPE_HIRING_MANAGER,
             "Previously used on another posting.",
             POSTING_CONTACT_STATUS_OUTREACH_DONE,
             "2026-04-05T18:00:00Z",
@@ -1036,13 +1111,13 @@ def test_refresh_same_company_contact_frontier_exhausts_reused_contact_and_backf
         ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         """,
         (
-            "msg_other_r1",
-            recruiter_contact_id,
+            "msg_other_m1",
+            manager_contact_id,
             "role_targeted",
-            "taylor@acmerobotics.com",
+            "morgan@acmerobotics.com",
             "sent",
             "jp_other",
-            "jpc_other_r1",
+            "jpc_other_m1",
             "Hello",
             "Hello",
             "2026-04-05T18:05:00Z",
@@ -1076,8 +1151,8 @@ def test_refresh_same_company_contact_frontier_exhausts_reused_contact_and_backf
         """
     ).fetchall()
     statuses_by_provider = {str(row["provider_person_id"]): str(row["link_level_status"]) for row in primary_links}
-    assert statuses_by_provider["pp_r1"] == POSTING_CONTACT_STATUS_EXHAUSTED
-    assert "pp_e2" in statuses_by_provider
+    assert statuses_by_provider["pp_m1"] == POSTING_CONTACT_STATUS_EXHAUSTED
+    assert "pp_r1" in statuses_by_provider
     active_count = connection.execute(
         """
         SELECT COUNT(*)

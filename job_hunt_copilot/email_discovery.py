@@ -59,8 +59,6 @@ RECIPIENT_TYPE_ALUMNI = "alumni"
 RECIPIENT_TYPE_OTHER_INTERNAL = "other_internal"
 RECIPIENT_TYPE_FOUNDER = "founder"
 
-DEFAULT_SHORTLIST_LIMIT = 30
-
 DISCOVERY_OUTCOME_FOUND = "found"
 DISCOVERY_OUTCOME_NOT_FOUND = "not_found"
 DISCOVERY_OUTCOME_DOMAIN_UNRESOLVED = "domain_unresolved"
@@ -124,10 +122,34 @@ JSON_LD_RE = re.compile(
 CONNECTIONS_RE = re.compile(r"(\d[\d,]*\+?)\s+connections", re.IGNORECASE)
 FOLLOWERS_RE = re.compile(r"(\d[\d,]*)\s+followers", re.IGNORECASE)
 
-SHORTLIST_BUCKETS = (
-    ("recruiter", {RECIPIENT_TYPE_RECRUITER}, 2),
-    ("manager_adjacent", {RECIPIENT_TYPE_HIRING_MANAGER}, 2),
-    ("engineer", {RECIPIENT_TYPE_ENGINEER}, 2),
+DEFAULT_SHORTLIST_LIMIT = 10
+
+SHORTLIST_PRIORITY_ORDER = (
+    {
+        "bucket": "manager_adjacent",
+        "recipient_types": (RECIPIENT_TYPE_HIRING_MANAGER, RECIPIENT_TYPE_FOUNDER),
+        "description": "Prefer as many manager-adjacent internal contacts as available.",
+    },
+    {
+        "bucket": "senior_engineer",
+        "recipient_types": (RECIPIENT_TYPE_ENGINEER,),
+        "description": "Then prefer senior, staff, lead, principal, or architect engineers.",
+    },
+    {
+        "bucket": "engineer",
+        "recipient_types": (RECIPIENT_TYPE_ENGINEER,),
+        "description": "Then prefer other software engineers and role-relevant engineers.",
+    },
+    {
+        "bucket": "recruiter",
+        "recipient_types": (RECIPIENT_TYPE_RECRUITER,),
+        "description": "Only then fall back to recruiters when manager and technical coverage is thin.",
+    },
+    {
+        "bucket": "other_internal",
+        "recipient_types": (RECIPIENT_TYPE_OTHER_INTERNAL, RECIPIENT_TYPE_ALUMNI),
+        "description": "Finally fall back to other helpful internal contacts when needed.",
+    },
 )
 STOPWORD_TOKENS = frozenset(
     {
@@ -2252,35 +2274,53 @@ def select_initial_enrichment_shortlist(
         }
 
     selected_indices: list[int] = []
-    selected_lookup: set[int] = set()
 
-    for _, recipient_types, bucket_limit in SHORTLIST_BUCKETS:
-        bucket_count = 0
-        for index, candidate in enumerate(candidates):
-            if (
-                index in selected_lookup
-                or index in excluded_indices
-                or candidate.recipient_type not in recipient_types
-            ):
-                continue
-            selected_indices.append(index)
-            selected_lookup.add(index)
-            bucket_count += 1
-            if bucket_count >= bucket_limit or len(selected_indices) >= limit:
-                break
+    ranked_candidates = sorted(
+        (
+            (index, candidate)
+            for index, candidate in enumerate(candidates)
+            if index not in excluded_indices
+        ),
+        key=lambda item: (_shortlist_priority_key(item[1]), item[0]),
+    )
+    for index, _candidate in ranked_candidates:
+        selected_indices.append(index)
         if len(selected_indices) >= limit:
             break
 
-    if len(selected_indices) < limit:
-        for index, candidate in enumerate(candidates):
-            if index in selected_lookup or index in excluded_indices:
-                continue
-            selected_indices.append(index)
-            selected_lookup.add(index)
-            if len(selected_indices) >= limit:
-                break
-
     return tuple(candidates[index] for index in selected_indices)
+
+
+def _shortlist_priority_key(candidate: PeopleSearchCandidate) -> int:
+    recipient_type = candidate.recipient_type
+    if recipient_type in {RECIPIENT_TYPE_HIRING_MANAGER, RECIPIENT_TYPE_FOUNDER}:
+        return 0
+    if recipient_type == RECIPIENT_TYPE_ENGINEER and _is_senior_engineer_title(
+        (candidate.title or "").lower()
+    ):
+        return 1
+    if recipient_type == RECIPIENT_TYPE_ENGINEER:
+        return 2
+    if recipient_type == RECIPIENT_TYPE_RECRUITER:
+        return 3
+    if recipient_type in {RECIPIENT_TYPE_OTHER_INTERNAL, RECIPIENT_TYPE_ALUMNI}:
+        return 4
+    return 5
+
+
+def _is_senior_engineer_title(title: str) -> bool:
+    return any(
+        token in title
+        for token in (
+            "senior",
+            "sr ",
+            "sr.",
+            "staff",
+            "lead",
+            "principal",
+            "architect",
+        )
+    )
 
 
 def _normalize_candidate_rows(
@@ -2639,13 +2679,20 @@ def _build_apollo_search_filters(
         ],
         "shortlist_policy": {
             "limit": shortlist_limit,
-            "buckets": [
+            "priority_order": [
                 {
                     "bucket": bucket_name,
                     "recipient_types": sorted(recipient_types),
-                    "cap": bucket_limit,
+                    "description": description,
                 }
-                for bucket_name, recipient_types, bucket_limit in SHORTLIST_BUCKETS
+                for bucket_name, recipient_types, description in (
+                    (
+                        policy["bucket"],
+                        tuple(policy["recipient_types"]),
+                        str(policy["description"]),
+                    )
+                    for policy in SHORTLIST_PRIORITY_ORDER
+                )
             ],
         },
     }
