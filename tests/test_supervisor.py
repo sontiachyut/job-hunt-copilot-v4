@@ -1248,9 +1248,12 @@ def test_select_next_supervisor_work_unit_prefers_generated_send_frontier_over_g
     assert "already-generated send frontier" in selected_work.summary
 
 
-def test_select_next_supervisor_work_unit_recovers_orphaned_send_stage_before_discovery(
+def test_select_next_supervisor_work_unit_prefers_orphaned_existing_send_frontier_over_feedback_cleanup_and_discovery(
     tmp_path,
+    monkeypatch,
 ):
+    import job_hunt_copilot.supervisor as supervisor_module
+
     project_root = bootstrap_project(tmp_path)
     connection = connect_database(project_root / "job_hunt_copilot.db")
     resume_agent(
@@ -1259,48 +1262,34 @@ def test_select_next_supervisor_work_unit_recovers_orphaned_send_stage_before_di
         timestamp="2026-04-06T00:00:00Z",
     )
 
-    orphaned_lead_id, orphaned_job_posting_id = seed_named_role_targeted_posting(
+    _, feedback_only_job_posting_id = seed_named_role_targeted_posting(
+        connection,
+        lead_id="ld_feedback_only",
+        job_posting_id="jp_feedback_only",
+        company_name="Completed Co",
+        role_title="Platform Engineer",
+        posting_status="completed",
+        timestamp="2026-04-06T00:01:00Z",
+    )
+    _, orphaned_job_posting_id = seed_named_role_targeted_posting(
         connection,
         lead_id="ld_orphaned",
         job_posting_id="jp_orphaned",
         company_name="Recovered Co",
         role_title="Machine Learning Engineer",
         posting_status="outreach_in_progress",
-        timestamp="2026-04-06T00:01:00Z",
-    )
-    seed_tailoring_run(
-        connection,
-        run_id="rtr_orphaned_approved",
-        job_posting_id=orphaned_job_posting_id,
-        tailoring_status="tailored",
-        resume_review_status="approved",
-        verification_outcome="pass",
-        final_resume_path="resume-tailoring/output/rtr_orphaned_approved/final.pdf",
         timestamp="2026-04-06T00:02:00Z",
     )
-    orphaned_run, _ = ensure_role_targeted_pipeline_run(
-        connection,
-        lead_id=orphaned_lead_id,
-        job_posting_id=orphaned_job_posting_id,
-        current_stage="sending",
-        started_at="2026-04-06T00:03:00Z",
-    )
-    fail_pipeline_run(
-        connection,
-        orphaned_run.pipeline_run_id,
-        current_stage="sending",
-        error_summary="retired while June backlog was reprioritized",
-        timestamp="2026-04-06T00:04:00Z",
-    )
-    seed_send_ready_contact_with_generated_message(
-        connection,
-        contact_id="ct_orphaned",
-        job_posting_contact_id="jpc_orphaned",
-        job_posting_id=orphaned_job_posting_id,
-        company_name="Recovered Co",
-        display_name="Taylor Hiring Manager",
-        recipient_email="taylor@recovered.example",
-        created_at="2026-04-06T00:05:00Z",
+    monkeypatch.setattr(
+        supervisor_module,
+        "_classify_orphaned_send_stage_recovery",
+        lambda *_args, job_posting_id, **_kwargs: (
+            ("delivery_feedback", "feedback_only")
+            if job_posting_id == feedback_only_job_posting_id
+            else ("sending", "existing_frontier")
+            if job_posting_id == orphaned_job_posting_id
+            else None
+        ),
     )
 
     _, discovery_job_posting_id = seed_named_role_targeted_posting(
@@ -1335,9 +1324,93 @@ def test_select_next_supervisor_work_unit_recovers_orphaned_send_stage_before_di
     assert selected_work.job_posting_id == orphaned_job_posting_id
     assert selected_work.current_stage == "sending"
     assert selected_work.pipeline_run_id is None
-    assert "orphaned generated send frontier" in selected_work.summary
+    assert "before feedback-only cleanup or older discovery backlog" in selected_work.summary
+    assert selected_work.work_id != feedback_only_job_posting_id
     assert selected_work.work_id != discovery_job_posting_id
     assert selected_work.work_id != discovery_run.pipeline_run_id
+
+
+def test_classify_orphaned_feedback_only_recovery_stops_after_completed_closure(
+    tmp_path,
+    monkeypatch,
+):
+    import job_hunt_copilot.outreach as outreach_module
+    import job_hunt_copilot.supervisor as supervisor_module
+
+    project_root = bootstrap_project(tmp_path)
+    connection = connect_database(project_root / "job_hunt_copilot.db")
+    lead_id, job_posting_id = seed_named_role_targeted_posting(
+        connection,
+        lead_id="ld_feedback_only",
+        job_posting_id="jp_feedback_only",
+        company_name="Completed Co",
+        role_title="Platform Engineer",
+        posting_status="completed",
+        timestamp="2026-04-06T00:01:00Z",
+    )
+    monkeypatch.setattr(
+        outreach_module,
+        "is_role_targeted_sending_actionable_now",
+        lambda *args, **kwargs: False,
+    )
+    monkeypatch.setattr(
+        outreach_module,
+        "_load_role_targeted_send_posting_row",
+        lambda *args, **kwargs: {"job_posting_id": job_posting_id},
+    )
+    monkeypatch.setattr(
+        outreach_module,
+        "_load_active_role_targeted_wave",
+        lambda *args, **kwargs: (),
+    )
+    monkeypatch.setattr(
+        outreach_module,
+        "_find_next_send_frontier_message",
+        lambda *args, **kwargs: (None, None),
+    )
+    monkeypatch.setattr(
+        supervisor_module,
+        "_list_posting_sent_outreach_message_ids",
+        lambda *args, **kwargs: ["msg_sent"],
+    )
+    monkeypatch.setattr(
+        supervisor_module,
+        "_list_posting_sent_outreach_message_ids_without_terminal_feedback",
+        lambda *args, **kwargs: [],
+    )
+
+    initial_recovery = supervisor_module._classify_orphaned_send_stage_recovery(
+        connection,
+        project_root=project_root,
+        job_posting_id=job_posting_id,
+        current_time="2026-04-06T00:02:00Z",
+        local_timezone="UTC",
+    )
+
+    recovered_run, _ = ensure_role_targeted_pipeline_run(
+        connection,
+        lead_id=lead_id,
+        job_posting_id=job_posting_id,
+        current_stage="delivery_feedback",
+        started_at="2026-04-06T00:03:00Z",
+    )
+    complete_pipeline_run(
+        connection,
+        recovered_run.pipeline_run_id,
+        timestamp="2026-04-06T00:04:00Z",
+    )
+
+    post_closure_recovery = supervisor_module._classify_orphaned_send_stage_recovery(
+        connection,
+        project_root=project_root,
+        job_posting_id=job_posting_id,
+        current_time="2026-04-06T00:05:00Z",
+        local_timezone="UTC",
+    )
+    connection.close()
+
+    assert initial_recovery == ("delivery_feedback", "feedback_only")
+    assert post_closure_recovery is None
 
 
 def test_generated_frontier_only_prepass_returns_none_instead_of_falling_back_to_discovery(
