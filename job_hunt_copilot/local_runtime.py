@@ -33,7 +33,12 @@ from .maintenance import (
     build_default_maintenance_plan,
     review_maintenance_change_batch as review_persisted_maintenance_change_batch,
 )
-from .outreach import GmailApiOutreachSender
+from .outreach import (
+    GmailApiOutreachSender,
+    MESSAGE_STATUS_FAILED,
+    OUTREACH_MODE_ROLE_TARGETED,
+    is_role_targeted_sending_actionable_now,
+)
 from .paths import ProjectPaths
 from .records import new_canonical_id, now_utc_iso
 from .resume_tailoring import (
@@ -93,6 +98,7 @@ JOB_POSTING_STATUS_RESUME_REVIEW_PENDING = "resume_review_pending"
 JOB_POSTING_STATUS_REQUIRES_CONTACTS = "requires_contacts"
 JOB_POSTING_STATUS_READY_FOR_OUTREACH = "ready_for_outreach"
 JOB_POSTING_STATUS_OUTREACH_IN_PROGRESS = "outreach_in_progress"
+JOB_POSTING_STATUS_COMPLETED = "completed"
 JOB_POSTING_STATUS_ABANDONED = "abandoned"
 JOB_POSTING_STATUS_CLOSED_BY_USER = "closed_by_user"
 APPLICATION_STATE_NOT_APPLIED = "not_applied"
@@ -237,6 +243,14 @@ GUIDANCE_REQUEST_KINDS = frozenset(
 GUIDANCE_CONFLICT_INCIDENT_TYPE = "expert_guidance_conflict"
 GUIDANCE_CLARIFICATION_INCIDENT_TYPE = "expert_guidance_clarification"
 GUIDANCE_CLARIFICATION_PAUSE_REASON = "expert_guidance_clarification"
+STALE_ROLE_TARGETED_RETIREMENT_COMPONENT = "stale_role_targeted_backlog_retirement"
+STALE_ROLE_TARGETED_RETIREMENT_POSTING_STATUSES = frozenset(
+    {
+        JOB_POSTING_STATUS_READY_FOR_OUTREACH,
+        JOB_POSTING_STATUS_OUTREACH_IN_PROGRESS,
+        JOB_POSTING_STATUS_COMPLETED,
+    }
+)
 PMSET_EVENT_LINE_PATTERN = re.compile(
     r"^(?P<timestamp>\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2} [+-]\d{4})\s+(?P<body>.+)$"
 )
@@ -1911,6 +1925,314 @@ def abandon_job_posting(
         "manual_command": manual_command,
         "control_state": dict(control_state.values),
     }
+
+
+def _render_stale_role_targeted_backlog_retirement_markdown(
+    report: dict[str, Any],
+) -> str:
+    lines = [
+        "# Stale Role-Targeted Backlog Retirement",
+        "",
+        f"- Produced at: `{report['produced_at']}`",
+        f"- Cutoff created before: `{report['cutoff_created_before']}`",
+        f"- Retired postings: {report['retired_posting_count']}",
+        f"- Retired messages: {report['retired_message_count']}",
+        f"- Retired pipeline runs: {report['retired_pipeline_run_count']}",
+        "",
+    ]
+    postings = report.get("retired_postings") or []
+    if not postings:
+        lines.extend(["No stale role-targeted backlog matched the requested scope.", ""])
+        return "\n".join(lines)
+
+    lines.extend(["## Retired Postings", ""])
+    for posting in postings:
+        lines.extend(
+            [
+                f"- `{posting['job_posting_id']}` {posting['company_name']} | {posting['role_title']}",
+                f"  - posting status: `{posting['previous_status']}` -> `{posting['posting_status']}`",
+                f"  - retired unsent messages: {posting['retired_message_count']}",
+                f"  - retired pipeline runs: {len(posting['retired_pipeline_runs'])}",
+            ]
+        )
+    lines.append("")
+    return "\n".join(lines)
+
+
+def _write_stale_role_targeted_backlog_retirement_artifacts(
+    paths: ProjectPaths,
+    *,
+    retirement_run_id: str,
+    report: dict[str, Any],
+) -> dict[str, str]:
+    artifact_dir = (
+        paths.project_root
+        / "ops"
+        / "stale-role-targeted-backlog-retirements"
+        / retirement_run_id
+    )
+    json_path = artifact_dir / "summary.json"
+    markdown_path = artifact_dir / "summary.md"
+    artifact_dir.mkdir(parents=True, exist_ok=True)
+    write_text_atomic(json_path, json.dumps(report, indent=2, sort_keys=False) + "\n")
+    write_text_atomic(
+        markdown_path,
+        _render_stale_role_targeted_backlog_retirement_markdown(report),
+    )
+    return {
+        "summary_json_path": str(json_path),
+        "summary_markdown_path": str(markdown_path),
+    }
+
+
+def retire_stale_role_targeted_send_backlog(
+    *,
+    cutoff_created_before: str,
+    project_root: Path | str | None = None,
+    reason: str | None = None,
+    manual_command: str | None = None,
+    timestamp: str | None = None,
+) -> dict[str, Any]:
+    cutoff_text = _require_non_blank(cutoff_created_before, "cutoff_created_before")
+    paths = ProjectPaths.from_root(project_root)
+    migration = initialize_database(paths.db_path)
+    current_timestamp = timestamp or now_utc_iso()
+    reason_text = (
+        reason
+        or "The owner explicitly retired this stale pre-cutover role-targeted send backlog."
+    ).strip()
+    retirement_run_id = (
+        f"retire-{current_timestamp.replace(':', '').replace('-', '')}-"
+        f"{uuid.uuid4().hex[:8]}"
+    )
+
+    with connect_canonical_database(paths) as connection:
+        control_state = read_agent_control_state(connection, timestamp=current_timestamp)
+        candidate_rows = connection.execute(
+            """
+            SELECT job_posting_id, lead_id, company_name, role_title, posting_status
+            FROM job_postings
+            WHERE posting_status IN (?, ?, ?)
+              AND EXISTS (
+                SELECT 1
+                FROM outreach_messages om
+                WHERE om.job_posting_id = job_postings.job_posting_id
+                  AND om.outreach_mode = ?
+                  AND om.sent_at IS NULL
+                  AND om.message_status IN ('generated', 'blocked', 'failed')
+                  AND om.created_at < ?
+              )
+            ORDER BY company_name ASC, role_title ASC, job_posting_id ASC
+            """,
+            (
+                *sorted(STALE_ROLE_TARGETED_RETIREMENT_POSTING_STATUSES),
+                OUTREACH_MODE_ROLE_TARGETED,
+                cutoff_text,
+            ),
+        ).fetchall()
+
+        retired_postings: list[dict[str, Any]] = []
+        retired_message_count = 0
+        retired_pipeline_run_count = 0
+
+        for posting_row in candidate_rows:
+            job_posting_id = str(posting_row["job_posting_id"])
+            previous_status = str(posting_row["posting_status"])
+            open_pipeline_rows = connection.execute(
+                """
+                SELECT pipeline_run_id, run_status, current_stage
+                FROM pipeline_runs
+                WHERE job_posting_id = ?
+                  AND run_status IN ({})
+                  AND current_stage IN ('sending', 'delivery_feedback')
+                ORDER BY started_at ASC, pipeline_run_id ASC
+                """.format(",".join("?" for _ in NON_TERMINAL_RUN_STATUSES)),
+                (
+                    job_posting_id,
+                    *sorted(NON_TERMINAL_RUN_STATUSES),
+                ),
+            ).fetchall()
+            actionable_now = is_role_targeted_sending_actionable_now(
+                connection,
+                project_root=paths.project_root,
+                job_posting_id=job_posting_id,
+                current_time=current_timestamp,
+                local_timezone=None,
+            )
+            if (
+                previous_status != JOB_POSTING_STATUS_COMPLETED
+                and not open_pipeline_rows
+                and not actionable_now
+            ):
+                continue
+
+            message_rows = connection.execute(
+                """
+                SELECT outreach_message_id, message_status
+                FROM outreach_messages
+                WHERE job_posting_id = ?
+                  AND outreach_mode = ?
+                  AND sent_at IS NULL
+                  AND message_status IN ('generated', 'blocked', 'failed')
+                  AND created_at < ?
+                ORDER BY created_at ASC, outreach_message_id ASC
+                """,
+                (
+                    job_posting_id,
+                    OUTREACH_MODE_ROLE_TARGETED,
+                    cutoff_text,
+                ),
+            ).fetchall()
+            if not message_rows:
+                continue
+
+            retired_message_ids = [str(row["outreach_message_id"]) for row in message_rows]
+            with connection:
+                connection.executemany(
+                    """
+                    UPDATE outreach_messages
+                    SET message_status = ?, updated_at = ?
+                    WHERE outreach_message_id = ?
+                    """,
+                    [
+                        (
+                            MESSAGE_STATUS_FAILED,
+                            current_timestamp,
+                            outreach_message_id,
+                        )
+                        for outreach_message_id in retired_message_ids
+                    ],
+                )
+
+            posting_status_after_retirement = previous_status
+            state_transition_event_id = None
+            override_event_id = None
+            if previous_status != JOB_POSTING_STATUS_COMPLETED:
+                posting_status_after_retirement = JOB_POSTING_STATUS_REQUIRES_CONTACTS
+                with connection:
+                    connection.execute(
+                        """
+                        UPDATE job_postings
+                        SET posting_status = ?, updated_at = ?
+                        WHERE job_posting_id = ?
+                        """,
+                        (
+                            posting_status_after_retirement,
+                            current_timestamp,
+                            job_posting_id,
+                        ),
+                    )
+                    state_transition_event_id = _record_state_transition(
+                        connection,
+                        object_type="job_postings",
+                        object_id=job_posting_id,
+                        stage="posting_status",
+                        previous_state=previous_status,
+                        new_state=posting_status_after_retirement,
+                        transition_timestamp=current_timestamp,
+                        transition_reason=reason_text,
+                        lead_id=str(posting_row["lead_id"]) if posting_row["lead_id"] else None,
+                        job_posting_id=job_posting_id,
+                    )
+                    override_event = record_override_event(
+                        connection,
+                        object_type="job_postings",
+                        object_id=job_posting_id,
+                        component_stage="posting_status",
+                        previous_value=previous_status,
+                        new_value=posting_status_after_retirement,
+                        override_reason=reason_text,
+                        override_by="owner",
+                        lead_id=str(posting_row["lead_id"]) if posting_row["lead_id"] else None,
+                        job_posting_id=job_posting_id,
+                        override_timestamp=current_timestamp,
+                    )
+                override_event_id = override_event.override_event_id
+
+            retired_pipeline_runs: list[dict[str, str]] = []
+            for pipeline_row in open_pipeline_rows:
+                previous_run_status = str(pipeline_row["run_status"])
+                previous_stage = str(pipeline_row["current_stage"])
+                if previous_status == JOB_POSTING_STATUS_COMPLETED:
+                    retired_run = complete_pipeline_run(
+                        connection,
+                        str(pipeline_row["pipeline_run_id"]),
+                        current_stage="completed",
+                        run_summary=(
+                            "Operator retired the stale pre-cutover role-targeted send "
+                            "backlog and closed the remaining delivery-feedback run."
+                        ),
+                        timestamp=current_timestamp,
+                    )
+                else:
+                    retired_run = fail_pipeline_run(
+                        connection,
+                        str(pipeline_row["pipeline_run_id"]),
+                        current_stage=previous_stage,
+                        error_summary=reason_text,
+                        run_summary=(
+                            "Operator retired the stale pre-cutover role-targeted send "
+                            "backlog and demoted the posting out of the active send stage."
+                        ),
+                        timestamp=current_timestamp,
+                    )
+                retired_pipeline_runs.append(
+                    {
+                        "pipeline_run_id": retired_run.pipeline_run_id,
+                        "previous_run_status": previous_run_status,
+                        "new_run_status": retired_run.run_status,
+                        "previous_stage": previous_stage,
+                        "new_stage": retired_run.current_stage,
+                    }
+                )
+
+            retired_postings.append(
+                {
+                    "job_posting_id": job_posting_id,
+                    "lead_id": str(posting_row["lead_id"]) if posting_row["lead_id"] else None,
+                    "company_name": str(posting_row["company_name"]),
+                    "role_title": str(posting_row["role_title"]),
+                    "previous_status": previous_status,
+                    "posting_status": posting_status_after_retirement,
+                    "actionable_now_before_retirement": actionable_now,
+                    "retired_message_count": len(retired_message_ids),
+                    "retired_message_ids": retired_message_ids,
+                    "retired_pipeline_runs": retired_pipeline_runs,
+                    "state_transition_event_id": state_transition_event_id,
+                    "override_event_id": override_event_id,
+                }
+            )
+            retired_message_count += len(retired_message_ids)
+            retired_pipeline_run_count += len(retired_pipeline_runs)
+
+    report = {
+        "contract_version": CONTRACT_VERSION,
+        "produced_at": now_utc_iso(),
+        "producer_component": STALE_ROLE_TARGETED_RETIREMENT_COMPONENT,
+        "project_root": str(paths.project_root),
+        "database": {
+            "db_path": str(migration.db_path),
+            "applied_migrations": migration.applied_migrations,
+            "user_version": migration.user_version,
+        },
+        "command": "retire-stale-role-targeted-send-backlog",
+        "cutoff_created_before": cutoff_text,
+        "reason": reason_text,
+        "manual_command": manual_command,
+        "retirement_run_id": retirement_run_id,
+        "retired_posting_count": len(retired_postings),
+        "retired_message_count": retired_message_count,
+        "retired_pipeline_run_count": retired_pipeline_run_count,
+        "retired_postings": retired_postings,
+        "control_state": dict(control_state.values),
+    }
+    artifact_paths = _write_stale_role_targeted_backlog_retirement_artifacts(
+        paths,
+        retirement_run_id=retirement_run_id,
+        report=report,
+    )
+    report["artifacts"] = artifact_paths
+    return report
 
 
 def close_review_item(

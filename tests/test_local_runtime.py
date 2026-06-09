@@ -384,6 +384,228 @@ def seed_posting_for_abandon(
     connection.commit()
 
 
+def seed_role_targeted_backlog_posting(
+    connection: sqlite3.Connection,
+    *,
+    lead_id: str,
+    job_posting_id: str,
+    company_name: str,
+    role_title: str,
+    posting_status: str,
+    contact_id: str,
+    job_posting_contact_id: str,
+    message_id: str,
+    message_status: str,
+    message_created_at: str,
+    contact_status: str = "outreach_in_progress",
+    link_level_status: str = "outreach_in_progress",
+    include_sent_sibling: bool = False,
+    open_pipeline_run_id: str | None = None,
+    open_pipeline_stage: str = "delivery_feedback",
+) -> None:
+    identity_key = f"{company_name.lower().replace(' ', '-')}|{role_title.lower().replace(' ', '-')}"
+    connection.execute(
+        """
+        INSERT INTO linkedin_leads (
+          lead_id, lead_identity_key, lead_status, lead_shape, split_review_status,
+          source_type, source_reference, source_mode, source_url, company_name, role_title,
+          created_at, updated_at
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        """,
+        (
+            lead_id,
+            identity_key,
+            "handed_off",
+            "posting_only",
+            "not_applicable",
+            "manual_capture",
+            f"paste/{job_posting_id}",
+            "manual_capture",
+            f"https://careers.example/{job_posting_id}",
+            company_name,
+            role_title,
+            "2026-05-01T00:00:00Z",
+            "2026-05-01T00:00:00Z",
+        ),
+    )
+    connection.execute(
+        """
+        INSERT INTO job_postings (
+          job_posting_id, lead_id, posting_identity_key, company_name, role_title,
+          posting_status, created_at, updated_at
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+        """,
+        (
+            job_posting_id,
+            lead_id,
+            identity_key,
+            company_name,
+            role_title,
+            posting_status,
+            "2026-05-01T00:00:00Z",
+            "2026-05-01T00:00:00Z",
+        ),
+    )
+    connection.execute(
+        """
+        INSERT INTO contacts (
+          contact_id, identity_key, display_name, company_name, origin_component, contact_status,
+          full_name, current_working_email, created_at, updated_at
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        """,
+        (
+            contact_id,
+            f"{contact_id}|{company_name.lower().replace(' ', '-')}",
+            f"{company_name} Contact",
+            company_name,
+            "email_discovery",
+            contact_status,
+            f"{company_name} Contact",
+            f"{contact_id}@example.com",
+            "2026-05-01T00:01:00Z",
+            "2026-05-01T00:01:00Z",
+        ),
+    )
+    connection.execute(
+        """
+        INSERT INTO job_posting_contacts (
+          job_posting_contact_id, job_posting_id, contact_id, recipient_type,
+          relevance_reason, link_level_status, created_at, updated_at
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+        """,
+        (
+            job_posting_contact_id,
+            job_posting_id,
+            contact_id,
+            "hiring_manager",
+            "Stale backlog retirement test linkage.",
+            link_level_status,
+            "2026-05-01T00:01:00Z",
+            "2026-05-01T00:01:00Z",
+        ),
+    )
+    connection.execute(
+        """
+        INSERT INTO outreach_messages (
+          outreach_message_id, contact_id, outreach_mode, recipient_email, message_status,
+          job_posting_id, job_posting_contact_id, subject, body_text, thread_id,
+          delivery_tracking_id, sent_at, created_at, updated_at
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        """,
+        (
+            message_id,
+            contact_id,
+            "role_targeted",
+            f"{contact_id}@example.com",
+            message_status,
+            job_posting_id,
+            job_posting_contact_id,
+            f"Interest in the {role_title} role at {company_name}",
+            "Body",
+            None,
+            None,
+            None,
+            message_created_at,
+            message_created_at,
+        ),
+    )
+
+    if include_sent_sibling:
+        sent_contact_id = f"{contact_id}_sent"
+        sent_job_posting_contact_id = f"{job_posting_contact_id}_sent"
+        sent_message_id = f"{message_id}_sent"
+        connection.execute(
+            """
+            INSERT INTO contacts (
+              contact_id, identity_key, display_name, company_name, origin_component, contact_status,
+              full_name, current_working_email, created_at, updated_at
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """,
+            (
+                sent_contact_id,
+                f"{sent_contact_id}|{company_name.lower().replace(' ', '-')}",
+                f"{company_name} Sent Contact",
+                company_name,
+                "email_discovery",
+                "sent",
+                f"{company_name} Sent Contact",
+                f"{sent_contact_id}@example.com",
+                "2026-05-01T00:02:00Z",
+                "2026-05-01T00:02:00Z",
+            ),
+        )
+        connection.execute(
+            """
+            INSERT INTO job_posting_contacts (
+              job_posting_contact_id, job_posting_id, contact_id, recipient_type,
+              relevance_reason, link_level_status, created_at, updated_at
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+            """,
+            (
+                sent_job_posting_contact_id,
+                job_posting_id,
+                sent_contact_id,
+                "engineer",
+                "Completed sibling outreach for stale backlog retirement test.",
+                "outreach_done",
+                "2026-05-01T00:02:00Z",
+                "2026-05-01T00:02:00Z",
+            ),
+        )
+        connection.execute(
+            """
+            INSERT INTO outreach_messages (
+              outreach_message_id, contact_id, outreach_mode, recipient_email, message_status,
+              job_posting_id, job_posting_contact_id, subject, body_text, thread_id,
+              delivery_tracking_id, sent_at, created_at, updated_at
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """,
+            (
+                sent_message_id,
+                sent_contact_id,
+                "role_targeted",
+                f"{sent_contact_id}@example.com",
+                "sent",
+                job_posting_id,
+                sent_job_posting_contact_id,
+                f"Interest in the {role_title} role at {company_name}",
+                "Body",
+                f"thread-{sent_message_id}",
+                f"delivery-{sent_message_id}",
+                "2026-05-01T02:00:00Z",
+                "2026-05-01T02:00:00Z",
+                "2026-05-01T02:00:00Z",
+            ),
+        )
+
+    if open_pipeline_run_id is not None:
+        connection.execute(
+            """
+            INSERT INTO pipeline_runs (
+              pipeline_run_id, run_scope_type, run_status, current_stage, lead_id,
+              job_posting_id, completed_at, last_error_summary, review_packet_status,
+              run_summary, started_at, created_at, updated_at
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """,
+            (
+                open_pipeline_run_id,
+                "role_targeted_posting",
+                "in_progress",
+                open_pipeline_stage,
+                lead_id,
+                job_posting_id,
+                None,
+                None,
+                "not_ready",
+                "Open stale send-stage run for retirement coverage.",
+                "2026-05-01T03:00:00Z",
+                "2026-05-01T03:00:00Z",
+                "2026-05-01T03:00:00Z",
+            ),
+        )
+    connection.commit()
+
+
 def seed_close_review_candidate(
     connection: sqlite3.Connection,
     *,
@@ -2171,6 +2393,179 @@ def test_control_agent_script_abandon_is_idempotent_for_existing_abandoned_posti
 
     assert transition_count == 0
     assert override_count == 0
+
+
+def test_retire_stale_role_targeted_send_backlog_completes_open_completed_feedback_runs(
+    tmp_path: Path,
+):
+    project_root = tmp_path / "repo"
+    project_root.mkdir()
+    create_minimal_project(project_root)
+    run_bootstrap(project_root=project_root)
+
+    connection = connect_database(project_root / "job_hunt_copilot.db")
+    seed_role_targeted_backlog_posting(
+        connection,
+        lead_id="ld_old_completed",
+        job_posting_id="jp_old_completed",
+        company_name="Scribd, Inc.",
+        role_title="Software Engineer - Backend (Python)",
+        posting_status="completed",
+        contact_id="ct_old_completed",
+        job_posting_contact_id="jpc_old_completed",
+        message_id="msg_old_completed",
+        message_status="blocked",
+        message_created_at="2026-05-14T02:09:27Z",
+        contact_status="outreach_in_progress",
+        link_level_status="outreach_in_progress",
+        include_sent_sibling=True,
+        open_pipeline_run_id="pr_old_completed",
+        open_pipeline_stage="delivery_feedback",
+    )
+    seed_role_targeted_backlog_posting(
+        connection,
+        lead_id="ld_fresh_queue",
+        job_posting_id="jp_fresh_queue",
+        company_name="OpenAI",
+        role_title="Research Engineer",
+        posting_status="outreach_in_progress",
+        contact_id="ct_fresh_queue",
+        job_posting_contact_id="jpc_fresh_queue",
+        message_id="msg_fresh_queue",
+        message_status="generated",
+        message_created_at="2026-06-06T20:13:33Z",
+        contact_status="outreach_in_progress",
+        link_level_status="outreach_in_progress",
+    )
+    connection.close()
+
+    report = local_runtime.retire_stale_role_targeted_send_backlog(
+        cutoff_created_before="2026-06-05T00:00:00Z",
+        project_root=project_root,
+        reason="Dump the old reviewed send backlog.",
+        manual_command="pytest-retire-old-backlog",
+        timestamp="2026-06-09T04:20:00Z",
+    )
+
+    assert report["retired_posting_count"] == 1
+    assert report["retired_message_count"] == 1
+    assert report["retired_pipeline_run_count"] == 1
+    assert Path(report["artifacts"]["summary_json_path"]).exists()
+    assert Path(report["artifacts"]["summary_markdown_path"]).exists()
+    retired_posting = report["retired_postings"][0]
+    assert retired_posting["job_posting_id"] == "jp_old_completed"
+    assert retired_posting["previous_status"] == "completed"
+    assert retired_posting["posting_status"] == "completed"
+    assert retired_posting["retired_message_ids"] == ["msg_old_completed"]
+    assert retired_posting["retired_pipeline_runs"] == [
+        {
+            "pipeline_run_id": "pr_old_completed",
+            "previous_run_status": "in_progress",
+            "new_run_status": "completed",
+            "previous_stage": "delivery_feedback",
+            "new_stage": "completed",
+        }
+    ]
+
+    connection = connect_database(project_root / "job_hunt_copilot.db")
+    retired_message = connection.execute(
+        """
+        SELECT message_status
+        FROM outreach_messages
+        WHERE outreach_message_id = ?
+        """,
+        ("msg_old_completed",),
+    ).fetchone()
+    completed_run = connection.execute(
+        """
+        SELECT run_status, current_stage
+        FROM pipeline_runs
+        WHERE pipeline_run_id = ?
+        """,
+        ("pr_old_completed",),
+    ).fetchone()
+    fresh_message = connection.execute(
+        """
+        SELECT message_status
+        FROM outreach_messages
+        WHERE outreach_message_id = ?
+        """,
+        ("msg_fresh_queue",),
+    ).fetchone()
+    connection.close()
+
+    assert dict(retired_message) == {"message_status": "failed"}
+    assert dict(completed_run) == {
+        "run_status": "completed",
+        "current_stage": "completed",
+    }
+    assert dict(fresh_message) == {"message_status": "generated"}
+
+
+def test_retire_stale_role_targeted_send_backlog_demotes_actionable_active_postings(
+    tmp_path: Path,
+):
+    project_root = tmp_path / "repo"
+    project_root.mkdir()
+    create_minimal_project(project_root)
+    run_bootstrap(project_root=project_root)
+
+    connection = connect_database(project_root / "job_hunt_copilot.db")
+    seed_role_targeted_backlog_posting(
+        connection,
+        lead_id="ld_old_active",
+        job_posting_id="jp_old_active",
+        company_name="Adobe",
+        role_title="Machine Learning Engineer",
+        posting_status="outreach_in_progress",
+        contact_id="ct_old_active",
+        job_posting_contact_id="jpc_old_active",
+        message_id="msg_old_active",
+        message_status="generated",
+        message_created_at="2026-05-13T19:28:57Z",
+        contact_status="outreach_in_progress",
+        link_level_status="outreach_in_progress",
+    )
+    connection.close()
+
+    report = local_runtime.retire_stale_role_targeted_send_backlog(
+        cutoff_created_before="2026-06-05T00:00:00Z",
+        project_root=project_root,
+        reason="Drop stale active send frontier.",
+        manual_command="pytest-retire-active-backlog",
+        timestamp="2026-06-09T04:25:00Z",
+    )
+
+    assert report["retired_posting_count"] == 1
+    retired_posting = report["retired_postings"][0]
+    assert retired_posting["job_posting_id"] == "jp_old_active"
+    assert retired_posting["previous_status"] == "outreach_in_progress"
+    assert retired_posting["posting_status"] == "requires_contacts"
+    assert retired_posting["state_transition_event_id"]
+    assert retired_posting["override_event_id"]
+    assert retired_posting["retired_pipeline_runs"] == []
+
+    connection = connect_database(project_root / "job_hunt_copilot.db")
+    posting_row = connection.execute(
+        """
+        SELECT posting_status
+        FROM job_postings
+        WHERE job_posting_id = ?
+        """,
+        ("jp_old_active",),
+    ).fetchone()
+    retired_message = connection.execute(
+        """
+        SELECT message_status
+        FROM outreach_messages
+        WHERE outreach_message_id = ?
+        """,
+        ("msg_old_active",),
+    ).fetchone()
+    connection.close()
+
+    assert dict(posting_row) == {"posting_status": "requires_contacts"}
+    assert dict(retired_message) == {"message_status": "failed"}
 
 
 def test_close_review_item_rejects_terminal_posting_state(tmp_path):

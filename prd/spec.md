@@ -653,9 +653,9 @@ This is the agreed vocabulary for design discussions.
 - **FR-SYS-38A6 (Relevant-People Search Classes):** The first autonomous people-search pass should look for engineering managers, software engineers, recruiters, and other internal employees who may plausibly help route the candidate to the right person.
 - **FR-SYS-38B (Priority-Wave Outreach Rule):** For role-targeted outreach, the system shall proceed in priority waves rather than contacting every linked contact across all recipient types at once. Higher-priority recipient groups shall be attempted before lower-priority groups.
 - **FR-SYS-38B1 (Recipient-Type Wave Order):** For this build, the default role-targeted outreach wave order should be:
-  1. `recruiter`
-  2. `hiring_manager`
-  3. `engineer`
+  1. `hiring_manager`
+  2. `engineer`
+  3. `recruiter`
   4. `alumni`
   5. `other_internal`
 - **FR-SYS-38B1A (Current Guide Recipient Groups):** The current outreach guide should explicitly cover these working recipient groups: recruiting managers who post openings on LinkedIn, people who may be working on that team or adjacent area, ASU alumni connections, and previous job connections.
@@ -667,7 +667,7 @@ This is the agreed vocabulary for design discussions.
   3. software engineers and other role-relevant engineers
   4. if the company does not have enough manager or technical candidates to fill the shortlist, the shortlist may remain below the cap rather than being padded with recruiters or generic internal contacts
 - **FR-SYS-38B1E (Current Autonomous Active Send-Slice Size):** After enrichment and any required email discovery, the current active automatic send slice for one posting should contain at most 3 contacts unless the user explicitly overrides that limit.
-- **FR-SYS-38B1F (Current Autonomous Active Send-Slice Composition):** The default autonomous active send slice should prefer one recruiter, one hiring-manager-or-manager-adjacent contact, and one team-adjacent engineer when those contact classes are available. If one class is unavailable, the next-best shortlisted contact may fill the slot.
+- **FR-SYS-38B1F (Current Autonomous Active Send-Slice Composition):** The default autonomous active send slice should cover as many manager-class internal contacts as possible first, up to the current 3-contact cap, and only then fill any remaining slots with role-relevant engineers. Recruiters and generic non-technical internal contacts should not be auto-selected into the default autonomous send slice.
 - **FR-SYS-38B1F1 (Active Send-Slice Ready-Subset Rule):** The active send slice is a preference target, not a hard all-or-nothing prerequisite. If one preferred slot is still unresolved because its selected contact lacks a usable email, the system should continue discovery for that unresolved slot or search for a replacement candidate, but it may still draft and send against the currently ready subset instead of waiting for the entire preferred slice to become fully ready.
 - **FR-SYS-38B2 (Pacing-Aware Wave Progression):** Priority waves define outreach order, but send execution shall still respect the active pacing rules. A later recipient wave may therefore continue in a later send window rather than blasting every wave immediately.
 - **FR-SYS-38B3 (Per-Posting Daily Send Cap):** In the autonomous role-targeted flow, the system shall not send more than 4 emails for the same posting within the same calendar day unless the user explicitly overrides that cap.
@@ -3329,7 +3329,8 @@ The engine itself is not required to be implemented yet and shall be built later
 - **FR-EM-03:** For this build, Email Drafting and Sending shall operate autonomously without requiring human review or approval before send.
 - **FR-EM-03A (Final Draft Persistence Focus):** For this build, the drafting subcomponent only needs to persist the final generated draft rather than storing every intermediate generated draft version.
 - **FR-EM-03A1 (Pending Draft Refresh Rule):** If a role-targeted outreach message is still unsent in `generated` status, the system shall refresh that pending draft from the current accepted drafting logic before automatic send rather than sending stale generated wording that predates a material drafting-quality fix.
-- **FR-EM-03B (Initial Outreach Scope Only):** For this build, the Email Drafting and Sending subcomponent only needs to generate the initial outreach email. Follow-up email drafting remains manual/user-owned for now.
+- **FR-EM-03A2 (Operator Stale Backlog Retirement Rule):** When the owner explicitly retires a bounded stale role-targeted send backlog, the system shall convert the selected unsent role-targeted messages into a non-resumable terminal state, preserve already-sent history, and prevent the supervisor from later retrying or resurrecting that retired backlog automatically. For postings that are not already `completed`, the cleanup shall move canonical posting state out of the active send-stage statuses before normal selection resumes.
+- **FR-EM-03B (Initial Outreach Plus Follow-Up Scope):** For this build, the Email Drafting and Sending subcomponent shall support both the initial outreach email and the approved first unreplied follow-up email, with follow-up orchestration owned by the dedicated follow-up worker.
 - **FR-EM-03C (Standard Signature Block):** Drafts shall include a standard sender signature block containing the sender's name, LinkedIn URL, phone number, and email address.
 - **FR-EM-03D (Shared Signature):** For this build, the same signature block may be used across recipient types. Recipient-specific signature variation is not required yet.
 - **FR-EM-03E (Signature Source of Truth):** The actual signature values shall be sourced from the candidate master profile or equivalent runtime configuration rather than hardcoded into the specification itself.
@@ -4303,13 +4304,18 @@ Current imported guidance should include, at minimum:
 12. In the autonomous LinkedIn-alert mode, the default outreach objective is to ask discovered contacts for connection or routing help to the right hiring person rather than assuming the discovered recipient is already the exact target.
 13. Autonomous role-targeted sending respects the per-posting cap of at most 4 emails per posting per day, and uses a randomized 6 to 10 minute gap between any two automatic sends rather than a fixed interval.
 14. Autonomous role-targeted sending does not impose a separate global cross-company daily send cap in this build.
-15. The default autonomous active send slice for one posting prefers one recruiter, one manager-adjacent contact, and one team-adjacent engineer when those recipient classes are available.
-16. The system preserves enough outreach tracking state to support manual follow-up decisions, including recipient type, outreach mode, last touch date, next follow-up date, follow-up state, and notes.
-17. The current imported playbook supports at least the core one-step recruiter / team-adjacent style plus the imported hiring-manager and ASU-alumni legacy prompt styles.
-18. When the imported legacy playbook is selected, the draft can use the imported metric-led evidence logic, exact-skill-overlap grounding, and markdown-like forwardable snippet formatting without inventing skills or raw HTML.
-19. The current v4 default shared role-targeted template opens from a JD-faithful role / team / work-area hook rather than requiring recipient-background hooks, includes an explicit `why I am reaching out to you` line, includes one proof point of fit, includes the Job Hunt Copilot / AI-agent block, uses one 15-minute Zoom ask, and places the forwardable snippet directly below the routing-help line.
-20. In the current v4 default shared role-targeted template, the forwardable snippet remains factual, compact, and JD-aware, and it uses one strongest fit summary plus one strongest supporting proof fragment rather than a generic skills list.
-21. The current default shared role-targeted body does not rely on an education-status sentence such as `I am currently finishing my MS ...` as a default paragraph.
+15. The default autonomous active send slice for one posting covers as many manager-class internal contacts as possible first, up to the current 3-contact cap, and only then fills any remaining slots with role-relevant engineers.
+16. The system tracks first follow-up plans for unreplied sent outreach, including original message, recipient type, outreach mode, last touch date, next follow-up date, follow-up state, direct Gmail-thread reply-check result, skip reason, and notes.
+17. First follow-ups become eligible after 4 calendar days, use the approved warmer mutual-fit template with the short signature, and default to one follow-up per original outreach thread.
+18. The follow-up worker does not draft or send when the original message bounced, when the recipient replied, when the original thread cannot be checked for replies, or when a follow-up was already sent.
+19. When follow-up auto-send is temporarily disabled or rollout-paused, otherwise valid due plans may be held, but they must automatically re-enter normal worker evaluation after follow-up auto-send is re-enabled rather than remaining stranded until a manual reset.
+20. The older imported shared role-targeted template is no longer the primary production drafting strategy. The current production strategy is the role-split codex-backed path described in Section 7.3.3.
+21. In the current role-split build, technical contacts receive a four-paragraph career-guidance email with a fixed subject, codex-generated Paragraph 1, fixed sender/project paragraphs, and a 10-minute guidance ask.
+22. In the current role-split build, managerial contacts receive a concise problem-solver body: a greeting, a three-sentence opener, JD-challenge bullets, relevant-background bullets, and a fixed CTA paragraph.
+23. The current managerial opener includes a bold proof-of-concept offer sentence near the top of the email body, and the managerial CTA stays fixed while codex drafts only the variable opener sentence and bullet content.
+24. The current technical path may include the `Job Hunt Copilot` repo URL in the fixed project paragraph, and the current managerial path may include that repo URL only inside a role-relevant `Job Hunt Copilot` background bullet.
+25. The current managerial path mentions the attached resume briefly in the body and keeps LinkedIn and GitHub in the signature.
+26. When role-targeted drafting reuses tailored-resume or Step 6 bullet text inside email bodies or summaries, LaTeX-safe resume escapes are converted back to human-readable plain text before send, so recipients never see raw sequences such as `\%` or `\$`.
 
 ## 12.4 Delivery Feedback
 1. Post-send outcomes are persisted into the central SQLite database as event history rather than only a latest overwritten status.
