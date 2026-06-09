@@ -660,12 +660,12 @@ This is the agreed vocabulary for design discussions.
   5. `other_internal`
 - **FR-SYS-38B1A (Current Guide Recipient Groups):** The current outreach guide should explicitly cover these working recipient groups: recruiting managers who post openings on LinkedIn, people who may be working on that team or adjacent area, ASU alumni connections, and previous job connections.
 - **FR-SYS-38B1B (Current Guide Focus Profiles):** The current deepest drafting guidance is optimized first for recruiting-manager posters and team-adjacent engineers. Alumni and previous-job-connection outreach remain supported, but their more detailed playbooks may stay lighter until later refinement.
-- **FR-SYS-38B1C (Autonomous Enrichment Shortlist Size):** In the autonomous role-targeted flow, the first shortlist taken from the broad people-search result should contain at most 30 contacts for enrichment unless the user explicitly overrides that limit.
-- **FR-SYS-38B1D (Autonomous Shortlist Composition):** The autonomous enrichment shortlist should aim for role coverage in this order:
-  1. up to 2 recruiter or recruiting-manager-adjacent contacts
-  2. up to 2 hiring-manager, engineering-manager, or engineering-director contacts
-  3. up to 2 senior, lead, staff, or otherwise team-adjacent engineers
-  If a bucket has too few candidates, the remaining slots may be filled by the next-best available helpful internal contacts.
+- **FR-SYS-38B1C (Autonomous Enrichment Shortlist Size):** In the autonomous role-targeted flow, the first shortlist taken from the broad people-search result should contain at most 10 contacts for enrichment unless the user explicitly overrides that limit.
+- **FR-SYS-38B1D (Autonomous Shortlist Composition):** The autonomous enrichment shortlist should prefer useful outreach candidates in this order:
+  1. as many manager-adjacent internal contacts as available, especially hiring managers, engineering managers, engineering directors, heads of engineering, and similar technical leadership roles
+  2. senior, staff, lead, principal, architect, or otherwise more senior role-relevant technical ICs
+  3. software engineers and other role-relevant engineers
+  4. only if the company does not have enough manager or technical candidates to fill the shortlist, the remaining slots may fall back to recruiters or other helpful internal contacts
 - **FR-SYS-38B1E (Current Autonomous Active Send-Slice Size):** After enrichment and any required email discovery, the current active automatic send slice for one posting should contain at most 3 contacts unless the user explicitly overrides that limit.
 - **FR-SYS-38B1F (Current Autonomous Active Send-Slice Composition):** The default autonomous active send slice should prefer one recruiter, one hiring-manager-or-manager-adjacent contact, and one team-adjacent engineer when those contact classes are available. If one class is unavailable, the next-best shortlisted contact may fill the slot.
 - **FR-SYS-38B1F1 (Active Send-Slice Ready-Subset Rule):** The active send slice is a preference target, not a hard all-or-nothing prerequisite. If one preferred slot is still unresolved because its selected contact lacks a usable email, the system should continue discovery for that unresolved slot or search for a replacement candidate, but it may still draft and send against the currently ready subset instead of waiting for the entire preferred slice to become fully ready.
