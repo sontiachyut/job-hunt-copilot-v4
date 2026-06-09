@@ -604,7 +604,7 @@ class TimeoutFeedbackObserver:
         raise TimeoutError("Synthetic mailbox timeout")
 
 
-def test_send_set_prefers_ready_contacts_for_each_primary_class(tmp_path: Path):
+def test_send_set_prefers_managers_before_engineers_and_ignores_recruiters(tmp_path: Path):
     project_root, _ = bootstrap_project(tmp_path)
     connection = connect_database(project_root / "job_hunt_copilot.db")
     seed_posting(connection)
@@ -672,13 +672,17 @@ def test_send_set_prefers_ready_contacts_for_each_primary_class(tmp_path: Path):
 
     assert plan.posting_status_after_evaluation == JOB_POSTING_STATUS_READY_FOR_OUTREACH
     assert plan.ready_for_outreach is True
-    assert [contact.contact_id for contact in plan.selected_contacts] == ["ct_r2", "ct_m2", "ct_e1"]
+    assert [contact.contact_id for contact in plan.selected_contacts] == ["ct_m2", "ct_m1", "ct_e1"]
     assert [contact.slot_name for contact in plan.selected_contacts] == [
-        "recruiter",
-        "manager_adjacent",
-        "engineer",
+        "manager_1",
+        "manager_2",
+        "engineer_1",
     ]
-    assert all(contact.readiness_state == "ready" for contact in plan.selected_contacts)
+    assert [contact.readiness_state for contact in plan.selected_contacts] == [
+        "ready",
+        "needs_email",
+        "ready",
+    ]
 
     connection.close()
 
@@ -809,13 +813,13 @@ def test_send_set_advances_with_ready_subset_when_selected_contact_needs_email(t
 
     assert plan.posting_status_after_evaluation == JOB_POSTING_STATUS_READY_FOR_OUTREACH
     assert plan.ready_for_outreach is True
-    assert [contact.contact_id for contact in plan.selected_contacts] == ["ct_r1", "ct_e1", "ct_m1"]
+    assert [contact.contact_id for contact in plan.selected_contacts] == ["ct_m1", "ct_e1"]
     assert [contact.contact_id for contact in plan.selected_contacts if contact.blocking_reason] == ["ct_m1"]
 
     connection.close()
 
 
-def test_send_set_prefers_ready_fallback_before_pending_primary_slot(tmp_path: Path):
+def test_send_set_ignores_nontechnical_fallbacks_and_keeps_manager_priority(tmp_path: Path):
     project_root, _ = bootstrap_project(tmp_path)
     connection = connect_database(project_root / "job_hunt_copilot.db")
     seed_posting(connection)
@@ -863,13 +867,9 @@ def test_send_set_prefers_ready_fallback_before_pending_primary_slot(tmp_path: P
         local_timezone=ZoneInfo("UTC"),
     )
 
-    assert plan.ready_for_outreach is True
-    assert [contact.contact_id for contact in plan.selected_contacts] == ["ct_r1", "ct_a1", "ct_m1"]
-    assert [contact.selection_kind for contact in plan.selected_contacts] == [
-        "preferred",
-        "fallback",
-        "preferred",
-    ]
+    assert plan.ready_for_outreach is False
+    assert [contact.contact_id for contact in plan.selected_contacts] == ["ct_m1", "ct_e1"]
+    assert all(contact.selection_kind == "preferred" for contact in plan.selected_contacts)
 
     connection.close()
 
@@ -889,20 +889,20 @@ def test_send_set_excludes_repeat_outreach_and_uses_next_best_contact(tmp_path: 
     )
     seed_linked_contact(
         connection,
-        contact_id="ct_r2",
-        job_posting_contact_id="jpc_r2",
-        display_name="Taylor Recruiter",
-        recipient_type=RECIPIENT_TYPE_RECRUITER,
-        current_working_email="taylor@acme.example",
-        created_at="2026-04-06T20:02:00Z",
-    )
-    seed_linked_contact(
-        connection,
         contact_id="ct_m1",
         job_posting_contact_id="jpc_m1",
         display_name="Morgan Manager",
         recipient_type=RECIPIENT_TYPE_HIRING_MANAGER,
         current_working_email="morgan@acme.example",
+        created_at="2026-04-06T20:02:00Z",
+    )
+    seed_linked_contact(
+        connection,
+        contact_id="ct_m2",
+        job_posting_contact_id="jpc_m2",
+        display_name="Avery Director",
+        recipient_type=RECIPIENT_TYPE_HIRING_MANAGER,
+        current_working_email="avery@acme.example",
         created_at="2026-04-06T20:03:00Z",
     )
     seed_linked_contact(
@@ -914,12 +914,21 @@ def test_send_set_excludes_repeat_outreach_and_uses_next_best_contact(tmp_path: 
         current_working_email="jamie@acme.example",
         created_at="2026-04-06T20:04:00Z",
     )
+    seed_linked_contact(
+        connection,
+        contact_id="ct_e2",
+        job_posting_contact_id="jpc_e2",
+        display_name="Casey Engineer",
+        recipient_type=RECIPIENT_TYPE_ENGINEER,
+        current_working_email="casey@acme.example",
+        created_at="2026-04-06T20:05:00Z",
+    )
     seed_sent_message(
         connection,
         outreach_message_id="msg_prior",
-        contact_id="ct_r1",
-        recipient_email="priya@acme.example",
-        job_posting_contact_id="jpc_r1",
+        contact_id="ct_m1",
+        recipient_email="morgan@acme.example",
+        job_posting_contact_id="jpc_m1",
         sent_at="2026-04-05T18:00:00Z",
     )
 
@@ -931,8 +940,8 @@ def test_send_set_excludes_repeat_outreach_and_uses_next_best_contact(tmp_path: 
     )
 
     assert plan.ready_for_outreach is True
-    assert [contact.contact_id for contact in plan.selected_contacts] == ["ct_r2", "ct_m1", "ct_e1"]
-    assert [contact.contact_id for contact in plan.repeat_outreach_review_contacts] == ["ct_r1"]
+    assert [contact.contact_id for contact in plan.selected_contacts] == ["ct_m2", "ct_e1", "ct_e2"]
+    assert [contact.contact_id for contact in plan.repeat_outreach_review_contacts] == ["ct_m1"]
 
     connection.close()
 
@@ -949,12 +958,12 @@ def test_send_set_silently_skips_same_company_prior_send_when_alternate_exists(t
     )
     seed_linked_contact(
         connection,
-        contact_id="ct_r1",
-        job_posting_contact_id="jpc_r1",
+        contact_id="ct_m1",
+        job_posting_contact_id="jpc_m1",
         job_posting_id="jp_primary",
-        display_name="Priya Recruiter",
-        recipient_type=RECIPIENT_TYPE_RECRUITER,
-        current_working_email="priya@acme.example",
+        display_name="Morgan Manager",
+        recipient_type=RECIPIENT_TYPE_HIRING_MANAGER,
+        current_working_email="morgan@acme.example",
         created_at="2026-04-06T20:01:00Z",
     )
     connection.execute(
@@ -965,10 +974,10 @@ def test_send_set_silently_skips_same_company_prior_send_when_alternate_exists(t
         ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
         """,
         (
-            "jpc_other_r1",
+            "jpc_other_m1",
             "jp_other",
-            "ct_r1",
-            RECIPIENT_TYPE_RECRUITER,
+            "ct_m1",
+            RECIPIENT_TYPE_HIRING_MANAGER,
             "Previously used on another posting.",
             POSTING_CONTACT_STATUS_OUTREACH_DONE,
             "2026-04-05T18:00:00Z",
@@ -977,23 +986,13 @@ def test_send_set_silently_skips_same_company_prior_send_when_alternate_exists(t
     )
     seed_linked_contact(
         connection,
-        contact_id="ct_r2",
-        job_posting_contact_id="jpc_r2",
+        contact_id="ct_m2",
+        job_posting_contact_id="jpc_m2",
         job_posting_id="jp_primary",
-        display_name="Taylor Recruiter",
-        recipient_type=RECIPIENT_TYPE_RECRUITER,
-        current_working_email="taylor@acme.example",
-        created_at="2026-04-06T20:02:00Z",
-    )
-    seed_linked_contact(
-        connection,
-        contact_id="ct_m1",
-        job_posting_contact_id="jpc_m1",
-        job_posting_id="jp_primary",
-        display_name="Morgan Manager",
+        display_name="Avery Director",
         recipient_type=RECIPIENT_TYPE_HIRING_MANAGER,
-        current_working_email="morgan@acme.example",
-        created_at="2026-04-06T20:03:00Z",
+        current_working_email="avery@acme.example",
+        created_at="2026-04-06T20:02:00Z",
     )
     seed_linked_contact(
         connection,
@@ -1003,15 +1002,25 @@ def test_send_set_silently_skips_same_company_prior_send_when_alternate_exists(t
         display_name="Jamie Engineer",
         recipient_type=RECIPIENT_TYPE_ENGINEER,
         current_working_email="jamie@acme.example",
+        created_at="2026-04-06T20:03:00Z",
+    )
+    seed_linked_contact(
+        connection,
+        contact_id="ct_e2",
+        job_posting_contact_id="jpc_e2",
+        job_posting_id="jp_primary",
+        display_name="Casey Engineer",
+        recipient_type=RECIPIENT_TYPE_ENGINEER,
+        current_working_email="casey@acme.example",
         created_at="2026-04-06T20:04:00Z",
     )
     seed_sent_message(
         connection,
         outreach_message_id="msg_prior_same_company",
-        contact_id="ct_r1",
-        recipient_email="priya@acme.example",
+        contact_id="ct_m1",
+        recipient_email="morgan@acme.example",
         job_posting_id="jp_other",
-        job_posting_contact_id="jpc_other_r1",
+        job_posting_contact_id="jpc_other_m1",
         sent_at="2026-04-05T18:05:00Z",
     )
 
@@ -1023,7 +1032,7 @@ def test_send_set_silently_skips_same_company_prior_send_when_alternate_exists(t
     )
 
     assert plan.ready_for_outreach is True
-    assert [contact.contact_id for contact in plan.selected_contacts] == ["ct_r2", "ct_m1", "ct_e1"]
+    assert [contact.contact_id for contact in plan.selected_contacts] == ["ct_m2", "ct_e1", "ct_e2"]
     assert plan.repeat_outreach_review_contacts == ()
 
     connection.close()
@@ -1041,12 +1050,12 @@ def test_send_set_surfaces_same_company_prior_send_when_no_alternate_exists(tmp_
     )
     seed_linked_contact(
         connection,
-        contact_id="ct_r1",
-        job_posting_contact_id="jpc_r1",
+        contact_id="ct_m1",
+        job_posting_contact_id="jpc_m1",
         job_posting_id="jp_primary",
-        display_name="Priya Recruiter",
-        recipient_type=RECIPIENT_TYPE_RECRUITER,
-        current_working_email="priya@acme.example",
+        display_name="Morgan Manager",
+        recipient_type=RECIPIENT_TYPE_HIRING_MANAGER,
+        current_working_email="morgan@acme.example",
         created_at="2026-04-06T20:01:00Z",
     )
     connection.execute(
@@ -1057,10 +1066,10 @@ def test_send_set_surfaces_same_company_prior_send_when_no_alternate_exists(tmp_
         ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
         """,
         (
-            "jpc_other_r1",
+            "jpc_other_m1",
             "jp_other",
-            "ct_r1",
-            RECIPIENT_TYPE_RECRUITER,
+            "ct_m1",
+            RECIPIENT_TYPE_HIRING_MANAGER,
             "Previously used on another posting.",
             POSTING_CONTACT_STATUS_OUTREACH_DONE,
             "2026-04-05T18:00:00Z",
@@ -1070,10 +1079,10 @@ def test_send_set_surfaces_same_company_prior_send_when_no_alternate_exists(tmp_
     seed_sent_message(
         connection,
         outreach_message_id="msg_prior_same_company",
-        contact_id="ct_r1",
-        recipient_email="priya@acme.example",
+        contact_id="ct_m1",
+        recipient_email="morgan@acme.example",
         job_posting_id="jp_other",
-        job_posting_contact_id="jpc_other_r1",
+        job_posting_contact_id="jpc_other_m1",
         sent_at="2026-04-05T18:05:00Z",
     )
 
@@ -1086,7 +1095,7 @@ def test_send_set_surfaces_same_company_prior_send_when_no_alternate_exists(tmp_
 
     assert plan.ready_for_outreach is False
     assert plan.selected_contacts == ()
-    assert [contact.contact_id for contact in plan.repeat_outreach_review_contacts] == ["ct_r1"]
+    assert [contact.contact_id for contact in plan.repeat_outreach_review_contacts] == ["ct_m1"]
 
     connection.close()
 
@@ -1241,10 +1250,10 @@ def test_sending_stays_selectable_when_selected_frontier_still_needs_email(tmp_p
     )
     seed_linked_contact(
         connection,
-        contact_id="ct_a1",
-        job_posting_contact_id="jpc_a1",
-        display_name="Alex Alumni",
-        recipient_type=RECIPIENT_TYPE_ALUMNI,
+        contact_id="ct_e2",
+        job_posting_contact_id="jpc_e2",
+        display_name="Casey Engineer",
+        recipient_type=RECIPIENT_TYPE_ENGINEER,
         current_working_email=None,
         created_at="2026-04-06T20:04:00Z",
     )
@@ -1315,7 +1324,7 @@ def test_send_set_ignores_exhausted_contacts_when_filling_slots(tmp_path: Path):
     )
 
     assert plan.ready_for_outreach is True
-    assert [contact.contact_id for contact in plan.selected_contacts] == ["ct_r1", "ct_e1"]
+    assert [contact.contact_id for contact in plan.selected_contacts] == ["ct_e1"]
 
     connection.close()
 
@@ -1345,20 +1354,29 @@ def test_role_targeted_draft_batch_persists_messages_artifacts_and_transitions(t
     )
     seed_linked_contact(
         connection,
+        contact_id="ct_m2",
+        job_posting_contact_id="jpc_m2",
+        display_name="Avery Director",
+        recipient_type=RECIPIENT_TYPE_HIRING_MANAGER,
+        current_working_email="avery@acme.example",
+        created_at="2026-04-06T20:03:00Z",
+    )
+    seed_linked_contact(
+        connection,
         contact_id="ct_e1",
         job_posting_contact_id="jpc_e1",
         display_name="Jamie Engineer",
         recipient_type=RECIPIENT_TYPE_ENGINEER,
         current_working_email="jamie@acme.example",
-        created_at="2026-04-06T20:03:00Z",
+        created_at="2026-04-06T20:04:00Z",
     )
     seed_recipient_profile(
         connection,
         paths,
-        contact_id="ct_r1",
-        display_name="Priya Recruiter",
-        current_title="Corporate Recruiter",
-        work_signal="recruiting function close to the target role",
+        contact_id="ct_m1",
+        display_name="Morgan Manager",
+        current_title="Engineering Manager",
+        work_signal="engineering leadership close to the target role",
     )
     seed_approved_tailoring_run(connection, paths)
 
@@ -1371,58 +1389,21 @@ def test_role_targeted_draft_batch_persists_messages_artifacts_and_transitions(t
     )
 
     assert result.posting_status_after_drafting == JOB_POSTING_STATUS_OUTREACH_IN_PROGRESS
-    assert result.selected_contact_ids == ("ct_r1", "ct_m1", "ct_e1")
+    assert result.selected_contact_ids == ("ct_m1", "ct_m2", "ct_e1")
     assert len(result.drafted_messages) == 3
     assert result.failed_contacts == ()
 
-    recruiter_message = next(
-        message for message in result.drafted_messages if message.contact_id == "ct_r1"
-    )
-    manager_message = next(
+    primary_manager_message = next(
         message for message in result.drafted_messages if message.contact_id == "ct_m1"
     )
-    recruiter_body = Path(recruiter_message.body_text_artifact_path).read_text(encoding="utf-8")
-    manager_body = Path(manager_message.body_text_artifact_path).read_text(encoding="utf-8")
-    recruiter_html = Path(recruiter_message.body_html_artifact_path).read_text(encoding="utf-8")
-    assert "I thought you might have useful perspective on the hiring context for this opening." in recruiter_body
-    assert "MS in Computer Science at ASU" not in recruiter_body
-    assert "Arizona State University" not in recruiter_body
-    assert "Lately, I have been spending time sharpening my Agentic AI skills." in recruiter_body
-    assert "I built Job Hunt Copilot (https://github.com/sontiachyut/job-hunt-copilot-v4) for my own job search to help me identify relevant roles and the right people to reach out to." in recruiter_body
-    assert "The AI agent runs autonomously with human-in-the-loop (HITL) review, and I personally review every email before it goes out. This email is a live example of that workflow." in recruiter_body
-    assert "strong fit" not in recruiter_body
-    assert "15-minute Zoom" not in recruiter_body
-    assert "whether my background could be relevant." in recruiter_body
-    assert "seems close to" not in recruiter_body
-    assert "I came across the" not in recruiter_body
-    assert "The emphasis on" not in recruiter_body
-    assert "That is what prompted me to reach out." not in recruiter_body
-    assert "which is what prompted me to reach out." not in recruiter_body
-    assert "I've included a short snippet below that you can paste into an IM/Email:" in recruiter_body
-    assert "[snippet]" in recruiter_body
-    assert "[/snippet]" in recruiter_body
-    assert (
-        "Hi, sharing a candidate who may be relevant for the Staff Software Engineer / AI role at Acme Robotics."
-        in recruiter_body
+    secondary_manager_message = next(
+        message for message in result.drafted_messages if message.contact_id == "ct_m2"
     )
-    assert (
-        "He's actively building toward the role's focus on reliable backend and distributed systems for AI platform workloads "
-        "through academic and personal projects, while bringing supporting systems experience including building distributed "
-        "Python and Scala data services processing 50M+ daily HL7 records at roughly 580 TPS for real-time analytics."
-        in recruiter_body
-    )
-    assert "Profile: www.linkedin.com/in/asonti" in recruiter_body
-    assert "Lately, I have been spending time sharpening my Agentic AI skills." in recruiter_html
-    assert "I built Job Hunt Copilot" in recruiter_html
-    assert 'href="https://github.com/sontiachyut/job-hunt-copilot-v4"' in recruiter_html
-    assert (
-        '<p style="margin:0;color:#111827;line-height:1.55;font-weight:600;">'
-        "The AI agent runs autonomously with human-in-the-loop (HITL) review, and I personally review every email before it goes out. "
-        "This email is a live example of that workflow.</p>"
-    ) in recruiter_html
-    assert "background:#f4f4f4" in recruiter_html
-    assert "border-left:4px solid #1a73e8" in recruiter_html
-    assert "Best,<br>Achyutaram Sonti<br>https://www.linkedin.com/in/asonti/<br>602-768-6071<br>asonti1@asu.edu" in recruiter_html
+    manager_body = Path(primary_manager_message.body_text_artifact_path).read_text(encoding="utf-8")
+    secondary_manager_body = Path(
+        secondary_manager_message.body_text_artifact_path
+    ).read_text(encoding="utf-8")
+    manager_html = Path(primary_manager_message.body_html_artifact_path).read_text(encoding="utf-8")
     assert "I thought you might be a good person to reach out to for some perspective on this opening." in manager_body
     assert "MS in Computer Science at ASU" not in manager_body
     assert "Arizona State University" not in manager_body
@@ -1449,24 +1430,30 @@ def test_role_targeted_draft_batch_persists_messages_artifacts_and_transitions(t
         "Python and Scala data services processing 50M+ daily HL7 records at roughly 580 TPS for real-time analytics."
         in manager_body
     )
+    assert "Hi, passing along a candidate who may be worth a look" in secondary_manager_body
+    assert "Lately, I have been spending time sharpening my Agentic AI skills." in manager_html
+    assert "I built Job Hunt Copilot" in manager_html
+    assert "background:#f4f4f4" in manager_html
+    assert "border-left:4px solid #1a73e8" in manager_html
+    assert "Best,<br>Achyutaram Sonti<br>https://www.linkedin.com/in/asonti/<br>602-768-6071<br>asonti1@asu.edu" in manager_html
 
     send_result_payload = json.loads(
-        Path(recruiter_message.send_result_artifact_path).read_text(encoding="utf-8")
+        Path(primary_manager_message.send_result_artifact_path).read_text(encoding="utf-8")
     )
-    assert recruiter_message.opener_decision_artifact_path is not None
+    assert primary_manager_message.opener_decision_artifact_path is not None
     opener_decision_payload = json.loads(
-        Path(recruiter_message.opener_decision_artifact_path).read_text(encoding="utf-8")
+        Path(primary_manager_message.opener_decision_artifact_path).read_text(encoding="utf-8")
     )
-    assert send_result_payload["outreach_message_id"] == recruiter_message.outreach_message_id
+    assert send_result_payload["outreach_message_id"] == primary_manager_message.outreach_message_id
     assert send_result_payload["result"] == "success"
     assert send_result_payload["send_status"] == MESSAGE_STATUS_GENERATED
-    assert send_result_payload["body_text_artifact_path"] == recruiter_message.body_text_artifact_path
+    assert send_result_payload["body_text_artifact_path"] == primary_manager_message.body_text_artifact_path
     assert (
         send_result_payload["opener_decision_artifact_path"]
-        == recruiter_message.opener_decision_artifact_path
+        == primary_manager_message.opener_decision_artifact_path
     )
     assert send_result_payload["resume_attachment_path"].endswith("Achyutaram Sonti.pdf")
-    assert opener_decision_payload["outreach_message_id"] == recruiter_message.outreach_message_id
+    assert opener_decision_payload["outreach_message_id"] == primary_manager_message.outreach_message_id
     assert opener_decision_payload["result"] == "success"
     assert opener_decision_payload["claim_mode"] == "interest_area"
     assert (
@@ -1510,9 +1497,14 @@ def test_role_targeted_draft_batch_persists_messages_artifacts_and_transitions(t
             "link_level_status": POSTING_CONTACT_STATUS_OUTREACH_IN_PROGRESS,
         },
         {
-            "contact_id": "ct_r1",
+            "contact_id": "ct_m2",
             "contact_status": CONTACT_STATUS_OUTREACH_IN_PROGRESS,
             "link_level_status": POSTING_CONTACT_STATUS_OUTREACH_IN_PROGRESS,
+        },
+        {
+            "contact_id": "ct_r1",
+            "contact_status": "identified",
+            "link_level_status": POSTING_CONTACT_STATUS_SHORTLISTED,
         },
     ]
 
@@ -1548,11 +1540,11 @@ def test_role_targeted_draft_batch_normalizes_latex_resume_escapes_in_email_text
     seed_posting(connection)
     seed_linked_contact(
         connection,
-        contact_id="ct_r1",
-        job_posting_contact_id="jpc_r1",
-        display_name="Priya Recruiter",
-        recipient_type=RECIPIENT_TYPE_RECRUITER,
-        current_working_email="priya@acme.example",
+        contact_id="ct_m1",
+        job_posting_contact_id="jpc_m1",
+        display_name="Morgan Manager",
+        recipient_type=RECIPIENT_TYPE_HIRING_MANAGER,
+        current_working_email="morgan@acme.example",
         created_at="2026-04-06T20:01:00Z",
     )
     latex_step_6_payload: Mapping[str, Any] = {
@@ -1593,14 +1585,14 @@ def test_role_targeted_draft_batch_normalizes_latex_resume_escapes_in_email_text
         local_timezone=ZoneInfo("UTC"),
     )
 
-    recruiter_body = Path(result.drafted_messages[0].body_text_artifact_path).read_text(
+    body_text = Path(result.drafted_messages[0].body_text_artifact_path).read_text(
         encoding="utf-8"
     )
 
-    assert "50% (20K to 30K records/sec) and lowering monthly cloud spend by $15K" in recruiter_body
-    assert recruiter_body.count("50% (20K to 30K records/sec)") == 2
-    assert "\\%" not in recruiter_body
-    assert "\\$15K" not in recruiter_body
+    assert "50% (20K to 30K records/sec) and lowering monthly cloud spend by $15K" in body_text
+    assert body_text.count("50% (20K to 30K records/sec)") == 2
+    assert "\\%" not in body_text
+    assert "\\$15K" not in body_text
 
     connection.close()
 
@@ -1614,9 +1606,9 @@ def test_role_targeted_drafting_requires_persisted_ready_for_outreach_state(tmp_
         connection,
         contact_id="ct_r1",
         job_posting_contact_id="jpc_r1",
-        display_name="Priya Recruiter",
-        recipient_type=RECIPIENT_TYPE_RECRUITER,
-        current_working_email="priya@acme.example",
+        display_name="Morgan Manager",
+        recipient_type=RECIPIENT_TYPE_HIRING_MANAGER,
+        current_working_email="morgan@acme.example",
         created_at="2026-04-06T20:01:00Z",
     )
     seed_linked_contact(
@@ -1665,8 +1657,8 @@ def test_role_targeted_drafting_requires_an_approved_tailoring_run(tmp_path: Pat
         connection,
         contact_id="ct_r1",
         job_posting_contact_id="jpc_r1",
-        display_name="Priya Recruiter",
-        recipient_type=RECIPIENT_TYPE_RECRUITER,
+        display_name="Priya Manager",
+        recipient_type=RECIPIENT_TYPE_HIRING_MANAGER,
         current_working_email="priya@acme.example",
         created_at="2026-04-06T20:01:00Z",
     )
@@ -1702,11 +1694,11 @@ def test_role_targeted_drafting_stays_grounded_in_stored_inputs_not_raw_source_c
     seed_posting(connection)
     seed_linked_contact(
         connection,
-        contact_id="ct_r1",
-        job_posting_contact_id="jpc_r1",
-        display_name="Priya Recruiter",
-        recipient_type=RECIPIENT_TYPE_RECRUITER,
-        current_working_email="priya@acme.example",
+        contact_id="ct_m1",
+        job_posting_contact_id="jpc_m1",
+        display_name="Morgan Manager",
+        recipient_type=RECIPIENT_TYPE_HIRING_MANAGER,
+        current_working_email="morgan@acme.example",
         created_at="2026-04-06T20:01:00Z",
     )
     lead_workspace = paths.lead_workspace_dir(
@@ -1723,10 +1715,10 @@ def test_role_targeted_drafting_stays_grounded_in_stored_inputs_not_raw_source_c
     seed_recipient_profile(
         connection,
         paths,
-        contact_id="ct_r1",
-        display_name="Priya Recruiter",
-        current_title="Corporate Recruiter",
-        work_signal="recruiting function close to the target role",
+        contact_id="ct_m1",
+        display_name="Morgan Manager",
+        current_title="Engineering Manager",
+        work_signal="engineering leadership close to the target role",
     )
     seed_approved_tailoring_run(connection, paths)
 
@@ -1739,7 +1731,7 @@ def test_role_targeted_drafting_stays_grounded_in_stored_inputs_not_raw_source_c
     )
 
     body_text = Path(result.drafted_messages[0].body_text_artifact_path).read_text(encoding="utf-8")
-    assert "I thought you might have useful perspective on the hiring context for this opening." in body_text
+    assert "I thought you might be a good person to reach out to for some perspective on this opening." in body_text
     assert "50M+ daily HL7 records" in body_text
     assert "Former teammate of the CEO" not in body_text
     assert "12 years of Rust experience" not in body_text
@@ -2848,8 +2840,8 @@ def test_role_targeted_composition_filters_benefits_from_focus_selection(tmp_pat
         connection,
         contact_id="ct_teksystems",
         job_posting_contact_id="jpc_teksystems",
-        display_name="Taylor Recruiter",
-        recipient_type=RECIPIENT_TYPE_RECRUITER,
+        display_name="Taylor Manager",
+        recipient_type=RECIPIENT_TYPE_HIRING_MANAGER,
         current_working_email="taylor@teksystems.example",
         created_at="2026-04-06T20:01:00Z",
     )
@@ -3582,8 +3574,8 @@ def test_refresh_role_targeted_generated_drafts_rewrites_pending_unsent_messages
         connection,
         contact_id="ct_refresh",
         job_posting_contact_id="jpc_refresh",
-        display_name="Sam Recruiter",
-        recipient_type=RECIPIENT_TYPE_RECRUITER,
+        display_name="Sam Manager",
+        recipient_type=RECIPIENT_TYPE_HIRING_MANAGER,
         current_working_email="sam@acme.example",
         created_at="2026-04-06T20:01:00Z",
     )
@@ -3709,8 +3701,8 @@ def test_role_targeted_draft_batch_surfaces_failed_contact_without_losing_succes
         connection,
         contact_id="ct_r1",
         job_posting_contact_id="jpc_r1",
-        display_name="Priya Recruiter",
-        recipient_type=RECIPIENT_TYPE_RECRUITER,
+        display_name="Priya Manager",
+        recipient_type=RECIPIENT_TYPE_HIRING_MANAGER,
         current_working_email="priya@acme.example",
         created_at="2026-04-06T20:01:00Z",
     )
@@ -4525,12 +4517,12 @@ def test_send_execution_persists_sent_metadata_and_delays_remaining_wave(tmp_pat
         sender=sender,
     )
 
-    recruiter_message = next(
-        message for message in draft_batch.drafted_messages if message.contact_id == "ct_r1"
+    manager_message = next(
+        message for message in draft_batch.drafted_messages if message.contact_id == "ct_m1"
     )
-    assert sender.attempted_message_ids == [recruiter_message.outreach_message_id]
-    assert [message.contact_id for message in result.sent_messages] == ["ct_r1"]
-    assert [message.contact_id for message in result.delayed_messages] == ["ct_m1", "ct_e1"]
+    assert sender.attempted_message_ids == [manager_message.outreach_message_id]
+    assert [message.contact_id for message in result.sent_messages] == ["ct_m1"]
+    assert [message.contact_id for message in result.delayed_messages] == ["ct_e1"]
     assert all(
         delayed.pacing_block_reason == "global_inter_send_gap" for delayed in result.delayed_messages
     )
@@ -4545,13 +4537,13 @@ def test_send_execution_persists_sent_metadata_and_delays_remaining_wave(tmp_pat
         FROM outreach_messages
         WHERE outreach_message_id = ?
         """,
-        (recruiter_message.outreach_message_id,),
+        (manager_message.outreach_message_id,),
     ).fetchone()
     assert dict(sent_row) == {
         "message_status": MESSAGE_STATUS_SENT,
         "sent_at": "2026-04-06T20:40:00Z",
-        "thread_id": f"thread-{recruiter_message.outreach_message_id}",
-        "delivery_tracking_id": f"delivery-{recruiter_message.outreach_message_id}",
+        "thread_id": f"thread-{manager_message.outreach_message_id}",
+        "delivery_tracking_id": f"delivery-{manager_message.outreach_message_id}",
     }
 
     send_result_payload = json.loads(
@@ -4559,8 +4551,8 @@ def test_send_execution_persists_sent_metadata_and_delays_remaining_wave(tmp_pat
     )
     assert send_result_payload["send_status"] == MESSAGE_STATUS_SENT
     assert send_result_payload["sent_at"] == "2026-04-06T20:40:00Z"
-    assert send_result_payload["thread_id"] == f"thread-{recruiter_message.outreach_message_id}"
-    assert send_result_payload["delivery_tracking_id"] == f"delivery-{recruiter_message.outreach_message_id}"
+    assert send_result_payload["thread_id"] == f"thread-{manager_message.outreach_message_id}"
+    assert send_result_payload["delivery_tracking_id"] == f"delivery-{manager_message.outreach_message_id}"
 
     contact_rows = connection.execute(
         """
@@ -4581,13 +4573,13 @@ def test_send_execution_persists_sent_metadata_and_delays_remaining_wave(tmp_pat
         },
         {
             "contact_id": "ct_m1",
-            "contact_status": CONTACT_STATUS_OUTREACH_IN_PROGRESS,
-            "link_level_status": POSTING_CONTACT_STATUS_OUTREACH_IN_PROGRESS,
+            "contact_status": CONTACT_STATUS_SENT,
+            "link_level_status": POSTING_CONTACT_STATUS_OUTREACH_DONE,
         },
         {
             "contact_id": "ct_r1",
-            "contact_status": CONTACT_STATUS_SENT,
-            "link_level_status": POSTING_CONTACT_STATUS_OUTREACH_DONE,
+            "contact_status": "identified",
+            "link_level_status": POSTING_CONTACT_STATUS_SHORTLISTED,
         },
     ]
 
@@ -4603,9 +4595,9 @@ def test_send_execution_runs_immediate_feedback_poll_when_observer_is_provided(t
         connection,
         contact_id="ct_r1",
         job_posting_contact_id="jpc_r1",
-        display_name="Priya Recruiter",
-        recipient_type=RECIPIENT_TYPE_RECRUITER,
-        current_working_email="priya@acme.example",
+        display_name="Morgan Manager",
+        recipient_type=RECIPIENT_TYPE_HIRING_MANAGER,
+        current_working_email="morgan@acme.example",
         created_at="2026-04-06T20:01:00Z",
     )
     seed_approved_tailoring_run(connection, paths)
@@ -4686,9 +4678,9 @@ def test_send_execution_keeps_successful_send_when_immediate_feedback_poll_fails
         connection,
         contact_id="ct_r1",
         job_posting_contact_id="jpc_r1",
-        display_name="Priya Recruiter",
-        recipient_type=RECIPIENT_TYPE_RECRUITER,
-        current_working_email="priya@acme.example",
+        display_name="Morgan Manager",
+        recipient_type=RECIPIENT_TYPE_HIRING_MANAGER,
+        current_working_email="morgan@acme.example",
         created_at="2026-04-06T20:01:00Z",
     )
     seed_approved_tailoring_run(connection, paths)
@@ -4772,9 +4764,9 @@ def test_send_execution_completes_posting_when_last_message_is_sent(tmp_path: Pa
         connection,
         contact_id="ct_r1",
         job_posting_contact_id="jpc_r1",
-        display_name="Priya Recruiter",
-        recipient_type=RECIPIENT_TYPE_RECRUITER,
-        current_working_email="priya@acme.example",
+        display_name="Morgan Manager",
+        recipient_type=RECIPIENT_TYPE_HIRING_MANAGER,
+        current_working_email="morgan@acme.example",
         created_at="2026-04-06T20:01:00Z",
     )
     seed_approved_tailoring_run(connection, paths)
@@ -4821,9 +4813,9 @@ def test_send_execution_keeps_posting_ready_for_later_waves_when_untouched_conta
         connection,
         contact_id="ct_r1",
         job_posting_contact_id="jpc_r1",
-        display_name="Priya Recruiter",
-        recipient_type=RECIPIENT_TYPE_RECRUITER,
-        current_working_email="priya@acme.example",
+        display_name="Morgan Manager",
+        recipient_type=RECIPIENT_TYPE_HIRING_MANAGER,
+        current_working_email="morgan@acme.example",
         created_at="2026-04-06T20:01:00Z",
     )
     seed_linked_contact(
@@ -4848,8 +4840,8 @@ def test_send_execution_keeps_posting_ready_for_later_waves_when_untouched_conta
         connection,
         contact_id="ct_a1",
         job_posting_contact_id="jpc_a1",
-        display_name="Alex Alumni",
-        recipient_type=RECIPIENT_TYPE_ALUMNI,
+        display_name="Alex Engineer",
+        recipient_type=RECIPIENT_TYPE_ENGINEER,
         current_working_email="alex@acme.example",
         created_at="2026-04-06T20:04:00Z",
     )
@@ -4975,10 +4967,10 @@ def test_send_execution_returns_posting_to_requires_contacts_when_later_wave_nee
     )
     seed_linked_contact(
         connection,
-        contact_id="ct_a1",
-        job_posting_contact_id="jpc_a1",
-        display_name="Alex Alumni",
-        recipient_type=RECIPIENT_TYPE_ALUMNI,
+        contact_id="ct_e2",
+        job_posting_contact_id="jpc_e2",
+        display_name="Casey Engineer",
+        recipient_type=RECIPIENT_TYPE_ENGINEER,
         current_working_email=None,
         created_at="2026-04-06T20:04:00Z",
     )
@@ -5057,10 +5049,10 @@ def test_send_execution_returns_posting_to_requires_contacts_when_later_wave_nee
         local_timezone=ZoneInfo("UTC"),
     )
 
-    assert [message.contact_id for message in result.sent_messages] == ["ct_r1"]
+    assert result.sent_messages == ()
     assert result.posting_status_after_execution == JOB_POSTING_STATUS_REQUIRES_CONTACTS
     assert posting_status == JOB_POSTING_STATUS_REQUIRES_CONTACTS
-    assert [contact.contact_id for contact in next_wave_plan.selected_contacts] == ["ct_a1"]
+    assert [contact.contact_id for contact in next_wave_plan.selected_contacts] == ["ct_e2"]
     assert next_wave_plan.ready_for_outreach is False
 
     connection.close()
@@ -5075,9 +5067,9 @@ def test_send_execution_blocks_repeat_outreach_without_resend(tmp_path: Path):
         connection,
         contact_id="ct_r1",
         job_posting_contact_id="jpc_r1",
-        display_name="Priya Recruiter",
-        recipient_type=RECIPIENT_TYPE_RECRUITER,
-        current_working_email="priya@acme.example",
+        display_name="Morgan Manager",
+        recipient_type=RECIPIENT_TYPE_HIRING_MANAGER,
+        current_working_email="morgan@acme.example",
         created_at="2026-04-06T20:01:00Z",
     )
     seed_approved_tailoring_run(connection, paths)
@@ -5158,9 +5150,9 @@ def test_send_execution_blocks_transient_gmail_failure_and_retries_same_message_
         connection,
         contact_id="ct_r1",
         job_posting_contact_id="jpc_r1",
-        display_name="Priya Recruiter",
-        recipient_type=RECIPIENT_TYPE_RECRUITER,
-        current_working_email="priya@acme.example",
+        display_name="Morgan Manager",
+        recipient_type=RECIPIENT_TYPE_HIRING_MANAGER,
+        current_working_email="morgan@acme.example",
         created_at="2026-04-06T20:01:00Z",
     )
     seed_approved_tailoring_run(connection, paths)
@@ -5291,9 +5283,9 @@ def test_transient_send_retry_exhaustion_leaves_message_blocked_and_not_actionab
         connection,
         contact_id="ct_r1",
         job_posting_contact_id="jpc_r1",
-        display_name="Priya Recruiter",
-        recipient_type=RECIPIENT_TYPE_RECRUITER,
-        current_working_email="priya@acme.example",
+        display_name="Morgan Manager",
+        recipient_type=RECIPIENT_TYPE_HIRING_MANAGER,
+        current_working_email="morgan@acme.example",
         created_at="2026-04-06T20:01:00Z",
     )
     seed_approved_tailoring_run(connection, paths)
@@ -5368,8 +5360,8 @@ def test_cross_posting_unsent_history_does_not_block_role_targeted_send(
         connection,
         contact_id="ct_primary",
         job_posting_contact_id="jpc_primary",
-        display_name="Priya Recruiter",
-        recipient_type=RECIPIENT_TYPE_RECRUITER,
+        display_name="Priya Manager",
+        recipient_type=RECIPIENT_TYPE_HIRING_MANAGER,
         current_working_email="priya@acme.example",
         created_at="2026-04-06T20:01:00Z",
     )
@@ -5447,7 +5439,7 @@ def test_cross_posting_unsent_history_does_not_block_role_targeted_send(
             "jpc_duplicate",
             "jp_duplicate",
             "ct_primary",
-            RECIPIENT_TYPE_RECRUITER,
+            RECIPIENT_TYPE_HIRING_MANAGER,
             "Earlier outreach wave still active.",
             POSTING_CONTACT_STATUS_OUTREACH_IN_PROGRESS,
             "2026-04-06T20:31:00Z",
@@ -5528,8 +5520,8 @@ def test_same_posting_duplicate_generated_message_blocks_send(
         connection,
         contact_id="ct_primary",
         job_posting_contact_id="jpc_primary",
-        display_name="Priya Recruiter",
-        recipient_type=RECIPIENT_TYPE_RECRUITER,
+        display_name="Priya Manager",
+        recipient_type=RECIPIENT_TYPE_HIRING_MANAGER,
         current_working_email="priya@acme.example",
         created_at="2026-04-06T20:01:00Z",
     )

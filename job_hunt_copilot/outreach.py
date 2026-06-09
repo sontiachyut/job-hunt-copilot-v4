@@ -92,18 +92,13 @@ MANAGERIAL_PATH_CTA_FORWARD = (
     "If this is better routed elsewhere, I'd appreciate a forward to the right person internally."
 )
 
-SEND_SET_PRIMARY_SLOTS: tuple[tuple[str, tuple[str, ...]], ...] = (
-    ("recruiter", (RECIPIENT_TYPE_RECRUITER,)),
-    ("manager_adjacent", (RECIPIENT_TYPE_HIRING_MANAGER, RECIPIENT_TYPE_FOUNDER)),
-    ("engineer", (RECIPIENT_TYPE_ENGINEER,)),
-)
-SEND_SET_FALLBACK_TYPE_ORDER = (
-    RECIPIENT_TYPE_HIRING_MANAGER,
-    RECIPIENT_TYPE_FOUNDER,
-    RECIPIENT_TYPE_RECRUITER,
-    RECIPIENT_TYPE_ENGINEER,
-    RECIPIENT_TYPE_ALUMNI,
-    RECIPIENT_TYPE_OTHER_INTERNAL,
+SEND_SET_PRIORITY_SLOTS: tuple[tuple[str, tuple[str, ...]], ...] = (
+    ("manager_1", (RECIPIENT_TYPE_HIRING_MANAGER,)),
+    ("manager_2", (RECIPIENT_TYPE_HIRING_MANAGER,)),
+    ("manager_3", (RECIPIENT_TYPE_HIRING_MANAGER,)),
+    ("engineer_1", (RECIPIENT_TYPE_ENGINEER,)),
+    ("engineer_2", (RECIPIENT_TYPE_ENGINEER,)),
+    ("engineer_3", (RECIPIENT_TYPE_ENGINEER,)),
 )
 
 _CANDIDATE_STATE_READY = "ready"
@@ -1628,6 +1623,8 @@ def _load_role_targeted_draftable_contacts(
         job_posting_id=job_posting_id,
         posting_company_key=posting_company_key_from_row(posting_row),
     ):
+        if not _is_automatic_send_recipient_type(candidate.recipient_type):
+            continue
         if candidate.selection_state != _CANDIDATE_STATE_READY:
             continue
         existing_message_count = int(
@@ -1653,66 +1650,28 @@ def _select_send_set_candidates(
 ) -> list[tuple[str, str, _CandidateRow]]:
     selected: list[tuple[str, str, _CandidateRow]] = []
     selected_contact_ids: set[str] = set()
-    filled_primary_slots: set[str] = set()
 
-    def append_primary_candidates(
-        *,
-        allowed_selection_states: frozenset[str],
-        selection_kind: str,
-    ) -> None:
-        for slot_name, recipient_types in SEND_SET_PRIMARY_SLOTS:
-            if len(selected) >= AUTOMATIC_SEND_SET_LIMIT:
-                return
-            if slot_name in filled_primary_slots:
-                continue
+    for slot_name, recipient_types in SEND_SET_PRIORITY_SLOTS:
+        if len(selected) >= AUTOMATIC_SEND_SET_LIMIT:
+            break
+        candidate = _pick_best_candidate(
+            candidates,
+            allowed_recipient_types=recipient_types,
+            selected_contact_ids=selected_contact_ids,
+            allowed_selection_states=frozenset({_CANDIDATE_STATE_READY}),
+        )
+        if candidate is None:
             candidate = _pick_best_candidate(
                 candidates,
                 allowed_recipient_types=recipient_types,
                 selected_contact_ids=selected_contact_ids,
-                allowed_selection_states=allowed_selection_states,
+                allowed_selection_states=frozenset({_CANDIDATE_STATE_NEEDS_EMAIL}),
             )
-            if candidate is None:
-                continue
-            selected.append((slot_name, selection_kind, candidate))
-            selected_contact_ids.add(candidate.contact_id)
-            filled_primary_slots.add(slot_name)
+        if candidate is None:
+            continue
+        selected.append((slot_name, "preferred", candidate))
+        selected_contact_ids.add(candidate.contact_id)
 
-    def append_fallback_candidates(
-        *,
-        allowed_selection_states: frozenset[str],
-        selection_kind: str,
-    ) -> None:
-        fallback_candidates = sorted(
-            (
-                candidate
-                for candidate in candidates
-                if candidate.contact_id not in selected_contact_ids
-                and candidate.selection_state in allowed_selection_states
-            ),
-            key=_fallback_sort_key,
-        )
-        for candidate in fallback_candidates:
-            if len(selected) >= AUTOMATIC_SEND_SET_LIMIT:
-                return
-            selected.append((f"fallback_{len(selected) + 1}", selection_kind, candidate))
-            selected_contact_ids.add(candidate.contact_id)
-
-    append_primary_candidates(
-        allowed_selection_states=frozenset({_CANDIDATE_STATE_READY}),
-        selection_kind="preferred",
-    )
-    append_fallback_candidates(
-        allowed_selection_states=frozenset({_CANDIDATE_STATE_READY}),
-        selection_kind="fallback",
-    )
-    append_primary_candidates(
-        allowed_selection_states=frozenset({_CANDIDATE_STATE_NEEDS_EMAIL}),
-        selection_kind="preferred",
-    )
-    append_fallback_candidates(
-        allowed_selection_states=frozenset({_CANDIDATE_STATE_NEEDS_EMAIL}),
-        selection_kind="fallback",
-    )
     return selected[:AUTOMATIC_SEND_SET_LIMIT]
 
 
@@ -1746,16 +1705,6 @@ def _preferred_sort_key(candidate: _CandidateRow) -> tuple[int, int, str, str]:
     )
 
 
-def _fallback_sort_key(candidate: _CandidateRow) -> tuple[int, int, int, str, str]:
-    return (
-        _selection_state_rank(candidate.selection_state),
-        _fallback_type_rank(candidate.recipient_type),
-        0 if candidate.link_level_status == POSTING_CONTACT_STATUS_SHORTLISTED else 1,
-        candidate.link_created_at,
-        candidate.contact_id,
-    )
-
-
 def _selection_state_rank(selection_state: str) -> int:
     if selection_state == _CANDIDATE_STATE_READY:
         return 0
@@ -1768,11 +1717,27 @@ def _selection_state_rank(selection_state: str) -> int:
     return 3
 
 
-def _fallback_type_rank(recipient_type: str) -> int:
-    try:
-        return SEND_SET_FALLBACK_TYPE_ORDER.index(recipient_type)
-    except ValueError:
-        return len(SEND_SET_FALLBACK_TYPE_ORDER)
+def _is_automatic_send_recipient_type(recipient_type: str) -> bool:
+    return recipient_type in {
+        RECIPIENT_TYPE_HIRING_MANAGER,
+        RECIPIENT_TYPE_ENGINEER,
+    }
+
+
+def _send_priority_rank(recipient_type: str) -> int:
+    if recipient_type == RECIPIENT_TYPE_HIRING_MANAGER:
+        return 0
+    if recipient_type == RECIPIENT_TYPE_ENGINEER:
+        return 1
+    if recipient_type == RECIPIENT_TYPE_RECRUITER:
+        return 2
+    if recipient_type == RECIPIENT_TYPE_FOUNDER:
+        return 3
+    if recipient_type == RECIPIENT_TYPE_ALUMNI:
+        return 4
+    if recipient_type == RECIPIENT_TYPE_OTHER_INTERNAL:
+        return 5
+    return 6
 
 
 def _count_posting_sends_today(
@@ -3371,6 +3336,7 @@ def execute_role_targeted_send_set(
     blocked_messages: list[SendExecutionIssue] = []
     failed_messages: list[SendExecutionIssue] = []
     delayed_messages: list[DelayedOutreachMessage] = []
+    should_reconcile_wave_completion = True
 
     for index, active_message in enumerate(active_wave):
         if active_message.message_status == MESSAGE_STATUS_SENT:
@@ -3391,6 +3357,7 @@ def execute_role_targeted_send_set(
             if retry_state.retry_exhausted:
                 break
             if not retry_state.retry_allowed_now:
+                should_reconcile_wave_completion = False
                 delayed_messages.extend(
                     _build_retry_frontier_delayed_messages(
                         active_wave[index:],
@@ -3546,6 +3513,7 @@ def execute_role_targeted_send_set(
                     allow_wave_completion=False,
                 )
             )
+            should_reconcile_wave_completion = False
             retry_due_at = _isoformat_utc(
                 _parse_iso_datetime(current_time)
                 + timedelta(minutes=TRANSIENT_SEND_RETRY_COOLDOWN_MINUTES)
@@ -3570,6 +3538,12 @@ def execute_role_targeted_send_set(
             )
         )
 
+    if should_reconcile_wave_completion:
+        _complete_posting_if_wave_finished(
+            connection,
+            posting_row=posting_row,
+            current_time=current_time,
+        )
     posting_status_after_execution = _load_current_posting_status(
         connection,
         job_posting_id=job_posting_id,
@@ -3674,6 +3648,7 @@ def _load_active_role_targeted_wave(
             message_updated_at=str(row["message_updated_at"]) if row["message_updated_at"] else "",
         )
         for row in rows
+        if _is_automatic_send_recipient_type(str(row["recipient_type"]))
     ]
     return sorted(wave, key=_active_wave_sort_key)
 
@@ -3697,21 +3672,11 @@ def _validate_active_role_targeted_wave(
 
 def _active_wave_sort_key(message: _ActiveWaveMessage) -> tuple[int, int, str, str]:
     return (
-        _selection_state_rank(_recipient_type_send_slot(message.recipient_type)),
-        _fallback_type_rank(message.recipient_type),
+        _send_priority_rank(message.recipient_type),
+        0 if message.link_level_status == POSTING_CONTACT_STATUS_SHORTLISTED else 1,
         message.link_created_at,
         message.contact_id,
     )
-
-
-def _recipient_type_send_slot(recipient_type: str) -> str:
-    if recipient_type == RECIPIENT_TYPE_RECRUITER:
-        return _CANDIDATE_STATE_READY
-    if recipient_type in {RECIPIENT_TYPE_HIRING_MANAGER, RECIPIENT_TYPE_FOUNDER}:
-        return _CANDIDATE_STATE_NEEDS_EMAIL
-    if recipient_type == RECIPIENT_TYPE_ENGINEER:
-        return _CANDIDATE_STATE_REPEAT_REVIEW
-    return _CANDIDATE_STATE_UNAVAILABLE
 
 
 def _build_role_targeted_send_pacing_plan(
