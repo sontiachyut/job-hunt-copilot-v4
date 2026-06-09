@@ -1033,10 +1033,15 @@ def test_people_search_stage_executes_and_advances_to_email_discovery(tmp_path: 
                 display_name="Jamie Engineer",
                 title="Staff Software Engineer",
             ),
+            build_candidate(
+                provider_person_id="pp_e2",
+                display_name="Casey Engineer",
+                title="Software Engineer",
+            ),
         ]
     )
     enrichment_provider = FakeApolloEnrichmentProvider(
-        {"pp_r1": None, "pp_m1": None, "pp_e1": None}
+        {"pp_r1": None, "pp_m1": None, "pp_e1": None, "pp_e2": None}
     )
 
     execution = run_supervisor_cycle(
@@ -1090,11 +1095,8 @@ def test_people_search_stage_executes_and_advances_to_email_discovery(tmp_path: 
     assert updated_run.current_stage == "email_discovery"
     assert posting_status == "requires_contacts"
     assert len(shortlist_rows) == 3
-    assert {row["recipient_type"] for row in shortlist_rows} == {
-        "recruiter",
-        "hiring_manager",
-        "engineer",
-    }
+    assert {row["recipient_type"] for row in shortlist_rows} == {"hiring_manager", "engineer"}
+    assert sum(1 for row in shortlist_rows if row["recipient_type"] == "engineer") == 2
     assert all(row["link_level_status"] == "shortlisted" for row in shortlist_rows)
     assert (project_root / people_search_artifact_path).exists()
 

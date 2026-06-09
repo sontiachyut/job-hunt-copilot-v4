@@ -665,7 +665,7 @@ This is the agreed vocabulary for design discussions.
   1. as many manager-adjacent internal contacts as available, especially hiring managers, engineering managers, engineering directors, heads of engineering, and similar technical leadership roles
   2. senior, staff, lead, principal, architect, or otherwise more senior role-relevant technical ICs
   3. software engineers and other role-relevant engineers
-  4. only if the company does not have enough manager or technical candidates to fill the shortlist, the remaining slots may fall back to recruiters or other helpful internal contacts
+  4. if the company does not have enough manager or technical candidates to fill the shortlist, the shortlist may remain below the cap rather than being padded with recruiters or generic internal contacts
 - **FR-SYS-38B1E (Current Autonomous Active Send-Slice Size):** After enrichment and any required email discovery, the current active automatic send slice for one posting should contain at most 3 contacts unless the user explicitly overrides that limit.
 - **FR-SYS-38B1F (Current Autonomous Active Send-Slice Composition):** The default autonomous active send slice should prefer one recruiter, one hiring-manager-or-manager-adjacent contact, and one team-adjacent engineer when those contact classes are available. If one class is unavailable, the next-best shortlisted contact may fill the slot.
 - **FR-SYS-38B1F1 (Active Send-Slice Ready-Subset Rule):** The active send slice is a preference target, not a hard all-or-nothing prerequisite. If one preferred slot is still unresolved because its selected contact lacks a usable email, the system should continue discovery for that unresolved slot or search for a replacement candidate, but it may still draft and send against the currently ready subset instead of waiting for the entire preferred slice to become fully ready.
@@ -4267,8 +4267,8 @@ Current imported guidance should include, at minimum:
 4. The system correctly handles sparse Apollo search results, including candidates whose search-stage identity is only a partial or obfuscated display name plus stable Apollo person ID.
 5. Shortlist-stage contact materialization can proceed from stable provider identity such as Apollo person ID even before a non-obfuscated full name is known.
 6. After the broad search pass, the system enriches only shortlisted contacts that need fuller identity, LinkedIn URL, or a usable work email rather than enriching every broad-search candidate by default.
-7. In autonomous role-targeted mode, the initial enrichment shortlist is capped at 30 contacts and aims to cover recruiter, manager, and engineer recipient classes before lower-priority internals are used.
-8. When a saved broad Apollo people-search artifact exists, the system can later replay that artifact to backfill additional shortlisted contacts up to the current 30-contact limit without rerunning external people search immediately.
+7. In autonomous role-targeted mode, the initial enrichment shortlist is capped at 10 contacts and is limited to manager-adjacent and technical contacts, with managers preferred first, then more senior engineers, then other software engineers.
+8. When a saved broad Apollo people-search artifact exists, the system can later replay that artifact to backfill additional shortlisted contacts up to the current 10-contact limit without rerunning external people search immediately.
 9. When a location-filtered Apollo search yields no useful contacts, the search logic can retry with the location constraint relaxed rather than dead-ending on the first miss.
 10. When Apollo enrichment yields a LinkedIn URL for a shortlisted contact, the system can extract and persist a structured public-profile `recipient_profile.json` snapshot before drafting.
 11. If Apollo enrichment returns a usable work email for a selected contact, the system can skip the separate email-finder cascade for that contact.
