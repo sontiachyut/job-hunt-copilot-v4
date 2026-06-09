@@ -72,10 +72,12 @@ from job_hunt_copilot.supervisor import (
     release_runtime_lease,
     resume_agent,
     run_supervisor_cycle,
+    select_next_supervisor_work_unit,
     set_pipeline_run_review_packet_status,
     start_supervisor_cycle,
     stop_agent,
     SupervisorActionDependencies,
+    _select_open_pipeline_run_work_unit,
 )
 from tests.support import create_minimal_project, initialize_git_repository
 
@@ -269,6 +271,224 @@ def seed_role_targeted_posting(
     )
     connection.commit()
     return "ld_test", "jp_test"
+
+
+def seed_named_role_targeted_posting(
+    connection: sqlite3.Connection,
+    *,
+    lead_id: str,
+    job_posting_id: str,
+    company_name: str,
+    role_title: str,
+    posting_status: str,
+    timestamp: str,
+) -> tuple[str, str]:
+    connection.execute(
+        """
+        INSERT INTO linkedin_leads (
+          lead_id, lead_identity_key, lead_status, lead_shape, split_review_status,
+          source_type, source_reference, source_mode, company_name, role_title,
+          created_at, updated_at
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        """,
+        (
+            lead_id,
+            f"{company_name.lower()}|{role_title.lower()}",
+            "reviewed",
+            "posting_plus_contacts",
+            "confident",
+            "manual_paste",
+            f"paste/{lead_id}.txt",
+            "manual_paste",
+            company_name,
+            role_title,
+            timestamp,
+            timestamp,
+        ),
+    )
+    connection.execute(
+        """
+        INSERT INTO job_postings (
+          job_posting_id, lead_id, posting_identity_key, company_name, role_title,
+          posting_status, created_at, updated_at
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+        """,
+        (
+            job_posting_id,
+            lead_id,
+            f"{company_name.lower()}|{role_title.lower()}|{job_posting_id}",
+            company_name,
+            role_title,
+            posting_status,
+            timestamp,
+            timestamp,
+        ),
+    )
+    connection.commit()
+    return lead_id, job_posting_id
+
+
+def seed_tailoring_run(
+    connection: sqlite3.Connection,
+    *,
+    run_id: str,
+    job_posting_id: str,
+    tailoring_status: str,
+    resume_review_status: str,
+    verification_outcome: str,
+    final_resume_path: str | None,
+    timestamp: str,
+) -> None:
+    connection.execute(
+        """
+        INSERT INTO resume_tailoring_runs (
+          resume_tailoring_run_id, job_posting_id, base_used, tailoring_status,
+          resume_review_status, workspace_path, final_resume_path, verification_outcome,
+          started_at, completed_at, created_at, updated_at
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        """,
+        (
+            run_id,
+            job_posting_id,
+            "generalist",
+            tailoring_status,
+            resume_review_status,
+            f"resume-tailoring/output/{run_id}",
+            final_resume_path,
+            verification_outcome,
+            timestamp,
+            timestamp,
+            timestamp,
+            timestamp,
+        ),
+    )
+
+
+def seed_send_ready_contact_with_generated_message(
+    connection: sqlite3.Connection,
+    *,
+    contact_id: str,
+    job_posting_contact_id: str,
+    job_posting_id: str,
+    company_name: str,
+    display_name: str,
+    recipient_email: str,
+    created_at: str,
+) -> None:
+    connection.execute(
+        """
+        INSERT INTO contacts (
+          contact_id, identity_key, display_name, company_name, origin_component, contact_status,
+          full_name, current_working_email, position_title, created_at, updated_at
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        """,
+        (
+            contact_id,
+            f"{company_name.lower()}|{display_name.lower().replace(' ', '-')}",
+            display_name,
+            company_name,
+            "email_discovery",
+            "working_email_found",
+            display_name,
+            recipient_email,
+            "Engineering Manager",
+            created_at,
+            created_at,
+        ),
+    )
+    connection.execute(
+        """
+        INSERT INTO job_posting_contacts (
+          job_posting_contact_id, job_posting_id, contact_id, recipient_type, relevance_reason,
+          link_level_status, created_at, updated_at
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+        """,
+        (
+            job_posting_contact_id,
+            job_posting_id,
+            contact_id,
+            "hiring_manager",
+            "Selected for bounded supervisor sending coverage.",
+            "outreach_in_progress",
+            created_at,
+            created_at,
+        ),
+    )
+    connection.execute(
+        """
+        INSERT INTO outreach_messages (
+          outreach_message_id, contact_id, outreach_mode, recipient_email, message_status,
+          job_posting_id, job_posting_contact_id, subject, body_text, created_at, updated_at
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        """,
+        (
+            f"msg_{contact_id}",
+            contact_id,
+            "role_targeted",
+            recipient_email,
+            "generated",
+            job_posting_id,
+            job_posting_contact_id,
+            f"Interest in the role at {company_name}",
+            "Draft body",
+            created_at,
+            created_at,
+        ),
+    )
+    connection.commit()
+
+
+def seed_send_ready_contact_without_message(
+    connection: sqlite3.Connection,
+    *,
+    contact_id: str,
+    job_posting_contact_id: str,
+    job_posting_id: str,
+    company_name: str,
+    display_name: str,
+    recipient_email: str,
+    created_at: str,
+) -> None:
+    connection.execute(
+        """
+        INSERT INTO contacts (
+          contact_id, identity_key, display_name, company_name, origin_component, contact_status,
+          full_name, current_working_email, position_title, created_at, updated_at
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        """,
+        (
+            contact_id,
+            f"{company_name.lower()}|{display_name.lower().replace(' ', '-')}",
+            display_name,
+            company_name,
+            "email_discovery",
+            "working_email_found",
+            display_name,
+            recipient_email,
+            "Recruiter",
+            created_at,
+            created_at,
+        ),
+    )
+    connection.execute(
+        """
+        INSERT INTO job_posting_contacts (
+          job_posting_contact_id, job_posting_id, contact_id, recipient_type, relevance_reason,
+          link_level_status, created_at, updated_at
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+        """,
+        (
+            job_posting_contact_id,
+            job_posting_id,
+            contact_id,
+            "recruiter",
+            "Selected for bounded supervisor sending coverage.",
+            "shortlisted",
+            created_at,
+            created_at,
+        ),
+    )
+    connection.commit()
 
 
 def test_control_state_helpers_persist_running_pause_stop_and_replanning_modes(tmp_path):

@@ -2773,6 +2773,7 @@ def _select_open_pipeline_run_work_unit(
 ) -> SupervisorWorkUnit | None:
     from .email_discovery import is_role_targeted_email_discovery_actionable_now
     from .outreach import (
+        MESSAGE_STATUS_GENERATED,
         _find_next_send_frontier_message,
         _load_active_role_targeted_wave,
         _load_role_targeted_send_posting_row,
@@ -2795,6 +2796,7 @@ def _select_open_pipeline_run_work_unit(
     ).fetchall()
     for row in rows:
         pipeline_run = _pipeline_run_from_row(row)
+        frontier_kind = None
         if pipeline_run.current_stage == "delivery_feedback":
             job_posting_id = _optional_text(pipeline_run.job_posting_id)
             if job_posting_id:
@@ -2864,6 +2866,29 @@ def _select_open_pipeline_run_work_unit(
                         local_timezone=local_timezone,
                     ):
                         continue
+                    posting_row = _load_role_targeted_send_posting_row(
+                        connection,
+                        job_posting_id=job_posting_id,
+                    )
+                    active_wave = _load_active_role_targeted_wave(
+                        connection,
+                        job_posting_id=job_posting_id,
+                    )
+                    next_frontier, _ = _find_next_send_frontier_message(
+                        connection,
+                        ProjectPaths.from_root(project_root),
+                        posting_row=posting_row,
+                        active_wave=active_wave,
+                        current_time=current_time,
+                    )
+                    if next_frontier is not None:
+                        frontier_kind = (
+                            "generated_frontier"
+                            if next_frontier.message_status == MESSAGE_STATUS_GENERATED
+                            else "existing_frontier"
+                        )
+                if generated_frontier_only and frontier_kind != "generated_frontier":
+                    continue
         if pipeline_run.current_stage == "email_discovery":
             job_posting_id = _optional_text(pipeline_run.job_posting_id)
             if job_posting_id:
@@ -2881,13 +2906,17 @@ def _select_open_pipeline_run_work_unit(
                         continue
 
         action_id = ROLE_TARGETED_PIPELINE_STAGE_ACTIONS.get(pipeline_run.current_stage)
+        summary = "Resume the existing durable pipeline run without creating duplicate work."
+        if pipeline_run.current_stage == "sending" and frontier_kind == "generated_frontier":
+            summary = (
+                "Resume an already-generated send frontier before Gmail polling "
+                "or fresh draft generation so send-ready outreach drains first."
+            )
         work_unit = SupervisorWorkUnit(
             work_type=WORK_TYPE_PIPELINE_RUN,
             work_id=pipeline_run.pipeline_run_id,
             action_id=action_id,
-            summary=(
-                "Resume the existing durable pipeline run without creating duplicate work."
-            ),
+            summary=summary,
             lead_id=pipeline_run.lead_id,
             job_posting_id=pipeline_run.job_posting_id,
             pipeline_run_id=pipeline_run.pipeline_run_id,

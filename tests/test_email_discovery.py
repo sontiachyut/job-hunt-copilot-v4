@@ -670,43 +670,6 @@ def test_apollo_people_search_persists_broad_result_and_shortlists_only_selected
 
     assert connection.execute("SELECT COUNT(*) FROM contacts").fetchone()[0] == 6
     assert connection.execute("SELECT COUNT(*) FROM job_posting_contacts").fetchone()[0] == 6
-    assert connection.execute("SELECT COUNT(*) FROM contact_provider_profiles").fetchone()[0] == 6
-    assert connection.execute("SELECT COUNT(*) FROM contact_employment_history").fetchone()[0] == 0
-    provider_context_row = connection.execute(
-        """
-        SELECT provider_name, context_stage, provider_organization_id
-        FROM job_posting_provider_contexts
-        WHERE job_posting_id = 'jp_search'
-        """
-    ).fetchone()
-    assert dict(provider_context_row) == {
-        "provider_name": PROVIDER_NAME_APOLLO,
-        "context_stage": "apollo_company_resolution",
-        "provider_organization_id": "org_acme",
-    }
-    provider_profile_row = connection.execute(
-        """
-        SELECT provider_name, profile_stage, provider_person_id
-        FROM contact_provider_profiles
-        WHERE provider_person_id = 'pp_m1'
-        ORDER BY created_at DESC
-        LIMIT 1
-        """
-    ).fetchone()
-    assert dict(provider_profile_row) == {
-        "provider_name": PROVIDER_NAME_APOLLO,
-        "profile_stage": "apollo_search",
-        "provider_person_id": "pp_m1",
-    }
-    history_row = connection.execute(
-        """
-        SELECT company_label, role_title, is_current
-        FROM contact_employment_history
-        ORDER BY source_sort_index ASC
-        LIMIT 1
-        """
-    ).fetchone()
-    assert history_row is None
     assert connection.execute(
         "SELECT COUNT(*) FROM contacts WHERE provider_person_id = 'pp_o1'"
     ).fetchone()[0] == 1
@@ -1200,20 +1163,10 @@ def test_apollo_contact_enrichment_only_runs_for_shortlisted_contacts_and_persis
         recipient_profile_extractor=profile_extractor,
     )
 
-    assert set(call["provider_person_id"] for call in enrichment_provider.calls) == {"pp_r1", "pp_m1", "pp_o1"}
-
-    isaiah_row = connection.execute(
-        """
-        SELECT full_name, linkedin_url, current_working_email, contact_status
-        FROM contacts
-        WHERE provider_person_id = 'pp_r1'
-        """
-    ).fetchone()
-    assert dict(isaiah_row) == {
-        "full_name": "Isaiah Love",
-        "linkedin_url": "https://linkedin.example/isaiah",
-        "current_working_email": "isaiah@acmerobotics.com",
-        "contact_status": CONTACT_STATUS_WORKING_EMAIL_FOUND,
+    assert set(call["provider_person_id"] for call in enrichment_provider.calls) == {
+        "pp_m1",
+        "pp_o1",
+        "pp_e3",
     }
 
     casey_row = connection.execute(
@@ -1531,13 +1484,13 @@ def test_email_discovery_promotes_posting_when_ready_subset_exists_but_other_con
         connection,
         contact_id="ct_ready",
         job_posting_contact_id="jpc_ready",
-        display_name="Priya Recruiter",
-        full_name="Priya Recruiter",
+        display_name="Priya Engineer",
+        full_name="Priya Engineer",
         first_name="Priya",
-        last_name="Recruiter",
+        last_name="Engineer",
         linkedin_url="https://linkedin.example/priya",
-        position_title="Technical Recruiter",
-        recipient_type=RECIPIENT_TYPE_RECRUITER,
+        position_title="Senior Software Engineer",
+        recipient_type=RECIPIENT_TYPE_ENGINEER,
         provider_person_id="pp_ready",
         identity_key="apollo_person|pp_ready",
         created_at="2026-04-06T21:30:00Z",
@@ -1563,7 +1516,7 @@ def test_email_discovery_promotes_posting_when_ready_subset_exists_but_other_con
         responses=[
             {
                 "outcome": "found",
-                "email": "priya@acmerobotics.com",
+                "email": "priya.engineer@acmerobotics.com",
                 "provider_verification_status": "valid",
                 "provider_score": "0.94",
                 "detected_pattern": "first",

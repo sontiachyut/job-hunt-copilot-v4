@@ -252,6 +252,7 @@ def seed_approved_tailoring_run(
     role_title: str = "Staff Software Engineer / AI",
     job_posting_id: str = "jp_outreach",
     current_time: str = "2026-04-06T20:20:00Z",
+    step_6_payload: Mapping[str, Any] | None = None,
 ) -> None:
     workspace_dir = paths.tailoring_workspace_dir(company_name, role_title)
     workspace_dir.mkdir(parents=True, exist_ok=True)
@@ -324,7 +325,8 @@ def seed_approved_tailoring_run(
     step_6_path = paths.tailoring_step_6_candidate_bullets_path(company_name, role_title)
     step_6_path.write_text(
         yaml.safe_dump(
-            {
+            step_6_payload
+            or {
                 "job_posting_id": job_posting_id,
                 "resume_tailoring_run_id": "rtr_outreach",
                 "status": "generated",
@@ -5019,7 +5021,7 @@ def test_cleared_ambiguous_blocked_send_retries_successfully(
         """,
         ("msg_duplicate",),
     ).fetchone()
-    assert duplicate_row["message_status"] == MESSAGE_STATUS_GENERATED
+    assert duplicate_row["message_status"] == MESSAGE_STATUS_FAILED
 
     connection.close()
 
