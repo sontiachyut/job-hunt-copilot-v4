@@ -1,0 +1,32 @@
+{
+  "batch_id": "slugs-chasi-checkr",
+  "company_count": 2,
+  "status_counts": {
+    "live_jobs": 1,
+    "no_structured_board_found": 1
+  },
+  "trackability_counts": {
+    "api_native": 1,
+    "unknown": 1
+  },
+  "companies": [
+    {
+      "queue_position": "1",
+      "company_name": "Chasi",
+      "previous_trackability": "custom_page",
+      "recheck_trackability": "api_native",
+      "recheck_board_type": "dover",
+      "recheck_confirmation_status": "live_jobs",
+      "recheck_job_count": "1"
+    },
+    {
+      "queue_position": "2",
+      "company_name": "Checkr",
+      "previous_trackability": "custom_page",
+      "recheck_trackability": "unknown",
+      "recheck_board_type": "",
+      "recheck_confirmation_status": "no_structured_board_found",
+      "recheck_job_count": "0"
+    }
+  ]
+}

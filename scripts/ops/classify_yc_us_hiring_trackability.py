@@ -80,6 +80,7 @@ BOARD_PATTERNS: tuple[BoardPattern, ...] = (
     BoardPattern("lever", "api_native", ("jobs.lever.co", "lever.co")),
     BoardPattern("ashby", "api_native", ("jobs.ashbyhq.com", "ashbyhq.com")),
     BoardPattern("workable", "api_native", ("apply.workable.com", "workable.com")),
+    BoardPattern("dover", "api_native", ("app.dover.com/jobs", "app.dover.com/apply")),
     BoardPattern("smartrecruiters", "api_native", ("smartrecruiters.com", "api.smartrecruiters.com")),
     BoardPattern("rippling", "structured_board", ("ats.rippling.com", "ripplingcdn.com")),
     BoardPattern("jobvite", "structured_board", ("jobs.jobvite.com", "jobvite.com")),

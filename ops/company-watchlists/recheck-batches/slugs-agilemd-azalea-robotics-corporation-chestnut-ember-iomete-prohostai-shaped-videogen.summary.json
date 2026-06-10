@@ -1,0 +1,84 @@
+{
+  "batch_id": "slugs-agilemd-azalea-robotics-corporation-chestnut-ember-iomete-prohostai-shaped-videogen",
+  "company_count": 8,
+  "status_counts": {
+    "live_jobs": 8
+  },
+  "trackability_counts": {
+    "api_native": 8
+  },
+  "companies": [
+    {
+      "queue_position": "1",
+      "company_name": "AgileMD",
+      "previous_trackability": "custom_page",
+      "recheck_trackability": "api_native",
+      "recheck_board_type": "dover",
+      "recheck_confirmation_status": "live_jobs",
+      "recheck_job_count": "1"
+    },
+    {
+      "queue_position": "2",
+      "company_name": "Azalea Robotics Corporation",
+      "previous_trackability": "custom_page",
+      "recheck_trackability": "api_native",
+      "recheck_board_type": "dover",
+      "recheck_confirmation_status": "live_jobs",
+      "recheck_job_count": "2"
+    },
+    {
+      "queue_position": "3",
+      "company_name": "Chestnut",
+      "previous_trackability": "custom_page",
+      "recheck_trackability": "api_native",
+      "recheck_board_type": "dover",
+      "recheck_confirmation_status": "live_jobs",
+      "recheck_job_count": "1"
+    },
+    {
+      "queue_position": "4",
+      "company_name": "Ember",
+      "previous_trackability": "custom_page",
+      "recheck_trackability": "api_native",
+      "recheck_board_type": "dover",
+      "recheck_confirmation_status": "live_jobs",
+      "recheck_job_count": "3"
+    },
+    {
+      "queue_position": "5",
+      "company_name": "IOMETE",
+      "previous_trackability": "custom_page",
+      "recheck_trackability": "api_native",
+      "recheck_board_type": "dover",
+      "recheck_confirmation_status": "live_jobs",
+      "recheck_job_count": "2"
+    },
+    {
+      "queue_position": "6",
+      "company_name": "ProhostAI",
+      "previous_trackability": "custom_page",
+      "recheck_trackability": "api_native",
+      "recheck_board_type": "dover",
+      "recheck_confirmation_status": "live_jobs",
+      "recheck_job_count": "3"
+    },
+    {
+      "queue_position": "7",
+      "company_name": "Shaped",
+      "previous_trackability": "custom_page",
+      "recheck_trackability": "api_native",
+      "recheck_board_type": "dover",
+      "recheck_confirmation_status": "live_jobs",
+      "recheck_job_count": "10"
+    },
+    {
+      "queue_position": "8",
+      "company_name": "VideoGen",
+      "previous_trackability": "custom_page",
+      "recheck_trackability": "api_native",
+      "recheck_board_type": "dover",
+      "recheck_confirmation_status": "live_jobs",
+      "recheck_job_count": "2"
+    }
+  ]
+}

@@ -10,7 +10,7 @@ from collections import Counter, defaultdict
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from pathlib import Path
 from typing import Iterable
-from urllib.parse import urlparse
+from urllib.parse import unquote, urlparse
 
 import requests
 
@@ -53,12 +53,17 @@ WORKABLE_PATTERNS = (
     re.compile(r"https?://apply\.workable\.com/([A-Za-z0-9._-]+)", re.I),
 )
 ASHBY_PATTERNS = (
-    re.compile(r"https?://jobs\.ashbyhq\.com/([A-Za-z0-9._-]+)", re.I),
-    re.compile(r"https?://api\.ashbyhq\.com/posting-api/job-board/([A-Za-z0-9._-]+)", re.I),
+    re.compile(r"https?://jobs\.ashbyhq\.com/([A-Za-z0-9._%-]+)", re.I),
+    re.compile(r"https?://api\.ashbyhq\.com/posting-api/job-board/([A-Za-z0-9._%-]+)", re.I),
 )
 LEVER_PATTERNS = (
     re.compile(r"https?://jobs\.lever\.co/([A-Za-z0-9._-]+)", re.I),
     re.compile(r"https?://api\.lever\.co/v0/postings/([A-Za-z0-9._-]+)", re.I),
+)
+DOVER_PATTERNS = (
+    re.compile(r"https?://app\.dover\.com/jobs/([A-Za-z0-9._%-]+)", re.I),
+    re.compile(r"https?://app\.dover\.com/apply/([A-Za-z0-9._%-]+)/", re.I),
+    re.compile(r"https?://app\.dover\.com/feed/v1/boards/([A-Za-z0-9._%-]+)/jobs", re.I),
 )
 LEVER_CONFIG_PATTERNS = (
     re.compile(r'accountName:\s*"([^"]+)"', re.I),
@@ -110,6 +115,18 @@ def extract_matches(patterns: Iterable[re.Pattern[str]], values: Iterable[str]) 
     return dedupe(matches)
 
 
+def expand_dover_tokens(tokens: Iterable[str]) -> list[str]:
+    expanded: list[str] = []
+    seen: set[str] = set()
+    for token in tokens:
+        for candidate in (token, unquote(token), token.casefold(), unquote(token).casefold()):
+            if not candidate or candidate in seen:
+                continue
+            seen.add(candidate)
+            expanded.append(candidate)
+    return expanded
+
+
 def greenhouse_tokens(url: str, html: str) -> list[str]:
     return extract_matches(GREENHOUSE_PATTERNS, [url, html])
 
@@ -129,6 +146,10 @@ def lever_accounts(url: str, html: str, company_slug: str) -> list[str]:
     # Fallback helps when the page is partially blocked but the company slug matches the Lever handle.
     matches.append(company_slug)
     return dedupe(matches)
+
+
+def dover_tokens(url: str, html: str) -> list[str]:
+    return expand_dover_tokens(extract_matches(DOVER_PATTERNS, [url, html]))
 
 
 def make_result(
@@ -428,6 +449,73 @@ def confirm_lever(row: dict[str, str]) -> dict[str, str]:
     )
 
 
+def confirm_dover(row: dict[str, str]) -> dict[str, str]:
+    html = ""
+    final_url = row["selected_url"]
+    surface_status = ""
+    try:
+        final_url, status, html = fetch_text(row["selected_url"])
+        surface_status = str(status)
+    except Exception as exc:  # pragma: no cover - network variance
+        surface_status = type(exc).__name__
+
+    tokens = dover_tokens(final_url, html)
+    if not tokens:
+        return make_result(
+            row,
+            confirmation_status="unresolved_board_token",
+            endpoint_http_status=surface_status,
+            notes="no_dover_token_found",
+        )
+
+    best_empty: dict[str, str] | None = None
+    last_failure = "no_dover_endpoint_succeeded"
+    last_http_status = ""
+    for token in tokens:
+        board_url = f"https://app.dover.com/jobs/{token}"
+        api_url = f"https://app.dover.com/feed/v1/boards/{token}/jobs"
+        try:
+            response = session().get(api_url, timeout=20)
+            status_code = response.status_code
+            if status_code != 200:
+                last_http_status = str(status_code)
+                last_failure = f"http_{status_code}"
+                continue
+            payload = response.json()
+            jobs = payload.get("jobs", [])
+            job_count = len(jobs)
+            if job_count > 0:
+                return make_result(
+                    row,
+                    board_token=token,
+                    board_url=board_url,
+                    api_url=api_url,
+                    confirmation_status="live_jobs",
+                    job_count=job_count,
+                    endpoint_http_status=str(status_code),
+                )
+            best_empty = make_result(
+                row,
+                board_token=token,
+                board_url=board_url,
+                api_url=api_url,
+                confirmation_status="board_reachable_zero_jobs",
+                job_count=0,
+                endpoint_http_status=str(status_code),
+            )
+        except Exception as exc:  # pragma: no cover - network variance
+            last_failure = type(exc).__name__
+
+    if best_empty is not None:
+        return best_empty
+    return make_result(
+        row,
+        confirmation_status="endpoint_error",
+        endpoint_http_status=last_http_status or surface_status,
+        notes=last_failure,
+    )
+
+
 def confirm_row(row: dict[str, str]) -> dict[str, str]:
     board_type = row["detected_board_type"]
     if board_type == "greenhouse":
@@ -438,6 +526,8 @@ def confirm_row(row: dict[str, str]) -> dict[str, str]:
         return confirm_ashby(row)
     if board_type == "lever":
         return confirm_lever(row)
+    if board_type == "dover":
+        return confirm_dover(row)
     return make_result(
         row,
         confirmation_status="unsupported_board_type",

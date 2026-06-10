@@ -1,0 +1,59 @@
+{
+  "batch_id": "slugs-dots-2-draftwise-ember-flock-safety-flexport",
+  "company_count": 5,
+  "status_counts": {
+    "live_jobs": 4,
+    "no_structured_board_found": 1
+  },
+  "trackability_counts": {
+    "api_native": 4,
+    "unknown": 1
+  },
+  "companies": [
+    {
+      "queue_position": "1",
+      "company_name": "Dots \ud83d\udcb8",
+      "previous_trackability": "custom_page",
+      "recheck_trackability": "api_native",
+      "recheck_board_type": "dover",
+      "recheck_confirmation_status": "live_jobs",
+      "recheck_job_count": "6"
+    },
+    {
+      "queue_position": "2",
+      "company_name": "Draftwise",
+      "previous_trackability": "custom_page",
+      "recheck_trackability": "api_native",
+      "recheck_board_type": "dover",
+      "recheck_confirmation_status": "live_jobs",
+      "recheck_job_count": "13"
+    },
+    {
+      "queue_position": "3",
+      "company_name": "Ember",
+      "previous_trackability": "custom_page",
+      "recheck_trackability": "api_native",
+      "recheck_board_type": "dover",
+      "recheck_confirmation_status": "live_jobs",
+      "recheck_job_count": "3"
+    },
+    {
+      "queue_position": "4",
+      "company_name": "Flexport",
+      "previous_trackability": "custom_page",
+      "recheck_trackability": "api_native",
+      "recheck_board_type": "greenhouse",
+      "recheck_confirmation_status": "live_jobs",
+      "recheck_job_count": "106"
+    },
+    {
+      "queue_position": "5",
+      "company_name": "Flock Safety",
+      "previous_trackability": "custom_page",
+      "recheck_trackability": "unknown",
+      "recheck_board_type": "",
+      "recheck_confirmation_status": "no_structured_board_found",
+      "recheck_job_count": "0"
+    }
+  ]
+}

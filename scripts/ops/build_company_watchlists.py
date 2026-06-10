@@ -142,6 +142,12 @@ def jd_fields_for_board_type(board_type: str) -> dict[str, str]:
             "jd_extraction_method": "api_field",
             "jd_extraction_locator": "[].description|[].descriptionPlain",
         },
+        "dover": {
+            "jd_capture_status": "full_jd_inferred_api",
+            "jd_format": "html",
+            "jd_extraction_method": "api_field",
+            "jd_extraction_locator": "jobs[].content",
+        },
     }
     return mapping.get(
         board_type,
@@ -265,7 +271,16 @@ def build_source_row_from_recheck_truth(recheck_row: dict[str, str]) -> dict[str
         job_source_type = "structured_board"
         job_source_url = recheck_row["recheck_board_url"]
 
-    jd_fields = jd_fields_for_board_type(recheck_row["recheck_board_type"])
+    jd_fields = (
+        jd_fields_for_board_type(recheck_row["recheck_board_type"])
+        if recheck_row["recheck_confirmation_status"] == "live_jobs"
+        else {
+            "jd_capture_status": "",
+            "jd_format": "",
+            "jd_extraction_method": "",
+            "jd_extraction_locator": "",
+        }
+    )
 
     return {
         "company_key": slugify(recheck_row["company_slug"] or recheck_row["company_name"]),
@@ -370,7 +385,7 @@ def merge_source_rows(source_rows: list[dict[str, str]]) -> list[dict[str, str]]
         company_key = source_row["company_key"]
         existing_row = merged_by_key.get(company_key)
         if existing_row:
-            merged_by_key[company_key] = merge_rows(source_row, existing_row)
+            merged_by_key[company_key] = merge_rows(source_row, existing_row, preserve_clear_sentinel=True)
         else:
             merged_by_key[company_key] = source_row
     return list(merged_by_key.values())
@@ -392,7 +407,11 @@ def index_rows(rows: list[dict[str, str]]) -> dict[str, dict[str, str]]:
     return {row["company_key"]: row for row in rows}
 
 
-def merge_rows(source_row: dict[str, str], existing_row: dict[str, str]) -> dict[str, str]:
+def merge_rows(
+    source_row: dict[str, str],
+    existing_row: dict[str, str],
+    preserve_clear_sentinel: bool = False,
+) -> dict[str, str]:
     merged: dict[str, str] = {}
     for field in FIELDNAMES:
         source_value = source_row.get(field, "")
@@ -403,7 +422,7 @@ def merge_rows(source_row: dict[str, str], existing_row: dict[str, str]) -> dict
             continue
 
         if source_value == CLEAR_SENTINEL:
-            merged[field] = ""
+            merged[field] = CLEAR_SENTINEL if preserve_clear_sentinel else ""
             continue
 
         if source_value:

@@ -1,0 +1,21 @@
+{
+  "batch_id": "slugs-agilemd",
+  "company_count": 1,
+  "status_counts": {
+    "live_jobs": 1
+  },
+  "trackability_counts": {
+    "api_native": 1
+  },
+  "companies": [
+    {
+      "queue_position": "1",
+      "company_name": "AgileMD",
+      "previous_trackability": "custom_page",
+      "recheck_trackability": "api_native",
+      "recheck_board_type": "dover",
+      "recheck_confirmation_status": "live_jobs",
+      "recheck_job_count": "1"
+    }
+  ]
+}

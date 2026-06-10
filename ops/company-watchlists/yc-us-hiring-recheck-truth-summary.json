@@ -1,18 +1,18 @@
 {
-  "company_count": 200,
+  "company_count": 203,
   "status_counts": {
     "no_structured_board_found": 159,
-    "detected_structured_board": 37,
-    "live_jobs": 4
+    "detected_structured_board": 29,
+    "live_jobs": 15
   },
   "trackability_counts": {
     "unknown": 159,
-    "structured_board": 37,
-    "api_native": 4
+    "structured_board": 29,
+    "api_native": 15
   },
   "board_type_counts": {
     "notion": 23,
-    "dover": 12,
+    "dover": 15,
     "linkedin_jobs": 2,
     "greenhouse": 2,
     "ashby": 2

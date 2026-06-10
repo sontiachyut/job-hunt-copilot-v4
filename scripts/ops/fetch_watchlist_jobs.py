@@ -13,6 +13,7 @@ from pathlib import Path
 from typing import Any
 
 import requests
+from urllib.parse import unquote
 
 ROOT = Path(__file__).resolve().parents[2]
 WATCHLIST_CSV = ROOT / "ops" / "company-watchlists" / "company-watchlist.csv"
@@ -26,12 +27,14 @@ REQUEST_HEADERS = {
     "Accept-Language": "en-US,en;q=0.9",
 }
 
-SUPPORTED_BOARD_TYPES = {"ashby", "greenhouse", "lever", "workable"}
+SUPPORTED_BOARD_TYPES = {"ashby", "dover", "greenhouse", "lever", "workable"}
 
 GREENHOUSE_RE = re.compile(r"(?:job-boards|boards)\.greenhouse\.io/([A-Za-z0-9_-]+)", re.I)
-ASHBY_RE = re.compile(r"jobs\.ashbyhq\.com/([A-Za-z0-9._-]+)", re.I)
+ASHBY_RE = re.compile(r"(?:jobs\.ashbyhq\.com|api\.ashbyhq\.com/posting-api/job-board)/([A-Za-z0-9._%-]+)", re.I)
 LEVER_RE = re.compile(r"jobs\.lever\.co/([A-Za-z0-9._-]+)", re.I)
 WORKABLE_RE = re.compile(r"apply\.workable\.com/([A-Za-z0-9._-]+)", re.I)
+DOVER_RE = re.compile(r"app\.dover\.com/jobs/([A-Za-z0-9._%-]+)", re.I)
+DOVER_API_RE = re.compile(r"app\.dover\.com/feed/v1/boards/([A-Za-z0-9._%-]+)/jobs", re.I)
 
 JOB_FIELDNAMES = [
     "run_id",
@@ -124,6 +127,22 @@ def iso_from_epoch_ms(value: Any) -> str:
 
 def normalize_department_list(items: list[dict[str, Any]]) -> str:
     return ";".join(item.get("name", "").strip() for item in items if item.get("name"))
+
+
+def normalize_mixed_department(value: Any) -> str:
+    if isinstance(value, str):
+        return value.strip()
+    if isinstance(value, list):
+        names: list[str] = []
+        for item in value:
+            if isinstance(item, dict):
+                name = item.get("name") or item.get("title") or ""
+                if name:
+                    names.append(str(name).strip())
+            elif item:
+                names.append(str(item).strip())
+        return ";".join(name for name in names if name)
+    return ""
 
 
 def match_first(pattern: re.Pattern[str], value: str) -> str:
@@ -277,7 +296,7 @@ def fetch_greenhouse_jobs(row: dict[str, str], run_id: str, fetched_at_utc: str)
 
 
 def fetch_ashby_jobs(row: dict[str, str], run_id: str, fetched_at_utc: str) -> tuple[dict[str, str], list[dict[str, str]]]:
-    org = match_first(ASHBY_RE, row["board_url"])
+    org = match_first(ASHBY_RE, row["board_api_url"]) or match_first(ASHBY_RE, row["board_url"])
     if not org:
         return company_result(
             row,
@@ -287,6 +306,7 @@ def fetch_ashby_jobs(row: dict[str, str], run_id: str, fetched_at_utc: str) -> t
             notes="unable_to_parse_ashby_org",
         ), []
 
+    org = unquote(org)
     api_url = f"https://api.ashbyhq.com/posting-api/job-board/{org}?includeCompensation=true"
     response = session().get(api_url, timeout=20)
     if response.status_code != 200:
@@ -466,6 +486,68 @@ def fetch_workable_jobs(row: dict[str, str], run_id: str, fetched_at_utc: str) -
     ), normalized_jobs
 
 
+def fetch_dover_jobs(row: dict[str, str], run_id: str, fetched_at_utc: str) -> tuple[dict[str, str], list[dict[str, str]]]:
+    api_url = row.get("board_api_url", "")
+    token = match_first(DOVER_API_RE, api_url)
+    if not token:
+        token = match_first(DOVER_RE, row["board_url"])
+        if token:
+            api_url = f"https://app.dover.com/feed/v1/boards/{token}/jobs"
+    if not token or not api_url:
+        return company_result(
+            row,
+            run_id=run_id,
+            fetched_at_utc=fetched_at_utc,
+            fetch_status="invalid_board_url",
+            notes="unable_to_parse_dover_slug",
+        ), []
+
+    response = session().get(api_url, timeout=20)
+    if response.status_code != 200:
+        return company_result(
+            row,
+            run_id=run_id,
+            fetched_at_utc=fetched_at_utc,
+            source_api_url=api_url,
+            fetch_status="endpoint_error",
+            endpoint_http_status=str(response.status_code),
+            notes=f"http_{response.status_code}",
+        ), []
+
+    payload = response.json()
+    jobs = payload.get("jobs", [])
+    normalized_jobs = [
+        job_row(
+            row,
+            run_id=run_id,
+            fetched_at_utc=fetched_at_utc,
+            source_api_url=api_url,
+            source_job_id=str(job.get("id", "")),
+            title=job.get("title", ""),
+            location=(job.get("location") or {}).get("name", ""),
+            department=normalize_mixed_department(job.get("department")),
+            team="",
+            employment_type="",
+            workplace_type="remote" if job.get("remote") else "",
+            is_remote=bool_string(bool(job.get("remote"))),
+            posted_at=job.get("first_published", ""),
+            updated_at=job.get("updated_at", ""),
+            job_url=job.get("absolute_url", ""),
+            apply_url=job.get("absolute_url", ""),
+        )
+        for job in jobs
+    ]
+    return company_result(
+        row,
+        run_id=run_id,
+        fetched_at_utc=fetched_at_utc,
+        source_api_url=api_url,
+        fetch_status="live_jobs" if normalized_jobs else "zero_jobs",
+        job_count=len(normalized_jobs),
+        endpoint_http_status=str(response.status_code),
+    ), normalized_jobs
+
+
 def fetch_company_jobs(row: dict[str, str], run_id: str, fetched_at_utc: str) -> tuple[dict[str, str], list[dict[str, str]]]:
     try:
         if row["board_type"] == "greenhouse":
@@ -476,6 +558,8 @@ def fetch_company_jobs(row: dict[str, str], run_id: str, fetched_at_utc: str) ->
             return fetch_lever_jobs(row, run_id, fetched_at_utc)
         if row["board_type"] == "workable":
             return fetch_workable_jobs(row, run_id, fetched_at_utc)
+        if row["board_type"] == "dover":
+            return fetch_dover_jobs(row, run_id, fetched_at_utc)
         return company_result(
             row,
             run_id=run_id,

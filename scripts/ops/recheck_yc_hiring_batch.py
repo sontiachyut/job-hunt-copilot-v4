@@ -13,7 +13,7 @@ from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Iterable
-from urllib.parse import urljoin, urlparse
+from urllib.parse import unquote, urljoin, urlparse
 
 import requests
 
@@ -65,8 +65,8 @@ GREENHOUSE_PATTERNS = (
     re.compile(r"embed/job_board/js\?for=([A-Za-z0-9_-]+)", re.I),
 )
 ASHBY_PATTERNS = (
-    re.compile(r"https?://jobs\.ashbyhq\.com/([A-Za-z0-9._-]+)", re.I),
-    re.compile(r"https?://api\.ashbyhq\.com/posting-api/job-board/([A-Za-z0-9._-]+)", re.I),
+    re.compile(r"https?://jobs\.ashbyhq\.com/([A-Za-z0-9._%-]+)", re.I),
+    re.compile(r"https?://api\.ashbyhq\.com/posting-api/job-board/([A-Za-z0-9._%-]+)", re.I),
 )
 LEVER_PATTERNS = (
     re.compile(r"https?://jobs\.lever\.co/([A-Za-z0-9._-]+)", re.I),
@@ -79,6 +79,11 @@ LEVER_CONFIG_PATTERNS = (
 WORKABLE_PATTERNS = (
     re.compile(r"https?://(?:apply\.)?workable\.com/([A-Za-z0-9._-]+)", re.I),
     re.compile(r"https?://apply\.workable\.com/([A-Za-z0-9._-]+)", re.I),
+)
+DOVER_PATTERNS = (
+    re.compile(r"https?://app\.dover\.com/jobs/([A-Za-z0-9._%-]+)", re.I),
+    re.compile(r"https?://app\.dover\.com/apply/([A-Za-z0-9._%-]+)/", re.I),
+    re.compile(r"https?://app\.dover\.com/feed/v1/boards/([A-Za-z0-9._%-]+)/jobs", re.I),
 )
 
 STRUCTURED_PATTERNS: tuple[tuple[str, str], ...] = (
@@ -246,6 +251,18 @@ def extract_matches(patterns: Iterable[re.Pattern[str]], values: Iterable[str]) 
     return found
 
 
+def expand_dover_tokens(tokens: Iterable[str]) -> list[str]:
+    expanded: list[str] = []
+    seen: set[str] = set()
+    for token in tokens:
+        for candidate in (token, unquote(token), token.casefold(), unquote(token).casefold()):
+            if not candidate or candidate in seen:
+                continue
+            seen.add(candidate)
+            expanded.append(candidate)
+    return expanded
+
+
 def detect_board_candidates(url: str, html: str, company_slug: str) -> list[BoardCandidate]:
     values = [url, html]
     candidates: list[BoardCandidate] = []
@@ -315,6 +332,18 @@ def detect_board_candidates(url: str, html: str, company_slug: str) -> list[Boar
             )
         )
 
+    for token in expand_dover_tokens(extract_matches(DOVER_PATTERNS, values)):
+        add(
+            BoardCandidate(
+                board_type="dover",
+                trackability="api_native",
+                board_url=f"https://app.dover.com/jobs/{token}",
+                api_url=f"https://app.dover.com/feed/v1/boards/{token}/jobs",
+                token=token,
+                evidence="dover_pattern",
+            )
+        )
+
     haystack = f"{url}\n{html}".casefold()
     for board_type, marker in STRUCTURED_PATTERNS:
         if marker.casefold() in haystack:
@@ -365,6 +394,14 @@ def confirm_candidate(candidate: BoardCandidate) -> tuple[str, int, str]:
             total = payload.get("total")
             job_count = total if isinstance(total, int) else len(results)
             return ("live_jobs" if job_count else "board_reachable_zero_jobs", job_count, "")
+
+        if candidate.board_type == "dover":
+            response = session().get(candidate.api_url, timeout=20)
+            if response.status_code != 200:
+                return "endpoint_error", 0, f"http_{response.status_code}"
+            payload = response.json()
+            jobs = payload.get("jobs", [])
+            return ("live_jobs" if jobs else "board_reachable_zero_jobs", len(jobs), "")
     except Exception as exc:  # pragma: no cover - network variance
         return "endpoint_error", 0, type(exc).__name__
 
