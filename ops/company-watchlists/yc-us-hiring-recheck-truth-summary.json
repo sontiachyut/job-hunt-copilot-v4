@@ -1,23 +1,24 @@
 {
-  "company_count": 273,
+  "company_count": 293,
   "status_counts": {
-    "no_structured_board_found": 202,
-    "live_jobs": 37,
-    "detected_structured_board": 34
+    "no_structured_board_found": 216,
+    "live_jobs": 39,
+    "detected_structured_board": 38
   },
   "trackability_counts": {
-    "unknown": 202,
-    "api_native": 37,
-    "structured_board": 34
+    "unknown": 216,
+    "api_native": 39,
+    "structured_board": 38
   },
   "board_type_counts": {
     "ashby": 18,
-    "dover": 16,
+    "dover": 17,
     "jazzhr": 1,
     "notion": 24,
-    "rippling": 3,
-    "greenhouse": 4,
+    "rippling": 6,
+    "greenhouse": 5,
     "lever": 3,
-    "linkedin_jobs": 2
+    "linkedin_jobs": 2,
+    "breezy": 1
   }
 }

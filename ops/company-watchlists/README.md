@@ -1,13 +1,13 @@
 # Company Watchlists
 
-Generated at: `2026-06-11 04:38:41Z`
+Generated at: `2026-06-11 07:10:55Z`
 
 `company-watchlist.csv` is the source of truth for the daily job crawler.
 
 Current files:
-- `company-watchlist.csv`: 607 total companies
+- `company-watchlist.csv`: 627 total companies
 - `local-watchlist.csv`: 100 derived local-view rows
-- `yc-watchlist.csv`: 508 derived YC-view rows
+- `yc-watchlist.csv`: 528 derived YC-view rows
 
 Recommended workflow:
 1. Edit `company-watchlist.csv` directly.
