@@ -27,11 +27,15 @@ REQUEST_HEADERS = {
     "Accept-Language": "en-US,en;q=0.9",
 }
 
+AUTHORITATIVE_LISTING_AUTHORITIES = {"api_primary", "company_primary", "yc_primary"}
+SUPPORTED_LISTING_SOURCE_TYPES = {"api_native"}
 SUPPORTED_BOARD_TYPES = {"ashby", "dover", "greenhouse", "lever", "workable"}
 
 GREENHOUSE_RE = re.compile(r"(?:job-boards|boards)\.greenhouse\.io/([A-Za-z0-9_-]+)", re.I)
+GREENHOUSE_API_RE = re.compile(r"boards-api\.greenhouse\.io/v1/boards/([A-Za-z0-9_-]+)/jobs", re.I)
 ASHBY_RE = re.compile(r"(?:jobs\.ashbyhq\.com|api\.ashbyhq\.com/posting-api/job-board)/([A-Za-z0-9._%-]+)", re.I)
 LEVER_RE = re.compile(r"jobs\.lever\.co/([A-Za-z0-9._-]+)", re.I)
+LEVER_API_RE = re.compile(r"api\.lever\.co/v0/postings/([A-Za-z0-9._-]+)", re.I)
 WORKABLE_RE = re.compile(r"apply\.workable\.com/([A-Za-z0-9._-]+)", re.I)
 DOVER_RE = re.compile(r"app\.dover\.com/jobs/([A-Za-z0-9._%-]+)", re.I)
 DOVER_API_RE = re.compile(r"app\.dover\.com/feed/v1/boards/([A-Za-z0-9._%-]+)/jobs", re.I)
@@ -46,6 +50,11 @@ JOB_FIELDNAMES = [
     "priority_tier",
     "company_website",
     "careers_page",
+    "listing_authority",
+    "listing_source_type",
+    "listing_source_url",
+    "job_source_type",
+    "job_source_url",
     "board_type",
     "board_url",
     "source_api_url",
@@ -69,6 +78,11 @@ COMPANY_RESULT_FIELDNAMES = [
     "company_key",
     "company_name",
     "segment_primary",
+    "listing_authority",
+    "listing_source_type",
+    "listing_source_url",
+    "job_source_type",
+    "job_source_url",
     "board_type",
     "board_url",
     "source_api_url",
@@ -150,14 +164,31 @@ def match_first(pattern: re.Pattern[str], value: str) -> str:
     return match.group(1) if match else ""
 
 
-def configured_rows(rows: list[dict[str, str]]) -> list[dict[str, str]]:
+def listing_board_url(row: dict[str, str]) -> str:
+    return row.get("listing_source_url", "") or row.get("board_url", "")
+
+
+def authoritative_daily_rows(rows: list[dict[str, str]]) -> list[dict[str, str]]:
     result: list[dict[str, str]] = []
     for row in rows:
         if not parse_check_daily(row.get("check_daily", "")):
             continue
+        if row.get("listing_authority") not in AUTHORITATIVE_LISTING_AUTHORITIES:
+            continue
+        result.append(row)
+    return result
+
+
+def configured_rows(rows: list[dict[str, str]]) -> list[dict[str, str]]:
+    result: list[dict[str, str]] = []
+    for row in rows:
+        if row.get("listing_authority") != "api_primary":
+            continue
+        if row.get("listing_source_type") not in SUPPORTED_LISTING_SOURCE_TYPES:
+            continue
         if row.get("board_type") not in SUPPORTED_BOARD_TYPES:
             continue
-        if not row.get("board_url"):
+        if not listing_board_url(row):
             continue
         result.append(row)
     return result
@@ -180,8 +211,13 @@ def company_result(
         "company_key": row["company_key"],
         "company_name": row["company_name"],
         "segment_primary": row["segment_primary"],
+        "listing_authority": row["listing_authority"],
+        "listing_source_type": row["listing_source_type"],
+        "listing_source_url": row["listing_source_url"],
+        "job_source_type": row["job_source_type"],
+        "job_source_url": row["job_source_url"],
         "board_type": row["board_type"],
-        "board_url": row["board_url"],
+        "board_url": listing_board_url(row),
         "source_api_url": source_api_url,
         "fetch_status": fetch_status,
         "job_count": str(job_count),
@@ -219,8 +255,13 @@ def job_row(
         "priority_tier": row["priority_tier"],
         "company_website": row["company_website"],
         "careers_page": row["careers_page"],
+        "listing_authority": row["listing_authority"],
+        "listing_source_type": row["listing_source_type"],
+        "listing_source_url": row["listing_source_url"],
+        "job_source_type": row["job_source_type"],
+        "job_source_url": row["job_source_url"],
         "board_type": row["board_type"],
-        "board_url": row["board_url"],
+        "board_url": listing_board_url(row),
         "source_api_url": source_api_url,
         "source_job_id": source_job_id,
         "title": title,
@@ -238,7 +279,11 @@ def job_row(
 
 
 def fetch_greenhouse_jobs(row: dict[str, str], run_id: str, fetched_at_utc: str) -> tuple[dict[str, str], list[dict[str, str]]]:
-    token = match_first(GREENHOUSE_RE, row["board_url"])
+    token = match_first(GREENHOUSE_API_RE, row.get("board_api_url", "")) or match_first(
+        GREENHOUSE_API_RE, listing_board_url(row)
+    )
+    if not token:
+        token = match_first(GREENHOUSE_RE, row.get("board_url", "")) or match_first(GREENHOUSE_RE, listing_board_url(row))
     if not token:
         return company_result(
             row,
@@ -296,7 +341,7 @@ def fetch_greenhouse_jobs(row: dict[str, str], run_id: str, fetched_at_utc: str)
 
 
 def fetch_ashby_jobs(row: dict[str, str], run_id: str, fetched_at_utc: str) -> tuple[dict[str, str], list[dict[str, str]]]:
-    org = match_first(ASHBY_RE, row["board_api_url"]) or match_first(ASHBY_RE, row["board_url"])
+    org = match_first(ASHBY_RE, row["board_api_url"]) or match_first(ASHBY_RE, listing_board_url(row))
     if not org:
         return company_result(
             row,
@@ -356,7 +401,9 @@ def fetch_ashby_jobs(row: dict[str, str], run_id: str, fetched_at_utc: str) -> t
 
 
 def fetch_lever_jobs(row: dict[str, str], run_id: str, fetched_at_utc: str) -> tuple[dict[str, str], list[dict[str, str]]]:
-    account = match_first(LEVER_RE, row["board_url"])
+    account = match_first(LEVER_API_RE, row.get("board_api_url", "")) or match_first(LEVER_API_RE, listing_board_url(row))
+    if not account:
+        account = match_first(LEVER_RE, row.get("board_url", "")) or match_first(LEVER_RE, listing_board_url(row))
     if not account:
         return company_result(
             row,
@@ -413,7 +460,7 @@ def fetch_lever_jobs(row: dict[str, str], run_id: str, fetched_at_utc: str) -> t
 
 
 def fetch_workable_jobs(row: dict[str, str], run_id: str, fetched_at_utc: str) -> tuple[dict[str, str], list[dict[str, str]]]:
-    account = match_first(WORKABLE_RE, row["board_url"])
+    account = match_first(WORKABLE_RE, listing_board_url(row))
     if not account:
         return company_result(
             row,
@@ -490,7 +537,7 @@ def fetch_dover_jobs(row: dict[str, str], run_id: str, fetched_at_utc: str) -> t
     api_url = row.get("board_api_url", "")
     token = match_first(DOVER_API_RE, api_url)
     if not token:
-        token = match_first(DOVER_RE, row["board_url"])
+        token = match_first(DOVER_RE, listing_board_url(row))
         if token:
             api_url = f"https://app.dover.com/feed/v1/boards/{token}/jobs"
     if not token or not api_url:
@@ -590,7 +637,9 @@ def build_summary(
     run_id: str,
     fetched_at_utc: str,
     all_rows: list[dict[str, str]],
+    authoritative: list[dict[str, str]],
     configured: list[dict[str, str]],
+    unsupported_authoritative: list[dict[str, str]],
     company_results: list[dict[str, str]],
     jobs: list[dict[str, str]],
     output_dir: Path,
@@ -599,10 +648,22 @@ def build_summary(
         "run_id": run_id,
         "fetched_at_utc": fetched_at_utc,
         "watchlist_rows_total": len(all_rows),
+        "authoritative_daily_rows_total": len(authoritative),
         "configured_rows_total": len(configured),
+        "configured_by_listing_authority": dict(Counter(row["listing_authority"] for row in configured)),
+        "configured_by_listing_source_type": dict(Counter(row["listing_source_type"] for row in configured)),
+        "configured_by_board_type": dict(Counter(row["board_type"] for row in configured)),
+        "unsupported_authoritative_rows_total": len(unsupported_authoritative),
+        "unsupported_authoritative_by_listing_authority": dict(
+            Counter(row["listing_authority"] for row in unsupported_authoritative)
+        ),
+        "unsupported_authoritative_by_listing_source_type": dict(
+            Counter(row["listing_source_type"] for row in unsupported_authoritative)
+        ),
         "job_rows_total": len(jobs),
         "company_fetch_status_counts": dict(Counter(row["fetch_status"] for row in company_results)),
         "jobs_by_board_type": dict(Counter(job["board_type"] for job in jobs)),
+        "jobs_by_listing_authority": dict(Counter(job["listing_authority"] for job in jobs)),
         "jobs_by_segment_primary": dict(Counter(job["segment_primary"] for job in jobs)),
         "jobs_csv": str(output_dir / "jobs.csv"),
         "company_results_csv": str(output_dir / "company-results.csv"),
@@ -611,7 +672,9 @@ def build_summary(
 
 def main() -> None:
     all_rows = read_csv_rows(WATCHLIST_CSV)
-    configured = configured_rows(all_rows)
+    authoritative = authoritative_daily_rows(all_rows)
+    configured = configured_rows(authoritative)
+    unsupported_authoritative = [row for row in authoritative if row not in configured]
 
     fetched_at_utc = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
     run_id = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
@@ -646,7 +709,9 @@ def main() -> None:
         run_id=run_id,
         fetched_at_utc=fetched_at_utc,
         all_rows=all_rows,
+        authoritative=authoritative,
         configured=configured,
+        unsupported_authoritative=unsupported_authoritative,
         company_results=company_results,
         jobs=jobs,
         output_dir=output_dir,
@@ -655,7 +720,9 @@ def main() -> None:
     (RUNS_DIR / "latest-run.txt").write_text(run_id + "\n", encoding="utf-8")
     (RUNS_DIR / "latest-summary.json").write_text(json.dumps(summary, indent=2) + "\n", encoding="utf-8")
 
+    print(f"Authoritative daily rows: {len(authoritative)}")
     print(f"Configured companies fetched: {len(configured)}")
+    print(f"Authoritative rows skipped by this runner: {len(unsupported_authoritative)}")
     print(f"Jobs fetched: {len(jobs)}")
     print(f"Wrote {output_dir / 'company-results.csv'}")
     print(f"Wrote {output_dir / 'jobs.csv'}")

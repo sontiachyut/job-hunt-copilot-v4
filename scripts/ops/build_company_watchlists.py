@@ -45,6 +45,12 @@ FIELDNAMES = [
     "board_confirmation_status",
     "board_last_verified_at",
     "resolved_from_url",
+    "listing_source_type",
+    "listing_source_url",
+    "listing_source_job_count",
+    "listing_source_last_verified_at",
+    "listing_authority",
+    "listing_source_notes",
     "job_source_type",
     "job_source_url",
     "job_source_job_count",
@@ -197,6 +203,12 @@ def build_source_row_from_local(local_row: dict[str, str]) -> dict[str, str]:
         "board_confirmation_status": "",
         "board_last_verified_at": "",
         "resolved_from_url": "",
+        "listing_source_type": "",
+        "listing_source_url": "",
+        "listing_source_job_count": "",
+        "listing_source_last_verified_at": "",
+        "listing_authority": "",
+        "listing_source_notes": "",
         "job_source_type": "",
         "job_source_url": "",
         "job_source_job_count": "",
@@ -244,6 +256,12 @@ def build_source_row_from_confirmed_yc(
         "board_confirmation_status": yc_row["confirmation_status"],
         "board_last_verified_at": "",
         "resolved_from_url": yc_row["selected_url"],
+        "listing_source_type": "api_native",
+        "listing_source_url": yc_row["api_url"] or yc_row["board_url"],
+        "listing_source_job_count": yc_row["job_count"],
+        "listing_source_last_verified_at": "",
+        "listing_authority": "api_primary",
+        "listing_source_notes": "Public ATS/API feed is the authoritative live listing source.",
         "job_source_type": "api_native",
         "job_source_url": yc_row["api_url"] or yc_row["board_url"],
         "job_source_job_count": yc_row["job_count"],
@@ -263,10 +281,20 @@ def build_source_row_from_recheck_truth(recheck_row: dict[str, str]) -> dict[str
     job_source_type = ""
     job_source_url = ""
     job_source_job_count = ""
+    listing_source_type = ""
+    listing_source_url = ""
+    listing_source_job_count = ""
+    listing_authority = ""
+    listing_source_notes = ""
     if recheck_row["recheck_confirmation_status"] == "live_jobs":
         job_source_type = "api_native"
         job_source_url = recheck_row["recheck_api_url"] or recheck_row["recheck_board_url"]
         job_source_job_count = recheck_row["recheck_job_count"]
+        listing_source_type = "api_native"
+        listing_source_url = job_source_url
+        listing_source_job_count = job_source_job_count
+        listing_authority = "api_primary"
+        listing_source_notes = "Public ATS/API feed is the authoritative live listing source."
     elif recheck_row["recheck_confirmation_status"] == "detected_structured_board":
         job_source_type = "structured_board"
         job_source_url = recheck_row["recheck_board_url"]
@@ -309,6 +337,12 @@ def build_source_row_from_recheck_truth(recheck_row: dict[str, str]) -> dict[str
         "board_confirmation_status": recheck_row["recheck_confirmation_status"],
         "board_last_verified_at": recheck_row["checked_at_utc"],
         "resolved_from_url": recheck_row["resolved_from_url"],
+        "listing_source_type": listing_source_type,
+        "listing_source_url": listing_source_url,
+        "listing_source_job_count": listing_source_job_count,
+        "listing_source_last_verified_at": recheck_row["checked_at_utc"] if listing_source_type else "",
+        "listing_authority": listing_authority,
+        "listing_source_notes": listing_source_notes,
         "job_source_type": job_source_type,
         "job_source_url": job_source_url,
         "job_source_job_count": job_source_job_count,
@@ -337,6 +371,36 @@ def build_source_row_from_manual_source_audit(manual_row: dict[str, str]) -> dic
         board_api_url = CLEAR_SENTINEL
         board_confirmation_status = CLEAR_SENTINEL
 
+    listing_source_type = manual_row.get("listing_source_type", "")
+    listing_source_url = manual_row.get("listing_source_url", "")
+    listing_source_job_count = manual_row.get("listing_source_job_count", "")
+    listing_source_last_verified_at = manual_row.get("listing_source_last_verified_at", "")
+    listing_authority = manual_row.get("listing_authority", "")
+    listing_source_notes = manual_row.get("listing_source_notes", "")
+
+    if not listing_source_type:
+        if manual_row["job_source_type"] == "api_native":
+            listing_source_type = "api_native"
+            listing_source_url = manual_row["job_source_url"]
+            listing_source_job_count = manual_row["job_source_job_count"]
+            listing_source_last_verified_at = manual_row["job_source_last_verified_at"]
+            listing_authority = "api_primary"
+            listing_source_notes = "Public ATS/API feed is the authoritative live listing source."
+        elif manual_row["job_source_type"] == "company_careers_page":
+            listing_source_type = "company_careers_page"
+            listing_source_url = manual_row["job_source_url"]
+            listing_source_job_count = manual_row["job_source_job_count"]
+            listing_source_last_verified_at = manual_row["job_source_last_verified_at"]
+            listing_authority = "company_primary"
+            listing_source_notes = "First-party careers page is the authoritative live listing source."
+        elif manual_row["job_source_type"] == "yc_jobs_page":
+            listing_source_type = "yc_jobs_page"
+            listing_source_url = manual_row["job_source_url"]
+            listing_source_job_count = manual_row["job_source_job_count"]
+            listing_source_last_verified_at = manual_row["job_source_last_verified_at"]
+            listing_authority = "yc_primary"
+            listing_source_notes = "YC appears to be the authoritative public listing surface from current evidence."
+
     return {
         "company_key": slugify(manual_row["company_slug"] or manual_row["company_name"]),
         "company_name": manual_row["company_name"],
@@ -364,6 +428,12 @@ def build_source_row_from_manual_source_audit(manual_row: dict[str, str]) -> dic
         "board_confirmation_status": board_confirmation_status,
         "board_last_verified_at": manual_row["job_source_last_verified_at"],
         "resolved_from_url": manual_row.get("resolved_from_url", manual_row["job_source_url"]),
+        "listing_source_type": listing_source_type,
+        "listing_source_url": listing_source_url,
+        "listing_source_job_count": listing_source_job_count,
+        "listing_source_last_verified_at": listing_source_last_verified_at,
+        "listing_authority": listing_authority,
+        "listing_source_notes": listing_source_notes,
         "job_source_type": manual_row["job_source_type"],
         "job_source_url": manual_row["job_source_url"],
         "job_source_job_count": manual_row["job_source_job_count"],
@@ -511,7 +581,7 @@ def write_readme(master_count: int, local_count: int, yc_count: int) -> None:
         "1. Edit `company-watchlist.csv` directly.",
         "2. Use `segment_tags` to classify companies, for example `local`, `yc`, or `local;yc`.",
         "3. Fill `board_type` and `board_url` as ATS metadata becomes known.",
-        "4. Run `python3 scripts/ops/fetch_watchlist_jobs.py` to fetch jobs from configured boards.",
+        "4. Run `python3 scripts/ops/fetch_watchlist_jobs.py` to fetch jobs from supported authoritative API-native listing sources.",
         "",
         "Important columns:",
         "- `segment_primary`: the main bucket for sorting and prioritization",
@@ -523,7 +593,10 @@ def write_readme(master_count: int, local_count: int, yc_count: int) -> None:
         "- `board_token` / `board_api_url`: resolved ATS identifiers when known",
         "- `board_confirmation_status` / `board_last_verified_at`: latest verification state",
         "- `resolved_from_url`: the page where the board was actually discovered",
-        "- `job_source_type` / `job_source_url`: the single extraction source we should crawl",
+        "- `listing_source_type` / `listing_source_url`: the source we trust for live open-role freshness",
+        "- `listing_authority`: freshness confidence label such as `api_primary`, `company_primary`, `yc_primary`, or `yc_fallback`",
+        "- `fetch_watchlist_jobs.py` currently uses `listing_authority` and `listing_source_type` to fetch only authoritative API-native boards; `yc_primary` and `company_primary` rows stay in the registry but require separate fetchers",
+        "- `job_source_type` / `job_source_url`: the deterministic extraction source we should crawl for role data and JD",
         "- `job_source_job_count` / `job_source_last_verified_at`: current observed source state",
         "- `jd_capture_status` / `jd_format`: JD readiness label such as `full_jd_verified`, `full_jd_inferred_api`, or `unconfirmed`",
         "- `jd_extraction_method` / `jd_extraction_locator`: how the deterministic JD fetcher should pull content, for example `same_page_html_sections`, `company_jobs_list_to_detail_pages`, or `yc_jobs_list_to_detail_pages`",
