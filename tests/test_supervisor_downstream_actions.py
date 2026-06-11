@@ -6,6 +6,7 @@ from types import SimpleNamespace
 
 from job_hunt_copilot.bootstrap import run_bootstrap
 from job_hunt_copilot.delivery_feedback import EVENT_STATE_NOT_BOUNCED, sync_delivery_feedback
+from job_hunt_copilot.email_discovery import DISCOVERY_OUTCOME_PROVIDER_ERROR, EmailDiscoveryError
 from job_hunt_copilot.outreach import (
     execute_role_targeted_send_set,
     generate_role_targeted_send_set_drafts,
@@ -30,11 +31,13 @@ from job_hunt_copilot.supervisor import (
     SUPERVISOR_CYCLE_RESULT_FAILED,
     SUPERVISOR_CYCLE_RESULT_NO_WORK,
     SUPERVISOR_CYCLE_RESULT_SUCCESS,
+    create_agent_incident,
     ensure_role_targeted_pipeline_run,
     get_pipeline_run,
     list_expert_review_packets_for_run,
     resume_agent,
     run_supervisor_cycle,
+    upsert_control_values,
 )
 from tests.support import create_minimal_project, seed_pending_review_tailoring_run
 from tests.test_outreach import (
@@ -326,6 +329,27 @@ class FakeApolloSearchProvider:
             }
         )
         return list(self.candidates)
+
+
+class FailingApolloSearchProvider(FakeApolloSearchProvider):
+    def resolve_company(
+        self,
+        *,
+        company_name: str,
+        company_domain: str | None,
+        company_website: str | None,
+    ) -> None:
+        self.resolve_calls.append(
+            {
+                "company_name": company_name,
+                "company_domain": company_domain,
+                "company_website": company_website,
+            }
+        )
+        raise EmailDiscoveryError(
+            "Apollo request failed with HTTP 503.",
+            reason_code=DISCOVERY_OUTCOME_PROVIDER_ERROR,
+        )
 
 
 class FakeApolloEnrichmentProvider:
@@ -1151,6 +1175,181 @@ def test_people_search_stage_escalates_cleanly_when_no_contacts_are_found(tmp_pa
     assert updated_run.current_stage == "people_search"
     assert "did not identify any shortlisted internal contacts" in (updated_run.last_error_summary or "")
     assert posting_status == "requires_contacts"
+
+
+def test_people_search_stage_blocks_same_run_after_repeated_retry_without_progress(tmp_path: Path) -> None:
+    project_root = bootstrap_project(tmp_path)
+    paths = ProjectPaths.from_root(project_root)
+    connection = connect_database(project_root / "job_hunt_copilot.db")
+    lead_id, job_posting_id = seed_role_targeted_posting(
+        connection,
+        posting_status="requires_contacts",
+    )
+    seed_approved_tailoring_run(connection, job_posting_id=job_posting_id)
+    resume_agent(
+        connection,
+        manual_command="jhc-agent-start",
+        timestamp="2026-04-08T00:10:00Z",
+    )
+    pipeline_run, _ = ensure_role_targeted_pipeline_run(
+        connection,
+        lead_id=lead_id,
+        job_posting_id=job_posting_id,
+        current_stage="people_search",
+        started_at="2026-04-08T00:11:00Z",
+    )
+    search_provider = FailingApolloSearchProvider(candidates=[])
+    enrichment_provider = FakeApolloEnrichmentProvider({})
+
+    first_execution = run_supervisor_cycle(
+        connection,
+        paths,
+        trigger_type="launchd_heartbeat",
+        scheduler_name="launchd",
+        started_at="2026-04-08T00:12:00Z",
+        action_dependencies=SupervisorActionDependencies(
+            apollo_people_search_provider=search_provider,
+            apollo_contact_enrichment_provider=enrichment_provider,
+        ),
+    )
+    connection.execute(
+        """
+        UPDATE provider_budget_state
+        SET cooldown_until = NULL, cooldown_reason = NULL, cooldown_message = NULL, cooldown_set_at = NULL
+        WHERE provider_name = 'apollo'
+        """
+    )
+    connection.commit()
+    second_execution = run_supervisor_cycle(
+        connection,
+        paths,
+        trigger_type="launchd_heartbeat",
+        scheduler_name="launchd",
+        started_at="2026-04-08T00:40:00Z",
+        action_dependencies=SupervisorActionDependencies(
+            apollo_people_search_provider=search_provider,
+            apollo_contact_enrichment_provider=enrichment_provider,
+        ),
+    )
+    connection.execute(
+        """
+        UPDATE provider_budget_state
+        SET cooldown_until = NULL, cooldown_reason = NULL, cooldown_message = NULL, cooldown_set_at = NULL
+        WHERE provider_name = 'apollo'
+        """
+    )
+    connection.commit()
+    third_execution = run_supervisor_cycle(
+        connection,
+        paths,
+        trigger_type="launchd_heartbeat",
+        scheduler_name="launchd",
+        started_at="2026-04-08T01:10:00Z",
+        action_dependencies=SupervisorActionDependencies(
+            apollo_people_search_provider=search_provider,
+            apollo_contact_enrichment_provider=enrichment_provider,
+        ),
+    )
+    updated_run = get_pipeline_run(connection, pipeline_run.pipeline_run_id)
+
+    assert first_execution.cycle.result == SUPERVISOR_CYCLE_RESULT_SUCCESS
+    assert second_execution.cycle.result == SUPERVISOR_CYCLE_RESULT_SUCCESS
+    assert third_execution.cycle.result == SUPERVISOR_CYCLE_RESULT_SUCCESS
+    assert len(search_provider.resolve_calls) == 2
+    assert updated_run is not None
+    assert updated_run.run_status == RUN_STATUS_ESCALATED
+    assert updated_run.current_stage == "people_search"
+    assert "after 2 prior people_search attempts without stage progress" in (updated_run.last_error_summary or "")
+    assert third_execution.incident is not None
+    assert third_execution.incident.incident_type == "provider_retry_runaway"
+
+    connection.close()
+
+
+def test_supervisor_skips_people_search_when_apollo_breaker_is_active(tmp_path: Path) -> None:
+    project_root = bootstrap_project(tmp_path)
+    paths = ProjectPaths.from_root(project_root)
+    connection = connect_database(project_root / "job_hunt_copilot.db")
+    lead_id, job_posting_id = seed_role_targeted_posting(
+        connection,
+        posting_status="requires_contacts",
+    )
+    seed_approved_tailoring_run(connection, job_posting_id=job_posting_id)
+    resume_agent(
+        connection,
+        manual_command="jhc-agent-start",
+        timestamp="2026-04-08T00:10:00Z",
+    )
+    pipeline_run, _ = ensure_role_targeted_pipeline_run(
+        connection,
+        lead_id=lead_id,
+        job_posting_id=job_posting_id,
+        current_stage="people_search",
+        started_at="2026-04-08T00:11:00Z",
+    )
+    incident = create_agent_incident(
+        connection,
+        incident_type="provider_spend_guardrail",
+        severity="high",
+        summary="Apollo abnormal-usage guardrail tripped for mixed_companies/search.",
+        pipeline_run_id=pipeline_run.pipeline_run_id,
+        lead_id=lead_id,
+        job_posting_id=job_posting_id,
+        created_at="2026-04-08T00:11:30Z",
+    )
+    connection.execute(
+        """
+        INSERT INTO provider_budget_state (
+          provider_name, breaker_state, breaker_reason, breaker_message,
+          breaker_until, breaker_set_at, updated_at
+        ) VALUES (?, ?, ?, ?, ?, ?, ?)
+        """,
+        (
+            "apollo",
+            "open",
+            "daily_usage_hard_cap",
+            "Apollo abnormal-usage guardrail tripped for mixed_companies/search.",
+            "2026-04-09T00:00:00Z",
+            "2026-04-08T00:11:30Z",
+            "2026-04-08T00:11:30Z",
+        ),
+    )
+    upsert_control_values(
+        connection,
+        {
+            "apollo_discovery_paused": True,
+            "apollo_discovery_pause_reason": "Apollo abnormal-usage guardrail tripped for mixed_companies/search.",
+            "apollo_discovery_pause_until": "2026-04-09T00:00:00Z",
+            "apollo_discovery_pause_set_at": "2026-04-08T00:11:30Z",
+            "apollo_discovery_pause_incident_id": incident.agent_incident_id,
+        },
+        timestamp="2026-04-08T00:11:30Z",
+    )
+    search_provider = FakeApolloSearchProvider(candidates=[])
+    enrichment_provider = FakeApolloEnrichmentProvider({})
+
+    execution = run_supervisor_cycle(
+        connection,
+        paths,
+        trigger_type="launchd_heartbeat",
+        scheduler_name="launchd",
+        started_at="2026-04-08T00:12:00Z",
+        action_dependencies=SupervisorActionDependencies(
+            apollo_people_search_provider=search_provider,
+            apollo_contact_enrichment_provider=enrichment_provider,
+        ),
+    )
+
+    assert execution.cycle.result == SUPERVISOR_CYCLE_RESULT_SUCCESS
+    assert execution.selected_work is not None
+    assert execution.selected_work.work_type == "agent_incident"
+    assert execution.control_state.apollo_discovery_paused is True
+    assert "guardrail tripped" in (execution.control_state.apollo_discovery_pause_reason or "")
+    assert execution.control_state.apollo_discovery_pause_incident_id == incident.agent_incident_id
+    assert search_provider.resolve_calls == []
+    assert search_provider.search_calls == []
+
+    connection.close()
 
 
 def test_email_discovery_stage_runs_and_stays_active_until_send_set_is_ready(

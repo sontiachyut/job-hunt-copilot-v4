@@ -1378,9 +1378,20 @@ This section defines the next-build logical schema shape for `job_hunt_copilot.d
   - `remaining_credits`
   - `credit_limit`
   - `reset_at`
+  - `cooldown_until`
+  - `cooldown_reason`
+  - `cooldown_message`
+  - `cooldown_set_at`
+  - `breaker_state`
+  - `breaker_reason`
+  - `breaker_message`
+  - `breaker_until`
+  - `breaker_set_at`
+  - `last_usage_checked_at`
 - Notes:
   - `remaining_credits` may be `NULL` when the provider does not expose a trustworthy balance signal or the latest balance refresh failed.
   - `NULL` means unknown and must not be replaced with synthetic placeholder values.
+  - Provider-specific abnormal-usage circuit-breaker state shall live here so pre-call enforcement can stop outbound provider traffic even before hard quota exhaustion.
 
 **`provider_budget_events`**
 - Primary key:
@@ -1395,6 +1406,29 @@ This section defines the next-build logical schema shape for `job_hunt_copilot.d
   - `remaining_credits_after`
   - `related_discovery_attempt_id`
   - `related_contact_id`
+
+**`provider_usage_snapshots`**
+- Primary key:
+  - `provider_usage_snapshot_id`
+- Required columns:
+  - `provider_usage_snapshot_id`
+  - `provider_name`
+  - `endpoint_key`
+  - `observed_at`
+  - `raw_payload_json`
+- Optional columns:
+  - `day_limit`
+  - `day_consumed`
+  - `day_left_over`
+  - `hour_limit`
+  - `hour_consumed`
+  - `hour_left_over`
+  - `minute_limit`
+  - `minute_consumed`
+  - `minute_left_over`
+- Notes:
+  - Each row shall persist one normalized provider endpoint snapshot from a single provider usage-stats poll.
+  - `raw_payload_json` shall preserve the original provider response payload used to materialize the normalized snapshot row.
 
 **`llm_usage_events`**
 - Primary key:
@@ -1618,12 +1652,15 @@ This section defines the next-build logical schema shape for `job_hunt_copilot.d
 18. `provider_budget_events`:
    - index on `provider_name`
    - index on `created_at`
-19. `llm_usage_events`:
+19. `provider_usage_snapshots`:
+   - index on (`provider_name`, `endpoint_key`, `observed_at`)
+   - index on `observed_at`
+20. `llm_usage_events`:
    - index on `created_at`
    - index on (`component_name`, `operation_name`, `created_at`)
    - index on `job_posting_id`
    - index on `contact_id`
-20. `outreach_messages`:
+21. `outreach_messages`:
    - index on `contact_id`
    - index on `job_posting_id`
    - index on `message_status`
@@ -1970,6 +2007,16 @@ CREATE TABLE IF NOT EXISTS provider_budget_state (
   remaining_credits INTEGER,
   credit_limit INTEGER,
   reset_at TEXT,
+  cooldown_until TEXT,
+  cooldown_reason TEXT,
+  cooldown_message TEXT,
+  cooldown_set_at TEXT,
+  breaker_state TEXT NOT NULL DEFAULT 'closed',
+  breaker_reason TEXT,
+  breaker_message TEXT,
+  breaker_until TEXT,
+  breaker_set_at TEXT,
+  last_usage_checked_at TEXT,
   updated_at TEXT NOT NULL
 );
 
@@ -1983,6 +2030,23 @@ CREATE TABLE IF NOT EXISTS provider_budget_events (
   related_contact_id TEXT,
   created_at TEXT NOT NULL,
   FOREIGN KEY (related_contact_id) REFERENCES contacts(contact_id)
+);
+
+CREATE TABLE IF NOT EXISTS provider_usage_snapshots (
+  provider_usage_snapshot_id TEXT PRIMARY KEY,
+  provider_name TEXT NOT NULL,
+  endpoint_key TEXT NOT NULL,
+  day_limit INTEGER,
+  day_consumed INTEGER,
+  day_left_over INTEGER,
+  hour_limit INTEGER,
+  hour_consumed INTEGER,
+  hour_left_over INTEGER,
+  minute_limit INTEGER,
+  minute_consumed INTEGER,
+  minute_left_over INTEGER,
+  observed_at TEXT NOT NULL,
+  raw_payload_json TEXT NOT NULL
 );
 
 CREATE TABLE IF NOT EXISTS discovery_attempts (
@@ -3388,6 +3452,15 @@ For discovery-state persistence, the system shall use discovery-specific tables 
 - **FR-ED-00B2A (Resolved-Organization Reuse Rule):** When the posting or company group already carries a previously resolved Apollo company identifier such as `provider_company_key` or a saved `organization_id`, the Apollo path should reuse that persisted identifier and skip a fresh `mixed_companies/search` resolution call unless the persisted identifier is missing, malformed, or has been explicitly invalidated.
 - **FR-ED-00B3 (Company Resolution Artifact):** The people-search stage shall persist the resolved company-search outcome, including the chosen Apollo organization record when found, inside `people_search_result.json` so later review can see what company identity was actually searched.
 - **FR-ED-00B4 (Apollo Quota Exhaustion Cooldown Rule):** When Apollo company-scoped search or enrichment returns a quota-exhaustion signal such as `HTTP 422 insufficient credits`, the system shall normalize that outcome to `quota_exhausted`, persist Apollo provider cooldown state, and suppress immediate repeated Apollo retries until the cooldown expires.
+- **FR-ED-00B4A (Apollo Usage Snapshot Polling Rule):** Before a fresh credit-consuming Apollo company-resolution call such as `mixed_companies/search`, the system shall be able to refresh Apollo usage statistics from `POST /api/v1/usage_stats/api_usage_stats`, normalize the returned per-endpoint counters, and persist timestamped `provider_usage_snapshots` rows for later debugging.
+- **FR-ED-00B4B (Apollo Abnormal-Usage Circuit-Breaker Rule):** The Apollo path shall maintain a provider-specific abnormal-usage circuit breaker with centralized thresholds. The first build shall guard at least:
+  1. `mixed_companies/search` daily hard-cap usage, default threshold `100` calls per day.
+  2. `mixed_companies/search` hourly hard-cap usage, default threshold `25` calls per hour.
+  3. abnormal usage surges, default threshold `day_consumed` increasing by `15` or more between nearby snapshots.
+  4. repeated Apollo `provider_error` outcomes, default threshold `3` consecutive recent failures.
+- **FR-ED-00B4C (Apollo Breaker Trip Handling Rule):** When the Apollo abnormal-usage breaker trips, the system shall create an agent incident, persist a clear breaker reason and pause metadata in canonical runtime state, and block further Apollo-backed discovery calls until the breaker window is cleared. The build should prefer a provider-specific Apollo pause over a full global agent pause when that narrower control is available.
+- **FR-ED-00B4D (Apollo Pre-Call Guard Rule):** Before outbound Apollo calls to `mixed_companies/search`, `mixed_people/api_search`, or `people/match`, the system shall check whether Apollo is in provider cooldown or breaker-paused state. If Apollo is paused, the system shall not make the outbound request and shall return a structured deferred outcome instead of retrying blindly.
+- **FR-ED-00B4E (People-Search Runaway Retry Guard):** If the same durable role-targeted `pipeline_run` is selected for `people_search` more than `2` times without progressing beyond the `people_search` boundary, the supervisor shall stop re-running that Apollo work indefinitely, mark the run as blocked or escalated with a clear reason, and persist an incident or equivalent review signal.
 - **FR-ED-00B5 (Apollo Company-Resolution DB Persistence Rule):** In addition to the broad search artifact, the resolved Apollo company/organization payload used for a role-targeted posting shall also be persisted in the main database as posting-scoped provider context linked to that `job_posting_id`.
 - **FR-ED-00B6 (Job Posting Provider Context Table):** The main database shall include a `job_posting_provider_contexts` table for posting-scoped provider payloads such as Apollo company resolution. At minimum this table should support:
   1. `job_posting_provider_context_id`

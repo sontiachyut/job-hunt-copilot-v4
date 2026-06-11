@@ -11,6 +11,7 @@ import pytest
 from job_hunt_copilot.bootstrap import run_bootstrap
 from job_hunt_copilot.email_discovery import (
     APOLLO_API_USER_AGENT,
+    APOLLO_USAGE_ENDPOINT_COMPANY_SEARCH,
     ApolloResolvedCompany,
     CONTACT_STATUS_IDENTIFIED,
     CONTACT_STATUS_EXHAUSTED,
@@ -20,6 +21,7 @@ from job_hunt_copilot.email_discovery import (
     DISCOVERY_OUTCOME_DOMAIN_UNRESOLVED,
     DISCOVERY_OUTCOME_NOT_FOUND,
     DISCOVERY_OUTCOME_PROVIDER_ERROR,
+    DISCOVERY_OUTCOME_PROVIDER_PAUSED,
     DISCOVERY_OUTCOME_QUOTA_EXHAUSTED,
     DISCOVERY_OUTCOME_RATE_LIMITED,
     EmailDiscoveryError,
@@ -46,6 +48,7 @@ from job_hunt_copilot.email_discovery import (
     run_general_learning_email_discovery,
     select_initial_enrichment_shortlist,
     _build_apollo_search_filters,
+    _normalize_apollo_usage_snapshots,
 )
 from job_hunt_copilot.outreach import evaluate_role_targeted_send_set
 from job_hunt_copilot.paths import ProjectPaths
@@ -348,6 +351,44 @@ class QuotaExhaustedApolloProvider(FakeApolloProvider):
         raise EmailDiscoveryError(
             "Apollo request failed with HTTP 422.",
             reason_code=DISCOVERY_OUTCOME_QUOTA_EXHAUSTED,
+        )
+
+
+class UsageStatsApolloProvider(FakeApolloProvider):
+    def __init__(
+        self,
+        *,
+        resolved_company: ApolloResolvedCompany | None,
+        candidates: list[dict[str, object]],
+        usage_stats_payload: dict[str, object],
+    ) -> None:
+        super().__init__(resolved_company=resolved_company, candidates=candidates)
+        self.usage_stats_payload = usage_stats_payload
+        self.fetch_usage_stats_calls = 0
+
+    def fetch_usage_stats(self) -> dict[str, object]:
+        self.fetch_usage_stats_calls += 1
+        return dict(self.usage_stats_payload)
+
+
+class ProviderErrorApolloProvider(FakeApolloProvider):
+    def resolve_company(
+        self,
+        *,
+        company_name: str,
+        company_domain: str | None,
+        company_website: str | None,
+    ) -> ApolloResolvedCompany | None:
+        self.resolve_calls.append(
+            {
+                "company_name": company_name,
+                "company_domain": company_domain,
+                "company_website": company_website,
+            }
+        )
+        raise EmailDiscoveryError(
+            "Apollo request failed with HTTP 503.",
+            reason_code=DISCOVERY_OUTCOME_PROVIDER_ERROR,
         )
 
 
@@ -1739,6 +1780,229 @@ def test_apollo_people_search_persists_provider_cooldown_on_quota_exhaustion(tmp
             "remaining_credits_after": None,
         }
     ]
+
+    connection.close()
+
+
+def test_normalize_apollo_usage_snapshots_parses_usage_stats_endpoint_payload():
+    payload = {
+        "data": [
+            {
+                "api_route": ["api/v1/mixed_companies", "search"],
+                "day": {"limit": 2000, "consumed": 1259, "left_over": 741},
+                "hour": {"limit": 200, "consumed": 27, "left_over": 173},
+                "minute": {"limit": 20, "consumed": 2, "left_over": 18},
+            },
+            {
+                "api_route": ["api/v1/mixed_people", "api_search"],
+                "day": {"consumed": 1317},
+            },
+        ]
+    }
+
+    snapshots = _normalize_apollo_usage_snapshots(
+        payload,
+        observed_at="2026-06-10T20:00:00Z",
+    )
+
+    assert [snapshot.endpoint_key for snapshot in snapshots] == [
+        APOLLO_USAGE_ENDPOINT_COMPANY_SEARCH,
+        "api/v1/mixed_people/api_search",
+    ]
+    assert snapshots[0].day_limit == 2000
+    assert snapshots[0].day_consumed == 1259
+    assert snapshots[0].hour_consumed == 27
+    assert snapshots[0].minute_left_over == 18
+    assert snapshots[1].day_consumed == 1317
+
+
+def test_apollo_usage_guardrail_trips_before_company_resolution_when_daily_cap_is_exceeded(tmp_path: Path):
+    project_root = bootstrap_project(tmp_path)
+    paths = ProjectPaths.from_root(project_root)
+    connection = connect_database(project_root / "job_hunt_copilot.db")
+    seed_search_ready_posting(connection, paths)
+    provider = UsageStatsApolloProvider(
+        resolved_company=None,
+        candidates=[],
+        usage_stats_payload={
+            "data": [
+                {
+                    "api_route": ["api/v1/mixed_companies", "search"],
+                    "day": {"limit": 2000, "consumed": 125, "left_over": 1875},
+                    "hour": {"limit": 200, "consumed": 4, "left_over": 196},
+                }
+            ]
+        },
+    )
+
+    with pytest.raises(EmailDiscoveryError) as exc_info:
+        run_apollo_people_search(
+            project_root=project_root,
+            job_posting_id="jp_search",
+            provider=provider,
+            current_time="2026-06-10T20:05:00Z",
+        )
+
+    assert exc_info.value.reason_code == DISCOVERY_OUTCOME_PROVIDER_PAUSED
+    assert provider.fetch_usage_stats_calls == 1
+    assert provider.resolve_calls == []
+    assert provider.search_calls == []
+
+    usage_rows = [
+        dict(row)
+        for row in connection.execute(
+            """
+            SELECT endpoint_key, day_consumed, observed_at
+            FROM provider_usage_snapshots
+            ORDER BY observed_at ASC, provider_usage_snapshot_id ASC
+            """
+        ).fetchall()
+    ]
+    budget_row = connection.execute(
+        """
+        SELECT breaker_state, breaker_reason, last_usage_checked_at
+        FROM provider_budget_state
+        WHERE provider_name = 'apollo'
+        """
+    ).fetchone()
+    control_rows = {
+        row["control_key"]: row["control_value"]
+        for row in connection.execute(
+            """
+            SELECT control_key, control_value
+            FROM agent_control_state
+            WHERE control_key IN (
+              'apollo_discovery_paused',
+              'apollo_discovery_pause_reason',
+              'apollo_discovery_pause_until'
+            )
+            """
+        ).fetchall()
+    }
+    incident_row = connection.execute(
+        """
+        SELECT incident_type, summary
+        FROM agent_incidents
+        ORDER BY created_at DESC, agent_incident_id DESC
+        LIMIT 1
+        """
+    ).fetchone()
+
+    assert usage_rows == [
+        {
+            "endpoint_key": APOLLO_USAGE_ENDPOINT_COMPANY_SEARCH,
+            "day_consumed": 125,
+            "observed_at": "2026-06-10T20:05:00Z",
+        }
+    ]
+    assert dict(budget_row) == {
+        "breaker_state": "open",
+        "breaker_reason": "daily_usage_hard_cap",
+        "last_usage_checked_at": "2026-06-10T20:05:00Z",
+    }
+    assert control_rows["apollo_discovery_paused"] == "true"
+    assert "daily cap 100" in control_rows["apollo_discovery_pause_reason"]
+    assert incident_row["incident_type"] == "provider_spend_guardrail"
+
+    connection.close()
+
+
+def test_apollo_provider_error_guardrail_trips_after_three_consecutive_failures(tmp_path: Path):
+    project_root = bootstrap_project(tmp_path)
+    paths = ProjectPaths.from_root(project_root)
+    connection = connect_database(project_root / "job_hunt_copilot.db")
+    seed_search_ready_posting(connection, paths)
+    provider = ProviderErrorApolloProvider(resolved_company=None, candidates=[])
+
+    for timestamp in (
+        "2026-06-10T20:10:00Z",
+        "2026-06-10T20:20:00Z",
+        "2026-06-10T20:29:00Z",
+    ):
+        with pytest.raises(EmailDiscoveryError) as exc_info:
+            run_apollo_people_search(
+                project_root=project_root,
+                job_posting_id="jp_search",
+                provider=provider,
+                current_time=timestamp,
+            )
+        assert exc_info.value.reason_code == DISCOVERY_OUTCOME_PROVIDER_ERROR
+
+    budget_row = connection.execute(
+        """
+        SELECT breaker_state, breaker_reason
+        FROM provider_budget_state
+        WHERE provider_name = 'apollo'
+        """
+    ).fetchone()
+    control_rows = {
+        row["control_key"]: row["control_value"]
+        for row in connection.execute(
+            """
+            SELECT control_key, control_value
+            FROM agent_control_state
+            WHERE control_key IN ('apollo_discovery_paused', 'apollo_discovery_pause_reason')
+            """
+        ).fetchall()
+    }
+    provider_error_events = connection.execute(
+        """
+        SELECT COUNT(*)
+        FROM provider_budget_events
+        WHERE provider_name = 'apollo'
+          AND event_type = ?
+        """,
+        (DISCOVERY_OUTCOME_PROVIDER_ERROR,),
+    ).fetchone()[0]
+
+    assert len(provider.resolve_calls) == 3
+    assert dict(budget_row) == {
+        "breaker_state": "open",
+        "breaker_reason": "consecutive_provider_errors",
+    }
+    assert control_rows["apollo_discovery_paused"] == "true"
+    assert "3 consecutive provider_error outcomes" in control_rows["apollo_discovery_pause_reason"]
+    assert provider_error_events == 3
+
+    connection.close()
+
+
+def test_apollo_pre_call_guard_blocks_outbound_calls_while_breaker_is_active(tmp_path: Path):
+    project_root = bootstrap_project(tmp_path)
+    paths = ProjectPaths.from_root(project_root)
+    connection = connect_database(project_root / "job_hunt_copilot.db")
+    seed_search_ready_posting(connection, paths)
+    connection.execute(
+        """
+        INSERT INTO provider_budget_state (
+          provider_name, breaker_state, breaker_reason, breaker_message,
+          breaker_until, breaker_set_at, updated_at
+        ) VALUES (?, ?, ?, ?, ?, ?, ?)
+        """,
+        (
+            "apollo",
+            "open",
+            "manual_test_pause",
+            "Apollo abnormal-usage guardrail is active.",
+            "2026-06-10T23:00:00Z",
+            "2026-06-10T20:00:00Z",
+            "2026-06-10T20:00:00Z",
+        ),
+    )
+    connection.commit()
+    provider = FakeApolloProvider(resolved_company=None, candidates=[])
+
+    with pytest.raises(EmailDiscoveryError) as exc_info:
+        run_apollo_people_search(
+            project_root=project_root,
+            job_posting_id="jp_search",
+            provider=provider,
+            current_time="2026-06-10T20:15:00Z",
+        )
+
+    assert exc_info.value.reason_code == DISCOVERY_OUTCOME_PROVIDER_PAUSED
+    assert provider.resolve_calls == []
+    assert provider.search_calls == []
 
     connection.close()
 

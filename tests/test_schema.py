@@ -36,6 +36,7 @@ EXPECTED_TABLES = {
     "pipeline_runs",
     "provider_budget_events",
     "provider_budget_state",
+    "provider_usage_snapshots",
     "resume_tailoring_runs",
     "schema_migrations",
     "state_transition_events",
@@ -126,6 +127,8 @@ EXPECTED_INDEXES = {
     "idx_pipeline_runs_status",
     "idx_provider_budget_events_created_at",
     "idx_provider_budget_events_provider",
+    "idx_provider_usage_snapshots_observed_at",
+    "idx_provider_usage_snapshots_provider_endpoint_observed",
     "idx_resume_tailoring_runs_job_posting",
     "idx_resume_tailoring_runs_review_status",
     "idx_state_transition_events_object",
@@ -174,7 +177,7 @@ def test_bootstrap_materializes_canonical_schema_objects(tmp_path):
     assert EXPECTED_TABLES <= tables
     assert EXPECTED_VIEWS <= views
     assert EXPECTED_INDEXES <= indexes
-    assert user_version == 9
+    assert user_version == 10
 
 
 def test_review_views_are_queryable_from_canonical_state(tmp_path):

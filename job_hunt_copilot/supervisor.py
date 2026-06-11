@@ -226,6 +226,12 @@ CONTROL_DEFAULTS = MappingProxyType(
         "gmail_poll_last_history_id": "",
         "gmail_poll_last_checkpoint_at": "",
         "gmail_poll_last_strategy": "",
+        "apollo_discovery_paused": "false",
+        "apollo_discovery_pause_reason": "",
+        "apollo_discovery_pause_until": "",
+        "apollo_discovery_pause_set_at": "",
+        "apollo_discovery_pause_incident_id": "",
+        "apollo_usage_last_checked_at": "",
         "followup_auto_send_enabled": "false",
         "followup_auto_send_paused": "false",
         "followup_initial_rollout_sent_count": "0",
@@ -460,6 +466,30 @@ class ControlStateSnapshot:
     @property
     def gmail_poll_last_strategy(self) -> str | None:
         return _optional_text(self.values["gmail_poll_last_strategy"])
+
+    @property
+    def apollo_discovery_paused(self) -> bool:
+        return self.values["apollo_discovery_paused"] == "true"
+
+    @property
+    def apollo_discovery_pause_reason(self) -> str | None:
+        return _optional_text(self.values["apollo_discovery_pause_reason"])
+
+    @property
+    def apollo_discovery_pause_until(self) -> str | None:
+        return _optional_text(self.values["apollo_discovery_pause_until"])
+
+    @property
+    def apollo_discovery_pause_set_at(self) -> str | None:
+        return _optional_text(self.values["apollo_discovery_pause_set_at"])
+
+    @property
+    def apollo_discovery_pause_incident_id(self) -> str | None:
+        return _optional_text(self.values["apollo_discovery_pause_incident_id"])
+
+    @property
+    def apollo_usage_last_checked_at(self) -> str | None:
+        return _optional_text(self.values["apollo_usage_last_checked_at"])
 
     @property
     def allows_new_pipeline_progression(self) -> bool:
@@ -2781,6 +2811,34 @@ def _record_state_transition(
     )
 
 
+def _count_prior_people_search_cycle_attempts(
+    connection: sqlite3.Connection,
+    *,
+    pipeline_run_id: str,
+    current_time: str,
+) -> int:
+    row = connection.execute(
+        """
+        SELECT COUNT(*)
+        FROM supervisor_cycles
+        WHERE pipeline_run_id = ?
+          AND selected_work_type = ?
+          AND selected_work_id = ?
+          AND result IN (?, ?)
+          AND started_at < ?
+        """,
+        (
+            pipeline_run_id,
+            WORK_TYPE_PIPELINE_RUN,
+            pipeline_run_id,
+            SUPERVISOR_CYCLE_RESULT_SUCCESS,
+            SUPERVISOR_CYCLE_RESULT_FAILED,
+            current_time,
+        ),
+    ).fetchone()
+    return int(row[0] or 0) if row is not None else 0
+
+
 def _quarantine_postings_with_unapproved_latest_tailoring(
     connection: sqlite3.Connection,
     *,
@@ -4852,6 +4910,7 @@ def _execute_selected_work_unit(
 
     if catalog_entry.action_id == ACTION_RUN_ROLE_TARGETED_PEOPLE_SEARCH:
         from .email_discovery import (
+            APOLLO_PEOPLE_SEARCH_RETRY_WITHOUT_PROGRESS_THRESHOLD,
             DISCOVERY_PROVIDER_COOLDOWN_OUTCOMES,
             JOB_POSTING_STATUS_READY_FOR_OUTREACH,
             JOB_POSTING_STATUS_REQUIRES_CONTACTS,
@@ -4877,6 +4936,40 @@ def _execute_selected_work_unit(
             _optional_text(posting_row[1]),
             "posting_status",
         )
+        prior_people_search_attempts = _count_prior_people_search_cycle_attempts(
+            connection,
+            pipeline_run_id=selected_work.work_id,
+            current_time=timestamp,
+        )
+        if prior_people_search_attempts >= APOLLO_PEOPLE_SEARCH_RETRY_WITHOUT_PROGRESS_THRESHOLD:
+            incident_summary = (
+                "Supervisor stopped the durable people_search loop for "
+                f"job_posting {job_posting_id!r} after {prior_people_search_attempts} prior "
+                "people_search attempts without stage progress."
+            )
+            incident = create_agent_incident(
+                connection,
+                incident_type="provider_retry_runaway",
+                severity=INCIDENT_SEVERITY_HIGH,
+                summary=incident_summary,
+                pipeline_run_id=selected_work.work_id,
+                lead_id=_optional_text(posting_row[0]),
+                job_posting_id=job_posting_id,
+                created_at=timestamp,
+            )
+            pipeline_run = escalate_pipeline_run(
+                connection,
+                selected_work.work_id,
+                current_stage="people_search",
+                error_summary=incident_summary,
+                run_summary=(
+                    "Supervisor escalated the durable pipeline run at the "
+                    "people_search boundary after repeated same-run retries "
+                    "without downstream progress."
+                ),
+                timestamp=timestamp,
+            )
+            return pipeline_run, incident, None
         next_stage: str
         run_summary: str
         if current_posting_status == JOB_POSTING_STATUS_READY_FOR_OUTREACH:
@@ -4893,7 +4986,8 @@ def _execute_selected_work_unit(
                 next_stage = "people_search"
                 run_summary = (
                     "Supervisor kept the durable pipeline run at people_search "
-                    "because Apollo is in provider cooldown and is not callable yet."
+                    "because Apollo is in provider cooldown or abnormal-usage "
+                    "guardrail pause and is not callable yet."
                 )
                 pipeline_run = advance_pipeline_run(
                     connection,
@@ -4909,6 +5003,7 @@ def _execute_selected_work_unit(
                     job_posting_id=job_posting_id,
                     provider=action_dependencies.apollo_people_search_provider,
                     current_time=timestamp,
+                    pipeline_run_id=selected_work.work_id,
                 )
                 enrichment_result = run_apollo_contact_enrichment(
                     project_root=paths.project_root,
@@ -4916,14 +5011,16 @@ def _execute_selected_work_unit(
                     provider=action_dependencies.apollo_contact_enrichment_provider,
                     recipient_profile_extractor=action_dependencies.recipient_profile_extractor,
                     current_time=timestamp,
+                    pipeline_run_id=selected_work.work_id,
                 )
             except EmailDiscoveryError as exc:
                 if _optional_text(exc.reason_code) in DISCOVERY_PROVIDER_COOLDOWN_OUTCOMES:
                     next_stage = "people_search"
                     run_summary = (
                         "Supervisor kept the durable pipeline run at people_search "
-                        "because Apollo entered provider cooldown after a transient or "
-                        "quota-related failure."
+                        "because Apollo entered provider cooldown or abnormal-usage "
+                        "guardrail pause after a transient, quota-related, or "
+                        "provider-safety failure."
                     )
                     pipeline_run = advance_pipeline_run(
                         connection,
@@ -5888,7 +5985,8 @@ def _validate_selected_work_result(
                     "People search escalation must persist at the people_search "
                     f"boundary; found {pipeline_run.current_stage!r}."
                 )
-            if not _optional_text(pipeline_run.last_error_summary):
+            last_error_summary = _optional_text(pipeline_run.last_error_summary)
+            if not last_error_summary:
                 return "People search escalation did not persist an error summary."
             if pipeline_run.job_posting_id is None:
                 return "People search escalation completed without a linked job_posting_id."
@@ -5917,6 +6015,8 @@ def _validate_selected_work_result(
                 (pipeline_run.job_posting_id,),
             ).fetchone()[0]
             if people_search_artifact_count <= 0:
+                if "without stage progress" in last_error_summary:
+                    return None
                 return (
                     "People search escalation completed without a persisted "
                     "people_search_result artifact."

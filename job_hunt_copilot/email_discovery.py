@@ -69,6 +69,7 @@ DISCOVERY_OUTCOME_RATE_LIMITED = "rate_limited"
 DISCOVERY_OUTCOME_QUOTA_EXHAUSTED = "quota_exhausted"
 DISCOVERY_OUTCOME_NETWORK_ERROR = "network_error"
 DISCOVERY_OUTCOME_PROVIDER_ERROR = "provider_error"
+DISCOVERY_OUTCOME_PROVIDER_PAUSED = "provider_paused"
 DISCOVERY_OUTCOME_SKIPPED_BOUNCED_PROVIDER = "skipped_bounced_provider"
 DISCOVERY_OUTCOME_BOUNCED_MATCH = "bounced_match"
 
@@ -81,6 +82,7 @@ EMAIL_FINDER_PROVIDER_ORDER = (
 APOLLO_COMPANY_SEARCH_URL = "https://api.apollo.io/api/v1/mixed_companies/search"
 APOLLO_PEOPLE_SEARCH_URL = "https://api.apollo.io/api/v1/mixed_people/api_search"
 APOLLO_PEOPLE_ENRICH_URL = "https://api.apollo.io/api/v1/people/match"
+APOLLO_USAGE_STATS_URL = "https://api.apollo.io/api/v1/usage_stats/api_usage_stats"
 APOLLO_API_USER_AGENT = "JobHuntCopilot/1.0 (+local-runtime)"
 PROSPEO_ENRICH_URL = "https://api.prospeo.io/enrich-person"
 PROSPEO_ACCOUNT_URL = "https://api.prospeo.io/account-information"
@@ -96,6 +98,7 @@ DISCOVERY_PROVIDER_COOLDOWN_OUTCOMES = frozenset(
         DISCOVERY_OUTCOME_QUOTA_EXHAUSTED,
         DISCOVERY_OUTCOME_NETWORK_ERROR,
         DISCOVERY_OUTCOME_PROVIDER_ERROR,
+        DISCOVERY_OUTCOME_PROVIDER_PAUSED,
     }
 )
 DISCOVERY_PROVIDER_EXHAUSTION_OUTCOMES = frozenset(
@@ -123,6 +126,27 @@ JSON_LD_RE = re.compile(
 )
 CONNECTIONS_RE = re.compile(r"(\d[\d,]*\+?)\s+connections", re.IGNORECASE)
 FOLLOWERS_RE = re.compile(r"(\d[\d,]*)\s+followers", re.IGNORECASE)
+
+APOLLO_USAGE_ENDPOINT_COMPANY_SEARCH = "api/v1/mixed_companies/search"
+APOLLO_USAGE_ENDPOINT_PEOPLE_SEARCH = "api/v1/mixed_people/api_search"
+APOLLO_USAGE_ENDPOINT_PEOPLE_MATCH = "api/v1/people/match"
+APOLLO_BREAKER_STATE_CLOSED = "closed"
+APOLLO_BREAKER_STATE_OPEN = "open"
+APOLLO_USAGE_STATS_POLL_INTERVAL_SECONDS = 300
+APOLLO_USAGE_SURGE_WINDOW_MINUTES = 15
+APOLLO_USAGE_SURGE_DAILY_DELTA_THRESHOLD = 15
+APOLLO_CONSECUTIVE_PROVIDER_ERROR_THRESHOLD = 3
+APOLLO_CONSECUTIVE_PROVIDER_ERROR_WINDOW_MINUTES = 30
+APOLLO_PEOPLE_SEARCH_RETRY_WITHOUT_PROGRESS_THRESHOLD = 2
+APOLLO_PROVIDER_ERROR_BREAKER_COOLDOWN_MINUTES = 60
+APOLLO_USAGE_HOURLY_BREAKER_COOLDOWN_MINUTES = 60
+APOLLO_USAGE_GUARDRAIL_THRESHOLDS: dict[str, dict[str, int]] = {
+    APOLLO_USAGE_ENDPOINT_COMPANY_SEARCH: {
+        "day_consumed_hard_cap": 100,
+        "hour_consumed_hard_cap": 25,
+        "nearby_surge_daily_delta": APOLLO_USAGE_SURGE_DAILY_DELTA_THRESHOLD,
+    }
+}
 
 SHORTLIST_PRIORITY_ORDER = (
     {
@@ -518,6 +542,23 @@ class EmailDiscoveryProviderResult:
 
 
 @dataclass(frozen=True)
+class ProviderUsageSnapshot:
+    provider_name: str
+    endpoint_key: str
+    observed_at: str
+    raw_payload_json: str
+    day_limit: int | None = None
+    day_consumed: int | None = None
+    day_left_over: int | None = None
+    hour_limit: int | None = None
+    hour_consumed: int | None = None
+    hour_left_over: int | None = None
+    minute_limit: int | None = None
+    minute_consumed: int | None = None
+    minute_left_over: int | None = None
+
+
+@dataclass(frozen=True)
 class EmailDiscoveryRunResult:
     job_posting_id: str
     lead_id: str
@@ -832,6 +873,9 @@ class ConfiguredApolloClient:
         response = self._post_query(APOLLO_PEOPLE_ENRICH_URL, query_params)
         normalized = ApolloEnrichedPerson.from_mapping(response)
         return normalized
+
+    def fetch_usage_stats(self) -> Mapping[str, Any]:
+        return self._post_json(APOLLO_USAGE_STATS_URL, {})
 
     def _post_json(self, url: str, payload: Mapping[str, Any]) -> Mapping[str, Any]:
         request = Request(
@@ -1294,6 +1338,7 @@ def run_apollo_people_search(
     provider: ApolloPeopleSearchProvider | None = None,
     shortlist_limit: int = DEFAULT_SHORTLIST_LIMIT,
     current_time: str | None = None,
+    pipeline_run_id: str | None = None,
 ) -> PeopleSearchRunResult:
     if shortlist_limit <= 0:
         raise EmailDiscoveryError("shortlist_limit must be greater than zero.")
@@ -1323,6 +1368,15 @@ def run_apollo_people_search(
                 posting_row=posting_row,
             )
             if resolved_company is None:
+                _ensure_apollo_request_allowed(
+                    connection,
+                    endpoint_key=APOLLO_USAGE_ENDPOINT_COMPANY_SEARCH,
+                    usage_provider=search_provider,
+                    current_time=timestamp,
+                    pipeline_run_id=pipeline_run_id,
+                    lead_id=str(posting_row["lead_id"]),
+                    job_posting_id=str(posting_row["job_posting_id"]),
+                )
                 resolved_company = search_provider.resolve_company(
                     company_name=posting_row["company_name"],
                     company_domain=company_domain,
@@ -1361,6 +1415,15 @@ def run_apollo_people_search(
                     "search_filters": deepcopy(search_filters),
                 }
             )
+            _ensure_apollo_request_allowed(
+                connection,
+                endpoint_key=APOLLO_USAGE_ENDPOINT_PEOPLE_SEARCH,
+                usage_provider=search_provider,
+                current_time=timestamp,
+                pipeline_run_id=pipeline_run_id,
+                lead_id=str(posting_row["lead_id"]),
+                job_posting_id=str(posting_row["job_posting_id"]),
+            )
             raw_candidates = search_provider.search_people(
                 company_name=posting_row["company_name"],
                 resolved_company=resolved_company,
@@ -1374,6 +1437,15 @@ def run_apollo_people_search(
                         "attempt": "drop_location_after_zero_primary_candidates",
                         "search_filters": deepcopy(relaxed_filters),
                     }
+                )
+                _ensure_apollo_request_allowed(
+                    connection,
+                    endpoint_key=APOLLO_USAGE_ENDPOINT_PEOPLE_SEARCH,
+                    usage_provider=search_provider,
+                    current_time=timestamp,
+                    pipeline_run_id=pipeline_run_id,
+                    lead_id=str(posting_row["lead_id"]),
+                    job_posting_id=str(posting_row["job_posting_id"]),
                 )
                 raw_candidates = search_provider.search_people(
                     company_name=posting_row["company_name"],
@@ -1477,6 +1549,7 @@ def run_apollo_contact_enrichment(
     provider: ApolloContactEnrichmentProvider | None = None,
     recipient_profile_extractor: RecipientProfileExtractor | None = None,
     current_time: str | None = None,
+    pipeline_run_id: str | None = None,
 ) -> ContactEnrichmentRunResult:
     paths = ProjectPaths.from_root(project_root)
     connection = sqlite3.connect(paths.db_path)
@@ -1521,6 +1594,16 @@ def run_apollo_contact_enrichment(
                 if provider_client is None:
                     provider_client = ConfiguredApolloClient.from_paths(paths)
                 try:
+                    _ensure_apollo_request_allowed(
+                        connection,
+                        endpoint_key=APOLLO_USAGE_ENDPOINT_PEOPLE_MATCH,
+                        usage_provider=provider_client,
+                        current_time=timestamp,
+                        pipeline_run_id=pipeline_run_id,
+                        lead_id=str(posting_row["lead_id"]),
+                        job_posting_id=str(posting_row["job_posting_id"]),
+                        contact_id=str(refreshed_row["contact_id"]),
+                    )
                     enriched_payload = provider_client.enrich_person(
                         provider_person_id=_normalize_optional_text(refreshed_row["provider_person_id"]),
                         linkedin_url=_normalize_optional_text(refreshed_row["linkedin_url"]),
@@ -2999,6 +3082,725 @@ def _isoformat_utc(value: datetime) -> str:
     return value.astimezone(timezone.utc).replace(microsecond=0).isoformat().replace("+00:00", "Z")
 
 
+def _ensure_provider_budget_state_row(
+    connection: sqlite3.Connection,
+    *,
+    provider_name: str,
+    current_time: str,
+) -> None:
+    connection.execute(
+        """
+        INSERT INTO provider_budget_state (
+          provider_name, updated_at
+        ) VALUES (?, ?)
+        ON CONFLICT(provider_name) DO NOTHING
+        """,
+        (provider_name, current_time),
+    )
+
+
+def _normalize_apollo_usage_endpoint_key(value: Any) -> str | None:
+    if isinstance(value, Sequence) and not isinstance(value, (str, bytes, bytearray)):
+        normalized_parts = [
+            _normalize_optional_text(part).strip("/")  # type: ignore[union-attr]
+            for part in value
+            if _normalize_optional_text(part)
+        ]
+        if not normalized_parts:
+            return None
+        return "/".join(part for part in normalized_parts if part)
+    normalized = _normalize_optional_text(value)
+    if normalized is None:
+        return None
+    if normalized.startswith("[") and normalized.endswith("]"):
+        try:
+            parsed = json.loads(normalized)
+        except json.JSONDecodeError:
+            parsed = None
+        endpoint_key = _normalize_apollo_usage_endpoint_key(parsed)
+        if endpoint_key is not None:
+            return endpoint_key
+    return normalized.strip("/")
+
+
+def _usage_bucket_payload(
+    payload: Mapping[str, Any],
+    *,
+    bucket_name: str,
+) -> Mapping[str, Any] | None:
+    value = payload.get(bucket_name)
+    return value if isinstance(value, Mapping) else None
+
+
+def _mapping_has_usage_bucket_fields(payload: Mapping[str, Any]) -> bool:
+    return any(
+        key in payload
+        for key in (
+            "day",
+            "hour",
+            "minute",
+            "day_consumed",
+            "hour_consumed",
+            "minute_consumed",
+            "day_limit",
+            "hour_limit",
+            "minute_limit",
+        )
+    )
+
+
+def _extract_apollo_usage_bucket_values(
+    payload: Mapping[str, Any],
+    *,
+    bucket_name: str,
+) -> tuple[int | None, int | None, int | None]:
+    bucket_payload = _usage_bucket_payload(payload, bucket_name=bucket_name)
+    if bucket_payload is not None:
+        limit = _first_non_none_int(
+            bucket_payload,
+            (("limit",), ("max",), ("allowed",), ("total",), (f"{bucket_name}_limit",)),
+        )
+        consumed = _first_non_none_int(
+            bucket_payload,
+            (("consumed",), ("used",), ("count",), ("requests",), (f"{bucket_name}_consumed",)),
+        )
+        left_over = _first_non_none_int(
+            bucket_payload,
+            (("left_over",), ("leftover",), ("remaining",), ("available",), (f"{bucket_name}_left_over",)),
+        )
+        return limit, consumed, left_over
+    return (
+        _first_non_none_int(payload, ((f"{bucket_name}_limit",),)),
+        _first_non_none_int(payload, ((f"{bucket_name}_consumed",),)),
+        _first_non_none_int(payload, ((f"{bucket_name}_left_over",),)),
+    )
+
+
+def _extract_apollo_usage_stat_entries(
+    payload: Mapping[str, Any],
+) -> list[tuple[str, Mapping[str, Any]]]:
+    entries: list[tuple[str, Mapping[str, Any]]] = []
+    seen: set[tuple[str, str]] = set()
+
+    def _visit(node: Any) -> None:
+        if isinstance(node, Mapping):
+            endpoint_value = (
+                node.get("endpoint_key")
+                or node.get("endpoint")
+                or node.get("api_route")
+                or node.get("route")
+                or node.get("path")
+                or node.get("api")
+            )
+            endpoint_key = _normalize_apollo_usage_endpoint_key(endpoint_value)
+            if endpoint_key is not None and _mapping_has_usage_bucket_fields(node):
+                dedupe_key = (endpoint_key, json.dumps(node, sort_keys=True))
+                if dedupe_key not in seen:
+                    seen.add(dedupe_key)
+                    entries.append((endpoint_key, node))
+            for key, value in node.items():
+                if isinstance(value, Mapping):
+                    if _mapping_has_usage_bucket_fields(value):
+                        endpoint_key = _normalize_apollo_usage_endpoint_key(key)
+                        if endpoint_key is not None:
+                            dedupe_key = (endpoint_key, json.dumps(value, sort_keys=True))
+                            if dedupe_key not in seen:
+                                seen.add(dedupe_key)
+                                entries.append((endpoint_key, value))
+                    else:
+                        _visit(value)
+                elif isinstance(value, Sequence) and not isinstance(value, (str, bytes, bytearray)):
+                    _visit(value)
+        elif isinstance(node, Sequence) and not isinstance(node, (str, bytes, bytearray)):
+            for item in node:
+                _visit(item)
+
+    _visit(payload)
+    return entries
+
+
+def _normalize_apollo_usage_snapshots(
+    payload: Mapping[str, Any],
+    *,
+    observed_at: str,
+) -> tuple[ProviderUsageSnapshot, ...]:
+    raw_payload_json = json.dumps(payload, sort_keys=True)
+    snapshots: list[ProviderUsageSnapshot] = []
+    for endpoint_key, item in _extract_apollo_usage_stat_entries(payload):
+        day_limit, day_consumed, day_left_over = _extract_apollo_usage_bucket_values(
+            item,
+            bucket_name="day",
+        )
+        hour_limit, hour_consumed, hour_left_over = _extract_apollo_usage_bucket_values(
+            item,
+            bucket_name="hour",
+        )
+        minute_limit, minute_consumed, minute_left_over = _extract_apollo_usage_bucket_values(
+            item,
+            bucket_name="minute",
+        )
+        snapshots.append(
+            ProviderUsageSnapshot(
+                provider_name=PROVIDER_NAME_APOLLO,
+                endpoint_key=endpoint_key,
+                observed_at=observed_at,
+                raw_payload_json=raw_payload_json,
+                day_limit=day_limit,
+                day_consumed=day_consumed,
+                day_left_over=day_left_over,
+                hour_limit=hour_limit,
+                hour_consumed=hour_consumed,
+                hour_left_over=hour_left_over,
+                minute_limit=minute_limit,
+                minute_consumed=minute_consumed,
+                minute_left_over=minute_left_over,
+            )
+        )
+    return tuple(snapshots)
+
+
+def _persist_provider_usage_snapshots(
+    connection: sqlite3.Connection,
+    *,
+    snapshots: Sequence[ProviderUsageSnapshot],
+    current_time: str,
+) -> None:
+    if not snapshots:
+        return
+    _ensure_provider_budget_state_row(
+        connection,
+        provider_name=snapshots[0].provider_name,
+        current_time=current_time,
+    )
+    for snapshot in snapshots:
+        connection.execute(
+            """
+            INSERT INTO provider_usage_snapshots (
+              provider_usage_snapshot_id, provider_name, endpoint_key,
+              day_limit, day_consumed, day_left_over,
+              hour_limit, hour_consumed, hour_left_over,
+              minute_limit, minute_consumed, minute_left_over,
+              observed_at, raw_payload_json
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """,
+            (
+                new_canonical_id("provider_usage_snapshots"),
+                snapshot.provider_name,
+                snapshot.endpoint_key,
+                snapshot.day_limit,
+                snapshot.day_consumed,
+                snapshot.day_left_over,
+                snapshot.hour_limit,
+                snapshot.hour_consumed,
+                snapshot.hour_left_over,
+                snapshot.minute_limit,
+                snapshot.minute_consumed,
+                snapshot.minute_left_over,
+                snapshot.observed_at,
+                snapshot.raw_payload_json,
+            ),
+        )
+    connection.execute(
+        """
+        UPDATE provider_budget_state
+        SET last_usage_checked_at = ?, updated_at = ?
+        WHERE provider_name = ?
+        """,
+        (
+            current_time,
+            current_time,
+            snapshots[0].provider_name,
+        ),
+    )
+
+
+def _next_utc_hour_boundary(current_time: str) -> str:
+    current_dt = _parse_iso_datetime(current_time)
+    next_hour = current_dt.replace(minute=0, second=0, microsecond=0) + timedelta(hours=1)
+    return _isoformat_utc(next_hour)
+
+
+def _next_utc_day_boundary(current_time: str) -> str:
+    current_dt = _parse_iso_datetime(current_time)
+    next_day = current_dt.replace(hour=0, minute=0, second=0, microsecond=0) + timedelta(days=1)
+    return _isoformat_utc(next_day)
+
+
+def _apollo_breaker_message(
+    *,
+    reason: str,
+    detail: str,
+    breaker_until: str,
+) -> str:
+    return f"Apollo abnormal-usage guardrail tripped ({reason}): {detail}. Apollo discovery is paused until {breaker_until}."
+
+
+def _clear_expired_apollo_breaker_if_needed(
+    connection: sqlite3.Connection,
+    *,
+    current_time: str,
+) -> None:
+    row = connection.execute(
+        """
+        SELECT breaker_state, breaker_until
+        FROM provider_budget_state
+        WHERE provider_name = ?
+        """,
+        (PROVIDER_NAME_APOLLO,),
+    ).fetchone()
+    if row is None:
+        return
+    breaker_state = _normalize_optional_text(row["breaker_state"]) or APOLLO_BREAKER_STATE_CLOSED
+    breaker_until = _normalize_optional_text(row["breaker_until"])
+    if breaker_state != APOLLO_BREAKER_STATE_OPEN or breaker_until is None:
+        return
+    if _parse_iso_datetime(breaker_until) > _parse_iso_datetime(current_time):
+        return
+    connection.execute(
+        """
+        UPDATE provider_budget_state
+        SET breaker_state = ?, breaker_reason = NULL, breaker_message = NULL,
+            breaker_until = NULL, breaker_set_at = NULL, updated_at = ?
+        WHERE provider_name = ?
+        """,
+        (
+            APOLLO_BREAKER_STATE_CLOSED,
+            current_time,
+            PROVIDER_NAME_APOLLO,
+        ),
+    )
+    from .supervisor import upsert_control_values
+
+    upsert_control_values(
+        connection,
+        {
+            "apollo_discovery_paused": False,
+            "apollo_discovery_pause_reason": None,
+            "apollo_discovery_pause_until": None,
+            "apollo_discovery_pause_set_at": None,
+            "apollo_discovery_pause_incident_id": None,
+        },
+        timestamp=current_time,
+    )
+
+
+def _apollo_breaker_active(
+    connection: sqlite3.Connection,
+    *,
+    current_time: str,
+) -> bool:
+    _clear_expired_apollo_breaker_if_needed(connection, current_time=current_time)
+    row = connection.execute(
+        """
+        SELECT breaker_state
+        FROM provider_budget_state
+        WHERE provider_name = ?
+        """,
+        (PROVIDER_NAME_APOLLO,),
+    ).fetchone()
+    if row is None:
+        return False
+    return (_normalize_optional_text(row["breaker_state"]) or APOLLO_BREAKER_STATE_CLOSED) == APOLLO_BREAKER_STATE_OPEN
+
+
+def _apollo_breaker_skip_result(
+    connection: sqlite3.Connection,
+) -> EmailDiscoveryProviderResult:
+    row = connection.execute(
+        """
+        SELECT breaker_message
+        FROM provider_budget_state
+        WHERE provider_name = ?
+        """,
+        (PROVIDER_NAME_APOLLO,),
+    ).fetchone()
+    return EmailDiscoveryProviderResult(
+        provider_name=PROVIDER_NAME_APOLLO,
+        outcome=DISCOVERY_OUTCOME_PROVIDER_PAUSED,
+        message=(
+            _normalize_optional_text(row["breaker_message"])
+            if row is not None
+            else "Apollo abnormal-usage guardrail is active."
+        )
+        or "Apollo abnormal-usage guardrail is active.",
+    )
+
+
+def _trip_apollo_breaker(
+    connection: sqlite3.Connection,
+    *,
+    current_time: str,
+    breaker_reason: str,
+    breaker_message: str,
+    breaker_until: str,
+    pipeline_run_id: str | None = None,
+    lead_id: str | None = None,
+    job_posting_id: str | None = None,
+    contact_id: str | None = None,
+) -> None:
+    _ensure_provider_budget_state_row(
+        connection,
+        provider_name=PROVIDER_NAME_APOLLO,
+        current_time=current_time,
+    )
+    current_row = connection.execute(
+        """
+        SELECT breaker_state, breaker_until
+        FROM provider_budget_state
+        WHERE provider_name = ?
+        """,
+        (PROVIDER_NAME_APOLLO,),
+    ).fetchone()
+    current_breaker_state = (
+        _normalize_optional_text(current_row["breaker_state"])
+        if current_row is not None
+        else None
+    ) or APOLLO_BREAKER_STATE_CLOSED
+    current_breaker_until = (
+        _normalize_optional_text(current_row["breaker_until"])
+        if current_row is not None
+        else None
+    )
+    current_incident_row = connection.execute(
+        """
+        SELECT control_value
+        FROM agent_control_state
+        WHERE control_key = 'apollo_discovery_pause_incident_id'
+        """
+    ).fetchone()
+    already_open = current_breaker_state == APOLLO_BREAKER_STATE_OPEN and (
+        current_breaker_until is None
+        or _parse_iso_datetime(current_breaker_until) > _parse_iso_datetime(current_time)
+    )
+    connection.execute(
+        """
+        UPDATE provider_budget_state
+        SET breaker_state = ?, breaker_reason = ?, breaker_message = ?,
+            breaker_until = ?, breaker_set_at = ?, updated_at = ?
+        WHERE provider_name = ?
+        """,
+        (
+            APOLLO_BREAKER_STATE_OPEN,
+            breaker_reason,
+            breaker_message,
+            breaker_until,
+            current_time,
+            current_time,
+            PROVIDER_NAME_APOLLO,
+        ),
+    )
+    incident_id: str | None = None
+    if not already_open:
+        from .supervisor import INCIDENT_SEVERITY_HIGH, create_agent_incident
+
+        incident = create_agent_incident(
+            connection,
+            incident_type="provider_spend_guardrail",
+            severity=INCIDENT_SEVERITY_HIGH,
+            summary=breaker_message,
+            pipeline_run_id=pipeline_run_id,
+            lead_id=lead_id,
+            job_posting_id=job_posting_id,
+            contact_id=contact_id,
+            created_at=current_time,
+        )
+        incident_id = incident.agent_incident_id
+        connection.execute(
+            """
+            INSERT INTO provider_budget_events (
+              provider_budget_event_id, provider_name, event_type, credit_delta,
+              remaining_credits_after, related_discovery_attempt_id, related_contact_id, created_at
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+            """,
+            (
+                new_canonical_id("provider_budget_events"),
+                PROVIDER_NAME_APOLLO,
+                DISCOVERY_OUTCOME_PROVIDER_PAUSED,
+                0,
+                None,
+                None,
+                contact_id,
+                current_time,
+            ),
+        )
+    from .supervisor import upsert_control_values
+
+    incident_id = incident_id or (
+        _normalize_optional_text(current_incident_row["control_value"])
+        if current_incident_row is not None
+        else None
+    )
+    upsert_control_values(
+        connection,
+        {
+            "apollo_discovery_paused": True,
+            "apollo_discovery_pause_reason": breaker_message,
+            "apollo_discovery_pause_until": breaker_until,
+            "apollo_discovery_pause_set_at": current_time,
+            "apollo_discovery_pause_incident_id": incident_id,
+            "apollo_usage_last_checked_at": current_time,
+        },
+        timestamp=current_time,
+    )
+
+
+def _maybe_trip_apollo_usage_breaker_from_snapshots(
+    connection: sqlite3.Connection,
+    *,
+    snapshots: Sequence[ProviderUsageSnapshot],
+    current_time: str,
+    pipeline_run_id: str | None = None,
+    lead_id: str | None = None,
+    job_posting_id: str | None = None,
+) -> None:
+    for snapshot in snapshots:
+        thresholds = APOLLO_USAGE_GUARDRAIL_THRESHOLDS.get(snapshot.endpoint_key)
+        if thresholds is None:
+            continue
+        if (
+            snapshot.day_consumed is not None
+            and snapshot.day_consumed >= thresholds["day_consumed_hard_cap"]
+        ):
+            breaker_until = _next_utc_day_boundary(current_time)
+            _trip_apollo_breaker(
+                connection,
+                current_time=current_time,
+                breaker_reason="daily_usage_hard_cap",
+                breaker_message=_apollo_breaker_message(
+                    reason="daily_usage_hard_cap",
+                    detail=(
+                        f"{snapshot.endpoint_key} day_consumed={snapshot.day_consumed} "
+                        f"reached the configured daily cap {thresholds['day_consumed_hard_cap']}"
+                    ),
+                    breaker_until=breaker_until,
+                ),
+                breaker_until=breaker_until,
+                pipeline_run_id=pipeline_run_id,
+                lead_id=lead_id,
+                job_posting_id=job_posting_id,
+            )
+            return
+        if (
+            snapshot.hour_consumed is not None
+            and snapshot.hour_consumed >= thresholds["hour_consumed_hard_cap"]
+        ):
+            breaker_until = _next_utc_hour_boundary(current_time)
+            _trip_apollo_breaker(
+                connection,
+                current_time=current_time,
+                breaker_reason="hourly_usage_hard_cap",
+                breaker_message=_apollo_breaker_message(
+                    reason="hourly_usage_hard_cap",
+                    detail=(
+                        f"{snapshot.endpoint_key} hour_consumed={snapshot.hour_consumed} "
+                        f"reached the configured hourly cap {thresholds['hour_consumed_hard_cap']}"
+                    ),
+                    breaker_until=breaker_until,
+                ),
+                breaker_until=breaker_until,
+                pipeline_run_id=pipeline_run_id,
+                lead_id=lead_id,
+                job_posting_id=job_posting_id,
+            )
+            return
+        if snapshot.day_consumed is None:
+            continue
+        previous_row = connection.execute(
+            """
+            SELECT day_consumed, observed_at
+            FROM provider_usage_snapshots
+            WHERE provider_name = ?
+              AND endpoint_key = ?
+              AND observed_at < ?
+            ORDER BY observed_at DESC, provider_usage_snapshot_id DESC
+            LIMIT 1
+            """,
+            (
+                PROVIDER_NAME_APOLLO,
+                snapshot.endpoint_key,
+                snapshot.observed_at,
+            ),
+        ).fetchone()
+        if previous_row is None:
+            continue
+        previous_day_consumed = _normalize_optional_int(previous_row["day_consumed"])
+        previous_observed_at = _normalize_optional_text(previous_row["observed_at"])
+        if previous_day_consumed is None or previous_observed_at is None:
+            continue
+        if _parse_iso_datetime(previous_observed_at) < (
+            _parse_iso_datetime(snapshot.observed_at)
+            - timedelta(minutes=APOLLO_USAGE_SURGE_WINDOW_MINUTES)
+        ):
+            continue
+        day_delta = snapshot.day_consumed - previous_day_consumed
+        if day_delta < thresholds["nearby_surge_daily_delta"]:
+            continue
+        breaker_until = _next_utc_day_boundary(current_time)
+        _trip_apollo_breaker(
+            connection,
+            current_time=current_time,
+            breaker_reason="usage_surge",
+            breaker_message=_apollo_breaker_message(
+                reason="usage_surge",
+                detail=(
+                    f"{snapshot.endpoint_key} day_consumed increased by {day_delta} between "
+                    f"{previous_observed_at} and {snapshot.observed_at}"
+                ),
+                breaker_until=breaker_until,
+            ),
+            breaker_until=breaker_until,
+            pipeline_run_id=pipeline_run_id,
+            lead_id=lead_id,
+            job_posting_id=job_posting_id,
+        )
+        return
+
+
+def _maybe_trip_apollo_provider_error_breaker(
+    connection: sqlite3.Connection,
+    *,
+    current_time: str,
+) -> None:
+    window_start = _isoformat_utc(
+        _parse_iso_datetime(current_time)
+        - timedelta(minutes=APOLLO_CONSECUTIVE_PROVIDER_ERROR_WINDOW_MINUTES)
+    )
+    rows = connection.execute(
+        """
+        SELECT event_type
+        FROM provider_budget_events
+        WHERE provider_name = ?
+          AND created_at >= ?
+        ORDER BY created_at DESC, provider_budget_event_id DESC
+        LIMIT ?
+        """,
+        (
+            PROVIDER_NAME_APOLLO,
+            window_start,
+            APOLLO_CONSECUTIVE_PROVIDER_ERROR_THRESHOLD,
+        ),
+    ).fetchall()
+    if len(rows) < APOLLO_CONSECUTIVE_PROVIDER_ERROR_THRESHOLD:
+        return
+    if any(
+        (_normalize_optional_text(row["event_type"]) or "") != DISCOVERY_OUTCOME_PROVIDER_ERROR
+        for row in rows
+    ):
+        return
+    breaker_until = _isoformat_utc(
+        _parse_iso_datetime(current_time)
+        + timedelta(minutes=APOLLO_PROVIDER_ERROR_BREAKER_COOLDOWN_MINUTES)
+    )
+    _trip_apollo_breaker(
+        connection,
+        current_time=current_time,
+        breaker_reason="consecutive_provider_errors",
+        breaker_message=_apollo_breaker_message(
+            reason="consecutive_provider_errors",
+            detail=(
+                f"Apollo returned {APOLLO_CONSECUTIVE_PROVIDER_ERROR_THRESHOLD} consecutive "
+                f"provider_error outcomes within {APOLLO_CONSECUTIVE_PROVIDER_ERROR_WINDOW_MINUTES} minutes"
+            ),
+            breaker_until=breaker_until,
+        ),
+        breaker_until=breaker_until,
+    )
+
+
+def _maybe_refresh_apollo_usage_stats(
+    connection: sqlite3.Connection,
+    *,
+    usage_provider: object | None,
+    current_time: str,
+    pipeline_run_id: str | None = None,
+    lead_id: str | None = None,
+    job_posting_id: str | None = None,
+) -> None:
+    _ensure_provider_budget_state_row(
+        connection,
+        provider_name=PROVIDER_NAME_APOLLO,
+        current_time=current_time,
+    )
+    row = connection.execute(
+        """
+        SELECT last_usage_checked_at
+        FROM provider_budget_state
+        WHERE provider_name = ?
+        """,
+        (PROVIDER_NAME_APOLLO,),
+    ).fetchone()
+    last_checked_at = _normalize_optional_text(row["last_usage_checked_at"]) if row is not None else None
+    if last_checked_at is not None and (
+        _parse_iso_datetime(last_checked_at)
+        + timedelta(seconds=APOLLO_USAGE_STATS_POLL_INTERVAL_SECONDS)
+    ) > _parse_iso_datetime(current_time):
+        return
+    fetch_usage_stats = getattr(usage_provider, "fetch_usage_stats", None)
+    if not callable(fetch_usage_stats):
+        return
+    payload = fetch_usage_stats()
+    if not isinstance(payload, Mapping):
+        raise EmailDiscoveryError(
+            "Apollo usage-stats endpoint returned a malformed top-level response body.",
+            reason_code=DISCOVERY_OUTCOME_PROVIDER_ERROR,
+        )
+    snapshots = _normalize_apollo_usage_snapshots(payload, observed_at=current_time)
+    if not snapshots:
+        raise EmailDiscoveryError(
+            "Apollo usage-stats endpoint did not return any usable endpoint counters.",
+            reason_code=DISCOVERY_OUTCOME_PROVIDER_ERROR,
+        )
+    _persist_provider_usage_snapshots(
+        connection,
+        snapshots=snapshots,
+        current_time=current_time,
+    )
+    _maybe_trip_apollo_usage_breaker_from_snapshots(
+        connection,
+        snapshots=snapshots,
+        current_time=current_time,
+        pipeline_run_id=pipeline_run_id,
+        lead_id=lead_id,
+        job_posting_id=job_posting_id,
+    )
+    from .supervisor import upsert_control_values
+
+    upsert_control_values(
+        connection,
+        {"apollo_usage_last_checked_at": current_time},
+        timestamp=current_time,
+    )
+
+
+def _ensure_apollo_request_allowed(
+    connection: sqlite3.Connection,
+    *,
+    endpoint_key: str,
+    usage_provider: object | None,
+    current_time: str,
+    pipeline_run_id: str | None = None,
+    lead_id: str | None = None,
+    job_posting_id: str | None = None,
+    contact_id: str | None = None,
+) -> None:
+    if endpoint_key == APOLLO_USAGE_ENDPOINT_COMPANY_SEARCH:
+        _maybe_refresh_apollo_usage_stats(
+            connection,
+            usage_provider=usage_provider,
+            current_time=current_time,
+            pipeline_run_id=pipeline_run_id,
+            lead_id=lead_id,
+            job_posting_id=job_posting_id,
+        )
+    if not _apollo_breaker_active(connection, current_time=current_time):
+        return
+    pause_result = _apollo_breaker_skip_result(connection)
+    raise EmailDiscoveryError(
+        pause_result.message or "Apollo abnormal-usage guardrail is active.",
+        reason_code=DISCOVERY_OUTCOME_PROVIDER_PAUSED,
+    )
+
+
 def _resolve_provider_cooldown_until(
     *,
     result: EmailDiscoveryProviderResult,
@@ -3193,10 +3995,16 @@ def is_role_targeted_people_search_actionable_now(
     *,
     current_time: str,
 ) -> bool:
-    return not _provider_cooldown_active(
-        connection,
-        provider_name=PROVIDER_NAME_APOLLO,
-        current_time=current_time,
+    return (
+        not _provider_cooldown_active(
+            connection,
+            provider_name=PROVIDER_NAME_APOLLO,
+            current_time=current_time,
+        )
+        and not _apollo_breaker_active(
+            connection,
+            current_time=current_time,
+        )
     )
 
 
@@ -3658,6 +4466,11 @@ def _persist_provider_budget_signal(
             created_at,
         ),
     )
+    if provider_name == PROVIDER_NAME_APOLLO and result.outcome == DISCOVERY_OUTCOME_PROVIDER_ERROR:
+        _maybe_trip_apollo_provider_error_breaker(
+            connection,
+            current_time=created_at,
+        )
 
 
 def _persist_discovery_attempt(
