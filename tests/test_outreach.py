@@ -38,7 +38,10 @@ from job_hunt_copilot.outreach import (
     RECIPIENT_TYPE_ENGINEER,
     RECIPIENT_TYPE_HIRING_MANAGER,
     RECIPIENT_TYPE_RECRUITER,
+    _load_sender_growth_areas,
+    _load_sender_interest_areas,
     _normalize_education_line,
+    _select_role_theme_selection,
     execute_general_learning_outreach,
     execute_role_targeted_send_set,
     evaluate_role_targeted_send_set,
@@ -3666,6 +3669,40 @@ def test_refresh_role_targeted_generated_drafts_rewrites_pending_unsent_messages
     )
 
     connection.close()
+
+
+def test_select_role_theme_selection_falls_back_to_ai_ml_title_family_when_signals_are_generic(
+    tmp_path: Path,
+):
+    project_root, paths = bootstrap_project(tmp_path)
+    growth_areas = _load_sender_growth_areas(paths)
+    interest_areas = _load_sender_interest_areas(paths)
+
+    selection = _select_role_theme_selection(
+        {
+            "signals_by_priority": {
+                "must_have": [],
+                "core_responsibility": [
+                    {"signal": "Partner with stakeholders across the organization."},
+                ],
+                "nice_to_have": [],
+            },
+            "role_intent_summary": "Collaborate across teams to deliver solutions.",
+            "role_metadata": {
+                "role_title": "AI/ML Engineer [Multiple Positions Available]",
+            },
+        },
+        "Support delivery across teams and business partners.",
+        step_4_payload={},
+        step_6_payload={},
+        role_title="AI/ML Engineer [Multiple Positions Available]",
+        growth_areas=growth_areas,
+        interest_areas=interest_areas,
+    )
+
+    assert selection is not None
+    assert selection.role_family == "ai_ml"
+    assert selection.focus_phrase == "AI/ML systems"
 
 
 def test_role_targeted_draft_batch_surfaces_failed_contact_without_losing_successes(tmp_path: Path):

@@ -2534,6 +2534,16 @@ def select_next_supervisor_work_unit(
     if generated_sending_work is not None:
         return generated_sending_work
 
+    send_ready_sending_work = _select_open_pipeline_run_work_unit(
+        connection,
+        project_root=project_root,
+        current_time=current_time,
+        local_timezone=action_dependencies.local_timezone,
+        send_ready_only=True,
+    )
+    if send_ready_sending_work is not None:
+        return send_ready_sending_work
+
     orphaned_generated_sending_work = _select_orphaned_send_stage_posting_work_unit(
         connection,
         project_root=project_root,
@@ -2769,6 +2779,7 @@ def _select_open_pipeline_run_work_unit(
     current_time: str,
     local_timezone: object | str | None = None,
     generated_frontier_only: bool = False,
+    send_ready_only: bool = False,
     defer_ordinary_discovery_backlog: bool = False,
 ) -> SupervisorWorkUnit | None:
     from .email_discovery import is_role_targeted_email_discovery_actionable_now
@@ -2797,6 +2808,11 @@ def _select_open_pipeline_run_work_unit(
     ).fetchall()
     for row in rows:
         pipeline_run = _pipeline_run_from_row(row)
+        if (
+            (generated_frontier_only or send_ready_only)
+            and pipeline_run.current_stage != "sending"
+        ):
+            continue
         frontier_kind = None
         stale_reconciliation_target_status = None
         if pipeline_run.current_stage == "delivery_feedback":
@@ -2901,7 +2917,15 @@ def _select_open_pipeline_run_work_unit(
                                 if next_frontier.message_status == MESSAGE_STATUS_GENERATED
                                 else "existing_frontier"
                             )
+                        else:
+                            frontier_kind = "draftable_send_set"
                 if generated_frontier_only and frontier_kind != "generated_frontier":
+                    continue
+                if send_ready_only and frontier_kind not in {
+                    "generated_frontier",
+                    "existing_frontier",
+                    "draftable_send_set",
+                }:
                     continue
         if pipeline_run.current_stage == "email_discovery":
             job_posting_id = _optional_text(pipeline_run.job_posting_id)
@@ -2925,6 +2949,16 @@ def _select_open_pipeline_run_work_unit(
             summary = (
                 "Resume an already-generated send frontier before Gmail polling "
                 "or fresh draft generation so send-ready outreach drains first."
+            )
+        elif pipeline_run.current_stage == "sending" and frontier_kind == "draftable_send_set":
+            summary = (
+                "Resume a send-ready posting before older discovery backlog so the "
+                "next automatic outreach wave can be drafted and sent."
+            )
+        elif pipeline_run.current_stage == "sending" and frontier_kind == "existing_frontier":
+            summary = (
+                "Resume an actionable send frontier before older discovery backlog "
+                "so ready outreach can continue draining."
             )
         elif pipeline_run.current_stage == "sending" and frontier_kind == "stale_reconciliation":
             summary = (

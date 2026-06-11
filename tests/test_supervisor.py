@@ -1468,6 +1468,133 @@ def test_select_next_supervisor_work_unit_prefers_generated_send_frontier_over_g
     assert "already-generated send frontier" in selected_work.summary
 
 
+def test_select_next_supervisor_work_unit_prefers_draftable_send_ready_run_over_stale_reconciliation_and_discovery(
+    tmp_path,
+    monkeypatch,
+):
+    import job_hunt_copilot.supervisor as supervisor_module
+
+    project_root = bootstrap_project(tmp_path)
+    connection = connect_database(project_root / "job_hunt_copilot.db")
+    resume_agent(
+        connection,
+        manual_command="jhc-agent-start",
+        timestamp="2026-04-06T00:00:00Z",
+    )
+
+    seed_named_role_targeted_posting(
+        connection,
+        lead_id="ld_draftable",
+        job_posting_id="jp_draftable",
+        company_name="Draftable Co",
+        role_title="Platform Engineer",
+        posting_status="ready_for_outreach",
+        timestamp="2026-04-06T00:01:00Z",
+    )
+    draftable_run, _ = ensure_role_targeted_pipeline_run(
+        connection,
+        lead_id="ld_draftable",
+        job_posting_id="jp_draftable",
+        current_stage="sending",
+        started_at="2026-04-06T00:02:00Z",
+    )
+    connection.execute(
+        """
+        INSERT INTO contacts (
+          contact_id, identity_key, display_name, company_name, origin_component, contact_status,
+          full_name, current_working_email, position_title, created_at, updated_at
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        """,
+        (
+            "ct_draftable",
+            "draftable co|jordan-manager",
+            "Jordan Manager",
+            "Draftable Co",
+            "email_discovery",
+            "working_email_found",
+            "Jordan Manager",
+            "jordan@draftable.example",
+            "Engineering Manager",
+            "2026-04-06T00:03:00Z",
+            "2026-04-06T00:03:00Z",
+        ),
+    )
+    connection.execute(
+        """
+        INSERT INTO job_posting_contacts (
+          job_posting_contact_id, job_posting_id, contact_id, recipient_type, relevance_reason,
+          link_level_status, created_at, updated_at
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+        """,
+        (
+            "jpc_draftable",
+            "jp_draftable",
+            "ct_draftable",
+            "hiring_manager",
+            "Selected for draftable send-set priority coverage.",
+            "shortlisted",
+            "2026-04-06T00:03:00Z",
+            "2026-04-06T00:03:00Z",
+        ),
+    )
+
+    seed_named_role_targeted_posting(
+        connection,
+        lead_id="ld_stale",
+        job_posting_id="jp_stale",
+        company_name="Stale Co",
+        role_title="Machine Learning Engineer",
+        posting_status="outreach_in_progress",
+        timestamp="2026-04-06T00:04:00Z",
+    )
+    ensure_role_targeted_pipeline_run(
+        connection,
+        lead_id="ld_stale",
+        job_posting_id="jp_stale",
+        current_stage="sending",
+        started_at="2026-04-06T00:05:00Z",
+    )
+    monkeypatch.setattr(
+        supervisor_module,
+        "_classify_stale_role_targeted_sending_reconciliation",
+        lambda *_args, job_posting_id, **_kwargs: (
+            "completed" if job_posting_id == "jp_stale" else None
+        ),
+    )
+
+    seed_named_role_targeted_posting(
+        connection,
+        lead_id="ld_discovery",
+        job_posting_id="jp_discovery",
+        company_name="Discovery Co",
+        role_title="Backend Engineer",
+        posting_status="requires_contacts",
+        timestamp="2026-04-05T23:59:00Z",
+    )
+    ensure_role_targeted_pipeline_run(
+        connection,
+        lead_id="ld_discovery",
+        job_posting_id="jp_discovery",
+        current_stage="email_discovery",
+        started_at="2026-04-05T23:59:30Z",
+    )
+
+    selected_work = select_next_supervisor_work_unit(
+        connection,
+        project_root=project_root,
+        current_time="2026-04-06T00:08:00Z",
+        action_dependencies=SupervisorActionDependencies(local_timezone="UTC"),
+    )
+    connection.close()
+
+    assert selected_work is not None
+    assert selected_work.work_type == "pipeline_run"
+    assert selected_work.action_id == "run_role_targeted_sending"
+    assert selected_work.pipeline_run_id == draftable_run.pipeline_run_id
+    assert selected_work.job_posting_id == "jp_draftable"
+    assert "drafted and sent" in selected_work.summary
+
+
 def test_select_next_supervisor_work_unit_prefers_orphaned_existing_send_frontier_over_feedback_cleanup_and_discovery(
     tmp_path,
     monkeypatch,

@@ -4767,6 +4767,65 @@ def _build_role_theme_candidates(
                 growth_area_label=matched_growth_area.label if matched_growth_area is not None else None,
             )
         )
+    if candidates:
+        return candidates
+    role_rule = _role_theme_rule(derived_role_title)
+    fallback_focus = (
+        _normalize_optional_text(role_rule.get("fallback_label"))
+        if role_rule is not None
+        else None
+    )
+    if fallback_focus is None or derived_role_title is None:
+        return candidates
+    anchor_labels = tuple(
+        sorted(_extract_role_focus_anchors(fallback_focus) | _extract_role_focus_anchors(derived_role_title))
+    )
+    if not anchor_labels:
+        return candidates
+    title_score = _score_role_signal_title_alignment(fallback_focus, derived_role_title)
+    technical_score = _role_signal_technical_priority(fallback_focus, derived_role_title)
+    specificity_score = _score_role_signal_specificity(fallback_focus, derived_role_title)
+    growth_score, matched_growth_area = _match_growth_area(
+        fallback_focus,
+        role_title=derived_role_title,
+        anchor_labels=anchor_labels,
+        growth_areas=growth_areas,
+    )
+    interest_score, _matched_interest_area = _match_interest_area(
+        fallback_focus,
+        source_text=derived_role_title,
+        role_title=derived_role_title,
+        anchor_labels=anchor_labels,
+        interest_areas=interest_areas,
+    )
+    if technical_score <= 0 or specificity_score <= 0:
+        return candidates
+    if growth_score <= 0 and interest_score <= 0:
+        return candidates
+    candidates.append(
+        _RoleThemeCandidate(
+            raw_signal=derived_role_title,
+            source_kind="role_title_fallback",
+            normalized_focus=fallback_focus,
+            anchor_labels=anchor_labels,
+            focus_parts=_candidate_focus_parts(derived_role_title, fallback_focus),
+            score=(
+                technical_score * 100
+                + specificity_score * 25
+                + title_score * 20
+                + growth_score * 5
+                + interest_score * 5
+            ),
+            title_score=title_score,
+            technical_score=technical_score,
+            specificity_score=specificity_score,
+            background_score=0,
+            growth_score=growth_score,
+            interest_score=interest_score,
+            role_family=_normalize_optional_text(role_rule.get("family")),
+            growth_area_label=matched_growth_area.label if matched_growth_area is not None else None,
+        )
+    )
     return candidates
 
 
