@@ -251,6 +251,17 @@ STALE_ROLE_TARGETED_RETIREMENT_POSTING_STATUSES = frozenset(
         JOB_POSTING_STATUS_COMPLETED,
     }
 )
+POSTING_ARCHIVE_CUTOVER_COMPONENT = "posting_archive_cutover"
+FOLLOWUP_PLAN_STATUS_SKIPPED = "skipped"
+FOLLOWUP_PLAN_TERMINAL_STATUSES = frozenset(
+    {
+        "sent",
+        FOLLOWUP_PLAN_STATUS_SKIPPED,
+        "cancelled",
+    }
+)
+ARCHIVABLE_UNSENT_MESSAGE_STATUSES = frozenset({"generated", "blocked"})
+ARCHIVABLE_REVIEW_PACKET_STATUSES = frozenset({REVIEW_PACKET_STATUS_PENDING})
 PMSET_EVENT_LINE_PATTERN = re.compile(
     r"^(?P<timestamp>\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2} [+-]\d{4})\s+(?P<body>.+)$"
 )
@@ -1925,6 +1936,420 @@ def abandon_job_posting(
         "manual_command": manual_command,
         "control_state": dict(control_state.values),
     }
+
+
+def _render_posting_archive_cutover_markdown(report: dict[str, Any]) -> str:
+    lines = [
+        "# Posting Archive Cutover",
+        "",
+        f"- Produced at: `{report['produced_at']}`",
+        f"- Cutoff created before: `{report['cutoff_created_before']}`",
+        f"- Archived postings: {report['archived_posting_count']}",
+        f"- Abandoned active postings: {report['abandoned_posting_count']}",
+        f"- Retired open pipeline runs: {report['retired_pipeline_run_count']}",
+        f"- Retired unsent drafts: {report['retired_unsent_message_count']}",
+        f"- Skipped follow-up plans: {report['skipped_followup_plan_count']}",
+        f"- Reviewed expert-review packets: {report['reviewed_packet_count']}",
+        "",
+    ]
+    postings = report.get("archived_postings") or []
+    if not postings:
+        lines.extend(["No postings matched the requested cutoff.", ""])
+        return "\n".join(lines)
+
+    lines.extend(["## Archived Postings", ""])
+    for posting in postings:
+        lines.extend(
+            [
+                f"- `{posting['job_posting_id']}` {posting['company_name']} | {posting['role_title']}",
+                (
+                    "  - posting status: "
+                    f"`{posting['previous_status']}` -> `{posting['posting_status']}`"
+                ),
+                f"  - retired open pipeline runs: {len(posting['retired_pipeline_runs'])}",
+                f"  - retired unsent drafts: {posting['retired_unsent_message_count']}",
+                f"  - skipped follow-up plans: {posting['skipped_followup_plan_count']}",
+                f"  - reviewed packets: {posting['reviewed_packet_count']}",
+            ]
+        )
+    lines.append("")
+    return "\n".join(lines)
+
+
+def _write_posting_archive_cutover_artifacts(
+    paths: ProjectPaths,
+    *,
+    archive_run_id: str,
+    report: dict[str, Any],
+    backup_db_path: Path,
+) -> dict[str, str]:
+    artifact_dir = (
+        paths.project_root
+        / "ops"
+        / "posting-archive-cutovers"
+        / archive_run_id
+    )
+    json_path = artifact_dir / "summary.json"
+    markdown_path = artifact_dir / "summary.md"
+    artifact_dir.mkdir(parents=True, exist_ok=True)
+    write_text_atomic(json_path, json.dumps(report, indent=2, sort_keys=False) + "\n")
+    write_text_atomic(markdown_path, _render_posting_archive_cutover_markdown(report))
+    return {
+        "summary_json_path": str(json_path),
+        "summary_markdown_path": str(markdown_path),
+        "backup_db_path": str(backup_db_path),
+    }
+
+
+def archive_postings_created_before_cutover(
+    *,
+    cutoff_created_before: str,
+    project_root: Path | str | None = None,
+    reason: str | None = None,
+    manual_command: str | None = None,
+    timestamp: str | None = None,
+) -> dict[str, Any]:
+    cutoff_text = _require_non_blank(cutoff_created_before, "cutoff_created_before")
+    paths = ProjectPaths.from_root(project_root)
+    migration = initialize_database(paths.db_path)
+    current_timestamp = timestamp or now_utc_iso()
+    reason_text = (
+        reason
+        or "The owner explicitly archived this pre-cutover posting backlog so only newer postings remain actionable."
+    ).strip()
+    archive_run_id = (
+        f"archive-{current_timestamp.replace(':', '').replace('-', '')}-"
+        f"{uuid.uuid4().hex[:8]}"
+    )
+
+    with connect_canonical_database(paths) as connection:
+        control_state = read_agent_control_state(connection, timestamp=current_timestamp)
+        if control_state.agent_enabled and control_state.agent_mode == AGENT_MODE_RUNNING:
+            raise ValueError(
+                "Pause the main agent before running a posting archive cutover."
+            )
+
+        backup_disk_path = paths.project_root / "ops" / "posting-archive-cutovers" / archive_run_id / "pre_cutover_backup.sqlite3"
+        backup_disk_path.parent.mkdir(parents=True, exist_ok=True)
+        backup_sqlite = sqlite3.connect(backup_disk_path)
+        try:
+            connection.backup(backup_sqlite)
+        finally:
+            backup_sqlite.close()
+
+        posting_rows = connection.execute(
+            """
+            SELECT job_posting_id, lead_id, company_name, role_title, posting_status,
+                   archived_at, created_at
+            FROM job_postings
+            WHERE created_at < ?
+            ORDER BY created_at ASC, job_posting_id ASC
+            """,
+            (cutoff_text,),
+        ).fetchall()
+
+        archived_postings: list[dict[str, Any]] = []
+        abandoned_posting_count = 0
+        retired_pipeline_run_count = 0
+        retired_unsent_message_count = 0
+        skipped_followup_plan_count = 0
+        reviewed_packet_count = 0
+
+        for posting_row in posting_rows:
+            job_posting_id = str(posting_row["job_posting_id"])
+            lead_id = str(posting_row["lead_id"])
+            previous_status = str(posting_row["posting_status"])
+            previously_archived_at = (
+                str(posting_row["archived_at"]) if posting_row["archived_at"] else None
+            )
+            posting_status_after_archive = previous_status
+            state_transition_event_id = None
+            override_event_id = None
+
+            if previous_status in ABANDONABLE_POSTING_STATUSES:
+                posting_status_after_archive = JOB_POSTING_STATUS_ABANDONED
+                with connection:
+                    connection.execute(
+                        """
+                        UPDATE job_postings
+                        SET posting_status = ?, archived_at = COALESCE(archived_at, ?), updated_at = ?
+                        WHERE job_posting_id = ?
+                        """,
+                        (
+                            posting_status_after_archive,
+                            current_timestamp,
+                            current_timestamp,
+                            job_posting_id,
+                        ),
+                    )
+                    state_transition_event_id = _record_state_transition(
+                        connection,
+                        object_type="job_postings",
+                        object_id=job_posting_id,
+                        stage="posting_status",
+                        previous_state=previous_status,
+                        new_state=posting_status_after_archive,
+                        transition_timestamp=current_timestamp,
+                        transition_reason=reason_text,
+                        lead_id=lead_id,
+                        job_posting_id=job_posting_id,
+                    )
+                    override_event = record_override_event(
+                        connection,
+                        object_type="job_postings",
+                        object_id=job_posting_id,
+                        component_stage="posting_status",
+                        previous_value=previous_status,
+                        new_value=posting_status_after_archive,
+                        override_reason=reason_text,
+                        override_by="owner",
+                        lead_id=lead_id,
+                        job_posting_id=job_posting_id,
+                        override_timestamp=current_timestamp,
+                    )
+                override_event_id = override_event.override_event_id
+                abandoned_posting_count += 1
+            else:
+                with connection:
+                    connection.execute(
+                        """
+                        UPDATE job_postings
+                        SET archived_at = COALESCE(archived_at, ?), updated_at = ?
+                        WHERE job_posting_id = ?
+                        """,
+                        (
+                            current_timestamp,
+                            current_timestamp,
+                            job_posting_id,
+                        ),
+                    )
+
+            message_rows = connection.execute(
+                """
+                SELECT outreach_message_id, outreach_mode, message_status
+                FROM outreach_messages
+                WHERE job_posting_id = ?
+                  AND sent_at IS NULL
+                  AND message_status IN ({})
+                ORDER BY created_at ASC, outreach_message_id ASC
+                """.format(",".join("?" for _ in ARCHIVABLE_UNSENT_MESSAGE_STATUSES)),
+                (
+                    job_posting_id,
+                    *sorted(ARCHIVABLE_UNSENT_MESSAGE_STATUSES),
+                ),
+            ).fetchall()
+            retired_message_ids = [str(row["outreach_message_id"]) for row in message_rows]
+            if retired_message_ids:
+                with connection:
+                    connection.executemany(
+                        """
+                        UPDATE outreach_messages
+                        SET message_status = ?, updated_at = ?
+                        WHERE outreach_message_id = ?
+                        """,
+                        [
+                            (
+                                MESSAGE_STATUS_FAILED,
+                                current_timestamp,
+                                outreach_message_id,
+                            )
+                            for outreach_message_id in retired_message_ids
+                        ],
+                    )
+
+            followup_rows = connection.execute(
+                """
+                SELECT outreach_followup_plan_id, plan_status
+                FROM outreach_followup_plans
+                WHERE job_posting_id = ?
+                  AND plan_status NOT IN ({})
+                ORDER BY created_at ASC, outreach_followup_plan_id ASC
+                """.format(",".join("?" for _ in FOLLOWUP_PLAN_TERMINAL_STATUSES)),
+                (
+                    job_posting_id,
+                    *sorted(FOLLOWUP_PLAN_TERMINAL_STATUSES),
+                ),
+            ).fetchall()
+            skipped_followup_plan_ids = [
+                str(row["outreach_followup_plan_id"]) for row in followup_rows
+            ]
+            if skipped_followup_plan_ids:
+                with connection:
+                    connection.executemany(
+                        """
+                        UPDATE outreach_followup_plans
+                        SET plan_status = ?, last_skip_reason = ?, last_evaluated_at = ?, updated_at = ?
+                        WHERE outreach_followup_plan_id = ?
+                        """,
+                        [
+                            (
+                                FOLLOWUP_PLAN_STATUS_SKIPPED,
+                                "posting_archived_pre_cutover",
+                                current_timestamp,
+                                current_timestamp,
+                                plan_id,
+                            )
+                            for plan_id in skipped_followup_plan_ids
+                        ],
+                    )
+
+            packet_rows = connection.execute(
+                """
+                SELECT expert_review_packet_id, pipeline_run_id, packet_status
+                FROM expert_review_packets
+                WHERE job_posting_id = ?
+                ORDER BY created_at ASC, expert_review_packet_id ASC
+                """,
+                (job_posting_id,),
+            ).fetchall()
+            reviewed_packet_ids: list[str] = []
+            reviewed_pipeline_run_ids: set[str] = set()
+            for packet_row in packet_rows:
+                packet_status = str(packet_row["packet_status"])
+                if packet_status not in ARCHIVABLE_REVIEW_PACKET_STATUSES:
+                    continue
+                packet_id = str(packet_row["expert_review_packet_id"])
+                with connection:
+                    connection.execute(
+                        """
+                        UPDATE expert_review_packets
+                        SET packet_status = ?, reviewed_at = ?
+                        WHERE expert_review_packet_id = ?
+                        """,
+                        (
+                            REVIEW_PACKET_STATUS_REVIEWED,
+                            current_timestamp,
+                            packet_id,
+                        ),
+                    )
+                reviewed_packet_ids.append(packet_id)
+                pipeline_run_id_text = (
+                    str(packet_row["pipeline_run_id"]) if packet_row["pipeline_run_id"] else None
+                )
+                if pipeline_run_id_text:
+                    reviewed_pipeline_run_ids.add(pipeline_run_id_text)
+
+            open_pipeline_rows = connection.execute(
+                """
+                SELECT pipeline_run_id, run_status, current_stage, review_packet_status
+                FROM pipeline_runs
+                WHERE job_posting_id = ?
+                  AND run_status IN ({})
+                ORDER BY started_at ASC, pipeline_run_id ASC
+                """.format(",".join("?" for _ in NON_TERMINAL_RUN_STATUSES)),
+                (
+                    job_posting_id,
+                    *sorted(NON_TERMINAL_RUN_STATUSES),
+                ),
+            ).fetchall()
+            retired_pipeline_runs: list[dict[str, str]] = []
+            for pipeline_row in open_pipeline_rows:
+                previous_run_status = str(pipeline_row["run_status"])
+                previous_stage = str(pipeline_row["current_stage"])
+                retired_run = complete_pipeline_run(
+                    connection,
+                    str(pipeline_row["pipeline_run_id"]),
+                    current_stage=(
+                        JOB_POSTING_STATUS_ABANDONED
+                        if posting_status_after_archive == JOB_POSTING_STATUS_ABANDONED
+                        else JOB_POSTING_STATUS_COMPLETED
+                    ),
+                    run_summary=(
+                        "Owner archived the pre-cutover posting backlog and retired the active pipeline run."
+                    ),
+                    timestamp=current_timestamp,
+                )
+                retired_pipeline_runs.append(
+                    {
+                        "pipeline_run_id": retired_run.pipeline_run_id,
+                        "previous_run_status": previous_run_status,
+                        "new_run_status": retired_run.run_status,
+                        "previous_stage": previous_stage,
+                        "new_stage": retired_run.current_stage,
+                    }
+                )
+                if (
+                    retired_run.review_packet_status == REVIEW_PACKET_STATUS_PENDING
+                    or str(pipeline_row["review_packet_status"] or "") == REVIEW_PACKET_STATUS_PENDING
+                ):
+                    set_pipeline_run_review_packet_status(
+                        connection,
+                        retired_run.pipeline_run_id,
+                        REVIEW_PACKET_STATUS_REVIEWED,
+                    )
+                    reviewed_pipeline_run_ids.add(retired_run.pipeline_run_id)
+
+            for reviewed_pipeline_run_id in sorted(reviewed_pipeline_run_ids):
+                pipeline_run = get_pipeline_run(connection, reviewed_pipeline_run_id)
+                if (
+                    pipeline_run is not None
+                    and pipeline_run.review_packet_status == REVIEW_PACKET_STATUS_PENDING
+                ):
+                    set_pipeline_run_review_packet_status(
+                        connection,
+                        reviewed_pipeline_run_id,
+                        REVIEW_PACKET_STATUS_REVIEWED,
+                    )
+
+            archived_postings.append(
+                {
+                    "job_posting_id": job_posting_id,
+                    "lead_id": lead_id,
+                    "company_name": str(posting_row["company_name"]),
+                    "role_title": str(posting_row["role_title"]),
+                    "created_at": str(posting_row["created_at"]),
+                    "previous_status": previous_status,
+                    "posting_status": posting_status_after_archive,
+                    "previously_archived_at": previously_archived_at,
+                    "archived_at": current_timestamp if previously_archived_at is None else previously_archived_at,
+                    "retired_pipeline_runs": retired_pipeline_runs,
+                    "retired_unsent_message_count": len(retired_message_ids),
+                    "retired_unsent_message_ids": retired_message_ids,
+                    "skipped_followup_plan_count": len(skipped_followup_plan_ids),
+                    "skipped_followup_plan_ids": skipped_followup_plan_ids,
+                    "reviewed_packet_count": len(reviewed_packet_ids),
+                    "reviewed_packet_ids": reviewed_packet_ids,
+                    "state_transition_event_id": state_transition_event_id,
+                    "override_event_id": override_event_id,
+                }
+            )
+            retired_pipeline_run_count += len(retired_pipeline_runs)
+            retired_unsent_message_count += len(retired_message_ids)
+            skipped_followup_plan_count += len(skipped_followup_plan_ids)
+            reviewed_packet_count += len(reviewed_packet_ids)
+
+    report = {
+        "contract_version": CONTRACT_VERSION,
+        "produced_at": now_utc_iso(),
+        "producer_component": POSTING_ARCHIVE_CUTOVER_COMPONENT,
+        "project_root": str(paths.project_root),
+        "database": {
+            "db_path": str(migration.db_path),
+            "applied_migrations": migration.applied_migrations,
+            "user_version": migration.user_version,
+        },
+        "command": "archive-postings-created-before-cutover",
+        "cutoff_created_before": cutoff_text,
+        "reason": reason_text,
+        "manual_command": manual_command,
+        "archive_run_id": archive_run_id,
+        "archived_posting_count": len(archived_postings),
+        "abandoned_posting_count": abandoned_posting_count,
+        "retired_pipeline_run_count": retired_pipeline_run_count,
+        "retired_unsent_message_count": retired_unsent_message_count,
+        "skipped_followup_plan_count": skipped_followup_plan_count,
+        "reviewed_packet_count": reviewed_packet_count,
+        "archived_postings": archived_postings,
+        "control_state": dict(control_state.values),
+    }
+    artifact_paths = _write_posting_archive_cutover_artifacts(
+        paths,
+        archive_run_id=archive_run_id,
+        report=report,
+        backup_db_path=backup_disk_path,
+    )
+    report["artifacts"] = artifact_paths
+    return report
 
 
 def _render_stale_role_targeted_backlog_retirement_markdown(

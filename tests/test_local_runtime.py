@@ -402,6 +402,9 @@ def seed_role_targeted_backlog_posting(
     include_sent_sibling: bool = False,
     open_pipeline_run_id: str | None = None,
     open_pipeline_stage: str = "delivery_feedback",
+    open_pipeline_run_status: str = "in_progress",
+    open_pipeline_review_packet_status: str = "not_ready",
+    created_at: str = "2026-05-01T00:00:00Z",
 ) -> None:
     identity_key = f"{company_name.lower().replace(' ', '-')}|{role_title.lower().replace(' ', '-')}"
     connection.execute(
@@ -424,8 +427,8 @@ def seed_role_targeted_backlog_posting(
             f"https://careers.example/{job_posting_id}",
             company_name,
             role_title,
-            "2026-05-01T00:00:00Z",
-            "2026-05-01T00:00:00Z",
+            created_at,
+            created_at,
         ),
     )
     connection.execute(
@@ -442,8 +445,8 @@ def seed_role_targeted_backlog_posting(
             company_name,
             role_title,
             posting_status,
-            "2026-05-01T00:00:00Z",
-            "2026-05-01T00:00:00Z",
+            created_at,
+            created_at,
         ),
     )
     connection.execute(
@@ -462,8 +465,8 @@ def seed_role_targeted_backlog_posting(
             contact_status,
             f"{company_name} Contact",
             f"{contact_id}@example.com",
-            "2026-05-01T00:01:00Z",
-            "2026-05-01T00:01:00Z",
+            created_at,
+            created_at,
         ),
     )
     connection.execute(
@@ -480,8 +483,8 @@ def seed_role_targeted_backlog_posting(
             "hiring_manager",
             "Stale backlog retirement test linkage.",
             link_level_status,
-            "2026-05-01T00:01:00Z",
-            "2026-05-01T00:01:00Z",
+            created_at,
+            created_at,
         ),
     )
     connection.execute(
@@ -530,8 +533,8 @@ def seed_role_targeted_backlog_posting(
                 "sent",
                 f"{company_name} Sent Contact",
                 f"{sent_contact_id}@example.com",
-                "2026-05-01T00:02:00Z",
-                "2026-05-01T00:02:00Z",
+                created_at,
+                created_at,
             ),
         )
         connection.execute(
@@ -548,8 +551,8 @@ def seed_role_targeted_backlog_posting(
                 "engineer",
                 "Completed sibling outreach for stale backlog retirement test.",
                 "outreach_done",
-                "2026-05-01T00:02:00Z",
-                "2026-05-01T00:02:00Z",
+                created_at,
+                created_at,
             ),
         )
         connection.execute(
@@ -572,9 +575,9 @@ def seed_role_targeted_backlog_posting(
                 "Body",
                 f"thread-{sent_message_id}",
                 f"delivery-{sent_message_id}",
-                "2026-05-01T02:00:00Z",
-                "2026-05-01T02:00:00Z",
-                "2026-05-01T02:00:00Z",
+                created_at,
+                created_at,
+                created_at,
             ),
         )
 
@@ -590,17 +593,17 @@ def seed_role_targeted_backlog_posting(
             (
                 open_pipeline_run_id,
                 "role_targeted_posting",
-                "in_progress",
+                open_pipeline_run_status,
                 open_pipeline_stage,
                 lead_id,
                 job_posting_id,
                 None,
                 None,
-                "not_ready",
+                open_pipeline_review_packet_status,
                 "Open stale send-stage run for retirement coverage.",
-                "2026-05-01T03:00:00Z",
-                "2026-05-01T03:00:00Z",
-                "2026-05-01T03:00:00Z",
+                created_at,
+                created_at,
+                created_at,
             ),
         )
     connection.commit()
@@ -2566,6 +2569,303 @@ def test_retire_stale_role_targeted_send_backlog_demotes_actionable_active_posti
 
     assert dict(posting_row) == {"posting_status": "requires_contacts"}
     assert dict(retired_message) == {"message_status": "failed"}
+
+
+def test_archive_postings_created_before_cutover_retires_old_backlog_and_preserves_fresh_queue(
+    tmp_path: Path,
+):
+    project_root = tmp_path / "repo"
+    project_root.mkdir()
+    create_minimal_project(project_root)
+    run_bootstrap(project_root=project_root)
+
+    connection = connect_database(project_root / "job_hunt_copilot.db")
+    seed_role_targeted_backlog_posting(
+        connection,
+        lead_id="ld_old_active",
+        job_posting_id="jp_old_active",
+        company_name="Adobe",
+        role_title="Machine Learning Engineer",
+        posting_status="outreach_in_progress",
+        contact_id="ct_old_active",
+        job_posting_contact_id="jpc_old_active",
+        message_id="msg_old_active",
+        message_status="generated",
+        message_created_at="2026-06-09T18:00:00Z",
+        include_sent_sibling=True,
+        open_pipeline_run_id="pr_old_active",
+        open_pipeline_stage="email_discovery",
+        open_pipeline_review_packet_status="pending_expert_review",
+        created_at="2026-06-09T18:00:00Z",
+    )
+    seed_role_targeted_backlog_posting(
+        connection,
+        lead_id="ld_old_completed",
+        job_posting_id="jp_old_completed",
+        company_name="Scribd, Inc.",
+        role_title="Software Engineer - Backend (Python)",
+        posting_status="completed",
+        contact_id="ct_old_completed",
+        job_posting_contact_id="jpc_old_completed",
+        message_id="msg_old_completed",
+        message_status="blocked",
+        message_created_at="2026-06-09T18:05:00Z",
+        include_sent_sibling=True,
+        created_at="2026-06-09T18:05:00Z",
+    )
+    seed_role_targeted_backlog_posting(
+        connection,
+        lead_id="ld_fresh_queue",
+        job_posting_id="jp_fresh_queue",
+        company_name="OpenAI",
+        role_title="Research Engineer",
+        posting_status="sourced",
+        contact_id="ct_fresh_queue",
+        job_posting_contact_id="jpc_fresh_queue",
+        message_id="msg_fresh_queue",
+        message_status="generated",
+        message_created_at="2026-06-10T08:00:00Z",
+        created_at="2026-06-10T08:00:00Z",
+    )
+    connection.execute(
+        """
+        INSERT INTO pipeline_runs (
+          pipeline_run_id, run_scope_type, run_status, current_stage, lead_id,
+          job_posting_id, completed_at, last_error_summary, review_packet_status,
+          run_summary, started_at, created_at, updated_at
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        """,
+        (
+            "pr_old_completed",
+            "role_targeted_posting",
+            "completed",
+            "completed",
+            "ld_old_completed",
+            "jp_old_completed",
+            "2026-06-09T18:10:00Z",
+            None,
+            "pending_expert_review",
+            "Completed old posting awaiting review.",
+            "2026-06-09T18:06:00Z",
+            "2026-06-09T18:06:00Z",
+            "2026-06-09T18:10:00Z",
+        ),
+    )
+    connection.executemany(
+        """
+        INSERT INTO expert_review_packets (
+          expert_review_packet_id, pipeline_run_id, packet_status, packet_path,
+          job_posting_id, reviewed_at, summary_excerpt, created_at
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+        """,
+        [
+            (
+                "erp_old_active",
+                "pr_old_active",
+                "pending_expert_review",
+                "ops/review/erp_old_active/review_packet.md",
+                "jp_old_active",
+                None,
+                "Old active posting pending review.",
+                "2026-06-09T18:10:00Z",
+            ),
+            (
+                "erp_old_completed",
+                "pr_old_completed",
+                "pending_expert_review",
+                "ops/review/erp_old_completed/review_packet.md",
+                "jp_old_completed",
+                None,
+                "Old completed posting pending review.",
+                "2026-06-09T18:11:00Z",
+            ),
+        ],
+    )
+    connection.executemany(
+        """
+        INSERT INTO outreach_followup_plans (
+          outreach_followup_plan_id, original_outreach_message_id, followup_outreach_message_id,
+          contact_id, job_posting_id, plan_status, followup_sequence, eligible_after,
+          created_at, updated_at
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        """,
+        [
+            (
+                "fup_old_active",
+                "msg_old_active_sent",
+                None,
+                "ct_old_active_sent",
+                "jp_old_active",
+                "pending",
+                1,
+                "2026-06-12T00:00:00Z",
+                "2026-06-09T18:30:00Z",
+                "2026-06-09T18:30:00Z",
+            ),
+            (
+                "fup_old_completed",
+                "msg_old_completed_sent",
+                None,
+                "ct_old_completed_sent",
+                "jp_old_completed",
+                "pending",
+                1,
+                "2026-06-12T00:00:00Z",
+                "2026-06-09T18:31:00Z",
+                "2026-06-09T18:31:00Z",
+            ),
+        ],
+    )
+    connection.commit()
+    connection.close()
+
+    report = local_runtime.archive_postings_created_before_cutover(
+        cutoff_created_before="2026-06-10T07:00:00Z",
+        project_root=project_root,
+        reason="Start fresh from June 10 onward.",
+        manual_command="pytest-archive-cutover",
+        timestamp="2026-06-11T04:30:00Z",
+    )
+
+    assert report["archived_posting_count"] == 2
+    assert report["abandoned_posting_count"] == 1
+    assert report["retired_pipeline_run_count"] == 1
+    assert report["retired_unsent_message_count"] == 2
+    assert report["skipped_followup_plan_count"] == 2
+    assert report["reviewed_packet_count"] == 2
+    assert Path(report["artifacts"]["summary_json_path"]).exists()
+    assert Path(report["artifacts"]["summary_markdown_path"]).exists()
+    assert Path(report["artifacts"]["backup_db_path"]).exists()
+
+    archived_postings = {
+        posting["job_posting_id"]: posting for posting in report["archived_postings"]
+    }
+    assert set(archived_postings) == {"jp_old_active", "jp_old_completed"}
+    assert archived_postings["jp_old_active"]["posting_status"] == "abandoned"
+    assert archived_postings["jp_old_completed"]["posting_status"] == "completed"
+    assert archived_postings["jp_old_active"]["retired_unsent_message_ids"] == ["msg_old_active"]
+    assert archived_postings["jp_old_completed"]["retired_unsent_message_ids"] == [
+        "msg_old_completed"
+    ]
+    assert archived_postings["jp_old_active"]["skipped_followup_plan_ids"] == ["fup_old_active"]
+    assert archived_postings["jp_old_completed"]["skipped_followup_plan_ids"] == [
+        "fup_old_completed"
+    ]
+
+    connection = connect_database(project_root / "job_hunt_copilot.db")
+    old_active_posting = connection.execute(
+        """
+        SELECT posting_status, archived_at
+        FROM job_postings
+        WHERE job_posting_id = ?
+        """,
+        ("jp_old_active",),
+    ).fetchone()
+    old_completed_posting = connection.execute(
+        """
+        SELECT posting_status, archived_at
+        FROM job_postings
+        WHERE job_posting_id = ?
+        """,
+        ("jp_old_completed",),
+    ).fetchone()
+    fresh_posting = connection.execute(
+        """
+        SELECT posting_status, archived_at
+        FROM job_postings
+        WHERE job_posting_id = ?
+        """,
+        ("jp_fresh_queue",),
+    ).fetchone()
+    old_messages = connection.execute(
+        """
+        SELECT outreach_message_id, message_status
+        FROM outreach_messages
+        WHERE outreach_message_id IN ('msg_old_active', 'msg_old_completed', 'msg_fresh_queue')
+        ORDER BY outreach_message_id ASC
+        """
+    ).fetchall()
+    followup_rows = connection.execute(
+        """
+        SELECT outreach_followup_plan_id, plan_status, last_skip_reason
+        FROM outreach_followup_plans
+        WHERE outreach_followup_plan_id IN ('fup_old_active', 'fup_old_completed')
+        ORDER BY outreach_followup_plan_id ASC
+        """
+    ).fetchall()
+    review_packets = connection.execute(
+        """
+        SELECT expert_review_packet_id, packet_status, reviewed_at
+        FROM expert_review_packets
+        WHERE expert_review_packet_id IN ('erp_old_active', 'erp_old_completed')
+        ORDER BY expert_review_packet_id ASC
+        """
+    ).fetchall()
+    pipeline_runs = connection.execute(
+        """
+        SELECT pipeline_run_id, run_status, current_stage, review_packet_status
+        FROM pipeline_runs
+        WHERE pipeline_run_id IN ('pr_old_active', 'pr_old_completed')
+        ORDER BY pipeline_run_id ASC
+        """
+    ).fetchall()
+    connection.close()
+
+    assert dict(old_active_posting) == {
+        "posting_status": "abandoned",
+        "archived_at": "2026-06-11T04:30:00Z",
+    }
+    assert dict(old_completed_posting) == {
+        "posting_status": "completed",
+        "archived_at": "2026-06-11T04:30:00Z",
+    }
+    assert dict(fresh_posting) == {
+        "posting_status": "sourced",
+        "archived_at": None,
+    }
+    assert [dict(row) for row in old_messages] == [
+        {"outreach_message_id": "msg_fresh_queue", "message_status": "generated"},
+        {"outreach_message_id": "msg_old_active", "message_status": "failed"},
+        {"outreach_message_id": "msg_old_completed", "message_status": "failed"},
+    ]
+    assert [dict(row) for row in followup_rows] == [
+        {
+            "outreach_followup_plan_id": "fup_old_active",
+            "plan_status": "skipped",
+            "last_skip_reason": "posting_archived_pre_cutover",
+        },
+        {
+            "outreach_followup_plan_id": "fup_old_completed",
+            "plan_status": "skipped",
+            "last_skip_reason": "posting_archived_pre_cutover",
+        },
+    ]
+    assert [dict(row) for row in review_packets] == [
+        {
+            "expert_review_packet_id": "erp_old_active",
+            "packet_status": "reviewed",
+            "reviewed_at": "2026-06-11T04:30:00Z",
+        },
+        {
+            "expert_review_packet_id": "erp_old_completed",
+            "packet_status": "reviewed",
+            "reviewed_at": "2026-06-11T04:30:00Z",
+        },
+    ]
+    assert [dict(row) for row in pipeline_runs] == [
+        {
+            "pipeline_run_id": "pr_old_active",
+            "run_status": "completed",
+            "current_stage": "abandoned",
+            "review_packet_status": "reviewed",
+        },
+        {
+            "pipeline_run_id": "pr_old_completed",
+            "run_status": "completed",
+            "current_stage": "completed",
+            "review_packet_status": "reviewed",
+        },
+    ]
 
 
 def test_close_review_item_rejects_terminal_posting_state(tmp_path):
