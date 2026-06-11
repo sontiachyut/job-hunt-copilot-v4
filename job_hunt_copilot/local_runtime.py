@@ -262,6 +262,7 @@ FOLLOWUP_PLAN_TERMINAL_STATUSES = frozenset(
 )
 ARCHIVABLE_UNSENT_MESSAGE_STATUSES = frozenset({"generated", "blocked"})
 ARCHIVABLE_REVIEW_PACKET_STATUSES = frozenset({REVIEW_PACKET_STATUS_PENDING})
+ARCHIVABLE_PIPELINE_RUN_STATUSES = frozenset(NON_TERMINAL_RUN_STATUSES | {RUN_STATUS_ESCALATED})
 PMSET_EVENT_LINE_PATTERN = re.compile(
     r"^(?P<timestamp>\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2} [+-]\d{4})\s+(?P<body>.+)$"
 )
@@ -2236,10 +2237,10 @@ def archive_postings_created_before_cutover(
                 WHERE job_posting_id = ?
                   AND run_status IN ({})
                 ORDER BY started_at ASC, pipeline_run_id ASC
-                """.format(",".join("?" for _ in NON_TERMINAL_RUN_STATUSES)),
+                """.format(",".join("?" for _ in ARCHIVABLE_PIPELINE_RUN_STATUSES)),
                 (
                     job_posting_id,
-                    *sorted(NON_TERMINAL_RUN_STATUSES),
+                    *sorted(ARCHIVABLE_PIPELINE_RUN_STATUSES),
                 ),
             ).fetchall()
             retired_pipeline_runs: list[dict[str, str]] = []

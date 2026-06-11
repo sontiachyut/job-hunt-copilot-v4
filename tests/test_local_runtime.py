@@ -2594,7 +2594,8 @@ def test_archive_postings_created_before_cutover_retires_old_backlog_and_preserv
         message_created_at="2026-06-09T18:00:00Z",
         include_sent_sibling=True,
         open_pipeline_run_id="pr_old_active",
-        open_pipeline_stage="email_discovery",
+        open_pipeline_stage="people_search",
+        open_pipeline_run_status="escalated",
         open_pipeline_review_packet_status="pending_expert_review",
         created_at="2026-06-09T18:00:00Z",
     )
