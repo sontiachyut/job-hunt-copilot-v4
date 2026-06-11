@@ -133,6 +133,7 @@ Current-build required path:
 11. paced autonomous sending
 12. immediate per-message delivery feedback plus delayed mailbox polling
 13. post-run expert review packet generation by the supervisor agent
+14. dedicated follow-up worker for unreplied sent outreach, with reply-guarded, agent-reviewed automatic same-thread sending
 
 Current-build optional / best-effort behavior:
 1. company-site or careers-page JD recovery and company resolution enrichment
@@ -147,8 +148,7 @@ Deferred / later behavior:
 4. detailed two-step learning-first outreach operational flow
 5. broader recipient-type-specific drafting strategy expansion
 6. reply classification beyond the current high-level delivery states
-7. automatic follow-up generation and sending
-8. serverized or remote recipient-profile extraction infrastructure
+7. serverized or remote recipient-profile extraction infrastructure
 
 ---
 
@@ -622,6 +622,17 @@ This is the agreed vocabulary for design discussions.
   5. `linkedin_url` when available
   6. contact-level status
   7. current working email when known
+- **FR-SYS-33A (Apollo Contact Anchor Fields):** Because Apollo is the primary company-scoped people-search provider in this build, `contacts` should also persist lightweight latest-known Apollo anchor fields when available, including:
+  1. `apollo_person_id`
+  2. `apollo_organization_id`
+  3. latest-known Apollo current title
+  4. latest-known Apollo current company name
+  5. latest Apollo profile refresh/enrichment timestamp
+  6. latest-known Apollo LinkedIn URL
+  7. latest-known Apollo location string
+  8. latest-known Apollo headline when available
+  9. latest-known Apollo work email when Apollo itself returned one
+- **FR-SYS-33B (Apollo Promoted-Latest-Field Rule):** The lightweight Apollo anchor fields stored directly on `contacts` shall be a promoted latest-known projection for operational lookup. The full provider payload remains in provider-snapshot storage, while the core contact row keeps only the latest operational fields most useful for identity, drafting, and routing.
 - **FR-SYS-34 (Primary Entity Timestamps):** `job_postings` and `contacts` should each include lightweight lifecycle timestamps such as `created_at` and `updated_at`.
 - **FR-SYS-35 (Link-Record Timestamps):** `job_posting_contacts` should also include lightweight timestamps such as `created_at` and `updated_at` so relationship creation and later changes remain traceable.
 - **FR-SYS-36 (Minimum Required Supporting Tables):** Beyond the primary entities, the posting-contact link table, and the discovery-specific tables defined elsewhere in this specification, this build should minimally include these additional supporting tables in `job_hunt_copilot.db`:
@@ -639,6 +650,11 @@ This is the agreed vocabulary for design discussions.
   12. `agent_incidents`
   13. `expert_review_packets`
   14. `expert_review_decisions`
+  15. `outreach_followup_plans`
+  16. `followup_cycle_runs`
+  17. `contact_provider_profiles`
+  18. `contact_employment_history`
+  19. `job_posting_provider_contexts`
 - **FR-SYS-37 (Lean Supporting-Table Rule):** This build should prefer this minimal supporting-table set rather than introducing separate per-component tables unless a clear new requirement appears. Shared needs such as artifact metadata should use shared tables where possible instead of multiplying narrowly scoped tables.
 - **FR-SYS-38 (Primary Orchestration Sequence):** The primary role-targeted workflow shall run in this dependency order: LinkedIn Scraping -> eligibility/tailoring -> mandatory agent review of the tailored output -> company-scoped contact search and/or contact linking or contact reuse -> selected-contact enrichment and recipient-profile extraction -> email discovery for contacts still missing usable emails -> drafting/sending -> delivery feedback.
 - **FR-SYS-38A (General Learning Outreach Path):** When outreach is not tied to a specific job posting, the system may run a lighter contact-rooted flow: identify contact -> discover email if needed -> generate/send learning-first outreach -> capture delivery feedback. This path does not require posting-specific resume tailoring or the role-targeted agent review gate.
@@ -646,6 +662,8 @@ This is the agreed vocabulary for design discussions.
 - **FR-SYS-38A1B (Location-Relaxation Retry Rule):** When a location-filtered company-scoped people search returns no useful candidates, the system shall be able to retry the same search with the location constraint relaxed rather than treating the location miss as final.
 - **FR-SYS-38A2 (Apollo-First People Search):** For the first implementation of company-scoped people search, Apollo shall be the primary provider.
 - **FR-SYS-38A3 (People-Search Materialization Rule):** Company-scoped people-search results shall persist a runtime search artifact for the full broad-search result. Canonical `contacts` and `job_posting_contacts` shall be created or updated only when a candidate has been selected into the shortlist for enrichment or later outreach handling. Broad-search candidates that are not shortlisted may remain artifact-only search results.
+- **FR-SYS-38A3C (Apollo Full-Payload Persistence Rule):** When Apollo returns candidate or enrichment data for a shortlisted/materialized contact, the system shall persist the full Apollo person payload returned at that stage inside the main database in addition to preserving the search/enrichment artifacts. The database-backed provider snapshot shall retain the full Apollo response shape rather than only a hand-picked subset of fields.
+- **FR-SYS-38A3D (Apollo Employment-History Persistence Rule):** When Apollo returns employment history for a materialized contact, that employment history shall be persisted in structured database form and linked to the canonical `contact_id` so downstream drafting and later review can query it without reparsing raw artifacts.
 - **FR-SYS-38A3B (Saved Broad-Search Replay Rule):** When a posting still has saved broad-search results, the system may later replay that saved result to materialize additional shortlisted contacts up to the current shortlist limit without rerunning the external people-search request immediately.
 - **FR-SYS-38A3A (Shortlist Dead-End Cleanup Rule):** If a shortlisted candidate is materialized into canonical `contacts` / `job_posting_contacts` for enrichment but later proves unusable at the enrichment boundary and will not continue into email discovery or outreach, that candidate shall be dropped from the current posting's canonical shortlist state. The broad-search artifact shall remain as the historical record of the candidate having been seen.
 - **FR-SYS-38A4 (Email-Less People-Search Continuation):** If people search returns a useful contact record without a usable work email, that contact may continue into the person-scoped email-discovery path rather than being discarded.
@@ -653,9 +671,9 @@ This is the agreed vocabulary for design discussions.
 - **FR-SYS-38A6 (Relevant-People Search Classes):** The first autonomous people-search pass should look for engineering managers, software engineers, recruiters, and other internal employees who may plausibly help route the candidate to the right person.
 - **FR-SYS-38B (Priority-Wave Outreach Rule):** For role-targeted outreach, the system shall proceed in priority waves rather than contacting every linked contact across all recipient types at once. Higher-priority recipient groups shall be attempted before lower-priority groups.
 - **FR-SYS-38B1 (Recipient-Type Wave Order):** For this build, the default role-targeted outreach wave order should be:
-  1. `hiring_manager`
-  2. `engineer`
-  3. `recruiter`
+  1. `recruiter`
+  2. `hiring_manager`
+  3. `engineer`
   4. `alumni`
   5. `other_internal`
 - **FR-SYS-38B1A (Current Guide Recipient Groups):** The current outreach guide should explicitly cover these working recipient groups: recruiting managers who post openings on LinkedIn, people who may be working on that team or adjacent area, ASU alumni connections, and previous job connections.
@@ -697,6 +715,34 @@ This is the agreed vocabulary for design discussions.
 - **FR-SYS-38D7 (Session-Independent Feedback Continuity):** Delayed feedback capture shall not require the interactive chat session or the original send process to remain running. Once send metadata has been persisted, later feedback detection should be able to proceed independently.
 - **FR-SYS-38D8 (Current Scheduled Polling Interval):** During the active 30-minute bounce-observation window, the delayed feedback-sync process should run every 5 minutes.
 - **FR-SYS-38D9 (Current Bounce-Observation Completion Rule):** If no bounce signal is detected for a sent message by the end of the 30-minute bounce-observation window, the system may record the current high-level outcome as `not_bounced` for that observation window while still allowing later reply detection to continue through mailbox observation.
+- **FR-SYS-38H (Dedicated Follow-Up Worker):** Follow-up email planning, drafting, review, and send execution shall run through a dedicated follow-up worker rather than being folded into the primary supervisor loop or the delayed feedback-sync loop.
+- **FR-SYS-38H1 (Follow-Up launchd Scheduler):** In the current single-user macOS deployment, the follow-up worker should be invoked by a separate `launchd` job so follow-up behavior can be started, stopped, inspected, and debugged independently from the primary supervisor and delayed feedback sync.
+- **FR-SYS-38H1A (Follow-Up Scheduled Interval):** The dedicated follow-up worker shall run every 60 seconds in the current local `launchd` deployment. This check interval does not override the global inter-send pacing rule.
+- **FR-SYS-38H1B (Follow-Up Worker Control):** The follow-up worker shall have separately inspectable control state so follow-up behavior can be paused or resumed independently from the primary supervisor. A global system stop shall stop or disable all workers, including the follow-up worker.
+- **FR-SYS-38H1C (Unified Runtime Start/Stop Wiring):** The normal runtime start and stop commands, such as `jhc-agent-start` and `jhc-agent-stop`, shall manage the follow-up `launchd` job alongside the supervisor and delayed feedback-sync jobs. A normal start should load/kick the follow-up worker, and a normal stop should unload/disable it.
+- **FR-SYS-38H1D (Follow-Up Worker Logs):** The follow-up `launchd` job shall write to separate stdout and stderr logs, such as `ops/logs/followups.stdout.log` and `ops/logs/followups.stderr.log`, so follow-up activity can be debugged independently from supervisor and feedback-sync activity.
+- **FR-SYS-38H1E (Manual Follow-Up Cycle Entrypoint):** The runtime shall provide an on-demand follow-up cycle command, such as `bin/jhc-followup-cycle`, that runs one bounded follow-up worker cycle for testing, debugging, and manual operational checks.
+- **FR-SYS-38H1E1 (Manual Follow-Up Plan Reset):** The runtime shall provide a manual control path to reset a skipped, held, blocked, or reviewable follow-up plan after the owner repairs metadata or explicitly wants the worker to re-evaluate it.
+- **FR-SYS-38H1E2 (Reset Does Not Override Safety Facts):** Resetting a follow-up plan shall only allow re-evaluation. It shall not override bounce, reply, already-followed-up, or other safety facts; those gates must be checked again before any follow-up can send.
+- **FR-SYS-38H1F (Follow-Up Dry-Run Mode):** The follow-up cycle command and reusable follow-up worker logic shall support a dry-run mode that evaluates candidates and may render draft/review evidence for inspection, but does not send email or mutate sent-state as if an email had been sent.
+- **FR-SYS-38H1F1 (Dry-Run Durable Plan Materialization):** Dry-run mode may create or update durable `outreach_followup_plans` rows and dry-run evaluation artifacts so the follow-up queue is visible, but those records shall clearly indicate dry-run evaluation and shall not mark any follow-up as sent.
+- **FR-SYS-38H1F2 (Dry-Run Full Draft Rendering):** Dry-run mode shall render and persist the actual follow-up draft text and the same agent-review evidence that an automatic-send cycle would require, with clear dry-run markers on the plan and artifacts, so the owner can inspect wording quality before enabling sends.
+- **FR-SYS-38H1F2A (Dry-Run Engineering Validation Purpose):** Dry-run mode is primarily an engineering validation tool to confirm candidate selection, gating, thread checks, draft rendering, and persistence behavior. It is not the primary owner-review workflow for follow-up content.
+- **FR-SYS-38H1F3 (Dry-Run Read-Only Mailbox Checks):** Dry-run mode may perform read-only Gmail thread checks for replies, bounces, and existing later outbound messages. It shall not call Gmail send APIs or create provider-side messages.
+- **FR-SYS-38H1F4 (Dry-Run Status Semantics):** Dry-run mode shall never set `sent_at`, `message_status = sent`, `plan_status = sent`, or create a successful send result. It may set review/evaluation fields such as `last_evaluated_at`, `last_reply_check_at`, `last_reply_check_result`, `last_skip_reason`, and a dry-run marker in the review evidence.
+- **FR-SYS-38H1F5 (Dry-Run Repeatability):** Re-running dry-run mode shall be idempotent for the same candidate and current evidence. It may refresh stale dry-run draft artifacts when source evidence changes, but it shall not create duplicate active follow-up plans for the same original outreach message.
+- **FR-SYS-38H1F5A (Dry-Run Batch Evaluation Size):** A dry-run follow-up cycle should evaluate a bounded batch of due candidates rather than stopping at the first would-send candidate. The default dry-run batch size shall be 25 candidates examined, ordered oldest original sent email first, so validation can inspect multiple examples while remaining bounded.
+- **FR-SYS-38H1F6 (Dry-Run Reporting):** Each dry-run cycle shall report candidates examined, candidates that would send if auto-send were enabled, candidates skipped with reasons, suppressed already-followed-up counts/examples, candidates escalated or held, and the artifact paths for rendered draft/review evidence.
+- **FR-SYS-38H1F7 (No Dry-Run Review Packet Creation):** Dry-run mode shall not create expert review packets for blocked, skipped, held, or escalated follow-up candidates. It shall report those cases in dry-run output only, so validation does not flood the review queue.
+- **FR-SYS-38H1G (Follow-Up Rollout Gate):** The first rollout of the follow-up worker shall start in dry-run mode only for engineering validation. Automatic follow-up sending shall require an explicit later owner enablement after the implementation has been validated enough to proceed.
+- **FR-SYS-38H1G1 (Limited Auto-Send Rollout Cap):** When automatic follow-up sending is first enabled after dry-run validation, the rollout shall cap itself at 10 successful follow-up sends, then pause follow-up auto-send and surface the results for inspection before sending more.
+- **FR-SYS-38H1G1A (Follow-Up-Only Rollout Pause):** When the initial 10-send rollout cap is reached, only follow-up auto-send shall pause. The primary supervisor pipeline and delayed feedback-sync worker may continue normal operation unless another global pause or stop condition applies.
+- **FR-SYS-38H1G1B (Initial Rollout Inspection Packet):** When the initial 10-send rollout cap is reached, the follow-up worker shall surface an inspection packet containing the 10 actual sent follow-up emails, their recipients, original sent dates, follow-up sent dates, thread-check results, gate-pass evidence, and a compact skipped/blocked summary.
+- **FR-SYS-38H1G2 (Post-Rollout Configurable Batch Cap):** After the initial 10-send rollout has been inspected and approved, future automatic follow-up sends shall default to no additional batch cap unless the owner configures a follow-up batch limit later through runtime control state.
+- **FR-SYS-38H1H (Follow-Up Send Enablement State):** Follow-up dry-run versus automatic-send mode shall be controlled through canonical runtime control state, such as `agent_control_state`, rather than through code edits. The default value for the first rollout shall disable automatic sends.
+- **FR-SYS-38H2 (Email-Rooted Follow-Up State Consumption):** The follow-up worker shall root its work in canonical sent outreach emails, not in job postings. It shall scan original sent `role_targeted` `outreach_messages`, then read delivery-feedback events, contacts, original sent-email artifacts, and optional posting/JD artifacts only as context for drafting. It shall not start from job postings, and job-posting lifecycle state shall not by itself block an otherwise eligible email-rooted follow-up.
+- **FR-SYS-38H3 (Direct Reply Guard Ownership):** Because the current delayed feedback-sync path is primarily bounce/not-bounced focused, the follow-up worker shall perform its own direct Gmail-thread reply check before drafting and again before sending a follow-up.
+- **FR-SYS-38H4 (No Follow-Up Without Reply Check):** If the follow-up worker cannot verify the original Gmail thread for inbound replies after the original `sent_at`, the candidate follow-up shall be held for review or skipped rather than auto-sent.
 - **FR-SYS-38E (Automatic Continuation Across Remaining Shortlisted Contacts):** After one daily send slice or current send slice has been evaluated for a posting, the system shall continue automatic enrichment, email discovery, draft generation, and later-day sending across the remaining untouched shortlisted contacts for that posting until the automatically eligible contact pool has been exhausted. Only actual send execution remains gated by pacing and the per-posting daily cap.
 - **FR-SYS-38E1 (Saved-Broad-Result Backfill Is Allowed):** Automatic continuation across the remaining contact pool does not by itself require rerunning broad external company-scoped people search. However, when a saved broad-search artifact already exists, the system may automatically rematerialize or backfill additional shortlisted contacts from that saved result up to the current shortlist limit.
 - **FR-SYS-38F (Reply Does Not Retroactively Cancel Active Wave):** Because replies may arrive later than send time, a reply from one contact shall not retroactively cancel outreach already issued to other contacts in the same active wave.
@@ -711,6 +757,7 @@ This is the agreed vocabulary for design discussions.
 - **FR-SYS-38I6 (Same-Company Shortlist Refill Rule):** When same-company repeat-contact exclusions reduce the active shortlist below the current shortlist limit and a saved broad-search artifact exists, the system shall automatically backfill replacement candidates from that saved broad-search result until the shortlist limit is reached or the saved candidate pool is exhausted.
 - **FR-SYS-39 (Dependency-Gated Execution):** A downstream stage shall not proceed until its required upstream stage has produced the required status and handoff data. Components may assume persisted upstream outputs exist rather than recomputing missing prerequisites on the fly.
 - **FR-SYS-40 (Agent Review as Outreach Gate):** In the current role-targeted flow, Outreach-side work shall not begin until the linked `job_posting` has completed tailoring/finalize successfully and the active tailoring run is marked `resume_review_status = approved` by the mandatory agent review step.
+- **FR-SYS-40A (Failed Refreshed Tailoring Quarantine Rule):** If a posting that previously reached an Outreach-side status later receives a newer `resume_tailoring_runs` row with `tailoring_status IN ('needs_revision', 'failed')` and `resume_review_status = not_ready`, the system shall treat that posting as set aside for retailoring rather than falling back to an older approved run. In that case the posting shall return to `tailoring_in_progress`, any active downstream `people_search` / `email_discovery` / `sending` / `delivery_feedback` pipeline run for that posting shall be retired from the runnable queue, and the failure shall not auto-pause unrelated postings.
 - **FR-SYS-41 (Posting-Contact Linking Before Per-Contact Progression):** In a role-targeted flow, broad company-scoped people search may run before canonical posting-contact links exist. However, before person-scoped email discovery, drafting, or sending begins for a specific shortlisted contact, the system shall establish the relevant posting-contact relationship in `job_posting_contacts`.
 - **FR-SYS-41A (Per-Contact Discovery Start Rule):** For role-targeted outreach, discovery may begin for a contact only after that contact has been linked to the posting, the posting has cleared the agent review gate, and the contact's own prerequisites are satisfied. The system does not need to wait until the full intended contact set for the posting has been linked before beginning discovery work for already-linked contacts after the review gate is cleared.
 - **FR-SYS-41B (Posting-Frontier Drafting and Send Progression Rule):** In the current role-targeted flow, drafting does not need to wait for one fixed three-contact send set to become fully ready. Instead, once the posting-level prerequisites are satisfied, the system may generate drafts across all currently ready untouched automatic contacts for that posting. Actual sending remains governed separately by the active send-slice selection, the per-posting daily cap, and the inter-send pacing rules.
@@ -768,6 +815,7 @@ This is the agreed vocabulary for design discussions.
 - **FR-SYS-47 (Failure Persistence and Blocking):** When a stage fails or becomes blocked, the system shall persist the failure/block reason in canonical state and shall prevent dependent downstream stages from silently proceeding as though the upstream stage succeeded.
 - **FR-SYS-48 (Retry and Resume Rule):** The system shall support retry/resume from the last successfully persisted stage boundary rather than requiring the entire pipeline to restart from `LinkedIn Scraping` after every partial failure.
 - **FR-SYS-49 (Failure Isolation Rule):** Failures should be isolated as narrowly as possible. For example, one contact's discovery or outreach failure should not invalidate unrelated contacts for the same posting, while a failed resume-tailoring or agent-review stage may block only the posting-dependent outreach that relies on that tailored resume.
+- **FR-SYS-49B (Retailoring Regression Isolation Rule):** A failed refreshed tailoring run is a posting-scoped failure. It may block that one posting until a newer approved run exists, but it shall not remain as runnable Outreach-side work and shall not stop unrelated postings from continuing through people search, email discovery, drafting, or sending.
 - **FR-SYS-49A (Stage Success Completeness Rule):** A stage shall not be considered truly successful until it has both:
   1. updated canonical state in `job_hunt_copilot.db`
   2. published any required runtime handoff artifact for downstream use
@@ -1116,6 +1164,34 @@ This section defines the next-build logical schema shape for `job_hunt_copilot.d
   - This table provides auditability and health visibility for scheduled Delivery Feedback sync runs.
   - In the current local deployment, `scheduler_type` may be `launchd`.
 
+**`followup_cycle_runs`**
+- Primary key:
+  - `followup_cycle_run_id`
+- Required columns:
+  - `followup_cycle_run_id`
+  - `scheduler_name`
+  - `scheduler_type`
+  - `started_at`
+  - `result`
+- Optional columns:
+  - `completed_at`
+  - `candidates_examined`
+  - `drafts_created`
+  - `messages_sent`
+  - `waiting_for_pacing_count`
+  - `skipped_replied`
+  - `skipped_bounced`
+  - `skipped_already_followed_up`
+  - `retryable_count`
+  - `blocked_count`
+  - `held_for_review`
+  - `last_checkpoint`
+  - `error_message`
+- Notes:
+  - This table provides auditability and health visibility for the dedicated scheduled follow-up worker.
+  - In the current local deployment, `scheduler_type` may be `launchd`.
+  - Each follow-up worker invocation shall write a cycle-run audit row, including no-op cycles where no message is sent, so dashboard and debugging tools can explain whether the worker examined candidates, waited for pacing, skipped candidates, retried later, blocked cases, or encountered errors.
+
 **`pipeline_runs`**
 - Primary key:
   - `pipeline_run_id`
@@ -1271,7 +1347,7 @@ This section defines the next-build logical schema shape for `job_hunt_copilot.d
   - `merged_commit_sha`
   - `merge_commit_message`
   - `validated_at`
-  - `approved_at`
+  - `agent_reviewed_at`
   - `merged_at`
   - `failed_at`
   - `validation_summary`
@@ -1319,6 +1395,33 @@ This section defines the next-build logical schema shape for `job_hunt_copilot.d
   - `remaining_credits_after`
   - `related_discovery_attempt_id`
   - `related_contact_id`
+
+**`llm_usage_events`**
+- Primary key:
+  - `llm_usage_event_id`
+- Required columns:
+  - `llm_usage_event_id`
+  - `component_name`
+  - `operation_name`
+  - `invocation_status`
+  - `exit_code`
+  - `usage_parse_status`
+  - `run_directory_path`
+  - `stderr_artifact_path`
+  - `created_at`
+- Optional columns:
+  - `provider_name`
+  - `model_name`
+  - `session_id`
+  - `total_tokens`
+  - `raw_usage_text`
+  - `prompt_artifact_path`
+  - `output_artifact_path`
+  - `stdout_artifact_path`
+  - `lead_id`
+  - `job_posting_id`
+  - `contact_id`
+  - `outreach_message_id`
 
 **`discovery_attempts`**
 - Primary key:
@@ -1377,8 +1480,41 @@ This section defines the next-build logical schema shape for `job_hunt_copilot.d
   - `delivery_tracking_id`
   - `sent_at`
 - Notes:
-  - `outreach_mode` should distinguish at least `role_targeted` and `general_learning`.
+  - `outreach_mode` should distinguish at least `role_targeted`, `role_targeted_followup`, and `general_learning`.
   - `message_status` is the current message-level lifecycle field for generated/sent outreach.
+  - Follow-up messages should be linked to the original sent email through an `outreach_followup_plans` row, while reusing the original Gmail thread where available.
+
+**`outreach_followup_plans`**
+- Primary key:
+  - `outreach_followup_plan_id`
+- Required columns:
+  - `outreach_followup_plan_id`
+  - `original_outreach_message_id`
+  - `contact_id`
+  - `plan_status`
+  - `followup_sequence`
+  - `eligible_after`
+  - `created_at`
+  - `updated_at`
+- Optional linkage columns:
+  - `job_posting_id`
+  - `followup_outreach_message_id`
+- Optional decision and guard columns:
+  - `last_evaluated_at`
+  - `last_reply_check_at`
+  - `last_reply_check_result`
+  - `gmail_thread_id_snapshot`
+  - `last_skip_reason`
+  - `agent_reviewed_at`
+  - `sent_at`
+- Notes:
+  - One plan row represents one allowed follow-up opportunity for one original sent outreach message.
+  - `plan_status` should cover values such as `pending`, `dry_run_ready`, `drafted`, `agent_reviewed`, `waiting_for_pacing`, `retryable`, `sent`, `skipped`, `cancelled`, `ambiguous`, `blocked`, and `held_for_review`.
+  - `followup_sequence` shall default to `1` for the first follow-up.
+  - The current default permits only one follow-up per original outreach thread unless the owner explicitly changes the sequence policy.
+  - The persistence layer shall enforce uniqueness for (`original_outreach_message_id`, `followup_sequence`) so repeated worker cycles cannot create duplicate first-follow-up plans for the same original outreach email.
+  - `last_skip_reason` should use structured reason codes such as `bounced`, `replied_in_thread`, `already_followed_up`, `missing_followup_thread_context`, `missing_original_body`, `waiting_for_pacing`, `transient_send_retry_cooldown`, `ambiguous_send_state`, and `grounding_evidence_insufficient`.
+  - Skip reasons such as `already_followed_up`, `bounced`, and `replied_in_thread` are terminal unless the owner explicitly resets the plan. `missing_followup_thread_context` is reviewable/resettable because repairing or importing thread metadata may make the plan sendable later. Temporary reasons such as Gmail API failure, transient send retry cooldown, or waiting for pacing may be rechecked by later cycles.
 
 **`delivery_feedback_events`**
 - Primary key:
@@ -1448,42 +1584,59 @@ This section defines the next-build logical schema shape for `job_hunt_copilot.d
    - index on `started_at`
    - index on `result`
    - index on `scheduler_name`
-9. `pipeline_runs`:
+9. `followup_cycle_runs`:
+   - index on `started_at`
+   - index on `result`
+   - index on `scheduler_name`
+10. `pipeline_runs`:
    - index on `run_status`
    - index on `job_posting_id`
    - index on `current_stage`
-10. `supervisor_cycles`:
+11. `supervisor_cycles`:
    - index on `started_at`
    - index on `result`
    - index on `pipeline_run_id`
-11. `agent_control_state`:
+12. `agent_control_state`:
    - primary-key lookup on `control_key` is sufficient
-12. `agent_runtime_leases`:
+13. `agent_runtime_leases`:
    - index on `expires_at`
-13. `agent_incidents`:
+14. `agent_incidents`:
    - index on `status`
    - index on `severity`
    - index on `pipeline_run_id`
-14. `expert_review_packets`:
+15. `expert_review_packets`:
    - index on `packet_status`
    - index on `pipeline_run_id`
-15. `expert_review_decisions`:
+16. `expert_review_decisions`:
    - index on `expert_review_packet_id`
    - index on `decided_at`
-16. `discovery_attempts`:
+17. `discovery_attempts`:
    - index on `contact_id`
    - index on `job_posting_id`
    - index on `outcome`
    - index on `created_at`
-17. `provider_budget_events`:
+18. `provider_budget_events`:
    - index on `provider_name`
    - index on `created_at`
-18. `outreach_messages`:
+19. `llm_usage_events`:
+   - index on `created_at`
+   - index on (`component_name`, `operation_name`, `created_at`)
+   - index on `job_posting_id`
+   - index on `contact_id`
+20. `outreach_messages`:
    - index on `contact_id`
    - index on `job_posting_id`
    - index on `message_status`
    - index on `sent_at`
-19. `delivery_feedback_events`:
+21. `outreach_followup_plans`:
+   - unique index on (`original_outreach_message_id`, `followup_sequence`)
+   - index on `original_outreach_message_id`
+   - index on `followup_outreach_message_id`
+   - index on `contact_id`
+   - index on `job_posting_id`
+   - index on `plan_status`
+   - index on `eligible_after`
+22. `delivery_feedback_events`:
    - index on `outreach_message_id`
    - index on `event_state`
    - index on `event_timestamp`
@@ -1688,6 +1841,27 @@ CREATE TABLE IF NOT EXISTS feedback_sync_runs (
   error_message TEXT
 );
 
+CREATE TABLE IF NOT EXISTS followup_cycle_runs (
+  followup_cycle_run_id TEXT PRIMARY KEY,
+  scheduler_name TEXT NOT NULL,
+  scheduler_type TEXT NOT NULL,
+  started_at TEXT NOT NULL,
+  result TEXT NOT NULL,
+  completed_at TEXT,
+  candidates_examined INTEGER,
+  drafts_created INTEGER,
+  messages_sent INTEGER,
+  waiting_for_pacing_count INTEGER,
+  skipped_replied INTEGER,
+  skipped_bounced INTEGER,
+  skipped_already_followed_up INTEGER,
+  retryable_count INTEGER,
+  blocked_count INTEGER,
+  held_for_review INTEGER,
+  last_checkpoint TEXT,
+  error_message TEXT
+);
+
 CREATE TABLE IF NOT EXISTS pipeline_runs (
   pipeline_run_id TEXT PRIMARY KEY,
   run_scope_type TEXT NOT NULL,
@@ -1860,6 +2034,30 @@ CREATE TABLE IF NOT EXISTS outreach_messages (
   FOREIGN KEY (job_posting_contact_id) REFERENCES job_posting_contacts(job_posting_contact_id)
 );
 
+CREATE TABLE IF NOT EXISTS outreach_followup_plans (
+  outreach_followup_plan_id TEXT PRIMARY KEY,
+  original_outreach_message_id TEXT NOT NULL,
+  followup_outreach_message_id TEXT,
+  contact_id TEXT NOT NULL,
+  job_posting_id TEXT,
+  plan_status TEXT NOT NULL,
+  followup_sequence INTEGER NOT NULL,
+  eligible_after TEXT NOT NULL,
+  last_evaluated_at TEXT,
+  last_reply_check_at TEXT,
+  last_reply_check_result TEXT,
+  gmail_thread_id_snapshot TEXT,
+  last_skip_reason TEXT,
+  agent_reviewed_at TEXT,
+  sent_at TEXT,
+  created_at TEXT NOT NULL,
+  updated_at TEXT NOT NULL,
+  FOREIGN KEY (original_outreach_message_id) REFERENCES outreach_messages(outreach_message_id),
+  FOREIGN KEY (followup_outreach_message_id) REFERENCES outreach_messages(outreach_message_id),
+  FOREIGN KEY (contact_id) REFERENCES contacts(contact_id),
+  FOREIGN KEY (job_posting_id) REFERENCES job_postings(job_posting_id)
+);
+
 CREATE TABLE IF NOT EXISTS delivery_feedback_events (
   delivery_feedback_event_id TEXT PRIMARY KEY,
   outreach_message_id TEXT NOT NULL,
@@ -1953,6 +2151,13 @@ CREATE INDEX IF NOT EXISTS idx_feedback_sync_runs_result
 CREATE INDEX IF NOT EXISTS idx_feedback_sync_runs_scheduler_name
   ON feedback_sync_runs(scheduler_name);
 
+CREATE INDEX IF NOT EXISTS idx_followup_cycle_runs_started_at
+  ON followup_cycle_runs(started_at);
+CREATE INDEX IF NOT EXISTS idx_followup_cycle_runs_result
+  ON followup_cycle_runs(result);
+CREATE INDEX IF NOT EXISTS idx_followup_cycle_runs_scheduler_name
+  ON followup_cycle_runs(scheduler_name);
+
 CREATE INDEX IF NOT EXISTS idx_pipeline_runs_status
   ON pipeline_runs(run_status);
 CREATE INDEX IF NOT EXISTS idx_pipeline_runs_job_posting
@@ -2009,6 +2214,21 @@ CREATE INDEX IF NOT EXISTS idx_outreach_messages_status
   ON outreach_messages(message_status);
 CREATE INDEX IF NOT EXISTS idx_outreach_messages_sent_at
   ON outreach_messages(sent_at);
+
+CREATE INDEX IF NOT EXISTS idx_outreach_followup_plans_original_message
+  ON outreach_followup_plans(original_outreach_message_id);
+CREATE UNIQUE INDEX IF NOT EXISTS idx_outreach_followup_plans_original_sequence
+  ON outreach_followup_plans(original_outreach_message_id, followup_sequence);
+CREATE INDEX IF NOT EXISTS idx_outreach_followup_plans_followup_message
+  ON outreach_followup_plans(followup_outreach_message_id);
+CREATE INDEX IF NOT EXISTS idx_outreach_followup_plans_contact
+  ON outreach_followup_plans(contact_id);
+CREATE INDEX IF NOT EXISTS idx_outreach_followup_plans_job_posting
+  ON outreach_followup_plans(job_posting_id);
+CREATE INDEX IF NOT EXISTS idx_outreach_followup_plans_status
+  ON outreach_followup_plans(plan_status);
+CREATE INDEX IF NOT EXISTS idx_outreach_followup_plans_eligible_after
+  ON outreach_followup_plans(eligible_after);
 
 CREATE INDEX IF NOT EXISTS idx_delivery_feedback_events_message
   ON delivery_feedback_events(outreach_message_id);
@@ -2953,6 +3173,9 @@ For each lead, persist an eligibility decision artifact with:
 - **FR-RT-12C4 (New Run on Post-Review Retailoring):**
   If the owner rejects a tailored resume and Resume Tailoring is run again for the same posting, the rerun should create a new `resume_tailoring_runs` row rather than overwriting the previous run's status history.
 
+- **FR-RT-12C5 (Failed Retailoring Run Does Not Reuse Prior Approved Output):**
+  If a newer retailoring run for a posting ends in `tailoring_status = needs_revision` or `tailoring_status = failed` with `resume_review_status = not_ready`, runtime shall not keep using an older approved run for Outreach. The posting returns to `tailoring_in_progress` and remains set aside until a newer run reaches `resume_review_status = approved`.
+
 ### 7.2.6 Tailoring Output
 
 - **FR-RT-13 (Evidence Map):**
@@ -3162,23 +3385,48 @@ For discovery-state persistence, the system shall use discovery-specific tables 
 - **FR-ED-00B (Apollo-First Contact Search):** The current first-build company-scoped people-search provider shall be Apollo.
 - **FR-ED-00B1 (Company Resolution Before Apollo People Search):** The Apollo path should first resolve the target company to an Apollo organization record and capture the resolved `organization_id` before broad people search begins.
 - **FR-ED-00B2 (Organization-ID-Anchored Search):** When Apollo organization resolution succeeds, people search should anchor on the resolved `organization_id` rather than relying only on company name or raw domain filters.
+- **FR-ED-00B2A (Resolved-Organization Reuse Rule):** When the posting or company group already carries a previously resolved Apollo company identifier such as `provider_company_key` or a saved `organization_id`, the Apollo path should reuse that persisted identifier and skip a fresh `mixed_companies/search` resolution call unless the persisted identifier is missing, malformed, or has been explicitly invalidated.
 - **FR-ED-00B3 (Company Resolution Artifact):** The people-search stage shall persist the resolved company-search outcome, including the chosen Apollo organization record when found, inside `people_search_result.json` so later review can see what company identity was actually searched.
+- **FR-ED-00B4 (Apollo Quota Exhaustion Cooldown Rule):** When Apollo company-scoped search or enrichment returns a quota-exhaustion signal such as `HTTP 422 insufficient credits`, the system shall normalize that outcome to `quota_exhausted`, persist Apollo provider cooldown state, and suppress immediate repeated Apollo retries until the cooldown expires.
+- **FR-ED-00B5 (Apollo Company-Resolution DB Persistence Rule):** In addition to the broad search artifact, the resolved Apollo company/organization payload used for a role-targeted posting shall also be persisted in the main database as posting-scoped provider context linked to that `job_posting_id`.
+- **FR-ED-00B6 (Job Posting Provider Context Table):** The main database shall include a `job_posting_provider_contexts` table for posting-scoped provider payloads such as Apollo company resolution. At minimum this table should support:
+  1. `job_posting_provider_context_id`
+  2. `job_posting_id`
+  3. `provider_name`
+  4. `context_stage` such as `apollo_company_resolution`
+  5. provider-scoped organization identifier when available
+  6. full raw provider payload JSON
+  7. provider refresh/observed timestamp when available
+  8. `created_at`
+  9. `updated_at`
 - **FR-ED-00C (Role-Targeted Search Filters):** Company-scoped people search should use the resolved company context plus title, function, and seniority filters derived from the JD and current outreach priorities. Engineering managers, recruiters, and role-relevant engineers are the primary target classes.
+- **FR-ED-00C1 (Broad-Location Filter Suppression Rule):** Apollo people search should omit `person_locations` when the posting location is broad or non-specific for sourcing, such as remote, hybrid, United States-wide, multi-location, or equivalent broad-search wording. Location-constrained Apollo retries should be reserved for postings with genuinely specific geographic anchors.
 - **FR-ED-00D (People-Search Materialization):** Company-scoped people-search results shall first persist the broad-search output in `people_search_result.json`. Canonical `contacts` and posting-contact links shall be created or updated only for shortlisted candidates that proceed into enrichment, identity clarification, or later outreach handling, even when a usable email is not yet available.
 - **FR-ED-00D0 (Shortlist-Stage Canonical Materialization):** When shortlist-time materialization occurs, stable provider identity such as Apollo person ID is sufficient for creating the canonical contact and posting-contact link even before a non-obfuscated full name is known.
 - **FR-ED-00D3 (Terminal Enrichment-Failure Cleanup):** If a shortlisted candidate fails enrichment in a way that makes the candidate unusable for the current build and the candidate will not continue into email discovery or outreach, the current posting-contact link shall be removed. If the linked canonical `contact` was created only for that shortlist candidate and is not reused elsewhere, that contact row shall also be removed instead of being retained as dead canonical state.
 - **FR-ED-00D1 (Search-Stage Sparsity Handling):** The Apollo search stage may return sparse candidate data such as partial or obfuscated display names, title, freshness metadata, and capability flags like `has_email` without returning a real email value. The system shall preserve that sparse result shape rather than assuming search always yields a full profile.
 - **FR-ED-00D2 (Best-Known Name Materialization Rule):** When people search returns only a sparse display name, the contact record shall still preserve the best currently known human-readable name string as `display_name`, and may leave `full_name` empty until enrichment or another source reveals the non-obfuscated full name.
+- **FR-ED-00D4 (Apollo Search-Payload Snapshot Rule):** For every shortlisted Apollo candidate that is materialized into canonical contact state, the system shall persist the full Apollo search-stage payload as a provider-profile snapshot linked to that `contact_id`. This snapshot shall preserve all Apollo fields returned for that candidate at search time, even when many of those fields are not yet used operationally.
+- **FR-ED-00D5 (Apollo Search Artifact Plus Database Rule):** The broad search artifact remains the historical record for the whole search run, but shortlisted contacts shall additionally have database-backed Apollo profile snapshots so later components do not depend on reparsing the artifact file to recover provider fields.
+- **FR-ED-00D6 (Shortlist-Only DB Persistence Boundary):** Full Apollo person-payload persistence in the main database is required only for shortlisted or otherwise materialized contacts. Non-shortlisted broad-search candidates may remain artifact-only rows inside the search artifact and do not need separate database-backed person snapshots in this build.
 - **FR-ED-00E (Skip Extra Email Lookup on Usable Provider Email):** If the selected people-search or enrichment provider already returns a usable work email for a selected contact, the system may skip separate person-scoped email-finder calls for that contact.
 - **FR-ED-00E1 (Selective Apollo Enrichment After Search):** After the broad Apollo search pass, the system should enrich only the shortlisted contacts that need fuller identity, LinkedIn URL, or a usable work email. It should not bulk-enrich every broad-search candidate by default.
+- **FR-ED-00E1A (Shortlist-Frontier Enrichment Rule):** In the current high-recall role-targeted flow, shortlist-time Apollo enrichment should be demand-driven rather than eager. The system should defer Apollo enrichment for shortlisted contacts until that specific contact is on the current send or discovery frontier and cannot proceed with the currently known sparse identity, LinkedIn context, or usable-email state. Shortlisted contacts that are not yet actionable for the current frontier should remain materialized but unenriched.
 - **FR-ED-00E2 (Search-To-Enrichment Boundary):** Apollo Search is the high-recall candidate-generation step. Apollo enrichment is the identity-clarification and optional email-returning step for selected contacts.
 - **FR-ED-00E2A (Enrichment-To-Email-Discovery Boundary):** Person-scoped email discovery shall begin only when shortlist-time enrichment has completed for that contact and still did not return a usable work email. Enrichment alone does not hand a contact into email discovery if it already produced a usable email.
+- **FR-ED-00E2B (Frontier-Only Paid Email-Discovery Rule):** In the role-targeted autonomous flow, person-scoped paid email-finder calls should be limited to contacts in the current automatic send frontier that still lack a usable work email. Other shortlisted or identified contacts may remain materialized and unresolved until a later wave makes them part of the active frontier.
 - **FR-ED-00E3 (Search-Stage Recipient Typing):** The search stage should infer a preliminary `recipient_type` and `relevance_reason` from the returned title and job context, such as `recruiter`, `hiring_manager`, `engineer`, or `other_internal`, before later ranking or wave selection narrows the final outreach set.
 - **FR-ED-00E4 (LinkedIn-URL-Driven Profile Extraction):** When enrichment yields a LinkedIn profile URL for a selected contact, the system may use that URL to extract as much clean public profile context as is actually visible and useful before drafting begins.
 - **FR-ED-00E5 (Recipient-Profile Snapshot Scope):** LinkedIn-profile extraction should persist a structured public-profile snapshot that keeps useful identity fields, top-card fields, about preview, experience hints, recent public activity, visible public signals, and grounded work signals when they are actually exposed. It should not attempt to persist unrelated personal data or invent hidden/member-only fields.
 - **FR-ED-00E6 (Recipient-Profile Artifact Persistence):** Extracted LinkedIn-profile context shall be persisted as a recipient-profile artifact linked to the canonical `contact_id` so drafting can consume a stable internal snapshot rather than refetching the live profile during generation.
 - **FR-ED-00E7 (LinkedIn-Profile Extraction Failure Tolerance):** If a selected contact lacks a LinkedIn URL, or LinkedIn-profile extraction fails, the contact may still continue through email discovery and drafting using the best available sparse recipient context from search and enrichment. Missing LinkedIn-profile context alone does not block outreach.
 - **FR-ED-00E8 (Email Outcome After Enrichment):** If Apollo enrichment does not return a usable work email for a selected contact, the system shall continue into the separate person-scoped email-discovery path for that contact rather than treating the enrichment step as final failure.
+- **FR-ED-00E9 (Apollo Enrichment-Payload Snapshot Rule):** When Apollo enrichment is run for a materialized contact, the system shall persist the full enrichment-stage Apollo payload in the database as a newer provider-profile snapshot linked to the same `contact_id`.
+- **FR-ED-00E10 (Apollo Payload Fidelity Rule):** Apollo provider snapshots shall preserve the full returned field set, including fields not yet used by the current workflow, so later drafting, debugging, or feature work can reuse Apollo context without re-calling the provider.
+- **FR-ED-00E11 (Apollo Employment History Extraction Rule):** If Apollo search or enrichment returns employment history, the system shall persist each returned employment-history item as a structured row linked to the canonical `contact_id`, retaining ordering, employer/company labels, role titles, date ranges, current-role flags when available, and a raw per-item payload copy.
+- **FR-ED-00E12 (Employment History Latest-State Refresh Rule):** When a newer Apollo payload is persisted for a contact, the contact's structured Apollo employment-history rows shall be refreshed to match the newest provider snapshot rather than accumulating stale duplicate role rows indefinitely.
+- **FR-ED-00E13 (Provider Snapshot Lifecycle Rule):** `contact_provider_profiles` and `job_posting_provider_contexts` shall behave as append-only snapshot history. New Apollo search, enrichment, or company-resolution payloads create newer snapshot rows rather than overwriting earlier raw payloads.
+- **FR-ED-00E14 (Promoted Latest-State Precedence Rule):** When Apollo search-stage and enrichment-stage payloads disagree, the newer enrichment-stage payload shall take precedence for promoted latest-known contact fields on `contacts` such as current title, current company, LinkedIn URL, location, and Apollo-returned work email. Search-stage fields may still backfill those promoted fields only when the newer stage does not provide a usable value.
 - **FR-ED-00F (Autonomous People-Search Breadth):** For the autonomous LinkedIn-alert mode, the initial Apollo search should prefer high recall over narrow precision so the system can collect a broad internal contact set before later ranking or pacing decisions.
 - **FR-ED-00G (Autonomous Helpful-Contact Scope):** The autonomous search set is not limited to one exact title. It should include any role-relevant internal people who might realistically help route the candidate to the right hiring person.
 
@@ -3269,10 +3517,42 @@ The engine itself is not required to be implemented yet and shall be built later
 - **FR-ED-28B (Lightweight Discovery Summary on Contact):** In addition to the top-level contact lifecycle status, the `contacts` table may also store a lightweight discovery-specific summary or reason field for the contact, such as `working_email_found`, `all_providers_exhausted`, or `identity_ambiguous`, while detailed history remains in `discovery_attempts`.
 - **FR-ED-28C (Latest-State Contact Status):** The lightweight discovery status stored on a contact shall represent the latest known high-level state for that contact. Historical state transitions shall remain in `discovery_attempts` rather than being stored as multiple concurrent contact-status values.
 - **FR-ED-28D (Current Working Email on Contact):** If a contact has a known working email, the `contacts` table shall store that current working email directly for efficient lookup, while `discovery_attempts` remains the source of detailed historical attempt data.
+- **FR-ED-28E (Provider Snapshot Attachment Rule):** Full provider-specific person payloads shall not be squeezed into the core `contacts` columns. Instead, provider payloads such as Apollo search/enrichment responses shall attach through a dedicated provider-profile table linked by `contact_id`.
 - **FR-ED-29 (Two-Key Identity Model):** The dataset shall use:
   1. `identity_key` for deterministic lookup
   2. `contact_id` for unique contact-instance linkage
   Provider secondary identifiers such as Apollo person ID and LinkedIn URL shall be stored on the contact when available because they may be the strongest stable identity signals for retrieval and deduplication.
+- **FR-ED-29A (Contact Provider Profile Table):** The main database shall include a `contact_provider_profiles` table for provider-specific person payload snapshots. At minimum this table should support:
+  1. `contact_provider_profile_id`
+  2. `contact_id`
+  3. `provider_name`
+  4. provider-scoped person identifier such as Apollo person ID
+  5. provider-scoped organization identifier when available
+  6. `profile_stage` such as `apollo_search` or `apollo_enrichment`
+  7. full raw provider payload JSON
+  8. provider refresh/observed timestamp when available
+  9. `created_at`
+  10. `updated_at`
+- **FR-ED-29A1 (Raw Payload Fidelity Rule):** The raw provider payload stored in `contact_provider_profiles` and `job_posting_provider_contexts` shall preserve the exact provider response fragment or object returned by Apollo for that entity/stage, not a lossy normalized rewrite. Any normalized convenience fields should live in separate columns rather than replacing the raw payload.
+- **FR-ED-29B (Contact Employment History Table):** The main database shall include a `contact_employment_history` table so drafting and review can query Apollo employment history in structured form. At minimum this table should support:
+  1. `contact_employment_history_id`
+  2. `contact_id`
+  3. `provider_name`
+  4. provider-scoped person identifier
+  5. employer/company label
+  6. role title
+  7. start date when available
+  8. end date when available
+  9. current-role flag when available
+  10. source sort/order index
+  11. raw per-item payload JSON
+  12. `created_at`
+  13. `updated_at`
+- **FR-ED-29C (Provider Snapshot Uniqueness and Indexing Rule):** The provider-snapshot tables shall support efficient lookup by `contact_id`, `job_posting_id`, `provider_name`, provider-scoped Apollo identifiers, and recency. The schema should enforce practical uniqueness for exact duplicate snapshot rows where feasible and should at minimum index:
+  1. `contact_provider_profiles(contact_id, provider_name, created_at)`
+  2. `contact_provider_profiles(provider_name, provider_person_id)`
+  3. `contact_employment_history(contact_id, provider_name, source_sort_index)`
+  4. `job_posting_provider_contexts(job_posting_id, provider_name, context_stage, created_at)`
 - **FR-ED-30 (Identity Key Generation Policy):** `identity_key` shall be created using the strongest deterministic identifier available in this priority order:
   1. normalized LinkedIn profile URL when available
   2. normalized provider-scoped person key such as `apollo:{provider_person_id}` when a stable provider person ID exists
@@ -3313,14 +3593,14 @@ The engine itself is not required to be implemented yet and shall be built later
 ### 7.3.3 Email Drafting and Sending Subcomponent FRs
 
 - **FR-EM-01:** System shall generate outreach per contact using the relevant available context for that outreach mode.
-- **FR-EM-01A (Dynamic Subject Line Generation):** Drafting shall explicitly generate a subject line as part of the outreach draft. Subject lines should remain dynamic rather than fixed-form, while generally staying short, relevant, easy to scan, non-spammy, and aligned with recipient type and available personalization signals.
+- **FR-EM-01A (Current Subject Ownership Rule):** Drafting shall explicitly generate or assign a subject line as part of the outreach draft. In the current role-split build, deterministic Python owns the final subject and uses the fixed per-path patterns defined by the active drafting strategy.
 - **FR-EM-01B (Single-Draft Mode):** For this build, the subcomponent only needs to generate one final outreach draft per contact rather than producing multiple candidate drafts for selection or ranking.
 - **FR-EM-01B1 (Current Posting-Frontier Draft Start Gate):** In the current role-targeted flow, draft generation for a posting may begin as soon as individual untouched contacts become ready after the posting-level prerequisites are satisfied. The build does not wait for one fixed send set to become fully ready before drafting starts.
 - **FR-EM-01B2 (Frontier Draft Before Send Rule):** In the current role-targeted flow, the system shall persist drafts for the currently ready untouched posting frontier before those individual contacts are eligible for automatic sending. Sending then consumes that drafted frontier through the active send-slice and pacing rules.
 - **FR-EM-01B3 (Partial Frontier Continuation Rule):** If one or more contacts in the current ready posting frontier fail draft generation, the successfully generated drafts from that same frontier may still proceed into sending. Failed draft cases shall be surfaced for review rather than blocking the successful drafts in that frontier.
 - **FR-EM-01B4 (Failed-Draft Requeue Eligibility Rule):** A posting-contact pair that has only prior role-targeted draft-attempt rows in terminal `failed` state shall not be treated as permanently touched for future drafting eligibility. If that posting is later requeued after a repair or operator-directed retry and the contact is otherwise still ready, the drafting frontier may regenerate a fresh draft for that same posting-contact pair.
 - **FR-EM-01C (Pacing-Aware Per-Contact Sending):** For this build, Email Drafting and Sending may still operate per discovered contact, but actual send execution shall respect the active pacing and throttling decisions produced by orchestration.
-- **FR-EM-01D (Role-Targeted Draft Inputs):** For role-targeted outreach, draft generation shall explicitly use job-posting context, recipient profile context, and the tailored resume as core inputs.
+- **FR-EM-01D (Role-Targeted Draft Inputs):** For role-targeted outreach, draft generation shall explicitly use job-posting context, recipient profile context when available, the tailored resume or bounded sender evidence derived from it, and the current role-split input pack for the selected recipient path as core inputs.
 - **FR-EM-01D1 (Recipient-Profile Artifact Preference):** When `recipient_profile.json` or equivalent persisted recipient-profile context exists for the selected contact, draft generation shall use that persisted snapshot as the primary recipient-profile input rather than refetching the live profile at draft time.
 - **FR-EM-01D2 (Sparse-Context Drafting Fallback):** When only sparse search or enrichment context exists for the selected contact and no richer recipient-profile snapshot is available, drafting shall fall back to title, team/work-area, and role proximity signals. It shall not invent person-specific background hooks.
 - **FR-EM-01E (General Learning-Outreach Inputs):** For general outreach not tied to a specific job posting, draft generation shall primarily use recipient profile context and sender background context. A tailored resume is not required input for this mode.
@@ -3336,19 +3616,102 @@ The engine itself is not required to be implemented yet and shall be built later
 - **FR-EM-03C (Standard Signature Block):** Drafts shall include a standard sender signature block containing the sender's name, LinkedIn URL, phone number, and email address.
 - **FR-EM-03D (Shared Signature):** For this build, the same signature block may be used across recipient types. Recipient-specific signature variation is not required yet.
 - **FR-EM-03E (Signature Source of Truth):** The actual signature values shall be sourced from the candidate master profile or equivalent runtime configuration rather than hardcoded into the specification itself.
+- **FR-EM-03E1 (Sender Signature Identity Scope Rule):** When the sender identity is loaded from the candidate master profile, signature fields such as name, email, phone, LinkedIn URL, and GitHub URL shall be read only from the profile's `Personal` section. Project-level or portfolio-specific `GitHub` bullets elsewhere in the profile shall not override the sender's public GitHub profile URL in the signature.
 - **FR-EM-03F (Pacing-Aware Send Execution):** For this build, once the relevant drafts for ready untouched contacts have been generated and persisted, the subcomponent may execute sends without a separate manual send trigger or mandatory pre-send draft approval, but only when the current active send-slice, per-posting daily-cap, and inter-send pacing rules allow each send at that time.
+- **FR-EM-03F0 (Send-Stage Recheck Demotion Rule):** If a role-targeted `sending` run is reevaluated and the next selected contact frontier no longer has any draftable ready contacts because those contacts still need usable emails, the system shall not attempt drafting from that stale `ready_for_outreach` state. It shall persist the posting back to `requires_contacts` and move the durable run back to `email_discovery`. That demotion path shall not require new `outreach_messages` rows or `send_result` artifacts for that cycle because no drafting or sending occurred.
 - **FR-EM-03F1 (Transient Send Failure Retry Rule):** In the current Gmail-backed role-targeted automatic sending flow, clearly transient auth or transport failures, such as DNS resolution failures, connection timeouts, or temporary token-endpoint connectivity failures, shall not be persisted as terminal recipient failures. Instead, the system shall keep the same outreach message, mark it `blocked`, stop the current posting wave immediately, and retry that same message later.
 - **FR-EM-03F2 (Transient Send Cooldown And Retry Bound):** The current build shall wait 15 minutes before retrying a transient blocked role-targeted send, and it shall allow up to 3 automatic retries for that same message. Once that retry bound is exhausted, the message shall remain `blocked` and reviewable rather than being converted into a terminal `failed` recipient outcome.
 - **FR-EM-03F3 (Posting-Scoped Retry Continuation Rule):** While a transient blocked role-targeted send remains within its automatic retry budget, the posting shall remain `outreach_in_progress` and the durable run shall remain at `sending` so later heartbeats can resume from that same message once the cooldown expires.
 - **FR-EM-03G (Persist Final Sent Content):** The system shall persist the exact final sent subject and body for each outreach email so the user can later inspect what was actually sent.
 - **FR-EM-03H (Persist Final Rendered HTML):** When rich HTML formatting is used, the system shall also persist the final rendered HTML version that was sent so later review can reflect the real recipient-facing rendering.
-- **FR-EM-03I (No Extra Body Links by Default):** For this build, the email body does not need to include additional portfolio, GitHub, or project links beyond the standard signature/contact information unless a later design decision explicitly adds them.
+- **FR-EM-03I (Restrained Body-Link Rule):** For this build, the email body should remain link-light. LinkedIn and GitHub belong in the signature by default, but the current role-split playbooks may include the `Job Hunt Copilot` repo URL in the fixed technical path or in one managerial technical-highlight bullet when that project materially strengthens fit.
 - **FR-EM-03J (Outreach Messages Table):** The central database shall include an `outreach_messages` table as the minimum canonical store for generated/sent outreach messages. For this build, it should at minimum capture an outreach-message identifier, required `contact_id`, optional `job_posting_id`, final sent subject, final sent body, final rendered HTML when applicable, delivery-tracking identifier or thread ID when available, and send timestamp.
 - **FR-EM-03K (Ambiguous Repeat-Outreach Review):** If the same contact already has prior outreach history and the correct next action depends on interpreting what was already sent, the system shall not auto-decide a new outreach message. It shall surface the case to the user for review.
-- **FR-EM-03L (Manual Follow-Up Tracking Scope):** Follow-up email drafting remains manual/user-owned for now, but the system should still track enough outreach state to support later follow-up decisions, such as recipient type, outreach mode, follow-up state, last touch date, next follow-up date, and notes.
-- **FR-EM-03M (Current Follow-Up Cadence Guidance):** For the current outreach guide, the working follow-up cadence should be roughly one week between follow-ups, with a maximum of 3 follow-ups, and follow-up should stop once the person replies.
-- **FR-EM-03M1 (Current Unreplied Follow-Up Template Rule):** For unreplied sent outreach, the current default follow-up shall use the warmer mutual-fit template: briefly follow up on the earlier note about the specific role, state that the role could be a strong mutual fit with 2-3 concise background fit areas, acknowledge the recipient is busy, ask for a brief 15-minute conversation about the role/team/process, and close with `If this is not relevant or not the right time, I completely understand and will not keep following up.` Background fit areas shall be grounded in the original sent email, the JD, and the candidate resume/profile evidence, and unrelated roles shall not collapse into the same generic repeated phrase across a batch. The earlier terse JD-theme follow-up template shall no longer be used for unreplied follow-ups.
-- **FR-EM-03N (No Automatic Follow-Up Send):** The current follow-up cadence guidance is tracking and policy guidance only. The system shall not auto-generate or auto-send follow-up emails in this build unless the user later expands scope explicitly.
+- **FR-EM-03K1 (Role-Targeted Unsent Cross-Posting Scope Rule):** In role-targeted automatic sending, unsent `generated`, `blocked`, or `failed` outreach history from other postings shall not by itself create an `ambiguous_send_state` block for the current posting. Send-time ambiguity from multiple active unsent messages is scoped to the current posting context. Prior successful sent history for that contact may still trigger repeat-outreach review.
+- **FR-EM-03L (Follow-Up Tracking Scope):** The system shall track enough outreach state to support deterministic follow-up decisions, including recipient type, outreach mode, original sent message, follow-up state, last touch date, next follow-up date, reply-check result, skip reason, and notes.
+- **FR-EM-03L0A (Email-Rooted Follow-Up Eligibility):** Follow-up eligibility shall be evaluated from the original sent email record first. The worker shall not select a job posting and then derive follow-up emails from that posting as the primary workflow. Job-posting and JD records are drafting context only.
+- **FR-EM-03L0A1 (Per-Original-Email Follow-Up Scope):** If the same contact has multiple separate original `role_targeted` outreach emails for different roles or distinct Gmail threads, each original email may be eligible for its own first follow-up. Duplicate suppression shall operate per original outreach email and Gmail thread, not by contact alone, unless thread evidence shows the messages belong to the same conversation.
+- **FR-EM-03L0A2 (Current Contact Hard-Stop Override):** Current contact-level hard-stop flags, such as `do_not_contact`, blacklisted, owner-blocked, or equivalent non-contactable states, shall override otherwise eligible follow-up candidates. Normal job-posting lifecycle changes shall not block an email-rooted follow-up by themselves, but explicit current contactability stops shall.
+- **FR-EM-03L0B (Missing Posting Link Non-Blocking Rule):** A missing `job_posting_id` on an otherwise valid original sent `role_targeted` email shall not by itself block follow-up eligibility. The worker may proceed using the original email body, thread metadata, and available resume evidence.
+- **FR-EM-03L0C (Original Body Required Gate):** The persisted original sent email body is required for automatic follow-up. If the worker cannot load the original body from canonical `outreach_messages` state or the associated sent-email artifact, it shall skip automatic sending and create a review packet rather than trying to infer the original narrative from secondary fields alone.
+- **FR-EM-03L0D (Missing Subject Non-Blocking Rule):** A missing original subject shall not block automatic follow-up when the original body and same-thread metadata are available, because the follow-up must be sent as an actual Gmail thread reply rather than by rewriting or simulating a subject.
+- **FR-EM-03L1 (Follow-Up Candidate Outreach Mode Scope):** Automatic follow-up candidates shall be limited to original sent `role_targeted` outreach messages. `general_learning`, `manual_reply`, `follow_up`, `role_targeted_followup`, and any future non-initial outreach modes shall not become new automatic follow-up roots under the current design.
+- **FR-EM-03L1A (System-Recorded First Email Scope):** Follow-up candidates shall include first emails sent autonomously by the system and first emails manually triggered through the system, as long as they are persisted as original sent `role_targeted` outreach messages in canonical state. The follow-up worker shall not attempt to follow up on arbitrary external Gmail messages that were never recorded as system outreach.
+- **FR-EM-03L2 (Historical Follow-Up Suppression Evidence):** Existing sent messages in modes such as `follow_up` or `role_targeted_followup` shall be treated as equivalent evidence that the original thread has already received a follow-up, and shall suppress additional automatic follow-up for that original outreach thread.
+- **FR-EM-03L2A (Canonical Future Follow-Up Mode):** New automatic follow-up messages shall use `role_targeted_followup` as the canonical outreach mode. The older `follow_up` mode shall be treated as legacy historical data only.
+- **FR-EM-03L2B (Immutable Original Outreach Record):** Sending a follow-up shall not mutate the original sent `role_targeted` outreach message body, mode, sent timestamp, or delivery identity. The follow-up shall be persisted as a separate `role_targeted_followup` `outreach_messages` row linked back to the original outreach message through `original_outreach_message_id` or equivalent follow-up plan linkage.
+- **FR-EM-03L3 (Dual Already-Followed-Up Detection):** The follow-up worker shall suppress duplicate follow-ups using both explicit database linkage and Gmail-thread evidence. A candidate shall be treated as already followed up if an `outreach_followup_plans` row or follow-up-mode `outreach_messages` row links back to the original message, or if the original Gmail thread already contains a later outbound message from the sender after the original `sent_at`.
+- **FR-EM-03L3A (Manual Gmail Outbound Suppression):** A later outbound message from the sender found directly in the original Gmail thread after the original `sent_at` shall suppress automatic follow-up even if that outbound message was sent manually from Gmail and is not recorded in the local database.
+- **FR-EM-03L4 (Continuous Follow-Up Plan Materialization):** The follow-up worker may create or refresh follow-up plans for sent `role_targeted` messages before they are due. Plans shall become sendable only after the 4-calendar-day eligibility threshold and all stop-condition, reply-thread, duplicate-follow-up, pacing, and agent-review gates pass.
+- **FR-EM-03L4A (No Early Follow-Up Draft Rendering):** The follow-up worker shall not render follow-up draft bodies or draft artifacts before the original email reaches the 4-calendar-day eligibility threshold. Pre-eligibility materialization may track candidate status and due time, but content generation shall wait until the follow-up is eligible so stale drafts are not created.
+- **FR-EM-03L5 (Historical Backfill Scope):** The follow-up worker shall consider historical sent `role_targeted` emails from before the feature was implemented, not only future sends. Historical candidates remain subject to duplicate-follow-up, reply, bounce, thread, grounding, and pacing gates.
+- **FR-EM-03L5A (Historical Suppression Audit Rows):** During historical backfill and dry-run validation, historical emails skipped because they were already followed up, replied, bounced, or otherwise suppressed should receive skipped `outreach_followup_plans` rows with structured suppression reasons rather than being silently ignored, so suppression behavior can be audited.
+- **FR-EM-03L5B (Historical Manual Follow-Up Linkage):** During backfill, old manual or legacy follow-up evidence may be linked back to the original outreach email when the system can confidently match the same Gmail thread or original message relationship. This linkage is for suppression and audit only; it shall not rewrite historical message content. If a precise local linkage cannot be created but Gmail-thread evidence shows a later outbound follow-up, the original candidate shall still be suppressed as `already_followed_up`.
+- **FR-EM-03M (Current Follow-Up Cadence):** For unreplied sent outreach, the first follow-up shall become eligible after 4 calendar days from the original sent email. Weekends, holidays, and other non-business days shall not be excluded or rolled forward for eligibility.
+- **FR-EM-03M0S (Follow-Up Timer Start):** The 4-calendar-day follow-up timer shall start from the original outreach message's `sent_at`. Delivery Feedback states such as `not_bounced` shall be independent gates and shall not reset or delay the timer.
+- **FR-EM-03M0TZ (Follow-Up Timezone):** Follow-up calendar-day eligibility shall be calculated in the owner's local timezone, currently `America/Phoenix`, so the worker's due-date behavior matches how Gmail sent times appear to the owner.
+- **FR-EM-03M0 (No Maximum Follow-Up Age Cutoff):** The current design shall not impose a maximum original-email age cutoff for first follow-ups. An older sent email may still receive the first follow-up if it is otherwise eligible and all gates pass.
+- **FR-EM-03M0A (No Business-Hours Send Window):** After a follow-up becomes eligible, the follow-up worker may send it at any time of day. The current design does not restrict follow-up sends to business hours.
+- **FR-EM-03M0B (Follow-Up Send Pacing):** Follow-up sends shall obey the same send pacing rules as normal outreach, including the randomized global inter-send gap, so the dedicated follow-up worker does not create a bursty alternate send path.
+- **FR-EM-03M0B1 (Shared Global Pacing Queue):** Initial outreach sends and follow-up sends shall share the same global inter-send pacing queue. The follow-up worker shall compute send eligibility from the latest `sent_at` across canonical sent outreach messages and the active randomized 6-10 minute gap, rather than maintaining a separate follow-up-only pacing lane.
+- **FR-EM-03M0C (No Follow-Up Company Or Posting Cap):** Follow-up sends shall not apply the normal per-posting, per-company, or recipient-wave caps. Once a sent outreach thread is more than 4 calendar days old and passes all stop-condition and agent-review gates, it is eligible for follow-up sending subject only to the global inter-send pacing rule.
+- **FR-EM-03M0D (Due Follow-Up Ordering):** When multiple follow-ups are due, the follow-up worker shall process them oldest original sent email first, using `original.sent_at ASC` as the primary ordering key.
+- **FR-EM-03M0D1 (Historical Backfill Oldest-First Rule):** Historical backfill and the initial 10-send rollout shall use the same oldest-original-email-first ordering so review begins with the oldest eligible outreach threads.
+- **FR-EM-03M0E (One Follow-Up Send Per Cycle):** Each follow-up worker cycle shall send at most one follow-up message. A cycle may evaluate multiple candidates to find the next sendable follow-up, but after one successful send it shall stop sending until a later cycle.
+- **FR-EM-03M1 (Single Follow-Up Default):** The current default follow-up sequence shall allow at most one follow-up per original outreach thread unless the owner explicitly changes the sequence policy.
+- **FR-EM-03M2 (Approved Unreplied Follow-Up Template):** For unreplied sent outreach, the current default follow-up shall use this exact warmer mutual-fit template shape:
+
+```text
+Hi {first_name},
+
+I wanted to briefly follow up on my earlier note about the {role_title} role at {company_name}.
+
+I reached out because I believe the role could be a strong mutual fit with my background in {background_fit_areas}. I know you are busy, so I appreciate you taking the time to read this.
+
+If you are open to it, I would be grateful for a brief 15-minute conversation to hear your perspective on the role, the team, or what tends to matter in the process.
+
+If this is not relevant or not the right time, I completely understand and will not keep following up.
+
+Best,
+Achyutaram Sonti
+```
+
+- **FR-EM-03M3 (Follow-Up Template Grounding):** `{background_fit_areas}` shall be grounded in the original sent email, the JD, and the tailored resume evidence. Unrelated roles shall not collapse into the same generic repeated phrase across a batch.
+- **FR-EM-03M3J (Deterministic Follow-Up Rendering):** Follow-up body rendering shall be deterministic/template-based. The worker may select or generate the concise `{background_fit_areas}` phrase from allowed evidence, but the final body shape shall remain the approved template and must pass validation before send.
+- **FR-EM-03M3K (Background Fit Phrase Shape):** `{background_fit_areas}` shall be a concise list of 2-3 short noun phrases, such as `backend systems, AWS data pipelines, and production reliability`. It shall not become a sentence, proof paragraph, long metric claim, or generic skill dump.
+- **FR-EM-03M3L (No Metric-Heavy Follow-Up Proof Points):** Follow-up emails shall not repeat detailed metric-heavy proof points from the original email by default. The follow-up should stay light and rely on the original thread for detailed evidence.
+- **FR-EM-03M3M (No Generic Background Fit Fallback):** If the follow-up worker cannot produce a role-specific, evidence-grounded `{background_fit_areas}` phrase from the allowed evidence, it shall hold or escalate the follow-up rather than sending a generic fallback such as `software engineering`, `backend systems`, or another broad repeated phrase.
+- **FR-EM-03M3D (Original Email Narrative Source Of Truth):** The original sent email body shall be the narrative source of truth for follow-up drafting. JD and resume evidence may support or sharpen `{background_fit_areas}`, but the follow-up shall not change the story, claim a different fit, or introduce materially new positioning that conflicts with the original email.
+- **FR-EM-03M3B (Original Resume Evidence Preference):** Follow-up grounding shall prefer the exact tailored resume/version associated with the original sent email when available. If that linkage is missing, the worker may fall back to the latest approved tailored resume for the same job posting and shall record the fallback in review evidence.
+- **FR-EM-03M3A (Follow-Up Missing-JD Fallback):** Missing JD or role-context artifacts shall not block an otherwise eligible follow-up. When JD context is unavailable, `{background_fit_areas}` may be grounded in the original sent email body plus tailored resume evidence, and the follow-up worker shall record that fallback in the follow-up plan review evidence.
+- **FR-EM-03M3C (Original-Email-Only Grounding Fallback):** Missing tailored resume evidence shall not automatically block an otherwise eligible follow-up. If the original sent email body contains enough concrete fit context to derive `{background_fit_areas}`, the worker may ground the follow-up in the original email body alone and shall record that fallback. If the original email body is too generic or unavailable, the worker shall hold or escalate rather than invent fit areas.
+- **FR-EM-03M3E (Follow-Up Salutation Precedence):** The follow-up salutation shall reuse the recipient name exactly as used in the original sent email when that salutation can be recovered safely. If it cannot be recovered, the worker may parse the first name from the contact display name, but it shall validate that the result is not a placeholder, malformed name, email address, or otherwise unsafe salutation value before sending.
+- **FR-EM-03M3F (Generic Address Follow-Up Rule):** Generic recipient addresses such as `careers@`, `jobs@`, `info@`, or similar shall not automatically block follow-up if the original sent `role_targeted` email was valid and all follow-up gates pass. The worker shall reuse the original salutation when available; it shall not invent a personal first name for a generic mailbox.
+- **FR-EM-03M3G (Generic Salutation Preservation):** If the original sent email used a generic salutation such as `Hi,` or `Hello,`, the follow-up shall preserve that salutation rather than replacing it with an invented personal name.
+- **FR-EM-03M3H (Original Role/Company Wording Preference):** The `{role_title}` and `{company_name}` wording in the follow-up shall prefer the original sent email body or subject when recoverable. Canonical database fields may be used as fallback, but the worker shall not silently change the role/company wording in a way that conflicts with the original email.
+- **FR-EM-03M3I (Ignore Signature For Fit Extraction):** When extracting `{background_fit_areas}` or other follow-up grounding signals from the original sent email, the worker shall ignore the sender signature and contact block so LinkedIn URL, phone, email, and signoff text do not contaminate fit-area selection.
+- **FR-EM-03M4 (Short Follow-Up Signature):** Follow-up emails shall use the short follow-up signature only: `Best,` followed by `Achyutaram Sonti`. They shall not include the full LinkedIn, phone, and email signature block unless the owner explicitly changes the follow-up signature policy.
+- **FR-EM-03M5 (Retired Follow-Up Template):** The older terse JD-theme follow-up template shall not be used for unreplied follow-ups.
+- **FR-EM-03N (Follow-Up Agent Review Gate):** The system shall generate and send eligible follow-ups automatically without owner review, but only after the follow-up worker completes internal agent review and validation gates comparable to the normal initial-outreach drafting and sending gates.
+- **FR-EM-03N0 (Persist Follow-Up Draft Before Send):** The follow-up worker shall persist the exact follow-up draft body and agent-review evidence before attempting automatic send, even though owner review is not required. The Gmail send attempt shall use the persisted draft body exactly rather than regenerating follow-up text at send time.
+- **FR-EM-03N0B (Follow-Up Artifact Location):** Follow-up draft, dry-run, and agent-review artifacts should be stored next to the original outreach/email artifact under a clear `followups/` child folder when the original artifact path is available. If the original artifact path is missing, the worker shall use a canonical fallback such as `data/outreach-followups/{original_outreach_message_id}/followup-1/`.
+- **FR-EM-03N0A (Follow-Up Agent Review Evidence):** Before automatic send, the follow-up worker shall persist review evidence showing that the draft used the approved template, the background-fit phrase is grounded in the original email, JD when available, and tailored resume evidence, no retired template wording was used, no prohibited internal artifact text leaked into the email, the original email did not bounce, no prior follow-up was sent, and the direct Gmail-thread reply check found no inbound recipient reply after the original `sent_at`.
+- **FR-EM-03N1 (Follow-Up Stop Conditions):** The system shall not draft or send a follow-up when the original email bounced, when the recipient has replied, when a follow-up was already sent for that original outreach thread, or when the Gmail-thread reply check cannot safely determine whether the recipient replied after the original `sent_at`.
+- **FR-EM-03N2 (Follow-Up Same-Thread Rule):** Follow-up sends shall use the original Gmail thread when provider metadata permits, so the follow-up appears as a continuation of the original email thread rather than as an unrelated new cold email.
+- **FR-EM-03N2A (No Follow-Up Subject Rewrite):** The follow-up worker shall not create a new standalone email or rewrite the subject to simulate a reply. It shall send the follow-up as an actual reply in the original Gmail thread, preserving the thread's subject behavior.
+- **FR-EM-03N3 (Missing Same-Thread Metadata Escalation):** If the original Gmail thread ID is missing or the follow-up worker cannot send in the original thread, it shall not send a new standalone email with a `Re:` subject. It shall skip automatic sending and escalate the case into a review packet with the reason code `missing_followup_thread_context` or equivalent.
+- **FR-EM-03N4 (No Success Review Packet):** Successfully sent follow-ups shall not create expert review packets by default. They shall be visible through normal persisted follow-up plan, outreach message, send result, and follow-up cycle audit records. Review packets are reserved for blocked, ambiguous, failed, or escalated follow-up cases.
+- **FR-EM-03N4A (Follow-Up Review Packet Contents):** When a follow-up candidate becomes blocked, ambiguous, failed, or escalated in real auto-send mode, the review packet shall include the original sent email body, the rendered follow-up draft if one exists, recipient and Gmail-thread metadata, the structured skip/failure reason, thread-check evidence, bounce evidence, grounding evidence, and the exact recommended owner action such as reset after metadata repair, leave skipped, or inspect Gmail manually.
+- **FR-EM-03N5 (No Follow-Up Attachment):** Follow-up emails shall not attach the tailored resume or any other file by default, even when the original role-targeted outreach included a resume attachment.
+- **FR-EM-03N6 (Preserve Recipient Envelope):** When sending a same-thread follow-up, the worker shall preserve the original recipient envelope where available, including the original `To` recipient and any original `Cc` recipients. It shall not add new recipients by default.
+- **FR-EM-03N6C (Original Recipient Envelope Precedence):** If the contact record's current email address or recipient metadata differs from the original sent email, the follow-up worker shall use the original sent email's recipient envelope for the same-thread reply. Current contact metadata may be used for diagnostics, but shall not silently retarget an existing follow-up thread.
+- **FR-EM-03N6A (Plain-Text Follow-Up Default):** Follow-up emails shall be sent as plain text by default. The follow-up worker does not need to preserve or generate rich HTML formatting for the approved first-follow-up template.
+- **FR-EM-03N6B (No Quoted Original Content):** The follow-up body shall not include quoted original-email content by default. It shall rely on the Gmail thread history for prior context.
+- **FR-EM-03N7 (Follow-Up Ambiguous Send Escalation):** If the Gmail follow-up send may have succeeded but local persistence, thread metadata, or send-result writeback fails or becomes uncertain afterward, the worker shall not retry automatically. It shall mark the follow-up plan as ambiguous or held, preserve all available provider evidence, and create a review packet to avoid duplicate follow-up sends.
+- **FR-EM-03N8 (Follow-Up Transient Pre-Send Retry):** If the follow-up worker encounters a clearly transient provider, network, or auth failure before there is evidence that Gmail accepted the follow-up send, the follow-up plan may remain pending or retryable for a later cycle with a cooldown. This retry path shall not be used for ambiguous may-have-sent states.
+- **FR-EM-03N9 (Follow-Up Transient Retry Limit):** Follow-up transient pre-send retries shall use the same retry policy as normal outreach sends: wait 15 minutes before retrying and allow at most 3 automatic retries before leaving the follow-up plan blocked and reviewable.
+- **FR-EM-03N10 (No Post-Follow-Up Delivery Feedback Requirement):** A successful follow-up send does not need to start a new Delivery Feedback tracking cycle. The required safety boundary for follow-ups is the pre-draft and pre-send bounce/reply/thread guard; post-follow-up bounce or reply tracking may remain outside the current feature scope.
+- **FR-EM-03N11 (Local Follow-Up Metadata Only):** Follow-up tracking metadata shall be persisted locally in canonical database rows and artifacts. The current feature does not require creating or updating Gmail labels, Gmail categories, or other provider-side metadata beyond sending the same-thread reply.
 - **FR-EM-04:** System shall send outreach and track delivery outcomes such as sent, bounced, not-bounced, and replied states.
 - **FR-EM-05 (High-Impact Draft Objective):** Email drafts shall be written to capture the recipient's attention, sustain interest through the message, and maximize the chance of earning at least a quick follow-up conversation.
 - **FR-EM-05A (Early Attention Window):** The opening of the email shall be optimized for the first few seconds of reader attention. The early lines should give the recipient a concrete reason to keep reading rather than opening with generic self-introduction.
@@ -3398,75 +3761,55 @@ The engine itself is not required to be implemented yet and shall be built later
 - **FR-EM-12B (Primary Current Mode):** The direct one-step approach is the current primary outreach mode and the main mode being designed for current use.
 - **FR-EM-12C (One-Step Direct Outreach):** In the one-step approach, the email shall use personalization, visible overlap with the recipient's work, and role fit to build interest and then move toward the intended low-friction call to action in the same email.
 - **FR-EM-12C1 (Curiosity-Led One-Step Posture):** In the current one-step outreach mode for recruiter and team-adjacent profiles, the sender should lead with curiosity about the recipient's work and a desire to learn more, while still clearly mentioning the role and why there appears to be real fit.
-- **FR-EM-12C2 (Current Shared Default Template Rule):** For v4, the current default shared role-targeted template shall not depend on opening from the recipient's personal background. Instead, it shall open from the role, team, or work area inferred from the JD or company context, then move into why the sender is reaching out to this person, one proof point of fit, one clear low-friction ask, and a routing-help line.
-- **FR-EM-12C3 (Why-This-Person Line Required):** In the current shared default template, the body shall include one explicit sentence explaining why the sender chose to contact this person, such as because they posted the role, seem close to the team, or appear close to the relevant work area.
-- **FR-EM-12C3A (Recipient-Type-Specific Why-Line Rule):** In the current shared default template, the explicit `why this person` line shall adapt by recipient type. For example, recruiter wording should point to hiring context, hiring-manager wording should use the softer `good person to reach out to for some perspective on this opening` framing, engineer or other-internal wording should point to day-to-day work perspective, and alumni wording should use the explicit fellow-Sun-Devil framing.
-- **FR-EM-12C3B (Single Why-Line Discipline):** The current shared default template shall include the explicit `why this person` rationale once. It shall not restate the same reach-out rationale multiple times in slightly different wording later in the email.
-- **FR-EM-12C4 (Routing-Then-Snippet Rule):** In the current shared default template, the routing-help sentence and the forwardable snippet shall appear together, with the snippet placed directly below the routing-help request.
-- **FR-EM-12C5 (Current Shared Template Shape):** The current shared role-targeted template should follow this structure:
-  1. role / team / work-area opening
-  2. overlap statement
-  3. explicit `why I am reaching out to you` line
-  4. one proof point of fit with metric when available
-  5. Job Hunt Copilot / AI-agent block
-  6. one 15-minute Zoom ask plus routing-help sentence
-  7. forwardable snippet block
-- **FR-EM-12C5A (No Education-Status Default Line):** The current default shared role-targeted template shall not rely on an education-status sentence such as `I am currently finishing my MS ...` as a default body paragraph. Education context may still appear in signatures, alumni-specific messaging, or explicitly selected legacy playbooks when justified, but it is not part of the current default role-targeted body.
-- **FR-EM-12C5B (Current Copilot Block Rule):** When the current shared template includes the Job Hunt Copilot block, that block shall state that Job Hunt Copilot helps identify relevant roles and the right people to reach out to, and that the AI agent runs autonomously with human-in-the-loop (HITL) review while the sender personally reviews each email before it goes out.
-- **FR-EM-12C6 (Current Shared Template Draft Text):** The current default shared role-targeted template may use the following draft shape as the reference:
-
-```text
-Subject: [Role] at [Company] | Achyutaram Sonti
-
-Hi [Name],
-
-I'm reaching out about the [Role] role at [Company] because I was interested in the role's focus on [JD-faithful technical focus]. That is close to the kind of systems work I have been doing in production over the last few years.
-
-[Why-this-person line based on recipient type/title.] In one recent role, [one strongest proof point with metric and grounded technical context].
-
-Lately, I have been spending time sharpening my Agentic AI skills.
-I built Job Hunt Copilot ([repo URL]) for my own job search to help me identify relevant roles and the right people to reach out to.
-The AI agent runs autonomously with human-in-the-loop (HITL) review, and I personally review every email before it goes out. This email is a live example of that workflow.
-
-If it would be useful, I would welcome a short 15-minute conversation sometime this or next week to learn a bit more about the role and get your perspective on whether my background could be relevant. If you're not the right person, I'd also really appreciate it if you could point me to the right person or forward my resume internally.
-
-Forwardable snippet:
-Hi, sharing a candidate who may be relevant for the [Role] role at [Company]. He has experience in [JD-aware focus phrase], including [one compact proof fragment]. Profile: www.linkedin.com/in/asonti
-
-Best,
-Achyutaram Sonti
-[LinkedIn]
-[Phone]
-[Email]
-```
-- **FR-EM-12C6A (Eligible Opener-Focus Source Rule):** The `[JD-faithful technical focus]` opener hook and the forwardable snippet focus shall be chosen only from eligible JD work-scope signals or concise summaries of those signals. Benefits, compensation, workplace policy, culture marketing, slogans, legal boilerplate, application logistics, and similar non-work text are ineligible even if an upstream JD-signals artifact captured them.
-- **FR-EM-12C6B (Role-Relevance Gate):** The chosen opener-focus phrase shall align with the role title and the role's actual work area, and it should favor signals that also overlap with the candidate's demonstrated background or stated growth direction when such evidence exists.
-- **FR-EM-12C6C (Specificity Rule):** The chosen opener-focus phrase shall be concrete enough to name real technical or work-scope anchors, such as specific platform, cloud, data, backend, ML, or infrastructure work, rather than vague umbrella wording like `application delivery`, `platform enhancements`, or other generic catch-all phrasing.
-- **FR-EM-12C6D (Summarized-From-Strong-Signal Rule):** When the strongest eligible JD signal is too long to use verbatim, the drafting layer shall summarize it into a short specific phrase rather than discarding it and falling back to a weaker generic theme.
-- **FR-EM-12C6E (Quality-Gated Fallback Rule):** The drafting layer shall not choose the first surviving JD phrase by default. Generic fallback wording is allowed only after the candidate opener-focus phrases have been filtered through the eligibility, relevance, and specificity gates and no stronger acceptable JD-grounded phrase remains.
-- **FR-EM-12C6F (Technical-Theme Selection Rule):** The opener-focus phrase and the forwardable snippet focus shall be chosen from one ranked technical theme composed from one or more related eligible JD work-scope signals, rather than from an isolated surviving line or a single keyword bucket.
-- **FR-EM-12C6G (Three-Way Alignment Rule):** A role-targeted technical theme is acceptable for drafting only when it passes all three of these gates together:
-  1. it aligns with the role title and work area,
-  2. it represents technically meaningful or central JD work rather than trivia or boilerplate,
-  3. it overlaps with the candidate's demonstrated background, stated growth areas, or both.
-- **FR-EM-12C6H (Technical-Importance Preference Rule):** Theme ranking shall prefer technically central build/design/implement/architect/automate/problem-space responsibilities, repeated or multi-anchor work themes, and clear system or stack priorities over secondary support tasks, generic qualification filler, isolated tool mentions with weak role significance, and other low-signal JD text.
-- **FR-EM-12C6I (Multi-Anchor Preservation Rule):** When the best accepted technical theme is composed from multiple related JD anchors, the drafting layer shall preserve 2 to 3 concrete anchors in the final focus phrase when needed to stay specific and truthful. It shall not flatten that accepted theme into a weaker umbrella label if doing so would materially reduce specificity or role relevance.
-- **FR-EM-12C6J (Aligned Proof-Point Rule):** The main proof point in the body and the supporting proof fragment in the forwardable snippet shall reinforce the same accepted technical theme used in the opener rather than switching to an unrelated stronger-sounding achievement.
-- **FR-EM-12C6K (Structured Growth-Area Input Rule):** Role-targeted drafting shall read the candidate's stated growth areas from a persisted repo-tracked source rather than inferring them only from freeform draft phrasing, so opener-theme selection can explicitly use that growth intent during ranking.
-- **FR-EM-12C6L (No-Weak-Auto-Draft Rule):** If no technical theme passes the title-alignment, technical-importance, and background-or-growth overlap gates, the system shall not auto-generate or auto-send a weak role-targeted draft for that contact. It shall instead leave the case reviewable for repair or escalation.
-- **FR-EM-12C6M (Direct-Background Claim Rule):** The opener overlap sentence may say that the candidate has done or has been doing the selected theme only when the selected theme has direct evidence-backed overlap with the candidate's background. General adjacent systems overlap, transferable engineering strength, or broad production experience alone are not sufficient to justify a direct “I've done this kind of work” claim for a narrower domain theme.
-- **FR-EM-12C6N (Adjacent-Overlap Wording Rule):** When the selected theme overlaps meaningfully with the candidate's transferable systems background but is not directly evidenced as prior domain experience, the opener shall use adjacent-growth wording such as seeing a real overlap with prior systems work while framing the selected theme as an area the candidate wants to keep growing into. It shall not collapse that case into either a pure-background claim or a pure-growth-only claim if both signals are present.
-- **FR-EM-12C6O (Theme-Defining Evidence Rule):** Direct background overlap shall be determined from theme-defining anchors in evidence or candidate bullets for the chosen theme family, rather than from generic shared anchors alone. Broad anchors such as generic distributed systems, generic backend, or generic cloud familiarity may support adjacent overlap, but they shall not by themselves justify direct prior-experience wording for narrower families such as robotics, AI/ML, security, scheduling, or other specialized domains unless the evidence also contains the chosen family's defining anchors.
-- **FR-EM-12C6P (Snippet Truthfulness Rule):** The forwardable snippet shall follow the same direct-vs-adjacent overlap classification used in the opener. If the selected theme is not directly evidenced, the snippet shall not say that the candidate's background is in that exact theme; it shall instead describe the truthful overlap between the candidate's prior systems work and the role's selected theme and may note the growth direction when relevant.
-- **FR-EM-12C6Q (Structured Interest-Area Input Rule):** Role-targeted drafting shall also read the candidate's stated interest areas from a separate persisted repo-tracked source, `assets/outreach/candidate-interest-areas.yaml`. Interest areas represent domains the candidate wants to enter and deepen through academic work, personal projects, or both, without implying prior professional background in that exact domain.
-- **FR-EM-12C6R (Interest-Area Ranking Rule):** When a title-aligned, technically central JD theme matches a configured interest area, that interest-area match may positively influence theme ranking alongside background and growth-area signals. Interest areas shall help the selector prefer truthful target domains such as agentic AI or applied AI when those domains are genuinely present in the JD, but they shall not bypass title relevance, technical importance, or truthfulness gates.
-- **FR-EM-12C6S (Interest-Area Wording Rule):** When the selected theme matches a configured interest area and does not have direct professional evidence, the opener and the forwardable snippet shall frame that theme as an area the candidate is actively building toward through academic work, personal projects, or both and wants to keep growing into. In that case the drafting layer shall not use direct prior-experience wording, and it should prefer the interest-area framing over generic adjacent-overlap wording.
-- **FR-EM-12C6S1 (Role-Title Family Fallback Rule):** If no acceptable JD-derived technical theme survives the title relevance, technical importance, and truthfulness gates, the drafting layer may use one guarded fallback derived from the role title itself only when the title clearly identifies a technical role family, the fallback remains specific and technically meaningful, and that family still overlaps with the candidate's configured growth areas or interest areas. This fallback shall not be used for generic titles, shall not bypass truthfulness gates, and shall not invent direct prior experience for the narrower family when only growth or interest overlap exists.
-- **FR-EM-12C6T (Standalone Opener-Rubric Input Rule):** Role-targeted drafting shall read a repo-tracked opener rubric from `assets/outreach/opener-rubric.yaml`. That rubric shall define the writing contract for opener construction, including the accepted claim modes, the required JD-theme selection gates, and the classes of weak or generic opener phrasing that must be rejected.
-- **FR-EM-12C6U (Structured Opener-Decision Rule):** Before writing the opener sentence, the drafting layer shall build a structured `opener decision` object for the selected contact. At minimum this decision shall persist the chosen technical theme, the claim mode (`direct_background`, `adjacent_overlap`, `growth_area`, or `interest_area`), the decisive JD source signals, the applicable background/growth/interest evidence, and the final approved opener-focus phrase.
-- **FR-EM-12C6V (Constrained Opener-Writing Rule):** The final opener sentence shall be rendered from the structured opener decision rather than composed directly from the full raw JD text. The writing layer may phrase the sentence naturally, but it shall not switch to a different theme, upgrade the claim mode, or introduce unsupported wording beyond what the structured opener decision allows.
-- **FR-EM-12C6W (Persisted Opener-Decision Artifact Rule):** Each generated role-targeted draft shall persist the opener decision as a reviewable artifact beside the draft artifacts so the autonomous theme-selection and claim-mode reasoning can be inspected later without re-running the selector.
-- **FR-EM-12C6X (Opener Validator Rule):** After the opener is rendered, the drafting layer shall validate it against the opener rubric. The validator shall reject openers that are too generic, are not role-title-relevant, select trivial or ineligible JD text, or overclaim the candidate's background relative to the selected claim mode. A rejected opener shall block autonomous draft generation for that contact until repaired.
+- **FR-EM-12C2 (Current Role-Split Drafting Strategy):** The current role-targeted drafting strategy supersedes the older shared deterministic template. The production path shall classify each recipient into either a managerial/application-style draft path or a technical/career-guidance draft path before body generation begins.
+- **FR-EM-12C3 (Recipient Classification Source Rule):** Role-split classification shall prefer the Apollo-sourced current title for the selected contact, with recruiter/talent/sourcer/people-ops and leadership titles routing to the managerial path, and engineer/developer/architect/staff/principal/AI/ML titles routing to the technical path.
+- **FR-EM-12C3A (Recipient-Type Fallback Rule):** When the current title is sparse or ambiguous, recipient-type classification may fall back to the linked contact's canonical recipient type so the system can still choose a path without inventing person-specific background.
+- **FR-EM-12C4 (Deterministic Input Bounding Rule):** Deterministic Python shall bound the drafting inputs before any `codex exec` call. At minimum this bounded evidence pack shall include the selected recipient path, target role/company context, and only the role-relevant JD or Apollo evidence needed for that path. For the managerial path, this bounded pack shall also include the compact sender core summary plus the bounded sender evidence pool. For the technical path, it shall include only the technical-path evidence needed to draft Paragraph 1 safely.
+- **FR-EM-12C4A (Managerial JD Relevance Pack Rule):** For the managerial path, deterministic Python shall reduce the raw JD into a bounded relevance pack containing the exact role title, the most relevant engineering responsibilities, the most relevant technical requirements, and one short product/domain line when helpful, while excluding benefits, legal boilerplate, and broad marketing copy.
+- **FR-EM-12C4B (Managerial Sender Evidence Pool Rule):** For the managerial path, deterministic Python shall pass a bounded sender evidence pool rather than the full raw resume. Each evidence item should carry one short proof line plus lightweight metric/theme tags so the drafter can select role-relevant evidence without turning the email into a resume dump.
+- **FR-EM-12C4C (Technical Employment-History Pack Rule):** For the technical path, deterministic Python shall pass the full available Apollo employment-history summary for the recipient when that history exists. If only partial or current-role evidence is available, the input pack shall state that limited coverage explicitly rather than hallucinating missing career steps.
+- **FR-EM-12C4D (DB-First Apollo Drafting Read Rule):** Role-targeted drafting shall read Apollo employment history and other Apollo person context from the structured database-backed provider stores first. Artifact reparsing may be used only as a fallback when the corresponding database-backed provider snapshot or employment-history rows are missing.
+- **FR-EM-12C4E (Scheduled Codex Runtime Resolution Rule):** Scheduled role-split drafting shall resolve the `codex` executable through an explicit override or deterministic well-known local install paths and shall not rely solely on the ambient scheduler `PATH`.
+- **FR-EM-12C4E1 (Scheduled Codex Launcher Dependency Rule):** Scheduled role-split drafting shall invoke `codex exec` with a deterministic runtime environment that can also resolve launcher dependencies such as `node` when the local `codex` entry point is a `#!/usr/bin/env node` script. The scheduler shall not assume that launchd or another bounded scheduler exposes a sufficient ambient `PATH` for those dependencies.
+- **FR-EM-12C4E2 (Codex-Only Scheduled Role-Targeted Drafting Rule):** Scheduled role-targeted production drafting shall be Codex-only. If the role-split Codex renderer cannot be initialized or its scheduled invocation cannot run successfully, the scheduled role-targeted path shall fail closed and surface a drafting failure or incident rather than silently falling back to the older deterministic shared role-targeted renderer.
+- **FR-EM-12C5 (Technical Path Intent Rule):** The technical path shall be a career-guidance email rather than a direct application note. It should express admiration for the recipient's path, make clear that the sender wants to grow in a similar direction and ship software at that level, and end with a low-pressure 10-minute guidance ask.
+- **FR-EM-12C5A (Technical Path Output Boundary):** In the current technical path, `codex exec` shall generate only Paragraph 1 plus debug fields. Deterministic Python shall append the fixed Paragraph 2, fixed Job Hunt Copilot Paragraph 3, fixed guidance/availability Paragraph 4, and the standard signature block.
+- **FR-EM-12C5B (Technical Path Subject Rule):** The current technical-path subject shall stay fixed as `Learning from your career path`.
+- **FR-EM-12C5C (Technical Path Paragraph-1 Rule):** Technical Paragraph 1 shall stay at exactly two sentences, begin with `I came across your LinkedIn profile and admired your path ...`, prefer two to three past company transitions plus the recipient's exact current title and company when available, and avoid restating the fixed later paragraphs.
+- **FR-EM-12C5D (Technical Path Fixed Paragraphs Rule):** Technical Paragraph 2 through Paragraph 4 shall remain deterministic and fixed in wording for the current build, including the Azure / `~580 TPS` / `99.95% uptime` background paragraph, the four-sentence Job Hunt Copilot paragraph with the repo folded into the project mention rather than a standalone `repo is here` sentence, and the three-sentence guidance/availability ask.
+- **FR-EM-12C5D1 (Technical Job Hunt Copilot Link Rendering Rule):** In the current technical path, the fixed Job Hunt Copilot paragraph shall mention `Job Hunt Copilot` inline in its opening sentence and carry the repo URL there rather than as a separate trailing sentence. Plain-text fallback may keep the repo URL inline in parentheses, but HTML rendering shall hyperlink the `Job Hunt Copilot` label itself instead of displaying a separate `repo is here` sentence.
+- **FR-EM-12C5E (Technical Payload Normalization Rule):** Before persisting a technical-path draft, deterministic runtime may normalize non-semantic payload drift to preserve the existing contract. It may trim a longer-than-expected `paragraph_1_text` down to two sentences, append the fixed second-sentence intent when only one opener sentence is returned, and infer at least one `selected_career_steps` company from the bounded employment-history evidence when the model leaves that debug list empty. It shall not invent unsupported employers beyond the provided employment-history pack.
+- **FR-EM-12C6 (Managerial Path Intent Rule):** The managerial path shall be a concise problem-solver note optimized for managers, recruiters, and routing-side contacts. It should frame the role in terms of likely team challenges, show role-relevant evidence from the sender, and ask for a brief 10-minute conversation to better understand the real problem space.
+- **FR-EM-12C6A (Managerial Path Draft Boundary Rule):** In the current managerial path, `codex exec` shall draft the variable managerial content only: the role-alignment sentence inside Paragraph 1, the JD-challenge bullets, the relevant-background bullets, and the debug fields. Deterministic Python shall render the greeting, the fixed bold proof-of-concept sentence, the fixed CTA paragraph, the bullet headings, the fixed subject, and the standard signature/attachment handling.
+- **FR-EM-12C6B (Managerial Path Subject Rule):** The current managerial-path subject shall follow the fixed pattern `Interest in the <Role Title> role at <Company>`.
+- **FR-EM-12C6C (Managerial Path Paragraph Shape Rule):** The current managerial path shall use this exact structure:
+  1. `paragraph_1`: greeting plus a three-sentence opener, where sentence one is fixed as `I hope you're doing well.`, sentence two is a codex-drafted role-alignment sentence, and sentence three is the fixed bolded proof-of-concept offer sentence
+  2. `problem_hypotheses`: exactly three concise bullets rendered under `Based on the JD, would it be fair to say the team is likely working on the following?`
+  3. `relevant_background`: exactly three concise bullets rendered under `Relevant background from my side:`
+  4. `cta_block`: a fixed CTA block containing the standalone resume-attachment line followed by the fixed three-sentence ask paragraph covering a 10-minute ask, the desire to understand the team's real challenges, and a forward-to-the-right-person note
+- **FR-EM-12C6D (Managerial JD-Challenge Bullet Rule):** Managerial `problem_hypotheses` bullets shall be chosen dynamically from the bounded JD relevance pack and should express specific, non-generic team challenges the role appears to involve. These bullets must stay cautious, JD-grounded, and concise rather than claiming certainty about internal team realities.
+- **FR-EM-12C6D1 (Managerial JD-Only Inference Rule):** Managerial `problem_hypotheses` bullets shall be inferred from the JD only. The drafter may reason from the JD, but it shall not assume unsupported internal challenges from other sources and shall not copy-paste JD wording verbatim into the bullets.
+- **FR-EM-12C6D2 (Managerial Dominant-Theme Opener Rule):** The managerial `role_alignment_sentence` shall choose one dominant role-fit theme that can stand as a coherent work identity for the opener. It shall not combine multiple unrelated JD signals merely to increase coverage.
+- **FR-EM-12C6D3 (Managerial Troubleshooting-in-Bullets Preference):** Troubleshooting, root-cause analysis, and similar incident/problem-resolution language should usually remain in the managerial `problem_hypotheses` bullets rather than becoming the main self-description in the `role_alignment_sentence`, unless the role is clearly centered on operations, support escalation, or incident response.
+- **FR-EM-12C6E (Managerial Relevant-Background Bullet Rule):** Managerial `relevant_background` bullets shall be chosen dynamically from the sender's real resume evidence, including both experience and project sections when relevant. They should prefer one strongest role-relevant professional proof, one second strong professional or systems proof, and an optional `Job Hunt Copilot` bullet only when that project materially strengthens fit for the role.
+- **FR-EM-12C6F (Managerial Job Hunt Copilot Rule):** In the managerial path, `Job Hunt Copilot` shall usually appear only as one concise builder-signal bullet and may include the repo URL in that same bullet sentence. The managerial path should not say that the workflow runs autonomously or that the email itself is a live example of the workflow.
+- **FR-EM-12C6G (Managerial PoC Emphasis Rule):** The managerial opener shall include this exact proof-of-concept offer sentence in bold formatting: `If helpful, I'd be happy to build a small proof of concept based on my understanding of the challenges the team is working on and share the repo.`
+- **FR-EM-12C6G1 (Managerial Fixed CTA Rule):** The managerial CTA paragraph shall stay fixed in wording for the current build as:
+  `I've attached my resume for context.`
+  `Would you be open to a brief 10-minute conversation?`
+  `I'd love to better understand the challenges the team is actually focused on.`
+  `If this is better routed elsewhere, I'd appreciate a forward to the right person internally.`
+- **FR-EM-12C6G2 (Managerial Public Posting-Link Rule):** When a managerial-path draft is triggered from a concrete job posting and a public posting URL is available in canonical state, the drafting flow may include that posting URL in the rendered email so the recipient can reference the exact opening quickly. For the current build, the LinkedIn posting URL is sufficient when it is the only reliable public posting link available.
+- **FR-EM-12C6G2A (Managerial Posting-Link Placement Rule):** When a managerial-path draft includes a public posting URL, deterministic Python shall render it as one standalone line in the body using the exact prefix `Posting link:` immediately after the fixed bold proof-of-concept sentence and before the `Based on the JD, would it be fair to say the team is likely working on the following?` heading.
+- **FR-EM-12C6G2B (Managerial Bullet Rendering Rule):** The managerial `problem_hypotheses` and `relevant_background` sections shall render as actual bullet lists in both plain-text and HTML email bodies. Downstream HTML rendering shall not collapse heading-plus-bullets into one paragraph.
+- **FR-EM-12C6G3 (No Internal Requisition-ID Requirement Yet):** The current build does not require capture or inclusion of a company-internal requisition ID, employee-searchable job ID, or equivalent employer-native identifier in managerial-path emails. If no such identifier is already present in canonical state, the drafting flow shall not invent one or block on its absence.
+- **FR-EM-12C6H (Current Role-Split Word Targets):** For the current build, the technical-path body should target roughly 225 to 240 words and the managerial-path body should target roughly 185 to 215 words, excluding the signature block.
+- **FR-EM-12C6I (Structured Debug Payload Rule):** Each role-split draft shall persist a reviewable draft-debug artifact alongside the draft artifacts. For the technical path this should at minimum include the selected career-step companies. For the managerial path this should at minimum include the selected JD signals and selected sender-evidence signals actually used in the draft.
+- **FR-EM-12C6J (Prompt Contract Rule):** All role-split `codex exec` calls shall use JSON-only structured outputs validated by Pydantic or equivalent runtime validation before the draft is accepted for persistence or sending.
+- **FR-EM-12C6J1 (Codex Output Schema Compatibility Rule):** Role-split output schemas handed to `codex exec` shall be directly provider-compatible JSON schemas. In particular, every declared top-level output property, including debug fields and list fields, shall appear in the schema's `required` array rather than relying on optional/defaulted fields that the provider may reject.
+- **FR-EM-12C6J2 (Managerial Debug-List Normalization Rule):** Managerial debug signal lists are review aids rather than user-facing copy. Before persisting a managerial-path draft, deterministic runtime may truncate `selected_jd_signals` and `selected_resume_signals` to the first three non-empty items so an otherwise valid draft does not fail solely because the model returned oversized debug lists.
+- **FR-EM-12C6J3 (Role-Split Token Usage Audit Rule):** Each live role-split `codex exec` invocation shall persist a canonical `llm_usage_events` record capturing at least the component name, operation name, invocation status, exit code, available provider/model/session metadata, and the total token count when the CLI reports it. The event shall also retain stable artifact paths and available posting/contact linkage so token consumption is queryable over time.
+- **FR-EM-12C6J3A (Explicit Missing-Usage Rule):** If the current Codex CLI invocation does not report a token count, the system shall still persist the `llm_usage_events` row with an explicit non-reported parse status rather than silently skipping usage accounting for that call.
 - **FR-EM-12D (Two-Step Learning-First Outreach):** In the two-step approach, the email shall not begin with the direct role-oriented ask. Instead, it shall open from genuine curiosity about the recipient's work and ask for a brief learning conversation.
 - **FR-EM-12E (Two-Step Learning Ask):** When the two-step mode is used, the ask should be framed as a short learning conversation, approximately 15 minutes, centered on something specific the sender wants to understand from the recipient's work or experience.
 - **FR-EM-12E1 (General Learning Outreach Posture):** When outreach is not tied to a specific job posting, it should default to a learning-first posture centered on curiosity, learning, and a short coffee-chat-style conversation rather than behaving like a direct application email.
@@ -3589,6 +3932,16 @@ Current imported guidance should include, at minimum:
 - **FR-EF-01O (Bounce-Observation Window):** For this build, the bounce-observation window for each sent email shall be 30 minutes from `sent_at`.
 - **FR-EF-01P (Current Polling Cadence):** Within that 30-minute bounce-observation window, delayed feedback polling shall run every 5 minutes.
 - **FR-EF-01Q (Current Not-Bounced Window Completion Rule):** If no bounce signal is detected by the end of the 30-minute bounce-observation window, Delivery Feedback may record a `not_bounced` outcome for that observation window while still allowing later reply detection to continue.
+- **FR-EF-01R (Follow-Up Reply Guard Boundary):** The dedicated follow-up worker shall not rely solely on persisted Delivery Feedback state for reply suppression. Before drafting and again before sending, it shall directly inspect the original Gmail thread for inbound replies after the original sent time and persist the result on the follow-up plan.
+- **FR-EF-01R1 (Pre-Send Thread Recheck Required):** The immediately-before-send Gmail-thread check shall be required even when an earlier pre-draft check already passed. If a reply, bounce, or later outbound follow-up appears while the candidate is waiting for drafting, review, retry, or pacing, the worker shall suppress the send rather than relying on stale thread evidence.
+- **FR-EF-01S (Unknown Reply State Blocks Follow-Up Send):** If the direct thread reply check fails, times out, or cannot confidently distinguish inbound recipient replies from the sender's own messages, the follow-up candidate shall be held for review or skipped. Unknown reply state shall not permit an automatic follow-up send.
+- **FR-EF-01S1 (Temporary Thread-Check Failure Retry):** If the Gmail-thread check fails for a clearly temporary reason, such as provider timeout, network failure, or auth refresh interruption, the follow-up plan may enter a retryable state using the follow-up transient retry policy. Structural failures such as missing original thread ID, impossible same-thread send metadata, or unreadable original thread context shall become blocked or held for review without treating the case as a transient retry.
+- **FR-EF-01T (Thread-Wide Reply Suppression):** For follow-up suppression, any inbound reply in the original Gmail thread after the original `sent_at` shall block automatic follow-up, even if the reply is from another person copied or later added to the thread rather than from the original recipient email address.
+- **FR-EF-01T1 (Follow-Up Worker Reply Classification Boundary):** The follow-up worker shall only use inbound replies as suppression evidence for the original outreach thread. It shall not classify reply sentiment, infer negative intent such as `not interested`, or update broader contact lifecycle state from reply content; that responsibility remains with the feedback or reply-classification system.
+- **FR-EF-01U (Bounce Suppression Separate From Reply Suppression):** Bounce detection shall remain separate from reply detection, but any bounce signal tied to the original outreach message, recipient address, delivery tracking ID, or original Gmail thread shall also block automatic follow-up.
+- **FR-EF-01V (Not-Bounced Not Required For Follow-Up):** A `not_bounced` Delivery Feedback event shall not be required for follow-up eligibility. The follow-up worker shall block when a bounce exists or direct thread checks reveal a bounce, but absence of a persisted bounce is sufficient for the bounce gate when other follow-up gates pass.
+- **FR-EF-01W (Post-Original Thread Evidence Window):** Direct Gmail-thread checks for replies, bounces, and later outbound messages shall consider only thread messages after the original outreach message's `sent_at`. Earlier thread history shall not block follow-up eligibility.
+- **FR-EF-01X (Sender Identity For Thread Classification):** The follow-up worker shall use the configured sender email identity, such as the Gmail profile email or runtime sender configuration, to distinguish outbound messages from inbound replies when inspecting Gmail threads.
 - **FR-EF-02 (Feedback Persistence):** Delivery Feedback shall persist post-send outcomes into the central SQLite database so they are queryable for review and reusable for future learning.
 - **FR-EF-02A (Canonical Store + Optional Runtime Handoff):** `job_hunt_copilot.db` remains the source of truth for Delivery Feedback persistence. Runtime handoff artifacts may still be produced when a downstream workflow step needs them, but they do not replace the canonical store.
 - **FR-EF-02B (Delivery Feedback Events Table):** The central database shall include a `delivery_feedback_events` table as the minimum canonical event-history store for post-send outcomes. For this build, it should at minimum capture a feedback-event identifier, linked outreach-message identifier, feedback state/event type, event timestamp, and reply content or summary when available.
@@ -3601,11 +3954,13 @@ Current imported guidance should include, at minimum:
 ### 7.4.1 Mission and Operating Model
 
 - **FR-OPS-01 (Supervisor Agent Component):** The current build shall include an `Operations / Supervisor Agent` component that continuously operates the end-to-end system, keeps queues moving, performs mandatory agent reviews, and maintains bounded autonomous stability without requiring a permanently open interactive session.
-- **FR-OPS-02 (Single Identity, Two Faces):** The Supervisor Agent shall act as one logical agent with:
+- **FR-OPS-02 (Single Identity, Three Scheduled Workers, Two Expert Faces):** The local runtime shall have three scheduled background workers that share canonical state but own separate responsibilities: the primary supervisor worker, the delayed feedback-sync worker, and the follow-up worker. The expert-facing chat operator remains the interactive control surface.
+- **FR-OPS-02A (Supervisor Agent Faces):** The Supervisor Agent shall act as one logical agent with:
   1. a background supervisor face that runs the pipeline
   2. a chat operator face that the expert talks to
   Both faces share the same canonical state, identity, policies, incidents, and review queues.
 - **FR-OPS-03 (Pipeline-Run Unit):** The Supervisor Agent shall treat one role-targeted end-to-end posting-scoped run as the primary durable unit of work. In the current build, that run starts from an actionable posting/lead handoff and continues through tailoring, mandatory agent review, contact search/discovery, frontier drafting, sending through the active send slice, and feedback-observation start.
+- **FR-OPS-03A (Follow-Up Worker Unit):** The dedicated follow-up worker shall treat one `outreach_followup_plans` row as its durable unit of work. It may evaluate due eligibility, perform reply guards, draft a follow-up, run internal agent review, and send a validated same-thread follow-up without creating or advancing the original role-targeted `pipeline_run`.
 
 ### 7.4.2 Runtime Identity and Self-Awareness
 
@@ -4135,6 +4490,7 @@ Current imported guidance should include, at minimum:
 - **FR-OPS-29O4 (Successful-Send Count Scope Rule):** The startup dashboard sent-email counts for today and yesterday shall count only successful sends, not send attempts that failed before success.
 - **FR-OPS-29O5 (Always-Show Daily Bounce Counts Rule):** The default startup dashboard shall also include bounce counts for today and yesterday so the expert can quickly inspect recent delivery risk and outreach quality.
 - **FR-OPS-29O6 (Always-Show Daily Reply Counts Rule):** The default startup dashboard shall also include reply counts for today and yesterday so the expert can quickly inspect recent response volume.
+- **FR-OPS-29O7 (Follow-Up Dashboard Summary):** The default startup dashboard shall include a compact follow-up summary, including at minimum `due_now`, `waiting_for_pacing`, `sent_today`, `blocked_or_review`, `last_cycle_at`, and `last_cycle_result`, so the expert can tell whether the dedicated follow-up worker is active and why it did or did not send.
 - **FR-OPS-29P (Default Runtime Average Window Rule):** In the current build, the default average daily runtime shown in the startup dashboard should use a rolling 7-day local-time window unless the expert explicitly asks for a different window.
 - **FR-OPS-29Q (Active Runtime Counting Rule):** The runtime-duration metrics shown in the startup dashboard shall count only active autonomous background execution time. Paused time, expert-interaction chat time, stopped time, and other non-executing intervals shall not be included in those runtime totals.
 - **FR-OPS-29R (`jhc-chat` Operating Behavior):** During operation, `jhc-chat` should:
@@ -4191,6 +4547,7 @@ Current imported guidance should include, at minimum:
    - Discovery -> Drafting: `discovery_result.json`
    - Drafting/Sending -> Delivery Feedback: `send_result.json`
    - Delivery Feedback -> downstream consumers: `delivery_outcome.json`
+   - Follow-Up Worker -> expert review / send execution: `followup_draft.md` and follow-up plan state
    - Supervisor Agent -> expert review: `review_packet.md` or equivalent packet artifact under `ops/review-packets/`
 7. `email_draft.md` is a human-readable companion artifact for inspection and audit, not the sole machine contract for downstream automation.
 
@@ -4267,30 +4624,41 @@ Current imported guidance should include, at minimum:
 ## 12.2 Email Discovery
 1. Given a role-targeted posting that needs internal contacts, the system can run Apollo-first company-scoped people search and persist the broad candidate search result for the posting.
 2. The Apollo path resolves the company to an organization record first and uses the resolved `organization_id` as the preferred anchor for people search when available.
-3. `people_search_result.json` is produced and preserves the resolved company record, applied search filters, and the broad candidate list returned by people search.
-4. The system correctly handles sparse Apollo search results, including candidates whose search-stage identity is only a partial or obfuscated display name plus stable Apollo person ID.
-5. Shortlist-stage contact materialization can proceed from stable provider identity such as Apollo person ID even before a non-obfuscated full name is known.
-6. After the broad search pass, the system enriches only shortlisted contacts that need fuller identity, LinkedIn URL, or a usable work email rather than enriching every broad-search candidate by default.
-7. In autonomous role-targeted mode, the initial enrichment shortlist is capped at 10 contacts and is limited to manager-adjacent and technical contacts, with managers preferred first, then more senior engineers, then other software engineers.
-8. When a saved broad Apollo people-search artifact exists, the system can later replay that artifact to backfill additional shortlisted contacts up to the current 10-contact limit without rerunning external people search immediately.
-9. When a location-filtered Apollo search yields no useful contacts, the search logic can retry with the location constraint relaxed rather than dead-ending on the first miss.
-10. When Apollo enrichment yields a LinkedIn URL for a shortlisted contact, the system can extract and persist a structured public-profile `recipient_profile.json` snapshot before drafting.
-11. If Apollo enrichment returns a usable work email for a selected contact, the system can skip the separate email-finder cascade for that contact.
-12. If enrichment does not return a usable work email, that contact can continue into the separate person-scoped email-discovery path.
-13. If a shortlisted candidate becomes a terminal dead end at the enrichment boundary and will not continue into email discovery or outreach, that candidate is dropped from canonical shortlist state rather than being retained as dead contact state.
-14. Given linked contact input, the system returns a discovered working email or an explicit unresolved/not-found outcome.
-15. Provider-specific `HTTP 200` no-match responses are normalized correctly, such as Prospeo `NO_MATCH`, GetProspect `success = false` with `status = not_found`, and Hunter responses with `data.email = null`.
-16. Discovery reuses an already known working email for the same clearly identified contact instead of rerunning provider discovery unnecessarily.
-17. Attempts, outcomes, provider-budget history, unresolved review data, and bounced-email review data are queryable from the same central SQLite store.
-18. Pattern-learning data is preserved so discovery quality can be improved in later iterations without redesigning storage.
-19. System can perform high-confidence cached discovery for eligible domains once readiness criteria are met.
-20. Pre-send confidence is provider-verified confidence.
-21. Post-send confidence is set to 100% only for sent emails with no bounce observed in the configured feedback window.
-22. Per-provider credit balances are auto-updated after each provider usage event when the provider exposes a reliable balance signal, and otherwise remain explicitly unknown rather than synthetic.
-23. Combined budget totals, when shown, are derived only from known provider balances rather than fabricated placeholders.
-24. Provider exhaustion automatically triggers fallback to remaining providers in cascade order.
-25. The autonomous LinkedIn-alert mode can use Apollo to gather a broad set of engineering managers, software engineers, recruiters, and other potentially helpful internal people before later filtering.
-26. `discovery_result.json` is produced as the machine handoff artifact for Drafting and includes the shared contract envelope, relevant root IDs, discovery outcome, discovered email when found, and the recipient-profile artifact reference when one exists.
+3. When the posting or company group already has a persisted Apollo company identifier from earlier work, the system reuses that identifier and skips a fresh company-resolution call unless that identifier is missing or invalid.
+4. `people_search_result.json` is produced and preserves the resolved company record, applied search filters, and the broad candidate list returned by people search.
+5. The system correctly handles sparse Apollo search results, including candidates whose search-stage identity is only a partial or obfuscated display name plus stable Apollo person ID.
+6. Shortlist-stage contact materialization can proceed from stable provider identity such as Apollo person ID even before a non-obfuscated full name is known.
+7. For each shortlisted/materialized Apollo contact, the main database persists the full Apollo search-stage or enrichment-stage provider payload linked to the canonical `contact_id`.
+8. When Apollo returns employment history for a shortlisted/materialized contact, that employment history is also persisted in structured database rows linked to the same `contact_id`.
+9. Non-shortlisted broad-search Apollo candidates may remain artifact-only rows in `people_search_result.json` and do not require separate database-backed person snapshots in this build.
+10. The Apollo resolved company/organization payload used for the posting is persisted in the main database as posting-scoped provider context linked to `job_posting_id`.
+11. Apollo provider snapshots are append-only raw payload history rather than destructive overwrites of earlier payloads.
+12. Promoted latest-known Apollo fields on `contacts` prefer newer enrichment-stage values over older search-stage values, while search-stage values may still backfill missing fields.
+13. After the broad search pass, the system enriches only shortlisted contacts that need fuller identity, LinkedIn URL, or a usable work email rather than enriching every broad-search candidate by default.
+14. In the current high-recall role-targeted flow, Apollo enrichment for shortlisted contacts is demand-driven. Contacts that are not yet on the active send or discovery frontier remain shortlisted but are not eagerly enriched.
+15. In autonomous role-targeted mode, the initial enrichment shortlist is capped at 10 contacts and prefers as many manager-adjacent contacts as available before senior engineers and then other engineers.
+16. When a saved broad Apollo people-search artifact exists, the system can later replay that artifact to backfill additional shortlisted contacts up to the current 10-contact limit without rerunning external people search immediately.
+17. Apollo broad-search runs should omit the location filter when the posting is remote, hybrid, United States-wide, multi-location, or otherwise broad enough that a geographic constraint is more likely to suppress good candidates than improve precision.
+18. When a location-filtered Apollo search yields no useful contacts, the search logic can retry with the location constraint relaxed rather than dead-ending on the first miss.
+19. When Apollo company-scoped search or enrichment hits a quota-exhaustion signal such as `HTTP 422 insufficient credits`, the outcome is normalized to `quota_exhausted`, Apollo cooldown state is persisted, and immediate repeated Apollo retries are suppressed until the cooldown expires.
+20. When Apollo enrichment yields a LinkedIn URL for a shortlisted contact, the system can extract and persist a structured public-profile `recipient_profile.json` snapshot before drafting.
+21. If Apollo enrichment returns a usable work email for a selected contact, the system can skip the separate email-finder cascade for that contact.
+22. If enrichment does not return a usable work email, that contact can continue into the separate person-scoped email-discovery path.
+23. In the role-targeted autonomous flow, paid person-scoped email-finder calls run only for contacts in the current automatic send frontier that still lack a usable work email. Later-wave contacts stay unresolved until the frontier advances to them.
+24. If a shortlisted candidate becomes a terminal dead end at the enrichment boundary and will not continue into email discovery or outreach, that candidate is dropped from canonical shortlist state rather than being retained as dead contact state.
+25. Given linked contact input, the system returns a discovered working email or an explicit unresolved/not-found outcome.
+26. Provider-specific `HTTP 200` no-match responses are normalized correctly, such as Prospeo `NO_MATCH`, GetProspect `success = false` with `status = not_found`, and Hunter responses with `data.email = null`.
+27. Discovery reuses an already known working email for the same clearly identified contact instead of rerunning provider discovery unnecessarily.
+28. Attempts, outcomes, provider-budget history, unresolved review data, bounced-email review data, Apollo provider snapshots, Apollo company-resolution context, and structured Apollo employment history are queryable from the same central SQLite store.
+23. Pattern-learning data is preserved so discovery quality can be improved in later iterations without redesigning storage.
+24. System can perform high-confidence cached discovery for eligible domains once readiness criteria are met.
+25. Pre-send confidence is provider-verified confidence.
+26. Post-send confidence is set to 100% only for sent emails with no bounce observed in the configured feedback window.
+27. Per-provider credit balances are auto-updated after each provider usage event when the provider exposes a reliable balance signal, and otherwise remain explicitly unknown rather than synthetic.
+28. Combined budget totals, when shown, are derived only from known provider balances rather than fabricated placeholders.
+29. Provider exhaustion automatically triggers fallback to remaining providers in cascade order.
+30. The autonomous LinkedIn-alert mode can use Apollo to gather a broad set of engineering managers, software engineers, recruiters, and other potentially helpful internal people before later filtering.
+31. `discovery_result.json` is produced as the machine handoff artifact for Drafting and includes the shared contract envelope, relevant root IDs, discovery outcome, discovered email when found, and the recipient-profile artifact reference when one exists.
 
 ## 12.3 Email Drafting and Sending
 1. Given role-targeted context, system produces a personalized outreach draft using job-posting context, tailored-resume context, and a discovered working email, with recipient-profile context incorporated when it is available and genuinely useful.
@@ -4307,12 +4675,13 @@ Current imported guidance should include, at minimum:
 12. In the autonomous LinkedIn-alert mode, the default outreach objective is to ask discovered contacts for connection or routing help to the right hiring person rather than assuming the discovered recipient is already the exact target.
 13. Autonomous role-targeted sending respects the per-posting cap of at most 4 emails per posting per day, and uses a randomized 6 to 10 minute gap between any two automatic sends rather than a fixed interval.
 14. Autonomous role-targeted sending does not impose a separate global cross-company daily send cap in this build.
-15. The default autonomous active send slice for one posting covers as many manager-class internal contacts as possible first, up to the current 3-contact cap, and only then fills any remaining slots with role-relevant engineers.
+15. The default autonomous active send slice for one posting covers as many manager-class internal contacts as possible first, up to the 3-contact cap, and only then fills any remaining slots with role-relevant engineers.
 16. The system tracks first follow-up plans for unreplied sent outreach, including original message, recipient type, outreach mode, last touch date, next follow-up date, follow-up state, direct Gmail-thread reply-check result, skip reason, and notes.
 17. First follow-ups become eligible after 4 calendar days, use the approved warmer mutual-fit template with the short signature, and default to one follow-up per original outreach thread.
 18. The follow-up worker does not draft or send when the original message bounced, when the recipient replied, when the original thread cannot be checked for replies, or when a follow-up was already sent.
 19. When follow-up auto-send is temporarily disabled or rollout-paused, otherwise valid due plans may be held, but they must automatically re-enter normal worker evaluation after follow-up auto-send is re-enabled rather than remaining stranded until a manual reset.
 20. The older imported shared role-targeted template is no longer the primary production drafting strategy. The current production strategy is the role-split codex-backed path described in Section 7.3.3.
+20A. Scheduled role-targeted production drafting is Codex-only and fails closed if the role-split Codex renderer cannot run, rather than silently falling back to the older deterministic shared renderer.
 21. In the current role-split build, technical contacts receive a four-paragraph career-guidance email with a fixed subject, codex-generated Paragraph 1, fixed sender/project paragraphs, and a 10-minute guidance ask.
 22. In the current role-split build, managerial contacts receive a concise problem-solver body: a greeting, a three-sentence opener, JD-challenge bullets, relevant-background bullets, and a fixed CTA paragraph.
 23. The current managerial opener includes a bold proof-of-concept offer sentence near the top of the email body, and the managerial CTA stays fixed while codex drafts only the variable opener sentence and bullet content.
@@ -4328,10 +4697,11 @@ Current imported guidance should include, at minimum:
 5. Bounced and not-bounced outcomes are available to Email Discovery as reusable feedback, while replies remain retained for review but outside the current discovery-learning loop.
 6. Delayed bounce emails and replies can be detected through mailbox observation without requiring the human user to manually report them.
 7. Delivery Feedback uses one immediate post-send mailbox poll plus delayed scheduled polling every 5 minutes during a 30-minute bounce-observation window.
-8. In the current local single-user deployment, a separate `launchd`-managed feedback-sync worker owns delayed scheduled mailbox polling rather than the ordinary supervisor heartbeat.
-9. The supervisor reads persisted delivery-feedback state and event history to keep `delivery_feedback` runs pending or complete them; it does not own delayed mailbox polling inline.
-10. Scheduled feedback-sync runs are queryable so the owner can verify that delayed feedback capture is actually operating.
-11. Bounced outcomes block future automatic reuse of that bounced email identity and directly responsible provider result, but automatic posting-level bounce recovery remains out of scope for the current build.
+8. The dedicated follow-up worker performs a direct Gmail-thread reply check before follow-up drafting and again before follow-up sending, instead of depending only on delayed feedback-sync reply detection.
+9. In the current local single-user deployment, a separate `launchd`-managed feedback-sync worker owns delayed scheduled mailbox polling rather than the ordinary supervisor heartbeat.
+10. The supervisor reads persisted delivery-feedback state and event history to keep `delivery_feedback` runs pending or complete them; it does not own delayed mailbox polling inline.
+11. Scheduled feedback-sync runs are queryable so the owner can verify that delayed feedback capture is actually operating.
+12. Bounced outcomes block future automatic reuse of that bounced email identity and directly responsible provider result, but automatic posting-level bounce recovery remains out of scope for the current build.
 
 ## 12.5 System-Level
 1. Overall canonical system state is queryable from `job_hunt_copilot.db` without reconstructing the pipeline from ad hoc file inspection.

@@ -199,6 +199,9 @@ ROLE_TARGETED_PIPELINE_STAGE_ACTIONS = MappingProxyType(
         "delivery_feedback": ACTION_RUN_ROLE_TARGETED_DELIVERY_FEEDBACK,
     }
 )
+OUTREACH_SIDE_PIPELINE_STAGES = frozenset(
+    {"people_search", "email_discovery", "sending", "delivery_feedback"}
+)
 
 CONTROL_DEFAULTS = MappingProxyType(
     {
@@ -223,6 +226,10 @@ CONTROL_DEFAULTS = MappingProxyType(
         "gmail_poll_last_history_id": "",
         "gmail_poll_last_checkpoint_at": "",
         "gmail_poll_last_strategy": "",
+        "followup_auto_send_enabled": "false",
+        "followup_auto_send_paused": "false",
+        "followup_initial_rollout_sent_count": "0",
+        "followup_initial_rollout_approved": "false",
     }
 )
 
@@ -578,6 +585,7 @@ class SupervisorActionDependencies:
     recipient_profile_extractor: object | None = None
     email_finder_providers: tuple[object, ...] | None = None
     outreach_sender: object | None = None
+    role_targeted_draft_renderer: object | None = None
     feedback_observer: object | None = None
     local_timezone: object | str | None = None
     maintenance_dependencies: MaintenanceDependencies | None = None
@@ -634,15 +642,15 @@ SUPERVISOR_ACTION_CATALOG = MappingProxyType(
         ACTION_BOOTSTRAP_ROLE_TARGETED_RUN: SupervisorActionCatalogEntry(
             action_id=ACTION_BOOTSTRAP_ROLE_TARGETED_RUN,
             work_type=WORK_TYPE_JOB_POSTING,
-            description="Create or recover a durable role-targeted pipeline run from eligible posting state.",
+            description="Create a durable role-targeted pipeline run from eligible posting state.",
             prerequisites=(
                 "job_posting exists in canonical state",
-                "job_posting.posting_status is eligible for first-run bootstrap or orphaned downstream recovery",
+                "job_posting.posting_status is eligible for a new role-targeted run",
                 "no non-terminal pipeline_run already exists for the same job_posting_id",
             ),
             expected_outputs=(
                 "one pipeline_run exists for the selected job_posting_id",
-                "the pipeline_run is in_progress at the bootstrap boundary derived from posting state",
+                "the pipeline_run is in_progress at the lead_handoff stage",
                 "the cycle row links the selected job_posting_id to the created pipeline_run_id",
             ),
             validation_references=(
@@ -1711,6 +1719,48 @@ def escalate_agent_incident(
                 current_timestamp,
                 agent_incident_id,
             ),
+    )
+    return _require_agent_incident(connection, agent_incident_id)
+
+
+def suppress_agent_incident(
+    connection: sqlite3.Connection,
+    agent_incident_id: str,
+    *,
+    suppression_reason: str,
+    timestamp: str | None = None,
+    repair_attempt_summary: str | None = None,
+) -> AgentIncidentRecord:
+    if not suppression_reason.strip():
+        raise SupervisorStateError("Suppression reason is required.")
+    incident = _require_agent_incident(connection, agent_incident_id)
+    if incident.status in {INCIDENT_STATUS_RESOLVED, INCIDENT_STATUS_SUPPRESSED}:
+        return incident
+
+    current_timestamp = timestamp or now_utc_iso()
+    updated_repair_summary = repair_attempt_summary
+    if updated_repair_summary is None and incident.repair_attempt_summary:
+        updated_repair_summary = incident.repair_attempt_summary
+
+    with connection:
+        connection.execute(
+            """
+            UPDATE agent_incidents
+            SET status = ?,
+                resolved_at = ?,
+                escalation_reason = ?,
+                repair_attempt_summary = ?,
+                updated_at = ?
+            WHERE agent_incident_id = ?
+            """,
+            (
+                INCIDENT_STATUS_SUPPRESSED,
+                current_timestamp,
+                suppression_reason,
+                updated_repair_summary,
+                current_timestamp,
+                agent_incident_id,
+            ),
         )
     return _require_agent_incident(connection, agent_incident_id)
 
@@ -2256,6 +2306,10 @@ def run_supervisor_cycle(
             lease_status=lease_result.status,
         )
 
+    _quarantine_postings_with_unapproved_latest_tailoring(
+        connection,
+        current_time=cycle_started_at,
+    )
     control_state = read_agent_control_state(connection, timestamp=cycle_started_at)
     selected_work: SupervisorWorkUnit | None = None
     action_id: str | None = None
@@ -2553,6 +2607,7 @@ def select_next_supervisor_work_unit(
     )
     if orphaned_generated_sending_work is not None:
         return orphaned_generated_sending_work
+
     gmail_alert_work = _select_gmail_alert_collection_work_unit(
         current_time=current_time,
         gmail_alert_collector=action_dependencies.gmail_alert_collector,
@@ -2655,6 +2710,211 @@ def _detect_auto_pause_condition(
                 selected_work_id=cluster_key,
             )
     return None
+
+
+def _latest_tailoring_run_gate_row(
+    connection: sqlite3.Connection,
+    *,
+    job_posting_id: str,
+) -> sqlite3.Row | None:
+    return connection.execute(
+        """
+        SELECT resume_tailoring_run_id, tailoring_status, resume_review_status
+        FROM resume_tailoring_runs
+        WHERE job_posting_id = ?
+        ORDER BY COALESCE(completed_at, updated_at, created_at, started_at) DESC,
+                 resume_tailoring_run_id DESC
+        LIMIT 1
+        """,
+        (job_posting_id,),
+    ).fetchone()
+
+
+def _posting_status_for_unapproved_tailoring_run(latest_run: sqlite3.Row | None) -> str | None:
+    if latest_run is None:
+        return None
+    review_status = _optional_text(latest_run["resume_review_status"])
+    if review_status == "approved":
+        return None
+    if review_status == "resume_review_pending":
+        return "resume_review_pending"
+    return "tailoring_in_progress"
+
+
+def _record_state_transition(
+    connection: sqlite3.Connection,
+    *,
+    object_type: str,
+    object_id: str,
+    stage: str,
+    previous_state: str,
+    new_state: str,
+    transition_timestamp: str,
+    transition_reason: str | None,
+    lead_id: str | None,
+    job_posting_id: str | None,
+    contact_id: str | None,
+    caused_by: str | None = None,
+) -> None:
+    connection.execute(
+        """
+        INSERT INTO state_transition_events (
+          state_transition_event_id, object_type, object_id, stage,
+          previous_state, new_state, transition_timestamp, transition_reason,
+          caused_by, lead_id, job_posting_id, contact_id
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        """,
+        (
+            new_canonical_id("state_transition_events"),
+            object_type,
+            object_id,
+            stage,
+            previous_state,
+            new_state,
+            transition_timestamp,
+            transition_reason,
+            caused_by,
+            lead_id,
+            job_posting_id,
+            contact_id,
+        ),
+    )
+
+
+def _quarantine_postings_with_unapproved_latest_tailoring(
+    connection: sqlite3.Connection,
+    *,
+    current_time: str,
+) -> int:
+    rows = connection.execute(
+        f"""
+        SELECT DISTINCT pr.pipeline_run_id, pr.run_status, pr.current_stage, pr.job_posting_id,
+               pr.lead_id, jp.posting_status
+        FROM pipeline_runs pr
+        JOIN job_postings jp
+          ON jp.job_posting_id = pr.job_posting_id
+        WHERE pr.job_posting_id IS NOT NULL
+          AND pr.current_stage IN ({", ".join("?" for _ in OUTREACH_SIDE_PIPELINE_STAGES)})
+          AND pr.run_status IN (?, ?, ?)
+        ORDER BY pr.updated_at ASC, pr.started_at ASC
+        """,
+        (
+            *sorted(OUTREACH_SIDE_PIPELINE_STAGES),
+            RUN_STATUS_IN_PROGRESS,
+            RUN_STATUS_PAUSED,
+            RUN_STATUS_ESCALATED,
+        ),
+    ).fetchall()
+    quarantined_postings: set[str] = set()
+    for row in rows:
+        job_posting_id = _optional_text(row["job_posting_id"])
+        if job_posting_id is None or job_posting_id in quarantined_postings:
+            continue
+        latest_run = _latest_tailoring_run_gate_row(connection, job_posting_id=job_posting_id)
+        target_posting_status = _posting_status_for_unapproved_tailoring_run(latest_run)
+        if target_posting_status is None:
+            continue
+
+        posting_status = _require_text(_optional_text(row["posting_status"]), "posting_status")
+        lead_id = _optional_text(row["lead_id"])
+        latest_run_id = _optional_text(latest_run["resume_tailoring_run_id"]) if latest_run is not None else None
+        latest_tailoring_status = _optional_text(latest_run["tailoring_status"]) if latest_run is not None else None
+        latest_review_status = _optional_text(latest_run["resume_review_status"]) if latest_run is not None else None
+        if posting_status != target_posting_status:
+            with connection:
+                connection.execute(
+                    """
+                    UPDATE job_postings
+                    SET posting_status = ?, updated_at = ?
+                    WHERE job_posting_id = ?
+                    """,
+                    (target_posting_status, current_time, job_posting_id),
+                )
+                _record_state_transition(
+                    connection,
+                    object_type="job_posting",
+                    object_id=job_posting_id,
+                    stage="posting_status",
+                    previous_state=posting_status,
+                    new_state=target_posting_status,
+                    transition_timestamp=current_time,
+                    transition_reason=(
+                        "Supervisor quarantined the posting after a newer retailoring run "
+                        f"({latest_run_id or 'unknown'}) left Outreach without an approved tailoring gate "
+                        f"(tailoring_status={latest_tailoring_status!r}, resume_review_status={latest_review_status!r})."
+                    ),
+                    caused_by=SUPERVISOR_COMPONENT,
+                    lead_id=lead_id,
+                    job_posting_id=job_posting_id,
+                    contact_id=None,
+                )
+
+        active_runs = connection.execute(
+            f"""
+            SELECT pipeline_run_id, run_status
+            FROM pipeline_runs
+            WHERE job_posting_id = ?
+              AND current_stage IN ({", ".join("?" for _ in OUTREACH_SIDE_PIPELINE_STAGES)})
+              AND run_status IN (?, ?, ?)
+            ORDER BY updated_at ASC, started_at ASC
+            """,
+            (
+                job_posting_id,
+                *sorted(OUTREACH_SIDE_PIPELINE_STAGES),
+                RUN_STATUS_IN_PROGRESS,
+                RUN_STATUS_PAUSED,
+                RUN_STATUS_ESCALATED,
+            ),
+        ).fetchall()
+        suppression_reason = (
+            "Supervisor quarantined this posting after a newer retailoring run removed "
+            "the approved Outreach gate."
+        )
+        for run_row in active_runs:
+            if run_row["run_status"] in {RUN_STATUS_IN_PROGRESS, RUN_STATUS_PAUSED}:
+                fail_pipeline_run(
+                    connection,
+                    str(run_row["pipeline_run_id"]),
+                    current_stage="resume_tailoring",
+                    error_summary=(
+                        f"Job posting {job_posting_id!r} has a newer retailoring run "
+                        f"(tailoring_status={latest_tailoring_status!r}, "
+                        f"resume_review_status={latest_review_status!r}) and was returned "
+                        "to retailoring before Outreach could continue."
+                    ),
+                    run_summary=(
+                        "Supervisor retired stale Outreach-side pipeline work after a newer "
+                        "retailoring run removed the approved tailoring gate."
+                    ),
+                    timestamp=current_time,
+                )
+
+        unresolved_incidents = connection.execute(
+            """
+            SELECT ai.agent_incident_id
+            FROM agent_incidents ai
+            WHERE ai.job_posting_id = ?
+              AND ai.status IN (?, ?, ?)
+              AND ai.incident_type IN ('supervisor_prerequisite_failed', 'supervisor_action_execution_failed')
+            ORDER BY ai.created_at ASC
+            """,
+            (
+                job_posting_id,
+                INCIDENT_STATUS_OPEN,
+                INCIDENT_STATUS_IN_REPAIR,
+                INCIDENT_STATUS_ESCALATED,
+            ),
+        ).fetchall()
+        for incident_row in unresolved_incidents:
+            suppress_agent_incident(
+                connection,
+                str(incident_row["agent_incident_id"]),
+                suppression_reason=suppression_reason,
+                timestamp=current_time,
+                repair_attempt_summary=suppression_reason,
+            )
+        quarantined_postings.add(job_posting_id)
+    return len(quarantined_postings)
 
 
 def _select_gmail_alert_collection_work_unit(
@@ -2806,6 +3066,7 @@ def _select_open_pipeline_run_work_unit(
             RUN_STATUS_PAUSED,
         ),
     ).fetchall()
+
     for row in rows:
         pipeline_run = _pipeline_run_from_row(row)
         if (
@@ -2939,6 +3200,21 @@ def _select_open_pipeline_run_work_unit(
                         connection,
                         project_root=project_root,
                         job_posting_id=job_posting_id,
+                        current_time=current_time,
+                    ):
+                        continue
+        if pipeline_run.current_stage == "people_search":
+            job_posting_id = _optional_text(pipeline_run.job_posting_id)
+            if job_posting_id:
+                posting_status = _load_posting_status(
+                    connection,
+                    job_posting_id=job_posting_id,
+                )
+                if posting_status == "requires_contacts":
+                    from .email_discovery import is_role_targeted_people_search_actionable_now
+
+                    if not is_role_targeted_people_search_actionable_now(
+                        connection,
                         current_time=current_time,
                     ):
                         continue
@@ -3729,7 +4005,7 @@ def _validate_selected_work(
             return f"pipeline_run {selected_work.work_id!r} is missing job_posting_id."
         posting_row = connection.execute(
             """
-            SELECT posting_status
+            SELECT lead_id, posting_status
             FROM job_postings
             WHERE job_posting_id = ?
             """,
@@ -3737,10 +4013,10 @@ def _validate_selected_work(
         ).fetchone()
         if posting_row is None:
             return f"job_posting {job_posting_id!r} no longer exists."
-        if posting_row[0] != "resume_review_pending":
+        if posting_row[1] != "resume_review_pending":
             return (
                 f"job_posting {job_posting_id!r} is not at the mandatory review boundary; "
-                f"found posting_status={posting_row[0]!r}."
+                f"found posting_status={posting_row[1]!r}."
             )
         latest_run = connection.execute(
             """
@@ -3784,7 +4060,7 @@ def _validate_selected_work(
             return f"pipeline_run {selected_work.work_id!r} is missing job_posting_id."
         posting_row = connection.execute(
             """
-            SELECT posting_status
+            SELECT lead_id, posting_status
             FROM job_postings
             WHERE job_posting_id = ?
             """,
@@ -3792,12 +4068,22 @@ def _validate_selected_work(
         ).fetchone()
         if posting_row is None:
             return f"job_posting {job_posting_id!r} no longer exists."
-        if posting_row[0] == "ready_for_outreach":
+        if posting_row[1] == "ready_for_outreach":
             return None
-        if posting_row[0] != "requires_contacts":
+        if posting_row[1] != "requires_contacts":
             return (
                 f"job_posting {job_posting_id!r} is not at the people-search boundary; "
-                f"found posting_status={posting_row[0]!r}."
+                f"found posting_status={posting_row[1]!r}."
+            )
+        from .email_discovery import is_role_targeted_people_search_actionable_now
+
+        if not is_role_targeted_people_search_actionable_now(
+            connection,
+            current_time=current_time,
+        ):
+            return (
+                f"pipeline_run {selected_work.work_id!r} is at people_search without "
+                "a callable Apollo provider now."
             )
         latest_run = connection.execute(
             """
@@ -3838,7 +4124,7 @@ def _validate_selected_work(
             return f"pipeline_run {selected_work.work_id!r} is missing job_posting_id."
         posting_row = connection.execute(
             """
-            SELECT posting_status
+            SELECT lead_id, posting_status
             FROM job_postings
             WHERE job_posting_id = ?
             """,
@@ -3846,10 +4132,10 @@ def _validate_selected_work(
         ).fetchone()
         if posting_row is None:
             return f"job_posting {job_posting_id!r} no longer exists."
-        if posting_row[0] not in {"requires_contacts", "ready_for_outreach"}:
+        if posting_row[1] not in {"requires_contacts", "ready_for_outreach"}:
             return (
                 f"job_posting {job_posting_id!r} is not at the email-discovery boundary; "
-                f"found posting_status={posting_row[0]!r}."
+                f"found posting_status={posting_row[1]!r}."
             )
         latest_run = connection.execute(
             """
@@ -3868,7 +4154,7 @@ def _validate_selected_work(
                 "review for email discovery."
             )
         if (
-            posting_row[0] == "requires_contacts"
+            posting_row[1] == "requires_contacts"
             and not is_role_targeted_email_discovery_actionable_now(
                 connection,
                 project_root=project_root,
@@ -3903,7 +4189,7 @@ def _validate_selected_work(
             return f"pipeline_run {selected_work.work_id!r} is missing job_posting_id."
         posting_row = connection.execute(
             """
-            SELECT posting_status
+            SELECT lead_id, posting_status
             FROM job_postings
             WHERE job_posting_id = ?
             """,
@@ -3911,10 +4197,7 @@ def _validate_selected_work(
         ).fetchone()
         if posting_row is None:
             return f"job_posting {job_posting_id!r} no longer exists."
-        posting_status = _require_text(
-            _optional_text(posting_row[0]),
-            "posting_status",
-        )
+        posting_status = _require_text(_optional_text(posting_row[1]), "posting_status")
         if posting_status not in {
             "ready_for_outreach",
             "outreach_in_progress",
@@ -4569,8 +4852,11 @@ def _execute_selected_work_unit(
 
     if catalog_entry.action_id == ACTION_RUN_ROLE_TARGETED_PEOPLE_SEARCH:
         from .email_discovery import (
+            DISCOVERY_PROVIDER_COOLDOWN_OUTCOMES,
             JOB_POSTING_STATUS_READY_FOR_OUTREACH,
             JOB_POSTING_STATUS_REQUIRES_CONTACTS,
+            EmailDiscoveryError,
+            is_role_targeted_people_search_actionable_now,
             run_apollo_contact_enrichment,
             run_apollo_people_search,
         )
@@ -4578,7 +4864,7 @@ def _execute_selected_work_unit(
         job_posting_id = _require_text(selected_work.job_posting_id, "job_posting_id")
         posting_row = connection.execute(
             """
-            SELECT posting_status
+            SELECT lead_id, posting_status
             FROM job_postings
             WHERE job_posting_id = ?
             """,
@@ -4588,7 +4874,7 @@ def _execute_selected_work_unit(
             raise SupervisorStateError(f"job_posting {job_posting_id!r} no longer exists.")
 
         current_posting_status = _require_text(
-            _optional_text(posting_row[0]),
+            _optional_text(posting_row[1]),
             "posting_status",
         )
         next_stage: str
@@ -4600,19 +4886,54 @@ def _execute_selected_work_unit(
                 "ready_for_outreach and advanced the durable pipeline run directly to sending."
             )
         elif current_posting_status == JOB_POSTING_STATUS_REQUIRES_CONTACTS:
-            search_result = run_apollo_people_search(
-                project_root=paths.project_root,
-                job_posting_id=job_posting_id,
-                provider=action_dependencies.apollo_people_search_provider,
+            if not is_role_targeted_people_search_actionable_now(
+                connection,
                 current_time=timestamp,
-            )
-            enrichment_result = run_apollo_contact_enrichment(
-                project_root=paths.project_root,
-                job_posting_id=job_posting_id,
-                provider=action_dependencies.apollo_contact_enrichment_provider,
-                recipient_profile_extractor=action_dependencies.recipient_profile_extractor,
-                current_time=timestamp,
-            )
+            ):
+                next_stage = "people_search"
+                run_summary = (
+                    "Supervisor kept the durable pipeline run at people_search "
+                    "because Apollo is in provider cooldown and is not callable yet."
+                )
+                pipeline_run = advance_pipeline_run(
+                    connection,
+                    selected_work.work_id,
+                    current_stage=next_stage,
+                    run_summary=run_summary,
+                    timestamp=timestamp,
+                )
+                return pipeline_run, None, None
+            try:
+                search_result = run_apollo_people_search(
+                    project_root=paths.project_root,
+                    job_posting_id=job_posting_id,
+                    provider=action_dependencies.apollo_people_search_provider,
+                    current_time=timestamp,
+                )
+                enrichment_result = run_apollo_contact_enrichment(
+                    project_root=paths.project_root,
+                    job_posting_id=job_posting_id,
+                    provider=action_dependencies.apollo_contact_enrichment_provider,
+                    recipient_profile_extractor=action_dependencies.recipient_profile_extractor,
+                    current_time=timestamp,
+                )
+            except EmailDiscoveryError as exc:
+                if _optional_text(exc.reason_code) in DISCOVERY_PROVIDER_COOLDOWN_OUTCOMES:
+                    next_stage = "people_search"
+                    run_summary = (
+                        "Supervisor kept the durable pipeline run at people_search "
+                        "because Apollo entered provider cooldown after a transient or "
+                        "quota-related failure."
+                    )
+                    pipeline_run = advance_pipeline_run(
+                        connection,
+                        selected_work.work_id,
+                        current_stage=next_stage,
+                        run_summary=run_summary,
+                        timestamp=timestamp,
+                    )
+                    return pipeline_run, None, None
+                raise
             if enrichment_result.posting_status == JOB_POSTING_STATUS_READY_FOR_OUTREACH:
                 next_stage = "sending"
             elif enrichment_result.posting_status == JOB_POSTING_STATUS_REQUIRES_CONTACTS:
@@ -4680,7 +5001,7 @@ def _execute_selected_work_unit(
         lead_id = _require_text(selected_work.lead_id, "lead_id")
         posting_row = connection.execute(
             """
-            SELECT posting_status
+            SELECT lead_id, posting_status
             FROM job_postings
             WHERE job_posting_id = ?
             """,
@@ -4689,10 +5010,8 @@ def _execute_selected_work_unit(
         if posting_row is None:  # pragma: no cover - validated earlier
             raise SupervisorStateError(f"job_posting {job_posting_id!r} no longer exists.")
 
-        current_posting_status = _require_text(
-            _optional_text(posting_row[0]),
-            "posting_status",
-        )
+        current_posting_status = _require_text(_optional_text(posting_row[1]), "posting_status")
+        posting_lead_id = _optional_text(posting_row[0])
         refresh_same_company_contact_frontier(
             project_root=paths.project_root,
             job_posting_id=job_posting_id,
@@ -4703,6 +5022,7 @@ def _execute_selected_work_unit(
             return _list_pending_email_discovery_contact_ids(
                 connection,
                 job_posting_id=job_posting_id,
+                current_time=timestamp,
             )
 
         def _load_actionable_email_discovery_contact_ids(
@@ -4902,6 +5222,7 @@ def _execute_selected_work_unit(
     if catalog_entry.action_id == ACTION_RUN_ROLE_TARGETED_SENDING:
         from .email_discovery import refresh_same_company_contact_frontier
         from .outreach import (
+            CodexRoleSplitOutreachDraftRenderer,
             JOB_POSTING_STATUS_COMPLETED,
             JOB_POSTING_STATUS_OUTREACH_IN_PROGRESS,
             JOB_POSTING_STATUS_READY_FOR_OUTREACH,
@@ -4916,7 +5237,7 @@ def _execute_selected_work_unit(
         job_posting_id = _require_text(selected_work.job_posting_id, "job_posting_id")
         posting_row = connection.execute(
             """
-            SELECT posting_status
+            SELECT lead_id, posting_status
             FROM job_postings
             WHERE job_posting_id = ?
             """,
@@ -4925,10 +5246,8 @@ def _execute_selected_work_unit(
         if posting_row is None:  # pragma: no cover - validated earlier
             raise SupervisorStateError(f"job_posting {job_posting_id!r} no longer exists.")
 
-        current_posting_status = _require_text(
-            _optional_text(posting_row[0]),
-            "posting_status",
-        )
+        current_posting_status = _require_text(_optional_text(posting_row[1]), "posting_status")
+        posting_lead_id = _optional_text(posting_row[0])
         refresh_same_company_contact_frontier(
             project_root=paths.project_root,
             job_posting_id=job_posting_id,
@@ -4940,6 +5259,12 @@ def _execute_selected_work_unit(
         blocked_count = 0
         failed_count = 0
         delayed_count = 0
+        role_targeted_renderer = (
+            action_dependencies.role_targeted_draft_renderer
+            or CodexRoleSplitOutreachDraftRenderer(
+                project_root=paths.project_root,
+            )
+        )
 
         latest_posting_status = current_posting_status
         reconciled_stale_send_status = _reconcile_stale_role_targeted_sending_reconciliation(
@@ -4953,6 +5278,38 @@ def _execute_selected_work_unit(
             current_posting_status = reconciled_stale_send_status
             latest_posting_status = reconciled_stale_send_status
 
+        def _persist_posting_status_transition(next_status: str, transition_reason: str) -> str:
+            previous_status = _load_posting_status(connection, job_posting_id=job_posting_id)
+            if previous_status == next_status:
+                return previous_status
+            with connection:
+                connection.execute(
+                    """
+                    UPDATE job_postings
+                    SET posting_status = ?, updated_at = ?
+                    WHERE job_posting_id = ?
+                    """,
+                    (
+                        next_status,
+                        timestamp,
+                        job_posting_id,
+                    ),
+                )
+                _record_state_transition(
+                    connection,
+                    object_type="job_posting",
+                    object_id=job_posting_id,
+                    stage="posting_status",
+                    previous_state=previous_status,
+                    new_state=next_status,
+                    transition_timestamp=timestamp,
+                    transition_reason=transition_reason,
+                    lead_id=posting_lead_id,
+                    job_posting_id=job_posting_id,
+                    contact_id=None,
+                )
+            return next_status
+
         if current_posting_status == JOB_POSTING_STATUS_READY_FOR_OUTREACH:
             send_set_plan = evaluate_role_targeted_send_set(
                 connection,
@@ -4960,13 +5317,31 @@ def _execute_selected_work_unit(
                 current_time=timestamp,
                 local_timezone=action_dependencies.local_timezone,
             )
-            if send_set_plan.selected_contacts:
+            if not send_set_plan.ready_for_outreach:
+                latest_posting_status = _persist_posting_status_transition(
+                    JOB_POSTING_STATUS_REQUIRES_CONTACTS,
+                    "Supervisor reevaluated the current send frontier and returned the posting to requires_contacts because the next selected contacts still need usable email discovery.",
+                )
+                pipeline_run = advance_pipeline_run(
+                    connection,
+                    selected_work.work_id,
+                    current_stage="email_discovery",
+                    run_summary=(
+                        "Supervisor reevaluated the stale ready_for_outreach send frontier "
+                        "and moved the durable pipeline run back to email_discovery because "
+                        "the next selected contacts still need usable emails."
+                    ),
+                    timestamp=timestamp,
+                )
+                return pipeline_run, None, None
+            elif send_set_plan.selected_contacts:
                 draft_batch = generate_role_targeted_send_set_drafts(
                     connection,
                     project_root=paths.project_root,
                     job_posting_id=job_posting_id,
                     current_time=timestamp,
                     local_timezone=action_dependencies.local_timezone,
+                    renderer=role_targeted_renderer,
                 )
                 drafted_count = len(draft_batch.drafted_messages)
 
@@ -4981,6 +5356,7 @@ def _execute_selected_work_unit(
                 project_root=paths.project_root,
                 job_posting_id=job_posting_id,
                 current_time=timestamp,
+                renderer=role_targeted_renderer,
             )
             if is_role_targeted_sending_actionable_now(
                 connection,
@@ -5000,6 +5376,7 @@ def _execute_selected_work_unit(
                     ),
                     local_timezone=action_dependencies.local_timezone,
                     feedback_observer=action_dependencies.feedback_observer,
+                    renderer=role_targeted_renderer,
                 )
                 latest_posting_status = send_result.posting_status_after_execution
                 sent_count = len(send_result.sent_messages)
@@ -5550,6 +5927,33 @@ def _validate_selected_work_result(
                 "People search left the pipeline_run outside in-progress state; found "
                 f"{pipeline_run.run_status!r}."
             )
+        if pipeline_run.current_stage == "people_search":
+            posting_row = connection.execute(
+                """
+                SELECT posting_status
+                FROM job_postings
+                WHERE job_posting_id = ?
+                """,
+                (pipeline_run.job_posting_id,),
+            ).fetchone()
+            if posting_row is None:
+                return "People search completed without a persisted job_posting row."
+            if posting_row[0] != "requires_contacts":
+                return (
+                    "People search cooldown waiting must leave the posting at "
+                    f"requires_contacts; found {posting_row[0]!r}."
+                )
+            from .email_discovery import is_role_targeted_people_search_actionable_now
+
+            if is_role_targeted_people_search_actionable_now(
+                connection,
+                current_time=current_time,
+            ):
+                return (
+                    "People search stayed at the same boundary even though Apollo "
+                    "was callable and downstream progression should have resumed."
+                )
+            return None
         if pipeline_run.current_stage not in {"email_discovery", "sending"}:
             return (
                 "People search did not advance the durable pipeline run to the next "
@@ -5713,11 +6117,6 @@ def _validate_selected_work_result(
             message_status="sent",
         )
         if posting_status == "ready_for_outreach":
-            if message_row_count <= 0 or send_result_artifact_count <= 0:
-                return (
-                    "Sending kept the posting ready_for_outreach without persisting the "
-                    "draft/send artifacts required for the active frontier."
-                )
             if pipeline_run.run_status != RUN_STATUS_IN_PROGRESS:
                 return (
                     "Sending should keep the pipeline_run in-progress while the next "
@@ -5741,12 +6140,19 @@ def _validate_selected_work_result(
                     f"contacts still need emails, but found {pipeline_run.current_stage!r}."
                 )
             return None
+        if (
+            posting_status == "completed"
+            and message_row_count <= 0
+            and send_result_artifact_count <= 0
+            and pipeline_run.run_status == RUN_STATUS_COMPLETED
+        ):
+            return None
+        if message_row_count <= 0 or send_result_artifact_count <= 0:
+            return (
+                "Sending completed without persisting outreach messages and send_result "
+                "artifacts for the selected posting."
+            )
         if posting_status == "outreach_in_progress":
-            if message_row_count <= 0 or send_result_artifact_count <= 0:
-                return (
-                    "Sending kept the posting outreach_in_progress without persisted "
-                    "outreach messages and send_result artifacts for the active frontier."
-                )
             if pipeline_run.run_status != RUN_STATUS_IN_PROGRESS:
                 return (
                     "Sending left the pipeline_run outside in-progress state while later "
