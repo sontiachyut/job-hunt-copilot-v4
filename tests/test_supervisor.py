@@ -1844,6 +1844,313 @@ def test_run_supervisor_cycle_recovers_orphaned_send_stage_run_into_sending(tmp_
     ]
 
 
+def test_run_supervisor_cycle_reconciles_stale_sending_run_back_to_email_discovery(
+    tmp_path,
+):
+    project_root = bootstrap_project(tmp_path)
+    paths = ProjectPaths.from_root(project_root)
+    connection = connect_database(project_root / "job_hunt_copilot.db")
+    lead_id, job_posting_id = seed_named_role_targeted_posting(
+        connection,
+        lead_id="ld_stale_send",
+        job_posting_id="jp_stale_send",
+        company_name="Recovered Co",
+        role_title="Machine Learning Engineer",
+        posting_status="outreach_in_progress",
+        timestamp="2026-04-06T00:00:00Z",
+    )
+    seed_tailoring_run(
+        connection,
+        run_id="rtr_stale_send_approved",
+        job_posting_id=job_posting_id,
+        tailoring_status="tailored",
+        resume_review_status="approved",
+        verification_outcome="pass",
+        final_resume_path="resume-tailoring/output/rtr_stale_send_approved/final.pdf",
+        timestamp="2026-04-06T00:01:00Z",
+    )
+    stale_run, _ = ensure_role_targeted_pipeline_run(
+        connection,
+        lead_id=lead_id,
+        job_posting_id=job_posting_id,
+        current_stage="sending",
+        started_at="2026-04-06T00:02:00Z",
+    )
+    seed_send_ready_contact_with_generated_message(
+        connection,
+        contact_id="ct_stale_sent",
+        job_posting_contact_id="jpc_stale_sent",
+        job_posting_id=job_posting_id,
+        company_name="Recovered Co",
+        display_name="Taylor Hiring Manager",
+        recipient_email="taylor@recovered.example",
+        created_at="2026-04-06T00:03:00Z",
+    )
+    connection.execute(
+        """
+        UPDATE outreach_messages
+        SET message_status = ?, sent_at = ?, updated_at = ?
+        WHERE outreach_message_id = ?
+        """,
+        (
+            "sent",
+            "2026-04-06T00:04:00Z",
+            "2026-04-06T00:04:00Z",
+            "msg_ct_stale_sent",
+        ),
+    )
+    connection.execute(
+        """
+        UPDATE job_posting_contacts
+        SET link_level_status = ?, updated_at = ?
+        WHERE job_posting_contact_id = ?
+        """,
+        (
+            "outreach_done",
+            "2026-04-06T00:04:00Z",
+            "jpc_stale_sent",
+        ),
+    )
+    connection.execute(
+        """
+        INSERT INTO contacts (
+          contact_id, identity_key, display_name, company_name, origin_component, contact_status,
+          full_name, current_working_email, position_title, created_at, updated_at
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        """,
+        (
+            "ct_stale_needs_email",
+            "recovered co|avery-platform-engineer",
+            "Avery Platform Engineer",
+            "Recovered Co",
+            "email_discovery",
+            "identified",
+            "Avery Platform Engineer",
+            None,
+            "Senior Software Engineer",
+            "2026-04-06T00:05:00Z",
+            "2026-04-06T00:05:00Z",
+        ),
+    )
+    connection.execute(
+        """
+        INSERT INTO job_posting_contacts (
+          job_posting_contact_id, job_posting_id, contact_id, recipient_type, relevance_reason,
+          link_level_status, created_at, updated_at
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+        """,
+        (
+            "jpc_stale_needs_email",
+            job_posting_id,
+            "ct_stale_needs_email",
+            "engineer",
+            "Later-wave contact still needs a usable email.",
+            "shortlisted",
+            "2026-04-06T00:05:00Z",
+            "2026-04-06T00:05:00Z",
+        ),
+    )
+    _, discovery_job_posting_id = seed_named_role_targeted_posting(
+        connection,
+        lead_id="ld_discovery",
+        job_posting_id="jp_discovery",
+        company_name="Discovery Co",
+        role_title="Backend Engineer",
+        posting_status="requires_contacts",
+        timestamp="2026-04-06T00:06:00Z",
+    )
+    ensure_role_targeted_pipeline_run(
+        connection,
+        lead_id="ld_discovery",
+        job_posting_id=discovery_job_posting_id,
+        current_stage="email_discovery",
+        started_at="2026-04-06T00:07:00Z",
+    )
+    resume_agent(
+        connection,
+        manual_command="jhc-agent-start",
+        timestamp="2026-04-06T00:08:00Z",
+    )
+
+    execution = run_supervisor_cycle(
+        connection,
+        paths,
+        trigger_type="launchd_heartbeat",
+        scheduler_name="launchd",
+        started_at="2026-04-06T00:09:00Z",
+        action_dependencies=SupervisorActionDependencies(local_timezone="UTC"),
+    )
+    posting_status = connection.execute(
+        "SELECT posting_status FROM job_postings WHERE job_posting_id = ?",
+        (job_posting_id,),
+    ).fetchone()[0]
+    generated_count = int(
+        connection.execute(
+            """
+            SELECT COUNT(*)
+            FROM outreach_messages
+            WHERE job_posting_id = ?
+              AND message_status = 'generated'
+            """,
+            (job_posting_id,),
+        ).fetchone()[0]
+        or 0
+    )
+    connection.close()
+
+    assert execution.cycle.result == SUPERVISOR_CYCLE_RESULT_SUCCESS
+    assert execution.selected_work is not None
+    assert execution.selected_work.action_id == "run_role_targeted_sending"
+    assert execution.selected_work.pipeline_run_id == stale_run.pipeline_run_id
+    assert execution.pipeline_run is not None
+    assert execution.pipeline_run.pipeline_run_id == stale_run.pipeline_run_id
+    assert execution.pipeline_run.current_stage == "email_discovery"
+    assert execution.pipeline_run.run_status == RUN_STATUS_IN_PROGRESS
+    assert posting_status == "requires_contacts"
+    assert generated_count == 0
+
+
+def test_run_supervisor_cycle_completes_stale_sending_run_without_new_frontier(
+    tmp_path,
+):
+    project_root = bootstrap_project(tmp_path)
+    paths = ProjectPaths.from_root(project_root)
+    connection = connect_database(project_root / "job_hunt_copilot.db")
+    lead_id, job_posting_id = seed_named_role_targeted_posting(
+        connection,
+        lead_id="ld_repeat_review",
+        job_posting_id="jp_repeat_review",
+        company_name="Review Co",
+        role_title="Backend Engineer",
+        posting_status="ready_for_outreach",
+        timestamp="2026-04-06T00:00:00Z",
+    )
+    seed_tailoring_run(
+        connection,
+        run_id="rtr_repeat_review_approved",
+        job_posting_id=job_posting_id,
+        tailoring_status="tailored",
+        resume_review_status="approved",
+        verification_outcome="pass",
+        final_resume_path="resume-tailoring/output/rtr_repeat_review_approved/final.pdf",
+        timestamp="2026-04-06T00:01:00Z",
+    )
+    stale_run, _ = ensure_role_targeted_pipeline_run(
+        connection,
+        lead_id=lead_id,
+        job_posting_id=job_posting_id,
+        current_stage="sending",
+        started_at="2026-04-06T00:02:00Z",
+    )
+    connection.execute(
+        """
+        INSERT INTO contacts (
+          contact_id, identity_key, display_name, company_name, origin_component, contact_status,
+          full_name, current_working_email, position_title, created_at, updated_at
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        """,
+        (
+            "ct_repeat_review",
+            "review co|morgan-manager",
+            "Morgan Manager",
+            "Review Co",
+            "email_discovery",
+            "working_email_found",
+            "Morgan Manager",
+            "morgan@review.example",
+            "Engineering Manager",
+            "2026-04-06T00:03:00Z",
+            "2026-04-06T00:03:00Z",
+        ),
+    )
+    connection.execute(
+        """
+        INSERT INTO job_posting_contacts (
+          job_posting_contact_id, job_posting_id, contact_id, recipient_type, relevance_reason,
+          link_level_status, created_at, updated_at
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+        """,
+        (
+            "jpc_repeat_review",
+            job_posting_id,
+            "ct_repeat_review",
+            "hiring_manager",
+            "Selected for automatic outreach review.",
+            "shortlisted",
+            "2026-04-06T00:03:00Z",
+            "2026-04-06T00:03:00Z",
+        ),
+    )
+    seed_named_role_targeted_posting(
+        connection,
+        lead_id="ld_prior_outreach",
+        job_posting_id="jp_prior_outreach",
+        company_name="Earlier Co",
+        role_title="Platform Engineer",
+        posting_status="completed",
+        timestamp="2026-04-06T00:04:00Z",
+    )
+    connection.execute(
+        """
+        INSERT INTO outreach_messages (
+          outreach_message_id, contact_id, outreach_mode, recipient_email, message_status,
+          job_posting_id, job_posting_contact_id, subject, body_text, sent_at, created_at, updated_at
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        """,
+        (
+            "msg_prior_repeat_review",
+            "ct_repeat_review",
+            "role_targeted",
+            "morgan@review.example",
+            "sent",
+            "jp_prior_outreach",
+            None,
+            "Earlier outreach",
+            "Body",
+            "2026-04-06T00:05:00Z",
+            "2026-04-06T00:05:00Z",
+            "2026-04-06T00:05:00Z",
+        ),
+    )
+    resume_agent(
+        connection,
+        manual_command="jhc-agent-start",
+        timestamp="2026-04-06T00:06:00Z",
+    )
+
+    execution = run_supervisor_cycle(
+        connection,
+        paths,
+        trigger_type="launchd_heartbeat",
+        scheduler_name="launchd",
+        started_at="2026-04-06T00:07:00Z",
+        action_dependencies=SupervisorActionDependencies(local_timezone="UTC"),
+    )
+    posting_status = connection.execute(
+        "SELECT posting_status FROM job_postings WHERE job_posting_id = ?",
+        (job_posting_id,),
+    ).fetchone()[0]
+    current_posting_message_count = int(
+        connection.execute(
+            "SELECT COUNT(*) FROM outreach_messages WHERE job_posting_id = ?",
+            (job_posting_id,),
+        ).fetchone()[0]
+        or 0
+    )
+    connection.close()
+
+    assert execution.cycle.result == SUPERVISOR_CYCLE_RESULT_SUCCESS
+    assert execution.selected_work is not None
+    assert execution.selected_work.action_id == "run_role_targeted_sending"
+    assert execution.selected_work.pipeline_run_id == stale_run.pipeline_run_id
+    assert execution.pipeline_run is not None
+    assert execution.pipeline_run.pipeline_run_id == stale_run.pipeline_run_id
+    assert execution.pipeline_run.current_stage == "completed"
+    assert execution.pipeline_run.run_status == RUN_STATUS_COMPLETED
+    assert posting_status == "completed"
+    assert current_posting_message_count == 0
+
+
 def test_run_supervisor_cycle_repairs_stale_blocked_gmail_lead(tmp_path, monkeypatch):
     project_root = bootstrap_project(tmp_path)
     paths = ProjectPaths.from_root(project_root)

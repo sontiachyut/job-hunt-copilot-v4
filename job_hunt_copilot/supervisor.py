@@ -2777,6 +2777,7 @@ def _select_open_pipeline_run_work_unit(
         _find_next_send_frontier_message,
         _load_active_role_targeted_wave,
         _load_role_targeted_send_posting_row,
+        evaluate_role_targeted_send_set,
         is_role_targeted_sending_actionable_now,
     )
 
@@ -2797,6 +2798,7 @@ def _select_open_pipeline_run_work_unit(
     for row in rows:
         pipeline_run = _pipeline_run_from_row(row)
         frontier_kind = None
+        stale_reconciliation_target_status = None
         if pipeline_run.current_stage == "delivery_feedback":
             job_posting_id = _optional_text(pipeline_run.job_posting_id)
             if job_posting_id:
@@ -2865,28 +2867,40 @@ def _select_open_pipeline_run_work_unit(
                         current_time=current_time,
                         local_timezone=local_timezone,
                     ):
-                        continue
-                    posting_row = _load_role_targeted_send_posting_row(
-                        connection,
-                        job_posting_id=job_posting_id,
-                    )
-                    active_wave = _load_active_role_targeted_wave(
-                        connection,
-                        job_posting_id=job_posting_id,
-                    )
-                    next_frontier, _ = _find_next_send_frontier_message(
-                        connection,
-                        ProjectPaths.from_root(project_root),
-                        posting_row=posting_row,
-                        active_wave=active_wave,
-                        current_time=current_time,
-                    )
-                    if next_frontier is not None:
-                        frontier_kind = (
-                            "generated_frontier"
-                            if next_frontier.message_status == MESSAGE_STATUS_GENERATED
-                            else "existing_frontier"
+                        stale_reconciliation_target_status = (
+                            _classify_stale_role_targeted_sending_reconciliation(
+                                connection,
+                                project_root=project_root,
+                                job_posting_id=job_posting_id,
+                                current_time=current_time,
+                                local_timezone=local_timezone,
+                            )
                         )
+                        if stale_reconciliation_target_status is None:
+                            continue
+                        frontier_kind = "stale_reconciliation"
+                    else:
+                        posting_row = _load_role_targeted_send_posting_row(
+                            connection,
+                            job_posting_id=job_posting_id,
+                        )
+                        active_wave = _load_active_role_targeted_wave(
+                            connection,
+                            job_posting_id=job_posting_id,
+                        )
+                        next_frontier, _ = _find_next_send_frontier_message(
+                            connection,
+                            ProjectPaths.from_root(project_root),
+                            posting_row=posting_row,
+                            active_wave=active_wave,
+                            current_time=current_time,
+                        )
+                        if next_frontier is not None:
+                            frontier_kind = (
+                                "generated_frontier"
+                                if next_frontier.message_status == MESSAGE_STATUS_GENERATED
+                                else "existing_frontier"
+                            )
                 if generated_frontier_only and frontier_kind != "generated_frontier":
                     continue
         if pipeline_run.current_stage == "email_discovery":
@@ -2912,6 +2926,11 @@ def _select_open_pipeline_run_work_unit(
                 "Resume an already-generated send frontier before Gmail polling "
                 "or fresh draft generation so send-ready outreach drains first."
             )
+        elif pipeline_run.current_stage == "sending" and frontier_kind == "stale_reconciliation":
+            summary = (
+                "Reconcile stale send-stage state before ordinary discovery backlog "
+                f"continues so the durable run can move to {stale_reconciliation_target_status}."
+            )
         work_unit = SupervisorWorkUnit(
             work_type=WORK_TYPE_PIPELINE_RUN,
             work_id=pipeline_run.pipeline_run_id,
@@ -2929,6 +2948,141 @@ def _select_open_pipeline_run_work_unit(
             continue
         return work_unit
     return None
+
+
+def _classify_stale_role_targeted_sending_reconciliation(
+    connection: sqlite3.Connection,
+    *,
+    project_root: Path | str,
+    job_posting_id: str,
+    current_time: str,
+    local_timezone: object | str | None = None,
+) -> str | None:
+    from .outreach import (
+        JOB_POSTING_STATUS_COMPLETED,
+        JOB_POSTING_STATUS_READY_FOR_OUTREACH,
+        JOB_POSTING_STATUS_REQUIRES_CONTACTS,
+        _find_next_send_frontier_message,
+        _load_active_role_targeted_wave,
+        _load_role_targeted_send_posting_row,
+        evaluate_role_targeted_send_set,
+    )
+
+    posting_status = _load_posting_status(connection, job_posting_id=job_posting_id)
+    if posting_status not in {"ready_for_outreach", "outreach_in_progress"}:
+        return None
+
+    posting_row = _load_role_targeted_send_posting_row(
+        connection,
+        job_posting_id=job_posting_id,
+    )
+    active_wave = _load_active_role_targeted_wave(
+        connection,
+        job_posting_id=job_posting_id,
+    )
+    next_frontier, _ = _find_next_send_frontier_message(
+        connection,
+        ProjectPaths.from_root(project_root),
+        posting_row=posting_row,
+        active_wave=active_wave,
+        current_time=current_time,
+    )
+    if next_frontier is not None:
+        return None
+
+    send_set_plan = evaluate_role_targeted_send_set(
+        connection,
+        job_posting_id=job_posting_id,
+        current_time=current_time,
+        local_timezone=local_timezone,
+    )
+    if send_set_plan.ready_for_outreach:
+        target_status = JOB_POSTING_STATUS_READY_FOR_OUTREACH
+    elif send_set_plan.selected_contacts:
+        target_status = JOB_POSTING_STATUS_REQUIRES_CONTACTS
+    else:
+        target_status = JOB_POSTING_STATUS_COMPLETED
+
+    if target_status == posting_status:
+        return None
+    return target_status
+
+
+def _reconcile_stale_role_targeted_sending_reconciliation(
+    connection: sqlite3.Connection,
+    *,
+    project_root: Path | str,
+    job_posting_id: str,
+    current_time: str,
+    local_timezone: object | str | None = None,
+) -> str | None:
+    from .outreach import _load_role_targeted_send_posting_row, _record_state_transition
+
+    target_status = _classify_stale_role_targeted_sending_reconciliation(
+        connection,
+        project_root=project_root,
+        job_posting_id=job_posting_id,
+        current_time=current_time,
+        local_timezone=local_timezone,
+    )
+    if target_status is None:
+        return None
+
+    posting_row = _load_role_targeted_send_posting_row(
+        connection,
+        job_posting_id=job_posting_id,
+    )
+    current_status = _require_text(
+        _optional_text(posting_row["posting_status"]),
+        "posting_status",
+    )
+    if current_status == target_status:
+        return current_status
+
+    if target_status == "requires_contacts":
+        transition_reason = (
+            "Supervisor reevaluated stale send-stage state and found the next "
+            "automatic frontier still needs usable emails, so it demoted the "
+            "posting back to requires_contacts."
+        )
+    elif target_status == "ready_for_outreach":
+        transition_reason = (
+            "Supervisor reevaluated stale send-stage state and found the active "
+            "wave had already ended while a later send-ready frontier remained, "
+            "so it returned the posting to ready_for_outreach."
+        )
+    else:
+        transition_reason = (
+            "Supervisor reevaluated stale send-stage state and found no untouched "
+            "automatic outreach contacts remain, so it marked the posting completed."
+        )
+
+    connection.execute(
+        """
+        UPDATE job_postings
+        SET posting_status = ?, updated_at = ?
+        WHERE job_posting_id = ?
+        """,
+        (
+            target_status,
+            current_time,
+            job_posting_id,
+        ),
+    )
+    _record_state_transition(
+        connection,
+        object_type="job_posting",
+        object_id=job_posting_id,
+        stage="posting_status",
+        previous_state=current_status,
+        new_state=target_status,
+        transition_timestamp=current_time,
+        transition_reason=transition_reason,
+        lead_id=_optional_text(posting_row["lead_id"]),
+        job_posting_id=job_posting_id,
+        contact_id=None,
+    )
+    return target_status
 
 
 def _classify_orphaned_send_stage_recovery(
@@ -3766,6 +3920,22 @@ def _validate_selected_work(
             posting_status != "completed"
             and action_dependencies.outreach_sender is None
         ):
+            if pipeline_run.current_stage == "sending" and not is_role_targeted_sending_actionable_now(
+                connection,
+                project_root=project_root,
+                job_posting_id=job_posting_id,
+                current_time=current_time,
+                local_timezone=action_dependencies.local_timezone,
+            ):
+                reconciliation_target = _classify_stale_role_targeted_sending_reconciliation(
+                    connection,
+                    project_root=project_root,
+                    job_posting_id=job_posting_id,
+                    current_time=current_time,
+                    local_timezone=action_dependencies.local_timezone,
+                )
+                if reconciliation_target is not None:
+                    return None
             return (
                 "Supervisor sending requires an injected outreach sender before any "
                 f"automatic send is attempted for job_posting {job_posting_id!r}."
@@ -4738,6 +4908,17 @@ def _execute_selected_work_unit(
         delayed_count = 0
 
         latest_posting_status = current_posting_status
+        reconciled_stale_send_status = _reconcile_stale_role_targeted_sending_reconciliation(
+            connection,
+            project_root=paths.project_root,
+            job_posting_id=job_posting_id,
+            current_time=timestamp,
+            local_timezone=action_dependencies.local_timezone,
+        )
+        if reconciled_stale_send_status is not None:
+            current_posting_status = reconciled_stale_send_status
+            latest_posting_status = reconciled_stale_send_status
+
         if current_posting_status == JOB_POSTING_STATUS_READY_FOR_OUTREACH:
             send_set_plan = evaluate_role_targeted_send_set(
                 connection,
@@ -5497,14 +5678,12 @@ def _validate_selected_work_result(
             job_posting_id=pipeline_run.job_posting_id,
             message_status="sent",
         )
-        if posting_status != "ready_for_outreach" and (
-            message_row_count <= 0 or send_result_artifact_count <= 0
-        ):
-            return (
-                "Sending completed without persisting outreach messages and send_result "
-                "artifacts for the selected posting."
-            )
         if posting_status == "ready_for_outreach":
+            if message_row_count <= 0 or send_result_artifact_count <= 0:
+                return (
+                    "Sending kept the posting ready_for_outreach without persisting the "
+                    "draft/send artifacts required for the active frontier."
+                )
             if pipeline_run.run_status != RUN_STATUS_IN_PROGRESS:
                 return (
                     "Sending should keep the pipeline_run in-progress while the next "
@@ -5529,6 +5708,11 @@ def _validate_selected_work_result(
                 )
             return None
         if posting_status == "outreach_in_progress":
+            if message_row_count <= 0 or send_result_artifact_count <= 0:
+                return (
+                    "Sending kept the posting outreach_in_progress without persisted "
+                    "outreach messages and send_result artifacts for the active frontier."
+                )
             if pipeline_run.run_status != RUN_STATUS_IN_PROGRESS:
                 return (
                     "Sending left the pipeline_run outside in-progress state while later "
