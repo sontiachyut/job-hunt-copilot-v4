@@ -1,0 +1,104 @@
+{
+  "batch_id": "batch-023",
+  "company_count": 10,
+  "status_counts": {
+    "live_jobs": 5,
+    "no_structured_board_found": 5
+  },
+  "trackability_counts": {
+    "api_native": 5,
+    "unknown": 5
+  },
+  "companies": [
+    {
+      "queue_position": "1",
+      "company_name": "Notabene",
+      "previous_trackability": "api_native",
+      "recheck_trackability": "api_native",
+      "recheck_board_type": "ashby",
+      "recheck_confirmation_status": "live_jobs",
+      "recheck_job_count": "9"
+    },
+    {
+      "queue_position": "2",
+      "company_name": "Origami",
+      "previous_trackability": "api_native",
+      "recheck_trackability": "unknown",
+      "recheck_board_type": "",
+      "recheck_confirmation_status": "no_structured_board_found",
+      "recheck_job_count": "0"
+    },
+    {
+      "queue_position": "3",
+      "company_name": "PicnicAI",
+      "previous_trackability": "api_native",
+      "recheck_trackability": "unknown",
+      "recheck_board_type": "",
+      "recheck_confirmation_status": "no_structured_board_found",
+      "recheck_job_count": "0"
+    },
+    {
+      "queue_position": "4",
+      "company_name": "Recall.ai",
+      "previous_trackability": "api_native",
+      "recheck_trackability": "api_native",
+      "recheck_board_type": "ashby",
+      "recheck_confirmation_status": "live_jobs",
+      "recheck_job_count": "4"
+    },
+    {
+      "queue_position": "5",
+      "company_name": "Rescale",
+      "previous_trackability": "api_native",
+      "recheck_trackability": "api_native",
+      "recheck_board_type": "ashby",
+      "recheck_confirmation_status": "live_jobs",
+      "recheck_job_count": "13"
+    },
+    {
+      "queue_position": "6",
+      "company_name": "Shape (ShapeScale)",
+      "previous_trackability": "api_native",
+      "recheck_trackability": "unknown",
+      "recheck_board_type": "",
+      "recheck_confirmation_status": "no_structured_board_found",
+      "recheck_job_count": "0"
+    },
+    {
+      "queue_position": "7",
+      "company_name": "SwiftSku",
+      "previous_trackability": "api_native",
+      "recheck_trackability": "api_native",
+      "recheck_board_type": "greenhouse",
+      "recheck_confirmation_status": "live_jobs",
+      "recheck_job_count": "6"
+    },
+    {
+      "queue_position": "8",
+      "company_name": "Tint",
+      "previous_trackability": "api_native",
+      "recheck_trackability": "unknown",
+      "recheck_board_type": "",
+      "recheck_confirmation_status": "no_structured_board_found",
+      "recheck_job_count": "0"
+    },
+    {
+      "queue_position": "9",
+      "company_name": "TRM Labs",
+      "previous_trackability": "api_native",
+      "recheck_trackability": "api_native",
+      "recheck_board_type": "ashby",
+      "recheck_confirmation_status": "live_jobs",
+      "recheck_job_count": "105"
+    },
+    {
+      "queue_position": "10",
+      "company_name": "Truss",
+      "previous_trackability": "api_native",
+      "recheck_trackability": "unknown",
+      "recheck_board_type": "",
+      "recheck_confirmation_status": "no_structured_board_found",
+      "recheck_job_count": "0"
+    }
+  ]
+}

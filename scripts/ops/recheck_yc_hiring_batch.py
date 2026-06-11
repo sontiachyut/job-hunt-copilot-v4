@@ -603,6 +603,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--batch-size", type=int, default=10)
     parser.add_argument("--batch-index", type=int, default=1)
     parser.add_argument("--company-slugs", type=str, default="")
+    parser.add_argument("--batch-id", type=str, default="")
     return parser.parse_args()
 
 
@@ -617,6 +618,8 @@ def main() -> None:
     batch_id = f"batch-{args.batch_index:03d}"
     if company_slugs:
         batch_id = f"slugs-{'-'.join(company_slugs)}"
+    if args.batch_id:
+        batch_id = args.batch_id
 
     checked_at_utc = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
     results: list[dict[str, str]] = []

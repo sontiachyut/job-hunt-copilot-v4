@@ -1,0 +1,104 @@
+{
+  "batch_id": "batch-025",
+  "company_count": 10,
+  "status_counts": {
+    "no_structured_board_found": 7,
+    "live_jobs": 3
+  },
+  "trackability_counts": {
+    "unknown": 7,
+    "api_native": 3
+  },
+  "companies": [
+    {
+      "queue_position": "1",
+      "company_name": "Airweave",
+      "previous_trackability": "structured_board",
+      "recheck_trackability": "unknown",
+      "recheck_board_type": "",
+      "recheck_confirmation_status": "no_structured_board_found",
+      "recheck_job_count": "0"
+    },
+    {
+      "queue_position": "2",
+      "company_name": "Alex",
+      "previous_trackability": "structured_board",
+      "recheck_trackability": "api_native",
+      "recheck_board_type": "ashby",
+      "recheck_confirmation_status": "live_jobs",
+      "recheck_job_count": "4"
+    },
+    {
+      "queue_position": "3",
+      "company_name": "AnswerThis",
+      "previous_trackability": "structured_board",
+      "recheck_trackability": "unknown",
+      "recheck_board_type": "",
+      "recheck_confirmation_status": "no_structured_board_found",
+      "recheck_job_count": "0"
+    },
+    {
+      "queue_position": "4",
+      "company_name": "Apprentice Health",
+      "previous_trackability": "structured_board",
+      "recheck_trackability": "unknown",
+      "recheck_board_type": "",
+      "recheck_confirmation_status": "no_structured_board_found",
+      "recheck_job_count": "0"
+    },
+    {
+      "queue_position": "5",
+      "company_name": "Apten",
+      "previous_trackability": "structured_board",
+      "recheck_trackability": "unknown",
+      "recheck_board_type": "",
+      "recheck_confirmation_status": "no_structured_board_found",
+      "recheck_job_count": "0"
+    },
+    {
+      "queue_position": "6",
+      "company_name": "Asendia AI",
+      "previous_trackability": "structured_board",
+      "recheck_trackability": "unknown",
+      "recheck_board_type": "",
+      "recheck_confirmation_status": "no_structured_board_found",
+      "recheck_job_count": "0"
+    },
+    {
+      "queue_position": "7",
+      "company_name": "Auctor",
+      "previous_trackability": "structured_board",
+      "recheck_trackability": "api_native",
+      "recheck_board_type": "ashby",
+      "recheck_confirmation_status": "live_jobs",
+      "recheck_job_count": "15"
+    },
+    {
+      "queue_position": "8",
+      "company_name": "Aurelian",
+      "previous_trackability": "structured_board",
+      "recheck_trackability": "unknown",
+      "recheck_board_type": "",
+      "recheck_confirmation_status": "no_structured_board_found",
+      "recheck_job_count": "0"
+    },
+    {
+      "queue_position": "9",
+      "company_name": "authzed",
+      "previous_trackability": "structured_board",
+      "recheck_trackability": "api_native",
+      "recheck_board_type": "ashby",
+      "recheck_confirmation_status": "live_jobs",
+      "recheck_job_count": "5"
+    },
+    {
+      "queue_position": "10",
+      "company_name": "BeGo",
+      "previous_trackability": "structured_board",
+      "recheck_trackability": "unknown",
+      "recheck_board_type": "",
+      "recheck_confirmation_status": "no_structured_board_found",
+      "recheck_job_count": "0"
+    }
+  ]
+}

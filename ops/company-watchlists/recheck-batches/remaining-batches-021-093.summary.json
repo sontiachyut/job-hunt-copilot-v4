@@ -1,0 +1,1174 @@
+{
+  "batch_count": 73,
+  "company_count": 730,
+  "batches": [
+    {
+      "batch_id": "batch-021",
+      "company_count": 10,
+      "slugs": [
+        "ashby",
+        "automat",
+        "billiontoone",
+        "bitmovin",
+        "bloom-institute-of-technology",
+        "blue-onion",
+        "buildzoom",
+        "cargo",
+        "cofactr",
+        "coris"
+      ]
+    },
+    {
+      "batch_id": "batch-022",
+      "company_count": 10,
+      "slugs": [
+        "directshifts",
+        "edexia",
+        "firstbase-io",
+        "gather-2",
+        "general-proximity",
+        "hamming-ai",
+        "instawork",
+        "lineleap",
+        "minicor",
+        "new-story"
+      ]
+    },
+    {
+      "batch_id": "batch-023",
+      "company_count": 10,
+      "slugs": [
+        "notabene",
+        "origami-2",
+        "picnicai",
+        "recall-ai",
+        "rescale",
+        "shape-shapescale",
+        "swiftsku",
+        "tint",
+        "trm-labs",
+        "truss"
+      ]
+    },
+    {
+      "batch_id": "batch-024",
+      "company_count": 10,
+      "slugs": [
+        "verne-robotics",
+        "weekend-fmr-volley",
+        "zeal",
+        "abacum",
+        "activeloop",
+        "adyn",
+        "afriex",
+        "agency",
+        "aircaps",
+        "airhart-aeronautics"
+      ]
+    },
+    {
+      "batch_id": "batch-025",
+      "company_count": 10,
+      "slugs": [
+        "airweave",
+        "alex-com",
+        "answerthis",
+        "apprentice-health",
+        "apten",
+        "asendia-ai",
+        "auctor",
+        "aurelian",
+        "authzed",
+        "be-go"
+      ]
+    },
+    {
+      "batch_id": "batch-026",
+      "company_count": 10,
+      "slugs": [
+        "buildbuddy",
+        "camber-2",
+        "candor-security",
+        "capix",
+        "captivateiq",
+        "trycardinal-ai",
+        "careforce",
+        "clarion",
+        "clicks",
+        "cloudcruise"
+      ]
+    },
+    {
+      "batch_id": "batch-027",
+      "company_count": 10,
+      "slugs": [
+        "coast",
+        "cointracker",
+        "community-phone-company",
+        "complete",
+        "craniometrix",
+        "culdesac",
+        "deel",
+        "deepgram",
+        "deepnote",
+        "dench-com"
+      ]
+    },
+    {
+      "batch_id": "batch-028",
+      "company_count": 10,
+      "slugs": [
+        "digibuild",
+        "dover",
+        "drillbit",
+        "dynamo-ai",
+        "etleap",
+        "event-horizon-labs",
+        "firstwork",
+        "flockjay",
+        "fortuna-health",
+        "gem"
+      ]
+    },
+    {
+      "batch_id": "batch-029",
+      "company_count": 10,
+      "slugs": [
+        "generalastro",
+        "gigs",
+        "go1",
+        "gogograndparent",
+        "goldbelly",
+        "govly",
+        "groundcontrol",
+        "hackerrank",
+        "hioperator",
+        "human-interest"
+      ]
+    },
+    {
+      "batch_id": "batch-030",
+      "company_count": 10,
+      "slugs": [
+        "hyperbound",
+        "inscribe",
+        "just-appraised",
+        "kaipod-learning",
+        "labric",
+        "lamar-health",
+        "landed-2",
+        "lattice",
+        "leadbay",
+        "leaping-ai"
+      ]
+    },
+    {
+      "batch_id": "batch-031",
+      "company_count": 10,
+      "slugs": [
+        "leena-ai",
+        "legion-health",
+        "letter-ai",
+        "luthor",
+        "mason",
+        "mbodi-ai",
+        "mintlify",
+        "misprint",
+        "modernloop",
+        "moonset-health"
+      ]
+    },
+    {
+      "batch_id": "batch-032",
+      "company_count": 10,
+      "slugs": [
+        "motion",
+        "nestor",
+        "netomi",
+        "oneschema",
+        "orbital-operations",
+        "oximy",
+        "pair-ai",
+        "paladin",
+        "paradedb",
+        "pirislabs"
+      ]
+    },
+    {
+      "batch_id": "batch-033",
+      "company_count": 10,
+      "slugs": [
+        "pocket",
+        "pointone",
+        "posthog",
+        "ramain",
+        "reality-defender",
+        "rebolt",
+        "reducto",
+        "remi",
+        "replit",
+        "rippling"
+      ]
+    },
+    {
+      "batch_id": "batch-034",
+      "company_count": 10,
+      "slugs": [
+        "rootly",
+        "runtime",
+        "rutter",
+        "scale-ai",
+        "seam",
+        "silimate",
+        "skyvern",
+        "snapmagic",
+        "stacksync",
+        "synder"
+      ]
+    },
+    {
+      "batch_id": "batch-035",
+      "company_count": 10,
+      "slugs": [
+        "tank-payments",
+        "text-ai",
+        "third-chair",
+        "tractian",
+        "trelium",
+        "tsenta",
+        "twenty",
+        "untether-labs",
+        "unthread",
+        "upequity"
+      ]
+    },
+    {
+      "batch_id": "batch-036",
+      "company_count": 10,
+      "slugs": [
+        "upsolve",
+        "vector",
+        "voiceops",
+        "vouch",
+        "willow",
+        "yn",
+        "yuma-ai",
+        "zenysis",
+        "zettascale",
+        "omnistrate"
+      ]
+    },
+    {
+      "batch_id": "batch-037",
+      "company_count": 10,
+      "slugs": [
+        "onechronos",
+        "orchid",
+        "overstand-labs",
+        "owny",
+        "paces",
+        "pangolin",
+        "parallel-bio",
+        "pax-markets",
+        "pelago",
+        "peppr-ai"
+      ]
+    },
+    {
+      "batch_id": "batch-038",
+      "company_count": 10,
+      "slugs": [
+        "persana-ai",
+        "pesto",
+        "pier",
+        "pingo-ai",
+        "planbase",
+        "pluto",
+        "porter",
+        "prelim",
+        "primevault",
+        "proception-inc"
+      ]
+    },
+    {
+      "batch_id": "batch-039",
+      "company_count": 10,
+      "slugs": [
+        "proliferate",
+        "promptless",
+        "prosights",
+        "proven-group",
+        "pulley",
+        "quadrant-health",
+        "quicknode",
+        "quill",
+        "raindrop",
+        "reach"
+      ]
+    },
+    {
+      "batch_id": "batch-040",
+      "company_count": 10,
+      "slugs": [
+        "reditus-space",
+        "refactor",
+        "reflex",
+        "reform",
+        "reframe",
+        "replicas",
+        "repool",
+        "reprompt",
+        "respan",
+        "retool"
+      ]
+    },
+    {
+      "batch_id": "batch-041",
+      "company_count": 10,
+      "slugs": [
+        "ridecell",
+        "rinse",
+        "roe",
+        "routable",
+        "rove",
+        "rovi-health",
+        "rubbrband",
+        "runway",
+        "safebeat",
+        "safebutler"
+      ]
+    },
+    {
+      "batch_id": "batch-042",
+      "company_count": 10,
+      "slugs": [
+        "safepay",
+        "safetywing",
+        "sagecare",
+        "salus",
+        "sante",
+        "sapling-ai",
+        "scritch",
+        "semble-ai",
+        "sendbird",
+        "serif-health"
+      ]
+    },
+    {
+      "batch_id": "batch-043",
+      "company_count": 10,
+      "slugs": [
+        "shef",
+        "shipbob",
+        "shortloop",
+        "skypher",
+        "snappr",
+        "soff",
+        "sohar-health",
+        "solo",
+        "solum-health",
+        "sonatoria"
+      ]
+    },
+    {
+      "batch_id": "batch-044",
+      "company_count": 10,
+      "slugs": [
+        "sparkles",
+        "speak",
+        "spot-health",
+        "stable",
+        "standard-ai",
+        "standout",
+        "starsling",
+        "steinmetz",
+        "stoke-space",
+        "storylane"
+      ]
+    },
+    {
+      "batch_id": "batch-045",
+      "company_count": 10,
+      "slugs": [
+        "streak",
+        "stripe",
+        "structured-ai",
+        "substrate",
+        "superset",
+        "supertokens",
+        "svix",
+        "sweep",
+        "swif-ai",
+        "synphony"
+      ]
+    },
+    {
+      "batch_id": "batch-046",
+      "company_count": 10,
+      "slugs": [
+        "synthio-labs",
+        "tamarind-bio",
+        "tara-ai",
+        "tasklet-2",
+        "taxgpt",
+        "teamout",
+        "telmai",
+        "terranox-ai",
+        "tesora",
+        "theorem-2"
+      ]
+    },
+    {
+      "batch_id": "batch-047",
+      "company_count": 10,
+      "slugs": [
+        "thunder-compute",
+        "thunkable",
+        "tivara",
+        "toothy-ai",
+        "topkey",
+        "tracecat",
+        "traceroot-ai",
+        "transastra-corporation",
+        "trata",
+        "trayd"
+      ]
+    },
+    {
+      "batch_id": "batch-048",
+      "company_count": 10,
+      "slugs": [
+        "trellis-ai",
+        "triomics",
+        "true3d-labs",
+        "type",
+        "ultra",
+        "unbound",
+        "unsiloed-ai",
+        "unusual",
+        "variant",
+        "varos"
+      ]
+    },
+    {
+      "batch_id": "batch-049",
+      "company_count": 10,
+      "slugs": [
+        "velt",
+        "vendra",
+        "verge-genomics",
+        "jetlenses",
+        "veryfi-inc",
+        "vetrec",
+        "vibeflow",
+        "voygr",
+        "vulcan-technologies",
+        "wafer"
+      ]
+    },
+    {
+      "batch_id": "batch-050",
+      "company_count": 10,
+      "slugs": [
+        "wardstone",
+        "whatnot",
+        "wright-electric",
+        "yarn-2",
+        "yondu",
+        "yoneda-labs",
+        "youshift",
+        "yummy-future",
+        "zapier",
+        "zentail"
+      ]
+    },
+    {
+      "batch_id": "batch-051",
+      "company_count": 10,
+      "slugs": [
+        "zep-ai",
+        "zeroentropy",
+        "10x",
+        "14-ai",
+        "1stcollab",
+        "222",
+        "acely",
+        "adaptional",
+        "afternoon-co",
+        "agentcollect"
+      ]
+    },
+    {
+      "batch_id": "batch-052",
+      "company_count": 10,
+      "slugs": [
+        "agentmail",
+        "ai-insurance",
+        "aios",
+        "airmyne",
+        "akute-health",
+        "albedo",
+        "alex",
+        "alinea",
+        "allus-ai",
+        "alpaca"
+      ]
+    },
+    {
+      "batch_id": "batch-053",
+      "company_count": 10,
+      "slugs": [
+        "alpha-vantage",
+        "alphawatch-ai",
+        "ambral",
+        "amplitude",
+        "anakin",
+        "andromeda-surgical",
+        "andson-biotech",
+        "ankr-health",
+        "anoria",
+        "anthrogen"
+      ]
+    },
+    {
+      "batch_id": "batch-054",
+      "company_count": 10,
+      "slugs": [
+        "antigen",
+        "aqua",
+        "aravolta",
+        "archform",
+        "archon",
+        "arist",
+        "artos",
+        "aseon-labs",
+        "asha-health",
+        "asim"
+      ]
+    },
+    {
+      "batch_id": "batch-055",
+      "company_count": 10,
+      "slugs": [
+        "asimov",
+        "assembly-hoa",
+        "atlasgrid",
+        "atlog",
+        "attack-capital",
+        "attain",
+        "attune",
+        "auricle",
+        "aurorin-cad",
+        "autonomous-technologies-group"
+      ]
+    },
+    {
+      "batch_id": "batch-056",
+      "company_count": 10,
+      "slugs": [
+        "avallon-ai",
+        "aviaryai",
+        "aviator",
+        "avion",
+        "beacons",
+        "betterbasket",
+        "bik",
+        "bild-ai",
+        "biodock",
+        "biostack-platforms"
+      ]
+    },
+    {
+      "batch_id": "batch-057",
+      "company_count": 10,
+      "slugs": [
+        "blink-new",
+        "bluecargo",
+        "bluelight",
+        "booko",
+        "bootloop",
+        "botbuilt",
+        "bountiful",
+        "brighterway",
+        "bud",
+        "buoyant-aero"
+      ]
+    },
+    {
+      "batch_id": "batch-058",
+      "company_count": 10,
+      "slugs": [
+        "cair-health",
+        "calltree",
+        "candle",
+        "canvas",
+        "capitol-ai",
+        "cardinal-gray",
+        "cartage",
+        "cashboard",
+        "castle-2",
+        "cedana"
+      ]
+    },
+    {
+      "batch_id": "batch-059",
+      "company_count": 10,
+      "slugs": [
+        "centralize",
+        "cerulion",
+        "clad",
+        "cloudglue",
+        "coba",
+        "code-four",
+        "cogram",
+        "collectwise",
+        "commodityai",
+        "conduit"
+      ]
+    },
+    {
+      "batch_id": "batch-060",
+      "company_count": 10,
+      "slugs": [
+        "constant",
+        "contrario",
+        "convexia",
+        "cotera",
+        "coverage-cat",
+        "cozmo-ai",
+        "craftwork",
+        "creativemode",
+        "crouton",
+        "cua"
+      ]
+    },
+    {
+      "batch_id": "batch-061",
+      "company_count": 10,
+      "slugs": [
+        "curo",
+        "cyble",
+        "data-driven-bioscience",
+        "dataleap",
+        "deepgrove",
+        "deepsim-inc",
+        "deeptrace",
+        "delfino-ai",
+        "joindex",
+        "dex"
+      ]
+    },
+    {
+      "batch_id": "batch-062",
+      "company_count": 10,
+      "slugs": [
+        "dili",
+        "diligencesquared-inc",
+        "dill",
+        "dime-2",
+        "dimely",
+        "dioxus-labs",
+        "domu-technology-inc",
+        "drymerge",
+        "duckie",
+        "dumps"
+      ]
+    },
+    {
+      "batch_id": "batch-063",
+      "company_count": 10,
+      "slugs": [
+        "eden-robotics",
+        "eight-sleep",
+        "elayne",
+        "ellipsis",
+        "embedder",
+        "emerge-career",
+        "emergent",
+        "emobi",
+        "empirical-health",
+        "enhanced-radar"
+      ]
+    },
+    {
+      "batch_id": "batch-064",
+      "company_count": 10,
+      "slugs": [
+        "entangl",
+        "eventual",
+        "extern",
+        "feather-2",
+        "finic",
+        "finosu",
+        "firebender",
+        "firecrawl",
+        "flair-labs",
+        "flexdesk"
+      ]
+    },
+    {
+      "batch_id": "batch-065",
+      "company_count": 10,
+      "slugs": [
+        "flint",
+        "flowglad",
+        "forage-2",
+        "foreman",
+        "fort",
+        "fractional",
+        "freebuff",
+        "fresco",
+        "freya",
+        "fuseai"
+      ]
+    },
+    {
+      "batch_id": "batch-066",
+      "company_count": 10,
+      "slugs": [
+        "gauge",
+        "getasap",
+        "godela",
+        "gojiberry-ai",
+        "goodfin",
+        "gooseworks",
+        "guac",
+        "hammr",
+        "hapi",
+        "haplotype-labs"
+      ]
+    },
+    {
+      "batch_id": "batch-067",
+      "company_count": 10,
+      "slugs": [
+        "haven-2",
+        "haystack",
+        "health-harbor",
+        "hedgehog-2",
+        "hellometer",
+        "hemut",
+        "hex-security",
+        "hillclimb",
+        "hindsight",
+        "homli"
+      ]
+    },
+    {
+      "batch_id": "batch-068",
+      "company_count": 10,
+      "slugs": [
+        "hotglue",
+        "housewarming",
+        "hubxyz",
+        "hud",
+        "huscarl-inc",
+        "hype",
+        "hyperspell",
+        "idler",
+        "imagine-ai",
+        "indemni"
+      ]
+    },
+    {
+      "batch_id": "batch-069",
+      "company_count": 10,
+      "slugs": [
+        "indexable",
+        "inlet-2",
+        "inspectify",
+        "inspectmind-ai",
+        "instacart",
+        "instant",
+        "intelligence-factory",
+        "theinterface",
+        "inventive-ai",
+        "iron-grid"
+      ]
+    },
+    {
+      "batch_id": "batch-070",
+      "company_count": 10,
+      "slugs": [
+        "isono-health",
+        "joon-health",
+        "juicebox",
+        "justai",
+        "juxta",
+        "kalinda",
+        "kalpa-labs",
+        "karat-financial",
+        "karsa",
+        "kastle"
+      ]
+    },
+    {
+      "batch_id": "batch-071",
+      "company_count": 10,
+      "slugs": [
+        "kontigo",
+        "lance",
+        "lanesurf",
+        "layerup",
+        "laylo",
+        "legionfarm",
+        "lightberry",
+        "lighthouz-ai",
+        "liveflow",
+        "lootrush"
+      ]
+    },
+    {
+      "batch_id": "batch-072",
+      "company_count": 10,
+      "slugs": [
+        "lucid",
+        "lugg",
+        "lumari",
+        "mage-legal",
+        "maintouch",
+        "matter",
+        "maywood",
+        "mdalgorithms-inc",
+        "mdhub",
+        "measured"
+      ]
+    },
+    {
+      "batch_id": "batch-073",
+      "company_count": 10,
+      "slugs": [
+        "medcrypt",
+        "mercoa",
+        "merlin-ai",
+        "meru-health",
+        "mesh-2",
+        "meticulate",
+        "minerva",
+        "mixrank",
+        "miyagi-labs",
+        "mochacare"
+      ]
+    },
+    {
+      "batch_id": "batch-074",
+      "company_count": 10,
+      "slugs": [
+        "moritz",
+        "morphoai",
+        "mosaic-2",
+        "mount",
+        "nanonets",
+        "narrative",
+        "nautilus",
+        "naive",
+        "nessie",
+        "nest-genomics"
+      ]
+    },
+    {
+      "batch_id": "batch-075",
+      "company_count": 10,
+      "slugs": [
+        "newton",
+        "nextera-robotics",
+        "nixo",
+        "notable-labs",
+        "novaflow",
+        "odys-aviation",
+        "ohm-2",
+        "okteto",
+        "olive",
+        "olympian-motors"
+      ]
+    },
+    {
+      "batch_id": "batch-076",
+      "company_count": 10,
+      "slugs": [
+        "omniai",
+        "one-robot",
+        "onesignal",
+        "onlook",
+        "onyx",
+        "open",
+        "openbuilder",
+        "openfunnel",
+        "openmart",
+        "openwork"
+      ]
+    },
+    {
+      "batch_id": "batch-077",
+      "company_count": 10,
+      "slugs": [
+        "optifye-ai",
+        "orange-slice",
+        "orangewood-labs",
+        "osmosis",
+        "outerport",
+        "outset",
+        "overdrive-health",
+        "overlap",
+        "oway",
+        "oxygen"
+      ]
+    },
+    {
+      "batch_id": "batch-078",
+      "company_count": 10,
+      "slugs": [
+        "padlet",
+        "pangea-app",
+        "paragon",
+        "paragon-ai",
+        "parahelp",
+        "parrot",
+        "partcl",
+        "pasito",
+        "pave-robotics",
+        "pax"
+      ]
+    },
+    {
+      "batch_id": "batch-079",
+      "company_count": 10,
+      "slugs": [
+        "pax-historia",
+        "pelica",
+        "peoplebox",
+        "per-diem",
+        "permitportal",
+        "pgdog",
+        "photonium",
+        "pillar-2",
+        "piramidal",
+        "pirouette-pharma"
+      ]
+    },
+    {
+      "batch_id": "batch-080",
+      "company_count": 10,
+      "slugs": [
+        "players-lounge",
+        "pnoe",
+        "pocketsuite",
+        "poka-labs",
+        "poly",
+        "polymath-robotics",
+        "posh",
+        "postal",
+        "postera",
+        "powder"
+      ]
+    },
+    {
+      "batch_id": "batch-081",
+      "company_count": 10,
+      "slugs": [
+        "prequel",
+        "procindex",
+        "promptarmor",
+        "propelauth",
+        "proprise",
+        "proximitty",
+        "pure",
+        "qualgent",
+        "quill-bills",
+        "quinn"
+      ]
+    },
+    {
+      "batch_id": "batch-082",
+      "company_count": 10,
+      "slugs": [
+        "raycaster",
+        "readily",
+        "ready",
+        "rebulk",
+        "recurrency",
+        "redbird",
+        "reforged-labs",
+        "relari",
+        "relling",
+        "rentflow"
+      ]
+    },
+    {
+      "batch_id": "batch-083",
+      "company_count": 10,
+      "slugs": [
+        "renthop",
+        "replo",
+        "resquared",
+        "retrofix",
+        "rev-genomics",
+        "revamp",
+        "revise-robotics",
+        "reviving-mind",
+        "revyl",
+        "rhizome-ai"
+      ]
+    },
+    {
+      "batch_id": "batch-084",
+      "company_count": 10,
+      "slugs": [
+        "roame",
+        "roforco",
+        "roundtable",
+        "rulebase",
+        "rulebricks",
+        "ruma-care",
+        "salient",
+        "sameday",
+        "saphira-ai",
+        "savahq"
+      ]
+    },
+    {
+      "batch_id": "batch-085",
+      "company_count": 10,
+      "slugs": [
+        "scope-ar",
+        "scott-ai",
+        "scout-4",
+        "cpgscout",
+        "thedailyscout",
+        "seis",
+        "sendblue",
+        "shiboleth",
+        "shimmer",
+        "sid"
+      ]
+    },
+    {
+      "batch_id": "batch-086",
+      "company_count": 10,
+      "slugs": [
+        "sigmaos",
+        "silurian",
+        "simbie-ai",
+        "simcare",
+        "siphox-health",
+        "sixtyfour",
+        "smartcuts",
+        "socratix-ai",
+        "sorting-robotics",
+        "sourcify"
+      ]
+    },
+    {
+      "batch_id": "batch-087",
+      "company_count": 10,
+      "slugs": [
+        "splash-inc",
+        "sprites",
+        "stackup",
+        "star",
+        "stardex",
+        "stardrift",
+        "starling",
+        "storyboarder",
+        "strac",
+        "stream"
+      ]
+    },
+    {
+      "batch_id": "batch-088",
+      "company_count": 10,
+      "slugs": [
+        "streamable",
+        "structured-labs",
+        "substack",
+        "superunit",
+        "surface-labs",
+        "swadesh",
+        "sweetspot",
+        "syntheticfi",
+        "syntra",
+        "tandem-2"
+      ]
+    },
+    {
+      "batch_id": "batch-089",
+      "company_count": 10,
+      "slugs": [
+        "taskade",
+        "telemetron-ai",
+        "tempo",
+        "terra-2",
+        "terrakotta",
+        "the-company-company",
+        "the-juggernaut",
+        "the-prompting-company",
+        "thera",
+        "truebiz"
+      ]
+    },
+    {
+      "batch_id": "batch-090",
+      "company_count": 10,
+      "slugs": [
+        "trueclaim",
+        "truewind",
+        "turing-labs-inc",
+        "ubicloud",
+        "unison",
+        "unsloth-ai",
+        "upchieve",
+        "upcodes",
+        "uplift-ai",
+        "vectorshift"
+      ]
+    },
+    {
+      "batch_id": "batch-091",
+      "company_count": 10,
+      "slugs": [
+        "vela",
+        "velvet",
+        "vena-vitals",
+        "vendora",
+        "ventura",
+        "venu-ai",
+        "veritus",
+        "versable",
+        "vinci-games",
+        "vly-ai-2"
+      ]
+    },
+    {
+      "batch_id": "batch-092",
+      "company_count": 10,
+      "slugs": [
+        "volantio",
+        "voltic",
+        "vooma",
+        "vorticity",
+        "wasmer",
+        "wavelength",
+        "wayco",
+        "waydev-ai",
+        "wayline",
+        "weave-robotics"
+      ]
+    },
+    {
+      "batch_id": "batch-093",
+      "company_count": 10,
+      "slugs": [
+        "webflow",
+        "wefunder",
+        "whip",
+        "wildcard",
+        "wolfia",
+        "women-who-code",
+        "woz",
+        "zaymo",
+        "zuddl",
+        "zudowork"
+      ]
+    }
+  ]
+}
