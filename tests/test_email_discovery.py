@@ -32,6 +32,7 @@ from job_hunt_copilot.email_discovery import (
     RECIPIENT_TYPE_ENGINEER,
     RECIPIENT_TYPE_HIRING_MANAGER,
     RECIPIENT_TYPE_RECRUITER,
+    _build_apollo_search_filters,
     _normalize_getprospect_discovery_result,
     _normalize_hunter_discovery_result,
     _normalize_prospeo_discovery_result,
@@ -400,6 +401,34 @@ def test_run_apollo_people_search_uses_default_shortlist_limit_of_ten(tmp_path: 
     }
     connection.close()
     assert shortlisted_types == {RECIPIENT_TYPE_HIRING_MANAGER, RECIPIENT_TYPE_ENGINEER}
+
+
+def test_build_apollo_search_filters_sanitizes_bracketed_role_titles(tmp_path: Path):
+    project_root = bootstrap_project(tmp_path)
+    paths = ProjectPaths.from_root(project_root)
+    connection = connect_database(project_root / "job_hunt_copilot.db")
+    seed_search_ready_posting(
+        connection,
+        paths,
+        company_name="JPMorganChase",
+        role_title="AI/ML Engineer [Multiple Positions Available]",
+        source_url="https://careers.jpmorganchase.com/jobs/123",
+    )
+    posting_row = connection.execute(
+        "SELECT * FROM job_postings WHERE job_posting_id = 'jp_search'"
+    ).fetchone()
+    assert posting_row is not None
+
+    search_filters = _build_apollo_search_filters(
+        posting_row,
+        jd_text="Machine learning and artificial intelligence platform work.",
+        shortlist_limit=10,
+    )
+    connection.close()
+
+    assert "AI/ML Engineer [Multiple Positions Available]" not in search_filters["titles"]
+    assert "AI ML Engineer Multiple Positions Available" in search_filters["titles"]
+    assert all("[" not in title and "]" not in title for title in search_filters["titles"])
 
 
 def seed_linked_contact(

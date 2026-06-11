@@ -2524,8 +2524,17 @@ def _build_apollo_search_filters(
     if "machine learning" in jd_text.lower() or "artificial intelligence" in jd_text.lower() or " ai " in f" {jd_text.lower()} ":
         title_hints.extend(["Machine Learning Engineer", "AI Engineer"])
 
+    sanitized_title_hints = tuple(
+        sanitized
+        for sanitized in (
+            _sanitize_apollo_person_title_hint(title_hint)
+            for title_hint in title_hints
+        )
+        if sanitized
+    )
+
     return {
-        "titles": _dedupe_preserve_order(title_hints),
+        "titles": _dedupe_preserve_order(sanitized_title_hints),
         "functions": ["engineering", "recruiting"],
         "seniority_levels": _derive_seniority_levels(role_title, jd_text=jd_text),
         "locations": [location] if location else [],
@@ -2562,6 +2571,13 @@ def _derive_seniority_levels(role_title: str, *, jd_text: str) -> list[str]:
     if "staff" in normalized or "principal" in normalized:
         seniority_levels.insert(0, "staff")
     return _dedupe_preserve_order(seniority_levels)
+
+
+def _sanitize_apollo_person_title_hint(title_hint: str) -> str | None:
+    tokens = WORD_RE.findall(title_hint)
+    if not tokens:
+        return None
+    return " ".join(tokens)
 
 
 def _role_title_tokens(role_title: str) -> list[str]:
