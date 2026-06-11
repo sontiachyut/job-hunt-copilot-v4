@@ -2814,12 +2814,30 @@ def _record_state_transition(
 def _count_prior_people_search_cycle_attempts(
     connection: sqlite3.Connection,
     *,
+    project_root: Path,
     pipeline_run_id: str,
     current_time: str,
 ) -> int:
-    row = connection.execute(
+    people_search_entry_row = connection.execute(
         """
-        SELECT COUNT(*)
+        SELECT MAX(transition_timestamp)
+        FROM state_transition_events
+        WHERE object_type = 'pipeline_run'
+          AND object_id = ?
+          AND stage = 'current_stage'
+          AND new_state = 'people_search'
+        """,
+        (pipeline_run_id,),
+    ).fetchone()
+    people_search_entered_at = (
+        _optional_text(people_search_entry_row[0])
+        if people_search_entry_row is not None
+        else None
+    )
+
+    cycle_rows = connection.execute(
+        """
+        SELECT context_snapshot_path, started_at
         FROM supervisor_cycles
         WHERE pipeline_run_id = ?
           AND selected_work_type = ?
@@ -2835,8 +2853,58 @@ def _count_prior_people_search_cycle_attempts(
             SUPERVISOR_CYCLE_RESULT_FAILED,
             current_time,
         ),
-    ).fetchone()
-    return int(row[0] or 0) if row is not None else 0
+    ).fetchall()
+
+    count = 0
+    for row in cycle_rows:
+        context_snapshot_path = _optional_text(row[0])
+        cycle_started_at = _require_text(_optional_text(row[1]), "started_at")
+        if people_search_entered_at is not None:
+            if cycle_started_at < people_search_entered_at:
+                continue
+            selected_stage = (
+                _read_selected_stage_from_context_snapshot(project_root, context_snapshot_path)
+                if context_snapshot_path is not None
+                else None
+            )
+            if selected_stage == "people_search":
+                count += 1
+                continue
+            if selected_stage is None and cycle_started_at > people_search_entered_at:
+                count += 1
+                continue
+            if selected_stage is not None:
+                continue
+            continue
+        if context_snapshot_path is None:
+            continue
+        selected_stage = _read_selected_stage_from_context_snapshot(
+            project_root,
+            context_snapshot_path,
+        )
+        if selected_stage == "people_search":
+            count += 1
+    return count
+
+
+def _read_selected_stage_from_context_snapshot(
+    project_root: Path,
+    context_snapshot_path: str,
+) -> str | None:
+    snapshot_path = project_root / context_snapshot_path
+    try:
+        payload = json.loads(snapshot_path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return None
+
+    selected_work = payload.get("selected_work")
+    if not isinstance(selected_work, dict):
+        return None
+    current_stage = selected_work.get("current_stage")
+    if not isinstance(current_stage, str):
+        return None
+    normalized_stage = current_stage.strip()
+    return normalized_stage or None
 
 
 def _quarantine_postings_with_unapproved_latest_tailoring(
@@ -4938,6 +5006,7 @@ def _execute_selected_work_unit(
         )
         prior_people_search_attempts = _count_prior_people_search_cycle_attempts(
             connection,
+            project_root=paths.project_root,
             pipeline_run_id=selected_work.work_id,
             current_time=timestamp,
         )
@@ -7251,6 +7320,8 @@ def _update_pipeline_run(
     current = _require_pipeline_run(connection, pipeline_run_id)
     current_timestamp = timestamp or now_utc_iso()
     fields: dict[str, str | None] = {"updated_at": current_timestamp}
+    previous_stage = current.current_stage
+    stage_changed = False
 
     if new_status is not None:
         if new_status not in RUN_STATUSES:
@@ -7262,6 +7333,7 @@ def _update_pipeline_run(
         if not current_stage.strip():
             raise SupervisorStateError("current_stage must not be blank.")
         fields["current_stage"] = current_stage
+        stage_changed = current_stage != previous_stage
 
     if review_packet_status is not None:
         if review_packet_status not in REVIEW_PACKET_STATUSES:
@@ -7292,6 +7364,24 @@ def _update_pipeline_run(
             f"UPDATE pipeline_runs SET {assignments} WHERE pipeline_run_id = ?",
             values,
         )
+        if stage_changed:
+            _record_state_transition(
+                connection,
+                object_type="pipeline_run",
+                object_id=pipeline_run_id,
+                stage="current_stage",
+                previous_state=previous_stage,
+                new_state=current_stage,
+                transition_timestamp=current_timestamp,
+                transition_reason=(
+                    run_summary
+                    if isinstance(run_summary, str) and run_summary.strip()
+                    else "Supervisor updated the durable pipeline run stage."
+                ),
+                lead_id=current.lead_id,
+                job_posting_id=current.job_posting_id,
+                contact_id=None,
+            )
     return _require_pipeline_run(connection, pipeline_run_id)
 
 

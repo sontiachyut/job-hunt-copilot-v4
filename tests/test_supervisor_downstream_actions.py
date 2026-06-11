@@ -1266,6 +1266,73 @@ def test_people_search_stage_blocks_same_run_after_repeated_retry_without_progre
     connection.close()
 
 
+def test_people_search_retry_guard_ignores_prior_non_people_search_cycles(tmp_path: Path) -> None:
+    project_root = bootstrap_project(tmp_path)
+    paths = ProjectPaths.from_root(project_root)
+    connection = connect_database(project_root / "job_hunt_copilot.db")
+    lead_id, job_posting_id = seed_role_targeted_posting(connection)
+    seed_pending_review_tailoring_run(
+        connection,
+        paths,
+        job_posting_id=job_posting_id,
+        company_name="Acme",
+        role_title="Platform Engineer",
+    )
+    resume_agent(
+        connection,
+        manual_command="jhc-agent-start",
+        timestamp="2026-04-08T00:08:00Z",
+    )
+    pipeline_run, _ = ensure_role_targeted_pipeline_run(
+        connection,
+        lead_id=lead_id,
+        job_posting_id=job_posting_id,
+        current_stage="agent_review",
+        started_at="2026-04-08T00:09:00Z",
+    )
+
+    approval_execution = run_supervisor_cycle(
+        connection,
+        paths,
+        trigger_type="launchd_heartbeat",
+        scheduler_name="launchd",
+        started_at="2026-04-08T00:10:00Z",
+    )
+    search_provider = FailingApolloSearchProvider(candidates=[])
+    enrichment_provider = FakeApolloEnrichmentProvider({})
+    people_search_execution = run_supervisor_cycle(
+        connection,
+        paths,
+        trigger_type="launchd_heartbeat",
+        scheduler_name="launchd",
+        started_at="2026-04-08T00:20:00Z",
+        action_dependencies=SupervisorActionDependencies(
+            apollo_people_search_provider=search_provider,
+            apollo_contact_enrichment_provider=enrichment_provider,
+        ),
+    )
+    updated_run = get_pipeline_run(connection, pipeline_run.pipeline_run_id)
+    incident_count = connection.execute(
+        """
+        SELECT COUNT(*)
+        FROM agent_incidents
+        WHERE incident_type = 'provider_retry_runaway'
+          AND pipeline_run_id = ?
+        """,
+        (pipeline_run.pipeline_run_id,),
+    ).fetchone()[0]
+    connection.close()
+
+    assert approval_execution.cycle.result == SUPERVISOR_CYCLE_RESULT_SUCCESS
+    assert people_search_execution.cycle.result == SUPERVISOR_CYCLE_RESULT_SUCCESS
+    assert people_search_execution.incident is None
+    assert len(search_provider.resolve_calls) == 1
+    assert updated_run is not None
+    assert updated_run.run_status == RUN_STATUS_IN_PROGRESS
+    assert updated_run.current_stage == "people_search"
+    assert incident_count == 0
+
+
 def test_supervisor_skips_people_search_when_apollo_breaker_is_active(tmp_path: Path) -> None:
     project_root = bootstrap_project(tmp_path)
     paths = ProjectPaths.from_root(project_root)
