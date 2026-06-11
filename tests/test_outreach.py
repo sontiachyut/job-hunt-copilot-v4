@@ -3794,6 +3794,87 @@ def test_role_targeted_draft_batch_surfaces_failed_contact_without_losing_succes
     connection.close()
 
 
+def test_generate_role_targeted_send_set_drafts_allows_redraft_after_failed_only_history(
+    tmp_path: Path,
+):
+    project_root, paths = bootstrap_project(tmp_path)
+    connection = connect_database(project_root / "job_hunt_copilot.db")
+    write_sender_profile(paths)
+    seed_posting(connection)
+    seed_linked_contact(
+        connection,
+        contact_id="ct_retry",
+        job_posting_contact_id="jpc_retry",
+        display_name="Jordan Manager",
+        recipient_type=RECIPIENT_TYPE_HIRING_MANAGER,
+        current_working_email="jordan@acme.example",
+        created_at="2026-04-06T20:01:00Z",
+    )
+    seed_approved_tailoring_run(connection, paths)
+    connection.execute(
+        """
+        UPDATE job_postings
+        SET posting_status = ?, updated_at = ?
+        WHERE job_posting_id = ?
+        """,
+        (
+            JOB_POSTING_STATUS_READY_FOR_OUTREACH,
+            "2026-04-06T20:20:00Z",
+            "jp_outreach",
+        ),
+    )
+    connection.execute(
+        """
+        INSERT INTO outreach_messages (
+          outreach_message_id, contact_id, outreach_mode, recipient_email, message_status,
+          job_posting_id, job_posting_contact_id, created_at, updated_at
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+        """,
+        (
+            "msg_failed_only",
+            "ct_retry",
+            "role_targeted",
+            "jordan@acme.example",
+            MESSAGE_STATUS_FAILED,
+            "jp_outreach",
+            "jpc_retry",
+            "2026-04-06T20:25:00Z",
+            "2026-04-06T20:25:00Z",
+        ),
+    )
+    connection.commit()
+
+    result = generate_role_targeted_send_set_drafts(
+        connection,
+        project_root=project_root,
+        job_posting_id="jp_outreach",
+        current_time="2026-04-06T20:30:00Z",
+        local_timezone=ZoneInfo("UTC"),
+    )
+
+    assert [message.contact_id for message in result.drafted_messages] == ["ct_retry"]
+    assert result.failed_contacts == ()
+
+    rows = connection.execute(
+        """
+        SELECT outreach_message_id, message_status, subject
+        FROM outreach_messages
+        WHERE job_posting_id = ?
+          AND contact_id = ?
+        ORDER BY created_at DESC, outreach_message_id DESC
+        """,
+        ("jp_outreach", "ct_retry"),
+    ).fetchall()
+    assert len(rows) == 2
+    assert rows[0]["outreach_message_id"] != "msg_failed_only"
+    assert rows[0]["message_status"] == MESSAGE_STATUS_GENERATED
+    assert rows[0]["subject"]
+    assert rows[1]["outreach_message_id"] == "msg_failed_only"
+    assert rows[1]["message_status"] == MESSAGE_STATUS_FAILED
+
+    connection.close()
+
+
 def test_general_learning_draft_persists_without_posting_or_resume(tmp_path: Path):
     project_root, paths = bootstrap_project(tmp_path)
     connection = connect_database(project_root / "job_hunt_copilot.db")

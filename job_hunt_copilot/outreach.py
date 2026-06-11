@@ -1524,19 +1524,24 @@ def _load_role_targeted_draftable_contacts(
             continue
         if candidate.selection_state != _CANDIDATE_STATE_READY:
             continue
-        existing_message_count = int(
+        blocking_message_count = int(
             connection.execute(
                 """
                 SELECT COUNT(*)
                 FROM outreach_messages
                 WHERE job_posting_id = ?
                   AND contact_id = ?
+                  AND message_status <> ?
                 """,
-                (job_posting_id, candidate.contact_id),
+                (
+                    job_posting_id,
+                    candidate.contact_id,
+                    MESSAGE_STATUS_FAILED,
+                ),
             ).fetchone()[0]
             or 0
         )
-        if existing_message_count > 0:
+        if blocking_message_count > 0:
             continue
         draftable.append(candidate)
     return tuple(draftable)
