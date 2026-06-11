@@ -4094,8 +4094,6 @@ def _build_step_7_verification_artifact(
                 f"Bullet `{entry.get('purpose', 'unknown')}` misses the target character range ({char_count})."
             )
     if len(step_6_payload.get("technical_skills") or []) > len(resume_doc.technical_skills):
-        if line_status != VERIFICATION_OUTCOME_FAIL:
-            line_status = VERIFICATION_OUTCOME_NEEDS_REVISION
         line_notes.append("Technical-skills block exceeds the baseline line count.")
     if line_status != VERIFICATION_OUTCOME_PASS:
         revision_guidance.append(

@@ -3213,6 +3213,9 @@ For each lead, persist an eligibility decision artifact with:
   5. compile/page-readiness
   and shall record explicit notes for any failed or revision-required check.
 
+- **FR-RT-12C1A (Line-Budget Heuristic vs. Hard Stop):**
+  In the current Resume Tailoring flow, `line-budget` target misses and baseline-skills-row overages are advisory heuristics intended to warn about likely page-budget risk. They shall remain visible in Step 7 notes, but they shall not by themselves block finalize before compile. Hard blocking shall still apply to hard bullet bounds, malformed payloads, scope violations, compile failures, or rendered PDFs that exceed one page.
+
 - **FR-RT-12C2 (Current Tailoring Run Status Set):**
   For this build, `resume_tailoring_runs.tailoring_status` should use:
   1. `in_progress`
@@ -3389,6 +3392,9 @@ For each lead, persist an eligibility decision artifact with:
 
 - **FR-RT-26 (Current Bullet Budget):**
   The current SWE bullet target is 210-255 characters, with hard bounds of 100-275 characters. Tailoring shall preserve overall line-budget discipline so the final PDF remains one page.
+
+- **FR-RT-26A (Current Budget Enforcement Boundary):**
+  In this build, the one-page rendered PDF is the canonical budget gate. Bullet target-range misses or extra technical-skills rows may be recorded as revision guidance, but they shall not escalate a tailoring run unless they cross hard bounds or the compiled PDF violates the one-page rule.
 
 - **FR-RT-27 (LaTeX-Safe Output):**
   Tailored text shall remain LaTeX-safe. Current rules include escaping reserved characters such as `%`, `$`, `&`, `#`, and `_`, and using math-safe forms such as `$\\geq$` / `$\\leq$` when needed.

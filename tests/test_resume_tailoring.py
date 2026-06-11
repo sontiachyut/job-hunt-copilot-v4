@@ -1170,6 +1170,174 @@ def test_finalize_tailoring_run_applies_payload_compiles_pdf_and_updates_status(
     }
 
 
+def test_finalize_allows_line_budget_heuristics_to_reach_compile(tmp_path, monkeypatch):
+    _, paths, connection, _ = prepare_real_tailoring_run(
+        tmp_path,
+        jd_body=(
+            "# JD\n"
+            "Requirements\n"
+            "- 3+ years of software engineering experience.\n"
+            "- Build distributed data services in Python and Apache Spark on AWS.\n"
+            "- Own monitoring, reliability, and incident response for production pipelines.\n"
+        ),
+    )
+    generate_tailoring_intelligence(
+        connection,
+        paths,
+        job_posting_id="jp_test",
+        timestamp="2026-04-06T20:10:00Z",
+    )
+
+    company_name = "Acme Data Systems"
+    role_title = "Software Engineer"
+    resume_tex_path = paths.tailoring_resume_tex_path(company_name, role_title)
+    step_3_path = paths.tailoring_step_3_jd_signals_path(company_name, role_title)
+    step_4_path = paths.tailoring_step_4_evidence_map_path(company_name, role_title)
+    step_6_path = paths.tailoring_step_6_candidate_bullets_path(company_name, role_title)
+    step_7_path = paths.tailoring_step_7_verification_path(company_name, role_title)
+
+    step_3_payload = yaml.safe_load(step_3_path.read_text(encoding="utf-8"))
+    step_4_payload = yaml.safe_load(step_4_path.read_text(encoding="utf-8"))
+    step_6_payload = yaml.safe_load(step_6_path.read_text(encoding="utf-8"))
+    step_6_payload["technical_skills"].append(
+        {
+            "category": "Extra Skills",
+            "items": ["Linux", "Docker"],
+            "matched_signal_ids": ["signal_core_responsibility_2"],
+        }
+    )
+    first_bullet = step_6_payload["software_engineer"]["bullets"][0]
+    heuristic_text = str(first_bullet["text"])[:208].rstrip()
+    first_bullet["text"] = heuristic_text
+    first_bullet["char_count"] = len(heuristic_text)
+    step_6_path.write_text(yaml.safe_dump(step_6_payload, sort_keys=False), encoding="utf-8")
+
+    posting_row = connection.execute(
+        "SELECT * FROM job_postings WHERE job_posting_id = ?",
+        ("jp_test",),
+    ).fetchone()
+    run = resume_tailoring_module.get_latest_resume_tailoring_run_for_posting(connection, "jp_test")
+    assert posting_row is not None
+    assert run is not None
+    step_7_payload = resume_tailoring_module._build_step_7_verification_artifact(
+        posting_row=posting_row,
+        run=run,
+        resume_doc=resume_tailoring_module._parse_resume_document(
+            resume_tex_path.read_text(encoding="utf-8")
+        ),
+        step_3_payload=step_3_payload,
+        step_4_payload=step_4_payload,
+        step_6_payload=step_6_payload,
+        section_locks=set(resume_tailoring_module.DEFAULT_SECTION_LOCKS),
+        experience_role_allowlist=set(resume_tailoring_module.DEFAULT_EXPERIENCE_ROLE_ALLOWLIST),
+    )
+    step_7_path.write_text(yaml.safe_dump(step_7_payload, sort_keys=False), encoding="utf-8")
+
+    checks = {entry["check_id"]: entry for entry in step_7_payload["checks"]}
+    assert step_7_payload["verification_outcome"] == "pass"
+    assert checks["line-budget"]["status"] == "pass"
+    assert any(
+        "misses the target character range" in note
+        for note in checks["line-budget"]["notes"]
+    )
+    assert "Technical-skills block exceeds the baseline line count." in checks["line-budget"]["notes"]
+
+    final_pdf_relative_path = paths.relative_to_root(
+        paths.tailoring_pdf_path(company_name, role_title)
+    ).as_posix()
+
+    def fake_compile_tailored_resume(_paths, *, company_name: str, role_title: str):
+        pdf_path = _paths.resolve_from_root(final_pdf_relative_path)
+        pdf_path.parent.mkdir(parents=True, exist_ok=True)
+        pdf_path.write_bytes(b"%PDF-1.4\n% heuristic pass-through test\n")
+        return {
+            "status": "success",
+            "notes": [],
+            "compiled_pdf_path": str(pdf_path.resolve()),
+            "final_pdf_relative_path": final_pdf_relative_path,
+            "page_count": 1,
+        }
+
+    monkeypatch.setattr(
+        resume_tailoring_module,
+        "_compile_tailored_resume",
+        fake_compile_tailored_resume,
+    )
+
+    result = finalize_tailoring_run(
+        connection,
+        paths,
+        job_posting_id="jp_test",
+        timestamp="2026-04-06T20:20:00Z",
+    )
+
+    assert result.result == "pass"
+    assert result.reason_code is None
+    assert result.verification_outcome == "pass"
+
+
+def test_step_7_line_budget_hard_bounds_still_fail(tmp_path):
+    _, paths, connection, _ = prepare_real_tailoring_run(
+        tmp_path,
+        jd_body=(
+            "# JD\n"
+            "Requirements\n"
+            "- 3+ years of software engineering experience.\n"
+            "- Build distributed data services in Python and Apache Spark on AWS.\n"
+            "- Own monitoring, reliability, and incident response for production pipelines.\n"
+        ),
+    )
+    generate_tailoring_intelligence(
+        connection,
+        paths,
+        job_posting_id="jp_test",
+        timestamp="2026-04-06T20:10:00Z",
+    )
+
+    company_name = "Acme Data Systems"
+    role_title = "Software Engineer"
+    resume_tex_path = paths.tailoring_resume_tex_path(company_name, role_title)
+    step_3_payload = yaml.safe_load(
+        paths.tailoring_step_3_jd_signals_path(company_name, role_title).read_text(encoding="utf-8")
+    )
+    step_4_payload = yaml.safe_load(
+        paths.tailoring_step_4_evidence_map_path(company_name, role_title).read_text(encoding="utf-8")
+    )
+    step_6_payload = yaml.safe_load(
+        paths.tailoring_step_6_candidate_bullets_path(company_name, role_title).read_text(
+            encoding="utf-8"
+        )
+    )
+    first_bullet = step_6_payload["software_engineer"]["bullets"][0]
+    first_bullet["text"] = "Built APIs."
+    first_bullet["char_count"] = len(first_bullet["text"])
+
+    posting_row = connection.execute(
+        "SELECT * FROM job_postings WHERE job_posting_id = ?",
+        ("jp_test",),
+    ).fetchone()
+    run = resume_tailoring_module.get_latest_resume_tailoring_run_for_posting(connection, "jp_test")
+    assert posting_row is not None
+    assert run is not None
+    step_7_payload = resume_tailoring_module._build_step_7_verification_artifact(
+        posting_row=posting_row,
+        run=run,
+        resume_doc=resume_tailoring_module._parse_resume_document(
+            resume_tex_path.read_text(encoding="utf-8")
+        ),
+        step_3_payload=step_3_payload,
+        step_4_payload=step_4_payload,
+        step_6_payload=step_6_payload,
+        section_locks=set(resume_tailoring_module.DEFAULT_SECTION_LOCKS),
+        experience_role_allowlist=set(resume_tailoring_module.DEFAULT_EXPERIENCE_ROLE_ALLOWLIST),
+    )
+
+    checks = {entry["check_id"]: entry for entry in step_7_payload["checks"]}
+    assert step_7_payload["verification_outcome"] == "fail"
+    assert checks["line-budget"]["status"] == "fail"
+    assert any("outside the hard character bounds" in note for note in checks["line-budget"]["notes"])
+
+
 def test_mandatory_agent_review_approval_moves_posting_to_requires_contacts(tmp_path):
     _, paths, connection, bootstrap_result = prepare_real_tailoring_run(
         tmp_path,
