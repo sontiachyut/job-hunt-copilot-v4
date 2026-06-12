@@ -1,0 +1,106 @@
+{
+  "batch_id": "batch-032",
+  "company_count": 10,
+  "status_counts": {
+    "no_structured_board_found": 5,
+    "live_jobs": 2,
+    "detected_structured_board": 3
+  },
+  "trackability_counts": {
+    "unknown": 5,
+    "api_native": 2,
+    "structured_board": 3
+  },
+  "companies": [
+    {
+      "queue_position": "1",
+      "company_name": "Motion",
+      "previous_trackability": "structured_board",
+      "recheck_trackability": "unknown",
+      "recheck_board_type": "",
+      "recheck_confirmation_status": "no_structured_board_found",
+      "recheck_job_count": "0"
+    },
+    {
+      "queue_position": "2",
+      "company_name": "Nestor",
+      "previous_trackability": "structured_board",
+      "recheck_trackability": "unknown",
+      "recheck_board_type": "",
+      "recheck_confirmation_status": "no_structured_board_found",
+      "recheck_job_count": "0"
+    },
+    {
+      "queue_position": "3",
+      "company_name": "Netomi",
+      "previous_trackability": "structured_board",
+      "recheck_trackability": "api_native",
+      "recheck_board_type": "lever",
+      "recheck_confirmation_status": "live_jobs",
+      "recheck_job_count": "36"
+    },
+    {
+      "queue_position": "4",
+      "company_name": "OneSchema",
+      "previous_trackability": "structured_board",
+      "recheck_trackability": "api_native",
+      "recheck_board_type": "ashby",
+      "recheck_confirmation_status": "live_jobs",
+      "recheck_job_count": "3"
+    },
+    {
+      "queue_position": "5",
+      "company_name": "Orbital Operations",
+      "previous_trackability": "structured_board",
+      "recheck_trackability": "structured_board",
+      "recheck_board_type": "rippling",
+      "recheck_confirmation_status": "detected_structured_board",
+      "recheck_job_count": "0"
+    },
+    {
+      "queue_position": "6",
+      "company_name": "Oximy",
+      "previous_trackability": "structured_board",
+      "recheck_trackability": "unknown",
+      "recheck_board_type": "",
+      "recheck_confirmation_status": "no_structured_board_found",
+      "recheck_job_count": "0"
+    },
+    {
+      "queue_position": "7",
+      "company_name": "Pair AI",
+      "previous_trackability": "structured_board",
+      "recheck_trackability": "unknown",
+      "recheck_board_type": "",
+      "recheck_confirmation_status": "no_structured_board_found",
+      "recheck_job_count": "0"
+    },
+    {
+      "queue_position": "8",
+      "company_name": "Paladin",
+      "previous_trackability": "structured_board",
+      "recheck_trackability": "structured_board",
+      "recheck_board_type": "jazzhr",
+      "recheck_confirmation_status": "detected_structured_board",
+      "recheck_job_count": "0"
+    },
+    {
+      "queue_position": "9",
+      "company_name": "ParadeDB",
+      "previous_trackability": "structured_board",
+      "recheck_trackability": "structured_board",
+      "recheck_board_type": "notion",
+      "recheck_confirmation_status": "detected_structured_board",
+      "recheck_job_count": "0"
+    },
+    {
+      "queue_position": "10",
+      "company_name": "Piris Labs",
+      "previous_trackability": "structured_board",
+      "recheck_trackability": "unknown",
+      "recheck_board_type": "",
+      "recheck_confirmation_status": "no_structured_board_found",
+      "recheck_job_count": "0"
+    }
+  ]
+}
