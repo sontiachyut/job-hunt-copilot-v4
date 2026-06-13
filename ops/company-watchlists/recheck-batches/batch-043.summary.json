@@ -1,0 +1,104 @@
+{
+  "batch_id": "batch-043",
+  "company_count": 10,
+  "status_counts": {
+    "no_structured_board_found": 9,
+    "detected_structured_board": 1
+  },
+  "trackability_counts": {
+    "unknown": 9,
+    "structured_board": 1
+  },
+  "companies": [
+    {
+      "queue_position": "1",
+      "company_name": "Shef",
+      "previous_trackability": "custom_page",
+      "recheck_trackability": "unknown",
+      "recheck_board_type": "",
+      "recheck_confirmation_status": "no_structured_board_found",
+      "recheck_job_count": "0"
+    },
+    {
+      "queue_position": "2",
+      "company_name": "ShipBob",
+      "previous_trackability": "custom_page",
+      "recheck_trackability": "unknown",
+      "recheck_board_type": "",
+      "recheck_confirmation_status": "no_structured_board_found",
+      "recheck_job_count": "0"
+    },
+    {
+      "queue_position": "3",
+      "company_name": "ShortLoop",
+      "previous_trackability": "custom_page",
+      "recheck_trackability": "unknown",
+      "recheck_board_type": "",
+      "recheck_confirmation_status": "no_structured_board_found",
+      "recheck_job_count": "0"
+    },
+    {
+      "queue_position": "4",
+      "company_name": "Skypher",
+      "previous_trackability": "custom_page",
+      "recheck_trackability": "unknown",
+      "recheck_board_type": "",
+      "recheck_confirmation_status": "no_structured_board_found",
+      "recheck_job_count": "0"
+    },
+    {
+      "queue_position": "5",
+      "company_name": "Snappr",
+      "previous_trackability": "custom_page",
+      "recheck_trackability": "unknown",
+      "recheck_board_type": "",
+      "recheck_confirmation_status": "no_structured_board_found",
+      "recheck_job_count": "0"
+    },
+    {
+      "queue_position": "6",
+      "company_name": "Soff",
+      "previous_trackability": "custom_page",
+      "recheck_trackability": "unknown",
+      "recheck_board_type": "",
+      "recheck_confirmation_status": "no_structured_board_found",
+      "recheck_job_count": "0"
+    },
+    {
+      "queue_position": "7",
+      "company_name": "Sohar Health",
+      "previous_trackability": "custom_page",
+      "recheck_trackability": "unknown",
+      "recheck_board_type": "",
+      "recheck_confirmation_status": "no_structured_board_found",
+      "recheck_job_count": "0"
+    },
+    {
+      "queue_position": "8",
+      "company_name": "Solo",
+      "previous_trackability": "custom_page",
+      "recheck_trackability": "unknown",
+      "recheck_board_type": "",
+      "recheck_confirmation_status": "no_structured_board_found",
+      "recheck_job_count": "0"
+    },
+    {
+      "queue_position": "9",
+      "company_name": "Solum Health",
+      "previous_trackability": "custom_page",
+      "recheck_trackability": "structured_board",
+      "recheck_board_type": "linkedin_jobs",
+      "recheck_confirmation_status": "detected_structured_board",
+      "recheck_job_count": "0"
+    },
+    {
+      "queue_position": "10",
+      "company_name": "Sonatoria",
+      "previous_trackability": "custom_page",
+      "recheck_trackability": "unknown",
+      "recheck_board_type": "",
+      "recheck_confirmation_status": "no_structured_board_found",
+      "recheck_job_count": "0"
+    }
+  ]
+}
