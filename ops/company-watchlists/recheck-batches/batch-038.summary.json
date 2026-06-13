@@ -1,0 +1,104 @@
+{
+  "batch_id": "batch-038",
+  "company_count": 10,
+  "status_counts": {
+    "detected_structured_board": 1,
+    "no_structured_board_found": 9
+  },
+  "trackability_counts": {
+    "structured_board": 1,
+    "unknown": 9
+  },
+  "companies": [
+    {
+      "queue_position": "1",
+      "company_name": "Persana AI",
+      "previous_trackability": "custom_page",
+      "recheck_trackability": "structured_board",
+      "recheck_board_type": "notion",
+      "recheck_confirmation_status": "detected_structured_board",
+      "recheck_job_count": "0"
+    },
+    {
+      "queue_position": "2",
+      "company_name": "Pesto",
+      "previous_trackability": "custom_page",
+      "recheck_trackability": "unknown",
+      "recheck_board_type": "",
+      "recheck_confirmation_status": "no_structured_board_found",
+      "recheck_job_count": "0"
+    },
+    {
+      "queue_position": "3",
+      "company_name": "Pier",
+      "previous_trackability": "custom_page",
+      "recheck_trackability": "unknown",
+      "recheck_board_type": "",
+      "recheck_confirmation_status": "no_structured_board_found",
+      "recheck_job_count": "0"
+    },
+    {
+      "queue_position": "4",
+      "company_name": "Pingo AI",
+      "previous_trackability": "custom_page",
+      "recheck_trackability": "unknown",
+      "recheck_board_type": "",
+      "recheck_confirmation_status": "no_structured_board_found",
+      "recheck_job_count": "0"
+    },
+    {
+      "queue_position": "5",
+      "company_name": "Planbase",
+      "previous_trackability": "custom_page",
+      "recheck_trackability": "unknown",
+      "recheck_board_type": "",
+      "recheck_confirmation_status": "no_structured_board_found",
+      "recheck_job_count": "0"
+    },
+    {
+      "queue_position": "6",
+      "company_name": "Pluto",
+      "previous_trackability": "custom_page",
+      "recheck_trackability": "unknown",
+      "recheck_board_type": "",
+      "recheck_confirmation_status": "no_structured_board_found",
+      "recheck_job_count": "0"
+    },
+    {
+      "queue_position": "7",
+      "company_name": "Porter",
+      "previous_trackability": "custom_page",
+      "recheck_trackability": "unknown",
+      "recheck_board_type": "",
+      "recheck_confirmation_status": "no_structured_board_found",
+      "recheck_job_count": "0"
+    },
+    {
+      "queue_position": "8",
+      "company_name": "Prelim",
+      "previous_trackability": "custom_page",
+      "recheck_trackability": "unknown",
+      "recheck_board_type": "",
+      "recheck_confirmation_status": "no_structured_board_found",
+      "recheck_job_count": "0"
+    },
+    {
+      "queue_position": "9",
+      "company_name": "PrimeVault",
+      "previous_trackability": "custom_page",
+      "recheck_trackability": "unknown",
+      "recheck_board_type": "",
+      "recheck_confirmation_status": "no_structured_board_found",
+      "recheck_job_count": "0"
+    },
+    {
+      "queue_position": "10",
+      "company_name": "Proception Inc",
+      "previous_trackability": "custom_page",
+      "recheck_trackability": "unknown",
+      "recheck_board_type": "",
+      "recheck_confirmation_status": "no_structured_board_found",
+      "recheck_job_count": "0"
+    }
+  ]
+}
