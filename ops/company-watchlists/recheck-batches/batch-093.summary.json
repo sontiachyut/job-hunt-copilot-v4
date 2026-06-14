@@ -1,0 +1,104 @@
+{
+  "batch_id": "batch-093",
+  "company_count": 10,
+  "status_counts": {
+    "live_jobs": 1,
+    "no_structured_board_found": 9
+  },
+  "trackability_counts": {
+    "api_native": 1,
+    "unknown": 9
+  },
+  "companies": [
+    {
+      "queue_position": "1",
+      "company_name": "Webflow",
+      "previous_trackability": "unknown",
+      "recheck_trackability": "api_native",
+      "recheck_board_type": "greenhouse",
+      "recheck_confirmation_status": "live_jobs",
+      "recheck_job_count": "22"
+    },
+    {
+      "queue_position": "2",
+      "company_name": "Wefunder",
+      "previous_trackability": "unknown",
+      "recheck_trackability": "unknown",
+      "recheck_board_type": "",
+      "recheck_confirmation_status": "no_structured_board_found",
+      "recheck_job_count": "0"
+    },
+    {
+      "queue_position": "3",
+      "company_name": "Whip",
+      "previous_trackability": "unknown",
+      "recheck_trackability": "unknown",
+      "recheck_board_type": "",
+      "recheck_confirmation_status": "no_structured_board_found",
+      "recheck_job_count": "0"
+    },
+    {
+      "queue_position": "4",
+      "company_name": "Wildcard",
+      "previous_trackability": "unknown",
+      "recheck_trackability": "unknown",
+      "recheck_board_type": "",
+      "recheck_confirmation_status": "no_structured_board_found",
+      "recheck_job_count": "0"
+    },
+    {
+      "queue_position": "5",
+      "company_name": "Wolfia",
+      "previous_trackability": "unknown",
+      "recheck_trackability": "unknown",
+      "recheck_board_type": "",
+      "recheck_confirmation_status": "no_structured_board_found",
+      "recheck_job_count": "0"
+    },
+    {
+      "queue_position": "6",
+      "company_name": "Women Who Code",
+      "previous_trackability": "unknown",
+      "recheck_trackability": "unknown",
+      "recheck_board_type": "",
+      "recheck_confirmation_status": "no_structured_board_found",
+      "recheck_job_count": "0"
+    },
+    {
+      "queue_position": "7",
+      "company_name": "Woz",
+      "previous_trackability": "unknown",
+      "recheck_trackability": "unknown",
+      "recheck_board_type": "",
+      "recheck_confirmation_status": "no_structured_board_found",
+      "recheck_job_count": "0"
+    },
+    {
+      "queue_position": "8",
+      "company_name": "Zaymo",
+      "previous_trackability": "unknown",
+      "recheck_trackability": "unknown",
+      "recheck_board_type": "",
+      "recheck_confirmation_status": "no_structured_board_found",
+      "recheck_job_count": "0"
+    },
+    {
+      "queue_position": "9",
+      "company_name": "Zuddl",
+      "previous_trackability": "unknown",
+      "recheck_trackability": "unknown",
+      "recheck_board_type": "",
+      "recheck_confirmation_status": "no_structured_board_found",
+      "recheck_job_count": "0"
+    },
+    {
+      "queue_position": "10",
+      "company_name": "zudo.work",
+      "previous_trackability": "unknown",
+      "recheck_trackability": "unknown",
+      "recheck_board_type": "",
+      "recheck_confirmation_status": "no_structured_board_found",
+      "recheck_job_count": "0"
+    }
+  ]
+}

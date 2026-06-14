@@ -1,0 +1,102 @@
+{
+  "batch_id": "batch-080",
+  "company_count": 10,
+  "status_counts": {
+    "no_structured_board_found": 10
+  },
+  "trackability_counts": {
+    "unknown": 10
+  },
+  "companies": [
+    {
+      "queue_position": "1",
+      "company_name": "Players' Lounge",
+      "previous_trackability": "unknown",
+      "recheck_trackability": "unknown",
+      "recheck_board_type": "",
+      "recheck_confirmation_status": "no_structured_board_found",
+      "recheck_job_count": "0"
+    },
+    {
+      "queue_position": "2",
+      "company_name": "PNO\u0112",
+      "previous_trackability": "unknown",
+      "recheck_trackability": "unknown",
+      "recheck_board_type": "",
+      "recheck_confirmation_status": "no_structured_board_found",
+      "recheck_job_count": "0"
+    },
+    {
+      "queue_position": "3",
+      "company_name": "PocketSuite",
+      "previous_trackability": "unknown",
+      "recheck_trackability": "unknown",
+      "recheck_board_type": "",
+      "recheck_confirmation_status": "no_structured_board_found",
+      "recheck_job_count": "0"
+    },
+    {
+      "queue_position": "4",
+      "company_name": "Poka Labs",
+      "previous_trackability": "unknown",
+      "recheck_trackability": "unknown",
+      "recheck_board_type": "",
+      "recheck_confirmation_status": "no_structured_board_found",
+      "recheck_job_count": "0"
+    },
+    {
+      "queue_position": "5",
+      "company_name": "Poly",
+      "previous_trackability": "unknown",
+      "recheck_trackability": "unknown",
+      "recheck_board_type": "",
+      "recheck_confirmation_status": "no_structured_board_found",
+      "recheck_job_count": "0"
+    },
+    {
+      "queue_position": "6",
+      "company_name": "Polymath Robotics",
+      "previous_trackability": "unknown",
+      "recheck_trackability": "unknown",
+      "recheck_board_type": "",
+      "recheck_confirmation_status": "no_structured_board_found",
+      "recheck_job_count": "0"
+    },
+    {
+      "queue_position": "7",
+      "company_name": "Posh",
+      "previous_trackability": "unknown",
+      "recheck_trackability": "unknown",
+      "recheck_board_type": "",
+      "recheck_confirmation_status": "no_structured_board_found",
+      "recheck_job_count": "0"
+    },
+    {
+      "queue_position": "8",
+      "company_name": "Postal",
+      "previous_trackability": "unknown",
+      "recheck_trackability": "unknown",
+      "recheck_board_type": "",
+      "recheck_confirmation_status": "no_structured_board_found",
+      "recheck_job_count": "0"
+    },
+    {
+      "queue_position": "9",
+      "company_name": "PostEra",
+      "previous_trackability": "unknown",
+      "recheck_trackability": "unknown",
+      "recheck_board_type": "",
+      "recheck_confirmation_status": "no_structured_board_found",
+      "recheck_job_count": "0"
+    },
+    {
+      "queue_position": "10",
+      "company_name": "Powder",
+      "previous_trackability": "unknown",
+      "recheck_trackability": "unknown",
+      "recheck_board_type": "",
+      "recheck_confirmation_status": "no_structured_board_found",
+      "recheck_job_count": "0"
+    }
+  ]
+}

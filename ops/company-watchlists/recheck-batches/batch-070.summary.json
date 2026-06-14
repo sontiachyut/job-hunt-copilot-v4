@@ -1,0 +1,104 @@
+{
+  "batch_id": "batch-070",
+  "company_count": 10,
+  "status_counts": {
+    "no_structured_board_found": 9,
+    "live_jobs": 1
+  },
+  "trackability_counts": {
+    "unknown": 9,
+    "api_native": 1
+  },
+  "companies": [
+    {
+      "queue_position": "1",
+      "company_name": "iSono Health",
+      "previous_trackability": "unknown",
+      "recheck_trackability": "unknown",
+      "recheck_board_type": "",
+      "recheck_confirmation_status": "no_structured_board_found",
+      "recheck_job_count": "0"
+    },
+    {
+      "queue_position": "2",
+      "company_name": "Joon Health",
+      "previous_trackability": "unknown",
+      "recheck_trackability": "unknown",
+      "recheck_board_type": "",
+      "recheck_confirmation_status": "no_structured_board_found",
+      "recheck_job_count": "0"
+    },
+    {
+      "queue_position": "3",
+      "company_name": "Juicebox",
+      "previous_trackability": "unknown",
+      "recheck_trackability": "unknown",
+      "recheck_board_type": "",
+      "recheck_confirmation_status": "no_structured_board_found",
+      "recheck_job_count": "0"
+    },
+    {
+      "queue_position": "4",
+      "company_name": "JustAI",
+      "previous_trackability": "unknown",
+      "recheck_trackability": "unknown",
+      "recheck_board_type": "",
+      "recheck_confirmation_status": "no_structured_board_found",
+      "recheck_job_count": "0"
+    },
+    {
+      "queue_position": "5",
+      "company_name": "Juxta",
+      "previous_trackability": "unknown",
+      "recheck_trackability": "unknown",
+      "recheck_board_type": "",
+      "recheck_confirmation_status": "no_structured_board_found",
+      "recheck_job_count": "0"
+    },
+    {
+      "queue_position": "6",
+      "company_name": "Kalinda",
+      "previous_trackability": "unknown",
+      "recheck_trackability": "unknown",
+      "recheck_board_type": "",
+      "recheck_confirmation_status": "no_structured_board_found",
+      "recheck_job_count": "0"
+    },
+    {
+      "queue_position": "7",
+      "company_name": "Kalpa Labs",
+      "previous_trackability": "unknown",
+      "recheck_trackability": "unknown",
+      "recheck_board_type": "",
+      "recheck_confirmation_status": "no_structured_board_found",
+      "recheck_job_count": "0"
+    },
+    {
+      "queue_position": "8",
+      "company_name": "Karat Financial",
+      "previous_trackability": "unknown",
+      "recheck_trackability": "unknown",
+      "recheck_board_type": "",
+      "recheck_confirmation_status": "no_structured_board_found",
+      "recheck_job_count": "0"
+    },
+    {
+      "queue_position": "9",
+      "company_name": "Karsa",
+      "previous_trackability": "unknown",
+      "recheck_trackability": "unknown",
+      "recheck_board_type": "",
+      "recheck_confirmation_status": "no_structured_board_found",
+      "recheck_job_count": "0"
+    },
+    {
+      "queue_position": "10",
+      "company_name": "Kastle",
+      "previous_trackability": "unknown",
+      "recheck_trackability": "api_native",
+      "recheck_board_type": "ashby",
+      "recheck_confirmation_status": "live_jobs",
+      "recheck_job_count": "8"
+    }
+  ]
+}

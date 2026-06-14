@@ -1,0 +1,104 @@
+{
+  "batch_id": "batch-078",
+  "company_count": 10,
+  "status_counts": {
+    "no_structured_board_found": 9,
+    "live_jobs": 1
+  },
+  "trackability_counts": {
+    "unknown": 9,
+    "api_native": 1
+  },
+  "companies": [
+    {
+      "queue_position": "1",
+      "company_name": "Padlet",
+      "previous_trackability": "unknown",
+      "recheck_trackability": "unknown",
+      "recheck_board_type": "",
+      "recheck_confirmation_status": "no_structured_board_found",
+      "recheck_job_count": "0"
+    },
+    {
+      "queue_position": "2",
+      "company_name": "Pangea.app",
+      "previous_trackability": "unknown",
+      "recheck_trackability": "unknown",
+      "recheck_board_type": "",
+      "recheck_confirmation_status": "no_structured_board_found",
+      "recheck_job_count": "0"
+    },
+    {
+      "queue_position": "3",
+      "company_name": "Paragon",
+      "previous_trackability": "unknown",
+      "recheck_trackability": "api_native",
+      "recheck_board_type": "ashby",
+      "recheck_confirmation_status": "live_jobs",
+      "recheck_job_count": "5"
+    },
+    {
+      "queue_position": "4",
+      "company_name": "Paragon AI",
+      "previous_trackability": "unknown",
+      "recheck_trackability": "unknown",
+      "recheck_board_type": "",
+      "recheck_confirmation_status": "no_structured_board_found",
+      "recheck_job_count": "0"
+    },
+    {
+      "queue_position": "5",
+      "company_name": "Parahelp",
+      "previous_trackability": "unknown",
+      "recheck_trackability": "unknown",
+      "recheck_board_type": "",
+      "recheck_confirmation_status": "no_structured_board_found",
+      "recheck_job_count": "0"
+    },
+    {
+      "queue_position": "6",
+      "company_name": "Parrot",
+      "previous_trackability": "unknown",
+      "recheck_trackability": "unknown",
+      "recheck_board_type": "",
+      "recheck_confirmation_status": "no_structured_board_found",
+      "recheck_job_count": "0"
+    },
+    {
+      "queue_position": "7",
+      "company_name": "Partcl",
+      "previous_trackability": "unknown",
+      "recheck_trackability": "unknown",
+      "recheck_board_type": "",
+      "recheck_confirmation_status": "no_structured_board_found",
+      "recheck_job_count": "0"
+    },
+    {
+      "queue_position": "8",
+      "company_name": "Pasito",
+      "previous_trackability": "unknown",
+      "recheck_trackability": "unknown",
+      "recheck_board_type": "",
+      "recheck_confirmation_status": "no_structured_board_found",
+      "recheck_job_count": "0"
+    },
+    {
+      "queue_position": "9",
+      "company_name": "Pave Robotics",
+      "previous_trackability": "unknown",
+      "recheck_trackability": "unknown",
+      "recheck_board_type": "",
+      "recheck_confirmation_status": "no_structured_board_found",
+      "recheck_job_count": "0"
+    },
+    {
+      "queue_position": "10",
+      "company_name": "Pax",
+      "previous_trackability": "unknown",
+      "recheck_trackability": "unknown",
+      "recheck_board_type": "",
+      "recheck_confirmation_status": "no_structured_board_found",
+      "recheck_job_count": "0"
+    }
+  ]
+}
