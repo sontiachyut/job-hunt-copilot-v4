@@ -37,6 +37,7 @@ ASHBY_RE = re.compile(r"(?:jobs\.ashbyhq\.com|api\.ashbyhq\.com/posting-api/job-
 LEVER_RE = re.compile(r"jobs\.lever\.co/([A-Za-z0-9._-]+)", re.I)
 LEVER_API_RE = re.compile(r"api\.lever\.co/v0/postings/([A-Za-z0-9._-]+)", re.I)
 WORKABLE_RE = re.compile(r"apply\.workable\.com/([A-Za-z0-9._-]+)", re.I)
+WORKABLE_API_RE = re.compile(r"apply\.workable\.com/api/v3/accounts/([A-Za-z0-9._-]+)/jobs", re.I)
 DOVER_RE = re.compile(r"app\.dover\.com/jobs/([A-Za-z0-9._%-]+)", re.I)
 DOVER_API_RE = re.compile(r"app\.dover\.com/feed/v1/boards/([A-Za-z0-9._%-]+)/jobs", re.I)
 
@@ -460,7 +461,11 @@ def fetch_lever_jobs(row: dict[str, str], run_id: str, fetched_at_utc: str) -> t
 
 
 def fetch_workable_jobs(row: dict[str, str], run_id: str, fetched_at_utc: str) -> tuple[dict[str, str], list[dict[str, str]]]:
-    account = match_first(WORKABLE_RE, listing_board_url(row))
+    account = (
+        (row.get("board_token") or "").strip()
+        or match_first(WORKABLE_API_RE, listing_board_url(row))
+        or match_first(WORKABLE_RE, listing_board_url(row))
+    )
     if not account:
         return company_result(
             row,

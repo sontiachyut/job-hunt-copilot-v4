@@ -154,6 +154,12 @@ def jd_fields_for_board_type(board_type: str) -> dict[str, str]:
             "jd_extraction_method": "api_field",
             "jd_extraction_locator": "jobs[].content",
         },
+        "workable": {
+            "jd_capture_status": "full_jd_inferred_api",
+            "jd_format": "markdown_detail_page",
+            "jd_extraction_method": "workable_jobs_api_to_markdown_detail",
+            "jd_extraction_locator": "results[].shortcode -> /jobs/view/<shortcode>.md",
+        },
     }
     return mapping.get(
         board_type,

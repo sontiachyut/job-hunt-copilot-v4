@@ -1,6 +1,6 @@
 # Company Watchlists
 
-Generated at: `2026-06-14 19:56:57Z`
+Generated at: `2026-06-14 20:07:49Z`
 
 `company-watchlist.csv` is the source of truth for the daily job crawler.
 
