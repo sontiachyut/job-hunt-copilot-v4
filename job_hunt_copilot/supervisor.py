@@ -2669,6 +2669,10 @@ def select_next_supervisor_work_unit(
     if orphaned_send_stage_work is not None:
         return orphaned_send_stage_work
 
+    posting_work = _select_new_posting_work_unit(connection)
+    if posting_work is not None:
+        return posting_work
+
     pipeline_run_work = _select_open_pipeline_run_work_unit(
         connection,
         project_root=project_root,
@@ -2677,10 +2681,6 @@ def select_next_supervisor_work_unit(
     )
     if pipeline_run_work is not None:
         return pipeline_run_work
-
-    posting_work = _select_new_posting_work_unit(connection)
-    if posting_work is not None:
-        return posting_work
 
     general_learning_priority_work = _select_general_learning_priority_work_unit(
         connection

@@ -1677,6 +1677,79 @@ def test_select_next_supervisor_work_unit_prefers_orphaned_existing_send_frontie
     assert selected_work.work_id != discovery_run.pipeline_run_id
 
 
+@pytest.mark.parametrize(
+    ("discovery_stage", "patch_target"),
+    (
+        ("email_discovery", "is_role_targeted_email_discovery_actionable_now"),
+        ("people_search", "is_role_targeted_people_search_actionable_now"),
+    ),
+)
+def test_select_next_supervisor_work_unit_prefers_fresh_posting_bootstrap_over_ordinary_discovery_backlog(
+    tmp_path,
+    monkeypatch,
+    discovery_stage,
+    patch_target,
+):
+    import job_hunt_copilot.email_discovery as email_discovery_module
+
+    project_root = bootstrap_project(tmp_path)
+    connection = connect_database(project_root / "job_hunt_copilot.db")
+    resume_agent(
+        connection,
+        manual_command="jhc-agent-start",
+        timestamp="2026-04-06T00:00:00Z",
+    )
+
+    seed_named_role_targeted_posting(
+        connection,
+        lead_id="ld_backlog",
+        job_posting_id="jp_backlog",
+        company_name="Backlog Co",
+        role_title="Backend Engineer",
+        posting_status="requires_contacts",
+        timestamp="2026-04-05T23:58:00Z",
+    )
+    backlog_run, _ = ensure_role_targeted_pipeline_run(
+        connection,
+        lead_id="ld_backlog",
+        job_posting_id="jp_backlog",
+        current_stage=discovery_stage,
+        started_at="2026-04-05T23:59:00Z",
+    )
+    monkeypatch.setattr(
+        email_discovery_module,
+        patch_target,
+        lambda *args, **kwargs: True,
+    )
+
+    seed_named_role_targeted_posting(
+        connection,
+        lead_id="ld_fresh",
+        job_posting_id="jp_fresh",
+        company_name="Fresh Co",
+        role_title="AI Engineer",
+        posting_status="sourced",
+        timestamp="2026-04-06T00:01:00Z",
+    )
+
+    selected_work = select_next_supervisor_work_unit(
+        connection,
+        project_root=project_root,
+        current_time="2026-04-06T00:02:00Z",
+        action_dependencies=SupervisorActionDependencies(local_timezone="UTC"),
+    )
+    connection.close()
+
+    assert selected_work is not None
+    assert selected_work.work_type == "job_posting"
+    assert selected_work.action_id == "bootstrap_role_targeted_run"
+    assert selected_work.work_id == "jp_fresh"
+    assert selected_work.job_posting_id == "jp_fresh"
+    assert selected_work.pipeline_run_id is None
+    assert selected_work.work_id != backlog_run.pipeline_run_id
+    assert "first durable role-targeted pipeline run" in selected_work.summary
+
+
 def test_classify_orphaned_feedback_only_recovery_stops_after_completed_closure(
     tmp_path,
     monkeypatch,
