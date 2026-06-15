@@ -1419,6 +1419,96 @@ def test_supervisor_skips_people_search_when_apollo_breaker_is_active(tmp_path: 
     connection.close()
 
 
+def test_people_search_stage_sets_aside_posting_when_apollo_settles_shortlist_without_email(
+    tmp_path: Path,
+) -> None:
+    project_root = bootstrap_project(tmp_path)
+    paths = ProjectPaths.from_root(project_root)
+    connection = connect_database(project_root / "job_hunt_copilot.db")
+    lead_id, job_posting_id = seed_role_targeted_posting(
+        connection,
+        posting_status="requires_contacts",
+    )
+    seed_approved_tailoring_run(connection, job_posting_id=job_posting_id)
+    resume_agent(
+        connection,
+        manual_command="jhc-agent-start",
+        timestamp="2026-04-08T00:10:00Z",
+    )
+    pipeline_run, _ = ensure_role_targeted_pipeline_run(
+        connection,
+        lead_id=lead_id,
+        job_posting_id=job_posting_id,
+        current_stage="people_search",
+        started_at="2026-04-08T00:11:00Z",
+    )
+    search_provider = FakeApolloSearchProvider(
+        candidates=[
+            build_candidate(
+                provider_person_id="pp_no_email",
+                display_name="Morgan Manager",
+                title="Engineering Manager",
+            )
+        ]
+    )
+    enrichment_provider = FakeApolloEnrichmentProvider(
+        {
+            "pp_no_email": {
+                "person": {
+                    "id": "pp_no_email",
+                    "first_name": "Morgan",
+                    "last_name": "Manager",
+                    "name": "Morgan Manager",
+                    "linkedin_url": "https://linkedin.example/morgan",
+                    "title": "Engineering Manager",
+                    "email": None,
+                    "email_status": "unavailable",
+                }
+            }
+        }
+    )
+
+    execution = run_supervisor_cycle(
+        connection,
+        paths,
+        trigger_type="launchd_heartbeat",
+        scheduler_name="launchd",
+        started_at="2026-04-08T00:12:00Z",
+        action_dependencies=SupervisorActionDependencies(
+            apollo_people_search_provider=search_provider,
+            apollo_contact_enrichment_provider=enrichment_provider,
+        ),
+    )
+    updated_run = get_pipeline_run(connection, pipeline_run.pipeline_run_id)
+    posting_status = connection.execute(
+        "SELECT posting_status FROM job_postings WHERE job_posting_id = ?",
+        (job_posting_id,),
+    ).fetchone()[0]
+    exhausted_row = connection.execute(
+        """
+        SELECT c.contact_status, jpc.link_level_status
+        FROM contacts c
+        JOIN job_posting_contacts jpc
+          ON jpc.contact_id = c.contact_id
+        WHERE c.provider_person_id = 'pp_no_email'
+        """
+    ).fetchone()
+    connection.close()
+
+    assert execution.cycle.result == SUPERVISOR_CYCLE_RESULT_SUCCESS
+    assert execution.selected_work is not None
+    assert execution.selected_work.action_id == ACTION_RUN_ROLE_TARGETED_PEOPLE_SEARCH
+    assert updated_run is not None
+    assert updated_run.run_status == RUN_STATUS_ESCALATED
+    assert updated_run.current_stage == "people_search"
+    assert "Apollo settled the bounded shortlist without producing any usable emails" in (updated_run.run_summary or "")
+    assert posting_status == "requires_contacts"
+    assert dict(exhausted_row) == {
+        "contact_status": "exhausted",
+        "link_level_status": "exhausted",
+    }
+
+
 def test_email_discovery_stage_runs_and_stays_active_until_send_set_is_ready(
     tmp_path: Path,
 ) -> None:
@@ -2128,6 +2218,104 @@ def test_email_discovery_stage_escalates_when_bounded_send_set_is_terminally_exh
     assert dict(contact_row) == {
         "contact_status": "exhausted",
         "discovery_summary": "all_providers_exhausted",
+    }
+    assert link_row["link_level_status"] == "exhausted"
+
+
+def test_email_discovery_stage_settles_legacy_apollo_no_email_contacts_before_external_finders(
+    tmp_path: Path,
+) -> None:
+    project_root = bootstrap_project(tmp_path)
+    paths = ProjectPaths.from_root(project_root)
+    connection = connect_database(project_root / "job_hunt_copilot.db")
+    lead_id, job_posting_id = seed_role_targeted_posting(
+        connection,
+        posting_status="requires_contacts",
+    )
+    seed_approved_tailoring_run(connection, job_posting_id=job_posting_id)
+    seed_shortlisted_contact(
+        connection,
+        contact_id="ct_apollo_no_email",
+        job_posting_contact_id="jpc_apollo_no_email",
+        job_posting_id=job_posting_id,
+        display_name="Morgan Manager",
+        recipient_type="hiring_manager",
+        position_title="Engineering Manager",
+        provider_person_id="pp_apollo_no_email",
+    )
+    resume_agent(
+        connection,
+        manual_command="jhc-agent-start",
+        timestamp="2026-04-08T00:17:30Z",
+    )
+    pipeline_run, _ = ensure_role_targeted_pipeline_run(
+        connection,
+        lead_id=lead_id,
+        job_posting_id=job_posting_id,
+        current_stage="email_discovery",
+        started_at="2026-04-08T00:18:00Z",
+    )
+    finder = FakeEmailFinderProvider(
+        provider_name="prospeo",
+        requires_domain=False,
+        responses=[],
+    )
+    enrichment_provider = FakeApolloEnrichmentProvider(
+        {
+            "pp_apollo_no_email": {
+                "person": {
+                    "id": "pp_apollo_no_email",
+                    "first_name": "Morgan",
+                    "last_name": "Manager",
+                    "name": "Morgan Manager",
+                    "linkedin_url": "https://linkedin.example/morgan",
+                    "title": "Engineering Manager",
+                    "email": None,
+                    "email_status": "unavailable",
+                }
+            }
+        }
+    )
+
+    execution = run_supervisor_cycle(
+        connection,
+        paths,
+        trigger_type="launchd_heartbeat",
+        scheduler_name="launchd",
+        started_at="2026-04-08T00:19:00Z",
+        action_dependencies=SupervisorActionDependencies(
+            apollo_contact_enrichment_provider=enrichment_provider,
+            email_finder_providers=(finder,),
+        ),
+    )
+    updated_run = get_pipeline_run(connection, pipeline_run.pipeline_run_id)
+    contact_row = connection.execute(
+        """
+        SELECT contact_status, discovery_summary
+        FROM contacts
+        WHERE contact_id = 'ct_apollo_no_email'
+        """
+    ).fetchone()
+    link_row = connection.execute(
+        """
+        SELECT link_level_status
+        FROM job_posting_contacts
+        WHERE job_posting_contact_id = 'jpc_apollo_no_email'
+        """
+    ).fetchone()
+    connection.close()
+
+    assert execution.cycle.result == SUPERVISOR_CYCLE_RESULT_SUCCESS
+    assert execution.selected_work is not None
+    assert execution.selected_work.action_id == ACTION_RUN_ROLE_TARGETED_EMAIL_DISCOVERY
+    assert finder.calls == []
+    assert updated_run is not None
+    assert updated_run.run_status == RUN_STATUS_ESCALATED
+    assert updated_run.current_stage == "email_discovery"
+    assert "exhausted the current send set" in (updated_run.last_error_summary or "")
+    assert dict(contact_row) == {
+        "contact_status": "exhausted",
+        "discovery_summary": "apollo_enrichment_no_usable_email",
     }
     assert link_row["link_level_status"] == "exhausted"
 

@@ -72,6 +72,7 @@ DISCOVERY_OUTCOME_PROVIDER_ERROR = "provider_error"
 DISCOVERY_OUTCOME_PROVIDER_PAUSED = "provider_paused"
 DISCOVERY_OUTCOME_SKIPPED_BOUNCED_PROVIDER = "skipped_bounced_provider"
 DISCOVERY_OUTCOME_BOUNCED_MATCH = "bounced_match"
+DISCOVERY_SUMMARY_APOLLO_NO_USABLE_EMAIL = "apollo_enrichment_no_usable_email"
 
 EMAIL_FINDER_PROVIDER_ORDER = (
     PROVIDER_NAME_PROSPEO,
@@ -1565,7 +1566,12 @@ def run_apollo_contact_enrichment(
             job_posting_id=job_posting_id,
             current_time=timestamp,
         )
-        frontier_contact_ids = {contact.contact_id for contact in send_set_plan.selected_contacts}
+        settle_full_shortlist = not send_set_plan.ready_for_outreach
+        target_contact_ids = (
+            {str(contact_row["contact_id"]) for contact_row in shortlisted_rows}
+            if settle_full_shortlist
+            else {contact.contact_id for contact in send_set_plan.selected_contacts}
+        )
 
         provider_client = provider
         profile_extractor = recipient_profile_extractor or LinkedInPublicProfileExtractor()
@@ -1588,7 +1594,7 @@ def run_apollo_contact_enrichment(
             refreshed_row = contact_row
 
             if (
-                str(refreshed_row["contact_id"]) in frontier_contact_ids
+                str(refreshed_row["contact_id"]) in target_contact_ids
                 and _needs_apollo_contact_enrichment(refreshed_row)
             ):
                 if provider_client is None:
@@ -1653,6 +1659,19 @@ def run_apollo_contact_enrichment(
                 job_posting_contact_id=str(contact_row["job_posting_contact_id"]),
             )
             if refreshed_row is None:
+                continue
+            if (
+                str(refreshed_row["contact_id"]) in target_contact_ids
+                and settle_full_shortlist
+                and not _is_usable_email(_normalize_optional_text(refreshed_row.get("current_working_email")))
+            ):
+                with connection:
+                    _apply_role_targeted_apollo_no_email_exhaustion(
+                        connection,
+                        posting_row=posting_row,
+                        contact_row=refreshed_row,
+                        current_time=timestamp,
+                    )
                 continue
             if _is_terminal_enrichment_dead_end(refreshed_row):
                 with connection:
@@ -4656,6 +4675,76 @@ def _apply_discovery_failure(
             lead_id=str(target_row["lead_id"]),
             job_posting_id=str(target_row["job_posting_id"]),
             contact_id=str(target_row["contact_id"]),
+        )
+
+
+def _apply_role_targeted_apollo_no_email_exhaustion(
+    connection: sqlite3.Connection,
+    *,
+    posting_row: Mapping[str, Any],
+    contact_row: Mapping[str, Any],
+    current_time: str,
+) -> None:
+    previous_contact_status = _normalize_optional_text(contact_row.get("contact_status")) or CONTACT_STATUS_IDENTIFIED
+    if previous_contact_status != CONTACT_STATUS_EXHAUSTED:
+        connection.execute(
+            """
+            UPDATE contacts
+            SET contact_status = ?, current_working_email = NULL, discovery_summary = ?, updated_at = ?
+            WHERE contact_id = ?
+            """,
+            (
+                CONTACT_STATUS_EXHAUSTED,
+                DISCOVERY_SUMMARY_APOLLO_NO_USABLE_EMAIL,
+                current_time,
+                contact_row["contact_id"],
+            ),
+        )
+        _record_state_transition(
+            connection,
+            object_type="contacts",
+            object_id=str(contact_row["contact_id"]),
+            stage="contact_status",
+            previous_state=previous_contact_status,
+            new_state=CONTACT_STATUS_EXHAUSTED,
+            transition_timestamp=current_time,
+            transition_reason=(
+                "Apollo enrichment completed without returning a usable work email, so the "
+                "autonomous role-targeted flow exhausted this contact for the current posting."
+            ),
+            lead_id=str(posting_row["lead_id"]),
+            job_posting_id=str(posting_row["job_posting_id"]),
+            contact_id=str(contact_row["contact_id"]),
+        )
+    previous_link_status = _normalize_optional_text(contact_row.get("link_level_status")) or POSTING_CONTACT_STATUS_IDENTIFIED
+    if previous_link_status != POSTING_CONTACT_STATUS_EXHAUSTED:
+        connection.execute(
+            """
+            UPDATE job_posting_contacts
+            SET link_level_status = ?, updated_at = ?
+            WHERE job_posting_contact_id = ?
+            """,
+            (
+                POSTING_CONTACT_STATUS_EXHAUSTED,
+                current_time,
+                contact_row["job_posting_contact_id"],
+            ),
+        )
+        _record_state_transition(
+            connection,
+            object_type="job_posting_contacts",
+            object_id=str(contact_row["job_posting_contact_id"]),
+            stage="link_level_status",
+            previous_state=previous_link_status,
+            new_state=POSTING_CONTACT_STATUS_EXHAUSTED,
+            transition_timestamp=current_time,
+            transition_reason=(
+                "Apollo enrichment completed without returning a usable work email, so the "
+                "autonomous role-targeted flow exhausted this posting-contact pair."
+            ),
+            lead_id=str(posting_row["lead_id"]),
+            job_posting_id=str(posting_row["job_posting_id"]),
+            contact_id=str(contact_row["contact_id"]),
         )
 
 

@@ -18,6 +18,7 @@ from job_hunt_copilot.email_discovery import (
     CONTACT_STATUS_WORKING_EMAIL_FOUND,
     ConfiguredApolloClient,
     DEFAULT_SHORTLIST_LIMIT,
+    DISCOVERY_SUMMARY_APOLLO_NO_USABLE_EMAIL,
     DISCOVERY_OUTCOME_DOMAIN_UNRESOLVED,
     DISCOVERY_OUTCOME_NOT_FOUND,
     DISCOVERY_OUTCOME_PROVIDER_ERROR,
@@ -1257,7 +1258,7 @@ def test_apollo_people_search_falls_back_to_company_name_anchor_when_resolution_
     connection.close()
 
 
-def test_apollo_contact_enrichment_skips_non_frontier_enrichment_and_persists_ready_recipient_profiles(
+def test_apollo_contact_enrichment_skips_contacts_that_already_have_usable_emails_and_persists_ready_recipient_profiles(
     tmp_path: Path,
 ):
     project_root = bootstrap_project(tmp_path)
@@ -1380,29 +1381,29 @@ def test_apollo_contact_enrichment_skips_non_frontier_enrichment_and_persists_re
                     },
                 },
             },
-            "https://linkedin.example/priya": {
+            "https://linkedin.example/avery": {
                 "profile_source": "linkedin_public_profile",
                 "source_method": "public_profile_html",
                 "profile": {
                     "identity": {
-                        "display_name": "Priya Recruiter",
-                        "full_name": "Priya Recruiter",
-                        "first_name": "Priya",
-                        "last_name": "Recruiter",
+                        "display_name": "Avery Director",
+                        "full_name": "Avery Director",
+                        "first_name": "Avery",
+                        "last_name": "Director",
                     },
                     "top_card": {
                         "current_company": "Acme Robotics",
-                        "current_title": "Technical Recruiter",
-                        "headline": None,
-                        "location": None,
-                        "connections": None,
-                        "followers": None,
+                        "current_title": "Director of Engineering",
+                        "headline": "Director of Engineering at Acme Robotics",
+                        "location": "Phoenix, Arizona, United States",
+                        "connections": "500+",
+                        "followers": "220",
                     },
-                    "about": {"preview_text": None, "is_truncated": False},
+                    "about": {"preview_text": "Leads platform and cloud engineering hiring.", "is_truncated": False},
                     "experience_hints": {
                         "current_company_hint": "Acme Robotics",
                         "education_hint": None,
-                        "experience_education_preview": None,
+                        "experience_education_preview": "Director of Engineering at Acme Robotics",
                     },
                     "recent_public_activity": [],
                     "public_signals": {
@@ -1410,10 +1411,10 @@ def test_apollo_contact_enrichment_skips_non_frontier_enrichment_and_persists_re
                         "honors_and_awards": [],
                         "recommendation_entities": [],
                     },
-                    "work_signals": ["recruiting function close to the target role"],
+                    "work_signals": ["Engineering leadership close to the target role"],
                     "evidence_snippets": ["Current company hint: Acme Robotics"],
                     "source_coverage": {
-                        "about": False,
+                        "about": True,
                         "activity": False,
                         "experience_hint": True,
                         "public_signals": False,
@@ -1430,17 +1431,21 @@ def test_apollo_contact_enrichment_skips_non_frontier_enrichment_and_persists_re
         recipient_profile_extractor=profile_extractor,
     )
 
-    assert enrichment_provider.calls == []
+    called_provider_ids = {str(call["provider_person_id"]) for call in enrichment_provider.calls}
+    assert "pp_r2" not in called_provider_ids
+    assert "pp_m2" not in called_provider_ids
+    assert "pp_e1" not in called_provider_ids
+    assert "pp_e2" not in called_provider_ids
 
-    priya_row = connection.execute(
+    avery_row = connection.execute(
         """
         SELECT current_working_email, contact_status
         FROM contacts
-        WHERE provider_person_id = 'pp_r2'
+        WHERE provider_person_id = 'pp_m2'
         """
     ).fetchone()
-    assert dict(priya_row) == {
-        "current_working_email": "priya@acmerobotics.com",
+    assert dict(avery_row) == {
+        "current_working_email": "avery@acmerobotics.com",
         "contact_status": CONTACT_STATUS_WORKING_EMAIL_FOUND,
     }
 
@@ -1455,18 +1460,18 @@ def test_apollo_contact_enrichment_skips_non_frontier_enrichment_and_persists_re
     ).fetchone()
     assert morgan_link["link_level_status"] == POSTING_CONTACT_STATUS_SHORTLISTED
 
-    priya_profile_path = paths.discovery_recipient_profile_path(
+    avery_profile_path = paths.discovery_recipient_profile_path(
         "Acme Robotics",
         "Staff Software Engineer / AI",
         connection.execute(
-            "SELECT contact_id FROM contacts WHERE provider_person_id = 'pp_r2'"
+            "SELECT contact_id FROM contacts WHERE provider_person_id = 'pp_m2'"
         ).fetchone()[0],
     )
-    assert priya_profile_path.exists()
-    priya_profile_payload = json.loads(priya_profile_path.read_text(encoding="utf-8"))
-    assert priya_profile_payload["contact_id"]
-    assert priya_profile_payload["job_posting_id"] == "jp_search"
-    assert priya_profile_payload["linkedin_url"] == "https://linkedin.example/priya"
+    assert avery_profile_path.exists()
+    avery_profile_payload = json.loads(avery_profile_path.read_text(encoding="utf-8"))
+    assert avery_profile_payload["contact_id"]
+    assert avery_profile_payload["job_posting_id"] == "jp_search"
+    assert avery_profile_payload["linkedin_url"] == "https://linkedin.example/avery"
 
     posting_status = connection.execute(
         "SELECT posting_status FROM job_postings WHERE job_posting_id = 'jp_search'"
@@ -1474,13 +1479,13 @@ def test_apollo_contact_enrichment_skips_non_frontier_enrichment_and_persists_re
     assert posting_status == "ready_for_outreach"
     assert result.posting_status == "ready_for_outreach"
     assert connection.execute(
-        "SELECT contact_id FROM contacts WHERE provider_person_id = 'pp_r2'"
+        "SELECT contact_id FROM contacts WHERE provider_person_id = 'pp_m2'"
     ).fetchone()[0] in set(result.recipient_profile_contact_ids)
 
     connection.close()
 
 
-def test_apollo_contact_enrichment_only_enriches_current_send_frontier(tmp_path: Path):
+def test_apollo_contact_enrichment_settles_full_shortlisted_set_when_posting_is_not_ready(tmp_path: Path):
     project_root = bootstrap_project(tmp_path)
     paths = ProjectPaths.from_root(project_root)
     connection = connect_database(project_root / "job_hunt_copilot.db")
@@ -1506,23 +1511,21 @@ def test_apollo_contact_enrichment_only_enriches_current_send_frontier(tmp_path:
         provider=search_provider,
     )
 
-    send_set_plan = evaluate_role_targeted_send_set(
-        connection,
-        job_posting_id="jp_search",
-        current_time="2026-04-06T22:30:00Z",
-    )
-    frontier_provider_ids = {
+    shortlisted_provider_ids = {
         str(row["provider_person_id"])
         for row in connection.execute(
-            f"""
+            """
             SELECT c.provider_person_id
-            FROM contacts c
-            WHERE c.contact_id IN ({",".join("?" for _ in send_set_plan.selected_contacts)})
+            FROM job_posting_contacts jpc
+            JOIN contacts c
+              ON c.contact_id = jpc.contact_id
+            WHERE jpc.job_posting_id = ?
+              AND jpc.link_level_status = 'shortlisted'
             """,
-            [contact.contact_id for contact in send_set_plan.selected_contacts],
+            ("jp_search",),
         ).fetchall()
     }
-    assert len(frontier_provider_ids) == 3
+    assert shortlisted_provider_ids
 
     enrichment_provider = FakeApolloEnrichmentProvider(
         {
@@ -1561,23 +1564,7 @@ def test_apollo_contact_enrichment_only_enriches_current_send_frontier(tmp_path:
     )
 
     called_provider_ids = {str(call["provider_person_id"]) for call in enrichment_provider.calls}
-    assert called_provider_ids == frontier_provider_ids
-
-    skipped_provider_ids = {"pp_r1", "pp_r2", "pp_m1", "pp_e1", "pp_o1"} - called_provider_ids
-    assert skipped_provider_ids
-    skipped_provider_id = sorted(skipped_provider_ids)[0]
-    skipped_row = connection.execute(
-        """
-        SELECT current_working_email, linkedin_url
-        FROM contacts
-        WHERE provider_person_id = ?
-        """,
-        (skipped_provider_id,),
-    ).fetchone()
-    assert dict(skipped_row) == {
-        "current_working_email": None,
-        "linkedin_url": None,
-    }
+    assert called_provider_ids == shortlisted_provider_ids
     enriched_profile_count = connection.execute(
         """
         SELECT COUNT(*)
@@ -1585,7 +1572,7 @@ def test_apollo_contact_enrichment_only_enriches_current_send_frontier(tmp_path:
         WHERE profile_stage = 'apollo_enrichment'
         """
     ).fetchone()[0]
-    assert enriched_profile_count == len(frontier_provider_ids)
+    assert enriched_profile_count == len(shortlisted_provider_ids)
     enriched_history_count = connection.execute(
         """
         SELECT COUNT(*)
@@ -1593,7 +1580,102 @@ def test_apollo_contact_enrichment_only_enriches_current_send_frontier(tmp_path:
         WHERE provider_name = 'apollo'
         """
     ).fetchone()[0]
-    assert enriched_history_count == len(frontier_provider_ids)
+    assert enriched_history_count == len(shortlisted_provider_ids)
+
+    connection.close()
+
+
+def test_apollo_contact_enrichment_exhausts_shortlisted_contacts_when_apollo_returns_no_email(
+    tmp_path: Path,
+):
+    project_root = bootstrap_project(tmp_path)
+    paths = ProjectPaths.from_root(project_root)
+    connection = connect_database(project_root / "job_hunt_copilot.db")
+    seed_search_ready_posting(connection, paths)
+
+    search_provider = FakeApolloProvider(
+        resolved_company=ApolloResolvedCompany(
+            organization_id="org_acme",
+            organization_name="Acme Robotics",
+            primary_domain="acmerobotics.com",
+        ),
+        candidates=[
+            build_candidate(provider_person_id="pp_m1", display_name="Morgan Manager", title="Engineering Manager"),
+            build_candidate(provider_person_id="pp_e1", display_name="Jamie Engineer", title="Staff Software Engineer"),
+        ],
+    )
+    run_apollo_people_search(
+        project_root=project_root,
+        job_posting_id="jp_search",
+        provider=search_provider,
+    )
+
+    enrichment_provider = FakeApolloEnrichmentProvider(
+        {
+            "pp_m1": {
+                "person": {
+                    "id": "pp_m1",
+                    "first_name": "Morgan",
+                    "last_name": "Manager",
+                    "name": "Morgan Manager",
+                    "linkedin_url": "https://linkedin.example/pp_m1",
+                    "title": "Engineering Manager",
+                    "email": None,
+                    "email_status": "unavailable",
+                    "organization_id": "org_acme",
+                    "organization_name": "Acme Robotics",
+                }
+            },
+            "pp_e1": {
+                "person": {
+                    "id": "pp_e1",
+                    "first_name": "Jamie",
+                    "last_name": "Engineer",
+                    "name": "Jamie Engineer",
+                    "linkedin_url": "https://linkedin.example/pp_e1",
+                    "title": "Staff Software Engineer",
+                    "email": None,
+                    "email_status": "unavailable",
+                    "organization_id": "org_acme",
+                    "organization_name": "Acme Robotics",
+                }
+            },
+        }
+    )
+
+    result = run_apollo_contact_enrichment(
+        project_root=project_root,
+        job_posting_id="jp_search",
+        provider=enrichment_provider,
+        recipient_profile_extractor=FakeRecipientProfileExtractor({}),
+        current_time="2026-04-06T22:30:00Z",
+    )
+
+    exhausted_rows = connection.execute(
+        """
+        SELECT c.provider_person_id, c.contact_status, c.discovery_summary, jpc.link_level_status
+        FROM contacts c
+        JOIN job_posting_contacts jpc
+          ON jpc.contact_id = c.contact_id
+        WHERE jpc.job_posting_id = 'jp_search'
+        ORDER BY c.provider_person_id ASC
+        """
+    ).fetchall()
+    assert [dict(row) for row in exhausted_rows] == [
+        {
+            "provider_person_id": "pp_e1",
+            "contact_status": CONTACT_STATUS_EXHAUSTED,
+            "discovery_summary": DISCOVERY_SUMMARY_APOLLO_NO_USABLE_EMAIL,
+            "link_level_status": POSTING_CONTACT_STATUS_EXHAUSTED,
+        },
+        {
+            "provider_person_id": "pp_m1",
+            "contact_status": CONTACT_STATUS_EXHAUSTED,
+            "discovery_summary": DISCOVERY_SUMMARY_APOLLO_NO_USABLE_EMAIL,
+            "link_level_status": POSTING_CONTACT_STATUS_EXHAUSTED,
+        },
+    ]
+    assert result.posting_status == "requires_contacts"
 
     connection.close()
 
@@ -1611,7 +1693,7 @@ def test_apollo_contact_enrichment_removes_terminal_dead_end_shortlist_contacts(
             primary_domain="acmerobotics.com",
         ),
         candidates=[
-            build_candidate(provider_person_id="pp_dead", display_name="Isa***h Lo***e", title="Corporate Recruiter")
+            build_candidate(provider_person_id="pp_dead", display_name="Isa***h Lo***e", title="Engineering Manager")
         ],
     )
     search_result = run_apollo_people_search(

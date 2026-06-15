@@ -5108,7 +5108,29 @@ def _execute_selected_work_unit(
                     job_posting_id=job_posting_id,
                     link_level_status="shortlisted",
                 )
+                exhausted_count = _count_posting_contacts_with_link_status(
+                    connection,
+                    job_posting_id=job_posting_id,
+                    link_level_status="exhausted",
+                )
                 if shortlisted_count <= 0:
+                    if exhausted_count > 0:
+                        pipeline_run = escalate_pipeline_run(
+                            connection,
+                            selected_work.work_id,
+                            current_stage="people_search",
+                            error_summary=(
+                                "Apollo shortlist enrichment settled the bounded contact set "
+                                f"without a usable email for job_posting {job_posting_id!r}."
+                            ),
+                            run_summary=(
+                                "Supervisor set aside the durable pipeline run at the "
+                                "people_search boundary because Apollo settled the bounded "
+                                "shortlist without producing any usable emails."
+                            ),
+                            timestamp=timestamp,
+                        )
+                        return pipeline_run, None, None
                     pipeline_run = escalate_pipeline_run(
                         connection,
                         selected_work.work_id,
@@ -5153,12 +5175,15 @@ def _execute_selected_work_unit(
 
     if catalog_entry.action_id == ACTION_RUN_ROLE_TARGETED_EMAIL_DISCOVERY:
         from .email_discovery import (
+            DISCOVERY_PROVIDER_COOLDOWN_OUTCOMES,
+            EmailDiscoveryError,
             JOB_POSTING_STATUS_READY_FOR_OUTREACH,
             JOB_POSTING_STATUS_REQUIRES_CONTACTS,
             _list_pending_email_discovery_contact_ids,
             _promote_posting_ready_for_outreach_if_eligible,
             is_role_targeted_email_discovery_contact_actionable_now,
             refresh_same_company_contact_frontier,
+            run_apollo_contact_enrichment,
             run_email_discovery_for_contact,
         )
         from .outreach import evaluate_role_targeted_send_set
@@ -5239,6 +5264,33 @@ def _execute_selected_work_unit(
                 "for outreach and advanced the durable pipeline run directly to sending."
             )
         elif current_posting_status == JOB_POSTING_STATUS_REQUIRES_CONTACTS:
+            try:
+                enrichment_result = run_apollo_contact_enrichment(
+                    project_root=paths.project_root,
+                    job_posting_id=job_posting_id,
+                    provider=action_dependencies.apollo_contact_enrichment_provider,
+                    recipient_profile_extractor=action_dependencies.recipient_profile_extractor,
+                    current_time=timestamp,
+                    pipeline_run_id=selected_work.work_id,
+                )
+                current_posting_status = enrichment_result.posting_status
+            except EmailDiscoveryError as exc:
+                if _optional_text(exc.reason_code) in DISCOVERY_PROVIDER_COOLDOWN_OUTCOMES:
+                    next_stage = "email_discovery"
+                    run_summary = (
+                        "Supervisor kept the durable pipeline run at email_discovery "
+                        "because Apollo shortlist-settlement enrichment is in provider cooldown "
+                        "or abnormal-usage guardrail pause."
+                    )
+                    pipeline_run = advance_pipeline_run(
+                        connection,
+                        selected_work.work_id,
+                        current_stage=next_stage,
+                        run_summary=run_summary,
+                        timestamp=timestamp,
+                    )
+                    return pipeline_run, None, None
+                raise
             current_posting_status = _promote_ready_for_outreach_if_eligible()
             if current_posting_status == JOB_POSTING_STATUS_READY_FOR_OUTREACH:
                 next_stage = "sending"
