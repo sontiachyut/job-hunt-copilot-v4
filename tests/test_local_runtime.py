@@ -1550,6 +1550,36 @@ def test_materialize_feedback_sync_plist_script_renders_required_launchd_shape(t
     assert plist_path.stat().st_mode & 0o777 == 0o644
 
 
+def test_materialize_followup_plist_script_renders_required_launchd_shape(tmp_path):
+    project_root = tmp_path / "repo"
+    project_root.mkdir()
+    create_minimal_project(project_root)
+
+    result = run_script(
+        "scripts/ops/materialize_followup_plist.py",
+        "--project-root",
+        str(project_root),
+    )
+    report = json.loads(result.stdout)
+
+    plist_path = project_root / "ops" / "launchd" / "job-hunt-copilot-followups.plist"
+    payload = plistlib.loads(plist_path.read_bytes())
+
+    assert report["plist_path"] == str(plist_path)
+    assert payload["Label"] == "com.jobhuntcopilot.followups"
+    assert payload["RunAtLoad"] is True
+    assert payload["StartInterval"] == 60
+    assert payload["KeepAlive"] is False
+    assert payload["WorkingDirectory"] == str(project_root)
+    assert payload["ProgramArguments"] == [
+        str(project_root / "bin" / "jhc-followup-cycle"),
+        "--send",
+    ]
+    assert payload["StandardOutPath"] == str(project_root / "ops" / "logs" / "followups.stdout.log")
+    assert payload["StandardErrorPath"] == str(project_root / "ops" / "logs" / "followups.stderr.log")
+    assert plist_path.stat().st_mode & 0o777 == 0o644
+
+
 def test_control_agent_script_persists_running_and_stopped_modes(tmp_path):
     project_root = tmp_path / "repo"
     project_root.mkdir()
@@ -5312,7 +5342,10 @@ def test_repo_agent_wrappers_use_expected_repo_local_wiring():
     assert "scripts/ops/build_runtime_pack.py" in start_wrapper
     assert "scripts/ops/materialize_supervisor_plist.py" in start_wrapper
     assert "scripts/ops/materialize_feedback_sync_plist.py" in start_wrapper
+    assert "scripts/ops/materialize_followup_plist.py" in start_wrapper
     assert "scripts/ops/control_agent.py\" start" in start_wrapper
+    assert 'launchctl bootstrap "gui/$UID" "$FOLLOWUP_PLIST"' in start_wrapper
+    assert 'launchctl kickstart -k "$FOLLOWUP_LABEL"' in start_wrapper
     assert 'launchctl bootstrap "gui/$UID" "$FEEDBACK_PLIST"' in start_wrapper
     assert 'launchctl kickstart -k "$FEEDBACK_LABEL"' in start_wrapper
     assert "scripts/ops/control_agent.py\" stop" in start_wrapper
@@ -5321,12 +5354,15 @@ def test_repo_agent_wrappers_use_expected_repo_local_wiring():
     assert 'launchctl kickstart -k "$LABEL"' in start_wrapper
     assert "com.jobhuntcopilot.supervisor" in start_wrapper
     assert "com.jobhuntcopilot.feedback-sync" in start_wrapper
+    assert "com.jobhuntcopilot.followups" in start_wrapper
 
+    assert 'launchctl bootout "gui/$UID" "$FOLLOWUP_PLIST"' in stop_wrapper
     assert 'launchctl bootout "gui/$UID" "$FEEDBACK_PLIST"' in stop_wrapper
     assert "scripts/ops/control_agent.py\" stop" in stop_wrapper
     assert 'launchctl bootout "gui/$UID" "$PLIST"' in stop_wrapper
     assert "com.jobhuntcopilot.supervisor" in stop_wrapper
     assert "com.jobhuntcopilot.feedback-sync" in stop_wrapper
+    assert "com.jobhuntcopilot.followups" in stop_wrapper
 
     assert "scripts/ops/run_supervisor_cycle.py" in cycle_wrapper
     assert '--project-root "$ROOT"' in cycle_wrapper

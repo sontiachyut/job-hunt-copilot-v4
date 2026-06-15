@@ -28,6 +28,7 @@ from .gmail_alerts import (
     gmail_mailbox_polling_configured,
 )
 from .followups import (
+    FOLLOWUP_INTERVAL_SECONDS,
     FOLLOWUP_SCHEDULER_NAME,
     FOLLOWUP_SCHEDULER_TYPE,
     build_followup_dashboard_summary,
@@ -97,6 +98,7 @@ FEEDBACK_SYNC_LAUNCHD_LABEL = "com.jobhuntcopilot.feedback-sync"
 FEEDBACK_SYNC_INTERVAL_SECONDS = DELAYED_FEEDBACK_POLL_INTERVAL_MINUTES * 60
 FEEDBACK_SYNC_SCHEDULER_NAME = "job-hunt-copilot-feedback-sync"
 FEEDBACK_SYNC_SCHEDULER_TYPE = "launchd"
+FOLLOWUP_WORKER_LAUNCHD_LABEL = "com.jobhuntcopilot.followups"
 LOCAL_RUNTIME_COMPONENT = "local_runtime_control"
 JOB_POSTING_STATUS_SOURCED = "sourced"
 JOB_POSTING_STATUS_TAILORING_IN_PROGRESS = "tailoring_in_progress"
@@ -1431,6 +1433,50 @@ def materialize_feedback_sync_launchd_plist(
         "program_arguments": [str(paths.feedback_sync_cycle_entrypoint_path)],
         "stdout_log_path": str(paths.feedback_sync_stdout_log_path),
         "stderr_log_path": str(paths.feedback_sync_stderr_log_path),
+        "created": created,
+    }
+
+
+def render_followup_worker_launchd_plist_payload(paths: ProjectPaths) -> dict[str, Any]:
+    return {
+        "Label": FOLLOWUP_WORKER_LAUNCHD_LABEL,
+        "RunAtLoad": True,
+        "StartInterval": FOLLOWUP_INTERVAL_SECONDS,
+        "KeepAlive": False,
+        "WorkingDirectory": str(paths.project_root),
+        "ProgramArguments": [str(paths.followup_cycle_entrypoint_path), "--send"],
+        "StandardOutPath": str(paths.followup_worker_stdout_log_path),
+        "StandardErrorPath": str(paths.followup_worker_stderr_log_path),
+    }
+
+
+def render_followup_worker_launchd_plist(paths: ProjectPaths) -> str:
+    payload = render_followup_worker_launchd_plist_payload(paths)
+    return plistlib.dumps(payload, fmt=plistlib.FMT_XML, sort_keys=False).decode("utf-8")
+
+
+def materialize_followup_worker_launchd_plist(
+    project_root: Path | str | None = None,
+) -> dict[str, Any]:
+    paths = ProjectPaths.from_root(project_root)
+    paths.ops_logs_dir.mkdir(parents=True, exist_ok=True)
+    paths.ops_launchd_dir.mkdir(parents=True, exist_ok=True)
+
+    rendered = render_followup_worker_launchd_plist(paths)
+    created = not paths.followup_worker_plist_path.exists()
+    write_text_atomic(paths.followup_worker_plist_path, rendered)
+    paths.followup_worker_plist_path.chmod(0o644)
+
+    return {
+        "contract_version": CONTRACT_VERSION,
+        "generated_at": now_utc_iso(),
+        "project_root": str(paths.project_root),
+        "plist_path": str(paths.followup_worker_plist_path),
+        "launchd_label": FOLLOWUP_WORKER_LAUNCHD_LABEL,
+        "poll_interval_seconds": FOLLOWUP_INTERVAL_SECONDS,
+        "program_arguments": [str(paths.followup_cycle_entrypoint_path), "--send"],
+        "stdout_log_path": str(paths.followup_worker_stdout_log_path),
+        "stderr_log_path": str(paths.followup_worker_stderr_log_path),
         "created": created,
     }
 

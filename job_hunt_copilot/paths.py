@@ -199,6 +199,10 @@ class ProjectPaths:
         return self.ops_scripts_dir / "materialize_feedback_sync_plist.py"
 
     @property
+    def materialize_followup_plist_script_path(self) -> Path:
+        return self.ops_scripts_dir / "materialize_followup_plist.py"
+
+    @property
     def control_agent_script_path(self) -> Path:
         return self.ops_scripts_dir / "control_agent.py"
 
