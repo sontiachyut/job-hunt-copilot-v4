@@ -4150,6 +4150,7 @@ def test_general_learning_draft_persists_without_posting_or_resume(tmp_path: Pat
         project_root=project_root,
         contact_id="ct_general",
         current_time="2026-04-06T20:30:00Z",
+        renderer=DeterministicOutreachDraftRenderer(),
     )
 
     drafted = result.drafted_message
@@ -4182,6 +4183,44 @@ def test_general_learning_draft_persists_without_posting_or_resume(tmp_path: Pat
     assert send_result_payload.get("job_posting_id") is None
     assert send_result_payload["outreach_mode"] == "general_learning"
     assert send_result_payload["send_status"] == MESSAGE_STATUS_GENERATED
+
+    connection.close()
+
+
+def test_general_learning_default_renderer_fails_closed_without_manual_override(tmp_path: Path):
+    project_root, paths = bootstrap_project(tmp_path)
+    connection = connect_database(project_root / "job_hunt_copilot.db")
+    write_sender_profile(paths)
+    connection.execute(
+        """
+        INSERT INTO contacts (
+          contact_id, identity_key, display_name, company_name, origin_component, contact_status,
+          full_name, current_working_email, position_title, created_at, updated_at
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        """,
+        (
+            "ct_general_default",
+            "default-fail-closed|acme-robotics",
+            "Default Fail Closed",
+            "Acme Robotics",
+            "manual_capture",
+            "identified",
+            "Default Fail Closed",
+            "default.fail.closed@acme.example",
+            "Engineering Manager",
+            "2026-04-06T20:00:00Z",
+            "2026-04-06T20:00:00Z",
+        ),
+    )
+    connection.commit()
+
+    with pytest.raises(OutreachDraftingError, match="Codex-only"):
+        generate_general_learning_draft(
+            connection,
+            project_root=project_root,
+            contact_id="ct_general_default",
+            current_time="2026-04-06T20:30:00Z",
+        )
 
     connection.close()
 
@@ -4222,6 +4261,7 @@ def test_general_learning_send_execution_drafts_sends_and_polls_feedback(tmp_pat
         contact_id="ct_general_send",
         current_time="2026-04-06T20:30:00Z",
         sender=sender,
+        renderer=DeterministicOutreachDraftRenderer(),
         feedback_observer=observer,
     )
 

@@ -27,6 +27,12 @@ from .gmail_alerts import (
     GmailLinkedInAlertMailboxCollector,
     gmail_mailbox_polling_configured,
 )
+from .followups import (
+    FOLLOWUP_SCHEDULER_NAME,
+    FOLLOWUP_SCHEDULER_TYPE,
+    build_followup_dashboard_summary,
+    run_followup_cycle,
+)
 from .maintenance import (
     MaintenanceStateError,
     MaintenanceDependencies,
@@ -4023,6 +4029,62 @@ def execute_delayed_feedback_sync(
         "current_time": effective_time,
         "control_state": dict(control_state.values),
         "feedback_sync": result.as_dict(),
+    }
+
+
+def execute_followup_cycle(
+    *,
+    project_root: Path | str | None = None,
+    current_time: str | None = None,
+    dry_run: bool = True,
+) -> dict[str, Any]:
+    paths = ProjectPaths.from_root(project_root)
+    migration = initialize_database(paths.db_path)
+    effective_time = current_time or now_utc_iso()
+
+    with connect_canonical_database(paths) as connection:
+        control_state = read_agent_control_state(connection, timestamp=effective_time)
+        if not control_state.agent_enabled and control_state.agent_mode == AGENT_MODE_STOPPED:
+            return {
+                "contract_version": CONTRACT_VERSION,
+                "produced_at": now_utc_iso(),
+                "project_root": str(paths.project_root),
+                "database": {
+                    "db_path": str(migration.db_path),
+                    "applied_migrations": migration.applied_migrations,
+                    "user_version": migration.user_version,
+                },
+                "status": "skipped_agent_stopped",
+                "current_time": effective_time,
+                "dry_run": dry_run,
+                "control_state": dict(control_state.values),
+            }
+
+        result = run_followup_cycle(
+            connection,
+            project_root=paths.project_root,
+            current_time=effective_time,
+            dry_run=dry_run,
+            scheduler_name=FOLLOWUP_SCHEDULER_NAME,
+            scheduler_type=FOLLOWUP_SCHEDULER_TYPE,
+        )
+        dashboard = build_followup_dashboard_summary(connection, current_time=effective_time)
+
+    return {
+        "contract_version": CONTRACT_VERSION,
+        "produced_at": now_utc_iso(),
+        "project_root": str(paths.project_root),
+        "database": {
+            "db_path": str(migration.db_path),
+            "applied_migrations": migration.applied_migrations,
+            "user_version": migration.user_version,
+        },
+        "status": "completed",
+        "current_time": effective_time,
+        "dry_run": dry_run,
+        "control_state": dict(control_state.values),
+        "followup_cycle": result.as_dict(),
+        "followup_dashboard": dashboard,
     }
 
 

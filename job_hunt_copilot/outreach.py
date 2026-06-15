@@ -1992,7 +1992,6 @@ class CodexRoleSplitOutreachDraftRenderer(OutreachDraftRenderer):
         self._paths = ProjectPaths.from_root(project_root)
         self._codex_bin = codex_bin or _resolve_outreach_codex_bin()
         self._model = model
-        self._fallback_renderer = DeterministicOutreachDraftRenderer()
 
     def render_role_targeted(self, context: RoleTargetedDraftContext) -> RenderedDraft:
         recipient_path = _select_role_split_recipient_path(context)
@@ -2038,10 +2037,24 @@ class CodexRoleSplitOutreachDraftRenderer(OutreachDraftRenderer):
         )
 
     def render_general_learning(self, context: GeneralLearningDraftContext) -> RenderedDraft:
-        return self._fallback_renderer.render_general_learning(context)
+        raise OutreachDraftingError(
+            "Scheduled/autonomous general-learning drafting is Codex-only on main, "
+            "and the legacy deterministic general-learning renderer is no longer reachable by default. "
+            "Pass an explicit manual renderer for owner-invoked helper flows."
+        )
 
 
 def _resolve_role_targeted_draft_renderer(
+    renderer: OutreachDraftRenderer | None,
+    *,
+    project_root: Path | str,
+) -> OutreachDraftRenderer:
+    if renderer is not None:
+        return renderer
+    return CodexRoleSplitOutreachDraftRenderer(project_root=project_root)
+
+
+def _resolve_general_learning_draft_renderer(
     renderer: OutreachDraftRenderer | None,
     *,
     project_root: Path | str,
@@ -3106,6 +3119,7 @@ def _refresh_persisted_role_targeted_generated_draft(
             "body_html_artifact_path": body_html_artifact_path,
             "opener_decision_artifact_path": opener_decision_artifact_path,
             "resume_attachment_path": resume_attachment_path,
+            **_role_targeted_origin_metadata_from_rendered(rendered),
         },
         produced_at=current_time,
     )
@@ -3146,7 +3160,10 @@ def generate_general_learning_draft(
         recipient_profile=recipient_profile,
         sender=sender,
     )
-    draft_renderer = renderer or DeterministicOutreachDraftRenderer()
+    draft_renderer = _resolve_general_learning_draft_renderer(
+        renderer,
+        project_root=project_root,
+    )
     message_id = new_canonical_id("outreach_messages")
     rendered = draft_renderer.render_general_learning(context)
     drafted_message = _persist_rendered_general_learning_draft(
@@ -4323,6 +4340,7 @@ def _publish_role_targeted_send_result(
         role_title,
         active_message.outreach_message_id,
     )
+    existing_origin_metadata = _load_existing_role_targeted_origin_metadata(send_result_path)
     published = publish_json_artifact(
         connection,
         paths,
@@ -4352,6 +4370,7 @@ def _publish_role_targeted_send_result(
                 role_title=role_title,
                 outreach_message_id=active_message.outreach_message_id,
             ),
+            **existing_origin_metadata,
         },
         produced_at=current_time,
         reason_code=reason_code,
@@ -4362,6 +4381,46 @@ def _publish_role_targeted_send_result(
         json.dumps(published.contract, indent=2) + "\n",
     )
     return str(send_result_path.resolve())
+
+
+def _role_targeted_origin_metadata_from_rendered(
+    rendered: RenderedDraft,
+) -> dict[str, Any]:
+    posture_family = _role_targeted_posture_family_from_rendered(rendered)
+    origin_kind = "codex_role_split" if posture_family in {"technical", "managerial"} else "unknown"
+    return {
+        "autonomous_origin": True,
+        "draft_origin_kind": origin_kind,
+        "draft_posture_family": posture_family,
+    }
+
+
+def _role_targeted_posture_family_from_rendered(rendered: RenderedDraft) -> str | None:
+    debug_payload = rendered.debug_payload if isinstance(rendered.debug_payload, Mapping) else None
+    drafting_path = _normalize_optional_text(debug_payload.get("drafting_path")) if debug_payload else None
+    if drafting_path in {"technical", "managerial"}:
+        return drafting_path
+    if rendered.subject == TECHNICAL_PATH_SUBJECT:
+        return "technical"
+    if rendered.subject and rendered.subject.startswith("Interest in the ") and " role at " in rendered.subject:
+        return "managerial"
+    return None
+
+
+def _load_existing_role_targeted_origin_metadata(send_result_path: Path) -> dict[str, Any]:
+    if not send_result_path.exists():
+        return {}
+    try:
+        payload = _read_json_file(send_result_path)
+    except (OSError, json.JSONDecodeError, ValueError):
+        return {}
+    if not isinstance(payload, Mapping):
+        return {}
+    metadata: dict[str, Any] = {}
+    for key in ("autonomous_origin", "draft_origin_kind", "draft_posture_family"):
+        if key in payload:
+            metadata[key] = payload[key]
+    return metadata
 
 
 def _transition_contact_to_sent(
@@ -7600,6 +7659,7 @@ def _persist_rendered_draft(
             "body_html_artifact_path": body_html_artifact_path,
             "opener_decision_artifact_path": opener_decision_artifact_path,
             "resume_attachment_path": resume_attachment_path,
+            **_role_targeted_origin_metadata_from_rendered(rendered),
         },
         produced_at=current_time,
     )

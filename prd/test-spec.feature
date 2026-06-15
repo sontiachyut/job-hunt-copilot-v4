@@ -1861,3 +1861,202 @@ Feature: Job Hunt Copilot next-build acceptance
       Then role-targeted flow still requires successful mandatory agent review before outreach begins
       And repeat-contact ambiguity still routes to review
       And evidence-grounding rules still apply to the resulting message
+
+  @followups @codex @system
+  Rule: Codex follow-up worker acceptance
+
+    Scenario: Codex follow-up behavior extends the existing dedicated follow-up worker
+      Given the runtime already includes the dedicated follow-up worker
+      When Codex-based follow-up drafting is enabled
+      Then the same dedicated follow-up worker remains the integration point for planning, drafting, review, and send execution
+      And the worker continues to use canonical `outreach_followup_plans`, `followup_cycle_runs`, and `outreach_messages` state
+      And the build does not introduce a second parallel follow-up pipeline with separate canonical storage
+
+    Scenario: Automatic follow-up eligibility is limited to Codex-origin autonomous originals
+      Given historical and current sent `role_targeted` original emails exist
+      When automatic follow-up eligibility is evaluated
+      Then only autonomous original `role_targeted` emails are candidates
+      And only originals produced by the newer Codex role-split production path are eligible
+      And historical deterministic-origin originals are skipped with durable structured reasons rather than silently disappearing
+
+    Scenario: Codex-origin detection uses provenance precedence before body fallback
+      Given an original sent `role_targeted` email is being classified for follow-up eligibility
+      When the worker determines whether that original came from the Codex role-split production path
+      Then it prefers explicit persisted origin metadata first
+      And it prefers nearby local role-split artifact evidence second
+      And it uses original sent email body or subject only as the last fallback
+      And body-style fallback succeeds only for a strong match to the known technical or managerial production first-email families
+
+    Scenario: Follow-up cadence and due-time logic use only the configured business-day rules
+      Given an eligible original outreach thread has not yet received any follow-up
+      When the worker determines whether follow-up `1`, `2`, or `3` is due
+      Then the cadence uses `4`, `5`, and `7` business days between touches
+      And business day means weekdays only in `America/Phoenix`
+      And no extra subjective `too recent` delay is applied beyond that cadence
+      And weekend-adjacent originals receive no special timing exception
+      And an original sent outside preferred business hours does not by itself block a later due follow-up
+
+    Scenario: Historical and newly due follow-ups share one oldest-first rollout queue
+      Given historical Codex-origin originals and newly due follow-up candidates both exist
+      When the first live follow-up rollout is enabled
+      Then the worker draws from one combined eligible queue
+      And the queue is ordered by oldest original sent email first
+      And older threads do not jump directly to follow-up `2` or `3` solely because more time has elapsed
+
+    Scenario: The worker materializes only the next relevant follow-up step
+      Given an eligible original outreach thread has not yet received any follow-up
+      When the worker evaluates whether the thread should enter automatic follow-up
+      Then it creates or refreshes only the next due or next-upcoming sequence step
+      And it does not create all three follow-up plan rows upfront
+      And follow-up `2` is not materialized until follow-up `1` has been sent successfully
+      And follow-up `3` is not materialized until follow-up `2` has been sent successfully
+
+    Scenario: Follow-up suppression stays thread-rooted per contact while remaining cross-contact independent
+      Given multiple original outreach threads may exist across one or more contacts
+      When follow-up suppression and selection are evaluated
+      Then the worker allows only one active automatic follow-up thread per contact at a time
+      And other unreplied threads at the same company do not suppress a different contact by default
+      And any inbound reply or explicit do-not-contact state still blocks future automatic follow-up for that same contact
+
+    Scenario: Automatic follow-up sends stay inside the business-hours window
+      Given an otherwise eligible automatic follow-up becomes due
+      When the worker decides whether it may send immediately
+      Then it only sends on Monday through Friday in `America/Phoenix`
+      And it only sends between `5:00 AM` and `5:00 PM` local time
+      And a due thread outside that window remains pending rather than sending overnight
+
+    Scenario: Follow-up prompts stay bounded, split by posture, and return structured output
+      Given a due Codex-origin follow-up candidate is ready for drafting
+      When the worker prepares the `codex exec` call
+      Then it chooses the technical or managerial follow-up prompt family that matches the original first-email posture
+      And the bounded follow-up pack includes the full exact original outbound email and any earlier sent follow-ups in the same thread
+      And role or company summary, sender-evidence summary, and thread metadata remain compact
+      And the prompt does not receive the full raw JD, full raw resume, or full mailbox thread by default
+      And the model returns JSON-only structured output rather than a free-form full email blob
+
+    Scenario: Deterministic runtime owns non-variable follow-up rendering boundaries
+      Given a Codex follow-up draft payload has been returned
+      When deterministic validation and rendering finalize the message
+      Then the original thread subject behavior is preserved rather than regenerated
+      And the recovered salutation is owned by deterministic runtime
+      And the fixed short signoff `Best,` plus `Achyutaram Sonti` is preserved across follow-up `1`, `2`, and `3`
+      And follow-up `3` includes the exact deterministic final-touch sentence
+
+    Scenario: Follow-up content remains compact and does not reopen prohibited first-email material
+      Given an automatic follow-up draft has been rendered
+      When deterministic validation checks the body
+      Then the follow-up stays within two short paragraphs by default, with a third short paragraph allowed only when truly needed
+      And follow-up `1` remains mostly a reminder
+      And follow-up `2` may include only one compact mutual-fit reminder
+      And follow-up `3` stays light and final rather than proof-heavy
+      And the draft does not reintroduce `Job Hunt Copilot` details by default
+      And the draft does not mention resume or attachment language by default
+      And the draft does not quote prior thread text, emit bullets, or emit Markdown formatting
+
+    Scenario: Technical and managerial follow-ups preserve the original outreach posture
+      Given both technical-path and managerial-path original emails exist
+      When follow-ups are drafted for those threads
+      Then technical follow-ups remain guidance-oriented and do not switch into direct application language
+      And managerial follow-ups remain role-interest-oriented with the specific role still anchoring the thread
+      And later managerial follow-ups may soften into role or team perspective framing without becoming generic networking notes
+
+    Scenario: Follow-up sending uses same-thread delivery and single-recipient safety
+      Given a due automatic follow-up has passed all eligibility and content gates
+      When the worker sends the follow-up
+      Then it sends as an actual reply in the original Gmail thread
+      And it preserves the original recipient envelope
+      And it does not auto-send follow-ups for multi-recipient original threads
+      And it does not attach a resume or any other file by default
+
+    Scenario: Reply, bounce, and thread-state checks suppress automatic follow-up before send
+      Given a follow-up candidate exists for a sent original outreach thread
+      When the worker performs reply, bounce, and same-thread checks
+      Then any bounce tied to the original thread suppresses automatic follow-up
+      And any inbound reply after the original `sent_at` suppresses automatic follow-up
+      And ambiguous reply classification still hands the contact to the owner manually without requiring sentiment classification first
+      And the worker rechecks the thread immediately before send so stale pre-draft evidence cannot allow an invalid follow-up
+
+    Scenario: First live rollout is capped at ten successful sends and then pauses
+      Given the owner enables live automatic follow-up sending for the first time
+      When the worker sends follow-ups successfully
+      Then the first live rollout stops after `10` successful follow-up sends
+      And only follow-up auto-send pauses at that point
+      And the worker surfaces an inspection packet summarizing those ten sends plus compact skipped or blocked context
+      And the worker remains paused until the owner explicitly resumes it
+
+    Scenario: Shared outbound pacing favors new role-targeted outreach ahead of follow-ups
+      Given both a new role-targeted outreach email and a due automatic follow-up are simultaneously send-eligible
+      When the shared outbound send lane chooses the next message
+      Then the new role-targeted outreach email is sent first
+      And the follow-up waits for the next available shared pacing gap
+      And follow-up sends use the same randomized `6` to `10` minute inter-send gap policy as normal outreach
+
+    Scenario: Repeated follow-up drafting failures stop the automatic sequence for that thread
+      Given a due automatic follow-up step repeatedly fails Codex drafting validation
+      When the same follow-up step exhausts `3` automatic drafting retries
+      Then that follow-up step becomes held for owner review
+      And the automatic follow-up sequence stops for that thread
+      And the worker does not materialize or send the later follow-up step automatically until the owner intervenes
+
+    Scenario: Follow-up drafts are rendered only when a thread is actually due
+      Given an otherwise eligible follow-up thread will become due later but is not due yet
+      When the worker evaluates the thread before that due time
+      Then it does not pre-render or persist a follow-up draft just because the thread is due soon
+      And it waits until the thread is actually due before creating the draft artifact
+
+    Scenario: Sent follow-ups persist compact debug context without requiring prompt dumps
+      Given an automatic follow-up has been sent successfully
+      When follow-up audit artifacts and canonical state are inspected
+      Then the sent follow-up persists a compact `why sent` review/debug note
+      And that note includes sequence step, preserved posture family, grounding path, fallback usage when applicable, and role or company wording mode
+      And the system does not require storing a verbose prompt dump or chain-of-thought style reasoning trace for normal follow-up audit
+
+  @outreach @codex @cutover @system
+  Rule: Codex-only autonomous outreach cutover acceptance
+
+    Scenario: Autonomous production workers cannot reach retired deterministic renderers
+      Given `main` has been cut over to Codex-only autonomous outreach
+      When the supervisor, follow-up worker, or their mirrored dry-run or review rendering paths prepare a production draft
+      Then those workers use only the Codex-backed production drafting path
+      And they do not reach the retired deterministic or shared-template renderer through a live send path
+      And they do not reach the retired deterministic or shared-template renderer through dry-run, inspection, or review rendering
+
+    Scenario: Manual-only legacy helpers may remain but stay isolated from autonomous workers
+      Given some legacy deterministic drafting helper still exists for owner-invoked manual use
+      When autonomous runtime wiring and controls are inspected
+      Then that helper is not reachable from supervisor, follow-up worker, rollout evaluation, or other autonomous worker entrypoints
+      And runtime control state and incidents continue to describe autonomous production as Codex-only
+
+    Scenario: Deterministic-origin unsent production backlog is auto-retired during cutover
+      Given unsent autonomous outreach items still exist from the retired deterministic or shared-template renderer
+      When the Codex-only cutover repair runs
+      Then those unsent deterministic-origin items are moved into a non-resumable terminal state
+      And already-sent history and prior audit artifacts are preserved
+      And autonomous workers do not later resurrect that retired backlog automatically
+
+    Scenario: Deterministic-origin automatic follow-up plans are auto-skipped during cutover
+      Given pending automatic follow-up plans still exist for deterministic-origin original outreach threads
+      When the Codex-only cutover repair runs
+      Then those follow-up plans are marked terminal skipped with a structured cutover reason
+      And they remain queryable for audit
+      And the follow-up worker no longer treats them as actionable automatic follow-up backlog
+
+    Scenario: Unknown-origin autonomous backlog fails closed during cutover
+      Given an unsent autonomous production outreach item cannot be proven valid under the active Codex-origin rules
+      When the cutover evaluates whether that item may remain automatically sendable
+      Then the worker fails closed
+      And it retires, skips, or otherwise removes that item from autonomous sendability with a structured unknown-origin reason
+      And it does not allow the item to continue only because the visible content looks acceptable
+
+    Scenario: Autonomous Codex outage raises incident and pauses the smallest safe worker scope
+      Given an autonomous production worker can no longer initialize or execute the required Codex drafting path
+      When that worker next attempts to draft within its production scope
+      Then the system creates a clear incident describing the Codex outage
+      And it pauses the smallest autonomous worker scope that prevents repeated retries or accidental sends
+      And it fails closed rather than falling back to a retired deterministic or shared-template production renderer
+
+    Scenario: Surviving Codex-origin unsent backlog is refreshed before autonomous send
+      Given an unsent autonomous production outreach item survives the Codex-only cutover because its origin is valid
+      When that item later becomes sendable
+      Then the worker refreshes it from the current accepted Codex drafting logic when the normal stale-draft refresh gates apply
+      And the cutover does not assume an older unsent Codex-origin draft is automatically safe to send unchanged
