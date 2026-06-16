@@ -19,6 +19,8 @@ from .artifacts import ArtifactLinkage, write_json_contract
 from .contracts import CONTRACT_VERSION
 from .llm_usage import record_codex_usage_event
 from .outreach import (
+    AUTONOMOUS_CODEX_DRAFT_TIMEOUT_SECONDS,
+    CODEX_TIMEOUT_EXIT_CODE,
     JOB_HUNT_COPILOT_REPO_URL,
     MANAGERIAL_PATH_CTA_QUESTION,
     MAX_AUTOMATIC_TRANSIENT_SEND_RETRIES,
@@ -33,6 +35,7 @@ from .outreach import (
     SendAttemptOutcome,
     TECHNICAL_PATH_SUBJECT,
     TRANSIENT_SEND_RETRY_COOLDOWN_MINUTES,
+    _normalize_subprocess_stream_text,
     is_role_targeted_sending_actionable_now,
 )
 from .paths import ProjectPaths
@@ -2883,23 +2886,54 @@ def _run_followup_codex_payload(
         output_path=output_path,
         model=model,
     )
-    completed = subprocess.run(
-        command,
-        input=prompt,
-        text=True,
-        capture_output=True,
-        check=False,
-        env=_build_codex_exec_env(codex_bin),
-    )
-    stdout_path.write_text(completed.stdout, encoding="utf-8")
-    stderr_path.write_text(completed.stderr, encoding="utf-8")
+    try:
+        completed = subprocess.run(
+            command,
+            input=prompt,
+            text=True,
+            capture_output=True,
+            check=False,
+            env=_build_codex_exec_env(codex_bin),
+            timeout=AUTONOMOUS_CODEX_DRAFT_TIMEOUT_SECONDS,
+        )
+        stdout_text = completed.stdout
+        stderr_text = completed.stderr
+        exit_code = completed.returncode
+    except subprocess.TimeoutExpired as exc:
+        stdout_text = _normalize_subprocess_stream_text(exc.stdout)
+        stderr_text = _normalize_subprocess_stream_text(exc.stderr)
+        stdout_path.write_text(stdout_text, encoding="utf-8")
+        stderr_path.write_text(stderr_text, encoding="utf-8")
+        record_codex_usage_event(
+            paths,
+            component_name=FOLLOWUP_COMPONENT,
+            operation_name=f"followup-sequence-{context.sequence}-{context.posture_family}",
+            invocation_status="failed",
+            exit_code=CODEX_TIMEOUT_EXIT_CODE,
+            stderr_text=stderr_text,
+            run_directory_path=run_dir,
+            prompt_artifact_path=prompt_path,
+            output_artifact_path=output_path,
+            stdout_artifact_path=stdout_path,
+            stderr_artifact_path=stderr_path,
+            job_posting_id=context.candidate.job_posting_id,
+            contact_id=context.candidate.contact_id,
+            outreach_message_id=context.candidate.original_outreach_message_id,
+            created_at=current_time,
+        )
+        raise FollowUpDraftingError(
+            "`codex exec` timed out after "
+            f"{AUTONOMOUS_CODEX_DRAFT_TIMEOUT_SECONDS} seconds. See {stderr_path}."
+        ) from exc
+    stdout_path.write_text(stdout_text, encoding="utf-8")
+    stderr_path.write_text(stderr_text, encoding="utf-8")
     record_codex_usage_event(
         paths,
         component_name=FOLLOWUP_COMPONENT,
         operation_name=f"followup-sequence-{context.sequence}-{context.posture_family}",
-        invocation_status="succeeded" if completed.returncode == 0 else "failed",
-        exit_code=completed.returncode,
-        stderr_text=completed.stderr,
+        invocation_status="succeeded" if exit_code == 0 else "failed",
+        exit_code=exit_code,
+        stderr_text=stderr_text,
         run_directory_path=run_dir,
         prompt_artifact_path=prompt_path,
         output_artifact_path=output_path,
@@ -2910,9 +2944,9 @@ def _run_followup_codex_payload(
         outreach_message_id=context.candidate.original_outreach_message_id,
         created_at=current_time,
     )
-    if completed.returncode != 0:
+    if exit_code != 0:
         raise FollowUpDraftingError(
-            f"`codex exec` failed with exit code {completed.returncode}. See {stderr_path}."
+            f"`codex exec` failed with exit code {exit_code}. See {stderr_path}."
         )
     if not output_path.exists():
         raise FollowUpDraftingError(
@@ -3007,7 +3041,11 @@ def _build_codex_exec_command(
 
 def _is_codex_outage_error(message: str) -> bool:
     normalized = message.lower()
-    return "`codex` binary is required" in normalized or "`codex exec` failed" in normalized
+    return (
+        "`codex` binary is required" in normalized
+        or "`codex exec` failed" in normalized
+        or "`codex exec` timed out" in normalized
+    )
 
 
 def _workspace_slug(value: str) -> str:

@@ -18,6 +18,8 @@ from pydantic import BaseModel
 from job_hunt_copilot.bootstrap import run_bootstrap
 from job_hunt_copilot.delivery_feedback import DeliveryFeedbackSignal, OBSERVATION_SCOPE_IMMEDIATE
 from job_hunt_copilot.outreach import (
+    AUTONOMOUS_CODEX_DRAFT_TIMEOUT_SECONDS,
+    CODEX_TIMEOUT_EXIT_CODE,
     CodexRoleSplitOutreachDraftRenderer,
     CONTACT_STATUS_EXHAUSTED,
     CONTACT_STATUS_OUTREACH_IN_PROGRESS,
@@ -4445,7 +4447,7 @@ def test_codex_role_split_renderer_generates_technical_path_body_and_debug_artif
         current_time="2026-04-06T20:20:00Z",
     )
 
-    def fake_run(command, *, input, text, capture_output, check, env):  # type: ignore[no-untyped-def]
+    def fake_run(command, *, input, text, capture_output, check, env, timeout):  # type: ignore[no-untyped-def]
         assert "- employment_history_summary:" in input
         assert "1. Software Engineer at InsightRX — 2021-01-01 to 2023-12-31" in input
         assert "2. Senior Software Engineer at Lattice — current, start 2024-01-01" in input
@@ -4641,6 +4643,7 @@ def test_run_codex_structured_payload_supplies_runtime_env_for_node_launcher(
         capture_output: bool,
         check: bool,
         env: Mapping[str, str],
+        timeout: int,
     ) -> subprocess.CompletedProcess[str]:
         output_path = Path(command[command.index("-o") + 1])
         output_path.write_text(json.dumps({"ok": "yes"}) + "\n", encoding="utf-8")
@@ -4684,6 +4687,67 @@ def test_run_codex_structured_payload_supplies_runtime_env_for_node_launcher(
     assert usage_row["exit_code"] == 0
     assert usage_row["total_tokens"] is None
     assert usage_row["usage_parse_status"] == "missing"
+
+
+def test_run_codex_structured_payload_times_out_and_records_failed_usage_event(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    class MiniPayload(BaseModel):
+        ok: str
+
+    project_root, paths = bootstrap_project(tmp_path)
+
+    def fake_run(
+        command: list[str],
+        *,
+        input: str,
+        text: bool,
+        capture_output: bool,
+        check: bool,
+        env: Mapping[str, str],
+        timeout: int,
+    ) -> subprocess.CompletedProcess[str]:
+        raise subprocess.TimeoutExpired(
+            cmd=command,
+            timeout=timeout,
+            output="partial stdout",
+            stderr="partial stderr",
+        )
+
+    monkeypatch.setattr("job_hunt_copilot.outreach.subprocess.run", fake_run)
+
+    with pytest.raises(OutreachDraftingError, match="timed out after"):
+        _run_codex_structured_payload(
+            paths=paths,
+            codex_bin="/opt/homebrew/bin/codex",
+            model=None,
+            prompt="hello",
+            schema={"type": "object"},
+            model_class=MiniPayload,
+            run_prefix="timeout-role-split",
+            lead_id=None,
+            job_posting_id=None,
+            company_name="Acme",
+            role_title="Platform Engineer",
+            contact_id=None,
+        )
+
+    connection = connect_database(project_root / "job_hunt_copilot.db")
+    usage_row = connection.execute(
+        """
+        SELECT operation_name, invocation_status, exit_code, stderr_artifact_path
+        FROM llm_usage_events
+        ORDER BY created_at DESC
+        LIMIT 1
+        """
+    ).fetchone()
+    connection.close()
+    assert usage_row["operation_name"] == "timeout-role-split"
+    assert usage_row["invocation_status"] == "failed"
+    assert usage_row["exit_code"] == CODEX_TIMEOUT_EXIT_CODE
+    stderr_path = paths.project_root / str(usage_row["stderr_artifact_path"])
+    assert stderr_path.read_text(encoding="utf-8") == "partial stderr"
 
 
 def test_parse_codex_usage_handles_comma_formatted_totals() -> None:
@@ -4761,7 +4825,7 @@ def test_codex_role_split_renderer_generates_managerial_path_body_and_debug_arti
         current_time="2026-04-06T20:20:00Z",
     )
 
-    def fake_run(command, *, input, text, capture_output, check, env):  # type: ignore[no-untyped-def]
+    def fake_run(command, *, input, text, capture_output, check, env, timeout):  # type: ignore[no-untyped-def]
         assert "kind of role-relevant engineering problems I've been trying to work on." in input
         assert "- sender_core_summary:" in input
         assert '- Then render the fixed posting-link line: "Posting link: https://careers.acme.example/jobs/123"' in input

@@ -58,6 +58,8 @@ AUTOMATIC_SEND_SET_LIMIT = 3
 AUTOMATIC_POSTING_DAILY_SEND_CAP = 4
 MIN_INTER_SEND_GAP_MINUTES = 6
 MAX_INTER_SEND_GAP_MINUTES = 10
+AUTONOMOUS_CODEX_DRAFT_TIMEOUT_SECONDS = 600
+CODEX_TIMEOUT_EXIT_CODE = 124
 JOB_HUNT_COPILOT_REPO_URL = "https://github.com/sontiachyut/job-hunt-copilot-v4"
 TECHNICAL_PATH_SUBJECT = "Learning from your career path"
 TECHNICAL_PATH_PARAGRAPH_2 = (
@@ -2361,23 +2363,53 @@ def _run_codex_structured_payload(
         output_path=output_path,
         model=model,
     )
-    completed = subprocess.run(
-        command,
-        input=prompt,
-        text=True,
-        capture_output=True,
-        check=False,
-        env=_build_outreach_codex_exec_env(codex_bin),
-    )
-    stdout_path.write_text(completed.stdout, encoding="utf-8")
-    stderr_path.write_text(completed.stderr, encoding="utf-8")
+    try:
+        completed = subprocess.run(
+            command,
+            input=prompt,
+            text=True,
+            capture_output=True,
+            check=False,
+            env=_build_outreach_codex_exec_env(codex_bin),
+            timeout=AUTONOMOUS_CODEX_DRAFT_TIMEOUT_SECONDS,
+        )
+        stdout_text = completed.stdout
+        stderr_text = completed.stderr
+        exit_code = completed.returncode
+    except subprocess.TimeoutExpired as exc:
+        stdout_text = _normalize_subprocess_stream_text(exc.stdout)
+        stderr_text = _normalize_subprocess_stream_text(exc.stderr)
+        stdout_path.write_text(stdout_text, encoding="utf-8")
+        stderr_path.write_text(stderr_text, encoding="utf-8")
+        record_codex_usage_event(
+            paths,
+            component_name=OUTREACH_COMPONENT,
+            operation_name=run_prefix,
+            invocation_status="failed",
+            exit_code=CODEX_TIMEOUT_EXIT_CODE,
+            stderr_text=stderr_text,
+            run_directory_path=run_dir,
+            prompt_artifact_path=prompt_path,
+            output_artifact_path=output_path,
+            stdout_artifact_path=stdout_path,
+            stderr_artifact_path=stderr_path,
+            lead_id=lead_id,
+            job_posting_id=job_posting_id,
+            contact_id=contact_id,
+        )
+        raise OutreachDraftingError(
+            "`codex exec` timed out after "
+            f"{AUTONOMOUS_CODEX_DRAFT_TIMEOUT_SECONDS} seconds. See {stderr_path}."
+        ) from exc
+    stdout_path.write_text(stdout_text, encoding="utf-8")
+    stderr_path.write_text(stderr_text, encoding="utf-8")
     record_codex_usage_event(
         paths,
         component_name=OUTREACH_COMPONENT,
         operation_name=run_prefix,
-        invocation_status="succeeded" if completed.returncode == 0 else "failed",
-        exit_code=completed.returncode,
-        stderr_text=completed.stderr,
+        invocation_status="succeeded" if exit_code == 0 else "failed",
+        exit_code=exit_code,
+        stderr_text=stderr_text,
         run_directory_path=run_dir,
         prompt_artifact_path=prompt_path,
         output_artifact_path=output_path,
@@ -2387,9 +2419,9 @@ def _run_codex_structured_payload(
         job_posting_id=job_posting_id,
         contact_id=contact_id,
     )
-    if completed.returncode != 0:
+    if exit_code != 0:
         raise OutreachDraftingError(
-            f"`codex exec` failed with exit code {completed.returncode}. See {stderr_path}."
+            f"`codex exec` failed with exit code {exit_code}. See {stderr_path}."
         )
     if not output_path.exists():
         raise OutreachDraftingError(
@@ -2409,6 +2441,14 @@ def _run_codex_structured_payload(
         raise OutreachDraftingError(
             f"Role-split draft payload failed validation. See {output_path}. Errors: {exc}"
         ) from exc
+
+
+def _normalize_subprocess_stream_text(stream: str | bytes | None) -> str:
+    if stream is None:
+        return ""
+    if isinstance(stream, bytes):
+        return stream.decode("utf-8", errors="replace")
+    return stream
 
 
 def _normalize_managerial_role_split_payload_dict(payload: dict[str, Any]) -> dict[str, Any]:

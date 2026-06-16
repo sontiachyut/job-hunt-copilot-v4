@@ -557,6 +557,43 @@ def test_draft_failures_retry_then_hold(tmp_path):
     assert plan["last_skip_reason"] == SKIP_REASON_DRAFT_RETRY_EXHAUSTED
 
 
+def test_codex_timeout_pauses_followup_auto_send(tmp_path):
+    project_root, connection = _bootstrap_connection(tmp_path)
+    _seed_sent_role_targeted_message(
+        connection,
+        project_root,
+        send_result_payload={
+            "draft_origin_kind": "codex_role_split",
+            "draft_posture_family": "technical",
+            "autonomous_origin": True,
+            "message_id_header": "<msg@example.com>",
+        },
+    )
+    _enable_followup_auto_send(connection)
+    inspector = FakeThreadInspector(ThreadInspectionResult(result="clear", checked_at=NOW))
+    renderer = FailingRenderer("`codex exec` timed out after 600 seconds. See ops/followups/example/codex.stderr.txt.")
+
+    result = run_followup_cycle(
+        connection,
+        project_root=project_root,
+        current_time=NOW,
+        dry_run=False,
+        thread_inspector=inspector,
+        renderer=renderer,
+    )
+
+    paused_value = connection.execute(
+        "SELECT control_value FROM agent_control_state WHERE control_key = ?",
+        (FOLLOWUP_AUTO_SEND_PAUSED_KEY,),
+    ).fetchone()[0]
+    plan = connection.execute("SELECT * FROM outreach_followup_plans").fetchone()
+
+    assert result.result == "codex_unavailable"
+    assert result.blocked_count == 1
+    assert paused_value == "true"
+    assert plan["plan_status"] == PLAN_STATUS_PENDING
+
+
 def test_priority_lane_holds_followup_when_new_role_targeted_send_exists(tmp_path):
     project_root, connection = _bootstrap_connection(tmp_path)
     _seed_sent_role_targeted_message(
