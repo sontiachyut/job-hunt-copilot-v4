@@ -101,6 +101,7 @@ SKIP_REASON_AMBIGUOUS_SEND = "ambiguous_send_state"
 SKIP_REASON_GROUNDING_INSUFFICIENT = "grounding_evidence_insufficient"
 SKIP_REASON_CONTACT_HARD_STOP = "contact_hard_stop"
 SKIP_REASON_AUTO_SEND_DISABLED = "followup_auto_send_disabled"
+SKIP_REASON_MISSING_SENDER_IDENTITY = "missing_sender_identity"
 SKIP_REASON_NON_CODEX_ORIGIN = "cutover_retired_deterministic_origin_thread"
 SKIP_REASON_UNKNOWN_ORIGIN = "unknown_origin_during_codex_cutover"
 SKIP_REASON_MANUAL_ORIGIN = "manual_origin_not_eligible"
@@ -111,6 +112,7 @@ SKIP_REASON_DRAFT_RETRY = "followup_draft_retry"
 SKIP_REASON_DRAFT_RETRY_EXHAUSTED = "followup_draft_retry_exhausted"
 SKIP_REASON_THREAD_NOT_DUE = "followup_not_due"
 SKIP_REASON_THREAD_OUTSIDE_WINDOW = "outside_followup_send_window"
+SKIP_REASON_POSTING_ARCHIVED_PRE_CUTOVER = "posting_archived_pre_cutover"
 
 FOLLOWUP_AUTO_SEND_ENABLED_KEY = "followup_auto_send_enabled"
 FOLLOWUP_AUTO_SEND_PAUSED_KEY = "followup_auto_send_paused"
@@ -377,7 +379,7 @@ class GmailThreadInspector:
             return ThreadInspectionResult(
                 result="unknown",
                 checked_at=current_time,
-                reason_code="missing_sender_identity",
+                reason_code=SKIP_REASON_MISSING_SENDER_IDENTITY,
                 message="Configured sender email could not be determined for thread classification.",
             )
         try:
@@ -659,6 +661,7 @@ def run_followup_cycle(
         )
         if followup_auto_send_available:
             _release_auto_send_disabled_holds(connection, current_time=effective_time)
+            _release_missing_sender_identity_holds(connection, current_time=effective_time)
         candidates = _load_candidate_plans(connection, current_time=effective_time, limit=resolved_batch_size)
         for candidate in candidates:
             counts["candidates_examined"] += 1
@@ -1123,6 +1126,7 @@ def _materialize_candidate_plans(
     current_time: str,
     limit: int,
 ) -> None:
+    del limit
     rows = connection.execute(
         """
         SELECT om.outreach_message_id, om.contact_id, om.job_posting_id, om.sent_at,
@@ -1139,12 +1143,10 @@ def _materialize_candidate_plans(
           AND om.sent_at IS NOT NULL
           AND TRIM(om.sent_at) <> ''
         ORDER BY om.sent_at DESC, om.outreach_message_id DESC
-        LIMIT ?
         """,
         (
             OUTREACH_MODE_ROLE_TARGETED,
             MESSAGE_STATUS_SENT,
-            max(limit * 8, 200),
         ),
     ).fetchall()
 
@@ -1193,6 +1195,12 @@ def _materialize_candidate_plans(
                 reason_code=SKIP_REASON_MULTI_RECIPIENT,
             )
             continue
+        if _reopen_pre_cutover_archive_skips(
+            connection,
+            existing_rows=existing_rows,
+            current_time=current_time,
+        ):
+            existing_rows = _load_plan_rows_for_original(connection, candidate.original_outreach_message_id)
         next_step = _determine_next_sequence(existing_rows)
         if next_step is None:
             continue
@@ -1340,6 +1348,49 @@ def _ensure_terminal_skipped_plan(
                 current_time,
             ),
         )
+
+
+def _reopen_pre_cutover_archive_skips(
+    connection: sqlite3.Connection,
+    *,
+    existing_rows: Sequence[sqlite3.Row],
+    current_time: str,
+) -> int:
+    reopenable_rows = [
+        row
+        for row in existing_rows
+        if str(row["plan_status"]) == PLAN_STATUS_SKIPPED
+        and str(row["last_skip_reason"] or "") == SKIP_REASON_POSTING_ARCHIVED_PRE_CUTOVER
+    ]
+    if not reopenable_rows:
+        return 0
+    reopen_sequence = min(int(row["followup_sequence"]) for row in reopenable_rows)
+    with connection:
+        cursor = connection.executemany(
+            """
+            UPDATE outreach_followup_plans
+            SET plan_status = ?,
+                last_skip_reason = NULL,
+                retry_count = 0,
+                next_retry_at = NULL,
+                draft_artifact_path = NULL,
+                review_evidence_artifact_path = NULL,
+                last_evaluated_at = ?,
+                updated_at = ?
+            WHERE outreach_followup_plan_id = ?
+            """,
+            [
+                (
+                    PLAN_STATUS_PENDING,
+                    current_time,
+                    current_time,
+                    str(row["outreach_followup_plan_id"]),
+                )
+                for row in reopenable_rows
+                if int(row["followup_sequence"]) == reopen_sequence
+            ],
+        )
+    return int(cursor.rowcount or 0)
 
 
 def _load_plan_rows_for_original(
@@ -2137,6 +2188,25 @@ def _release_auto_send_disabled_holds(connection: sqlite3.Connection, *, current
     return int(cursor.rowcount or 0)
 
 
+def _release_missing_sender_identity_holds(connection: sqlite3.Connection, *, current_time: str) -> int:
+    with connection:
+        cursor = connection.execute(
+            """
+            UPDATE outreach_followup_plans
+            SET plan_status = ?, last_skip_reason = NULL, updated_at = ?
+            WHERE plan_status = ?
+              AND last_skip_reason = ?
+            """,
+            (
+                PLAN_STATUS_PENDING,
+                current_time,
+                PLAN_STATUS_HELD_FOR_REVIEW,
+                SKIP_REASON_MISSING_SENDER_IDENTITY,
+            ),
+        )
+    return int(cursor.rowcount or 0)
+
+
 def _count_followups_sent_today(connection: sqlite3.Connection, current_time: str) -> int:
     current_local_date = _parse_iso_datetime(current_time).astimezone(FOLLOWUP_BUSINESS_TIMEZONE).date()
     count = 0
@@ -2650,6 +2720,16 @@ def _load_sender_email(paths: ProjectPaths) -> str | None:
         normalized = _normalize_email(gmail_payload.get(key) if isinstance(gmail_payload, Mapping) else None)
         if normalized:
             return normalized
+    try:
+        from .gmail_alerts import _build_gmail_service
+
+        payload = _build_gmail_service(paths).users().getProfile(userId="me").execute()
+    except Exception:
+        return None
+    if isinstance(payload, Mapping):
+        normalized = _normalize_email(payload.get("emailAddress"))
+        if normalized:
+            return normalized
     return None
 
 
@@ -2875,7 +2955,7 @@ def _run_followup_codex_payload(
                 "type": "string",
             },
         },
-        "required": ["paragraphs", "role_company_mode", "grounding_mode"],
+        "required": ["paragraphs", "role_company_mode", "grounding_mode", "why_sent_summary"],
         "additionalProperties": False,
     }
     schema_path.write_text(json.dumps(schema, indent=2) + "\n", encoding="utf-8")

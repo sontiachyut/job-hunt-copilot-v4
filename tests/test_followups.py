@@ -3,9 +3,12 @@ from __future__ import annotations
 import base64
 import json
 import sqlite3
+import subprocess
 from dataclasses import dataclass
 from email import message_from_bytes
+from pathlib import Path
 
+import job_hunt_copilot.followups as followups_module
 from job_hunt_copilot.bootstrap import run_bootstrap
 from job_hunt_copilot.followups import (
     FOLLOWUP_AUTO_SEND_ENABLED_KEY,
@@ -22,7 +25,9 @@ from job_hunt_copilot.followups import (
     PLAN_STATUS_SKIPPED,
     PLAN_STATUS_WAITING_FOR_PACING,
     SKIP_REASON_DRAFT_RETRY_EXHAUSTED,
+    SKIP_REASON_MISSING_SENDER_IDENTITY,
     SKIP_REASON_NON_CODEX_ORIGIN,
+    SKIP_REASON_POSTING_ARCHIVED_PRE_CUTOVER,
     SKIP_REASON_ROLE_TARGETED_PRIORITY,
     StructuredFollowUpDraft,
     TECHNICAL_PATH_SUBJECT,
@@ -149,6 +154,18 @@ class FakeGmailThreadService:
         return self.payload
 
 
+class FakeGmailProfileService:
+    def users(self):
+        return self
+
+    def getProfile(self, *, userId):
+        assert userId == "me"
+        return self
+
+    def execute(self):
+        return {"emailAddress": "achyut@example.com"}
+
+
 def _bootstrap_connection(tmp_path):
     project_root = tmp_path / "repo"
     project_root.mkdir()
@@ -165,6 +182,9 @@ def _seed_sent_role_targeted_message(
     project_root,
     *,
     outreach_message_id: str = "om_original",
+    lead_id: str = "ld_1",
+    job_posting_id: str = "jp_1",
+    job_posting_contact_id: str = "jpc_1",
     contact_id: str = "ct_1",
     recipient_email: str = "alex@example.com",
     thread_id: str = "thread_1",
@@ -185,7 +205,7 @@ def _seed_sent_role_targeted_message(
         ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         """,
         (
-            "ld_1",
+            lead_id,
             f"{company_name.lower()}|{role_title.lower()}",
             "reviewed",
             "posting_only",
@@ -207,8 +227,8 @@ def _seed_sent_role_targeted_message(
         ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
         """,
         (
-            "jp_1",
-            "ld_1",
+            job_posting_id,
+            lead_id,
             f"{company_name.lower()}|{role_title.lower()}|remote",
             company_name,
             role_title,
@@ -247,7 +267,16 @@ def _seed_sent_role_targeted_message(
           relevance_reason, link_level_status, created_at, updated_at
         ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
         """,
-        ("jpc_1", "jp_1", contact_id, "engineer", "engineer", "outreach_done", now, now),
+        (
+            job_posting_contact_id,
+            job_posting_id,
+            contact_id,
+            "engineer",
+            "engineer",
+            "outreach_done",
+            now,
+            now,
+        ),
     )
     connection.execute(
         """
@@ -264,8 +293,8 @@ def _seed_sent_role_targeted_message(
             "role_targeted",
             recipient_email,
             "sent",
-            "jp_1",
-            "jpc_1",
+            job_posting_id,
+            job_posting_contact_id,
             subject,
             body_text,
             None,
@@ -443,6 +472,315 @@ def test_materializes_only_next_followup_step(tmp_path):
         (1, PLAN_STATUS_SENT),
         (2, PLAN_STATUS_DRY_RUN_READY),
     ]
+
+
+def test_historical_codex_origin_outside_old_recent_slice_materializes_followup(tmp_path):
+    project_root, connection = _bootstrap_connection(tmp_path)
+    _seed_sent_role_targeted_message(
+        connection,
+        project_root,
+        outreach_message_id="om_oldest",
+        lead_id="ld_oldest",
+        job_posting_id="jp_oldest",
+        job_posting_contact_id="jpc_oldest",
+        contact_id="ct_oldest",
+        recipient_email="oldest@example.com",
+        thread_id="thread_oldest",
+        sent_at="2026-06-05T20:30:32Z",
+        company_name="Console",
+        role_title="Applied AI Engineer",
+        subject="Interest in the Applied AI Engineer role at Console",
+        body_text=(
+            "Hi Kavita,\n\n"
+            "I hope you're doing well. I was interested in the Applied AI Engineer role at Console because it lines up with the kind of applied AI and systems work I want to keep growing in.\n\n"
+            "Would you be open to a brief 10-minute conversation to hear your perspective on the role or team?\n\n"
+            "Best,\n"
+            "Achyutaram Sonti"
+        ),
+        send_result_payload={
+            "draft_origin_kind": "codex_role_split",
+            "draft_posture_family": "managerial",
+            "autonomous_origin": True,
+        },
+    )
+    for index in range(210):
+        _seed_sent_role_targeted_message(
+            connection,
+            project_root,
+            outreach_message_id=f"om_recent_{index}",
+            lead_id=f"ld_recent_{index}",
+            job_posting_id=f"jp_recent_{index}",
+            job_posting_contact_id=f"jpc_recent_{index}",
+            contact_id=f"ct_recent_{index}",
+            recipient_email=f"recent{index}@example.com",
+            thread_id=f"thread_recent_{index}",
+            sent_at=f"2026-06-15T20:{index % 60:02d}:00Z",
+            company_name=f"RecentCo {index}",
+            role_title=f"Engineer {index}",
+            send_result_payload={
+                "draft_origin_kind": "codex_role_split",
+                "draft_posture_family": "technical",
+                "autonomous_origin": True,
+            },
+        )
+
+    result = run_followup_cycle(
+        connection,
+        project_root=project_root,
+        current_time=NOW,
+        dry_run=True,
+        thread_inspector=FakeThreadInspector(ThreadInspectionResult(result="clear", checked_at=NOW)),
+        renderer=FakeRenderer(
+            (
+                "I wanted to briefly follow up on my earlier note.",
+                "If you would be open to it, I would still value a brief 10-minute conversation.",
+            )
+        ),
+        batch_size=25,
+    )
+
+    oldest_plan = connection.execute(
+        """
+        SELECT plan_status, followup_sequence
+        FROM outreach_followup_plans
+        WHERE original_outreach_message_id = ?
+        """,
+        ("om_oldest",),
+    ).fetchone()
+    assert result.drafts_created >= 1
+    assert oldest_plan is not None
+    assert oldest_plan["followup_sequence"] == 1
+    assert oldest_plan["plan_status"] in {PLAN_STATUS_DRY_RUN_READY, PLAN_STATUS_PENDING}
+
+
+def test_pre_cutover_archive_skipped_codex_plan_reopens(tmp_path):
+    project_root, connection = _bootstrap_connection(tmp_path)
+    _seed_sent_role_targeted_message(
+        connection,
+        project_root,
+        send_result_payload={
+            "draft_origin_kind": "codex_role_split",
+            "draft_posture_family": "technical",
+            "autonomous_origin": True,
+        },
+    )
+    connection.execute(
+        """
+        INSERT INTO outreach_followup_plans (
+          outreach_followup_plan_id, original_outreach_message_id, contact_id, job_posting_id,
+          plan_status, followup_sequence, eligible_after, last_skip_reason, created_at, updated_at
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        """,
+        (
+            "fp_skipped",
+            "om_original",
+            "ct_1",
+            "jp_1",
+            PLAN_STATUS_SKIPPED,
+            1,
+            "2026-06-13T12:00:00Z",
+            SKIP_REASON_POSTING_ARCHIVED_PRE_CUTOVER,
+            NOW,
+            NOW,
+        ),
+    )
+    connection.commit()
+
+    result = run_followup_cycle(
+        connection,
+        project_root=project_root,
+        current_time=NOW,
+        dry_run=True,
+        thread_inspector=FakeThreadInspector(ThreadInspectionResult(result="clear", checked_at=NOW)),
+        renderer=FakeRenderer(
+            (
+                "I wanted to briefly follow up on my earlier note.",
+                "If you would be open to it, I would still value a brief 10-minute conversation.",
+            )
+        ),
+    )
+
+    plan = connection.execute(
+        "SELECT plan_status, last_skip_reason FROM outreach_followup_plans WHERE outreach_followup_plan_id = ?",
+        ("fp_skipped",),
+    ).fetchone()
+    assert result.drafts_created == 1
+    assert plan["plan_status"] == PLAN_STATUS_DRY_RUN_READY
+    assert plan["last_skip_reason"] is None
+
+
+def test_load_sender_email_falls_back_to_gmail_profile(tmp_path, monkeypatch):
+    project_root, connection = _bootstrap_connection(tmp_path)
+    connection.close()
+    paths = ProjectPaths.from_root(project_root)
+    runtime_secrets_path = paths.secrets_dir / "runtime_secrets.json"
+    payload = json.loads(runtime_secrets_path.read_text(encoding="utf-8"))
+    gmail_payload = dict(payload["gmail"])
+    gmail_payload.pop("sender_email", None)
+    gmail_payload.pop("profile_email", None)
+    payload["gmail"] = gmail_payload
+    runtime_secrets_path.write_text(json.dumps(payload, indent=2) + "\n", encoding="utf-8")
+    monkeypatch.setattr(
+        "job_hunt_copilot.gmail_alerts._build_gmail_service",
+        lambda _paths: FakeGmailProfileService(),
+    )
+
+    assert followups_module._load_sender_email(paths) == "achyut@example.com"
+
+
+def test_codex_followup_schema_requires_why_sent_summary(tmp_path, monkeypatch):
+    project_root, connection = _bootstrap_connection(tmp_path)
+    connection.close()
+    paths = ProjectPaths.from_root(project_root)
+    candidate = FollowUpCandidate(
+        outreach_followup_plan_id="fp_1",
+        original_outreach_message_id="om_original",
+        contact_id="ct_1",
+        job_posting_id="jp_1",
+        job_posting_contact_id="jpc_1",
+        recipient_email="alex@example.com",
+        outreach_mode="role_targeted",
+        subject=TECHNICAL_PATH_SUBJECT,
+        body_text=CODEx_TECHNICAL_BODY,
+        thread_id="thread_1",
+        delivery_tracking_id="gmail_original_1",
+        sent_at=ORIGINAL_SENT_AT,
+        eligible_after=NOW,
+        followup_sequence=1,
+        contact_display_name="Alex Rivera",
+        contact_first_name="Alex",
+        contact_status="sent",
+        company_name="ExampleCo",
+        role_title="Backend Developer",
+        jd_artifact_path=None,
+        tailored_resume_path=None,
+        plan_status="pending",
+        retry_count=0,
+        next_retry_at=None,
+    )
+    context = followups_module.FollowUpDraftContext(
+        candidate=candidate,
+        sequence=1,
+        posture_family="technical",
+        role_title="Backend Developer",
+        company_name="ExampleCo",
+        salutation="Hi Alex,",
+        original_subject=TECHNICAL_PATH_SUBJECT,
+        original_body_text=CODEx_TECHNICAL_BODY,
+        prior_followups=(),
+        sender_evidence_summary="Built distributed systems in Python and Scala.",
+        role_company_summary="Follow-up 1 must explicitly refer to the Backend Developer role at ExampleCo.",
+        thread_context_summary="No prior sent follow-ups exist on this thread.",
+        original_metadata=followups_module.OriginalSendMetadata(
+            source_path=None,
+            cc_emails=(),
+            message_id_header=None,
+            role_title="Backend Developer",
+            company_name="ExampleCo",
+            autonomous_origin=True,
+            draft_origin_kind="codex_role_split",
+            draft_posture_family="technical",
+        ),
+        origin=followups_module.OriginalOutreachOrigin(
+            status="codex",
+            posture_family="technical",
+            proof_source="send_result_metadata",
+            autonomous_origin=True,
+        ),
+    )
+    captured_schema: dict[str, object] = {}
+
+    def fake_run(command, **kwargs):
+        schema_path = Path(command[command.index("--output-schema") + 1])
+        output_path = Path(command[command.index("-o") + 1])
+        captured_schema.update(json.loads(schema_path.read_text(encoding="utf-8")))
+        output_path.write_text(
+            json.dumps(
+                {
+                    "paragraphs": [
+                        "I wanted to briefly follow up on my earlier note.",
+                        "Would you be open to a brief 10-minute conversation?",
+                    ],
+                    "role_company_mode": "explicit",
+                    "grounding_mode": "original_email_only",
+                    "why_sent_summary": "sequence 1 technical follow-up",
+                }
+            ),
+            encoding="utf-8",
+        )
+        return subprocess.CompletedProcess(command, 0, "", "")
+
+    monkeypatch.setattr(followups_module.subprocess, "run", fake_run)
+    monkeypatch.setattr(followups_module, "_build_codex_exec_env", lambda codex_bin: {})
+    monkeypatch.setattr(followups_module, "record_codex_usage_event", lambda *args, **kwargs: "llu_test")
+
+    payload = followups_module._run_followup_codex_payload(
+        paths,
+        codex_bin="/bin/echo",
+        model=None,
+        context=context,
+        current_time=NOW,
+    )
+
+    assert payload["why_sent_summary"] == "sequence 1 technical follow-up"
+    assert "why_sent_summary" in captured_schema["required"]
+
+
+def test_missing_sender_identity_hold_reopens_once_runtime_is_fixed(tmp_path):
+    project_root, connection = _bootstrap_connection(tmp_path)
+    _seed_sent_role_targeted_message(
+        connection,
+        project_root,
+        send_result_payload={
+            "draft_origin_kind": "codex_role_split",
+            "draft_posture_family": "technical",
+            "autonomous_origin": True,
+        },
+    )
+    _enable_followup_auto_send(connection)
+    connection.execute(
+        """
+        INSERT INTO outreach_followup_plans (
+          outreach_followup_plan_id, original_outreach_message_id, contact_id, job_posting_id,
+          plan_status, followup_sequence, eligible_after, last_skip_reason, created_at, updated_at
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        """,
+        (
+            "fp_missing_sender",
+            "om_original",
+            "ct_1",
+            "jp_1",
+            PLAN_STATUS_HELD_FOR_REVIEW,
+            1,
+            "2026-06-13T12:00:00Z",
+            SKIP_REASON_MISSING_SENDER_IDENTITY,
+            NOW,
+            NOW,
+        ),
+    )
+    connection.commit()
+
+    result = run_followup_cycle(
+        connection,
+        project_root=project_root,
+        current_time=NOW,
+        dry_run=True,
+        thread_inspector=FakeThreadInspector(ThreadInspectionResult(result="clear", checked_at=NOW)),
+        renderer=FakeRenderer(
+            (
+                "I wanted to briefly follow up on my earlier note.",
+                "If you would be open to it, I would still value a brief 10-minute conversation.",
+            )
+        ),
+    )
+
+    plan = connection.execute(
+        "SELECT plan_status, last_skip_reason FROM outreach_followup_plans WHERE outreach_followup_plan_id = ?",
+        ("fp_missing_sender",),
+    ).fetchone()
+    assert result.drafts_created == 1
+    assert plan["plan_status"] == PLAN_STATUS_DRY_RUN_READY
+    assert plan["last_skip_reason"] is None
 
 
 def test_body_style_fallback_accepts_codex_technical_family(tmp_path):
