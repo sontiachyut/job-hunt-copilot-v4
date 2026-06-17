@@ -508,6 +508,40 @@ RULE_BLUEPRINTS: dict[str, RuleBlueprint] = {
         default_gap_ids=("BA10_MAINTENANCE_AUTOMATION",),
         note="The components exist and now have committed smoke coverage across tailoring, discovery, send, delayed feedback, and review-query boundaries, and the autonomous supervisor covers the full role-targeted chain through bounded delivery feedback plus contact-rooted general-learning discovery, sending, and bounded delayed-feedback follow-through.",
     ),
+    "Codex follow-up worker acceptance": RuleBlueprint(
+        owner_role="outreach-engineer",
+        epic_ids=("BA-08", "BA-09", "BA-10"),
+        code_refs=(
+            "job_hunt_copilot/followups.py",
+            "job_hunt_copilot/send_lane.py",
+            "job_hunt_copilot/outreach.py",
+            "job_hunt_copilot/local_runtime.py",
+        ),
+        test_refs=(
+            "tests/test_followups.py",
+            "tests/test_send_lane.py",
+            "tests/test_outreach.py",
+            "tests/test_acceptance_traceability.py",
+        ),
+        note="Codex-only automatic follow-up eligibility, bounded prompt/rendering, shared send-lane routing, and rollout controls are validated through focused follow-up, send-lane, and outreach regressions.",
+    ),
+    "Codex-only autonomous outreach cutover acceptance": RuleBlueprint(
+        owner_role="outreach-engineer",
+        epic_ids=("BA-08", "BA-09", "BA-10"),
+        code_refs=(
+            "job_hunt_copilot/followups.py",
+            "job_hunt_copilot/outreach.py",
+            "job_hunt_copilot/local_runtime.py",
+            "job_hunt_copilot/supervisor.py",
+        ),
+        test_refs=(
+            "tests/test_followups.py",
+            "tests/test_outreach.py",
+            "tests/test_local_runtime.py",
+            "tests/test_acceptance_traceability.py",
+        ),
+        note="Autonomous outreach and follow-up paths fail closed on Codex-only production boundaries, while deterministic-origin autonomous backlog is retired or skipped during cutover repair.",
+    ),
     "Current-build safety, privacy, and evidence-grounding boundaries": RuleBlueprint(
         owner_role="quality-engineer",
         epic_ids=("BA-06", "BA-08", "BA-09", "BA-10"),

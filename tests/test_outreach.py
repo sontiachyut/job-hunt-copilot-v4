@@ -5155,8 +5155,10 @@ def test_send_execution_yields_to_sendable_followup_during_followup_window(tmp_p
         """
         INSERT INTO outreach_followup_plans (
           outreach_followup_plan_id, original_outreach_message_id, contact_id,
-          plan_status, followup_sequence, eligible_after, created_at, updated_at
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+          plan_status, followup_sequence, eligible_after, draft_artifact_path,
+          review_evidence_artifact_path, last_evaluated_at, agent_reviewed_at,
+          created_at, updated_at
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         """,
         (
             "fp_followup_ready",
@@ -5165,6 +5167,10 @@ def test_send_execution_yields_to_sendable_followup_during_followup_window(tmp_p
             "agent_reviewed",
             1,
             "2026-04-02T10:00:00Z",
+            "ops/followups/fp_followup_ready/followup_draft.md",
+            "ops/followups/fp_followup_ready/followup_review_evidence.json",
+            "2026-04-06T22:50:00Z",
+            "2026-04-06T22:50:00Z",
             "2026-04-02T10:00:00Z",
             "2026-04-02T10:00:00Z",
         ),
@@ -5202,6 +5208,147 @@ def test_send_execution_yields_to_sendable_followup_during_followup_window(tmp_p
         drafted_message_id
     ]
     assert result.delayed_messages[0].pacing_block_reason == "waiting_for_window"
+
+
+def test_refresh_role_targeted_generated_drafts_refreshes_stale_generated_message(tmp_path: Path):
+    project_root, paths = bootstrap_project(tmp_path)
+    connection = connect_database(project_root / "job_hunt_copilot.db")
+    seed_posting(connection, job_posting_id="jp_stale_refresh", created_at="2026-04-05T20:00:00Z")
+    seed_linked_contact(
+        connection,
+        contact_id="ct_stale_refresh",
+        job_posting_contact_id="jpc_stale_refresh",
+        job_posting_id="jp_stale_refresh",
+        display_name="Morgan Manager",
+        recipient_type=RECIPIENT_TYPE_HIRING_MANAGER,
+        current_working_email="morgan@example.com",
+        contact_status=CONTACT_STATUS_OUTREACH_IN_PROGRESS,
+        link_level_status=POSTING_CONTACT_STATUS_OUTREACH_IN_PROGRESS,
+        created_at="2026-04-05T20:02:00Z",
+    )
+    seed_approved_tailoring_run(connection, paths, job_posting_id="jp_stale_refresh")
+    connection.execute(
+        "UPDATE job_postings SET posting_status = ?, updated_at = ? WHERE job_posting_id = ?",
+        (JOB_POSTING_STATUS_OUTREACH_IN_PROGRESS, "2026-04-05T20:03:00Z", "jp_stale_refresh"),
+    )
+    connection.execute(
+        """
+        INSERT INTO outreach_messages (
+          outreach_message_id, contact_id, outreach_mode, recipient_email, message_status,
+          job_posting_id, job_posting_contact_id, subject, body_text, body_html,
+          created_at, updated_at
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        """,
+        (
+            "om_stale_generated",
+            "ct_stale_refresh",
+            "role_targeted",
+            "morgan@example.com",
+            MESSAGE_STATUS_GENERATED,
+            "jp_stale_refresh",
+            "jpc_stale_refresh",
+            "Old subject",
+            "Old body",
+            None,
+            "2026-04-05T20:04:00Z",
+            "2026-04-05T20:04:00Z",
+        ),
+    )
+    connection.commit()
+    write_sender_profile(paths)
+    refreshed = refresh_role_targeted_generated_drafts(
+        connection,
+        project_root=project_root,
+        job_posting_id="jp_stale_refresh",
+        current_time="2026-04-06T21:00:00Z",
+        renderer=DeterministicOutreachDraftRenderer(),
+    )
+
+    message_row = connection.execute(
+        "SELECT subject, body_text, updated_at FROM outreach_messages WHERE outreach_message_id = ?",
+        ("om_stale_generated",),
+    ).fetchone()
+    assert refreshed == ("om_stale_generated",)
+    assert message_row["updated_at"] == "2026-04-06T21:00:00Z"
+    assert message_row["subject"] != "Old subject"
+
+
+def test_original_send_actionable_excludes_generated_message_outside_global_prepared_frontier(tmp_path: Path):
+    project_root, paths = bootstrap_project(tmp_path)
+    connection = connect_database(project_root / "job_hunt_copilot.db")
+    for index in range(1, 12):
+        job_posting_id = f"jp_frontier_{index}"
+        contact_id = f"ct_frontier_{index}"
+        job_posting_contact_id = f"jpc_frontier_{index}"
+        created_at = f"2026-04-06T20:{index:02d}:00Z"
+        seed_posting(
+            connection,
+            lead_id=f"ld_frontier_{index}",
+            job_posting_id=job_posting_id,
+            company_name=f"Acme Robotics {index}",
+            role_title=f"Staff Software Engineer {index}",
+            created_at=created_at,
+        )
+        seed_linked_contact(
+            connection,
+            contact_id=contact_id,
+            job_posting_contact_id=job_posting_contact_id,
+            job_posting_id=job_posting_id,
+            company_name=f"Acme Robotics {index}",
+            display_name=f"Manager {index}",
+            recipient_type=RECIPIENT_TYPE_HIRING_MANAGER,
+            current_working_email=f"manager{index}@example.com",
+            contact_status=CONTACT_STATUS_OUTREACH_IN_PROGRESS,
+            link_level_status=POSTING_CONTACT_STATUS_OUTREACH_IN_PROGRESS,
+            created_at=created_at,
+        )
+        connection.execute(
+            "UPDATE job_postings SET posting_status = ?, updated_at = ? WHERE job_posting_id = ?",
+            (JOB_POSTING_STATUS_OUTREACH_IN_PROGRESS, created_at, job_posting_id),
+        )
+        connection.execute(
+            """
+            INSERT INTO outreach_messages (
+              outreach_message_id, contact_id, outreach_mode, recipient_email, message_status,
+              job_posting_id, job_posting_contact_id, subject, body_text, created_at, updated_at
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """,
+            (
+                f"om_frontier_{index}",
+                contact_id,
+                "role_targeted",
+                f"manager{index}@example.com",
+                MESSAGE_STATUS_GENERATED,
+                job_posting_id,
+                job_posting_contact_id,
+                f"Subject {index}",
+                f"Body {index}",
+                created_at,
+                created_at,
+            ),
+        )
+    connection.commit()
+
+    assert (
+        is_role_targeted_sending_actionable_now(
+            connection,
+            project_root=project_root,
+            job_posting_id="jp_frontier_1",
+            current_time="2026-04-06T23:00:00Z",
+            local_timezone="America/Phoenix",
+        )
+        is True
+    )
+    assert (
+        is_role_targeted_sending_actionable_now(
+            connection,
+            project_root=project_root,
+            job_posting_id="jp_frontier_11",
+            current_time="2026-04-06T23:00:00Z",
+            local_timezone="America/Phoenix",
+        )
+        is False
+    )
 
     connection.close()
 

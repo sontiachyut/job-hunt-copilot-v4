@@ -1,9 +1,9 @@
 {
   "trace_matrix_version": 6,
   "feature_path": "prd/test-spec.feature",
-  "scenario_count": 226,
+  "scenario_count": 266,
   "status_counts": {
-    "implemented": 224,
+    "implemented": 264,
     "partial": 0,
     "gap": 0,
     "deferred_optional": 1,
@@ -3587,7 +3587,7 @@
       ],
       "note": null,
       "status_counts": {
-        "implemented": 8,
+        "implemented": 10,
         "partial": 0,
         "gap": 0,
         "deferred_optional": 0,
@@ -3919,7 +3919,7 @@
           "note": null
         },
         {
-          "name": "Feedback delay is not treated as pipeline failure",
+          "name": "Transient Gmail send failures are blocked and retried later",
           "scenario_line": 586,
           "status": "implemented",
           "owner_role": "quality-engineer",
@@ -3973,8 +3973,116 @@
           "note": null
         },
         {
+          "name": "Transient send retries wait for cooldown and stay bounded",
+          "scenario_line": 594,
+          "status": "implemented",
+          "owner_role": "quality-engineer",
+          "epic_ids": [
+            "BA-02",
+            "BA-04",
+            "BA-05",
+            "BA-07",
+            "BA-08",
+            "BA-09"
+          ],
+          "slice_ids": [
+            "BA-02-S1",
+            "BA-02-S2",
+            "BA-02-S3",
+            "BA-04-S1",
+            "BA-04-S2",
+            "BA-04-S3",
+            "BA-04-S4",
+            "BA-05-S1",
+            "BA-05-S2",
+            "BA-05-S3",
+            "BA-07-S1",
+            "BA-07-S2",
+            "BA-07-S3",
+            "BA-08-S1",
+            "BA-08-S2",
+            "BA-08-S3",
+            "BA-09-S1",
+            "BA-09-S2",
+            "BA-09-S3"
+          ],
+          "code_refs": [
+            "job_hunt_copilot/supervisor.py",
+            "job_hunt_copilot/linkedin_scraping.py",
+            "job_hunt_copilot/gmail_alerts.py",
+            "job_hunt_copilot/email_discovery.py",
+            "job_hunt_copilot/outreach.py",
+            "job_hunt_copilot/delivery_feedback.py"
+          ],
+          "test_refs": [
+            "tests/test_supervisor_downstream_actions.py",
+            "tests/test_supervisor.py",
+            "tests/test_linkedin_scraping.py",
+            "tests/test_gmail_alerts.py",
+            "tests/test_email_discovery.py",
+            "tests/test_outreach.py",
+            "tests/test_delivery_feedback.py"
+          ],
+          "gap_ids": [],
+          "note": null
+        },
+        {
+          "name": "Feedback delay is not treated as pipeline failure",
+          "scenario_line": 602,
+          "status": "implemented",
+          "owner_role": "quality-engineer",
+          "epic_ids": [
+            "BA-02",
+            "BA-04",
+            "BA-05",
+            "BA-07",
+            "BA-08",
+            "BA-09"
+          ],
+          "slice_ids": [
+            "BA-02-S1",
+            "BA-02-S2",
+            "BA-02-S3",
+            "BA-04-S1",
+            "BA-04-S2",
+            "BA-04-S3",
+            "BA-04-S4",
+            "BA-05-S1",
+            "BA-05-S2",
+            "BA-05-S3",
+            "BA-07-S1",
+            "BA-07-S2",
+            "BA-07-S3",
+            "BA-08-S1",
+            "BA-08-S2",
+            "BA-08-S3",
+            "BA-09-S1",
+            "BA-09-S2",
+            "BA-09-S3"
+          ],
+          "code_refs": [
+            "job_hunt_copilot/supervisor.py",
+            "job_hunt_copilot/linkedin_scraping.py",
+            "job_hunt_copilot/gmail_alerts.py",
+            "job_hunt_copilot/email_discovery.py",
+            "job_hunt_copilot/outreach.py",
+            "job_hunt_copilot/delivery_feedback.py"
+          ],
+          "test_refs": [
+            "tests/test_supervisor_downstream_actions.py",
+            "tests/test_supervisor.py",
+            "tests/test_linkedin_scraping.py",
+            "tests/test_gmail_alerts.py",
+            "tests/test_email_discovery.py",
+            "tests/test_outreach.py",
+            "tests/test_delivery_feedback.py"
+          ],
+          "gap_ids": [],
+          "note": null
+        },
+        {
           "name": "Feedback ingestion is idempotent for the same logical message outcome",
-          "scenario_line": 593,
+          "scenario_line": 609,
           "status": "implemented",
           "owner_role": "quality-engineer",
           "epic_ids": [
@@ -4030,7 +4138,7 @@
     },
     {
       "rule": "Resume Tailoring behavior",
-      "rule_line": 600,
+      "rule_line": 616,
       "owner_role": "tailoring-engineer",
       "epic_ids": [
         "BA-06"
@@ -4059,7 +4167,7 @@
       "scenarios": [
         {
           "name": "Hard-ineligible lead is stopped before tailoring",
-          "scenario_line": 602,
+          "scenario_line": 618,
           "status": "implemented",
           "owner_role": "tailoring-engineer",
           "epic_ids": [
@@ -4083,7 +4191,7 @@
         },
         {
           "name": "Current hard experience threshold is one global rule rather than role-family-specific policy",
-          "scenario_line": 608,
+          "scenario_line": 624,
           "status": "implemented",
           "owner_role": "tailoring-engineer",
           "epic_ids": [
@@ -4107,54 +4215,6 @@
         },
         {
           "name": "Missing eligibility signals are treated as unknown instead of hard failure",
-          "scenario_line": 614,
-          "status": "implemented",
-          "owner_role": "tailoring-engineer",
-          "epic_ids": [
-            "BA-06"
-          ],
-          "slice_ids": [
-            "BA-06-S1",
-            "BA-06-S2",
-            "BA-06-S3",
-            "BA-06-S4"
-          ],
-          "code_refs": [
-            "job_hunt_copilot/resume_tailoring.py",
-            "job_hunt_copilot/paths.py"
-          ],
-          "test_refs": [
-            "tests/test_resume_tailoring.py"
-          ],
-          "gap_ids": [],
-          "note": null
-        },
-        {
-          "name": "Eligibility evaluation persists an audit artifact with evidence",
-          "scenario_line": 621,
-          "status": "implemented",
-          "owner_role": "tailoring-engineer",
-          "epic_ids": [
-            "BA-06"
-          ],
-          "slice_ids": [
-            "BA-06-S1",
-            "BA-06-S2",
-            "BA-06-S3",
-            "BA-06-S4"
-          ],
-          "code_refs": [
-            "job_hunt_copilot/resume_tailoring.py",
-            "job_hunt_copilot/paths.py"
-          ],
-          "test_refs": [
-            "tests/test_resume_tailoring.py"
-          ],
-          "gap_ids": [],
-          "note": null
-        },
-        {
-          "name": "Tailoring workspace is created with required artifacts",
           "scenario_line": 630,
           "status": "implemented",
           "owner_role": "tailoring-engineer",
@@ -4178,8 +4238,56 @@
           "note": null
         },
         {
+          "name": "Eligibility evaluation persists an audit artifact with evidence",
+          "scenario_line": 637,
+          "status": "implemented",
+          "owner_role": "tailoring-engineer",
+          "epic_ids": [
+            "BA-06"
+          ],
+          "slice_ids": [
+            "BA-06-S1",
+            "BA-06-S2",
+            "BA-06-S3",
+            "BA-06-S4"
+          ],
+          "code_refs": [
+            "job_hunt_copilot/resume_tailoring.py",
+            "job_hunt_copilot/paths.py"
+          ],
+          "test_refs": [
+            "tests/test_resume_tailoring.py"
+          ],
+          "gap_ids": [],
+          "note": null
+        },
+        {
+          "name": "Tailoring workspace is created with required artifacts",
+          "scenario_line": 646,
+          "status": "implemented",
+          "owner_role": "tailoring-engineer",
+          "epic_ids": [
+            "BA-06"
+          ],
+          "slice_ids": [
+            "BA-06-S1",
+            "BA-06-S2",
+            "BA-06-S3",
+            "BA-06-S4"
+          ],
+          "code_refs": [
+            "job_hunt_copilot/resume_tailoring.py",
+            "job_hunt_copilot/paths.py"
+          ],
+          "test_refs": [
+            "tests/test_resume_tailoring.py"
+          ],
+          "gap_ids": [],
+          "note": null
+        },
+        {
           "name": "Workspace metadata captures the current tailoring constraints",
-          "scenario_line": 640,
+          "scenario_line": 656,
           "status": "implemented",
           "owner_role": "tailoring-engineer",
           "epic_ids": [
@@ -4203,7 +4311,7 @@
         },
         {
           "name": "Scope guard prevents edits outside the allowed tailoring boundary",
-          "scenario_line": 649,
+          "scenario_line": 665,
           "status": "implemented",
           "owner_role": "tailoring-engineer",
           "epic_ids": [
@@ -4227,7 +4335,7 @@
         },
         {
           "name": "Base resume track is selected automatically and persisted in workspace metadata",
-          "scenario_line": 655,
+          "scenario_line": 671,
           "status": "implemented",
           "owner_role": "tailoring-engineer",
           "epic_ids": [
@@ -4251,7 +4359,7 @@
         },
         {
           "name": "Tailoring run lifecycle is persisted from bootstrap through mandatory agent review",
-          "scenario_line": 661,
+          "scenario_line": 677,
           "status": "implemented",
           "owner_role": "tailoring-engineer",
           "epic_ids": [
@@ -4275,54 +4383,6 @@
         },
         {
           "name": "Current default editing scope stays narrow unless metadata expands it",
-          "scenario_line": 673,
-          "status": "implemented",
-          "owner_role": "tailoring-engineer",
-          "epic_ids": [
-            "BA-06"
-          ],
-          "slice_ids": [
-            "BA-06-S1",
-            "BA-06-S2",
-            "BA-06-S3",
-            "BA-06-S4"
-          ],
-          "code_refs": [
-            "job_hunt_copilot/resume_tailoring.py",
-            "job_hunt_copilot/paths.py"
-          ],
-          "test_refs": [
-            "tests/test_resume_tailoring.py"
-          ],
-          "gap_ids": [],
-          "note": null
-        },
-        {
-          "name": "Tailored resume shows credible overlap with the target role and JD intent",
-          "scenario_line": 679,
-          "status": "implemented",
-          "owner_role": "tailoring-engineer",
-          "epic_ids": [
-            "BA-06"
-          ],
-          "slice_ids": [
-            "BA-06-S1",
-            "BA-06-S2",
-            "BA-06-S3",
-            "BA-06-S4"
-          ],
-          "code_refs": [
-            "job_hunt_copilot/resume_tailoring.py",
-            "job_hunt_copilot/paths.py"
-          ],
-          "test_refs": [
-            "tests/test_resume_tailoring.py"
-          ],
-          "gap_ids": [],
-          "note": null
-        },
-        {
-          "name": "JD-relevant stack is reflected in summary-adjacent sections, work experience, and skills ordering",
           "scenario_line": 689,
           "status": "implemented",
           "owner_role": "tailoring-engineer",
@@ -4346,55 +4406,55 @@
           "note": null
         },
         {
+          "name": "Tailored resume shows credible overlap with the target role and JD intent",
+          "scenario_line": 695,
+          "status": "implemented",
+          "owner_role": "tailoring-engineer",
+          "epic_ids": [
+            "BA-06"
+          ],
+          "slice_ids": [
+            "BA-06-S1",
+            "BA-06-S2",
+            "BA-06-S3",
+            "BA-06-S4"
+          ],
+          "code_refs": [
+            "job_hunt_copilot/resume_tailoring.py",
+            "job_hunt_copilot/paths.py"
+          ],
+          "test_refs": [
+            "tests/test_resume_tailoring.py"
+          ],
+          "gap_ids": [],
+          "note": null
+        },
+        {
+          "name": "JD-relevant stack is reflected in summary-adjacent sections, work experience, and skills ordering",
+          "scenario_line": 705,
+          "status": "implemented",
+          "owner_role": "tailoring-engineer",
+          "epic_ids": [
+            "BA-06"
+          ],
+          "slice_ids": [
+            "BA-06-S1",
+            "BA-06-S2",
+            "BA-06-S3",
+            "BA-06-S4"
+          ],
+          "code_refs": [
+            "job_hunt_copilot/resume_tailoring.py",
+            "job_hunt_copilot/paths.py"
+          ],
+          "test_refs": [
+            "tests/test_resume_tailoring.py"
+          ],
+          "gap_ids": [],
+          "note": null
+        },
+        {
           "name": "Step artifacts preserve JD-only extraction and honest evidence mapping",
-          "scenario_line": 700,
-          "status": "implemented",
-          "owner_role": "tailoring-engineer",
-          "epic_ids": [
-            "BA-06"
-          ],
-          "slice_ids": [
-            "BA-06-S1",
-            "BA-06-S2",
-            "BA-06-S3",
-            "BA-06-S4"
-          ],
-          "code_refs": [
-            "job_hunt_copilot/resume_tailoring.py",
-            "job_hunt_copilot/paths.py"
-          ],
-          "test_refs": [
-            "tests/test_resume_tailoring.py"
-          ],
-          "gap_ids": [],
-          "note": null
-        },
-        {
-          "name": "JD signal weighting uses one current global default scale",
-          "scenario_line": 707,
-          "status": "implemented",
-          "owner_role": "tailoring-engineer",
-          "epic_ids": [
-            "BA-06"
-          ],
-          "slice_ids": [
-            "BA-06-S1",
-            "BA-06-S2",
-            "BA-06-S3",
-            "BA-06-S4"
-          ],
-          "code_refs": [
-            "job_hunt_copilot/resume_tailoring.py",
-            "job_hunt_copilot/paths.py"
-          ],
-          "test_refs": [
-            "tests/test_resume_tailoring.py"
-          ],
-          "gap_ids": [],
-          "note": null
-        },
-        {
-          "name": "Step 6 payload uses the current structured edit contract",
           "scenario_line": 716,
           "status": "implemented",
           "owner_role": "tailoring-engineer",
@@ -4418,55 +4478,55 @@
           "note": null
         },
         {
+          "name": "JD signal weighting uses one current global default scale",
+          "scenario_line": 723,
+          "status": "implemented",
+          "owner_role": "tailoring-engineer",
+          "epic_ids": [
+            "BA-06"
+          ],
+          "slice_ids": [
+            "BA-06-S1",
+            "BA-06-S2",
+            "BA-06-S3",
+            "BA-06-S4"
+          ],
+          "code_refs": [
+            "job_hunt_copilot/resume_tailoring.py",
+            "job_hunt_copilot/paths.py"
+          ],
+          "test_refs": [
+            "tests/test_resume_tailoring.py"
+          ],
+          "gap_ids": [],
+          "note": null
+        },
+        {
+          "name": "Step 6 payload uses the current structured edit contract",
+          "scenario_line": 732,
+          "status": "implemented",
+          "owner_role": "tailoring-engineer",
+          "epic_ids": [
+            "BA-06"
+          ],
+          "slice_ids": [
+            "BA-06-S1",
+            "BA-06-S2",
+            "BA-06-S3",
+            "BA-06-S4"
+          ],
+          "code_refs": [
+            "job_hunt_copilot/resume_tailoring.py",
+            "job_hunt_copilot/paths.py"
+          ],
+          "test_refs": [
+            "tests/test_resume_tailoring.py"
+          ],
+          "gap_ids": [],
+          "note": null
+        },
+        {
           "name": "Step 5 controlled elaboration stays within allowed bounded evidence moves",
-          "scenario_line": 724,
-          "status": "implemented",
-          "owner_role": "tailoring-engineer",
-          "epic_ids": [
-            "BA-06"
-          ],
-          "slice_ids": [
-            "BA-06-S1",
-            "BA-06-S2",
-            "BA-06-S3",
-            "BA-06-S4"
-          ],
-          "code_refs": [
-            "job_hunt_copilot/resume_tailoring.py",
-            "job_hunt_copilot/paths.py"
-          ],
-          "test_refs": [
-            "tests/test_resume_tailoring.py"
-          ],
-          "gap_ids": [],
-          "note": null
-        },
-        {
-          "name": "Work-experience bullets preserve numeric metrics and resume-writing discipline",
-          "scenario_line": 731,
-          "status": "implemented",
-          "owner_role": "tailoring-engineer",
-          "epic_ids": [
-            "BA-06"
-          ],
-          "slice_ids": [
-            "BA-06-S1",
-            "BA-06-S2",
-            "BA-06-S3",
-            "BA-06-S4"
-          ],
-          "code_refs": [
-            "job_hunt_copilot/resume_tailoring.py",
-            "job_hunt_copilot/paths.py"
-          ],
-          "test_refs": [
-            "tests/test_resume_tailoring.py"
-          ],
-          "gap_ids": [],
-          "note": null
-        },
-        {
-          "name": "Final output remains compile-safe, one-page, and visually disciplined",
           "scenario_line": 740,
           "status": "implemented",
           "owner_role": "tailoring-engineer",
@@ -4490,8 +4550,56 @@
           "note": null
         },
         {
+          "name": "Work-experience bullets preserve numeric metrics and resume-writing discipline",
+          "scenario_line": 747,
+          "status": "implemented",
+          "owner_role": "tailoring-engineer",
+          "epic_ids": [
+            "BA-06"
+          ],
+          "slice_ids": [
+            "BA-06-S1",
+            "BA-06-S2",
+            "BA-06-S3",
+            "BA-06-S4"
+          ],
+          "code_refs": [
+            "job_hunt_copilot/resume_tailoring.py",
+            "job_hunt_copilot/paths.py"
+          ],
+          "test_refs": [
+            "tests/test_resume_tailoring.py"
+          ],
+          "gap_ids": [],
+          "note": null
+        },
+        {
+          "name": "Final output remains compile-safe, one-page, and visually disciplined",
+          "scenario_line": 756,
+          "status": "implemented",
+          "owner_role": "tailoring-engineer",
+          "epic_ids": [
+            "BA-06"
+          ],
+          "slice_ids": [
+            "BA-06-S1",
+            "BA-06-S2",
+            "BA-06-S3",
+            "BA-06-S4"
+          ],
+          "code_refs": [
+            "job_hunt_copilot/resume_tailoring.py",
+            "job_hunt_copilot/paths.py"
+          ],
+          "test_refs": [
+            "tests/test_resume_tailoring.py"
+          ],
+          "gap_ids": [],
+          "note": null
+        },
+        {
           "name": "Finalize requires valid intelligence and one-page output",
-          "scenario_line": 750,
+          "scenario_line": 766,
           "status": "implemented",
           "owner_role": "tailoring-engineer",
           "epic_ids": [
@@ -4515,7 +4623,7 @@
         },
         {
           "name": "Insufficient evidence or scope conflicts return explicit revision guidance instead of guessing",
-          "scenario_line": 758,
+          "scenario_line": 774,
           "status": "implemented",
           "owner_role": "tailoring-engineer",
           "epic_ids": [
@@ -4539,7 +4647,7 @@
         },
         {
           "name": "Tailoring overrides are persisted when the owner changes an agent-reviewed tailoring decision",
-          "scenario_line": 765,
+          "scenario_line": 781,
           "status": "implemented",
           "owner_role": "tailoring-engineer",
           "epic_ids": [
@@ -4563,7 +4671,7 @@
         },
         {
           "name": "Role-targeted flow runs a mandatory agent review without a mandatory human pause",
-          "scenario_line": 775,
+          "scenario_line": 791,
           "status": "implemented",
           "owner_role": "tailoring-engineer",
           "epic_ids": [
@@ -4587,7 +4695,7 @@
         },
         {
           "name": "Review rejection followed by retailoring preserves run history",
-          "scenario_line": 784,
+          "scenario_line": 800,
           "status": "implemented",
           "owner_role": "tailoring-engineer",
           "epic_ids": [
@@ -4613,7 +4721,7 @@
     },
     {
       "rule": "Email Discovery behavior",
-      "rule_line": 792,
+      "rule_line": 808,
       "owner_role": "outreach-engineer",
       "epic_ids": [
         "BA-07",
@@ -4637,7 +4745,7 @@
       ],
       "note": null,
       "status_counts": {
-        "implemented": 17,
+        "implemented": 19,
         "partial": 0,
         "gap": 0,
         "deferred_optional": 0,
@@ -4646,7 +4754,7 @@
       "scenarios": [
         {
           "name": "Role-targeted contact search starts with Apollo people search",
-          "scenario_line": 794,
+          "scenario_line": 810,
           "status": "implemented",
           "owner_role": "outreach-engineer",
           "epic_ids": [
@@ -4674,7 +4782,7 @@
         },
         {
           "name": "Apollo people search resolves company identity before people search and tolerates sparse candidate rows",
-          "scenario_line": 803,
+          "scenario_line": 819,
           "status": "implemented",
           "owner_role": "outreach-engineer",
           "epic_ids": [
@@ -4702,7 +4810,7 @@
         },
         {
           "name": "Initial enrichment stays selective and capped to the current shortlist policy",
-          "scenario_line": 811,
+          "scenario_line": 827,
           "status": "implemented",
           "owner_role": "outreach-engineer",
           "epic_ids": [
@@ -4730,7 +4838,7 @@
         },
         {
           "name": "LinkedIn URL from enrichment can produce a recipient profile snapshot before drafting",
-          "scenario_line": 818,
+          "scenario_line": 834,
           "status": "implemented",
           "owner_role": "outreach-engineer",
           "epic_ids": [
@@ -4758,7 +4866,7 @@
         },
         {
           "name": "Shortlisted candidate that becomes a terminal enrichment dead end is removed from canonical shortlist state",
-          "scenario_line": 825,
+          "scenario_line": 841,
           "status": "implemented",
           "owner_role": "outreach-engineer",
           "epic_ids": [
@@ -4786,7 +4894,7 @@
         },
         {
           "name": "Person-scoped email discovery uses the current provider order and stops on first usable result",
-          "scenario_line": 832,
+          "scenario_line": 848,
           "status": "implemented",
           "owner_role": "outreach-engineer",
           "epic_ids": [
@@ -4814,7 +4922,7 @@
         },
         {
           "name": "Discovery returns either a usable email or an explicit unresolved outcome",
-          "scenario_line": 840,
+          "scenario_line": 856,
           "status": "implemented",
           "owner_role": "outreach-engineer",
           "epic_ids": [
@@ -4842,7 +4950,7 @@
         },
         {
           "name": "Provider-specific no-match responses normalize to explicit internal not-found outcomes",
-          "scenario_line": 847,
+          "scenario_line": 863,
           "status": "implemented",
           "owner_role": "outreach-engineer",
           "epic_ids": [
@@ -4870,7 +4978,7 @@
         },
         {
           "name": "Discovery reuses known working email only when identity is clear",
-          "scenario_line": 855,
+          "scenario_line": 871,
           "status": "implemented",
           "owner_role": "outreach-engineer",
           "epic_ids": [
@@ -4898,7 +5006,7 @@
         },
         {
           "name": "Current build does not reuse one contact's pattern for other contacts at the same company",
-          "scenario_line": 862,
+          "scenario_line": 878,
           "status": "implemented",
           "owner_role": "outreach-engineer",
           "epic_ids": [
@@ -4926,7 +5034,7 @@
         },
         {
           "name": "Discovery resolves company domain internally and records a distinct domain-unresolved outcome when needed",
-          "scenario_line": 868,
+          "scenario_line": 884,
           "status": "implemented",
           "owner_role": "outreach-engineer",
           "epic_ids": [
@@ -4953,63 +5061,7 @@
           "note": null
         },
         {
-          "name": "Discovery updates provider-budget state and falls back when a provider is exhausted",
-          "scenario_line": 874,
-          "status": "implemented",
-          "owner_role": "outreach-engineer",
-          "epic_ids": [
-            "BA-07",
-            "BA-09"
-          ],
-          "slice_ids": [
-            "BA-07-S1",
-            "BA-07-S2",
-            "BA-07-S3",
-            "BA-09-S1",
-            "BA-09-S2",
-            "BA-09-S3"
-          ],
-          "code_refs": [
-            "job_hunt_copilot/email_discovery.py",
-            "job_hunt_copilot/review_queries.py"
-          ],
-          "test_refs": [
-            "tests/test_email_discovery.py",
-            "tests/test_review_queries.py"
-          ],
-          "gap_ids": [],
-          "note": null
-        },
-        {
-          "name": "Discovery confidence follows current pre-send and post-send policy",
-          "scenario_line": 883,
-          "status": "implemented",
-          "owner_role": "outreach-engineer",
-          "epic_ids": [
-            "BA-07",
-            "BA-09"
-          ],
-          "slice_ids": [
-            "BA-07-S1",
-            "BA-07-S2",
-            "BA-07-S3",
-            "BA-09-S1",
-            "BA-09-S2",
-            "BA-09-S3"
-          ],
-          "code_refs": [
-            "job_hunt_copilot/email_discovery.py",
-            "job_hunt_copilot/review_queries.py"
-          ],
-          "test_refs": [
-            "tests/test_email_discovery.py",
-            "tests/test_review_queries.py"
-          ],
-          "gap_ids": [],
-          "note": null
-        },
-        {
-          "name": "Discovery retry after a bounced result skips the provider that already failed",
+          "name": "Discovery reuses the saved resolved company domain before weaker derivation",
           "scenario_line": 890,
           "status": "implemented",
           "owner_role": "outreach-engineer",
@@ -5037,7 +5089,7 @@
           "note": null
         },
         {
-          "name": "Provider exhaustion for a contact surfaces review instead of endless retries",
+          "name": "Discovery still calls providers that can operate without company_domain",
           "scenario_line": 896,
           "status": "implemented",
           "owner_role": "outreach-engineer",
@@ -5065,7 +5117,7 @@
           "note": null
         },
         {
-          "name": "Discovery history is preserved as cascade-level attempts without overwriting prior outcomes",
+          "name": "Discovery updates provider-budget state and falls back when a provider is exhausted",
           "scenario_line": 902,
           "status": "implemented",
           "owner_role": "outreach-engineer",
@@ -5093,8 +5145,120 @@
           "note": null
         },
         {
+          "name": "Discovery confidence follows current pre-send and post-send policy",
+          "scenario_line": 911,
+          "status": "implemented",
+          "owner_role": "outreach-engineer",
+          "epic_ids": [
+            "BA-07",
+            "BA-09"
+          ],
+          "slice_ids": [
+            "BA-07-S1",
+            "BA-07-S2",
+            "BA-07-S3",
+            "BA-09-S1",
+            "BA-09-S2",
+            "BA-09-S3"
+          ],
+          "code_refs": [
+            "job_hunt_copilot/email_discovery.py",
+            "job_hunt_copilot/review_queries.py"
+          ],
+          "test_refs": [
+            "tests/test_email_discovery.py",
+            "tests/test_review_queries.py"
+          ],
+          "gap_ids": [],
+          "note": null
+        },
+        {
+          "name": "Discovery retry after a bounced result skips the provider that already failed",
+          "scenario_line": 918,
+          "status": "implemented",
+          "owner_role": "outreach-engineer",
+          "epic_ids": [
+            "BA-07",
+            "BA-09"
+          ],
+          "slice_ids": [
+            "BA-07-S1",
+            "BA-07-S2",
+            "BA-07-S3",
+            "BA-09-S1",
+            "BA-09-S2",
+            "BA-09-S3"
+          ],
+          "code_refs": [
+            "job_hunt_copilot/email_discovery.py",
+            "job_hunt_copilot/review_queries.py"
+          ],
+          "test_refs": [
+            "tests/test_email_discovery.py",
+            "tests/test_review_queries.py"
+          ],
+          "gap_ids": [],
+          "note": null
+        },
+        {
+          "name": "Provider exhaustion for a contact surfaces review instead of endless retries",
+          "scenario_line": 924,
+          "status": "implemented",
+          "owner_role": "outreach-engineer",
+          "epic_ids": [
+            "BA-07",
+            "BA-09"
+          ],
+          "slice_ids": [
+            "BA-07-S1",
+            "BA-07-S2",
+            "BA-07-S3",
+            "BA-09-S1",
+            "BA-09-S2",
+            "BA-09-S3"
+          ],
+          "code_refs": [
+            "job_hunt_copilot/email_discovery.py",
+            "job_hunt_copilot/review_queries.py"
+          ],
+          "test_refs": [
+            "tests/test_email_discovery.py",
+            "tests/test_review_queries.py"
+          ],
+          "gap_ids": [],
+          "note": null
+        },
+        {
+          "name": "Discovery history is preserved as cascade-level attempts without overwriting prior outcomes",
+          "scenario_line": 930,
+          "status": "implemented",
+          "owner_role": "outreach-engineer",
+          "epic_ids": [
+            "BA-07",
+            "BA-09"
+          ],
+          "slice_ids": [
+            "BA-07-S1",
+            "BA-07-S2",
+            "BA-07-S3",
+            "BA-09-S1",
+            "BA-09-S2",
+            "BA-09-S3"
+          ],
+          "code_refs": [
+            "job_hunt_copilot/email_discovery.py",
+            "job_hunt_copilot/review_queries.py"
+          ],
+          "test_refs": [
+            "tests/test_email_discovery.py",
+            "tests/test_review_queries.py"
+          ],
+          "gap_ids": [],
+          "note": null
+        },
+        {
           "name": "Unresolved and bounced discovery review surfaces remain queryable",
-          "scenario_line": 909,
+          "scenario_line": 937,
           "status": "implemented",
           "owner_role": "outreach-engineer",
           "epic_ids": [
@@ -5124,7 +5288,7 @@
     },
     {
       "rule": "Email Drafting and Sending behavior",
-      "rule_line": 916,
+      "rule_line": 944,
       "owner_role": "outreach-engineer",
       "epic_ids": [
         "BA-08"
@@ -5151,7 +5315,7 @@
       "scenarios": [
         {
           "name": "Role-targeted outreach uses posting, recipient, and tailored resume context",
-          "scenario_line": 918,
+          "scenario_line": 946,
           "status": "implemented",
           "owner_role": "outreach-engineer",
           "epic_ids": [
@@ -5173,7 +5337,7 @@
         },
         {
           "name": "General learning outreach does not require a tailored resume or posting linkage",
-          "scenario_line": 927,
+          "scenario_line": 955,
           "status": "implemented",
           "owner_role": "outreach-engineer",
           "epic_ids": [
@@ -5195,7 +5359,7 @@
         },
         {
           "name": "Repeat outreach requiring interpretation is not auto-sent",
-          "scenario_line": 934,
+          "scenario_line": 962,
           "status": "implemented",
           "owner_role": "outreach-engineer",
           "epic_ids": [
@@ -5217,7 +5381,7 @@
         },
         {
           "name": "Autonomous role-targeted sending respects per-posting pacing",
-          "scenario_line": 940,
+          "scenario_line": 968,
           "status": "implemented",
           "owner_role": "outreach-engineer",
           "epic_ids": [
@@ -5239,7 +5403,7 @@
         },
         {
           "name": "Later postings at the same company proactively skip an already-contacted person",
-          "scenario_line": 947,
+          "scenario_line": 975,
           "status": "implemented",
           "owner_role": "outreach-engineer",
           "epic_ids": [
@@ -5261,7 +5425,7 @@
         },
         {
           "name": "Same-company exclusion begins only after an actual send",
-          "scenario_line": 954,
+          "scenario_line": 982,
           "status": "implemented",
           "owner_role": "outreach-engineer",
           "epic_ids": [
@@ -5283,7 +5447,7 @@
         },
         {
           "name": "Later postings with no alternate same-company contacts do not auto-send a second email",
-          "scenario_line": 960,
+          "scenario_line": 988,
           "status": "implemented",
           "owner_role": "outreach-engineer",
           "epic_ids": [
@@ -5305,7 +5469,7 @@
         },
         {
           "name": "Current autonomous active send slice prefers recruiter, manager-adjacent, and engineer coverage without a global daily cap",
-          "scenario_line": 967,
+          "scenario_line": 995,
           "status": "implemented",
           "owner_role": "outreach-engineer",
           "epic_ids": [
@@ -5327,7 +5491,7 @@
         },
         {
           "name": "Quota-blocked sending work yields to other runnable supervisor work",
-          "scenario_line": 973,
+          "scenario_line": 1001,
           "status": "implemented",
           "owner_role": "outreach-engineer",
           "epic_ids": [
@@ -5349,7 +5513,7 @@
         },
         {
           "name": "Role-targeted one-step outreach uses personalization, overlap, and a low-friction ask",
-          "scenario_line": 980,
+          "scenario_line": 1008,
           "status": "implemented",
           "owner_role": "outreach-engineer",
           "epic_ids": [
@@ -5371,7 +5535,7 @@
         },
         {
           "name": "Drafting can begin as individual contacts become ready across the posting frontier",
-          "scenario_line": 989,
+          "scenario_line": 1017,
           "status": "implemented",
           "owner_role": "outreach-engineer",
           "epic_ids": [
@@ -5393,7 +5557,7 @@
         },
         {
           "name": "The ready posting frontier is drafted before automatic sending consumes it",
-          "scenario_line": 996,
+          "scenario_line": 1024,
           "status": "implemented",
           "owner_role": "outreach-engineer",
           "epic_ids": [
@@ -5415,94 +5579,6 @@
         },
         {
           "name": "Failed drafts do not block sending for successfully drafted contacts in the same posting frontier",
-          "scenario_line": 1002,
-          "status": "implemented",
-          "owner_role": "outreach-engineer",
-          "epic_ids": [
-            "BA-08"
-          ],
-          "slice_ids": [
-            "BA-08-S1",
-            "BA-08-S2",
-            "BA-08-S3"
-          ],
-          "code_refs": [
-            "job_hunt_copilot/outreach.py"
-          ],
-          "test_refs": [
-            "tests/test_outreach.py"
-          ],
-          "gap_ids": [],
-          "note": null
-        },
-        {
-          "name": "Recruiter and team-adjacent outreach defaults to a short Zoom conversation ask",
-          "scenario_line": 1009,
-          "status": "implemented",
-          "owner_role": "outreach-engineer",
-          "epic_ids": [
-            "BA-08"
-          ],
-          "slice_ids": [
-            "BA-08-S1",
-            "BA-08-S2",
-            "BA-08-S3"
-          ],
-          "code_refs": [
-            "job_hunt_copilot/outreach.py"
-          ],
-          "test_refs": [
-            "tests/test_outreach.py"
-          ],
-          "gap_ids": [],
-          "note": null
-        },
-        {
-          "name": "Rich HTML outreach preserves readable fallback content and canonical message persistence",
-          "scenario_line": 1015,
-          "status": "implemented",
-          "owner_role": "outreach-engineer",
-          "epic_ids": [
-            "BA-08"
-          ],
-          "slice_ids": [
-            "BA-08-S1",
-            "BA-08-S2",
-            "BA-08-S3"
-          ],
-          "code_refs": [
-            "job_hunt_copilot/outreach.py"
-          ],
-          "test_refs": [
-            "tests/test_outreach.py"
-          ],
-          "gap_ids": [],
-          "note": null
-        },
-        {
-          "name": "Human-readable and machine-readable drafting artifacts are both available",
-          "scenario_line": 1023,
-          "status": "implemented",
-          "owner_role": "outreach-engineer",
-          "epic_ids": [
-            "BA-08"
-          ],
-          "slice_ids": [
-            "BA-08-S1",
-            "BA-08-S2",
-            "BA-08-S3"
-          ],
-          "code_refs": [
-            "job_hunt_copilot/outreach.py"
-          ],
-          "test_refs": [
-            "tests/test_outreach.py"
-          ],
-          "gap_ids": [],
-          "note": null
-        },
-        {
-          "name": "Default v4 shared template uses the current unified structure",
           "scenario_line": 1030,
           "status": "implemented",
           "owner_role": "outreach-engineer",
@@ -5524,8 +5600,96 @@
           "note": null
         },
         {
+          "name": "Recruiter and team-adjacent outreach defaults to a short Zoom conversation ask",
+          "scenario_line": 1037,
+          "status": "implemented",
+          "owner_role": "outreach-engineer",
+          "epic_ids": [
+            "BA-08"
+          ],
+          "slice_ids": [
+            "BA-08-S1",
+            "BA-08-S2",
+            "BA-08-S3"
+          ],
+          "code_refs": [
+            "job_hunt_copilot/outreach.py"
+          ],
+          "test_refs": [
+            "tests/test_outreach.py"
+          ],
+          "gap_ids": [],
+          "note": null
+        },
+        {
+          "name": "Rich HTML outreach preserves readable fallback content and canonical message persistence",
+          "scenario_line": 1043,
+          "status": "implemented",
+          "owner_role": "outreach-engineer",
+          "epic_ids": [
+            "BA-08"
+          ],
+          "slice_ids": [
+            "BA-08-S1",
+            "BA-08-S2",
+            "BA-08-S3"
+          ],
+          "code_refs": [
+            "job_hunt_copilot/outreach.py"
+          ],
+          "test_refs": [
+            "tests/test_outreach.py"
+          ],
+          "gap_ids": [],
+          "note": null
+        },
+        {
+          "name": "Human-readable and machine-readable drafting artifacts are both available",
+          "scenario_line": 1051,
+          "status": "implemented",
+          "owner_role": "outreach-engineer",
+          "epic_ids": [
+            "BA-08"
+          ],
+          "slice_ids": [
+            "BA-08-S1",
+            "BA-08-S2",
+            "BA-08-S3"
+          ],
+          "code_refs": [
+            "job_hunt_copilot/outreach.py"
+          ],
+          "test_refs": [
+            "tests/test_outreach.py"
+          ],
+          "gap_ids": [],
+          "note": null
+        },
+        {
+          "name": "Default v4 shared template uses the current unified structure",
+          "scenario_line": 1058,
+          "status": "implemented",
+          "owner_role": "outreach-engineer",
+          "epic_ids": [
+            "BA-08"
+          ],
+          "slice_ids": [
+            "BA-08-S1",
+            "BA-08-S2",
+            "BA-08-S3"
+          ],
+          "code_refs": [
+            "job_hunt_copilot/outreach.py"
+          ],
+          "test_refs": [
+            "tests/test_outreach.py"
+          ],
+          "gap_ids": [],
+          "note": null
+        },
+        {
           "name": "The current shared role-targeted template includes a compact forwardable summary snippet",
-          "scenario_line": 1041,
+          "scenario_line": 1069,
           "status": "implemented",
           "owner_role": "outreach-engineer",
           "epic_ids": [
@@ -5549,7 +5713,7 @@
     },
     {
       "rule": "Delivery Feedback behavior",
-      "rule_line": 1049,
+      "rule_line": 1077,
       "owner_role": "outreach-engineer",
       "epic_ids": [
         "BA-03",
@@ -5576,7 +5740,7 @@
       ],
       "note": null,
       "status_counts": {
-        "implemented": 12,
+        "implemented": 13,
         "partial": 0,
         "gap": 0,
         "deferred_optional": 0,
@@ -5585,7 +5749,7 @@
       "scenarios": [
         {
           "name": "Delivery feedback uses mailbox observation with the current timing rules",
-          "scenario_line": 1051,
+          "scenario_line": 1079,
           "status": "implemented",
           "owner_role": "outreach-engineer",
           "epic_ids": [
@@ -5616,130 +5780,6 @@
         },
         {
           "name": "Delivery feedback may begin immediately for each sent message",
-          "scenario_line": 1058,
-          "status": "implemented",
-          "owner_role": "outreach-engineer",
-          "epic_ids": [
-            "BA-03",
-            "BA-09"
-          ],
-          "slice_ids": [
-            "BA-03-S1",
-            "BA-03-S2",
-            "BA-03-S3",
-            "BA-09-S1",
-            "BA-09-S2",
-            "BA-09-S3"
-          ],
-          "code_refs": [
-            "job_hunt_copilot/delivery_feedback.py",
-            "job_hunt_copilot/local_runtime.py",
-            "job_hunt_copilot/paths.py"
-          ],
-          "test_refs": [
-            "tests/test_delivery_feedback.py",
-            "tests/test_outreach.py",
-            "tests/test_local_runtime.py",
-            "tests/test_smoke_harness.py"
-          ],
-          "gap_ids": [],
-          "note": null
-        },
-        {
-          "name": "Delivery feedback persists canonical event history and machine handoff output",
-          "scenario_line": 1064,
-          "status": "implemented",
-          "owner_role": "outreach-engineer",
-          "epic_ids": [
-            "BA-03",
-            "BA-09"
-          ],
-          "slice_ids": [
-            "BA-03-S1",
-            "BA-03-S2",
-            "BA-03-S3",
-            "BA-09-S1",
-            "BA-09-S2",
-            "BA-09-S3"
-          ],
-          "code_refs": [
-            "job_hunt_copilot/delivery_feedback.py",
-            "job_hunt_copilot/local_runtime.py",
-            "job_hunt_copilot/paths.py"
-          ],
-          "test_refs": [
-            "tests/test_delivery_feedback.py",
-            "tests/test_outreach.py",
-            "tests/test_local_runtime.py",
-            "tests/test_smoke_harness.py"
-          ],
-          "gap_ids": [],
-          "note": null
-        },
-        {
-          "name": "Bounced outcomes conservatively block reuse without starting bounce recovery",
-          "scenario_line": 1072,
-          "status": "implemented",
-          "owner_role": "outreach-engineer",
-          "epic_ids": [
-            "BA-03",
-            "BA-09"
-          ],
-          "slice_ids": [
-            "BA-03-S1",
-            "BA-03-S2",
-            "BA-03-S3",
-            "BA-09-S1",
-            "BA-09-S2",
-            "BA-09-S3"
-          ],
-          "code_refs": [
-            "job_hunt_copilot/delivery_feedback.py",
-            "job_hunt_copilot/local_runtime.py",
-            "job_hunt_copilot/paths.py"
-          ],
-          "test_refs": [
-            "tests/test_delivery_feedback.py",
-            "tests/test_outreach.py",
-            "tests/test_local_runtime.py",
-            "tests/test_smoke_harness.py"
-          ],
-          "gap_ids": [],
-          "note": null
-        },
-        {
-          "name": "Delayed feedback scheduling uses launchd in the current deployment",
-          "scenario_line": 1079,
-          "status": "implemented",
-          "owner_role": "outreach-engineer",
-          "epic_ids": [
-            "BA-03",
-            "BA-09"
-          ],
-          "slice_ids": [
-            "BA-03-S1",
-            "BA-03-S2",
-            "BA-03-S3",
-            "BA-09-S1",
-            "BA-09-S2",
-            "BA-09-S3"
-          ],
-          "code_refs": [
-            "job_hunt_copilot/delivery_feedback.py",
-            "job_hunt_copilot/local_runtime.py",
-            "job_hunt_copilot/paths.py"
-          ],
-          "test_refs": [
-            "tests/test_delivery_feedback.py",
-            "tests/test_outreach.py",
-            "tests/test_local_runtime.py",
-            "tests/test_smoke_harness.py"
-          ],
-          "gap_ids": [],
-          "note": "`job_hunt_copilot.local_runtime`, `scripts/ops/run_feedback_sync.py`, `scripts/ops/materialize_feedback_sync_plist.py`, and the new `ops/launchd/job-hunt-copilot-feedback-sync.plist` now give delayed feedback polling a dedicated launchd invocation path that still calls the shared Delivery Feedback sync logic."
-        },
-        {
-          "name": "The separate feedback-sync worker owns delayed mailbox polling",
           "scenario_line": 1086,
           "status": "implemented",
           "owner_role": "outreach-engineer",
@@ -5770,7 +5810,7 @@
           "note": null
         },
         {
-          "name": "Not-bounced is recorded when the observation window closes without a bounce",
+          "name": "Delivery feedback persists canonical event history and machine handoff output",
           "scenario_line": 1092,
           "status": "implemented",
           "owner_role": "outreach-engineer",
@@ -5801,8 +5841,163 @@
           "note": null
         },
         {
+          "name": "Bounced outcomes conservatively block reuse without starting bounce recovery",
+          "scenario_line": 1100,
+          "status": "implemented",
+          "owner_role": "outreach-engineer",
+          "epic_ids": [
+            "BA-03",
+            "BA-09"
+          ],
+          "slice_ids": [
+            "BA-03-S1",
+            "BA-03-S2",
+            "BA-03-S3",
+            "BA-09-S1",
+            "BA-09-S2",
+            "BA-09-S3"
+          ],
+          "code_refs": [
+            "job_hunt_copilot/delivery_feedback.py",
+            "job_hunt_copilot/local_runtime.py",
+            "job_hunt_copilot/paths.py"
+          ],
+          "test_refs": [
+            "tests/test_delivery_feedback.py",
+            "tests/test_outreach.py",
+            "tests/test_local_runtime.py",
+            "tests/test_smoke_harness.py"
+          ],
+          "gap_ids": [],
+          "note": null
+        },
+        {
+          "name": "Delayed feedback scheduling uses launchd in the current deployment",
+          "scenario_line": 1107,
+          "status": "implemented",
+          "owner_role": "outreach-engineer",
+          "epic_ids": [
+            "BA-03",
+            "BA-09"
+          ],
+          "slice_ids": [
+            "BA-03-S1",
+            "BA-03-S2",
+            "BA-03-S3",
+            "BA-09-S1",
+            "BA-09-S2",
+            "BA-09-S3"
+          ],
+          "code_refs": [
+            "job_hunt_copilot/delivery_feedback.py",
+            "job_hunt_copilot/local_runtime.py",
+            "job_hunt_copilot/paths.py"
+          ],
+          "test_refs": [
+            "tests/test_delivery_feedback.py",
+            "tests/test_outreach.py",
+            "tests/test_local_runtime.py",
+            "tests/test_smoke_harness.py"
+          ],
+          "gap_ids": [],
+          "note": "`job_hunt_copilot.local_runtime`, `scripts/ops/run_feedback_sync.py`, `scripts/ops/materialize_feedback_sync_plist.py`, and the new `ops/launchd/job-hunt-copilot-feedback-sync.plist` now give delayed feedback polling a dedicated launchd invocation path that still calls the shared Delivery Feedback sync logic."
+        },
+        {
+          "name": "The separate feedback-sync worker owns delayed mailbox polling",
+          "scenario_line": 1114,
+          "status": "implemented",
+          "owner_role": "outreach-engineer",
+          "epic_ids": [
+            "BA-03",
+            "BA-09"
+          ],
+          "slice_ids": [
+            "BA-03-S1",
+            "BA-03-S2",
+            "BA-03-S3",
+            "BA-09-S1",
+            "BA-09-S2",
+            "BA-09-S3"
+          ],
+          "code_refs": [
+            "job_hunt_copilot/delivery_feedback.py",
+            "job_hunt_copilot/local_runtime.py",
+            "job_hunt_copilot/paths.py"
+          ],
+          "test_refs": [
+            "tests/test_delivery_feedback.py",
+            "tests/test_outreach.py",
+            "tests/test_local_runtime.py",
+            "tests/test_smoke_harness.py"
+          ],
+          "gap_ids": [],
+          "note": null
+        },
+        {
+          "name": "Not-bounced is recorded when the observation window closes without a bounce",
+          "scenario_line": 1120,
+          "status": "implemented",
+          "owner_role": "outreach-engineer",
+          "epic_ids": [
+            "BA-03",
+            "BA-09"
+          ],
+          "slice_ids": [
+            "BA-03-S1",
+            "BA-03-S2",
+            "BA-03-S3",
+            "BA-09-S1",
+            "BA-09-S2",
+            "BA-09-S3"
+          ],
+          "code_refs": [
+            "job_hunt_copilot/delivery_feedback.py",
+            "job_hunt_copilot/local_runtime.py",
+            "job_hunt_copilot/paths.py"
+          ],
+          "test_refs": [
+            "tests/test_delivery_feedback.py",
+            "tests/test_outreach.py",
+            "tests/test_local_runtime.py",
+            "tests/test_smoke_harness.py"
+          ],
+          "gap_ids": [],
+          "note": null
+        },
+        {
           "name": "Reply detection retains useful reply context without requiring reply classification",
-          "scenario_line": 1099,
+          "scenario_line": 1127,
+          "status": "implemented",
+          "owner_role": "outreach-engineer",
+          "epic_ids": [
+            "BA-03",
+            "BA-09"
+          ],
+          "slice_ids": [
+            "BA-03-S1",
+            "BA-03-S2",
+            "BA-03-S3",
+            "BA-09-S1",
+            "BA-09-S2",
+            "BA-09-S3"
+          ],
+          "code_refs": [
+            "job_hunt_copilot/delivery_feedback.py",
+            "job_hunt_copilot/local_runtime.py",
+            "job_hunt_copilot/paths.py"
+          ],
+          "test_refs": [
+            "tests/test_delivery_feedback.py",
+            "tests/test_outreach.py",
+            "tests/test_local_runtime.py",
+            "tests/test_smoke_harness.py"
+          ],
+          "gap_ids": [],
+          "note": null
+        },
+        {
+          "name": "Persisted reply events promote contacts into responder tracking without replacing lifecycle state",
+          "scenario_line": 1134,
           "status": "implemented",
           "owner_role": "outreach-engineer",
           "epic_ids": [
@@ -5833,7 +6028,7 @@
         },
         {
           "name": "Bounce and not-bounced outcomes are reusable for discovery while replies remain review-only",
-          "scenario_line": 1106,
+          "scenario_line": 1142,
           "status": "implemented",
           "owner_role": "outreach-engineer",
           "epic_ids": [
@@ -5864,7 +6059,7 @@
         },
         {
           "name": "Feedback events are tied to the exact sent message instance",
-          "scenario_line": 1112,
+          "scenario_line": 1148,
           "status": "implemented",
           "owner_role": "outreach-engineer",
           "epic_ids": [
@@ -5895,7 +6090,7 @@
         },
         {
           "name": "Feedback events are persisted immediately when detected",
-          "scenario_line": 1118,
+          "scenario_line": 1154,
           "status": "implemented",
           "owner_role": "outreach-engineer",
           "epic_ids": [
@@ -5926,7 +6121,7 @@
         },
         {
           "name": "Reply outcomes remain reviewable without entering the current discovery-learning loop",
-          "scenario_line": 1124,
+          "scenario_line": 1160,
           "status": "implemented",
           "owner_role": "outreach-engineer",
           "epic_ids": [
@@ -5959,7 +6154,7 @@
     },
     {
       "rule": "Supervisor Agent behavior",
-      "rule_line": 1132,
+      "rule_line": 1168,
       "owner_role": "build-lead",
       "epic_ids": [
         "BA-02",
@@ -6003,7 +6198,7 @@
       "scenarios": [
         {
           "name": "Supervisor heartbeat runs under launchd and rebuilds fresh context from persisted state",
-          "scenario_line": 1134,
+          "scenario_line": 1170,
           "status": "implemented",
           "owner_role": "build-lead",
           "epic_ids": [
@@ -6042,7 +6237,7 @@
         },
         {
           "name": "Runtime self-awareness comes from the generated identity and policy pack",
-          "scenario_line": 1142,
+          "scenario_line": 1178,
           "status": "implemented",
           "owner_role": "build-lead",
           "epic_ids": [
@@ -6081,7 +6276,7 @@
         },
         {
           "name": "Heartbeats resume durable pipeline runs rather than creating duplicate work",
-          "scenario_line": 1149,
+          "scenario_line": 1185,
           "status": "implemented",
           "owner_role": "build-lead",
           "epic_ids": [
@@ -6120,7 +6315,7 @@
         },
         {
           "name": "Supervisor control, incident, run, and review-packet states follow the current canonical semantics",
-          "scenario_line": 1156,
+          "scenario_line": 1192,
           "status": "implemented",
           "owner_role": "build-lead",
           "epic_ids": [
@@ -6159,7 +6354,7 @@
         },
         {
           "name": "Supervisor leases prevent overlapping cycles and allow stale recovery",
-          "scenario_line": 1165,
+          "scenario_line": 1201,
           "status": "implemented",
           "owner_role": "build-lead",
           "epic_ids": [
@@ -6198,7 +6393,7 @@
         },
         {
           "name": "Supervisor cycles follow the current bounded single-work-unit algorithm",
-          "scenario_line": 1172,
+          "scenario_line": 1208,
           "status": "implemented",
           "owner_role": "build-lead",
           "epic_ids": [
@@ -6237,7 +6432,7 @@
         },
         {
           "name": "Supervisor work selection follows the current default priority order",
-          "scenario_line": 1182,
+          "scenario_line": 1218,
           "status": "implemented",
           "owner_role": "build-lead",
           "epic_ids": [
@@ -6276,7 +6471,7 @@
         },
         {
           "name": "Supervisor chooses only registered catalog actions and escalates unknown needs",
-          "scenario_line": 1190,
+          "scenario_line": 1226,
           "status": "implemented",
           "owner_role": "build-lead",
           "epic_ids": [
@@ -6315,7 +6510,7 @@
         },
         {
           "name": "Review-worthy terminal runs always generate expert review packets",
-          "scenario_line": 1197,
+          "scenario_line": 1233,
           "status": "implemented",
           "owner_role": "build-lead",
           "epic_ids": [
@@ -6354,7 +6549,7 @@
         },
         {
           "name": "Auto-pause triggers on critical incidents or repeated unresolved incident clusters",
-          "scenario_line": 1204,
+          "scenario_line": 1240,
           "status": "implemented",
           "owner_role": "build-lead",
           "epic_ids": [
@@ -6393,7 +6588,7 @@
         },
         {
           "name": "Paused and stopped modes have different operational boundaries",
-          "scenario_line": 1212,
+          "scenario_line": 1248,
           "status": "implemented",
           "owner_role": "build-lead",
           "epic_ids": [
@@ -6432,7 +6627,7 @@
         },
         {
           "name": "jhc-agent-start starts once and jhc-agent-stop preserves state",
-          "scenario_line": 1221,
+          "scenario_line": 1257,
           "status": "implemented",
           "owner_role": "build-lead",
           "epic_ids": [
@@ -6471,162 +6666,6 @@
         },
         {
           "name": "Current supervisor launchd and wrapper wiring uses the repo-local command path",
-          "scenario_line": 1231,
-          "status": "implemented",
-          "owner_role": "build-lead",
-          "epic_ids": [
-            "BA-02",
-            "BA-03"
-          ],
-          "slice_ids": [
-            "BA-02-S1",
-            "BA-02-S2",
-            "BA-02-S3",
-            "BA-03-S1",
-            "BA-03-S2",
-            "BA-03-S3"
-          ],
-          "code_refs": [
-            "job_hunt_copilot/chat_runtime.py",
-            "job_hunt_copilot/supervisor.py",
-            "job_hunt_copilot/local_runtime.py",
-            "job_hunt_copilot/runtime_pack.py",
-            "scripts/ops/run_supervisor_cycle.py",
-            "scripts/ops/control_agent.py",
-            "scripts/ops/chat_session.py",
-            "bin/jhc-agent-start",
-            "bin/jhc-agent-stop",
-            "bin/jhc-agent-cycle",
-            "bin/jhc-chat"
-          ],
-          "test_refs": [
-            "tests/test_supervisor_downstream_actions.py",
-            "tests/test_supervisor.py",
-            "tests/test_local_runtime.py",
-            "tests/test_runtime_pack.py"
-          ],
-          "gap_ids": [],
-          "note": "This behavior is implemented and covered by the current supervisor or local-runtime tests."
-        },
-        {
-          "name": "Current feedback-sync launchd and wrapper wiring uses the repo-local command path",
-          "scenario_line": 1240,
-          "status": "implemented",
-          "owner_role": "build-lead",
-          "epic_ids": [
-            "BA-02",
-            "BA-03"
-          ],
-          "slice_ids": [
-            "BA-02-S1",
-            "BA-02-S2",
-            "BA-02-S3",
-            "BA-03-S1",
-            "BA-03-S2",
-            "BA-03-S3"
-          ],
-          "code_refs": [
-            "job_hunt_copilot/chat_runtime.py",
-            "job_hunt_copilot/supervisor.py",
-            "job_hunt_copilot/local_runtime.py",
-            "job_hunt_copilot/runtime_pack.py",
-            "scripts/ops/run_supervisor_cycle.py",
-            "scripts/ops/control_agent.py",
-            "scripts/ops/chat_session.py",
-            "bin/jhc-agent-start",
-            "bin/jhc-agent-stop",
-            "bin/jhc-agent-cycle",
-            "bin/jhc-chat"
-          ],
-          "test_refs": [
-            "tests/test_supervisor_downstream_actions.py",
-            "tests/test_supervisor.py",
-            "tests/test_local_runtime.py",
-            "tests/test_runtime_pack.py"
-          ],
-          "gap_ids": [],
-          "note": "`job_hunt_copilot.local_runtime`, `scripts/ops/run_feedback_sync.py`, `bin/jhc-feedback-sync-cycle`, and `tests/test_local_runtime.py` now pin the dedicated feedback-sync launchd wiring and repo-local wrapper command path."
-        },
-        {
-          "name": "jhc-agent-start and jhc-agent-stop use the current launchctl wiring",
-          "scenario_line": 1249,
-          "status": "implemented",
-          "owner_role": "build-lead",
-          "epic_ids": [
-            "BA-02",
-            "BA-03"
-          ],
-          "slice_ids": [
-            "BA-02-S1",
-            "BA-02-S2",
-            "BA-02-S3",
-            "BA-03-S1",
-            "BA-03-S2",
-            "BA-03-S3"
-          ],
-          "code_refs": [
-            "job_hunt_copilot/chat_runtime.py",
-            "job_hunt_copilot/supervisor.py",
-            "job_hunt_copilot/local_runtime.py",
-            "job_hunt_copilot/runtime_pack.py",
-            "scripts/ops/run_supervisor_cycle.py",
-            "scripts/ops/control_agent.py",
-            "scripts/ops/chat_session.py",
-            "bin/jhc-agent-start",
-            "bin/jhc-agent-stop",
-            "bin/jhc-agent-cycle",
-            "bin/jhc-chat"
-          ],
-          "test_refs": [
-            "tests/test_supervisor_downstream_actions.py",
-            "tests/test_supervisor.py",
-            "tests/test_local_runtime.py",
-            "tests/test_runtime_pack.py"
-          ],
-          "gap_ids": [],
-          "note": "This behavior is implemented and covered by the current supervisor or local-runtime tests."
-        },
-        {
-          "name": "jhc-chat is the direct Codex-backed operator entrypoint",
-          "scenario_line": 1260,
-          "status": "implemented",
-          "owner_role": "build-lead",
-          "epic_ids": [
-            "BA-02",
-            "BA-03"
-          ],
-          "slice_ids": [
-            "BA-02-S1",
-            "BA-02-S2",
-            "BA-02-S3",
-            "BA-03-S1",
-            "BA-03-S2",
-            "BA-03-S3"
-          ],
-          "code_refs": [
-            "job_hunt_copilot/chat_runtime.py",
-            "job_hunt_copilot/supervisor.py",
-            "job_hunt_copilot/local_runtime.py",
-            "job_hunt_copilot/runtime_pack.py",
-            "scripts/ops/run_supervisor_cycle.py",
-            "scripts/ops/control_agent.py",
-            "scripts/ops/chat_session.py",
-            "bin/jhc-agent-start",
-            "bin/jhc-agent-stop",
-            "bin/jhc-agent-cycle",
-            "bin/jhc-chat"
-          ],
-          "test_refs": [
-            "tests/test_supervisor_downstream_actions.py",
-            "tests/test_supervisor.py",
-            "tests/test_local_runtime.py",
-            "tests/test_runtime_pack.py"
-          ],
-          "gap_ids": [],
-          "note": "This behavior is implemented and covered by the current supervisor or local-runtime tests."
-        },
-        {
-          "name": "jhc-chat uses explicit session begin and end wiring in the current build",
           "scenario_line": 1267,
           "status": "implemented",
           "owner_role": "build-lead",
@@ -6665,8 +6704,164 @@
           "note": "This behavior is implemented and covered by the current supervisor or local-runtime tests."
         },
         {
+          "name": "Current feedback-sync launchd and wrapper wiring uses the repo-local command path",
+          "scenario_line": 1276,
+          "status": "implemented",
+          "owner_role": "build-lead",
+          "epic_ids": [
+            "BA-02",
+            "BA-03"
+          ],
+          "slice_ids": [
+            "BA-02-S1",
+            "BA-02-S2",
+            "BA-02-S3",
+            "BA-03-S1",
+            "BA-03-S2",
+            "BA-03-S3"
+          ],
+          "code_refs": [
+            "job_hunt_copilot/chat_runtime.py",
+            "job_hunt_copilot/supervisor.py",
+            "job_hunt_copilot/local_runtime.py",
+            "job_hunt_copilot/runtime_pack.py",
+            "scripts/ops/run_supervisor_cycle.py",
+            "scripts/ops/control_agent.py",
+            "scripts/ops/chat_session.py",
+            "bin/jhc-agent-start",
+            "bin/jhc-agent-stop",
+            "bin/jhc-agent-cycle",
+            "bin/jhc-chat"
+          ],
+          "test_refs": [
+            "tests/test_supervisor_downstream_actions.py",
+            "tests/test_supervisor.py",
+            "tests/test_local_runtime.py",
+            "tests/test_runtime_pack.py"
+          ],
+          "gap_ids": [],
+          "note": "`job_hunt_copilot.local_runtime`, `scripts/ops/run_feedback_sync.py`, `bin/jhc-feedback-sync-cycle`, and `tests/test_local_runtime.py` now pin the dedicated feedback-sync launchd wiring and repo-local wrapper command path."
+        },
+        {
+          "name": "jhc-agent-start and jhc-agent-stop use the current launchctl wiring",
+          "scenario_line": 1285,
+          "status": "implemented",
+          "owner_role": "build-lead",
+          "epic_ids": [
+            "BA-02",
+            "BA-03"
+          ],
+          "slice_ids": [
+            "BA-02-S1",
+            "BA-02-S2",
+            "BA-02-S3",
+            "BA-03-S1",
+            "BA-03-S2",
+            "BA-03-S3"
+          ],
+          "code_refs": [
+            "job_hunt_copilot/chat_runtime.py",
+            "job_hunt_copilot/supervisor.py",
+            "job_hunt_copilot/local_runtime.py",
+            "job_hunt_copilot/runtime_pack.py",
+            "scripts/ops/run_supervisor_cycle.py",
+            "scripts/ops/control_agent.py",
+            "scripts/ops/chat_session.py",
+            "bin/jhc-agent-start",
+            "bin/jhc-agent-stop",
+            "bin/jhc-agent-cycle",
+            "bin/jhc-chat"
+          ],
+          "test_refs": [
+            "tests/test_supervisor_downstream_actions.py",
+            "tests/test_supervisor.py",
+            "tests/test_local_runtime.py",
+            "tests/test_runtime_pack.py"
+          ],
+          "gap_ids": [],
+          "note": "This behavior is implemented and covered by the current supervisor or local-runtime tests."
+        },
+        {
+          "name": "jhc-chat is the direct Codex-backed operator entrypoint",
+          "scenario_line": 1296,
+          "status": "implemented",
+          "owner_role": "build-lead",
+          "epic_ids": [
+            "BA-02",
+            "BA-03"
+          ],
+          "slice_ids": [
+            "BA-02-S1",
+            "BA-02-S2",
+            "BA-02-S3",
+            "BA-03-S1",
+            "BA-03-S2",
+            "BA-03-S3"
+          ],
+          "code_refs": [
+            "job_hunt_copilot/chat_runtime.py",
+            "job_hunt_copilot/supervisor.py",
+            "job_hunt_copilot/local_runtime.py",
+            "job_hunt_copilot/runtime_pack.py",
+            "scripts/ops/run_supervisor_cycle.py",
+            "scripts/ops/control_agent.py",
+            "scripts/ops/chat_session.py",
+            "bin/jhc-agent-start",
+            "bin/jhc-agent-stop",
+            "bin/jhc-agent-cycle",
+            "bin/jhc-chat"
+          ],
+          "test_refs": [
+            "tests/test_supervisor_downstream_actions.py",
+            "tests/test_supervisor.py",
+            "tests/test_local_runtime.py",
+            "tests/test_runtime_pack.py"
+          ],
+          "gap_ids": [],
+          "note": "This behavior is implemented and covered by the current supervisor or local-runtime tests."
+        },
+        {
+          "name": "jhc-chat uses explicit session begin and end wiring in the current build",
+          "scenario_line": 1303,
+          "status": "implemented",
+          "owner_role": "build-lead",
+          "epic_ids": [
+            "BA-02",
+            "BA-03"
+          ],
+          "slice_ids": [
+            "BA-02-S1",
+            "BA-02-S2",
+            "BA-02-S3",
+            "BA-03-S1",
+            "BA-03-S2",
+            "BA-03-S3"
+          ],
+          "code_refs": [
+            "job_hunt_copilot/chat_runtime.py",
+            "job_hunt_copilot/supervisor.py",
+            "job_hunt_copilot/local_runtime.py",
+            "job_hunt_copilot/runtime_pack.py",
+            "scripts/ops/run_supervisor_cycle.py",
+            "scripts/ops/control_agent.py",
+            "scripts/ops/chat_session.py",
+            "bin/jhc-agent-start",
+            "bin/jhc-agent-stop",
+            "bin/jhc-agent-cycle",
+            "bin/jhc-chat"
+          ],
+          "test_refs": [
+            "tests/test_supervisor_downstream_actions.py",
+            "tests/test_supervisor.py",
+            "tests/test_local_runtime.py",
+            "tests/test_runtime_pack.py"
+          ],
+          "gap_ids": [],
+          "note": "This behavior is implemented and covered by the current supervisor or local-runtime tests."
+        },
+        {
           "name": "jhc-chat startup dashboard is detailed, bounded, and clean-first",
-          "scenario_line": 1277,
+          "scenario_line": 1313,
           "status": "implemented",
           "owner_role": "build-lead",
           "epic_ids": [
@@ -6705,7 +6900,7 @@
         },
         {
           "name": "Startup dashboard runtime metrics count only active autonomous execution",
-          "scenario_line": 1286,
+          "scenario_line": 1322,
           "status": "implemented",
           "owner_role": "build-lead",
           "epic_ids": [
@@ -6744,7 +6939,7 @@
         },
         {
           "name": "Review retrieval is grouped, compact-first, and newest-first within each group",
-          "scenario_line": 1292,
+          "scenario_line": 1328,
           "status": "implemented",
           "owner_role": "build-lead",
           "epic_ids": [
@@ -6783,7 +6978,7 @@
         },
         {
           "name": "Progress log, ops plan, and context snapshot use the current exact file shapes",
-          "scenario_line": 1300,
+          "scenario_line": 1336,
           "status": "implemented",
           "owner_role": "build-lead",
           "epic_ids": [
@@ -6822,7 +7017,7 @@
         },
         {
           "name": "jhc-chat uses persisted state for answers and control routing",
-          "scenario_line": 1308,
+          "scenario_line": 1344,
           "status": "implemented",
           "owner_role": "build-lead",
           "epic_ids": [
@@ -6861,7 +7056,7 @@
         },
         {
           "name": "Current macOS sleep or wake detection uses pmset logs first and conservative fallback second",
-          "scenario_line": 1317,
+          "scenario_line": 1354,
           "status": "implemented",
           "owner_role": "build-lead",
           "epic_ids": [
@@ -6900,7 +7095,7 @@
         },
         {
           "name": "Default change summaries cover activity since the last completed expert review",
-          "scenario_line": 1326,
+          "scenario_line": 1363,
           "status": "implemented",
           "owner_role": "build-lead",
           "epic_ids": [
@@ -6939,7 +7134,7 @@
         },
         {
           "name": "Expert guidance becomes live immediately but conflicting or uncertain reuse asks first",
-          "scenario_line": 1332,
+          "scenario_line": 1369,
           "status": "implemented",
           "owner_role": "build-lead",
           "epic_ids": [
@@ -6978,7 +7173,7 @@
         },
         {
           "name": "Conflicting expert guidance pauses the whole autonomous system",
-          "scenario_line": 1340,
+          "scenario_line": 1377,
           "status": "implemented",
           "owner_role": "build-lead",
           "epic_ids": [
@@ -7017,7 +7212,7 @@
         },
         {
           "name": "Opening jhc-chat immediately pauses autonomous work and safe checkpointing is strict",
-          "scenario_line": 1347,
+          "scenario_line": 1384,
           "status": "implemented",
           "owner_role": "build-lead",
           "epic_ids": [
@@ -7056,7 +7251,7 @@
         },
         {
           "name": "Expert-interaction resume follows explicit close, explicit resume, or safe idle timeout",
-          "scenario_line": 1356,
+          "scenario_line": 1393,
           "status": "implemented",
           "owner_role": "build-lead",
           "epic_ids": [
@@ -7095,7 +7290,7 @@
         },
         {
           "name": "Expert-requested background tasks require explicit handoff summary and exclusive focus",
-          "scenario_line": 1366,
+          "scenario_line": 1403,
           "status": "implemented",
           "owner_role": "build-lead",
           "epic_ids": [
@@ -7134,7 +7329,7 @@
         },
         {
           "name": "Expert-requested background task outcomes return to review appropriately",
-          "scenario_line": 1373,
+          "scenario_line": 1410,
           "status": "implemented",
           "owner_role": "build-lead",
           "epic_ids": [
@@ -7173,7 +7368,7 @@
         },
         {
           "name": "Daily maintenance is mandatory, bounded, and run-boundary aware",
-          "scenario_line": 1381,
+          "scenario_line": 1418,
           "status": "implemented",
           "owner_role": "build-lead",
           "epic_ids": [
@@ -7212,7 +7407,7 @@
         },
         {
           "name": "Maintenance changes follow the current git and approval workflow",
-          "scenario_line": 1390,
+          "scenario_line": 1427,
           "status": "implemented",
           "owner_role": "build-lead",
           "epic_ids": [
@@ -7251,7 +7446,7 @@
         },
         {
           "name": "Proper maintenance validation requires both change-scoped and full-project testing",
-          "scenario_line": 1401,
+          "scenario_line": 1438,
           "status": "implemented",
           "owner_role": "build-lead",
           "epic_ids": [
@@ -7290,7 +7485,7 @@
         },
         {
           "name": "Failed or unapproved maintenance batches remain reviewable",
-          "scenario_line": 1408,
+          "scenario_line": 1445,
           "status": "implemented",
           "owner_role": "build-lead",
           "epic_ids": [
@@ -7331,7 +7526,7 @@
     },
     {
       "rule": "Review surfaces and chat-based control",
-      "rule_line": 1417,
+      "rule_line": 1454,
       "owner_role": "quality-engineer",
       "epic_ids": [
         "BA-03",
@@ -7366,7 +7561,7 @@
       "scenarios": [
         {
           "name": "AI agent surfaces the current review queue in chat",
-          "scenario_line": 1419,
+          "scenario_line": 1456,
           "status": "implemented",
           "owner_role": "quality-engineer",
           "epic_ids": [
@@ -7396,7 +7591,7 @@
         },
         {
           "name": "Review surfaces are queryable from canonical state",
-          "scenario_line": 1425,
+          "scenario_line": 1462,
           "status": "implemented",
           "owner_role": "quality-engineer",
           "epic_ids": [
@@ -7426,7 +7621,7 @@
         },
         {
           "name": "Blocked, failed, and repeat-outreach cases are reviewable without log spelunking",
-          "scenario_line": 1433,
+          "scenario_line": 1470,
           "status": "implemented",
           "owner_role": "quality-engineer",
           "epic_ids": [
@@ -7456,7 +7651,7 @@
         },
         {
           "name": "Owner overrides remain queryable after they are applied",
-          "scenario_line": 1439,
+          "scenario_line": 1476,
           "status": "implemented",
           "owner_role": "quality-engineer",
           "epic_ids": [
@@ -7486,7 +7681,7 @@
         },
         {
           "name": "Sent-message history is queryable for later inspection",
-          "scenario_line": 1447,
+          "scenario_line": 1484,
           "status": "implemented",
           "owner_role": "quality-engineer",
           "epic_ids": [
@@ -7516,7 +7711,7 @@
         },
         {
           "name": "Per-object traceability shows artifacts, transitions, and downstream history",
-          "scenario_line": 1456,
+          "scenario_line": 1493,
           "status": "implemented",
           "owner_role": "quality-engineer",
           "epic_ids": [
@@ -7546,7 +7741,7 @@
         },
         {
           "name": "Review surfaces are query-first rather than GUI-dependent",
-          "scenario_line": 1463,
+          "scenario_line": 1500,
           "status": "implemented",
           "owner_role": "quality-engineer",
           "epic_ids": [
@@ -7578,7 +7773,7 @@
     },
     {
       "rule": "Current-build orchestration remains sequential",
-      "rule_line": 1470,
+      "rule_line": 1507,
       "owner_role": "build-lead",
       "epic_ids": [
         "BA-06",
@@ -7618,7 +7813,7 @@
       ],
       "note": "Component-level state gates and sequencing exist, and the autonomous heartbeat now covers the role-targeted flow through bounded delivery feedback plus contact-rooted general-learning discovery, sending, and bounded delayed-feedback follow-through.",
       "status_counts": {
-        "implemented": 22,
+        "implemented": 26,
         "partial": 0,
         "gap": 0,
         "deferred_optional": 0,
@@ -7627,7 +7822,7 @@
       "scenarios": [
         {
           "name": "Discovery, drafting, sending, and delayed feedback do not require concurrency",
-          "scenario_line": 1472,
+          "scenario_line": 1509,
           "status": "implemented",
           "owner_role": "build-lead",
           "epic_ids": [
@@ -7671,7 +7866,7 @@
         },
         {
           "name": "Role-targeted orchestration follows the current dependency order",
-          "scenario_line": 1482,
+          "scenario_line": 1519,
           "status": "implemented",
           "owner_role": "build-lead",
           "epic_ids": [
@@ -7715,7 +7910,7 @@
         },
         {
           "name": "Posting remains requires-contacts until minimum outreach prerequisites exist",
-          "scenario_line": 1488,
+          "scenario_line": 1525,
           "status": "implemented",
           "owner_role": "build-lead",
           "epic_ids": [
@@ -7759,226 +7954,6 @@
         },
         {
           "name": "Posting can move directly from agent review to ready-for-outreach when prerequisites already exist",
-          "scenario_line": 1496,
-          "status": "implemented",
-          "owner_role": "build-lead",
-          "epic_ids": [
-            "BA-06",
-            "BA-07",
-            "BA-08",
-            "BA-09"
-          ],
-          "slice_ids": [
-            "BA-06-S1",
-            "BA-06-S2",
-            "BA-06-S3",
-            "BA-06-S4",
-            "BA-07-S1",
-            "BA-07-S2",
-            "BA-07-S3",
-            "BA-08-S1",
-            "BA-08-S2",
-            "BA-08-S3",
-            "BA-09-S1",
-            "BA-09-S2",
-            "BA-09-S3"
-          ],
-          "code_refs": [
-            "job_hunt_copilot/resume_tailoring.py",
-            "job_hunt_copilot/email_discovery.py",
-            "job_hunt_copilot/outreach.py",
-            "job_hunt_copilot/delivery_feedback.py",
-            "job_hunt_copilot/supervisor.py"
-          ],
-          "test_refs": [
-            "tests/test_resume_tailoring.py",
-            "tests/test_email_discovery.py",
-            "tests/test_outreach.py",
-            "tests/test_delivery_feedback.py",
-            "tests/test_supervisor_downstream_actions.py",
-            "tests/test_supervisor.py"
-          ],
-          "gap_ids": [],
-          "note": "Component-level state gates and sequencing exist, and the autonomous heartbeat now covers the role-targeted flow through bounded delivery feedback plus contact-rooted general-learning discovery, sending, and bounded delayed-feedback follow-through."
-        },
-        {
-          "name": "Posting becomes ready-for-outreach only when all minimum current prerequisites are satisfied",
-          "scenario_line": 1505,
-          "status": "implemented",
-          "owner_role": "build-lead",
-          "epic_ids": [
-            "BA-06",
-            "BA-07",
-            "BA-08",
-            "BA-09"
-          ],
-          "slice_ids": [
-            "BA-06-S1",
-            "BA-06-S2",
-            "BA-06-S3",
-            "BA-06-S4",
-            "BA-07-S1",
-            "BA-07-S2",
-            "BA-07-S3",
-            "BA-08-S1",
-            "BA-08-S2",
-            "BA-08-S3",
-            "BA-09-S1",
-            "BA-09-S2",
-            "BA-09-S3"
-          ],
-          "code_refs": [
-            "job_hunt_copilot/resume_tailoring.py",
-            "job_hunt_copilot/email_discovery.py",
-            "job_hunt_copilot/outreach.py",
-            "job_hunt_copilot/delivery_feedback.py",
-            "job_hunt_copilot/supervisor.py"
-          ],
-          "test_refs": [
-            "tests/test_resume_tailoring.py",
-            "tests/test_email_discovery.py",
-            "tests/test_outreach.py",
-            "tests/test_delivery_feedback.py",
-            "tests/test_supervisor_downstream_actions.py",
-            "tests/test_supervisor.py"
-          ],
-          "gap_ids": [],
-          "note": "Component-level state gates and sequencing exist, and the autonomous heartbeat now covers the role-targeted flow through bounded delivery feedback plus contact-rooted general-learning discovery, sending, and bounded delayed-feedback follow-through."
-        },
-        {
-          "name": "Role-targeted outreach uses the current recipient priority order with pacing-aware progression",
-          "scenario_line": 1513,
-          "status": "implemented",
-          "owner_role": "build-lead",
-          "epic_ids": [
-            "BA-06",
-            "BA-07",
-            "BA-08",
-            "BA-09"
-          ],
-          "slice_ids": [
-            "BA-06-S1",
-            "BA-06-S2",
-            "BA-06-S3",
-            "BA-06-S4",
-            "BA-07-S1",
-            "BA-07-S2",
-            "BA-07-S3",
-            "BA-08-S1",
-            "BA-08-S2",
-            "BA-08-S3",
-            "BA-09-S1",
-            "BA-09-S2",
-            "BA-09-S3"
-          ],
-          "code_refs": [
-            "job_hunt_copilot/resume_tailoring.py",
-            "job_hunt_copilot/email_discovery.py",
-            "job_hunt_copilot/outreach.py",
-            "job_hunt_copilot/delivery_feedback.py",
-            "job_hunt_copilot/supervisor.py"
-          ],
-          "test_refs": [
-            "tests/test_resume_tailoring.py",
-            "tests/test_email_discovery.py",
-            "tests/test_outreach.py",
-            "tests/test_delivery_feedback.py",
-            "tests/test_supervisor_downstream_actions.py",
-            "tests/test_supervisor.py"
-          ],
-          "gap_ids": [],
-          "note": "Component-level state gates and sequencing exist, and the autonomous heartbeat now covers the role-targeted flow through bounded delivery feedback plus contact-rooted general-learning discovery, sending, and bounded delayed-feedback follow-through."
-        },
-        {
-          "name": "Posting-contact linking is created before per-contact discovery or outreach begins",
-          "scenario_line": 1519,
-          "status": "implemented",
-          "owner_role": "build-lead",
-          "epic_ids": [
-            "BA-06",
-            "BA-07",
-            "BA-08",
-            "BA-09"
-          ],
-          "slice_ids": [
-            "BA-06-S1",
-            "BA-06-S2",
-            "BA-06-S3",
-            "BA-06-S4",
-            "BA-07-S1",
-            "BA-07-S2",
-            "BA-07-S3",
-            "BA-08-S1",
-            "BA-08-S2",
-            "BA-08-S3",
-            "BA-09-S1",
-            "BA-09-S2",
-            "BA-09-S3"
-          ],
-          "code_refs": [
-            "job_hunt_copilot/resume_tailoring.py",
-            "job_hunt_copilot/email_discovery.py",
-            "job_hunt_copilot/outreach.py",
-            "job_hunt_copilot/delivery_feedback.py",
-            "job_hunt_copilot/supervisor.py"
-          ],
-          "test_refs": [
-            "tests/test_resume_tailoring.py",
-            "tests/test_email_discovery.py",
-            "tests/test_outreach.py",
-            "tests/test_delivery_feedback.py",
-            "tests/test_supervisor_downstream_actions.py",
-            "tests/test_supervisor.py"
-          ],
-          "gap_ids": [],
-          "note": "Component-level state gates and sequencing exist, and the autonomous heartbeat now covers the role-targeted flow through bounded delivery feedback plus contact-rooted general-learning discovery, sending, and bounded delayed-feedback follow-through."
-        },
-        {
-          "name": "Link records become shortlisted when contacts enter the intended outreach set",
-          "scenario_line": 1527,
-          "status": "implemented",
-          "owner_role": "build-lead",
-          "epic_ids": [
-            "BA-06",
-            "BA-07",
-            "BA-08",
-            "BA-09"
-          ],
-          "slice_ids": [
-            "BA-06-S1",
-            "BA-06-S2",
-            "BA-06-S3",
-            "BA-06-S4",
-            "BA-07-S1",
-            "BA-07-S2",
-            "BA-07-S3",
-            "BA-08-S1",
-            "BA-08-S2",
-            "BA-08-S3",
-            "BA-09-S1",
-            "BA-09-S2",
-            "BA-09-S3"
-          ],
-          "code_refs": [
-            "job_hunt_copilot/resume_tailoring.py",
-            "job_hunt_copilot/email_discovery.py",
-            "job_hunt_copilot/outreach.py",
-            "job_hunt_copilot/delivery_feedback.py",
-            "job_hunt_copilot/supervisor.py"
-          ],
-          "test_refs": [
-            "tests/test_resume_tailoring.py",
-            "tests/test_email_discovery.py",
-            "tests/test_outreach.py",
-            "tests/test_delivery_feedback.py",
-            "tests/test_supervisor_downstream_actions.py",
-            "tests/test_supervisor.py"
-          ],
-          "gap_ids": [],
-          "note": "Component-level state gates and sequencing exist, and the autonomous heartbeat now covers the role-targeted flow through bounded delivery feedback plus contact-rooted general-learning discovery, sending, and bounded delayed-feedback follow-through."
-        },
-        {
-          "name": "Known working email allows a contact to skip fresh discovery in orchestration",
           "scenario_line": 1533,
           "status": "implemented",
           "owner_role": "build-lead",
@@ -8022,7 +7997,7 @@
           "note": "Component-level state gates and sequencing exist, and the autonomous heartbeat now covers the role-targeted flow through bounded delivery feedback plus contact-rooted general-learning discovery, sending, and bounded delayed-feedback follow-through."
         },
         {
-          "name": "Prior outreach history blocks automatic repeat send during orchestration",
+          "name": "Posting becomes ready-for-outreach only when all minimum current prerequisites are satisfied",
           "scenario_line": 1542,
           "status": "implemented",
           "owner_role": "build-lead",
@@ -8066,8 +8041,228 @@
           "note": "Component-level state gates and sequencing exist, and the autonomous heartbeat now covers the role-targeted flow through bounded delivery feedback plus contact-rooted general-learning discovery, sending, and bounded delayed-feedback follow-through."
         },
         {
+          "name": "Role-targeted outreach uses the current recipient priority order with pacing-aware progression",
+          "scenario_line": 1550,
+          "status": "implemented",
+          "owner_role": "build-lead",
+          "epic_ids": [
+            "BA-06",
+            "BA-07",
+            "BA-08",
+            "BA-09"
+          ],
+          "slice_ids": [
+            "BA-06-S1",
+            "BA-06-S2",
+            "BA-06-S3",
+            "BA-06-S4",
+            "BA-07-S1",
+            "BA-07-S2",
+            "BA-07-S3",
+            "BA-08-S1",
+            "BA-08-S2",
+            "BA-08-S3",
+            "BA-09-S1",
+            "BA-09-S2",
+            "BA-09-S3"
+          ],
+          "code_refs": [
+            "job_hunt_copilot/resume_tailoring.py",
+            "job_hunt_copilot/email_discovery.py",
+            "job_hunt_copilot/outreach.py",
+            "job_hunt_copilot/delivery_feedback.py",
+            "job_hunt_copilot/supervisor.py"
+          ],
+          "test_refs": [
+            "tests/test_resume_tailoring.py",
+            "tests/test_email_discovery.py",
+            "tests/test_outreach.py",
+            "tests/test_delivery_feedback.py",
+            "tests/test_supervisor_downstream_actions.py",
+            "tests/test_supervisor.py"
+          ],
+          "gap_ids": [],
+          "note": "Component-level state gates and sequencing exist, and the autonomous heartbeat now covers the role-targeted flow through bounded delivery feedback plus contact-rooted general-learning discovery, sending, and bounded delayed-feedback follow-through."
+        },
+        {
+          "name": "Posting-contact linking is created before per-contact discovery or outreach begins",
+          "scenario_line": 1556,
+          "status": "implemented",
+          "owner_role": "build-lead",
+          "epic_ids": [
+            "BA-06",
+            "BA-07",
+            "BA-08",
+            "BA-09"
+          ],
+          "slice_ids": [
+            "BA-06-S1",
+            "BA-06-S2",
+            "BA-06-S3",
+            "BA-06-S4",
+            "BA-07-S1",
+            "BA-07-S2",
+            "BA-07-S3",
+            "BA-08-S1",
+            "BA-08-S2",
+            "BA-08-S3",
+            "BA-09-S1",
+            "BA-09-S2",
+            "BA-09-S3"
+          ],
+          "code_refs": [
+            "job_hunt_copilot/resume_tailoring.py",
+            "job_hunt_copilot/email_discovery.py",
+            "job_hunt_copilot/outreach.py",
+            "job_hunt_copilot/delivery_feedback.py",
+            "job_hunt_copilot/supervisor.py"
+          ],
+          "test_refs": [
+            "tests/test_resume_tailoring.py",
+            "tests/test_email_discovery.py",
+            "tests/test_outreach.py",
+            "tests/test_delivery_feedback.py",
+            "tests/test_supervisor_downstream_actions.py",
+            "tests/test_supervisor.py"
+          ],
+          "gap_ids": [],
+          "note": "Component-level state gates and sequencing exist, and the autonomous heartbeat now covers the role-targeted flow through bounded delivery feedback plus contact-rooted general-learning discovery, sending, and bounded delayed-feedback follow-through."
+        },
+        {
+          "name": "Link records become shortlisted when contacts enter the intended outreach set",
+          "scenario_line": 1564,
+          "status": "implemented",
+          "owner_role": "build-lead",
+          "epic_ids": [
+            "BA-06",
+            "BA-07",
+            "BA-08",
+            "BA-09"
+          ],
+          "slice_ids": [
+            "BA-06-S1",
+            "BA-06-S2",
+            "BA-06-S3",
+            "BA-06-S4",
+            "BA-07-S1",
+            "BA-07-S2",
+            "BA-07-S3",
+            "BA-08-S1",
+            "BA-08-S2",
+            "BA-08-S3",
+            "BA-09-S1",
+            "BA-09-S2",
+            "BA-09-S3"
+          ],
+          "code_refs": [
+            "job_hunt_copilot/resume_tailoring.py",
+            "job_hunt_copilot/email_discovery.py",
+            "job_hunt_copilot/outreach.py",
+            "job_hunt_copilot/delivery_feedback.py",
+            "job_hunt_copilot/supervisor.py"
+          ],
+          "test_refs": [
+            "tests/test_resume_tailoring.py",
+            "tests/test_email_discovery.py",
+            "tests/test_outreach.py",
+            "tests/test_delivery_feedback.py",
+            "tests/test_supervisor_downstream_actions.py",
+            "tests/test_supervisor.py"
+          ],
+          "gap_ids": [],
+          "note": "Component-level state gates and sequencing exist, and the autonomous heartbeat now covers the role-targeted flow through bounded delivery feedback plus contact-rooted general-learning discovery, sending, and bounded delayed-feedback follow-through."
+        },
+        {
+          "name": "Known working email allows a contact to skip fresh discovery in orchestration",
+          "scenario_line": 1570,
+          "status": "implemented",
+          "owner_role": "build-lead",
+          "epic_ids": [
+            "BA-06",
+            "BA-07",
+            "BA-08",
+            "BA-09"
+          ],
+          "slice_ids": [
+            "BA-06-S1",
+            "BA-06-S2",
+            "BA-06-S3",
+            "BA-06-S4",
+            "BA-07-S1",
+            "BA-07-S2",
+            "BA-07-S3",
+            "BA-08-S1",
+            "BA-08-S2",
+            "BA-08-S3",
+            "BA-09-S1",
+            "BA-09-S2",
+            "BA-09-S3"
+          ],
+          "code_refs": [
+            "job_hunt_copilot/resume_tailoring.py",
+            "job_hunt_copilot/email_discovery.py",
+            "job_hunt_copilot/outreach.py",
+            "job_hunt_copilot/delivery_feedback.py",
+            "job_hunt_copilot/supervisor.py"
+          ],
+          "test_refs": [
+            "tests/test_resume_tailoring.py",
+            "tests/test_email_discovery.py",
+            "tests/test_outreach.py",
+            "tests/test_delivery_feedback.py",
+            "tests/test_supervisor_downstream_actions.py",
+            "tests/test_supervisor.py"
+          ],
+          "gap_ids": [],
+          "note": "Component-level state gates and sequencing exist, and the autonomous heartbeat now covers the role-targeted flow through bounded delivery feedback plus contact-rooted general-learning discovery, sending, and bounded delayed-feedback follow-through."
+        },
+        {
+          "name": "Prior outreach history blocks automatic repeat send during orchestration",
+          "scenario_line": 1579,
+          "status": "implemented",
+          "owner_role": "build-lead",
+          "epic_ids": [
+            "BA-06",
+            "BA-07",
+            "BA-08",
+            "BA-09"
+          ],
+          "slice_ids": [
+            "BA-06-S1",
+            "BA-06-S2",
+            "BA-06-S3",
+            "BA-06-S4",
+            "BA-07-S1",
+            "BA-07-S2",
+            "BA-07-S3",
+            "BA-08-S1",
+            "BA-08-S2",
+            "BA-08-S3",
+            "BA-09-S1",
+            "BA-09-S2",
+            "BA-09-S3"
+          ],
+          "code_refs": [
+            "job_hunt_copilot/resume_tailoring.py",
+            "job_hunt_copilot/email_discovery.py",
+            "job_hunt_copilot/outreach.py",
+            "job_hunt_copilot/delivery_feedback.py",
+            "job_hunt_copilot/supervisor.py"
+          ],
+          "test_refs": [
+            "tests/test_resume_tailoring.py",
+            "tests/test_email_discovery.py",
+            "tests/test_outreach.py",
+            "tests/test_delivery_feedback.py",
+            "tests/test_supervisor_downstream_actions.py",
+            "tests/test_supervisor.py"
+          ],
+          "gap_ids": [],
+          "note": "Component-level state gates and sequencing exist, and the autonomous heartbeat now covers the role-targeted flow through bounded delivery feedback plus contact-rooted general-learning discovery, sending, and bounded delayed-feedback follow-through."
+        },
+        {
           "name": "Posting enters outreach-in-progress when the first intended contact starts drafting or sending",
-          "scenario_line": 1549,
+          "scenario_line": 1586,
           "status": "implemented",
           "owner_role": "build-lead",
           "epic_ids": [
@@ -8111,7 +8306,7 @@
         },
         {
           "name": "Contact and link records advance together once drafting or sending begins",
-          "scenario_line": 1555,
+          "scenario_line": 1592,
           "status": "implemented",
           "owner_role": "build-lead",
           "epic_ids": [
@@ -8155,7 +8350,7 @@
         },
         {
           "name": "Posting reaches completed when no untouched automatically eligible contacts remain",
-          "scenario_line": 1562,
+          "scenario_line": 1599,
           "status": "implemented",
           "owner_role": "build-lead",
           "epic_ids": [
@@ -8199,7 +8394,7 @@
         },
         {
           "name": "Reply from one contact does not retroactively cancel the active outreach wave",
-          "scenario_line": 1569,
+          "scenario_line": 1606,
           "status": "implemented",
           "owner_role": "build-lead",
           "epic_ids": [
@@ -8243,7 +8438,7 @@
         },
         {
           "name": "Discovery, drafting, and feedback stages require both state persistence and handoff publication before downstream progression",
-          "scenario_line": 1576,
+          "scenario_line": 1613,
           "status": "implemented",
           "owner_role": "build-lead",
           "epic_ids": [
@@ -8287,7 +8482,7 @@
         },
         {
           "name": "Stage failure or blocked state prevents dependent downstream progression",
-          "scenario_line": 1583,
+          "scenario_line": 1620,
           "status": "implemented",
           "owner_role": "build-lead",
           "epic_ids": [
@@ -8331,7 +8526,7 @@
         },
         {
           "name": "Contact exhaustion is local to that contact rather than a global posting stop",
-          "scenario_line": 1589,
+          "scenario_line": 1626,
           "status": "implemented",
           "owner_role": "build-lead",
           "epic_ids": [
@@ -8375,7 +8570,7 @@
         },
         {
           "name": "The user may explicitly abandon a posting from any active orchestration state",
-          "scenario_line": 1596,
+          "scenario_line": 1633,
           "status": "implemented",
           "owner_role": "build-lead",
           "epic_ids": [
@@ -8418,8 +8613,184 @@
           "note": "`scripts/ops/control_agent.py` and `job_hunt_copilot.local_runtime` now provide a posting-scoped `abandon` control path that marks the canonical posting as `abandoned`, records the transition plus override lineage, and retires any non-terminal pipeline run tied to that posting."
         },
         {
+          "name": "The user may close an unresolved escalated review item from expert review",
+          "scenario_line": 1639,
+          "status": "implemented",
+          "owner_role": "build-lead",
+          "epic_ids": [
+            "BA-06",
+            "BA-07",
+            "BA-08",
+            "BA-09"
+          ],
+          "slice_ids": [
+            "BA-06-S1",
+            "BA-06-S2",
+            "BA-06-S3",
+            "BA-06-S4",
+            "BA-07-S1",
+            "BA-07-S2",
+            "BA-07-S3",
+            "BA-08-S1",
+            "BA-08-S2",
+            "BA-08-S3",
+            "BA-09-S1",
+            "BA-09-S2",
+            "BA-09-S3"
+          ],
+          "code_refs": [
+            "job_hunt_copilot/resume_tailoring.py",
+            "job_hunt_copilot/email_discovery.py",
+            "job_hunt_copilot/outreach.py",
+            "job_hunt_copilot/delivery_feedback.py",
+            "job_hunt_copilot/supervisor.py"
+          ],
+          "test_refs": [
+            "tests/test_resume_tailoring.py",
+            "tests/test_email_discovery.py",
+            "tests/test_outreach.py",
+            "tests/test_delivery_feedback.py",
+            "tests/test_supervisor_downstream_actions.py",
+            "tests/test_supervisor.py"
+          ],
+          "gap_ids": [],
+          "note": "Component-level state gates and sequencing exist, and the autonomous heartbeat now covers the role-targeted flow through bounded delivery feedback plus contact-rooted general-learning discovery, sending, and bounded delayed-feedback follow-through."
+        },
+        {
+          "name": "Manual application tracking is stored separately from the autonomous posting lifecycle",
+          "scenario_line": 1651,
+          "status": "implemented",
+          "owner_role": "build-lead",
+          "epic_ids": [
+            "BA-06",
+            "BA-07",
+            "BA-08",
+            "BA-09"
+          ],
+          "slice_ids": [
+            "BA-06-S1",
+            "BA-06-S2",
+            "BA-06-S3",
+            "BA-06-S4",
+            "BA-07-S1",
+            "BA-07-S2",
+            "BA-07-S3",
+            "BA-08-S1",
+            "BA-08-S2",
+            "BA-08-S3",
+            "BA-09-S1",
+            "BA-09-S2",
+            "BA-09-S3"
+          ],
+          "code_refs": [
+            "job_hunt_copilot/resume_tailoring.py",
+            "job_hunt_copilot/email_discovery.py",
+            "job_hunt_copilot/outreach.py",
+            "job_hunt_copilot/delivery_feedback.py",
+            "job_hunt_copilot/supervisor.py"
+          ],
+          "test_refs": [
+            "tests/test_resume_tailoring.py",
+            "tests/test_email_discovery.py",
+            "tests/test_outreach.py",
+            "tests/test_delivery_feedback.py",
+            "tests/test_supervisor_downstream_actions.py",
+            "tests/test_supervisor.py"
+          ],
+          "gap_ids": [],
+          "note": "Component-level state gates and sequencing exist, and the autonomous heartbeat now covers the role-targeted flow through bounded delivery feedback plus contact-rooted general-learning discovery, sending, and bounded delayed-feedback follow-through."
+        },
+        {
+          "name": "Manual responder tracking is stored separately from contact lifecycle state",
+          "scenario_line": 1659,
+          "status": "implemented",
+          "owner_role": "build-lead",
+          "epic_ids": [
+            "BA-06",
+            "BA-07",
+            "BA-08",
+            "BA-09"
+          ],
+          "slice_ids": [
+            "BA-06-S1",
+            "BA-06-S2",
+            "BA-06-S3",
+            "BA-06-S4",
+            "BA-07-S1",
+            "BA-07-S2",
+            "BA-07-S3",
+            "BA-08-S1",
+            "BA-08-S2",
+            "BA-08-S3",
+            "BA-09-S1",
+            "BA-09-S2",
+            "BA-09-S3"
+          ],
+          "code_refs": [
+            "job_hunt_copilot/resume_tailoring.py",
+            "job_hunt_copilot/email_discovery.py",
+            "job_hunt_copilot/outreach.py",
+            "job_hunt_copilot/delivery_feedback.py",
+            "job_hunt_copilot/supervisor.py"
+          ],
+          "test_refs": [
+            "tests/test_resume_tailoring.py",
+            "tests/test_email_discovery.py",
+            "tests/test_outreach.py",
+            "tests/test_delivery_feedback.py",
+            "tests/test_supervisor_downstream_actions.py",
+            "tests/test_supervisor.py"
+          ],
+          "gap_ids": [],
+          "note": "Component-level state gates and sequencing exist, and the autonomous heartbeat now covers the role-targeted flow through bounded delivery feedback plus contact-rooted general-learning discovery, sending, and bounded delayed-feedback follow-through."
+        },
+        {
+          "name": "Manual application and responder state are forward-only in the current build",
+          "scenario_line": 1666,
+          "status": "implemented",
+          "owner_role": "build-lead",
+          "epic_ids": [
+            "BA-06",
+            "BA-07",
+            "BA-08",
+            "BA-09"
+          ],
+          "slice_ids": [
+            "BA-06-S1",
+            "BA-06-S2",
+            "BA-06-S3",
+            "BA-06-S4",
+            "BA-07-S1",
+            "BA-07-S2",
+            "BA-07-S3",
+            "BA-08-S1",
+            "BA-08-S2",
+            "BA-08-S3",
+            "BA-09-S1",
+            "BA-09-S2",
+            "BA-09-S3"
+          ],
+          "code_refs": [
+            "job_hunt_copilot/resume_tailoring.py",
+            "job_hunt_copilot/email_discovery.py",
+            "job_hunt_copilot/outreach.py",
+            "job_hunt_copilot/delivery_feedback.py",
+            "job_hunt_copilot/supervisor.py"
+          ],
+          "test_refs": [
+            "tests/test_resume_tailoring.py",
+            "tests/test_email_discovery.py",
+            "tests/test_outreach.py",
+            "tests/test_delivery_feedback.py",
+            "tests/test_supervisor_downstream_actions.py",
+            "tests/test_supervisor.py"
+          ],
+          "gap_ids": [],
+          "note": "Component-level state gates and sequencing exist, and the autonomous heartbeat now covers the role-targeted flow through bounded delivery feedback plus contact-rooted general-learning discovery, sending, and bounded delayed-feedback follow-through."
+        },
+        {
           "name": "General learning outreach bypasses the role-targeted agent-review requirement",
-          "scenario_line": 1602,
+          "scenario_line": 1672,
           "status": "implemented",
           "owner_role": "build-lead",
           "epic_ids": [
@@ -8463,7 +8834,7 @@
         },
         {
           "name": "Discovery can start per contact while automatic sending still waits for the active send slice",
-          "scenario_line": 1608,
+          "scenario_line": 1678,
           "status": "implemented",
           "owner_role": "build-lead",
           "epic_ids": [
@@ -8507,7 +8878,7 @@
         },
         {
           "name": "One contact failure does not stop unrelated contacts in the same posting flow",
-          "scenario_line": 1615,
+          "scenario_line": 1685,
           "status": "implemented",
           "owner_role": "build-lead",
           "epic_ids": [
@@ -8551,7 +8922,7 @@
         },
         {
           "name": "Saved broad-search results may backfill the shortlist without rerunning external people search",
-          "scenario_line": 1621,
+          "scenario_line": 1691,
           "status": "implemented",
           "owner_role": "build-lead",
           "epic_ids": [
@@ -8597,7 +8968,7 @@
     },
     {
       "rule": "LinkedIn Scraping acceptance",
-      "rule_line": 1629,
+      "rule_line": 1699,
       "owner_role": "ingestion-engineer",
       "epic_ids": [
         "BA-04",
@@ -8633,7 +9004,7 @@
       "scenarios": [
         {
           "name": "New leads receive stable lead identity and canonical lead workspaces",
-          "scenario_line": 1631,
+          "scenario_line": 1701,
           "status": "implemented",
           "owner_role": "ingestion-engineer",
           "epic_ids": [
@@ -8664,7 +9035,7 @@
         },
         {
           "name": "Autonomous Gmail collection persists one collected-email unit before fan-out and remains idempotent by message id",
-          "scenario_line": 1637,
+          "scenario_line": 1707,
           "status": "implemented",
           "owner_role": "ingestion-engineer",
           "epic_ids": [
@@ -8694,317 +9065,7 @@
           "note": null
         },
         {
-          "name": "Autonomous Gmail intake uses a durable history checkpoint for incremental polling",
-          "scenario_line": 1645,
-          "status": "implemented",
-          "owner_role": "ingestion-engineer",
-          "epic_ids": [
-            "BA-04",
-            "BA-05"
-          ],
-          "slice_ids": [
-            "BA-04-S1",
-            "BA-04-S2",
-            "BA-04-S3",
-            "BA-04-S4",
-            "BA-05-S1",
-            "BA-05-S2",
-            "BA-05-S3"
-          ],
-          "code_refs": [
-            "job_hunt_copilot/linkedin_scraping.py",
-            "job_hunt_copilot/gmail_alerts.py",
-            "bin/jhc-linkedin-ingest",
-            "scripts/linkedin_scraping/ingest_manual_capture.py"
-          ],
-          "test_refs": [
-            "tests/test_linkedin_scraping.py",
-            "tests/test_gmail_alerts.py"
-          ],
-          "gap_ids": [],
-          "note": null
-        },
-        {
-          "name": "Checkpoint seed without new leads is recorded as auditable no-work",
-          "scenario_line": 1651,
-          "status": "implemented",
-          "owner_role": "ingestion-engineer",
-          "epic_ids": [
-            "BA-04",
-            "BA-05"
-          ],
-          "slice_ids": [
-            "BA-04-S1",
-            "BA-04-S2",
-            "BA-04-S3",
-            "BA-04-S4",
-            "BA-05-S1",
-            "BA-05-S2",
-            "BA-05-S3"
-          ],
-          "code_refs": [
-            "job_hunt_copilot/linkedin_scraping.py",
-            "job_hunt_copilot/gmail_alerts.py",
-            "bin/jhc-linkedin-ingest",
-            "scripts/linkedin_scraping/ingest_manual_capture.py"
-          ],
-          "test_refs": [
-            "tests/test_linkedin_scraping.py",
-            "tests/test_gmail_alerts.py"
-          ],
-          "gap_ids": [],
-          "note": null
-        },
-        {
-          "name": "Gmail thread membership does not suppress collection or parsing",
-          "scenario_line": 1658,
-          "status": "implemented",
-          "owner_role": "ingestion-engineer",
-          "epic_ids": [
-            "BA-04",
-            "BA-05"
-          ],
-          "slice_ids": [
-            "BA-04-S1",
-            "BA-04-S2",
-            "BA-04-S3",
-            "BA-04-S4",
-            "BA-05-S1",
-            "BA-05-S2",
-            "BA-05-S3"
-          ],
-          "code_refs": [
-            "job_hunt_copilot/linkedin_scraping.py",
-            "job_hunt_copilot/gmail_alerts.py",
-            "bin/jhc-linkedin-ingest",
-            "scripts/linkedin_scraping/ingest_manual_capture.py"
-          ],
-          "test_refs": [
-            "tests/test_linkedin_scraping.py",
-            "tests/test_gmail_alerts.py"
-          ],
-          "gap_ids": [],
-          "note": null
-        },
-        {
-          "name": "Zero-card Gmail collections are retained and reviewed only after the configured threshold",
-          "scenario_line": 1664,
-          "status": "implemented",
-          "owner_role": "ingestion-engineer",
-          "epic_ids": [
-            "BA-04",
-            "BA-05"
-          ],
-          "slice_ids": [
-            "BA-04-S1",
-            "BA-04-S2",
-            "BA-04-S3",
-            "BA-04-S4",
-            "BA-05-S1",
-            "BA-05-S2",
-            "BA-05-S3"
-          ],
-          "code_refs": [
-            "job_hunt_copilot/linkedin_scraping.py",
-            "job_hunt_copilot/gmail_alerts.py",
-            "bin/jhc-linkedin-ingest",
-            "scripts/linkedin_scraping/ingest_manual_capture.py"
-          ],
-          "test_refs": [
-            "tests/test_linkedin_scraping.py",
-            "tests/test_gmail_alerts.py"
-          ],
-          "gap_ids": [],
-          "note": null
-        },
-        {
-          "name": "Digest-summary headers do not materialize as canonical leads",
-          "scenario_line": 1672,
-          "status": "implemented",
-          "owner_role": "ingestion-engineer",
-          "epic_ids": [
-            "BA-04",
-            "BA-05"
-          ],
-          "slice_ids": [
-            "BA-04-S1",
-            "BA-04-S2",
-            "BA-04-S3",
-            "BA-04-S4",
-            "BA-05-S1",
-            "BA-05-S2",
-            "BA-05-S3"
-          ],
-          "code_refs": [
-            "job_hunt_copilot/linkedin_scraping.py",
-            "job_hunt_copilot/gmail_alerts.py",
-            "bin/jhc-linkedin-ingest",
-            "scripts/linkedin_scraping/ingest_manual_capture.py"
-          ],
-          "test_refs": [
-            "tests/test_linkedin_scraping.py",
-            "tests/test_gmail_alerts.py"
-          ],
-          "gap_ids": [],
-          "note": null
-        },
-        {
-          "name": "Gmail-derived lead workspaces start incomplete and become blocked-no-jd when JD recovery fails",
-          "scenario_line": 1678,
-          "status": "implemented",
-          "owner_role": "ingestion-engineer",
-          "epic_ids": [
-            "BA-04",
-            "BA-05"
-          ],
-          "slice_ids": [
-            "BA-04-S1",
-            "BA-04-S2",
-            "BA-04-S3",
-            "BA-04-S4",
-            "BA-05-S1",
-            "BA-05-S2",
-            "BA-05-S3"
-          ],
-          "code_refs": [
-            "job_hunt_copilot/linkedin_scraping.py",
-            "job_hunt_copilot/gmail_alerts.py",
-            "bin/jhc-linkedin-ingest",
-            "scripts/linkedin_scraping/ingest_manual_capture.py"
-          ],
-          "test_refs": [
-            "tests/test_linkedin_scraping.py",
-            "tests/test_gmail_alerts.py"
-          ],
-          "gap_ids": [],
-          "note": null
-        },
-        {
-          "name": "Lead workspace artifacts differ by lead mode and blocked manifests still exist",
-          "scenario_line": 1686,
-          "status": "implemented",
-          "owner_role": "ingestion-engineer",
-          "epic_ids": [
-            "BA-04",
-            "BA-05"
-          ],
-          "slice_ids": [
-            "BA-04-S1",
-            "BA-04-S2",
-            "BA-04-S3",
-            "BA-04-S4",
-            "BA-05-S1",
-            "BA-05-S2",
-            "BA-05-S3"
-          ],
-          "code_refs": [
-            "job_hunt_copilot/linkedin_scraping.py",
-            "job_hunt_copilot/gmail_alerts.py",
-            "bin/jhc-linkedin-ingest",
-            "scripts/linkedin_scraping/ingest_manual_capture.py"
-          ],
-          "test_refs": [
-            "tests/test_linkedin_scraping.py",
-            "tests/test_gmail_alerts.py"
-          ],
-          "gap_ids": [],
-          "note": null
-        },
-        {
-          "name": "Autonomous Gmail job-card deduplication prefers job id and falls back to normalized LinkedIn job URL",
-          "scenario_line": 1694,
-          "status": "implemented",
-          "owner_role": "ingestion-engineer",
-          "epic_ids": [
-            "BA-04",
-            "BA-05"
-          ],
-          "slice_ids": [
-            "BA-04-S1",
-            "BA-04-S2",
-            "BA-04-S3",
-            "BA-04-S4",
-            "BA-05-S1",
-            "BA-05-S2",
-            "BA-05-S3"
-          ],
-          "code_refs": [
-            "job_hunt_copilot/linkedin_scraping.py",
-            "job_hunt_copilot/gmail_alerts.py",
-            "bin/jhc-linkedin-ingest",
-            "scripts/linkedin_scraping/ingest_manual_capture.py"
-          ],
-          "test_refs": [
-            "tests/test_linkedin_scraping.py",
-            "tests/test_gmail_alerts.py"
-          ],
-          "gap_ids": [],
-          "note": null
-        },
-        {
-          "name": "Duplicate canonical lead identities are refreshed instead of crashing",
-          "scenario_line": 1704,
-          "status": "implemented",
-          "owner_role": "ingestion-engineer",
-          "epic_ids": [
-            "BA-04",
-            "BA-05"
-          ],
-          "slice_ids": [
-            "BA-04-S1",
-            "BA-04-S2",
-            "BA-04-S3",
-            "BA-04-S4",
-            "BA-05-S1",
-            "BA-05-S2",
-            "BA-05-S3"
-          ],
-          "code_refs": [
-            "job_hunt_copilot/linkedin_scraping.py",
-            "job_hunt_copilot/gmail_alerts.py",
-            "bin/jhc-linkedin-ingest",
-            "scripts/linkedin_scraping/ingest_manual_capture.py"
-          ],
-          "test_refs": [
-            "tests/test_linkedin_scraping.py",
-            "tests/test_gmail_alerts.py"
-          ],
-          "gap_ids": [],
-          "note": null
-        },
-        {
-          "name": "Missing both job id and job URL blocks the autonomous lead only when no JD can be recovered",
-          "scenario_line": 1710,
-          "status": "implemented",
-          "owner_role": "ingestion-engineer",
-          "epic_ids": [
-            "BA-04",
-            "BA-05"
-          ],
-          "slice_ids": [
-            "BA-04-S1",
-            "BA-04-S2",
-            "BA-04-S3",
-            "BA-04-S4",
-            "BA-05-S1",
-            "BA-05-S2",
-            "BA-05-S3"
-          ],
-          "code_refs": [
-            "job_hunt_copilot/linkedin_scraping.py",
-            "job_hunt_copilot/gmail_alerts.py",
-            "bin/jhc-linkedin-ingest",
-            "scripts/linkedin_scraping/ingest_manual_capture.py"
-          ],
-          "test_refs": [
-            "tests/test_linkedin_scraping.py",
-            "tests/test_gmail_alerts.py"
-          ],
-          "gap_ids": [],
-          "note": null
-        },
-        {
-          "name": "Multiple JD sources merge into canonical jd.md while LinkedIn wins conflicts",
+          "name": "Autonomous Gmail intake uses direct sender search while preserving the durable checkpoint",
           "scenario_line": 1715,
           "status": "implemented",
           "owner_role": "ingestion-engineer",
@@ -9035,7 +9096,7 @@
           "note": null
         },
         {
-          "name": "Company-role mismatch from Gmail card versus fetched JD is reviewed while minor normalization differences are tolerated",
+          "name": "Checkpoint seed without new leads is recorded as auditable no-work",
           "scenario_line": 1722,
           "status": "implemented",
           "owner_role": "ingestion-engineer",
@@ -9066,7 +9127,7 @@
           "note": null
         },
         {
-          "name": "Source metadata is owned by the lead and downstreams use lead-manifest artifact references",
+          "name": "Gmail thread membership does not suppress collection or parsing",
           "scenario_line": 1729,
           "status": "implemented",
           "owner_role": "ingestion-engineer",
@@ -9097,8 +9158,318 @@
           "note": null
         },
         {
-          "name": "Refreshing an existing lead updates the live workspace while preserving history snapshots",
+          "name": "Zero-card Gmail collections are retained and reviewed only after the configured threshold",
           "scenario_line": 1735,
+          "status": "implemented",
+          "owner_role": "ingestion-engineer",
+          "epic_ids": [
+            "BA-04",
+            "BA-05"
+          ],
+          "slice_ids": [
+            "BA-04-S1",
+            "BA-04-S2",
+            "BA-04-S3",
+            "BA-04-S4",
+            "BA-05-S1",
+            "BA-05-S2",
+            "BA-05-S3"
+          ],
+          "code_refs": [
+            "job_hunt_copilot/linkedin_scraping.py",
+            "job_hunt_copilot/gmail_alerts.py",
+            "bin/jhc-linkedin-ingest",
+            "scripts/linkedin_scraping/ingest_manual_capture.py"
+          ],
+          "test_refs": [
+            "tests/test_linkedin_scraping.py",
+            "tests/test_gmail_alerts.py"
+          ],
+          "gap_ids": [],
+          "note": null
+        },
+        {
+          "name": "Digest-summary headers do not materialize as canonical leads",
+          "scenario_line": 1743,
+          "status": "implemented",
+          "owner_role": "ingestion-engineer",
+          "epic_ids": [
+            "BA-04",
+            "BA-05"
+          ],
+          "slice_ids": [
+            "BA-04-S1",
+            "BA-04-S2",
+            "BA-04-S3",
+            "BA-04-S4",
+            "BA-05-S1",
+            "BA-05-S2",
+            "BA-05-S3"
+          ],
+          "code_refs": [
+            "job_hunt_copilot/linkedin_scraping.py",
+            "job_hunt_copilot/gmail_alerts.py",
+            "bin/jhc-linkedin-ingest",
+            "scripts/linkedin_scraping/ingest_manual_capture.py"
+          ],
+          "test_refs": [
+            "tests/test_linkedin_scraping.py",
+            "tests/test_gmail_alerts.py"
+          ],
+          "gap_ids": [],
+          "note": null
+        },
+        {
+          "name": "Gmail-derived lead workspaces start incomplete and become blocked-no-jd when JD recovery fails",
+          "scenario_line": 1749,
+          "status": "implemented",
+          "owner_role": "ingestion-engineer",
+          "epic_ids": [
+            "BA-04",
+            "BA-05"
+          ],
+          "slice_ids": [
+            "BA-04-S1",
+            "BA-04-S2",
+            "BA-04-S3",
+            "BA-04-S4",
+            "BA-05-S1",
+            "BA-05-S2",
+            "BA-05-S3"
+          ],
+          "code_refs": [
+            "job_hunt_copilot/linkedin_scraping.py",
+            "job_hunt_copilot/gmail_alerts.py",
+            "bin/jhc-linkedin-ingest",
+            "scripts/linkedin_scraping/ingest_manual_capture.py"
+          ],
+          "test_refs": [
+            "tests/test_linkedin_scraping.py",
+            "tests/test_gmail_alerts.py"
+          ],
+          "gap_ids": [],
+          "note": null
+        },
+        {
+          "name": "Lead workspace artifacts differ by lead mode and blocked manifests still exist",
+          "scenario_line": 1757,
+          "status": "implemented",
+          "owner_role": "ingestion-engineer",
+          "epic_ids": [
+            "BA-04",
+            "BA-05"
+          ],
+          "slice_ids": [
+            "BA-04-S1",
+            "BA-04-S2",
+            "BA-04-S3",
+            "BA-04-S4",
+            "BA-05-S1",
+            "BA-05-S2",
+            "BA-05-S3"
+          ],
+          "code_refs": [
+            "job_hunt_copilot/linkedin_scraping.py",
+            "job_hunt_copilot/gmail_alerts.py",
+            "bin/jhc-linkedin-ingest",
+            "scripts/linkedin_scraping/ingest_manual_capture.py"
+          ],
+          "test_refs": [
+            "tests/test_linkedin_scraping.py",
+            "tests/test_gmail_alerts.py"
+          ],
+          "gap_ids": [],
+          "note": null
+        },
+        {
+          "name": "Autonomous Gmail job-card deduplication prefers job id and falls back to normalized LinkedIn job URL",
+          "scenario_line": 1765,
+          "status": "implemented",
+          "owner_role": "ingestion-engineer",
+          "epic_ids": [
+            "BA-04",
+            "BA-05"
+          ],
+          "slice_ids": [
+            "BA-04-S1",
+            "BA-04-S2",
+            "BA-04-S3",
+            "BA-04-S4",
+            "BA-05-S1",
+            "BA-05-S2",
+            "BA-05-S3"
+          ],
+          "code_refs": [
+            "job_hunt_copilot/linkedin_scraping.py",
+            "job_hunt_copilot/gmail_alerts.py",
+            "bin/jhc-linkedin-ingest",
+            "scripts/linkedin_scraping/ingest_manual_capture.py"
+          ],
+          "test_refs": [
+            "tests/test_linkedin_scraping.py",
+            "tests/test_gmail_alerts.py"
+          ],
+          "gap_ids": [],
+          "note": null
+        },
+        {
+          "name": "Duplicate canonical lead identities are refreshed instead of crashing",
+          "scenario_line": 1775,
+          "status": "implemented",
+          "owner_role": "ingestion-engineer",
+          "epic_ids": [
+            "BA-04",
+            "BA-05"
+          ],
+          "slice_ids": [
+            "BA-04-S1",
+            "BA-04-S2",
+            "BA-04-S3",
+            "BA-04-S4",
+            "BA-05-S1",
+            "BA-05-S2",
+            "BA-05-S3"
+          ],
+          "code_refs": [
+            "job_hunt_copilot/linkedin_scraping.py",
+            "job_hunt_copilot/gmail_alerts.py",
+            "bin/jhc-linkedin-ingest",
+            "scripts/linkedin_scraping/ingest_manual_capture.py"
+          ],
+          "test_refs": [
+            "tests/test_linkedin_scraping.py",
+            "tests/test_gmail_alerts.py"
+          ],
+          "gap_ids": [],
+          "note": null
+        },
+        {
+          "name": "Missing both job id and job URL blocks the autonomous lead only when no JD can be recovered",
+          "scenario_line": 1781,
+          "status": "implemented",
+          "owner_role": "ingestion-engineer",
+          "epic_ids": [
+            "BA-04",
+            "BA-05"
+          ],
+          "slice_ids": [
+            "BA-04-S1",
+            "BA-04-S2",
+            "BA-04-S3",
+            "BA-04-S4",
+            "BA-05-S1",
+            "BA-05-S2",
+            "BA-05-S3"
+          ],
+          "code_refs": [
+            "job_hunt_copilot/linkedin_scraping.py",
+            "job_hunt_copilot/gmail_alerts.py",
+            "bin/jhc-linkedin-ingest",
+            "scripts/linkedin_scraping/ingest_manual_capture.py"
+          ],
+          "test_refs": [
+            "tests/test_linkedin_scraping.py",
+            "tests/test_gmail_alerts.py"
+          ],
+          "gap_ids": [],
+          "note": null
+        },
+        {
+          "name": "Multiple JD sources merge into canonical jd.md while LinkedIn wins conflicts",
+          "scenario_line": 1786,
+          "status": "implemented",
+          "owner_role": "ingestion-engineer",
+          "epic_ids": [
+            "BA-04",
+            "BA-05"
+          ],
+          "slice_ids": [
+            "BA-04-S1",
+            "BA-04-S2",
+            "BA-04-S3",
+            "BA-04-S4",
+            "BA-05-S1",
+            "BA-05-S2",
+            "BA-05-S3"
+          ],
+          "code_refs": [
+            "job_hunt_copilot/linkedin_scraping.py",
+            "job_hunt_copilot/gmail_alerts.py",
+            "bin/jhc-linkedin-ingest",
+            "scripts/linkedin_scraping/ingest_manual_capture.py"
+          ],
+          "test_refs": [
+            "tests/test_linkedin_scraping.py",
+            "tests/test_gmail_alerts.py"
+          ],
+          "gap_ids": [],
+          "note": null
+        },
+        {
+          "name": "Company-role mismatch from Gmail card versus fetched JD is reviewed while minor normalization differences are tolerated",
+          "scenario_line": 1793,
+          "status": "implemented",
+          "owner_role": "ingestion-engineer",
+          "epic_ids": [
+            "BA-04",
+            "BA-05"
+          ],
+          "slice_ids": [
+            "BA-04-S1",
+            "BA-04-S2",
+            "BA-04-S3",
+            "BA-04-S4",
+            "BA-05-S1",
+            "BA-05-S2",
+            "BA-05-S3"
+          ],
+          "code_refs": [
+            "job_hunt_copilot/linkedin_scraping.py",
+            "job_hunt_copilot/gmail_alerts.py",
+            "bin/jhc-linkedin-ingest",
+            "scripts/linkedin_scraping/ingest_manual_capture.py"
+          ],
+          "test_refs": [
+            "tests/test_linkedin_scraping.py",
+            "tests/test_gmail_alerts.py"
+          ],
+          "gap_ids": [],
+          "note": null
+        },
+        {
+          "name": "Source metadata is owned by the lead and downstreams use lead-manifest artifact references",
+          "scenario_line": 1800,
+          "status": "implemented",
+          "owner_role": "ingestion-engineer",
+          "epic_ids": [
+            "BA-04",
+            "BA-05"
+          ],
+          "slice_ids": [
+            "BA-04-S1",
+            "BA-04-S2",
+            "BA-04-S3",
+            "BA-04-S4",
+            "BA-05-S1",
+            "BA-05-S2",
+            "BA-05-S3"
+          ],
+          "code_refs": [
+            "job_hunt_copilot/linkedin_scraping.py",
+            "job_hunt_copilot/gmail_alerts.py",
+            "bin/jhc-linkedin-ingest",
+            "scripts/linkedin_scraping/ingest_manual_capture.py"
+          ],
+          "test_refs": [
+            "tests/test_linkedin_scraping.py",
+            "tests/test_gmail_alerts.py"
+          ],
+          "gap_ids": [],
+          "note": null
+        },
+        {
+          "name": "Refreshing an existing lead updates the live workspace while preserving history snapshots",
+          "scenario_line": 1806,
           "status": "implemented",
           "owner_role": "ingestion-engineer",
           "epic_ids": [
@@ -9131,7 +9502,7 @@
     },
     {
       "rule": "End-to-end acceptance",
-      "rule_line": 1742,
+      "rule_line": 1813,
       "owner_role": "quality-engineer",
       "epic_ids": [
         "BA-06",
@@ -9182,7 +9553,7 @@
       "scenarios": [
         {
           "name": "Role-targeted flow completes from LinkedIn Scraping through delivery feedback",
-          "scenario_line": 1744,
+          "scenario_line": 1815,
           "status": "implemented",
           "owner_role": "quality-engineer",
           "epic_ids": [
@@ -9228,7 +9599,7 @@
         },
         {
           "name": "Delayed bounce after the send session still gets captured",
-          "scenario_line": 1752,
+          "scenario_line": 1823,
           "status": "implemented",
           "owner_role": "quality-engineer",
           "epic_ids": [
@@ -9274,7 +9645,7 @@
         },
         {
           "name": "End-to-end retry resumes from the last successful stage boundary",
-          "scenario_line": 1758,
+          "scenario_line": 1829,
           "status": "implemented",
           "owner_role": "quality-engineer",
           "epic_ids": [
@@ -9320,7 +9691,7 @@
         },
         {
           "name": "Two-step outreach is excluded from required acceptance",
-          "scenario_line": 1765,
+          "scenario_line": 1836,
           "status": "excluded_from_required_acceptance",
           "owner_role": "quality-engineer",
           "epic_ids": [
@@ -9368,7 +9739,7 @@
     },
     {
       "rule": "Current-build safety, privacy, and evidence-grounding boundaries",
-      "rule_line": 1773,
+      "rule_line": 1844,
       "owner_role": "quality-engineer",
       "epic_ids": [
         "BA-06",
@@ -9414,7 +9785,7 @@
       "scenarios": [
         {
           "name": "Tailoring and outreach remain grounded in truthful stored evidence",
-          "scenario_line": 1775,
+          "scenario_line": 1846,
           "status": "implemented",
           "owner_role": "quality-engineer",
           "epic_ids": [
@@ -9455,7 +9826,7 @@
         },
         {
           "name": "Persisted review surfaces expose only workflow-relevant personal data",
-          "scenario_line": 1781,
+          "scenario_line": 1852,
           "status": "implemented",
           "owner_role": "quality-engineer",
           "epic_ids": [
@@ -9496,7 +9867,7 @@
         },
         {
           "name": "Autonomous outreach stays within the current safety boundary",
-          "scenario_line": 1787,
+          "scenario_line": 1858,
           "status": "implemented",
           "owner_role": "quality-engineer",
           "epic_ids": [
@@ -9534,6 +9905,1109 @@
           ],
           "gap_ids": [],
           "note": "Explicit BA-10 hardening regressions now verify unsupported tailoring asks stay as gaps, automatic outreach still requires approved review and blocks repeat ambiguity, and review-oriented outputs stay summary-level."
+        }
+      ]
+    },
+    {
+      "rule": "Codex follow-up worker acceptance",
+      "rule_line": 1866,
+      "owner_role": "outreach-engineer",
+      "epic_ids": [
+        "BA-08",
+        "BA-09",
+        "BA-10"
+      ],
+      "slice_ids": [
+        "BA-08-S1",
+        "BA-08-S2",
+        "BA-08-S3",
+        "BA-09-S1",
+        "BA-09-S2",
+        "BA-09-S3"
+      ],
+      "code_refs": [
+        "job_hunt_copilot/followups.py",
+        "job_hunt_copilot/send_lane.py",
+        "job_hunt_copilot/outreach.py",
+        "job_hunt_copilot/local_runtime.py"
+      ],
+      "test_refs": [
+        "tests/test_followups.py",
+        "tests/test_send_lane.py",
+        "tests/test_outreach.py",
+        "tests/test_acceptance_traceability.py"
+      ],
+      "note": "Codex-only automatic follow-up eligibility, bounded prompt/rendering, shared send-lane routing, and rollout controls are validated through focused follow-up, send-lane, and outreach regressions.",
+      "status_counts": {
+        "implemented": 24,
+        "partial": 0,
+        "gap": 0,
+        "deferred_optional": 0,
+        "excluded_from_required_acceptance": 0
+      },
+      "scenarios": [
+        {
+          "name": "Codex follow-up behavior extends the existing dedicated follow-up worker",
+          "scenario_line": 1868,
+          "status": "implemented",
+          "owner_role": "outreach-engineer",
+          "epic_ids": [
+            "BA-08",
+            "BA-09",
+            "BA-10"
+          ],
+          "slice_ids": [
+            "BA-08-S1",
+            "BA-08-S2",
+            "BA-08-S3",
+            "BA-09-S1",
+            "BA-09-S2",
+            "BA-09-S3"
+          ],
+          "code_refs": [
+            "job_hunt_copilot/followups.py",
+            "job_hunt_copilot/send_lane.py",
+            "job_hunt_copilot/outreach.py",
+            "job_hunt_copilot/local_runtime.py"
+          ],
+          "test_refs": [
+            "tests/test_followups.py",
+            "tests/test_send_lane.py",
+            "tests/test_outreach.py",
+            "tests/test_acceptance_traceability.py"
+          ],
+          "gap_ids": [],
+          "note": "Codex-only automatic follow-up eligibility, bounded prompt/rendering, shared send-lane routing, and rollout controls are validated through focused follow-up, send-lane, and outreach regressions."
+        },
+        {
+          "name": "Automatic follow-up eligibility is limited to Codex-origin autonomous originals",
+          "scenario_line": 1875,
+          "status": "implemented",
+          "owner_role": "outreach-engineer",
+          "epic_ids": [
+            "BA-08",
+            "BA-09",
+            "BA-10"
+          ],
+          "slice_ids": [
+            "BA-08-S1",
+            "BA-08-S2",
+            "BA-08-S3",
+            "BA-09-S1",
+            "BA-09-S2",
+            "BA-09-S3"
+          ],
+          "code_refs": [
+            "job_hunt_copilot/followups.py",
+            "job_hunt_copilot/send_lane.py",
+            "job_hunt_copilot/outreach.py",
+            "job_hunt_copilot/local_runtime.py"
+          ],
+          "test_refs": [
+            "tests/test_followups.py",
+            "tests/test_send_lane.py",
+            "tests/test_outreach.py",
+            "tests/test_acceptance_traceability.py"
+          ],
+          "gap_ids": [],
+          "note": "Codex-only automatic follow-up eligibility, bounded prompt/rendering, shared send-lane routing, and rollout controls are validated through focused follow-up, send-lane, and outreach regressions."
+        },
+        {
+          "name": "Codex-origin detection uses provenance precedence before body fallback",
+          "scenario_line": 1882,
+          "status": "implemented",
+          "owner_role": "outreach-engineer",
+          "epic_ids": [
+            "BA-08",
+            "BA-09",
+            "BA-10"
+          ],
+          "slice_ids": [
+            "BA-08-S1",
+            "BA-08-S2",
+            "BA-08-S3",
+            "BA-09-S1",
+            "BA-09-S2",
+            "BA-09-S3"
+          ],
+          "code_refs": [
+            "job_hunt_copilot/followups.py",
+            "job_hunt_copilot/send_lane.py",
+            "job_hunt_copilot/outreach.py",
+            "job_hunt_copilot/local_runtime.py"
+          ],
+          "test_refs": [
+            "tests/test_followups.py",
+            "tests/test_send_lane.py",
+            "tests/test_outreach.py",
+            "tests/test_acceptance_traceability.py"
+          ],
+          "gap_ids": [],
+          "note": "Codex-only automatic follow-up eligibility, bounded prompt/rendering, shared send-lane routing, and rollout controls are validated through focused follow-up, send-lane, and outreach regressions."
+        },
+        {
+          "name": "Follow-up cadence and due-time logic use only the configured business-day rules",
+          "scenario_line": 1890,
+          "status": "implemented",
+          "owner_role": "outreach-engineer",
+          "epic_ids": [
+            "BA-08",
+            "BA-09",
+            "BA-10"
+          ],
+          "slice_ids": [
+            "BA-08-S1",
+            "BA-08-S2",
+            "BA-08-S3",
+            "BA-09-S1",
+            "BA-09-S2",
+            "BA-09-S3"
+          ],
+          "code_refs": [
+            "job_hunt_copilot/followups.py",
+            "job_hunt_copilot/send_lane.py",
+            "job_hunt_copilot/outreach.py",
+            "job_hunt_copilot/local_runtime.py"
+          ],
+          "test_refs": [
+            "tests/test_followups.py",
+            "tests/test_send_lane.py",
+            "tests/test_outreach.py",
+            "tests/test_acceptance_traceability.py"
+          ],
+          "gap_ids": [],
+          "note": "Codex-only automatic follow-up eligibility, bounded prompt/rendering, shared send-lane routing, and rollout controls are validated through focused follow-up, send-lane, and outreach regressions."
+        },
+        {
+          "name": "Historical and newly due follow-ups share one oldest-first rollout queue",
+          "scenario_line": 1899,
+          "status": "implemented",
+          "owner_role": "outreach-engineer",
+          "epic_ids": [
+            "BA-08",
+            "BA-09",
+            "BA-10"
+          ],
+          "slice_ids": [
+            "BA-08-S1",
+            "BA-08-S2",
+            "BA-08-S3",
+            "BA-09-S1",
+            "BA-09-S2",
+            "BA-09-S3"
+          ],
+          "code_refs": [
+            "job_hunt_copilot/followups.py",
+            "job_hunt_copilot/send_lane.py",
+            "job_hunt_copilot/outreach.py",
+            "job_hunt_copilot/local_runtime.py"
+          ],
+          "test_refs": [
+            "tests/test_followups.py",
+            "tests/test_send_lane.py",
+            "tests/test_outreach.py",
+            "tests/test_acceptance_traceability.py"
+          ],
+          "gap_ids": [],
+          "note": "Codex-only automatic follow-up eligibility, bounded prompt/rendering, shared send-lane routing, and rollout controls are validated through focused follow-up, send-lane, and outreach regressions."
+        },
+        {
+          "name": "The worker materializes only the next relevant follow-up step",
+          "scenario_line": 1906,
+          "status": "implemented",
+          "owner_role": "outreach-engineer",
+          "epic_ids": [
+            "BA-08",
+            "BA-09",
+            "BA-10"
+          ],
+          "slice_ids": [
+            "BA-08-S1",
+            "BA-08-S2",
+            "BA-08-S3",
+            "BA-09-S1",
+            "BA-09-S2",
+            "BA-09-S3"
+          ],
+          "code_refs": [
+            "job_hunt_copilot/followups.py",
+            "job_hunt_copilot/send_lane.py",
+            "job_hunt_copilot/outreach.py",
+            "job_hunt_copilot/local_runtime.py"
+          ],
+          "test_refs": [
+            "tests/test_followups.py",
+            "tests/test_send_lane.py",
+            "tests/test_outreach.py",
+            "tests/test_acceptance_traceability.py"
+          ],
+          "gap_ids": [],
+          "note": "Codex-only automatic follow-up eligibility, bounded prompt/rendering, shared send-lane routing, and rollout controls are validated through focused follow-up, send-lane, and outreach regressions."
+        },
+        {
+          "name": "Follow-up suppression stays thread-rooted per contact while remaining cross-contact independent",
+          "scenario_line": 1914,
+          "status": "implemented",
+          "owner_role": "outreach-engineer",
+          "epic_ids": [
+            "BA-08",
+            "BA-09",
+            "BA-10"
+          ],
+          "slice_ids": [
+            "BA-08-S1",
+            "BA-08-S2",
+            "BA-08-S3",
+            "BA-09-S1",
+            "BA-09-S2",
+            "BA-09-S3"
+          ],
+          "code_refs": [
+            "job_hunt_copilot/followups.py",
+            "job_hunt_copilot/send_lane.py",
+            "job_hunt_copilot/outreach.py",
+            "job_hunt_copilot/local_runtime.py"
+          ],
+          "test_refs": [
+            "tests/test_followups.py",
+            "tests/test_send_lane.py",
+            "tests/test_outreach.py",
+            "tests/test_acceptance_traceability.py"
+          ],
+          "gap_ids": [],
+          "note": "Codex-only automatic follow-up eligibility, bounded prompt/rendering, shared send-lane routing, and rollout controls are validated through focused follow-up, send-lane, and outreach regressions."
+        },
+        {
+          "name": "Follow-up cadence uses business-day math while final send windows run all week",
+          "scenario_line": 1921,
+          "status": "implemented",
+          "owner_role": "outreach-engineer",
+          "epic_ids": [
+            "BA-08",
+            "BA-09",
+            "BA-10"
+          ],
+          "slice_ids": [
+            "BA-08-S1",
+            "BA-08-S2",
+            "BA-08-S3",
+            "BA-09-S1",
+            "BA-09-S2",
+            "BA-09-S3"
+          ],
+          "code_refs": [
+            "job_hunt_copilot/followups.py",
+            "job_hunt_copilot/send_lane.py",
+            "job_hunt_copilot/outreach.py",
+            "job_hunt_copilot/local_runtime.py"
+          ],
+          "test_refs": [
+            "tests/test_followups.py",
+            "tests/test_send_lane.py",
+            "tests/test_outreach.py",
+            "tests/test_acceptance_traceability.py"
+          ],
+          "gap_ids": [],
+          "note": "Codex-only automatic follow-up eligibility, bounded prompt/rendering, shared send-lane routing, and rollout controls are validated through focused follow-up, send-lane, and outreach regressions."
+        },
+        {
+          "name": "Follow-up prompts stay bounded, split by posture, and return structured output",
+          "scenario_line": 1928,
+          "status": "implemented",
+          "owner_role": "outreach-engineer",
+          "epic_ids": [
+            "BA-08",
+            "BA-09",
+            "BA-10"
+          ],
+          "slice_ids": [
+            "BA-08-S1",
+            "BA-08-S2",
+            "BA-08-S3",
+            "BA-09-S1",
+            "BA-09-S2",
+            "BA-09-S3"
+          ],
+          "code_refs": [
+            "job_hunt_copilot/followups.py",
+            "job_hunt_copilot/send_lane.py",
+            "job_hunt_copilot/outreach.py",
+            "job_hunt_copilot/local_runtime.py"
+          ],
+          "test_refs": [
+            "tests/test_followups.py",
+            "tests/test_send_lane.py",
+            "tests/test_outreach.py",
+            "tests/test_acceptance_traceability.py"
+          ],
+          "gap_ids": [],
+          "note": "Codex-only automatic follow-up eligibility, bounded prompt/rendering, shared send-lane routing, and rollout controls are validated through focused follow-up, send-lane, and outreach regressions."
+        },
+        {
+          "name": "Deterministic runtime owns non-variable follow-up rendering boundaries",
+          "scenario_line": 1937,
+          "status": "implemented",
+          "owner_role": "outreach-engineer",
+          "epic_ids": [
+            "BA-08",
+            "BA-09",
+            "BA-10"
+          ],
+          "slice_ids": [
+            "BA-08-S1",
+            "BA-08-S2",
+            "BA-08-S3",
+            "BA-09-S1",
+            "BA-09-S2",
+            "BA-09-S3"
+          ],
+          "code_refs": [
+            "job_hunt_copilot/followups.py",
+            "job_hunt_copilot/send_lane.py",
+            "job_hunt_copilot/outreach.py",
+            "job_hunt_copilot/local_runtime.py"
+          ],
+          "test_refs": [
+            "tests/test_followups.py",
+            "tests/test_send_lane.py",
+            "tests/test_outreach.py",
+            "tests/test_acceptance_traceability.py"
+          ],
+          "gap_ids": [],
+          "note": "Codex-only automatic follow-up eligibility, bounded prompt/rendering, shared send-lane routing, and rollout controls are validated through focused follow-up, send-lane, and outreach regressions."
+        },
+        {
+          "name": "Follow-up content remains compact and does not reopen prohibited first-email material",
+          "scenario_line": 1945,
+          "status": "implemented",
+          "owner_role": "outreach-engineer",
+          "epic_ids": [
+            "BA-08",
+            "BA-09",
+            "BA-10"
+          ],
+          "slice_ids": [
+            "BA-08-S1",
+            "BA-08-S2",
+            "BA-08-S3",
+            "BA-09-S1",
+            "BA-09-S2",
+            "BA-09-S3"
+          ],
+          "code_refs": [
+            "job_hunt_copilot/followups.py",
+            "job_hunt_copilot/send_lane.py",
+            "job_hunt_copilot/outreach.py",
+            "job_hunt_copilot/local_runtime.py"
+          ],
+          "test_refs": [
+            "tests/test_followups.py",
+            "tests/test_send_lane.py",
+            "tests/test_outreach.py",
+            "tests/test_acceptance_traceability.py"
+          ],
+          "gap_ids": [],
+          "note": "Codex-only automatic follow-up eligibility, bounded prompt/rendering, shared send-lane routing, and rollout controls are validated through focused follow-up, send-lane, and outreach regressions."
+        },
+        {
+          "name": "Technical and managerial follow-ups preserve the original outreach posture",
+          "scenario_line": 1956,
+          "status": "implemented",
+          "owner_role": "outreach-engineer",
+          "epic_ids": [
+            "BA-08",
+            "BA-09",
+            "BA-10"
+          ],
+          "slice_ids": [
+            "BA-08-S1",
+            "BA-08-S2",
+            "BA-08-S3",
+            "BA-09-S1",
+            "BA-09-S2",
+            "BA-09-S3"
+          ],
+          "code_refs": [
+            "job_hunt_copilot/followups.py",
+            "job_hunt_copilot/send_lane.py",
+            "job_hunt_copilot/outreach.py",
+            "job_hunt_copilot/local_runtime.py"
+          ],
+          "test_refs": [
+            "tests/test_followups.py",
+            "tests/test_send_lane.py",
+            "tests/test_outreach.py",
+            "tests/test_acceptance_traceability.py"
+          ],
+          "gap_ids": [],
+          "note": "Codex-only automatic follow-up eligibility, bounded prompt/rendering, shared send-lane routing, and rollout controls are validated through focused follow-up, send-lane, and outreach regressions."
+        },
+        {
+          "name": "Follow-up sending uses same-thread delivery and single-recipient safety",
+          "scenario_line": 1963,
+          "status": "implemented",
+          "owner_role": "outreach-engineer",
+          "epic_ids": [
+            "BA-08",
+            "BA-09",
+            "BA-10"
+          ],
+          "slice_ids": [
+            "BA-08-S1",
+            "BA-08-S2",
+            "BA-08-S3",
+            "BA-09-S1",
+            "BA-09-S2",
+            "BA-09-S3"
+          ],
+          "code_refs": [
+            "job_hunt_copilot/followups.py",
+            "job_hunt_copilot/send_lane.py",
+            "job_hunt_copilot/outreach.py",
+            "job_hunt_copilot/local_runtime.py"
+          ],
+          "test_refs": [
+            "tests/test_followups.py",
+            "tests/test_send_lane.py",
+            "tests/test_outreach.py",
+            "tests/test_acceptance_traceability.py"
+          ],
+          "gap_ids": [],
+          "note": "Codex-only automatic follow-up eligibility, bounded prompt/rendering, shared send-lane routing, and rollout controls are validated through focused follow-up, send-lane, and outreach regressions."
+        },
+        {
+          "name": "Reply, bounce, and thread-state checks suppress automatic follow-up before send",
+          "scenario_line": 1971,
+          "status": "implemented",
+          "owner_role": "outreach-engineer",
+          "epic_ids": [
+            "BA-08",
+            "BA-09",
+            "BA-10"
+          ],
+          "slice_ids": [
+            "BA-08-S1",
+            "BA-08-S2",
+            "BA-08-S3",
+            "BA-09-S1",
+            "BA-09-S2",
+            "BA-09-S3"
+          ],
+          "code_refs": [
+            "job_hunt_copilot/followups.py",
+            "job_hunt_copilot/send_lane.py",
+            "job_hunt_copilot/outreach.py",
+            "job_hunt_copilot/local_runtime.py"
+          ],
+          "test_refs": [
+            "tests/test_followups.py",
+            "tests/test_send_lane.py",
+            "tests/test_outreach.py",
+            "tests/test_acceptance_traceability.py"
+          ],
+          "gap_ids": [],
+          "note": "Codex-only automatic follow-up eligibility, bounded prompt/rendering, shared send-lane routing, and rollout controls are validated through focused follow-up, send-lane, and outreach regressions."
+        },
+        {
+          "name": "First live rollout is capped at ten successful sends and then pauses",
+          "scenario_line": 1979,
+          "status": "implemented",
+          "owner_role": "outreach-engineer",
+          "epic_ids": [
+            "BA-08",
+            "BA-09",
+            "BA-10"
+          ],
+          "slice_ids": [
+            "BA-08-S1",
+            "BA-08-S2",
+            "BA-08-S3",
+            "BA-09-S1",
+            "BA-09-S2",
+            "BA-09-S3"
+          ],
+          "code_refs": [
+            "job_hunt_copilot/followups.py",
+            "job_hunt_copilot/send_lane.py",
+            "job_hunt_copilot/outreach.py",
+            "job_hunt_copilot/local_runtime.py"
+          ],
+          "test_refs": [
+            "tests/test_followups.py",
+            "tests/test_send_lane.py",
+            "tests/test_outreach.py",
+            "tests/test_acceptance_traceability.py"
+          ],
+          "gap_ids": [],
+          "note": "Codex-only automatic follow-up eligibility, bounded prompt/rendering, shared send-lane routing, and rollout controls are validated through focused follow-up, send-lane, and outreach regressions."
+        },
+        {
+          "name": "Shared outbound lane uses alternating two-hour windows across the full day",
+          "scenario_line": 1987,
+          "status": "implemented",
+          "owner_role": "outreach-engineer",
+          "epic_ids": [
+            "BA-08",
+            "BA-09",
+            "BA-10"
+          ],
+          "slice_ids": [
+            "BA-08-S1",
+            "BA-08-S2",
+            "BA-08-S3",
+            "BA-09-S1",
+            "BA-09-S2",
+            "BA-09-S3"
+          ],
+          "code_refs": [
+            "job_hunt_copilot/followups.py",
+            "job_hunt_copilot/send_lane.py",
+            "job_hunt_copilot/outreach.py",
+            "job_hunt_copilot/local_runtime.py"
+          ],
+          "test_refs": [
+            "tests/test_followups.py",
+            "tests/test_send_lane.py",
+            "tests/test_outreach.py",
+            "tests/test_acceptance_traceability.py"
+          ],
+          "gap_ids": [],
+          "note": "Codex-only automatic follow-up eligibility, bounded prompt/rendering, shared send-lane routing, and rollout controls are validated through focused follow-up, send-lane, and outreach regressions."
+        },
+        {
+          "name": "Shared outbound lane uses fallback only when the preferred queue is effectively empty",
+          "scenario_line": 1995,
+          "status": "implemented",
+          "owner_role": "outreach-engineer",
+          "epic_ids": [
+            "BA-08",
+            "BA-09",
+            "BA-10"
+          ],
+          "slice_ids": [
+            "BA-08-S1",
+            "BA-08-S2",
+            "BA-08-S3",
+            "BA-09-S1",
+            "BA-09-S2",
+            "BA-09-S3"
+          ],
+          "code_refs": [
+            "job_hunt_copilot/followups.py",
+            "job_hunt_copilot/send_lane.py",
+            "job_hunt_copilot/outreach.py",
+            "job_hunt_copilot/local_runtime.py"
+          ],
+          "test_refs": [
+            "tests/test_followups.py",
+            "tests/test_send_lane.py",
+            "tests/test_outreach.py",
+            "tests/test_acceptance_traceability.py"
+          ],
+          "gap_ids": [],
+          "note": "Codex-only automatic follow-up eligibility, bounded prompt/rendering, shared send-lane routing, and rollout controls are validated through focused follow-up, send-lane, and outreach regressions."
+        },
+        {
+          "name": "Shared outbound lane preserves one global serialized pacing gate",
+          "scenario_line": 2004,
+          "status": "implemented",
+          "owner_role": "outreach-engineer",
+          "epic_ids": [
+            "BA-08",
+            "BA-09",
+            "BA-10"
+          ],
+          "slice_ids": [
+            "BA-08-S1",
+            "BA-08-S2",
+            "BA-08-S3",
+            "BA-09-S1",
+            "BA-09-S2",
+            "BA-09-S3"
+          ],
+          "code_refs": [
+            "job_hunt_copilot/followups.py",
+            "job_hunt_copilot/send_lane.py",
+            "job_hunt_copilot/outreach.py",
+            "job_hunt_copilot/local_runtime.py"
+          ],
+          "test_refs": [
+            "tests/test_followups.py",
+            "tests/test_send_lane.py",
+            "tests/test_outreach.py",
+            "tests/test_acceptance_traceability.py"
+          ],
+          "gap_ids": [],
+          "note": "Codex-only automatic follow-up eligibility, bounded prompt/rendering, shared send-lane routing, and rollout controls are validated through focused follow-up, send-lane, and outreach regressions."
+        },
+        {
+          "name": "Follow-up and original queues use deterministic ordering inside their windows",
+          "scenario_line": 2012,
+          "status": "implemented",
+          "owner_role": "outreach-engineer",
+          "epic_ids": [
+            "BA-08",
+            "BA-09",
+            "BA-10"
+          ],
+          "slice_ids": [
+            "BA-08-S1",
+            "BA-08-S2",
+            "BA-08-S3",
+            "BA-09-S1",
+            "BA-09-S2",
+            "BA-09-S3"
+          ],
+          "code_refs": [
+            "job_hunt_copilot/followups.py",
+            "job_hunt_copilot/send_lane.py",
+            "job_hunt_copilot/outreach.py",
+            "job_hunt_copilot/local_runtime.py"
+          ],
+          "test_refs": [
+            "tests/test_followups.py",
+            "tests/test_send_lane.py",
+            "tests/test_outreach.py",
+            "tests/test_acceptance_traceability.py"
+          ],
+          "gap_ids": [],
+          "note": "Codex-only automatic follow-up eligibility, bounded prompt/rendering, shared send-lane routing, and rollout controls are validated through focused follow-up, send-lane, and outreach regressions."
+        },
+        {
+          "name": "Prepared-but-unsent frontiers stay bounded and freshness-aware",
+          "scenario_line": 2022,
+          "status": "implemented",
+          "owner_role": "outreach-engineer",
+          "epic_ids": [
+            "BA-08",
+            "BA-09",
+            "BA-10"
+          ],
+          "slice_ids": [
+            "BA-08-S1",
+            "BA-08-S2",
+            "BA-08-S3",
+            "BA-09-S1",
+            "BA-09-S2",
+            "BA-09-S3"
+          ],
+          "code_refs": [
+            "job_hunt_copilot/followups.py",
+            "job_hunt_copilot/send_lane.py",
+            "job_hunt_copilot/outreach.py",
+            "job_hunt_copilot/local_runtime.py"
+          ],
+          "test_refs": [
+            "tests/test_followups.py",
+            "tests/test_send_lane.py",
+            "tests/test_outreach.py",
+            "tests/test_acceptance_traceability.py"
+          ],
+          "gap_ids": [],
+          "note": "Codex-only automatic follow-up eligibility, bounded prompt/rendering, shared send-lane routing, and rollout controls are validated through focused follow-up, send-lane, and outreach regressions."
+        },
+        {
+          "name": "Window waits are reported separately from inter-send-gap waits",
+          "scenario_line": 2031,
+          "status": "implemented",
+          "owner_role": "outreach-engineer",
+          "epic_ids": [
+            "BA-08",
+            "BA-09",
+            "BA-10"
+          ],
+          "slice_ids": [
+            "BA-08-S1",
+            "BA-08-S2",
+            "BA-08-S3",
+            "BA-09-S1",
+            "BA-09-S2",
+            "BA-09-S3"
+          ],
+          "code_refs": [
+            "job_hunt_copilot/followups.py",
+            "job_hunt_copilot/send_lane.py",
+            "job_hunt_copilot/outreach.py",
+            "job_hunt_copilot/local_runtime.py"
+          ],
+          "test_refs": [
+            "tests/test_followups.py",
+            "tests/test_send_lane.py",
+            "tests/test_outreach.py",
+            "tests/test_acceptance_traceability.py"
+          ],
+          "gap_ids": [],
+          "note": "Codex-only automatic follow-up eligibility, bounded prompt/rendering, shared send-lane routing, and rollout controls are validated through focused follow-up, send-lane, and outreach regressions."
+        },
+        {
+          "name": "Repeated follow-up drafting failures stop the automatic sequence for that thread",
+          "scenario_line": 2038,
+          "status": "implemented",
+          "owner_role": "outreach-engineer",
+          "epic_ids": [
+            "BA-08",
+            "BA-09",
+            "BA-10"
+          ],
+          "slice_ids": [
+            "BA-08-S1",
+            "BA-08-S2",
+            "BA-08-S3",
+            "BA-09-S1",
+            "BA-09-S2",
+            "BA-09-S3"
+          ],
+          "code_refs": [
+            "job_hunt_copilot/followups.py",
+            "job_hunt_copilot/send_lane.py",
+            "job_hunt_copilot/outreach.py",
+            "job_hunt_copilot/local_runtime.py"
+          ],
+          "test_refs": [
+            "tests/test_followups.py",
+            "tests/test_send_lane.py",
+            "tests/test_outreach.py",
+            "tests/test_acceptance_traceability.py"
+          ],
+          "gap_ids": [],
+          "note": "Codex-only automatic follow-up eligibility, bounded prompt/rendering, shared send-lane routing, and rollout controls are validated through focused follow-up, send-lane, and outreach regressions."
+        },
+        {
+          "name": "Follow-up drafts are rendered only when a thread is actually due",
+          "scenario_line": 2045,
+          "status": "implemented",
+          "owner_role": "outreach-engineer",
+          "epic_ids": [
+            "BA-08",
+            "BA-09",
+            "BA-10"
+          ],
+          "slice_ids": [
+            "BA-08-S1",
+            "BA-08-S2",
+            "BA-08-S3",
+            "BA-09-S1",
+            "BA-09-S2",
+            "BA-09-S3"
+          ],
+          "code_refs": [
+            "job_hunt_copilot/followups.py",
+            "job_hunt_copilot/send_lane.py",
+            "job_hunt_copilot/outreach.py",
+            "job_hunt_copilot/local_runtime.py"
+          ],
+          "test_refs": [
+            "tests/test_followups.py",
+            "tests/test_send_lane.py",
+            "tests/test_outreach.py",
+            "tests/test_acceptance_traceability.py"
+          ],
+          "gap_ids": [],
+          "note": "Codex-only automatic follow-up eligibility, bounded prompt/rendering, shared send-lane routing, and rollout controls are validated through focused follow-up, send-lane, and outreach regressions."
+        },
+        {
+          "name": "Sent follow-ups persist compact debug context without requiring prompt dumps",
+          "scenario_line": 2051,
+          "status": "implemented",
+          "owner_role": "outreach-engineer",
+          "epic_ids": [
+            "BA-08",
+            "BA-09",
+            "BA-10"
+          ],
+          "slice_ids": [
+            "BA-08-S1",
+            "BA-08-S2",
+            "BA-08-S3",
+            "BA-09-S1",
+            "BA-09-S2",
+            "BA-09-S3"
+          ],
+          "code_refs": [
+            "job_hunt_copilot/followups.py",
+            "job_hunt_copilot/send_lane.py",
+            "job_hunt_copilot/outreach.py",
+            "job_hunt_copilot/local_runtime.py"
+          ],
+          "test_refs": [
+            "tests/test_followups.py",
+            "tests/test_send_lane.py",
+            "tests/test_outreach.py",
+            "tests/test_acceptance_traceability.py"
+          ],
+          "gap_ids": [],
+          "note": "Codex-only automatic follow-up eligibility, bounded prompt/rendering, shared send-lane routing, and rollout controls are validated through focused follow-up, send-lane, and outreach regressions."
+        }
+      ]
+    },
+    {
+      "rule": "Codex-only autonomous outreach cutover acceptance",
+      "rule_line": 2059,
+      "owner_role": "outreach-engineer",
+      "epic_ids": [
+        "BA-08",
+        "BA-09",
+        "BA-10"
+      ],
+      "slice_ids": [
+        "BA-08-S1",
+        "BA-08-S2",
+        "BA-08-S3",
+        "BA-09-S1",
+        "BA-09-S2",
+        "BA-09-S3"
+      ],
+      "code_refs": [
+        "job_hunt_copilot/followups.py",
+        "job_hunt_copilot/outreach.py",
+        "job_hunt_copilot/local_runtime.py",
+        "job_hunt_copilot/supervisor.py"
+      ],
+      "test_refs": [
+        "tests/test_followups.py",
+        "tests/test_outreach.py",
+        "tests/test_local_runtime.py",
+        "tests/test_acceptance_traceability.py"
+      ],
+      "note": "Autonomous outreach and follow-up paths fail closed on Codex-only production boundaries, while deterministic-origin autonomous backlog is retired or skipped during cutover repair.",
+      "status_counts": {
+        "implemented": 7,
+        "partial": 0,
+        "gap": 0,
+        "deferred_optional": 0,
+        "excluded_from_required_acceptance": 0
+      },
+      "scenarios": [
+        {
+          "name": "Autonomous production workers cannot reach retired deterministic renderers",
+          "scenario_line": 2061,
+          "status": "implemented",
+          "owner_role": "outreach-engineer",
+          "epic_ids": [
+            "BA-08",
+            "BA-09",
+            "BA-10"
+          ],
+          "slice_ids": [
+            "BA-08-S1",
+            "BA-08-S2",
+            "BA-08-S3",
+            "BA-09-S1",
+            "BA-09-S2",
+            "BA-09-S3"
+          ],
+          "code_refs": [
+            "job_hunt_copilot/followups.py",
+            "job_hunt_copilot/outreach.py",
+            "job_hunt_copilot/local_runtime.py",
+            "job_hunt_copilot/supervisor.py"
+          ],
+          "test_refs": [
+            "tests/test_followups.py",
+            "tests/test_outreach.py",
+            "tests/test_local_runtime.py",
+            "tests/test_acceptance_traceability.py"
+          ],
+          "gap_ids": [],
+          "note": "Autonomous outreach and follow-up paths fail closed on Codex-only production boundaries, while deterministic-origin autonomous backlog is retired or skipped during cutover repair."
+        },
+        {
+          "name": "Manual-only legacy helpers may remain but stay isolated from autonomous workers",
+          "scenario_line": 2068,
+          "status": "implemented",
+          "owner_role": "outreach-engineer",
+          "epic_ids": [
+            "BA-08",
+            "BA-09",
+            "BA-10"
+          ],
+          "slice_ids": [
+            "BA-08-S1",
+            "BA-08-S2",
+            "BA-08-S3",
+            "BA-09-S1",
+            "BA-09-S2",
+            "BA-09-S3"
+          ],
+          "code_refs": [
+            "job_hunt_copilot/followups.py",
+            "job_hunt_copilot/outreach.py",
+            "job_hunt_copilot/local_runtime.py",
+            "job_hunt_copilot/supervisor.py"
+          ],
+          "test_refs": [
+            "tests/test_followups.py",
+            "tests/test_outreach.py",
+            "tests/test_local_runtime.py",
+            "tests/test_acceptance_traceability.py"
+          ],
+          "gap_ids": [],
+          "note": "Autonomous outreach and follow-up paths fail closed on Codex-only production boundaries, while deterministic-origin autonomous backlog is retired or skipped during cutover repair."
+        },
+        {
+          "name": "Deterministic-origin unsent production backlog is auto-retired during cutover",
+          "scenario_line": 2074,
+          "status": "implemented",
+          "owner_role": "outreach-engineer",
+          "epic_ids": [
+            "BA-08",
+            "BA-09",
+            "BA-10"
+          ],
+          "slice_ids": [
+            "BA-08-S1",
+            "BA-08-S2",
+            "BA-08-S3",
+            "BA-09-S1",
+            "BA-09-S2",
+            "BA-09-S3"
+          ],
+          "code_refs": [
+            "job_hunt_copilot/followups.py",
+            "job_hunt_copilot/outreach.py",
+            "job_hunt_copilot/local_runtime.py",
+            "job_hunt_copilot/supervisor.py"
+          ],
+          "test_refs": [
+            "tests/test_followups.py",
+            "tests/test_outreach.py",
+            "tests/test_local_runtime.py",
+            "tests/test_acceptance_traceability.py"
+          ],
+          "gap_ids": [],
+          "note": "Autonomous outreach and follow-up paths fail closed on Codex-only production boundaries, while deterministic-origin autonomous backlog is retired or skipped during cutover repair."
+        },
+        {
+          "name": "Deterministic-origin automatic follow-up plans are auto-skipped during cutover",
+          "scenario_line": 2081,
+          "status": "implemented",
+          "owner_role": "outreach-engineer",
+          "epic_ids": [
+            "BA-08",
+            "BA-09",
+            "BA-10"
+          ],
+          "slice_ids": [
+            "BA-08-S1",
+            "BA-08-S2",
+            "BA-08-S3",
+            "BA-09-S1",
+            "BA-09-S2",
+            "BA-09-S3"
+          ],
+          "code_refs": [
+            "job_hunt_copilot/followups.py",
+            "job_hunt_copilot/outreach.py",
+            "job_hunt_copilot/local_runtime.py",
+            "job_hunt_copilot/supervisor.py"
+          ],
+          "test_refs": [
+            "tests/test_followups.py",
+            "tests/test_outreach.py",
+            "tests/test_local_runtime.py",
+            "tests/test_acceptance_traceability.py"
+          ],
+          "gap_ids": [],
+          "note": "Autonomous outreach and follow-up paths fail closed on Codex-only production boundaries, while deterministic-origin autonomous backlog is retired or skipped during cutover repair."
+        },
+        {
+          "name": "Unknown-origin autonomous backlog fails closed during cutover",
+          "scenario_line": 2088,
+          "status": "implemented",
+          "owner_role": "outreach-engineer",
+          "epic_ids": [
+            "BA-08",
+            "BA-09",
+            "BA-10"
+          ],
+          "slice_ids": [
+            "BA-08-S1",
+            "BA-08-S2",
+            "BA-08-S3",
+            "BA-09-S1",
+            "BA-09-S2",
+            "BA-09-S3"
+          ],
+          "code_refs": [
+            "job_hunt_copilot/followups.py",
+            "job_hunt_copilot/outreach.py",
+            "job_hunt_copilot/local_runtime.py",
+            "job_hunt_copilot/supervisor.py"
+          ],
+          "test_refs": [
+            "tests/test_followups.py",
+            "tests/test_outreach.py",
+            "tests/test_local_runtime.py",
+            "tests/test_acceptance_traceability.py"
+          ],
+          "gap_ids": [],
+          "note": "Autonomous outreach and follow-up paths fail closed on Codex-only production boundaries, while deterministic-origin autonomous backlog is retired or skipped during cutover repair."
+        },
+        {
+          "name": "Autonomous Codex outage raises incident and pauses the smallest safe worker scope",
+          "scenario_line": 2095,
+          "status": "implemented",
+          "owner_role": "outreach-engineer",
+          "epic_ids": [
+            "BA-08",
+            "BA-09",
+            "BA-10"
+          ],
+          "slice_ids": [
+            "BA-08-S1",
+            "BA-08-S2",
+            "BA-08-S3",
+            "BA-09-S1",
+            "BA-09-S2",
+            "BA-09-S3"
+          ],
+          "code_refs": [
+            "job_hunt_copilot/followups.py",
+            "job_hunt_copilot/outreach.py",
+            "job_hunt_copilot/local_runtime.py",
+            "job_hunt_copilot/supervisor.py"
+          ],
+          "test_refs": [
+            "tests/test_followups.py",
+            "tests/test_outreach.py",
+            "tests/test_local_runtime.py",
+            "tests/test_acceptance_traceability.py"
+          ],
+          "gap_ids": [],
+          "note": "Autonomous outreach and follow-up paths fail closed on Codex-only production boundaries, while deterministic-origin autonomous backlog is retired or skipped during cutover repair."
+        },
+        {
+          "name": "Surviving Codex-origin unsent backlog is refreshed before autonomous send",
+          "scenario_line": 2102,
+          "status": "implemented",
+          "owner_role": "outreach-engineer",
+          "epic_ids": [
+            "BA-08",
+            "BA-09",
+            "BA-10"
+          ],
+          "slice_ids": [
+            "BA-08-S1",
+            "BA-08-S2",
+            "BA-08-S3",
+            "BA-09-S1",
+            "BA-09-S2",
+            "BA-09-S3"
+          ],
+          "code_refs": [
+            "job_hunt_copilot/followups.py",
+            "job_hunt_copilot/outreach.py",
+            "job_hunt_copilot/local_runtime.py",
+            "job_hunt_copilot/supervisor.py"
+          ],
+          "test_refs": [
+            "tests/test_followups.py",
+            "tests/test_outreach.py",
+            "tests/test_local_runtime.py",
+            "tests/test_acceptance_traceability.py"
+          ],
+          "gap_ids": [],
+          "note": "Autonomous outreach and follow-up paths fail closed on Codex-only production boundaries, while deterministic-origin autonomous backlog is retired or skipped during cutover repair."
         }
       ]
     }

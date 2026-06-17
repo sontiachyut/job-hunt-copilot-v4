@@ -41,12 +41,15 @@ from .outreach import (
 from .paths import ProjectPaths
 from .records import new_canonical_id, now_utc_iso
 from .send_lane import (
+    PREPARED_FRONTIER_CAP,
     SEND_LANE_QUEUE_FOLLOWUP,
     SEND_LANE_TIMEZONE,
     SEND_LANE_WAIT_REASON_PACING_GAP,
     SEND_LANE_WAIT_REASON_WINDOW,
+    build_send_lane_window_summary,
     decide_shared_send_turn,
     followup_auto_send_available,
+    is_within_draft_freshness_window,
     shared_send_window,
 )
 
@@ -84,6 +87,12 @@ PLAN_STATUS_SKIPPED = "skipped"
 PLAN_STATUS_BLOCKED = "blocked"
 PLAN_STATUS_HELD_FOR_REVIEW = "held_for_review"
 PLAN_STATUS_AMBIGUOUS = "ambiguous"
+PREPARED_FOLLOWUP_PLAN_STATUSES = (
+    PLAN_STATUS_DRY_RUN_READY,
+    PLAN_STATUS_AGENT_REVIEWED,
+    PLAN_STATUS_WAITING_FOR_PACING,
+    PLAN_STATUS_RETRYABLE,
+)
 
 TERMINAL_PLAN_STATUSES = frozenset(
     {
@@ -183,6 +192,11 @@ class FollowUpCandidate:
     plan_status: str
     retry_count: int
     next_retry_at: str | None
+    draft_artifact_path: str | None
+    review_evidence_artifact_path: str | None
+    last_evaluated_at: str | None
+    agent_reviewed_at: str | None
+    updated_at: str | None
 
 
 @dataclass(frozen=True)
@@ -326,6 +340,102 @@ class FollowUpCycleResult:
             "last_checkpoint": self.last_checkpoint,
             "error_message": self.error_message,
         }
+
+
+def _followup_candidate_draft_reference_time(candidate: FollowUpCandidate) -> str | None:
+    return (
+        _normalize_optional_text(candidate.agent_reviewed_at)
+        or _normalize_optional_text(candidate.last_evaluated_at)
+        or _normalize_optional_text(candidate.updated_at)
+    )
+
+
+def _followup_candidate_has_draft_artifacts(candidate: FollowUpCandidate) -> bool:
+    return bool(
+        _normalize_optional_text(candidate.draft_artifact_path)
+        and _normalize_optional_text(candidate.review_evidence_artifact_path)
+    )
+
+
+def _followup_candidate_draft_is_fresh(candidate: FollowUpCandidate, *, current_time: str) -> bool:
+    return _followup_candidate_has_draft_artifacts(candidate) and is_within_draft_freshness_window(
+        reference_time=_followup_candidate_draft_reference_time(candidate),
+        current_time=current_time,
+    )
+
+
+def _load_followup_prepared_frontier_plan_ids(
+    connection: sqlite3.Connection,
+) -> tuple[str, ...]:
+    rows = connection.execute(
+        """
+        SELECT fp.outreach_followup_plan_id
+        FROM outreach_followup_plans fp
+        JOIN outreach_messages om
+          ON om.outreach_message_id = fp.original_outreach_message_id
+        WHERE fp.plan_status IN (?, ?, ?, ?)
+          AND fp.draft_artifact_path IS NOT NULL
+          AND TRIM(fp.draft_artifact_path) <> ''
+          AND fp.review_evidence_artifact_path IS NOT NULL
+          AND TRIM(fp.review_evidence_artifact_path) <> ''
+        ORDER BY fp.eligible_after ASC,
+                 fp.followup_sequence DESC,
+                 om.sent_at ASC,
+                 fp.outreach_followup_plan_id ASC
+        LIMIT ?
+        """,
+        (
+            PREPARED_FOLLOWUP_PLAN_STATUSES[0],
+            PREPARED_FOLLOWUP_PLAN_STATUSES[1],
+            PREPARED_FOLLOWUP_PLAN_STATUSES[2],
+            PREPARED_FOLLOWUP_PLAN_STATUSES[3],
+            PREPARED_FRONTIER_CAP,
+        ),
+    ).fetchall()
+    return tuple(str(row["outreach_followup_plan_id"]) for row in rows)
+
+
+def _followup_prepared_frontier_has_capacity(connection: sqlite3.Connection) -> bool:
+    return len(_load_followup_prepared_frontier_plan_ids(connection)) < PREPARED_FRONTIER_CAP
+
+
+def _load_cached_followup_render(
+    paths: ProjectPaths,
+    candidate: FollowUpCandidate,
+    *,
+    current_time: str,
+) -> RenderedFollowUpDraft | None:
+    if not _followup_candidate_draft_is_fresh(candidate, current_time=current_time):
+        return None
+    draft_artifact_path = _normalize_optional_text(candidate.draft_artifact_path)
+    review_evidence_artifact_path = _normalize_optional_text(candidate.review_evidence_artifact_path)
+    if draft_artifact_path is None or review_evidence_artifact_path is None:
+        return None
+    draft_path = paths.project_root / draft_artifact_path
+    review_path = paths.project_root / review_evidence_artifact_path
+    if not draft_path.exists() or not review_path.exists():
+        return None
+    body_text = draft_path.read_text(encoding="utf-8").strip()
+    if not validate_followup_body(body_text, followup_sequence=candidate.followup_sequence):
+        return None
+    evidence_contract = _read_json_file(review_path)
+    evidence = evidence_contract.get("payload", {})
+    if not isinstance(evidence, Mapping):
+        evidence = {}
+    return RenderedFollowUpDraft(
+        body_text=body_text,
+        first_name_or_salutation=_resolve_salutation(candidate),
+        draft_artifact_path=draft_artifact_path,
+        review_evidence_artifact_path=review_evidence_artifact_path,
+        evidence=evidence,
+    )
+
+
+def _read_json_file(path: Path) -> Mapping[str, Any]:
+    payload = json.loads(path.read_text(encoding="utf-8"))
+    if not isinstance(payload, Mapping):
+        raise ValueError(f"Expected mapping payload in {path}.")
+    return payload
 
 
 class FollowUpThreadInspector(Protocol):
@@ -711,8 +821,17 @@ def run_followup_cycle(
                 )
                 continue
 
+            cached_render = _load_cached_followup_render(
+                paths,
+                candidate,
+                current_time=effective_time,
+            )
+            if cached_render is None and not _followup_candidate_has_draft_artifacts(candidate):
+                if not _followup_prepared_frontier_has_capacity(connection):
+                    continue
+
             try:
-                rendered = render_followup_draft(
+                rendered = cached_render or render_followup_draft(
                     connection,
                     paths,
                     candidate,
@@ -746,7 +865,8 @@ def run_followup_cycle(
                 )
                 continue
 
-            counts["drafts_created"] += 1
+            if cached_render is None:
+                counts["drafts_created"] += 1
             artifact_paths.extend([rendered.draft_artifact_path, rendered.review_evidence_artifact_path])
 
             if dry_run:
@@ -934,6 +1054,9 @@ def render_followup_draft(
     thread_check: ThreadInspectionResult,
     dry_run: bool,
 ) -> RenderedFollowUpDraft:
+    cached = _load_cached_followup_render(paths, candidate, current_time=current_time)
+    if cached is not None:
+        return cached
     if not _normalize_optional_text(candidate.body_text):
         raise FollowUpDraftingError("Original sent email body is missing.")
     original_metadata = _load_original_send_metadata(paths, candidate)
@@ -1102,6 +1225,11 @@ def build_followup_dashboard_summary(connection: sqlite3.Connection, *, current_
             plan_status=str(row["plan_status"]),
             retry_count=int(row["retry_count"] or 0),
             next_retry_at=_normalize_optional_text(row["next_retry_at"]),
+            draft_artifact_path=None,
+            review_evidence_artifact_path=None,
+            last_evaluated_at=None,
+            agent_reviewed_at=None,
+            updated_at=None,
         )
         if _is_due_now(candidate, effective_time):
             due_now += 1
@@ -1142,7 +1270,7 @@ def build_followup_dashboard_summary(connection: sqlite3.Connection, *, current_
         LIMIT 1
         """
     ).fetchone()
-    active_window = shared_send_window(effective_time)
+    window_summary = build_send_lane_window_summary(effective_time)
     return {
         "due_now": int(due_now),
         "waiting_for_pacing": int(waiting_for_pacing),
@@ -1150,9 +1278,12 @@ def build_followup_dashboard_summary(connection: sqlite3.Connection, *, current_
         "waiting_for_pacing_gap": int(waiting_for_pacing_gap),
         "sent_today": int(sent_today),
         "blocked_or_review": int(blocked_or_review),
-        "active_window_preference": active_window.preferred_queue_kind,
-        "active_window_local_start": active_window.local_window_start,
-        "active_window_local_end": active_window.local_window_end,
+        "active_window_preference": window_summary.active_window_preference,
+        "active_window_local_start": window_summary.active_window_local_start,
+        "active_window_local_end": window_summary.active_window_local_end,
+        "next_window_preference": window_summary.next_window_preference,
+        "next_window_local_start": window_summary.next_window_local_start,
+        "next_window_local_end": window_summary.next_window_local_end,
         "last_cycle_at": last_cycle["started_at"] if last_cycle is not None else None,
         "last_cycle_result": last_cycle["result"] if last_cycle is not None else None,
     }
@@ -1297,6 +1428,11 @@ def _materialization_candidate_from_row(row: sqlite3.Row) -> FollowUpCandidate:
         plan_status=PLAN_STATUS_PENDING,
         retry_count=0,
         next_retry_at=None,
+        draft_artifact_path=None,
+        review_evidence_artifact_path=None,
+        last_evaluated_at=None,
+        agent_reviewed_at=None,
+        updated_at=None,
     )
 
 
@@ -1466,6 +1602,11 @@ def _load_candidate_plans(
           fp.eligible_after,
           fp.retry_count,
           fp.next_retry_at,
+          fp.draft_artifact_path,
+          fp.review_evidence_artifact_path,
+          fp.last_evaluated_at,
+          fp.agent_reviewed_at,
+          fp.updated_at,
           om.job_posting_contact_id,
           om.recipient_email,
           om.outreach_mode,
@@ -1531,6 +1672,11 @@ def _candidate_from_row(row: sqlite3.Row) -> FollowUpCandidate:
         plan_status=str(row["plan_status"]),
         retry_count=int(row["retry_count"] or 0),
         next_retry_at=_normalize_optional_text(row["next_retry_at"]),
+        draft_artifact_path=_normalize_optional_text(row["draft_artifact_path"]),
+        review_evidence_artifact_path=_normalize_optional_text(row["review_evidence_artifact_path"]),
+        last_evaluated_at=_normalize_optional_text(row["last_evaluated_at"]),
+        agent_reviewed_at=_normalize_optional_text(row["agent_reviewed_at"]),
+        updated_at=_normalize_optional_text(row["updated_at"]),
     )
 
 

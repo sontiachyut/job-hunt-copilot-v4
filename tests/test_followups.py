@@ -35,6 +35,7 @@ from job_hunt_copilot.followups import (
     FollowUpDraftingError,
     GmailSameThreadFollowUpSender,
     ThreadInspectionResult,
+    build_followup_dashboard_summary,
     run_followup_cycle,
 )
 from job_hunt_copilot.outreach import SEND_OUTCOME_SENT, SendAttemptOutcome
@@ -390,6 +391,24 @@ def _enable_followup_auto_send(connection: sqlite3.Connection, *, sent_count: in
     connection.commit()
 
 
+def _write_cached_followup_artifacts(
+    project_root: Path,
+    *,
+    plan_id: str,
+    body_text: str,
+) -> tuple[str, str]:
+    artifact_dir = project_root / "ops" / "followups" / plan_id
+    artifact_dir.mkdir(parents=True, exist_ok=True)
+    draft_path = artifact_dir / "followup_draft.md"
+    review_path = artifact_dir / "followup_review_evidence.json"
+    draft_path.write_text(body_text + "\n", encoding="utf-8")
+    review_path.write_text(json.dumps({"payload": {"cached": True}}), encoding="utf-8")
+    return (
+        str(Path("ops") / "followups" / plan_id / "followup_draft.md"),
+        str(Path("ops") / "followups" / plan_id / "followup_review_evidence.json"),
+    )
+
+
 def test_dry_run_materializes_codex_origin_step_one(tmp_path):
     project_root, connection = _bootstrap_connection(tmp_path)
     _seed_sent_role_targeted_message(
@@ -657,6 +676,11 @@ def test_codex_followup_schema_requires_why_sent_summary(tmp_path, monkeypatch):
         plan_status="pending",
         retry_count=0,
         next_retry_at=None,
+        draft_artifact_path=None,
+        review_evidence_artifact_path=None,
+        last_evaluated_at=None,
+        agent_reviewed_at=None,
+        updated_at=None,
     )
     context = followups_module.FollowUpDraftContext(
         candidate=candidate,
@@ -1073,6 +1097,229 @@ def test_followup_candidate_order_prefers_oldest_due_then_higher_sequence(tmp_pa
     assert [candidate.followup_sequence for candidate in candidates[:3]] == [3, 2, 1]
 
 
+def test_followup_cycle_reuses_fresh_cached_draft_without_redrafting(tmp_path):
+    project_root, connection = _bootstrap_connection(tmp_path)
+    _seed_sent_role_targeted_message(
+        connection,
+        project_root,
+        send_result_payload={
+            "draft_origin_kind": "codex_role_split",
+            "draft_posture_family": "technical",
+            "autonomous_origin": True,
+            "message_id_header": "<msg@example.com>",
+        },
+    )
+    followups_module._materialize_candidate_plans(
+        connection,
+        paths=ProjectPaths.from_root(project_root),
+        current_time=NOW,
+        limit=25,
+    )
+    plan_id = connection.execute(
+        "SELECT outreach_followup_plan_id FROM outreach_followup_plans ORDER BY created_at DESC LIMIT 1"
+    ).fetchone()[0]
+    draft_path, review_path = _write_cached_followup_artifacts(
+        project_root,
+        plan_id=str(plan_id),
+        body_text=(
+            "Hi Alex,\n\n"
+            "Just wanted to briefly follow up on my earlier note.\n\n"
+            "If you would be open to it, I would still value a brief 10-minute conversation.\n\n"
+            "Best,\n"
+            "Achyutaram Sonti"
+        ),
+    )
+    connection.execute(
+        """
+        UPDATE outreach_followup_plans
+        SET plan_status = ?, draft_artifact_path = ?, review_evidence_artifact_path = ?,
+            last_evaluated_at = ?, agent_reviewed_at = ?, updated_at = ?
+        WHERE outreach_followup_plan_id = ?
+        """,
+        (
+            "agent_reviewed",
+            draft_path,
+            review_path,
+                NOW,
+                NOW,
+                NOW,
+                str(plan_id),
+            ),
+        )
+    connection.commit()
+    _enable_followup_auto_send(connection)
+    renderer = FakeRenderer(
+        (
+            "This should not be used.",
+            "This should not be used either.",
+        )
+    )
+    sender = FakeSender([])
+
+    result = run_followup_cycle(
+        connection,
+        project_root=project_root,
+        current_time=NOW,
+        dry_run=False,
+        thread_inspector=FakeThreadInspector(ThreadInspectionResult(result="clear", checked_at=NOW)),
+        renderer=renderer,
+        sender=sender,
+        role_targeted_priority_checker=lambda conn, now: False,
+    )
+
+    assert result.messages_sent == 1
+    assert renderer.calls == 0
+    assert sender.sent_bodies[0].startswith("Hi Alex,\n\nJust wanted to briefly follow up")
+
+
+def test_followup_cycle_does_not_prepare_new_due_plan_when_prepared_frontier_is_full(tmp_path):
+    project_root, connection = _bootstrap_connection(tmp_path)
+    _seed_sent_role_targeted_message(
+        connection,
+        project_root,
+        send_result_payload={
+            "draft_origin_kind": "codex_role_split",
+            "draft_posture_family": "technical",
+            "autonomous_origin": True,
+        },
+    )
+    for index in range(2, 12):
+        _seed_sent_role_targeted_message(
+            connection,
+            project_root,
+            outreach_message_id=f"om_frontier_{index}",
+            lead_id=f"ld_frontier_{index}",
+            job_posting_id=f"jp_frontier_{index}",
+            job_posting_contact_id=f"jpc_frontier_{index}",
+            contact_id=f"ct_frontier_{index}",
+            recipient_email=f"frontier{index}@example.com",
+            thread_id=f"thread_frontier_{index}",
+            send_result_payload={
+                "draft_origin_kind": "codex_role_split",
+                "draft_posture_family": "technical",
+                "autonomous_origin": True,
+            },
+        )
+    _seed_sent_role_targeted_message(
+        connection,
+        project_root,
+        outreach_message_id="om_due_pending",
+        lead_id="ld_due_pending",
+        job_posting_id="jp_due_pending",
+        job_posting_contact_id="jpc_due_pending",
+        contact_id="ct_due_pending",
+        recipient_email="duepending@example.com",
+        thread_id="thread_due_pending",
+        send_result_payload={
+            "draft_origin_kind": "codex_role_split",
+            "draft_posture_family": "technical",
+            "autonomous_origin": True,
+        },
+    )
+    connection.execute("DELETE FROM outreach_followup_plans")
+    for index in range(1, 11):
+        draft_path, review_path = _write_cached_followup_artifacts(
+            project_root,
+            plan_id=f"fp_prepared_{index}",
+            body_text=(
+                f"Hi Alex,\n\nPrepared {index}.\n\nIf you would be open to it, I would still value a brief 10-minute conversation.\n\nBest,\nAchyutaram Sonti"
+            ),
+        )
+        original_message_id = "om_original" if index == 1 else f"om_frontier_{index}"
+        contact_id = "ct_1" if index == 1 else f"ct_frontier_{index}"
+        job_posting_id = "jp_1" if index == 1 else f"jp_frontier_{index}"
+        connection.execute(
+            """
+            INSERT INTO outreach_followup_plans (
+              outreach_followup_plan_id, original_outreach_message_id, contact_id, job_posting_id,
+              plan_status, followup_sequence, eligible_after, draft_artifact_path,
+              review_evidence_artifact_path, last_evaluated_at, agent_reviewed_at, created_at, updated_at
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """,
+            (
+                f"fp_prepared_{index}",
+                original_message_id,
+                contact_id,
+                job_posting_id,
+                "agent_reviewed",
+                1,
+                "2026-06-20T00:00:00Z",
+                draft_path,
+                review_path,
+                NOW,
+                NOW,
+                NOW,
+                NOW,
+            ),
+        )
+    connection.execute(
+        """
+        INSERT INTO outreach_followup_plans (
+          outreach_followup_plan_id, original_outreach_message_id, contact_id, job_posting_id,
+          plan_status, followup_sequence, eligible_after, created_at, updated_at
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+        """,
+        (
+            "fp_due_pending",
+            "om_due_pending",
+            "ct_due_pending",
+            "jp_due_pending",
+            "pending",
+            1,
+            "2026-06-14T00:00:00Z",
+            NOW,
+            NOW,
+        ),
+    )
+    connection.commit()
+    _enable_followup_auto_send(connection)
+    renderer = FakeRenderer(
+        (
+            "Just wanted to briefly follow up on my earlier note.",
+            "If you would be open to it, I would still value a brief 10-minute conversation.",
+        )
+    )
+
+    result = run_followup_cycle(
+        connection,
+        project_root=project_root,
+        current_time=NOW,
+        dry_run=True,
+        thread_inspector=FakeThreadInspector(ThreadInspectionResult(result="clear", checked_at=NOW)),
+        renderer=renderer,
+        role_targeted_priority_checker=lambda conn, now: False,
+    )
+
+    pending_plan = connection.execute(
+        "SELECT plan_status, draft_artifact_path FROM outreach_followup_plans WHERE outreach_followup_plan_id = ?",
+        ("fp_due_pending",),
+    ).fetchone()
+    assert result.drafts_created == 0
+    assert renderer.calls == 0
+    assert dict(pending_plan) == {
+        "plan_status": "pending",
+        "draft_artifact_path": None,
+    }
+
+
+def test_followup_dashboard_summary_includes_next_window_preview(tmp_path):
+    project_root, connection = _bootstrap_connection(tmp_path)
+    _seed_sent_role_targeted_message(
+        connection,
+        project_root,
+        send_result_payload={
+            "draft_origin_kind": "codex_role_split",
+            "draft_posture_family": "technical",
+            "autonomous_origin": True,
+        },
+    )
+    summary = build_followup_dashboard_summary(connection, current_time=NOW)
+
+    assert summary["active_window_preference"] == "followup"
+    assert summary["next_window_preference"] == "original"
+    assert summary["next_window_local_start"].endswith("MST")
+
+
 def test_rollout_cap_pauses_after_tenth_successful_send(tmp_path):
     project_root, connection = _bootstrap_connection(tmp_path)
     _seed_sent_role_targeted_message(
@@ -1222,6 +1469,11 @@ def test_gmail_same_thread_sender_preserves_subject_and_cc(tmp_path):
         plan_status="pending",
         retry_count=0,
         next_retry_at=None,
+        draft_artifact_path=None,
+        review_evidence_artifact_path=None,
+        last_evaluated_at=None,
+        agent_reviewed_at=None,
+        updated_at=None,
     )
 
     outcome = sender.send_followup(
@@ -1293,6 +1545,11 @@ def test_gmail_thread_inspector_allows_expected_prior_sender_messages_for_later_
         plan_status="pending",
         retry_count=0,
         next_retry_at=None,
+        draft_artifact_path=None,
+        review_evidence_artifact_path=None,
+        last_evaluated_at=None,
+        agent_reviewed_at=None,
+        updated_at=None,
     )
 
     result = inspector.inspect_thread(candidate, current_time=NOW)

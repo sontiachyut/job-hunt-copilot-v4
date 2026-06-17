@@ -11,6 +11,8 @@ SEND_LANE_QUEUE_ORIGINAL = "original"
 SEND_LANE_WAIT_REASON_WINDOW = "waiting_for_window"
 SEND_LANE_WAIT_REASON_PACING_GAP = "waiting_for_pacing_gap"
 SEND_LANE_TIMEZONE = ZoneInfo("America/Phoenix")
+PREPARED_FRONTIER_CAP = 10
+DRAFT_FRESHNESS_WINDOW = timedelta(hours=24)
 
 FOLLOWUP_AUTO_SEND_ENABLED_KEY = "followup_auto_send_enabled"
 FOLLOWUP_AUTO_SEND_PAUSED_KEY = "followup_auto_send_paused"
@@ -60,6 +62,20 @@ class SharedSendTurnDecision:
         if queue_kind == self.selected_queue_kind:
             return None
         return SEND_LANE_WAIT_REASON_WINDOW
+
+
+@dataclass(frozen=True)
+class SendLaneWindowSummary:
+    active_window_preference: str
+    active_window_local_start: str
+    active_window_local_end: str
+    active_window_utc_start: str
+    active_window_utc_end: str
+    next_window_preference: str
+    next_window_local_start: str
+    next_window_local_end: str
+    next_window_utc_start: str
+    next_window_utc_end: str
 
 
 def decide_shared_send_turn(
@@ -159,6 +175,30 @@ def next_preferred_window_start(
     return _isoformat_utc(current_dt.astimezone(UTC))
 
 
+def build_send_lane_window_summary(
+    current_time: str | datetime,
+    *,
+    timezone: ZoneInfo = SEND_LANE_TIMEZONE,
+) -> SendLaneWindowSummary:
+    active_window = shared_send_window(current_time, timezone=timezone)
+    next_window = shared_send_window(
+        _coerce_datetime(current_time) + timedelta(hours=2),
+        timezone=timezone,
+    )
+    return SendLaneWindowSummary(
+        active_window_preference=active_window.preferred_queue_kind,
+        active_window_local_start=active_window.local_window_start,
+        active_window_local_end=active_window.local_window_end,
+        active_window_utc_start=active_window.utc_window_start,
+        active_window_utc_end=active_window.utc_window_end,
+        next_window_preference=next_window.preferred_queue_kind,
+        next_window_local_start=next_window.local_window_start,
+        next_window_local_end=next_window.local_window_end,
+        next_window_utc_start=next_window.utc_window_start,
+        next_window_utc_end=next_window.utc_window_end,
+    )
+
+
 def followup_auto_send_available(connection: sqlite3.Connection) -> bool:
     values = {
         row["control_key"]: row["control_value"]
@@ -197,17 +237,37 @@ def followup_queue_has_sendable_now(
 ) -> bool:
     if not followup_auto_send_available(connection):
         return False
+    freshness_cutoff = _isoformat_utc(_coerce_datetime(current_time) - DRAFT_FRESHNESS_WINDOW)
     row = connection.execute(
         """
+        WITH prepared_frontier AS (
+          SELECT fp.outreach_followup_plan_id
+          FROM outreach_followup_plans fp
+          JOIN outreach_messages om
+            ON om.outreach_message_id = fp.original_outreach_message_id
+          WHERE fp.plan_status IN (?, ?, ?, ?)
+            AND fp.draft_artifact_path IS NOT NULL
+            AND TRIM(fp.draft_artifact_path) <> ''
+            AND fp.review_evidence_artifact_path IS NOT NULL
+            AND TRIM(fp.review_evidence_artifact_path) <> ''
+          ORDER BY fp.eligible_after ASC,
+                   fp.followup_sequence DESC,
+                   om.sent_at ASC,
+                   fp.outreach_followup_plan_id ASC
+          LIMIT ?
+        )
         SELECT 1
-        FROM outreach_followup_plans
-        WHERE plan_status IN (?, ?, ?)
-          AND eligible_after <= ?
-          AND (next_retry_at IS NULL OR next_retry_at <= ?)
+        FROM outreach_followup_plans fp
+        JOIN prepared_frontier pf
+          ON pf.outreach_followup_plan_id = fp.outreach_followup_plan_id
+        WHERE fp.plan_status IN (?, ?, ?)
+          AND fp.eligible_after <= ?
+          AND (fp.next_retry_at IS NULL OR fp.next_retry_at <= ?)
+          AND COALESCE(fp.agent_reviewed_at, fp.last_evaluated_at, fp.updated_at) >= ?
           AND (
-            plan_status <> 'waiting_for_pacing'
-            OR last_skip_reason IS NULL
-            OR last_skip_reason IN (?, ?, ?, ?)
+            fp.plan_status <> 'waiting_for_pacing'
+            OR fp.last_skip_reason IS NULL
+            OR fp.last_skip_reason IN (?, ?, ?, ?)
           )
         LIMIT 1
         """,
@@ -215,8 +275,14 @@ def followup_queue_has_sendable_now(
             FOLLOWUP_SENDABLE_PLAN_STATUSES[0],
             FOLLOWUP_SENDABLE_PLAN_STATUSES[1],
             FOLLOWUP_SENDABLE_PLAN_STATUSES[2],
+            "dry_run_ready",
+            PREPARED_FRONTIER_CAP,
+            FOLLOWUP_SENDABLE_PLAN_STATUSES[0],
+            FOLLOWUP_SENDABLE_PLAN_STATUSES[1],
+            FOLLOWUP_SENDABLE_PLAN_STATUSES[2],
             current_time,
             current_time,
+            freshness_cutoff,
             LEGACY_FOLLOWUP_WAIT_REASONS[0],
             LEGACY_FOLLOWUP_WAIT_REASONS[1],
             LEGACY_FOLLOWUP_WAIT_REASONS[2],
@@ -234,6 +300,18 @@ def _coerce_datetime(value: str | datetime) -> datetime:
     if dt.tzinfo is None:
         return dt.replace(tzinfo=UTC)
     return dt.astimezone(UTC)
+
+
+def is_within_draft_freshness_window(
+    *,
+    reference_time: str | datetime | None,
+    current_time: str | datetime,
+) -> bool:
+    if reference_time is None:
+        return False
+    reference_dt = _coerce_datetime(reference_time)
+    current_dt = _coerce_datetime(current_time)
+    return current_dt - reference_dt < DRAFT_FRESHNESS_WINDOW
 
 
 def _isoformat_utc(value: datetime) -> str:

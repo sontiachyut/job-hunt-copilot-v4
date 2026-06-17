@@ -3175,6 +3175,7 @@ def _select_open_pipeline_run_work_unit(
         _load_active_role_targeted_wave,
         _load_role_targeted_send_posting_row,
         evaluate_role_targeted_send_set,
+        has_role_targeted_active_frontier_now,
         is_role_targeted_sending_actionable_now,
     )
 
@@ -3263,13 +3264,21 @@ def _select_open_pipeline_run_work_unit(
                     job_posting_id=job_posting_id,
                 )
                 if posting_status in {"ready_for_outreach", "outreach_in_progress"}:
-                    if not is_role_targeted_sending_actionable_now(
+                    send_actionable_now = is_role_targeted_sending_actionable_now(
                         connection,
                         project_root=project_root,
                         job_posting_id=job_posting_id,
                         current_time=current_time,
                         local_timezone=local_timezone,
-                    ):
+                    )
+                    if not send_actionable_now:
+                        if has_role_targeted_active_frontier_now(
+                            connection,
+                            project_root=project_root,
+                            job_posting_id=job_posting_id,
+                            current_time=current_time,
+                        ):
+                            continue
                         stale_reconciliation_target_status = (
                             _classify_stale_role_targeted_sending_reconciliation(
                                 connection,

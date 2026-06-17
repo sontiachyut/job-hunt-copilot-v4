@@ -7,6 +7,7 @@ from job_hunt_copilot.bootstrap import run_bootstrap
 from job_hunt_copilot.send_lane import (
     SEND_LANE_QUEUE_FOLLOWUP,
     SEND_LANE_QUEUE_ORIGINAL,
+    build_send_lane_window_summary,
     decide_shared_send_turn,
     followup_queue_has_sendable_now,
     shared_send_window,
@@ -53,6 +54,17 @@ def test_decide_shared_send_turn_uses_fallback_only_when_preferred_queue_is_empt
 
 def test_followup_queue_has_sendable_now_respects_auto_send_pause(tmp_path: Path) -> None:
     connection = _bootstrap_connection(tmp_path)
+    project_root = tmp_path / "repo"
+    draft_dir = project_root / "ops" / "followups" / "fp_1"
+    draft_dir.mkdir(parents=True, exist_ok=True)
+    (draft_dir / "followup_draft.md").write_text(
+        "Hi Alex,\n\nQuick follow-up.\n\nIf you would be open to it, I would still value a brief 10-minute conversation.\n\nBest,\nAchyutaram Sonti\n",
+        encoding="utf-8",
+    )
+    (draft_dir / "followup_review_evidence.json").write_text(
+        "{\"payload\": {}}",
+        encoding="utf-8",
+    )
     connection.execute(
         """
         INSERT INTO contacts (
@@ -100,8 +112,10 @@ def test_followup_queue_has_sendable_now_respects_auto_send_pause(tmp_path: Path
         """
         INSERT INTO outreach_followup_plans (
           outreach_followup_plan_id, original_outreach_message_id, contact_id,
-          plan_status, followup_sequence, eligible_after, created_at, updated_at
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+          plan_status, followup_sequence, eligible_after, draft_artifact_path,
+          review_evidence_artifact_path, last_evaluated_at, agent_reviewed_at,
+          created_at, updated_at
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         """,
         (
             "fp_1",
@@ -110,6 +124,10 @@ def test_followup_queue_has_sendable_now_respects_auto_send_pause(tmp_path: Path
             "agent_reviewed",
             1,
             "2026-06-14T00:00:00Z",
+            "ops/followups/fp_1/followup_draft.md",
+            "ops/followups/fp_1/followup_review_evidence.json",
+            "2026-06-15T18:30:00Z",
+            "2026-06-15T18:30:00Z",
             "2026-06-14T00:00:00Z",
             "2026-06-14T00:00:00Z",
         ),
@@ -145,3 +163,12 @@ def test_followup_queue_has_sendable_now_respects_auto_send_pause(tmp_path: Path
     connection.commit()
 
     assert followup_queue_has_sendable_now(connection, current_time="2026-06-15T19:05:00Z") is False
+
+
+def test_build_send_lane_window_summary_includes_next_window_preview() -> None:
+    summary = build_send_lane_window_summary("2026-06-15T19:00:00Z")
+
+    assert summary.active_window_preference == SEND_LANE_QUEUE_FOLLOWUP
+    assert summary.next_window_preference == SEND_LANE_QUEUE_ORIGINAL
+    assert summary.active_window_local_start.endswith("MST")
+    assert summary.next_window_local_start.endswith("MST")
