@@ -30,6 +30,7 @@ Do not collapse multiple unresolved ambiguities into one blended spec change whe
 
 - Keep this file current when the owner defines new repo-specific operating rules.
 - When possible, mirror the bug context and fix summary on the corresponding GitHub issue so the workflow history also exists outside the local checkout.
+- When the owner explicitly asks for higher GitHub contribution cadence, prefer pushing smaller coherent checkpoints during implementation instead of waiting until the entire implementation is finished. Keep those intermediate pushes technically coherent and avoid leaving the active branch in an obviously broken state.
 
 ## Follow-Up Email Workflow
 

@@ -1918,12 +1918,12 @@ Feature: Job Hunt Copilot next-build acceptance
       And other unreplied threads at the same company do not suppress a different contact by default
       And any inbound reply or explicit do-not-contact state still blocks future automatic follow-up for that same contact
 
-    Scenario: Automatic follow-up sends stay inside the business-hours window
+    Scenario: Follow-up cadence uses business-day math while final send windows run all week
       Given an otherwise eligible automatic follow-up becomes due
       When the worker decides whether it may send immediately
-      Then it only sends on Monday through Friday in `America/Phoenix`
-      And it only sends between `5:00 AM` and `5:00 PM` local time
-      And a due thread outside that window remains pending rather than sending overnight
+      Then the follow-up due date still uses business-day math in `America/Phoenix`
+      And once the thread is due it may use any eligible shared send window on any day of the week
+      And the worker does not keep a separate Monday-through-Friday business-hours-only send window for follow-ups
 
     Scenario: Follow-up prompts stay bounded, split by posture, and return structured output
       Given a due Codex-origin follow-up candidate is ready for drafting
@@ -1984,12 +1984,56 @@ Feature: Job Hunt Copilot next-build acceptance
       And the worker surfaces an inspection packet summarizing those ten sends plus compact skipped or blocked context
       And the worker remains paused until the owner explicitly resumes it
 
-    Scenario: Shared outbound pacing favors new role-targeted outreach ahead of follow-ups
+    Scenario: Shared outbound lane uses alternating two-hour windows across the full day
       Given both a new role-targeted outreach email and a due automatic follow-up are simultaneously send-eligible
-      When the shared outbound send lane chooses the next message
-      Then the new role-targeted outreach email is sent first
-      And the follow-up waits for the next available shared pacing gap
-      And follow-up sends use the same randomized `6` to `10` minute inter-send gap policy as normal outreach
+      When the shared outbound lane evaluates the current local send window in `America/Phoenix`
+      Then the lane alternates preferred queue every `2` hours across the full `24` hour day
+      And the cycle starts with a follow-up-preferred window at local midnight
+      And the same alternating window schedule applies all `7` days of the week
+      And the actual queue choice is evaluated at final send-attempt time rather than draft-ready time
+
+    Scenario: Shared outbound lane uses fallback only when the preferred queue is effectively empty
+      Given the current `2` hour send window prefers one queue
+      When the lane evaluates whether the other queue may use the turn
+      Then only `sendable now` candidates are considered for active-window ownership
+      And stale drafts that still need refresh do not count as `sendable now`
+      And dormant persisted drafts outside the active prepared frontier do not count as `sendable now`
+      And if the preferred queue has no actually sendable candidate the other queue may use the turn
+      But if both queues have a sendable-now candidate the active window preference still wins
+
+    Scenario: Shared outbound lane preserves one global serialized pacing gate
+      Given the preferred queue for the active window has a sendable candidate
+      And the non-preferred queue also has a sendable candidate
+      When the global randomized `6` to `10` minute inter-send gap is still closed
+      Then neither queue may bypass that shared pacing gate
+      And a routing handoff or wrong-worker yield does not consume the pacing gap
+      And the next actual send turn is decided only after the pacing gate opens
+
+    Scenario: Follow-up and original queues use deterministic ordering inside their windows
+      Given multiple sendable follow-ups and multiple sendable original outreach drafts exist
+      When a follow-up-preferred window chooses among follow-up candidates
+      Then the follow-up queue is ordered by oldest due first
+      And ties favor follow-up `3` before `2` before `1`
+      And remaining ties favor the older original thread before stable canonical row order
+      When an original-outreach-preferred window chooses among original drafts
+      Then the original queue is ordered by oldest generated draft first
+      And remaining ties favor older posting or thread context before stable canonical row order
+
+    Scenario: Prepared-but-unsent frontiers stay bounded and freshness-aware
+      Given preparation may happen outside the currently preferred send window
+      When the runtime maintains ready-to-send drafts for the shared lane
+      Then each queue keeps at most `10` active prepared drafts in its canonical frontier
+      And the prepared frontier cap is global across workers rather than per process
+      And a draft older than `24` hours must refresh before send
+      And a stale draft continues to occupy its frontier slot until it is refreshed, invalidated, or turned over normally
+      And persisted drafts outside the active frontier remain dormant rather than participating in live routing
+
+    Scenario: Window waits are reported separately from inter-send-gap waits
+      Given a candidate is otherwise sendable but the active `2` hour window currently prefers the other queue
+      When the worker persists the deferred candidate state
+      Then the durable status may remain `waiting_for_pacing`
+      But the structured reason is `waiting_for_window` rather than `waiting_for_pacing_gap`
+      And candidates that are not otherwise fully sendable do not use `waiting_for_window`
 
     Scenario: Repeated follow-up drafting failures stop the automatic sequence for that thread
       Given a due automatic follow-up step repeatedly fails Codex drafting validation

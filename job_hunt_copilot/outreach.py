@@ -25,6 +25,12 @@ from .delivery_feedback import MailboxFeedbackObserver, run_immediate_delivery_f
 from .llm_usage import record_codex_usage_event
 from .paths import ProjectPaths, workspace_slug
 from .records import lifecycle_timestamps, new_canonical_id
+from .send_lane import (
+    SEND_LANE_QUEUE_ORIGINAL,
+    SEND_LANE_WAIT_REASON_WINDOW,
+    decide_shared_send_turn,
+    followup_queue_has_sendable_now,
+)
 
 OUTREACH_COMPONENT = "email_drafting_sending"
 OUTREACH_DRAFT_ARTIFACT_TYPE = "email_draft"
@@ -1495,6 +1501,34 @@ def is_role_targeted_sending_actionable_now(
     current_time: str,
     local_timezone: tzinfo | str | None = None,
 ) -> bool:
+    if has_role_targeted_sendable_frontier_now(
+        connection,
+        project_root=project_root,
+        job_posting_id=job_posting_id,
+        current_time=current_time,
+        local_timezone=local_timezone,
+    ):
+        return True
+    posting_row = _load_role_targeted_send_posting_row(connection, job_posting_id=job_posting_id)
+    if posting_row["posting_status"] != JOB_POSTING_STATUS_READY_FOR_OUTREACH:
+        return False
+    send_set_plan = evaluate_role_targeted_send_set(
+        connection,
+        job_posting_id=job_posting_id,
+        current_time=current_time,
+        local_timezone=local_timezone,
+    )
+    return bool(send_set_plan.selected_contacts) and send_set_plan.remaining_posting_daily_capacity > 0
+
+
+def has_role_targeted_sendable_frontier_now(
+    connection: sqlite3.Connection,
+    *,
+    project_root: Path | str,
+    job_posting_id: str,
+    current_time: str,
+    local_timezone: tzinfo | str | None = None,
+) -> bool:
     paths = ProjectPaths.from_root(project_root)
     posting_row = _load_role_targeted_send_posting_row(connection, job_posting_id=job_posting_id)
     active_wave = _load_active_role_targeted_wave(connection, job_posting_id=job_posting_id)
@@ -1525,16 +1559,7 @@ def is_role_targeted_sending_actionable_now(
             global_gap_minutes=global_gap_minutes,
         )
         return bool(pacing["pacing_allowed_now"])
-
-    if posting_row["posting_status"] != JOB_POSTING_STATUS_READY_FOR_OUTREACH:
-        return False
-    send_set_plan = evaluate_role_targeted_send_set(
-        connection,
-        job_posting_id=job_posting_id,
-        current_time=current_time,
-        local_timezone=local_timezone,
-    )
-    return bool(send_set_plan.selected_contacts) and send_set_plan.remaining_posting_daily_capacity > 0
+    return False
 
 
 def _load_posting_row(
@@ -3502,6 +3527,23 @@ def execute_role_targeted_send_set(
                         pacing_block_reason=_normalize_optional_text(pacing["pacing_block_reason"]),
                     )
                 )
+            break
+
+        shared_lane = decide_shared_send_turn(
+            current_time=current_time,
+            original_sendable_now=True,
+            followup_sendable_now=followup_queue_has_sendable_now(connection, current_time=current_time),
+            original_queue_enabled=True,
+            followup_queue_enabled=True,
+        )
+        if shared_lane.selected_queue_kind != SEND_LANE_QUEUE_ORIGINAL:
+            delayed_messages.extend(
+                _build_delayed_messages(
+                    active_wave[index:],
+                    earliest_allowed_send_at=current_time,
+                    pacing_block_reason=SEND_LANE_WAIT_REASON_WINDOW,
+                )
+            )
             break
 
         outbound = OutboundOutreachMessage(

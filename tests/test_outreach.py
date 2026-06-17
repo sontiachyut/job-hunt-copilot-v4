@@ -5027,6 +5027,185 @@ def test_send_execution_persists_sent_metadata_and_delays_remaining_wave(tmp_pat
     connection.close()
 
 
+def test_send_execution_yields_to_sendable_followup_during_followup_window(tmp_path: Path):
+    project_root, paths = bootstrap_project(tmp_path)
+    connection = connect_database(project_root / "job_hunt_copilot.db")
+    write_sender_profile(paths)
+    seed_posting(connection)
+    seed_linked_contact(
+        connection,
+        contact_id="ct_r1",
+        job_posting_contact_id="jpc_r1",
+        display_name="Priya Recruiter",
+        recipient_type=RECIPIENT_TYPE_RECRUITER,
+        current_working_email="priya@acme.example",
+        created_at="2026-04-06T20:01:00Z",
+    )
+    seed_linked_contact(
+        connection,
+        contact_id="ct_m1",
+        job_posting_contact_id="jpc_m1",
+        display_name="Morgan Manager",
+        recipient_type=RECIPIENT_TYPE_HIRING_MANAGER,
+        current_working_email="morgan@acme.example",
+        created_at="2026-04-06T20:02:00Z",
+    )
+    seed_linked_contact(
+        connection,
+        contact_id="ct_e1",
+        job_posting_contact_id="jpc_e1",
+        display_name="Jamie Engineer",
+        recipient_type=RECIPIENT_TYPE_ENGINEER,
+        current_working_email="jamie@acme.example",
+        created_at="2026-04-06T20:03:00Z",
+    )
+    seed_approved_tailoring_run(connection, paths)
+    connection.execute(
+        """
+        UPDATE job_postings
+        SET posting_status = ?, updated_at = ?
+        WHERE job_posting_id = ?
+        """,
+        (JOB_POSTING_STATUS_OUTREACH_IN_PROGRESS, "2026-04-06T22:30:00Z", "jp_outreach"),
+    )
+    connection.execute(
+        """
+        UPDATE contacts
+        SET contact_status = ?, updated_at = ?
+        WHERE contact_id = ?
+        """,
+        (CONTACT_STATUS_OUTREACH_IN_PROGRESS, "2026-04-06T22:30:00Z", "ct_m1"),
+    )
+    connection.execute(
+        """
+        UPDATE job_posting_contacts
+        SET link_level_status = ?, updated_at = ?
+        WHERE job_posting_contact_id = ?
+        """,
+        (POSTING_CONTACT_STATUS_OUTREACH_IN_PROGRESS, "2026-04-06T22:30:00Z", "jpc_m1"),
+    )
+    connection.execute(
+        """
+        INSERT INTO outreach_messages (
+          outreach_message_id, contact_id, outreach_mode, recipient_email,
+          message_status, job_posting_id, job_posting_contact_id, subject,
+          body_text, body_html, created_at, updated_at
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        """,
+        (
+            "om_original_generated",
+            "ct_m1",
+            "role_targeted",
+            "morgan@acme.example",
+            MESSAGE_STATUS_GENERATED,
+            "jp_outreach",
+            "jpc_m1",
+            "Interest in the Staff Software Engineer / AI role at Acme Robotics",
+            "Hi Morgan,\n\nI wanted to reach out regarding the role.\n\nBest,\nAchyutaram Sonti",
+            None,
+            "2026-04-06T22:30:00Z",
+            "2026-04-06T22:30:00Z",
+        ),
+    )
+    drafted_message_id = "om_original_generated"
+    connection.execute(
+        """
+        INSERT INTO contacts (
+          contact_id, identity_key, display_name, company_name, origin_component,
+          contact_status, full_name, first_name, current_working_email,
+          created_at, updated_at
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        """,
+        (
+            "ct_followup",
+            "ct_followup|exampleco",
+            "Followup Person",
+            "ExampleCo",
+            "linkedin_scraping",
+            "sent",
+            "Followup Person",
+            "Followup",
+            "followup@example.com",
+            "2026-04-01T10:00:00Z",
+            "2026-04-01T10:00:00Z",
+        ),
+    )
+    connection.execute(
+        """
+        INSERT INTO outreach_messages (
+          outreach_message_id, contact_id, outreach_mode, recipient_email,
+          message_status, subject, body_text, thread_id, sent_at, created_at, updated_at
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        """,
+        (
+            "om_followup_root",
+            "ct_followup",
+            "role_targeted",
+            "followup@example.com",
+            "sent",
+            "Learning from your career path",
+            "Hi Followup,\n\nOriginal.\n\nBest,\nAchyutaram Sonti",
+            "thread_followup",
+            "2026-04-01T10:00:00Z",
+            "2026-04-01T10:00:00Z",
+            "2026-04-01T10:00:00Z",
+        ),
+    )
+    connection.execute(
+        """
+        INSERT INTO outreach_followup_plans (
+          outreach_followup_plan_id, original_outreach_message_id, contact_id,
+          plan_status, followup_sequence, eligible_after, created_at, updated_at
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+        """,
+        (
+            "fp_followup_ready",
+            "om_followup_root",
+            "ct_followup",
+            "agent_reviewed",
+            1,
+            "2026-04-02T10:00:00Z",
+            "2026-04-02T10:00:00Z",
+            "2026-04-02T10:00:00Z",
+        ),
+    )
+    connection.executemany(
+        """
+        INSERT INTO agent_control_state (control_key, control_value, updated_at)
+        VALUES (?, ?, ?)
+        ON CONFLICT(control_key) DO UPDATE SET
+          control_value = excluded.control_value,
+          updated_at = excluded.updated_at
+        """,
+        [
+            ("followup_auto_send_enabled", "true", "2026-04-06T23:00:00Z"),
+            ("followup_auto_send_paused", "false", "2026-04-06T23:00:00Z"),
+            ("followup_initial_rollout_sent_count", "0", "2026-04-06T23:00:00Z"),
+        ],
+    )
+    connection.commit()
+
+    sender = RecordingOutreachSender()
+    result = execute_role_targeted_send_set(
+        connection,
+        project_root=project_root,
+        job_posting_id="jp_outreach",
+        current_time="2026-04-06T23:00:00Z",
+        local_timezone=ZoneInfo("UTC"),
+        sender=sender,
+        renderer=DeterministicOutreachDraftRenderer(),
+    )
+
+    assert sender.attempted_message_ids == []
+    assert result.sent_messages == ()
+    assert [message.outreach_message_id for message in result.delayed_messages] == [
+        drafted_message_id
+    ]
+    assert result.delayed_messages[0].pacing_block_reason == "waiting_for_window"
+
+    connection.close()
+
+
 def test_send_execution_runs_immediate_feedback_poll_when_observer_is_provided(tmp_path: Path):
     project_root, paths = bootstrap_project(tmp_path)
     connection = connect_database(project_root / "job_hunt_copilot.db")

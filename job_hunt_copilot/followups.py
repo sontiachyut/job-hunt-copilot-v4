@@ -9,7 +9,7 @@ import shutil
 import sqlite3
 import subprocess
 from dataclasses import dataclass
-from datetime import UTC, datetime, time, timedelta
+from datetime import UTC, datetime, timedelta
 from email.message import EmailMessage
 from pathlib import Path
 from typing import Any, Callable, Mapping, Protocol, Sequence
@@ -36,10 +36,19 @@ from .outreach import (
     TECHNICAL_PATH_SUBJECT,
     TRANSIENT_SEND_RETRY_COOLDOWN_MINUTES,
     _normalize_subprocess_stream_text,
-    is_role_targeted_sending_actionable_now,
+    has_role_targeted_sendable_frontier_now,
 )
 from .paths import ProjectPaths
 from .records import new_canonical_id, now_utc_iso
+from .send_lane import (
+    SEND_LANE_QUEUE_FOLLOWUP,
+    SEND_LANE_TIMEZONE,
+    SEND_LANE_WAIT_REASON_PACING_GAP,
+    SEND_LANE_WAIT_REASON_WINDOW,
+    decide_shared_send_turn,
+    followup_auto_send_available,
+    shared_send_window,
+)
 
 
 FOLLOWUP_COMPONENT = "followup_worker"
@@ -59,9 +68,7 @@ FOLLOWUP_DAY_GAPS = {
     2: 5,
     3: 7,
 }
-FOLLOWUP_BUSINESS_TIMEZONE = ZoneInfo("America/Phoenix")
-FOLLOWUP_WINDOW_START = time(hour=5, minute=0)
-FOLLOWUP_WINDOW_END = time(hour=17, minute=0)
+FOLLOWUP_BUSINESS_TIMEZONE = SEND_LANE_TIMEZONE
 FOLLOWUP_DRAFT_RETRY_LIMIT = 3
 
 POSTURE_TECHNICAL = "technical"
@@ -94,7 +101,8 @@ SKIP_REASON_REPLIED_IN_THREAD = "replied_in_thread"
 SKIP_REASON_CONTACT_REPLY_SUPPRESSION = "contact_reply_suppression"
 SKIP_REASON_MISSING_THREAD_CONTEXT = "missing_followup_thread_context"
 SKIP_REASON_MISSING_ORIGINAL_BODY = "missing_original_body"
-SKIP_REASON_WAITING_FOR_PACING = "waiting_for_pacing"
+SKIP_REASON_WAITING_FOR_PACING = SEND_LANE_WAIT_REASON_PACING_GAP
+SKIP_REASON_WAITING_FOR_WINDOW = SEND_LANE_WAIT_REASON_WINDOW
 SKIP_REASON_ROLE_TARGETED_PRIORITY = "role_targeted_priority_wait"
 SKIP_REASON_TRANSIENT_RETRY = "transient_send_retry_cooldown"
 SKIP_REASON_AMBIGUOUS_SEND = "ambiguous_send_state"
@@ -633,8 +641,8 @@ def run_followup_cycle(
             current_time=timestamp,
         )
     )
-    followup_auto_send_available = _followup_auto_send_enabled(connection)
-    auto_send_enabled = (not dry_run) and followup_auto_send_available
+    followup_auto_send_is_available = _followup_auto_send_enabled(connection)
+    auto_send_enabled = (not dry_run) and followup_auto_send_is_available
     counts = {
         "candidates_examined": 0,
         "drafts_created": 0,
@@ -659,7 +667,7 @@ def run_followup_cycle(
             current_time=effective_time,
             limit=resolved_batch_size,
         )
-        if followup_auto_send_available:
+        if followup_auto_send_is_available:
             _release_auto_send_disabled_holds(connection, current_time=effective_time)
             _release_missing_sender_identity_holds(connection, current_time=effective_time)
         candidates = _load_candidate_plans(connection, current_time=effective_time, limit=resolved_batch_size)
@@ -767,35 +775,6 @@ def run_followup_cycle(
                 counts["held_for_review"] += 1
                 continue
 
-            if resolved_role_targeted_priority_checker(connection, effective_time):
-                _mark_plan_status(
-                    connection,
-                    candidate.outreach_followup_plan_id,
-                    PLAN_STATUS_WAITING_FOR_PACING,
-                    effective_time,
-                    reason_code=SKIP_REASON_ROLE_TARGETED_PRIORITY,
-                    draft_artifact_path=rendered.draft_artifact_path,
-                    review_evidence_artifact_path=rendered.review_evidence_artifact_path,
-                    reply_check=pre_draft_check,
-                )
-                counts["waiting_for_pacing_count"] += 1
-                continue
-
-            pacing = _evaluate_global_pacing(connection, candidate, current_time=effective_time)
-            if not pacing["allowed"]:
-                _mark_plan_status(
-                    connection,
-                    candidate.outreach_followup_plan_id,
-                    PLAN_STATUS_WAITING_FOR_PACING,
-                    effective_time,
-                    reason_code=SKIP_REASON_WAITING_FOR_PACING,
-                    draft_artifact_path=rendered.draft_artifact_path,
-                    review_evidence_artifact_path=rendered.review_evidence_artifact_path,
-                    reply_check=pre_draft_check,
-                )
-                counts["waiting_for_pacing_count"] += 1
-                continue
-
             pre_send_check = resolved_inspector.inspect_thread(candidate, current_time=effective_time)
             if not pre_send_check.safe_to_send:
                 _handle_thread_block(
@@ -808,6 +787,42 @@ def run_followup_cycle(
                     counts=counts,
                     artifact_paths=artifact_paths,
                 )
+                continue
+
+            pacing = _evaluate_global_pacing(connection, candidate, current_time=effective_time)
+            if not pacing["allowed"]:
+                _mark_plan_status(
+                    connection,
+                    candidate.outreach_followup_plan_id,
+                    PLAN_STATUS_WAITING_FOR_PACING,
+                    effective_time,
+                    reason_code=SKIP_REASON_WAITING_FOR_PACING,
+                    draft_artifact_path=rendered.draft_artifact_path,
+                    review_evidence_artifact_path=rendered.review_evidence_artifact_path,
+                    reply_check=pre_send_check,
+                )
+                counts["waiting_for_pacing_count"] += 1
+                continue
+
+            shared_lane = decide_shared_send_turn(
+                current_time=effective_time,
+                original_sendable_now=resolved_role_targeted_priority_checker(connection, effective_time),
+                followup_sendable_now=True,
+                original_queue_enabled=True,
+                followup_queue_enabled=followup_auto_send_is_available,
+            )
+            if shared_lane.selected_queue_kind != SEND_LANE_QUEUE_FOLLOWUP:
+                _mark_plan_status(
+                    connection,
+                    candidate.outreach_followup_plan_id,
+                    PLAN_STATUS_WAITING_FOR_PACING,
+                    effective_time,
+                    reason_code=SKIP_REASON_WAITING_FOR_WINDOW,
+                    draft_artifact_path=rendered.draft_artifact_path,
+                    review_evidence_artifact_path=rendered.review_evidence_artifact_path,
+                    reply_check=pre_send_check,
+                )
+                counts["waiting_for_pacing_count"] += 1
                 continue
 
             _mark_plan_status(
@@ -1059,7 +1074,7 @@ def build_followup_dashboard_summary(connection: sqlite3.Connection, *, current_
                (SELECT c.first_name FROM contacts c WHERE c.contact_id = fp.contact_id) AS contact_first_name,
                (SELECT c.contact_status FROM contacts c WHERE c.contact_id = fp.contact_id) AS contact_status
         FROM outreach_followup_plans fp
-        WHERE fp.plan_status IN ('pending', 'dry_run_ready', 'agent_reviewed', 'retryable')
+        WHERE fp.plan_status IN ('pending', 'dry_run_ready', 'agent_reviewed', 'retryable', 'waiting_for_pacing')
         """
     ).fetchall():
         candidate = FollowUpCandidate(
@@ -1094,6 +1109,24 @@ def build_followup_dashboard_summary(connection: sqlite3.Connection, *, current_
         "SELECT COUNT(*) FROM outreach_followup_plans WHERE plan_status = ?",
         (PLAN_STATUS_WAITING_FOR_PACING,),
     ).fetchone()[0]
+    waiting_for_window = connection.execute(
+        """
+        SELECT COUNT(*)
+        FROM outreach_followup_plans
+        WHERE plan_status = ?
+          AND last_skip_reason = ?
+        """,
+        (PLAN_STATUS_WAITING_FOR_PACING, SKIP_REASON_WAITING_FOR_WINDOW),
+    ).fetchone()[0]
+    waiting_for_pacing_gap = connection.execute(
+        """
+        SELECT COUNT(*)
+        FROM outreach_followup_plans
+        WHERE plan_status = ?
+          AND last_skip_reason IN (?, ?)
+        """,
+        (PLAN_STATUS_WAITING_FOR_PACING, SKIP_REASON_WAITING_FOR_PACING, SKIP_REASON_ROLE_TARGETED_PRIORITY),
+    ).fetchone()[0]
     sent_today = _count_followups_sent_today(connection, effective_time)
     blocked_or_review = connection.execute(
         """
@@ -1109,11 +1142,17 @@ def build_followup_dashboard_summary(connection: sqlite3.Connection, *, current_
         LIMIT 1
         """
     ).fetchone()
+    active_window = shared_send_window(effective_time)
     return {
         "due_now": int(due_now),
         "waiting_for_pacing": int(waiting_for_pacing),
+        "waiting_for_window": int(waiting_for_window),
+        "waiting_for_pacing_gap": int(waiting_for_pacing_gap),
         "sent_today": int(sent_today),
         "blocked_or_review": int(blocked_or_review),
+        "active_window_preference": active_window.preferred_queue_kind,
+        "active_window_local_start": active_window.local_window_start,
+        "active_window_local_end": active_window.local_window_end,
         "last_cycle_at": last_cycle["started_at"] if last_cycle is not None else None,
         "last_cycle_result": last_cycle["result"] if last_cycle is not None else None,
     }
@@ -1450,7 +1489,7 @@ def _load_candidate_plans(
           ON jp.job_posting_id = fp.job_posting_id
         WHERE fp.plan_status IN (?, ?, ?, ?, ?)
           AND (fp.next_retry_at IS NULL OR fp.next_retry_at <= ?)
-        ORDER BY om.sent_at ASC, fp.followup_sequence ASC, fp.outreach_followup_plan_id ASC
+        ORDER BY fp.eligible_after ASC, fp.followup_sequence DESC, om.sent_at ASC, fp.outreach_followup_plan_id ASC
         LIMIT ?
         """,
         (
@@ -2099,34 +2138,7 @@ def _determine_followup_gap_minutes(candidate: FollowUpCandidate, current_dt: da
 
 
 def _followup_auto_send_enabled(connection: sqlite3.Connection) -> bool:
-    values = {
-        row["control_key"]: row["control_value"]
-        for row in connection.execute(
-            """
-            SELECT control_key, control_value
-            FROM agent_control_state
-            WHERE control_key IN (?, ?, ?, ?)
-            """,
-            (
-                FOLLOWUP_AUTO_SEND_ENABLED_KEY,
-                FOLLOWUP_AUTO_SEND_PAUSED_KEY,
-                FOLLOWUP_INITIAL_ROLLOUT_SENT_COUNT_KEY,
-                FOLLOWUP_INITIAL_ROLLOUT_APPROVED_KEY,
-            ),
-        )
-    }
-    if values.get(FOLLOWUP_AUTO_SEND_ENABLED_KEY) != "true":
-        return False
-    if values.get(FOLLOWUP_AUTO_SEND_PAUSED_KEY) == "true":
-        return False
-    rollout_approved = values.get(FOLLOWUP_INITIAL_ROLLOUT_APPROVED_KEY) == "true"
-    if rollout_approved:
-        return True
-    try:
-        sent_count = int(values.get(FOLLOWUP_INITIAL_ROLLOUT_SENT_COUNT_KEY, "0"))
-    except ValueError:
-        sent_count = 0
-    return sent_count < FOLLOWUP_INITIAL_AUTO_SEND_CAP
+    return followup_auto_send_available(connection)
 
 
 def _increment_initial_rollout_count(connection: sqlite3.Connection, current_time: str) -> bool:
@@ -2282,7 +2294,7 @@ def _role_targeted_priority_exists_now(
         """
     ).fetchall()
     for row in posting_rows:
-        if is_role_targeted_sending_actionable_now(
+        if has_role_targeted_sendable_frontier_now(
             connection,
             project_root=project_root,
             job_posting_id=str(row["job_posting_id"]),
@@ -2539,14 +2551,9 @@ def _normalize_paragraph_text(value: str) -> str:
 
 
 def _is_due_now(candidate: FollowUpCandidate, current_time: str) -> bool:
-    current_dt = _parse_iso_datetime(current_time)
-    if _parse_iso_datetime(candidate.eligible_after) > current_dt:
-        return False
-    local_dt = current_dt.astimezone(FOLLOWUP_BUSINESS_TIMEZONE)
-    if local_dt.weekday() >= 5:
-        return False
-    local_t = local_dt.timetz().replace(tzinfo=None)
-    return FOLLOWUP_WINDOW_START <= local_t <= FOLLOWUP_WINDOW_END
+    current_dt = _parse_iso_datetime(current_time).astimezone(FOLLOWUP_BUSINESS_TIMEZONE)
+    eligible_dt = _parse_iso_datetime(candidate.eligible_after).astimezone(FOLLOWUP_BUSINESS_TIMEZONE)
+    return eligible_dt <= current_dt
 
 
 def _eligible_after(sent_at: str, sequence: int, local_timezone: ZoneInfo) -> str:
@@ -2822,7 +2829,7 @@ def _increment_count_for_reason(counts: dict[str, int], reason_code: str) -> Non
         counts["skipped_bounced"] += 1
     elif reason_code == SKIP_REASON_ALREADY_FOLLOWED_UP:
         counts["skipped_already_followed_up"] += 1
-    elif reason_code in {SKIP_REASON_WAITING_FOR_PACING, SKIP_REASON_ROLE_TARGETED_PRIORITY}:
+    elif reason_code in {SKIP_REASON_WAITING_FOR_PACING, SKIP_REASON_WAITING_FOR_WINDOW, SKIP_REASON_ROLE_TARGETED_PRIORITY}:
         counts["waiting_for_pacing_count"] += 1
     elif reason_code in {SKIP_REASON_TRANSIENT_RETRY, SKIP_REASON_DRAFT_RETRY}:
         counts["retryable_count"] += 1

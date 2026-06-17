@@ -28,7 +28,7 @@ from job_hunt_copilot.followups import (
     SKIP_REASON_MISSING_SENDER_IDENTITY,
     SKIP_REASON_NON_CODEX_ORIGIN,
     SKIP_REASON_POSTING_ARCHIVED_PRE_CUTOVER,
-    SKIP_REASON_ROLE_TARGETED_PRIORITY,
+    SKIP_REASON_WAITING_FOR_WINDOW,
     StructuredFollowUpDraft,
     TECHNICAL_PATH_SUBJECT,
     FollowUpCandidate,
@@ -840,7 +840,7 @@ def test_deterministic_origin_thread_is_skipped(tmp_path):
     assert plan["last_skip_reason"] == SKIP_REASON_NON_CODEX_ORIGIN
 
 
-def test_due_thread_outside_business_window_does_not_render(tmp_path):
+def test_due_thread_outside_old_business_window_still_renders_when_due(tmp_path):
     project_root, connection = _bootstrap_connection(tmp_path)
     _seed_sent_role_targeted_message(
         connection,
@@ -855,15 +855,15 @@ def test_due_thread_outside_business_window_does_not_render(tmp_path):
     result = run_followup_cycle(
         connection,
         project_root=project_root,
-        current_time="2026-06-15T10:00:00Z",
+        current_time="2026-06-16T10:00:00Z",
         dry_run=True,
-        thread_inspector=FakeThreadInspector(ThreadInspectionResult(result="clear", checked_at="2026-06-15T10:00:00Z")),
+        thread_inspector=FakeThreadInspector(ThreadInspectionResult(result="clear", checked_at="2026-06-16T10:00:00Z")),
         renderer=FakeRenderer(("ignored", "ignored")),
     )
 
     plan = connection.execute("SELECT * FROM outreach_followup_plans").fetchone()
-    assert result.drafts_created == 0
-    assert plan["plan_status"] == PLAN_STATUS_PENDING
+    assert result.drafts_created == 1
+    assert plan["plan_status"] == PLAN_STATUS_DRY_RUN_READY
 
 
 def test_draft_failures_retry_then_hold(tmp_path):
@@ -932,7 +932,7 @@ def test_codex_timeout_pauses_followup_auto_send(tmp_path):
     assert plan["plan_status"] == PLAN_STATUS_PENDING
 
 
-def test_priority_lane_holds_followup_when_new_role_targeted_send_exists(tmp_path):
+def test_original_preferred_window_holds_followup_when_original_sendable_exists(tmp_path):
     project_root, connection = _bootstrap_connection(tmp_path)
     _seed_sent_role_targeted_message(
         connection,
@@ -955,9 +955,9 @@ def test_priority_lane_holds_followup_when_new_role_targeted_send_exists(tmp_pat
     result = run_followup_cycle(
         connection,
         project_root=project_root,
-        current_time=NOW,
+        current_time="2026-06-15T21:00:00Z",
         dry_run=False,
-        thread_inspector=inspector,
+        thread_inspector=FakeThreadInspector(ThreadInspectionResult(result="clear", checked_at="2026-06-15T21:00:00Z")),
         renderer=renderer,
         sender=FakeSender([]),
         role_targeted_priority_checker=lambda conn, now: True,
@@ -966,7 +966,111 @@ def test_priority_lane_holds_followup_when_new_role_targeted_send_exists(tmp_pat
     plan = connection.execute("SELECT * FROM outreach_followup_plans").fetchone()
     assert result.messages_sent == 0
     assert plan["plan_status"] == PLAN_STATUS_WAITING_FOR_PACING
-    assert plan["last_skip_reason"] == SKIP_REASON_ROLE_TARGETED_PRIORITY
+    assert plan["last_skip_reason"] == SKIP_REASON_WAITING_FOR_WINDOW
+
+
+def test_followup_uses_fallback_in_original_window_when_no_original_is_sendable(tmp_path):
+    project_root, connection = _bootstrap_connection(tmp_path)
+    _seed_sent_role_targeted_message(
+        connection,
+        project_root,
+        send_result_payload={
+            "draft_origin_kind": "codex_role_split",
+            "draft_posture_family": "technical",
+            "autonomous_origin": True,
+            "message_id_header": "<msg@example.com>",
+        },
+    )
+    _enable_followup_auto_send(connection)
+    result = run_followup_cycle(
+        connection,
+        project_root=project_root,
+        current_time="2026-06-15T21:00:00Z",
+        dry_run=False,
+        thread_inspector=FakeThreadInspector(ThreadInspectionResult(result="clear", checked_at="2026-06-15T21:00:00Z")),
+        renderer=FakeRenderer(
+            (
+                "Just wanted to briefly follow up on my earlier note.",
+                "If you would be open to it, I would still value a brief 10-minute conversation.",
+            )
+        ),
+        sender=FakeSender([]),
+        role_targeted_priority_checker=lambda conn, now: False,
+    )
+
+    plan = connection.execute("SELECT * FROM outreach_followup_plans").fetchone()
+    assert result.messages_sent == 1
+    assert plan["plan_status"] == PLAN_STATUS_SENT
+
+
+def test_followup_candidate_order_prefers_oldest_due_then_higher_sequence(tmp_path):
+    project_root, connection = _bootstrap_connection(tmp_path)
+    _seed_sent_role_targeted_message(
+        connection,
+        project_root,
+        outreach_message_id="om_seq1",
+        lead_id="ld_seq1",
+        job_posting_id="jp_seq1",
+        job_posting_contact_id="jpc_seq1",
+        contact_id="ct_seq1",
+        recipient_email="seq1@example.com",
+        thread_id="thread_seq1",
+        send_result_payload={
+            "draft_origin_kind": "codex_role_split",
+            "draft_posture_family": "technical",
+            "autonomous_origin": True,
+        },
+    )
+    _seed_sent_role_targeted_message(
+        connection,
+        project_root,
+        outreach_message_id="om_seq2",
+        lead_id="ld_seq2",
+        job_posting_id="jp_seq2",
+        job_posting_contact_id="jpc_seq2",
+        contact_id="ct_seq2",
+        recipient_email="seq2@example.com",
+        thread_id="thread_seq2",
+        send_result_payload={
+            "draft_origin_kind": "codex_role_split",
+            "draft_posture_family": "technical",
+            "autonomous_origin": True,
+        },
+    )
+    _seed_sent_role_targeted_message(
+        connection,
+        project_root,
+        outreach_message_id="om_seq3",
+        lead_id="ld_seq3",
+        job_posting_id="jp_seq3",
+        job_posting_contact_id="jpc_seq3",
+        contact_id="ct_seq3",
+        recipient_email="seq3@example.com",
+        thread_id="thread_seq3",
+        send_result_payload={
+            "draft_origin_kind": "codex_role_split",
+            "draft_posture_family": "technical",
+            "autonomous_origin": True,
+        },
+    )
+    connection.executemany(
+        """
+        INSERT INTO outreach_followup_plans (
+          outreach_followup_plan_id, original_outreach_message_id, contact_id, job_posting_id,
+          plan_status, followup_sequence, eligible_after, created_at, updated_at
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+        """,
+        [
+            ("fp_seq1", "om_seq1", "ct_seq1", "jp_seq1", "pending", 1, "2026-06-14T00:00:00Z", NOW, NOW),
+            ("fp_seq2", "om_seq2", "ct_seq2", "jp_seq2", "pending", 2, "2026-06-14T00:00:00Z", NOW, NOW),
+            ("fp_seq3", "om_seq3", "ct_seq3", "jp_seq3", "pending", 3, "2026-06-14T00:00:00Z", NOW, NOW),
+        ],
+    )
+    connection.commit()
+
+    candidates = followups_module._load_candidate_plans(connection, current_time=NOW, limit=10)
+
+    assert [candidate.followup_sequence for candidate in candidates[:3]] == [3, 2, 1]
 
 
 def test_rollout_cap_pauses_after_tenth_successful_send(tmp_path):
