@@ -1561,7 +1561,12 @@ def is_role_targeted_sending_actionable_now(
     posting_row = _load_role_targeted_send_posting_row(connection, job_posting_id=job_posting_id)
     if posting_row["posting_status"] != JOB_POSTING_STATUS_READY_FOR_OUTREACH:
         return False
-    if not _original_generated_frontier_has_capacity(connection):
+    if not _original_generated_frontier_has_capacity(
+        connection,
+        project_root=project_root,
+        current_time=current_time,
+        local_timezone=local_timezone,
+    ):
         return False
     send_set_plan = evaluate_role_targeted_send_set(
         connection,
@@ -1585,6 +1590,7 @@ def has_role_targeted_sendable_frontier_now(
         project_root=project_root,
         job_posting_id=job_posting_id,
         current_time=current_time,
+        local_timezone=local_timezone,
     ):
         return False
     paths = ProjectPaths.from_root(project_root)
@@ -1628,6 +1634,7 @@ def has_role_targeted_active_frontier_now(
     project_root: Path | str,
     job_posting_id: str,
     current_time: str,
+    local_timezone: tzinfo | str | None = None,
 ) -> bool:
     paths = ProjectPaths.from_root(project_root)
     posting_row = _load_role_targeted_send_posting_row(connection, job_posting_id=job_posting_id)
@@ -1643,7 +1650,13 @@ def has_role_targeted_active_frontier_now(
         return False
     if retry_state is not None and not retry_state.is_retryable:
         return False
-    return _is_active_message_in_original_prepared_frontier(connection, next_message)
+    return _is_active_message_in_original_prepared_frontier(
+        connection,
+        next_message,
+        project_root=project_root,
+        current_time=current_time,
+        local_timezone=local_timezone,
+    )
 
 
 def _load_posting_row(
@@ -3030,9 +3043,15 @@ def generate_role_targeted_send_set_drafts(
         raise OutreachDraftingError(
             f"Job posting `{job_posting_id}` is `{posting_row['posting_status']}`; drafting starts only from `ready_for_outreach`."
         )
+    active_frontier_ids = _load_global_original_prepared_frontier_message_ids(
+        connection,
+        project_root=project_root,
+        current_time=current_time,
+        local_timezone=local_timezone,
+    )
     available_slots = max(
         0,
-        PREPARED_FRONTIER_CAP - len(_load_global_original_prepared_frontier_message_ids(connection)),
+        PREPARED_FRONTIER_CAP - len(active_frontier_ids),
     )
     if available_slots <= 0:
         raise OutreachDraftingError(
@@ -3143,6 +3162,7 @@ def refresh_role_targeted_generated_drafts(
     project_root: Path | str,
     job_posting_id: str,
     current_time: str,
+    local_timezone: tzinfo | str | None = None,
     renderer: OutreachDraftRenderer | None = None,
 ) -> tuple[str, ...]:
     paths = ProjectPaths.from_root(project_root)
@@ -3158,7 +3178,13 @@ def refresh_role_targeted_generated_drafts(
         message
         for message in active_wave
         if message.message_status == MESSAGE_STATUS_GENERATED
-        and _is_active_message_in_original_prepared_frontier(connection, message)
+        and _is_active_message_in_original_prepared_frontier(
+            connection,
+            message,
+            project_root=project_root,
+            current_time=current_time,
+            local_timezone=local_timezone,
+        )
     ]
     if not generated_messages:
         return ()
@@ -3557,36 +3583,111 @@ class _ActiveWaveMessage:
 
 def _load_global_original_prepared_frontier_message_ids(
     connection: sqlite3.Connection,
+    *,
+    project_root: Path | str,
+    current_time: str,
+    local_timezone: tzinfo | str | None = None,
 ) -> tuple[str, ...]:
     rows = connection.execute(
         """
-        SELECT outreach_message_id
+        SELECT job_posting_id
         FROM outreach_messages
         WHERE outreach_mode = ?
           AND message_status = ?
-        ORDER BY created_at ASC, outreach_message_id ASC
-        LIMIT ?
+          AND job_posting_id IS NOT NULL
+        GROUP BY job_posting_id
+        ORDER BY MIN(created_at) ASC, job_posting_id ASC
         """,
         (
             OUTREACH_MODE_ROLE_TARGETED,
             MESSAGE_STATUS_GENERATED,
-            PREPARED_FRONTIER_CAP,
         ),
     ).fetchall()
-    return tuple(str(row["outreach_message_id"]) for row in rows)
+    paths = ProjectPaths.from_root(project_root)
+    current_dt = _parse_iso_datetime(current_time)
+    resolved_timezone = _resolve_local_timezone(current_dt, local_timezone)
+    frontier_messages: list[_ActiveWaveMessage] = []
+    for row in rows:
+        posting_id = _normalize_optional_text(row["job_posting_id"])
+        if posting_id is None:
+            continue
+        posting_row = _load_role_targeted_send_posting_row(connection, job_posting_id=posting_id)
+        active_wave = _load_active_role_targeted_wave(connection, job_posting_id=posting_id)
+        if not active_wave:
+            continue
+        next_message, retry_state = _find_next_send_frontier_message(
+            connection,
+            paths,
+            posting_row=posting_row,
+            active_wave=active_wave,
+            current_time=current_time,
+        )
+        if next_message is None or next_message.message_status != MESSAGE_STATUS_GENERATED:
+            continue
+        if retry_state is not None and not retry_state.is_retryable:
+            continue
+        global_gap_minutes = _determine_global_gap_minutes(
+            job_posting_id=posting_id,
+            selected_contact_ids=[message.contact_id for message in active_wave],
+            current_dt=current_dt,
+            local_timezone=resolved_timezone,
+        )
+        pacing = _build_role_targeted_send_pacing_plan(
+            connection,
+            posting_row=posting_row,
+            current_dt=current_dt,
+            local_timezone=resolved_timezone,
+            global_gap_minutes=global_gap_minutes,
+        )
+        if pacing["pacing_block_reason"] == "posting_daily_cap":
+            continue
+        frontier_messages.append(next_message)
+
+    frontier_messages.sort(
+        key=lambda message: (
+            message.message_created_at,
+            message.outreach_message_id,
+        )
+    )
+    return tuple(message.outreach_message_id for message in frontier_messages[:PREPARED_FRONTIER_CAP])
 
 
-def _original_generated_frontier_has_capacity(connection: sqlite3.Connection) -> bool:
-    return len(_load_global_original_prepared_frontier_message_ids(connection)) < PREPARED_FRONTIER_CAP
+def _original_generated_frontier_has_capacity(
+    connection: sqlite3.Connection,
+    *,
+    project_root: Path | str,
+    current_time: str,
+    local_timezone: tzinfo | str | None = None,
+) -> bool:
+    return (
+        len(
+            _load_global_original_prepared_frontier_message_ids(
+                connection,
+                project_root=project_root,
+                current_time=current_time,
+                local_timezone=local_timezone,
+            )
+        )
+        < PREPARED_FRONTIER_CAP
+    )
 
 
 def _is_active_message_in_original_prepared_frontier(
     connection: sqlite3.Connection,
     active_message: _ActiveWaveMessage,
+    *,
+    project_root: Path | str,
+    current_time: str,
+    local_timezone: tzinfo | str | None = None,
 ) -> bool:
     if active_message.message_status != MESSAGE_STATUS_GENERATED:
         return True
-    return active_message.outreach_message_id in _load_global_original_prepared_frontier_message_ids(connection)
+    return active_message.outreach_message_id in _load_global_original_prepared_frontier_message_ids(
+        connection,
+        project_root=project_root,
+        current_time=current_time,
+        local_timezone=local_timezone,
+    )
 
 
 def _is_active_message_draft_fresh(
@@ -3632,6 +3733,7 @@ def execute_role_targeted_send_set(
         project_root=project_root,
         job_posting_id=job_posting_id,
         current_time=current_time,
+        local_timezone=local_timezone,
         renderer=renderer,
     )
     active_wave = _load_active_role_targeted_wave(connection, job_posting_id=job_posting_id)

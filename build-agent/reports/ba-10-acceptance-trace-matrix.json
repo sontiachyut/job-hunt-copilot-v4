@@ -1,9 +1,9 @@
 {
   "trace_matrix_version": 6,
   "feature_path": "prd/test-spec.feature",
-  "scenario_count": 273,
+  "scenario_count": 274,
   "status_counts": {
-    "implemented": 271,
+    "implemented": 272,
     "partial": 0,
     "gap": 0,
     "deferred_optional": 1,
@@ -10093,7 +10093,7 @@
       ],
       "note": "Codex-only automatic follow-up eligibility, bounded prompt/rendering, shared send-lane routing, and rollout controls are validated through focused follow-up, send-lane, and outreach regressions.",
       "status_counts": {
-        "implemented": 24,
+        "implemented": 25,
         "partial": 0,
         "gap": 0,
         "deferred_optional": 0,
@@ -10761,7 +10761,7 @@
           "note": "Codex-only automatic follow-up eligibility, bounded prompt/rendering, shared send-lane routing, and rollout controls are validated through focused follow-up, send-lane, and outreach regressions."
         },
         {
-          "name": "Window waits are reported separately from inter-send-gap waits",
+          "name": "Original prepared frontier does not let one stale posting backlog starve newer ready postings",
           "scenario_line": 2079,
           "status": "implemented",
           "owner_role": "outreach-engineer",
@@ -10794,8 +10794,41 @@
           "note": "Codex-only automatic follow-up eligibility, bounded prompt/rendering, shared send-lane routing, and rollout controls are validated through focused follow-up, send-lane, and outreach regressions."
         },
         {
+          "name": "Window waits are reported separately from inter-send-gap waits",
+          "scenario_line": 2089,
+          "status": "implemented",
+          "owner_role": "outreach-engineer",
+          "epic_ids": [
+            "BA-08",
+            "BA-09",
+            "BA-10"
+          ],
+          "slice_ids": [
+            "BA-08-S1",
+            "BA-08-S2",
+            "BA-08-S3",
+            "BA-09-S1",
+            "BA-09-S2",
+            "BA-09-S3"
+          ],
+          "code_refs": [
+            "job_hunt_copilot/followups.py",
+            "job_hunt_copilot/send_lane.py",
+            "job_hunt_copilot/outreach.py",
+            "job_hunt_copilot/local_runtime.py"
+          ],
+          "test_refs": [
+            "tests/test_followups.py",
+            "tests/test_send_lane.py",
+            "tests/test_outreach.py",
+            "tests/test_acceptance_traceability.py"
+          ],
+          "gap_ids": [],
+          "note": "Codex-only automatic follow-up eligibility, bounded prompt/rendering, shared send-lane routing, and rollout controls are validated through focused follow-up, send-lane, and outreach regressions."
+        },
+        {
           "name": "Repeated follow-up drafting failures stop the automatic sequence for that thread",
-          "scenario_line": 2086,
+          "scenario_line": 2096,
           "status": "implemented",
           "owner_role": "outreach-engineer",
           "epic_ids": [
@@ -10828,7 +10861,7 @@
         },
         {
           "name": "Follow-up drafts are rendered only when a thread is actually due",
-          "scenario_line": 2093,
+          "scenario_line": 2103,
           "status": "implemented",
           "owner_role": "outreach-engineer",
           "epic_ids": [
@@ -10861,7 +10894,7 @@
         },
         {
           "name": "Sent follow-ups persist compact debug context without requiring prompt dumps",
-          "scenario_line": 2099,
+          "scenario_line": 2109,
           "status": "implemented",
           "owner_role": "outreach-engineer",
           "epic_ids": [
@@ -10896,7 +10929,7 @@
     },
     {
       "rule": "Codex-only autonomous outreach cutover acceptance",
-      "rule_line": 2107,
+      "rule_line": 2117,
       "owner_role": "outreach-engineer",
       "epic_ids": [
         "BA-08",
@@ -10934,7 +10967,7 @@
       "scenarios": [
         {
           "name": "Autonomous production workers cannot reach retired deterministic renderers",
-          "scenario_line": 2109,
+          "scenario_line": 2119,
           "status": "implemented",
           "owner_role": "outreach-engineer",
           "epic_ids": [
@@ -10967,7 +11000,7 @@
         },
         {
           "name": "Manual-only legacy helpers may remain but stay isolated from autonomous workers",
-          "scenario_line": 2116,
+          "scenario_line": 2126,
           "status": "implemented",
           "owner_role": "outreach-engineer",
           "epic_ids": [
@@ -11000,7 +11033,7 @@
         },
         {
           "name": "Deterministic-origin unsent production backlog is auto-retired during cutover",
-          "scenario_line": 2122,
+          "scenario_line": 2132,
           "status": "implemented",
           "owner_role": "outreach-engineer",
           "epic_ids": [
@@ -11033,7 +11066,7 @@
         },
         {
           "name": "Deterministic-origin automatic follow-up plans are auto-skipped during cutover",
-          "scenario_line": 2129,
+          "scenario_line": 2139,
           "status": "implemented",
           "owner_role": "outreach-engineer",
           "epic_ids": [
@@ -11066,7 +11099,7 @@
         },
         {
           "name": "Unknown-origin autonomous backlog fails closed during cutover",
-          "scenario_line": 2136,
+          "scenario_line": 2146,
           "status": "implemented",
           "owner_role": "outreach-engineer",
           "epic_ids": [
@@ -11099,7 +11132,7 @@
         },
         {
           "name": "Autonomous Codex outage raises incident and pauses the smallest safe worker scope",
-          "scenario_line": 2143,
+          "scenario_line": 2153,
           "status": "implemented",
           "owner_role": "outreach-engineer",
           "epic_ids": [
@@ -11132,7 +11165,7 @@
         },
         {
           "name": "Surviving Codex-origin unsent backlog is refreshed before autonomous send",
-          "scenario_line": 2150,
+          "scenario_line": 2160,
           "status": "implemented",
           "owner_role": "outreach-engineer",
           "epic_ids": [

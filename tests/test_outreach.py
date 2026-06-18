@@ -51,6 +51,7 @@ from job_hunt_copilot.outreach import (
     _build_role_targeted_draft_context,
     _build_outreach_codex_exec_env,
     _load_draft_contact_row,
+    _load_global_original_prepared_frontier_message_ids,
     _load_sender_identity,
     _load_role_targeted_draft_posting_row,
     _load_tailoring_draft_inputs,
@@ -5356,7 +5357,7 @@ def test_refresh_role_targeted_generated_drafts_refreshes_stale_generated_messag
         job_posting_contact_id="jpc_stale_refresh",
         job_posting_id="jp_stale_refresh",
         display_name="Morgan Manager",
-        recipient_type=RECIPIENT_TYPE_HIRING_MANAGER,
+        recipient_type=RECIPIENT_TYPE_ENGINEER,
         current_working_email="morgan@example.com",
         contact_status=CONTACT_STATUS_OUTREACH_IN_PROGRESS,
         link_level_status=POSTING_CONTACT_STATUS_OUTREACH_IN_PROGRESS,
@@ -5392,6 +5393,7 @@ def test_refresh_role_targeted_generated_drafts_refreshes_stale_generated_messag
     )
     connection.commit()
     write_sender_profile(paths)
+    build_profile_evidence_corpus(connection, paths)
     refreshed = refresh_role_targeted_generated_drafts(
         connection,
         project_root=project_root,
@@ -5485,6 +5487,182 @@ def test_original_send_actionable_excludes_generated_message_outside_global_prep
         )
         is False
     )
+
+    connection.close()
+
+
+def test_original_prepared_frontier_ignores_daily_cap_blocked_posting_and_multi_message_monopolization(
+    tmp_path: Path,
+):
+    project_root, paths = bootstrap_project(tmp_path)
+    connection = connect_database(project_root / "job_hunt_copilot.db")
+    write_sender_profile(paths)
+
+    seed_posting(
+        connection,
+        lead_id="ld_multi",
+        job_posting_id="jp_multi",
+        company_name="Many Drafts Inc",
+        role_title="AI Platform Engineer",
+        created_at="2026-04-06T20:00:00Z",
+    )
+    for index in range(1, 11):
+        contact_id = f"ct_multi_{index}"
+        job_posting_contact_id = f"jpc_multi_{index}"
+        created_at = f"2026-04-06T20:{index:02d}:00Z"
+        seed_linked_contact(
+            connection,
+            contact_id=contact_id,
+            job_posting_contact_id=job_posting_contact_id,
+            job_posting_id="jp_multi",
+            company_name="Many Drafts Inc",
+            display_name=f"Manager Multi {index}",
+            recipient_type=RECIPIENT_TYPE_HIRING_MANAGER,
+            current_working_email=f"multi{index}@example.com",
+            contact_status=CONTACT_STATUS_OUTREACH_IN_PROGRESS,
+            link_level_status=POSTING_CONTACT_STATUS_OUTREACH_IN_PROGRESS,
+            created_at=created_at,
+        )
+        connection.execute(
+            """
+            INSERT INTO outreach_messages (
+              outreach_message_id, contact_id, outreach_mode, recipient_email, message_status,
+              job_posting_id, job_posting_contact_id, subject, body_text, created_at, updated_at
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """,
+            (
+                f"om_multi_{index}",
+                contact_id,
+                "role_targeted",
+                f"multi{index}@example.com",
+                MESSAGE_STATUS_GENERATED,
+                "jp_multi",
+                job_posting_contact_id,
+                f"Subject multi {index}",
+                f"Body multi {index}",
+                created_at,
+                created_at,
+            ),
+        )
+    connection.execute(
+        "UPDATE job_postings SET posting_status = ?, updated_at = ? WHERE job_posting_id = ?",
+        (JOB_POSTING_STATUS_OUTREACH_IN_PROGRESS, "2026-04-06T20:10:00Z", "jp_multi"),
+    )
+
+    seed_posting(
+        connection,
+        lead_id="ld_blocked",
+        job_posting_id="jp_daily_cap",
+        company_name="Blocked By Cap Co",
+        role_title="Senior Data Engineer",
+        created_at="2026-04-06T19:00:00Z",
+    )
+    seed_linked_contact(
+        connection,
+        contact_id="ct_daily_cap",
+        job_posting_contact_id="jpc_daily_cap",
+        job_posting_id="jp_daily_cap",
+        company_name="Blocked By Cap Co",
+        display_name="Daily Cap Manager",
+        recipient_type=RECIPIENT_TYPE_HIRING_MANAGER,
+        current_working_email="dailycap@example.com",
+        contact_status=CONTACT_STATUS_OUTREACH_IN_PROGRESS,
+        link_level_status=POSTING_CONTACT_STATUS_OUTREACH_IN_PROGRESS,
+        created_at="2026-04-06T19:00:00Z",
+    )
+    connection.execute(
+        """
+        INSERT INTO outreach_messages (
+          outreach_message_id, contact_id, outreach_mode, recipient_email, message_status,
+          job_posting_id, job_posting_contact_id, subject, body_text, created_at, updated_at
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        """,
+        (
+            "om_daily_cap_generated",
+            "ct_daily_cap",
+            "role_targeted",
+            "dailycap@example.com",
+            MESSAGE_STATUS_GENERATED,
+            "jp_daily_cap",
+            "jpc_daily_cap",
+            "Blocked subject",
+            "Blocked body",
+            "2026-04-06T19:00:00Z",
+            "2026-04-06T19:00:00Z",
+        ),
+    )
+    for index, sent_at in enumerate(
+        (
+            "2026-04-06T14:00:00Z",
+            "2026-04-06T15:00:00Z",
+            "2026-04-06T16:00:00Z",
+            "2026-04-06T17:00:00Z",
+        ),
+        start=1,
+    ):
+        seed_sent_message(
+            connection,
+            outreach_message_id=f"om_daily_cap_sent_{index}",
+            contact_id="ct_daily_cap",
+            recipient_email="dailycap@example.com",
+            job_posting_id="jp_daily_cap",
+            job_posting_contact_id="jpc_daily_cap",
+            sent_at=sent_at,
+        )
+    connection.execute(
+        "UPDATE job_postings SET posting_status = ?, updated_at = ? WHERE job_posting_id = ?",
+        (JOB_POSTING_STATUS_OUTREACH_IN_PROGRESS, "2026-04-06T19:05:00Z", "jp_daily_cap"),
+    )
+
+    seed_posting(
+        connection,
+        lead_id="ld_ready",
+        job_posting_id="jp_ready_now",
+        company_name="Fresh Ready Co",
+        role_title="Applied AI Engineer",
+        created_at="2026-04-06T20:30:00Z",
+    )
+    seed_linked_contact(
+        connection,
+        contact_id="ct_ready_now",
+        job_posting_contact_id="jpc_ready_now",
+        job_posting_id="jp_ready_now",
+        company_name="Fresh Ready Co",
+        display_name="Fresh Ready Manager",
+        recipient_type=RECIPIENT_TYPE_ENGINEER,
+        current_working_email="fresh@example.com",
+        created_at="2026-04-06T20:31:00Z",
+    )
+    seed_approved_tailoring_run(
+        connection,
+        paths,
+        company_name="Fresh Ready Co",
+        role_title="Applied AI Engineer",
+        job_posting_id="jp_ready_now",
+        current_time="2026-04-06T20:32:00Z",
+    )
+    connection.commit()
+    build_profile_evidence_corpus(connection, paths)
+
+    frontier_ids = _load_global_original_prepared_frontier_message_ids(
+        connection,
+        project_root=project_root,
+        current_time="2026-04-06T20:40:00Z",
+        local_timezone="America/Phoenix",
+    )
+
+    assert frontier_ids == ("om_multi_1",)
+
+    draft_batch = generate_role_targeted_send_set_drafts(
+        connection,
+        project_root=project_root,
+        job_posting_id="jp_ready_now",
+        current_time="2026-04-06T20:40:00Z",
+        local_timezone="America/Phoenix",
+        renderer=DeterministicOutreachDraftRenderer(),
+    )
+
+    assert [message.contact_id for message in draft_batch.drafted_messages] == ["ct_ready_now"]
 
     connection.close()
 

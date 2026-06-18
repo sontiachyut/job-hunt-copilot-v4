@@ -2076,6 +2076,16 @@ Feature: Job Hunt Copilot next-build acceptance
       And a stale draft continues to occupy its frontier slot until it is refreshed, invalidated, or turned over normally
       And persisted drafts outside the active frontier remain dormant rather than participating in live routing
 
+    Scenario: Original prepared frontier does not let one stale posting backlog starve newer ready postings
+      Given multiple postings already hold persisted generated original drafts
+      And one older posting has many generated originals but only one current next generated send candidate
+      And another older posting is blocked by the per-posting daily cap for the current local day
+      And a newer posting is `ready_for_outreach` with no generated originals yet
+      When the runtime builds the active original prepared frontier
+      Then each posting contributes only its current next generated send candidate
+      And the daily-cap-blocked posting does not consume an active original frontier slot
+      And the newer `ready_for_outreach` posting may use the newly freed original frontier capacity for draft generation
+
     Scenario: Window waits are reported separately from inter-send-gap waits
       Given a candidate is otherwise sendable but the active `2` hour window currently prefers the other queue
       When the worker persists the deferred candidate state

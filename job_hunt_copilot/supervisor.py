@@ -5583,6 +5583,7 @@ def _execute_selected_work_unit(
                 project_root=paths.project_root,
                 job_posting_id=job_posting_id,
                 current_time=timestamp,
+                local_timezone=action_dependencies.local_timezone,
                 renderer=role_targeted_renderer,
             )
             if is_role_targeted_sending_actionable_now(

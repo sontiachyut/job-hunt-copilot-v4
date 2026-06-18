@@ -1,9 +1,9 @@
 # BA-10 Acceptance Trace Matrix
 
 - Feature file: `prd/test-spec.feature`
-- Scenario count: `273`
+- Scenario count: `274`
 - Status counts:
-  - `implemented`: `271`
+  - `implemented`: `272`
   - `partial`: `0`
   - `gap`: `0`
   - `deferred_optional`: `1`
@@ -66,7 +66,7 @@
 | LinkedIn Scraping acceptance | ingestion-engineer | 16 | 0 | 0 | 0 | 0 |
 | End-to-end acceptance | quality-engineer | 3 | 0 | 0 | 0 | 1 |
 | Current-build safety, privacy, and evidence-grounding boundaries | quality-engineer | 3 | 0 | 0 | 0 | 0 |
-| Codex follow-up worker acceptance | outreach-engineer | 24 | 0 | 0 | 0 | 0 |
+| Codex follow-up worker acceptance | outreach-engineer | 25 | 0 | 0 | 0 | 0 |
 | Codex-only autonomous outreach cutover acceptance | outreach-engineer | 7 | 0 | 0 | 0 | 0 |
 
 ## Rule-To-Slice Mapping
