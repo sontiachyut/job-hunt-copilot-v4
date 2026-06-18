@@ -1595,6 +1595,126 @@ def test_select_next_supervisor_work_unit_prefers_draftable_send_ready_run_over_
     assert "drafted and sent" in selected_work.summary
 
 
+def test_select_next_supervisor_work_unit_picks_stale_original_frontier_for_refresh(
+    tmp_path,
+):
+    project_root = bootstrap_project(tmp_path)
+    connection = connect_database(project_root / "job_hunt_copilot.db")
+    resume_agent(
+        connection,
+        manual_command="jhc-agent-start",
+        timestamp="2026-04-06T00:00:00Z",
+    )
+
+    seed_named_role_targeted_posting(
+        connection,
+        lead_id="ld_stale_frontier",
+        job_posting_id="jp_stale_frontier",
+        company_name="Stale Frontier Co",
+        role_title="AI Platform Engineer",
+        posting_status="outreach_in_progress",
+        timestamp="2026-04-05T00:00:00Z",
+    )
+    stale_run, _ = ensure_role_targeted_pipeline_run(
+        connection,
+        lead_id="ld_stale_frontier",
+        job_posting_id="jp_stale_frontier",
+        current_stage="sending",
+        started_at="2026-04-05T00:01:00Z",
+    )
+    connection.execute(
+        """
+        INSERT INTO contacts (
+          contact_id, identity_key, display_name, company_name, origin_component, contact_status,
+          full_name, current_working_email, position_title, created_at, updated_at
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        """,
+        (
+            "ct_stale_frontier",
+            "stale frontier co|morgan-manager",
+            "Morgan Manager",
+            "Stale Frontier Co",
+            "email_discovery",
+            "outreach_in_progress",
+            "Morgan Manager",
+            "morgan@stalefrontier.example",
+            "Engineering Manager",
+            "2026-04-05T00:02:00Z",
+            "2026-04-05T00:02:00Z",
+        ),
+    )
+    connection.execute(
+        """
+        INSERT INTO job_posting_contacts (
+          job_posting_contact_id, job_posting_id, contact_id, recipient_type, relevance_reason,
+          link_level_status, created_at, updated_at
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+        """,
+        (
+            "jpc_stale_frontier",
+            "jp_stale_frontier",
+            "ct_stale_frontier",
+            "hiring_manager",
+            "Selected for stale original frontier refresh coverage.",
+            "outreach_in_progress",
+            "2026-04-05T00:02:00Z",
+            "2026-04-05T00:02:00Z",
+        ),
+    )
+    connection.execute(
+        """
+        INSERT INTO outreach_messages (
+          outreach_message_id, contact_id, outreach_mode, recipient_email, message_status,
+          job_posting_id, job_posting_contact_id, subject, body_text, created_at, updated_at
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        """,
+        (
+            "om_stale_frontier",
+            "ct_stale_frontier",
+            "role_targeted",
+            "morgan@stalefrontier.example",
+            "generated",
+            "jp_stale_frontier",
+            "jpc_stale_frontier",
+            "Old subject",
+            "Old body",
+            "2026-04-05T00:03:00Z",
+            "2026-04-05T00:03:00Z",
+        ),
+    )
+
+    seed_named_role_targeted_posting(
+        connection,
+        lead_id="ld_discovery",
+        job_posting_id="jp_discovery",
+        company_name="Discovery Co",
+        role_title="Backend Engineer",
+        posting_status="requires_contacts",
+        timestamp="2026-04-06T00:04:00Z",
+    )
+    ensure_role_targeted_pipeline_run(
+        connection,
+        lead_id="ld_discovery",
+        job_posting_id="jp_discovery",
+        current_stage="email_discovery",
+        started_at="2026-04-06T00:05:00Z",
+    )
+
+    selected_work = select_next_supervisor_work_unit(
+        connection,
+        project_root=project_root,
+        current_time="2026-04-06T06:10:00Z",
+        action_dependencies=SupervisorActionDependencies(local_timezone="UTC"),
+    )
+    connection.close()
+
+    assert selected_work is not None
+    assert selected_work.work_type == "pipeline_run"
+    assert selected_work.action_id == "run_role_targeted_sending"
+    assert selected_work.pipeline_run_id == stale_run.pipeline_run_id
+    assert selected_work.job_posting_id == "jp_stale_frontier"
+
+
 def test_select_next_supervisor_work_unit_prefers_orphaned_existing_send_frontier_over_feedback_cleanup_and_discovery(
     tmp_path,
     monkeypatch,

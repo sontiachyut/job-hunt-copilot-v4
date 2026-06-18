@@ -65,6 +65,7 @@ from job_hunt_copilot.outreach import (
     evaluate_role_targeted_send_set,
     generate_general_learning_draft,
     generate_role_targeted_send_set_drafts,
+    has_role_targeted_sendable_frontier_now,
     is_role_targeted_sending_actionable_now,
     refresh_role_targeted_generated_drafts,
 )
@@ -5422,6 +5423,86 @@ def test_refresh_role_targeted_generated_drafts_refreshes_stale_generated_messag
     assert refreshed == ("om_stale_generated",)
     assert message_row["updated_at"] == "2026-04-06T21:00:00Z"
     assert message_row["subject"] != "Old subject"
+
+
+def test_original_send_actionable_keeps_stale_frontier_refreshable(tmp_path: Path):
+    project_root, paths = bootstrap_project(tmp_path)
+    connection = connect_database(project_root / "job_hunt_copilot.db")
+    seed_posting(
+        connection,
+        job_posting_id="jp_stale_frontier",
+        company_name="Stale Frontier Co",
+        role_title="AI Platform Engineer",
+        created_at="2026-04-05T20:00:00Z",
+    )
+    seed_linked_contact(
+        connection,
+        contact_id="ct_stale_frontier",
+        job_posting_contact_id="jpc_stale_frontier",
+        job_posting_id="jp_stale_frontier",
+        display_name="Morgan Manager",
+        recipient_type=RECIPIENT_TYPE_HIRING_MANAGER,
+        current_working_email="morgan@example.com",
+        contact_status=CONTACT_STATUS_OUTREACH_IN_PROGRESS,
+        link_level_status=POSTING_CONTACT_STATUS_OUTREACH_IN_PROGRESS,
+        created_at="2026-04-05T20:02:00Z",
+    )
+    seed_approved_tailoring_run(connection, paths, job_posting_id="jp_stale_frontier")
+    connection.execute(
+        "UPDATE job_postings SET posting_status = ?, updated_at = ? WHERE job_posting_id = ?",
+        (
+            JOB_POSTING_STATUS_OUTREACH_IN_PROGRESS,
+            "2026-04-05T20:03:00Z",
+            "jp_stale_frontier",
+        ),
+    )
+    connection.execute(
+        """
+        INSERT INTO outreach_messages (
+          outreach_message_id, contact_id, outreach_mode, recipient_email, message_status,
+          job_posting_id, job_posting_contact_id, subject, body_text, body_html,
+          created_at, updated_at
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        """,
+        (
+            "om_stale_frontier",
+            "ct_stale_frontier",
+            "role_targeted",
+            "morgan@example.com",
+            MESSAGE_STATUS_GENERATED,
+            "jp_stale_frontier",
+            "jpc_stale_frontier",
+            "Old subject",
+            "Old body",
+            None,
+            "2026-04-05T20:04:00Z",
+            "2026-04-05T20:04:00Z",
+        ),
+    )
+    connection.commit()
+
+    assert (
+        has_role_targeted_sendable_frontier_now(
+            connection,
+            project_root=project_root,
+            job_posting_id="jp_stale_frontier",
+            current_time="2026-04-06T21:00:00Z",
+            local_timezone="America/Phoenix",
+        )
+        is False
+    )
+    assert (
+        is_role_targeted_sending_actionable_now(
+            connection,
+            project_root=project_root,
+            job_posting_id="jp_stale_frontier",
+            current_time="2026-04-06T21:00:00Z",
+            local_timezone="America/Phoenix",
+        )
+        is True
+    )
+
+    connection.close()
 
 
 def test_original_send_actionable_excludes_generated_message_outside_global_prepared_frontier(tmp_path: Path):

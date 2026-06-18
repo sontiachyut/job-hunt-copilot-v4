@@ -2074,6 +2074,7 @@ Feature: Job Hunt Copilot next-build acceptance
       And the prepared frontier cap is global across workers rather than per process
       And a draft older than `24` hours must refresh before send
       And a stale draft continues to occupy its frontier slot until it is refreshed, invalidated, or turned over normally
+      And a stale original draft inside the active prepared frontier still remains actionable for supervisor refresh work even though it is not `sendable now`
       And persisted drafts outside the active frontier remain dormant rather than participating in live routing
 
     Scenario: Original prepared frontier does not let one stale posting backlog starve newer ready postings

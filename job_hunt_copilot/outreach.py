@@ -1558,6 +1558,14 @@ def is_role_targeted_sending_actionable_now(
         local_timezone=local_timezone,
     ):
         return True
+    if has_role_targeted_refreshable_frontier_now(
+        connection,
+        project_root=project_root,
+        job_posting_id=job_posting_id,
+        current_time=current_time,
+        local_timezone=local_timezone,
+    ):
+        return True
     posting_row = _load_role_targeted_send_posting_row(connection, job_posting_id=job_posting_id)
     if posting_row["posting_status"] != JOB_POSTING_STATUS_READY_FOR_OUTREACH:
         return False
@@ -1575,6 +1583,39 @@ def is_role_targeted_sending_actionable_now(
         local_timezone=local_timezone,
     )
     return bool(send_set_plan.selected_contacts) and send_set_plan.remaining_posting_daily_capacity > 0
+
+
+def has_role_targeted_refreshable_frontier_now(
+    connection: sqlite3.Connection,
+    *,
+    project_root: Path | str,
+    job_posting_id: str,
+    current_time: str,
+    local_timezone: tzinfo | str | None = None,
+) -> bool:
+    if not has_role_targeted_active_frontier_now(
+        connection,
+        project_root=project_root,
+        job_posting_id=job_posting_id,
+        current_time=current_time,
+        local_timezone=local_timezone,
+    ):
+        return False
+    paths = ProjectPaths.from_root(project_root)
+    posting_row = _load_role_targeted_send_posting_row(connection, job_posting_id=job_posting_id)
+    active_wave = _load_active_role_targeted_wave(connection, job_posting_id=job_posting_id)
+    next_message, retry_state = _find_next_send_frontier_message(
+        connection,
+        paths,
+        posting_row=posting_row,
+        active_wave=active_wave,
+        current_time=current_time,
+    )
+    if next_message is None or next_message.message_status != MESSAGE_STATUS_GENERATED:
+        return False
+    if retry_state is not None and not retry_state.is_retryable:
+        return False
+    return not _is_active_message_draft_fresh(next_message, current_time=current_time)
 
 
 def has_role_targeted_sendable_frontier_now(
