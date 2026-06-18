@@ -1,0 +1,104 @@
+chunks:
+  - evidence_id: exp_hl7_scale_platform
+    text: Built and maintained Azure-based Python and Scala data services plus Databricks/Spark pipelines that processed 50M+ daily HL7 records at ~580 TPS into governed analytics workloads for 1,500+ hospitals.
+    source_type: resume_experience
+    evidence_type: achievement
+    skill_tags: [python, scala, azure, databricks, spark, hl7]
+    theme_tags: [backend, data, distributed, production-systems, healthcare-analytics]
+    strength: 5
+
+  - evidence_id: exp_hl7_workflow_speedup
+    text: Developed ETL and ELT pipelines with Python, PySpark, Spark SQL, Azure Data Factory, Azure PostgreSQL, ADLS Gen2, and custom HL7 parsers, cutting 2TB+ daily processing time by 40%.
+    source_type: resume_experience
+    evidence_type: system
+    skill_tags: [python, pyspark, spark-sql, azure-data-factory, azure-postgresql, adls]
+    theme_tags: [data, workflow-automation, production-systems, healthcare-analytics]
+    strength: 5
+
+  - evidence_id: exp_spark_optimization
+    text: Optimized 25+ Spark jobs and lakehouse pipeline stages with partitioning, caching, and SQL tuning, improving throughput by 50% and reducing monthly cloud spend by $15K.
+    source_type: resume_experience
+    evidence_type: achievement
+    skill_tags: [spark, sql, performance-tuning, lakehouse]
+    theme_tags: [data, performance, distributed, cloud, production-systems]
+    strength: 5
+
+  - evidence_id: exp_downstream_governed_delivery
+    text: Supported governed downstream delivery for BI tools, REST APIs, ODBC connectors, and Kafka consumers with attention to lineage, cataloging, and secure clinical analytics access.
+    source_type: resume_experience
+    evidence_type: system
+    skill_tags: [rest-apis, kafka, bi, data-governance]
+    theme_tags: [backend, data, analytics-delivery, stakeholder-enablement]
+    strength: 4
+
+  - evidence_id: exp_monitoring_reliability
+    text: Designed monitoring, alerting, and data-quality checks with Azure Log Analytics and Datadog-style observability, triaging production incidents while maintaining SLA compliance across regulated healthcare workflows.
+    source_type: resume_experience
+    evidence_type: reliability
+    skill_tags: [monitoring, alerting, log-analytics, datadog, incident-response]
+    theme_tags: [reliability, observability, production-systems, healthcare-analytics]
+    strength: 4
+
+  - evidence_id: exp_cloud_meraki_optimizer
+    text: Built the optimizer engine and backend APIs for a Kubernetes resource-right-sizing platform that tracked 200+ microservices and drove a 25% cloud-compute reduction worth $120K annually.
+    source_type: resume_experience
+    evidence_type: system
+    skill_tags: [golang, java, kubernetes, backend-apis, microservices]
+    theme_tags: [backend, platform, cloud, distributed, cost-optimization]
+    strength: 5
+
+  - evidence_id: exp_cloud_meraki_live_reliability
+    text: Integrated Kubernetes vertical-scaling decisions across microservice clusters while maintaining 99.95% uptime during live workload adjustments in production.
+    source_type: resume_experience
+    evidence_type: reliability
+    skill_tags: [kubernetes, vpa, production-operations]
+    theme_tags: [reliability, platform, distributed, production-systems]
+    strength: 4
+
+  - evidence_id: exp_cloud_meraki_testing
+    text: Wrote 250+ unit and integration tests across the autoscaling pipeline and caught 50+ critical scaling bugs before production deployment.
+    source_type: resume_experience
+    evidence_type: achievement
+    skill_tags: [golang, java, python, unit-testing, integration-testing]
+    theme_tags: [reliability, platform, quality-engineering, production-systems]
+    strength: 4
+
+  - evidence_id: proj_job_hunt_copilot
+    text: Built Job Hunt Copilot, an AI workflow automation system that identifies relevant roles, tailors resumes, discovers internal contacts, drafts targeted outreach, and tracks delivery outcomes using SQLite-backed orchestration.
+    source_type: job_hunt_copilot
+    evidence_type: project
+    skill_tags: [python, sqlite, ai-agents, workflow-automation, gmail-api]
+    theme_tags: [ai, workflow-automation, automation, production-workflows]
+    strength: 4
+
+  - evidence_id: proj_edge_face_hybrid
+    text: Built a hybrid edge-cloud face-recognition pipeline that moved MTCNN detection to AWS IoT Greengrass on EC2, reducing cloud-bound payloads while maintaining sub-second inference over MQTT streaming.
+    source_type: resume_project
+    evidence_type: project
+    skill_tags: [python, aws-iot-greengrass, ec2, mqtt, mtcnn, facenet]
+    theme_tags: [ai, edge-computing, distributed, production-workflows]
+    strength: 4
+
+  - evidence_id: proj_student_loan_serverless
+    text: Built a full-stack serverless platform with React, TypeScript, AWS Lambda, DynamoDB, and AWS Bedrock that delivered AI-assisted financial-planning workflows for SECURE 2.0 scenarios.
+    source_type: resume_project
+    evidence_type: project
+    skill_tags: [react, typescript, aws-lambda, dynamodb, aws-bedrock, serverless]
+    theme_tags: [ai, workflow-automation, cloud, stakeholder-enablement]
+    strength: 3
+
+  - evidence_id: proj_linkedin_matching_assistant
+    text: Built a FastAPI and Next.js job-matching assistant that ranked 31,597 postings with explainable Rasch-scoring and delivered NDCG 0.78 with transparent per-requirement match probabilities.
+    source_type: resume_project
+    evidence_type: project
+    skill_tags: [python, fastapi, nextjs, scikit-learn, faiss, neo4j]
+    theme_tags: [ai, backend, analytics-delivery, explainability]
+    strength: 4
+
+  - evidence_id: leadership_ai_club_workshops
+    text: Led applied AI workshops for 30+ graduate students through AI Club at Thunderbird, focusing on practical tools and product-building workflows.
+    source_type: education
+    evidence_type: stakeholder
+    skill_tags: [applied-ai, workshops, communication]
+    theme_tags: [stakeholder-enablement, ai, coaching, workflow-automation]
+    strength: 3

@@ -55,8 +55,9 @@ def test_bootstrap_materializes_support_dirs_secrets_and_db(tmp_path):
         ("0008_apollo_provider_persistence.sql",),
         ("0009_llm_usage_events.sql",),
         ("0010_apollo_usage_guardrails.sql",),
+        ("0011_profile_evidence_chunks.sql",),
     ]
-    assert user_version == 10
+    assert user_version == 11
 
 
 def test_bootstrap_is_idempotent(tmp_path):
@@ -78,6 +79,7 @@ def test_bootstrap_is_idempotent(tmp_path):
         "0008_apollo_provider_persistence.sql",
         "0009_llm_usage_events.sql",
         "0010_apollo_usage_guardrails.sql",
+        "0011_profile_evidence_chunks.sql",
     ]
     assert second_report["database"]["applied_migrations"] == []
     assert second_report["directories"]["created_paths"] == []

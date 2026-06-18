@@ -1073,6 +1073,54 @@ Feature: Job Hunt Copilot next-build acceptance
       And that snippet stays small enough to be plausibly forwarded with little or no editing
       And that snippet is JD-aware rather than a generic skills list
 
+    Scenario: Managerial relevant-background drafting uses the curated profile-evidence corpus
+      Given the curated managerial profile-evidence source has been built into the canonical corpus
+      And a managerial first-email draft is being generated
+      When the drafting flow prepares the managerial relevant-background section
+      Then it retrieves evidence from the canonical profile-evidence corpus rather than the old generic sender-evidence pool
+      And the technical-path first email remains on its existing bounded drafting path
+
+    Scenario: Managerial Codex prompting stays bounded while using retrieved evidence
+      Given a managerial first-email draft is being generated
+      When the retrieval layer prepares evidence for Codex
+      Then it may retrieve up to 8 candidate evidence chunks
+      And it passes no more than the top 5 retrieved chunks into the managerial Codex prompt
+      And it does not pass the full profile-evidence corpus or raw resume documents into the prompt
+
+    Scenario: Managerial relevant-background preserves technical signal for technical roles
+      Given the managerial role is technical, AI/ML, data, platform, backend, or systems-heavy
+      And the profile-evidence corpus contains both direct technical proof and generic reliability proof
+      When the retrieval layer ranks evidence for the draft
+      Then the retrieved evidence pack preserves visible technical signal
+      And generic reliability chunks do not dominate the section when stronger role-aligned technical proof exists
+
+    Scenario: Managerial relevant-background returns bullet-aligned evidence provenance
+      Given a managerial first-email draft is generated through the profile-evidence retrieval path
+      When the structured managerial output is validated
+      Then the final relevant-background section still contains exactly 3 bullets
+      And the output returns exactly 3 bullet-aligned provenance entries
+      And each final bullet maps to one primary retrieved evidence chunk
+
+    Scenario: Managerial drafting fails closed when evidence is under-grounded
+      Given a managerial first-email draft is being generated
+      And retrieval cannot support 3 credible grounded background bullets
+      When the draft is evaluated
+      Then the draft is rejected as under-grounded
+      And the system does not pad the section with weak generic filler bullets
+
+    Scenario: Missing or unreadable managerial evidence corpus does not fall back silently
+      Given the managerial profile-evidence corpus is missing or unreadable
+      When a managerial first-email draft is attempted
+      Then the drafting flow fails closed
+      And it does not silently fall back to the older generic sender-evidence pool
+
+    Scenario: The curated managerial evidence source builds into canonical runtime storage and an inspection mirror
+      Given the owner updates the curated managerial evidence source
+      When the explicit corpus-build step runs
+      Then the canonical SQLite profile-evidence corpus is refreshed
+      And a human-readable corpus mirror is written under ops/profile-evidence
+      And malformed evidence chunks are rejected before runtime storage is updated
+
   @delivery_feedback
   Rule: Delivery Feedback behavior
 

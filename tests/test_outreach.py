@@ -69,6 +69,7 @@ from job_hunt_copilot.outreach import (
 )
 from job_hunt_copilot.llm_usage import parse_codex_usage
 from job_hunt_copilot.paths import ProjectPaths
+from job_hunt_copilot.profile_evidence import build_profile_evidence_corpus
 from tests.support import create_minimal_project
 
 
@@ -4578,14 +4579,20 @@ def test_normalize_managerial_role_split_payload_truncates_debug_signal_lists() 
             "governed downstream APIs",
         ],
         "selected_jd_signals": ["a", "b", "c", "d", "e"],
-        "selected_resume_signals": ["x", "y", "z", "q"],
+        "relevant_background_evidence": [
+            {"primary_evidence_id": "ev_a"},
+            {"primary_evidence_id": "ev_b"},
+            {"primary_evidence_id": "ev_c"},
+        ],
     }
 
     normalized = _normalize_managerial_role_split_payload_dict(payload)
     validated = ManagerialRoleSplitDraftPayload.model_validate(normalized)
 
     assert validated.selected_jd_signals == ["a", "b", "c"]
-    assert validated.selected_resume_signals == ["x", "y", "z"]
+    assert [
+        evidence.primary_evidence_id for evidence in validated.relevant_background_evidence
+    ] == ["ev_a", "ev_b", "ev_c"]
 
 
 def test_normalize_technical_role_split_payload_recovers_shape_and_career_steps() -> None:
@@ -4824,10 +4831,44 @@ def test_codex_role_split_renderer_generates_managerial_path_body_and_debug_arti
         role_title="Software Engineer, GenAI",
         current_time="2026-04-06T20:20:00Z",
     )
+    paths.managerial_profile_evidence_source_path.write_text(
+        "\n".join(
+            [
+                "chunks:",
+                "  - evidence_id: exp_hl7_scale",
+                "    text: Built backend Python and Scala workflow systems that processed 50M+ daily HL7 records at ~580 TPS for governed analytics delivery.",
+                "    source_type: resume_experience",
+                "    evidence_type: achievement",
+                "    skill_tags: [python, scala, analytics-delivery, backend-apis]",
+                "    theme_tags: [backend, data, workflow-automation, production-systems]",
+                "    strength: 5",
+                "  - evidence_id: exp_monitoring_triage",
+                "    text: Designed monitoring, alerting, and data-quality checks while triaging production incidents across regulated healthcare workflows.",
+                "    source_type: resume_experience",
+                "    evidence_type: reliability",
+                "    skill_tags: [monitoring, alerting, incident-response]",
+                "    theme_tags: [reliability, observability, production-systems]",
+                "    strength: 4",
+                "  - evidence_id: proj_job_hunt_copilot",
+                "    text: Built Job Hunt Copilot, an AI workflow automation system with SQLite-backed orchestration and human-in-the-loop review.",
+                "    source_type: job_hunt_copilot",
+                "    evidence_type: project",
+                "    skill_tags: [python, sqlite, ai-agents, workflow-automation]",
+                "    theme_tags: [ai, workflow-automation, automation, production-workflows]",
+                "    strength: 4",
+                "",
+            ]
+        ),
+        encoding="utf-8",
+    )
+    build_profile_evidence_corpus(connection, paths)
 
     def fake_run(command, *, input, text, capture_output, check, env, timeout):  # type: ignore[no-untyped-def]
         assert "kind of role-relevant engineering problems I've been trying to work on." in input
         assert "- sender_core_summary:" in input
+        assert "- retrieved_profile_evidence_pack:" in input
+        assert "sender_evidence_pool" not in input
+        assert "selected_resume_signals" not in input
         assert '- Then render the fixed posting-link line: "Posting link: https://careers.acme.example/jobs/123"' in input
         assert "- public_posting_url: https://careers.acme.example/jobs/123" in input
         assert "production AI workflow problems" not in input
@@ -4851,7 +4892,11 @@ def test_codex_role_split_renderer_generates_managerial_path_body_and_debug_arti
                 "built Job Hunt Copilot, an AI workflow automation tool: https://github.com/sontiachyut/job-hunt-copilot-v4",
             ],
             "selected_jd_signals": ["backend reliability", "GenAI workflows"],
-            "selected_resume_signals": ["~580 TPS production services", "Job Hunt Copilot"],
+            "relevant_background_evidence": [
+                {"primary_evidence_id": "exp_hl7_scale"},
+                {"primary_evidence_id": "exp_monitoring_triage"},
+                {"primary_evidence_id": "proj_job_hunt_copilot"},
+            ],
         }
         output_path.write_text(json.dumps(payload), encoding="utf-8")
         return subprocess.CompletedProcess(command, 0, stdout="{}", stderr="tokens used: 2222")
@@ -4895,6 +4940,97 @@ def test_codex_role_split_renderer_generates_managerial_path_body_and_debug_arti
     debug_payload = json.loads(Path(message.opener_decision_artifact_path).read_text(encoding="utf-8"))
     assert debug_payload["drafting_path"] == "managerial"
     assert debug_payload["selected_jd_signals"] == ["backend reliability", "GenAI workflows"]
+    assert debug_payload["relevant_background_evidence"] == [
+        {"primary_evidence_id": "exp_hl7_scale"},
+        {"primary_evidence_id": "exp_monitoring_triage"},
+        {"primary_evidence_id": "proj_job_hunt_copilot"},
+    ]
+    assert {
+        chunk["evidence_id"] for chunk in debug_payload["retrieved_profile_evidence_pack"]
+    } == {
+        "exp_hl7_scale",
+        "exp_monitoring_triage",
+        "proj_job_hunt_copilot",
+    }
+
+    connection.close()
+
+
+def test_managerial_codex_role_split_fails_closed_when_profile_evidence_corpus_is_missing(
+    tmp_path: Path,
+) -> None:
+    project_root, paths = bootstrap_project(tmp_path)
+    connection = connect_database(project_root / "job_hunt_copilot.db")
+    write_sender_profile(paths)
+    seed_posting(
+        connection,
+        company_name="Abridge",
+        role_title="Software Engineer, GenAI",
+    )
+    seed_linked_contact(
+        connection,
+        contact_id="ct_mgr_missing",
+        job_posting_contact_id="jpc_mgr_missing",
+        company_name="Abridge",
+        display_name="Jennifer Park",
+        recipient_type=RECIPIENT_TYPE_HIRING_MANAGER,
+        current_working_email="jennifer@abridge.example",
+        created_at="2026-04-06T20:01:00Z",
+    )
+    connection.execute(
+        """
+        UPDATE contacts
+        SET position_title = ?, linkedin_url = ?, updated_at = ?
+        WHERE contact_id = ?
+        """,
+        (
+            "Engineering Manager",
+            "https://www.linkedin.com/in/jennifer-park/",
+            "2026-04-06T20:01:00Z",
+            "ct_mgr_missing",
+        ),
+    )
+    connection.commit()
+    seed_recipient_profile(
+        connection,
+        paths,
+        company_name="Abridge",
+        role_title="Software Engineer, GenAI",
+        contact_id="ct_mgr_missing",
+        display_name="Jennifer Park",
+        current_title="Engineering Manager",
+        work_signal="GenAI workflows in production",
+    )
+    seed_approved_tailoring_run(
+        connection,
+        paths,
+        company_name="Abridge",
+        role_title="Software Engineer, GenAI",
+        current_time="2026-04-06T20:20:00Z",
+    )
+
+    posting_row = _load_role_targeted_draft_posting_row(connection, job_posting_id="jp_outreach")
+    contact_row = _load_draft_contact_row(
+        connection,
+        job_posting_id="jp_outreach",
+        contact_id="ct_mgr_missing",
+    )
+    sender = _load_sender_identity(paths)
+    tailoring_inputs = _load_tailoring_draft_inputs(
+        connection,
+        paths,
+        posting_row=posting_row,
+        current_time="2026-04-06T20:30:00Z",
+    )
+    with pytest.raises(OutreachDraftingError, match="Canonical profile-evidence corpus is missing or empty"):
+        _build_role_targeted_draft_context(
+            connection,
+            paths,
+            posting_row=posting_row,
+            contact_row=contact_row,
+            sender=sender,
+            tailoring_inputs=tailoring_inputs,
+        )
 
     connection.close()
 

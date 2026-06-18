@@ -24,6 +24,11 @@ from .company_keys import ensure_missing_posting_company_keys, posting_company_k
 from .delivery_feedback import MailboxFeedbackObserver, run_immediate_delivery_feedback_poll
 from .llm_usage import record_codex_usage_event
 from .paths import ProjectPaths, workspace_slug
+from .profile_evidence import (
+    ProfileEvidenceChunkRecord,
+    ProfileEvidenceError,
+    retrieve_managerial_profile_evidence,
+)
 from .records import lifecycle_timestamps, new_canonical_id
 from .send_lane import (
     PREPARED_FRONTIER_CAP,
@@ -912,7 +917,7 @@ class RoleTargetedDraftContext:
     apollo_employment_history_summary: tuple[str, ...]
     bounded_jd_relevance_pack: tuple[Mapping[str, Any], ...]
     sender_core_summary: str
-    sender_evidence_pool: tuple[Mapping[str, Any], ...]
+    managerial_retrieved_evidence_pack: tuple[ProfileEvidenceChunkRecord, ...]
     relevant_skills_summary: str
     job_hunt_copilot_summary: str
 
@@ -956,6 +961,29 @@ class TechnicalRoleSplitDraftPayload(BaseModel):
         return cleaned
 
 
+class ManagerialRelevantBackgroundEvidence(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    primary_evidence_id: str
+    secondary_evidence_id: str | None = None
+
+    @field_validator("primary_evidence_id")
+    @classmethod
+    def _validate_primary_evidence_id(cls, value: str) -> str:
+        normalized = value.strip()
+        if not normalized:
+            raise ValueError("primary_evidence_id must not be empty")
+        return normalized
+
+    @field_validator("secondary_evidence_id")
+    @classmethod
+    def _validate_secondary_evidence_id(cls, value: str | None) -> str | None:
+        if value is None:
+            return None
+        normalized = value.strip()
+        return normalized or None
+
+
 class ManagerialRoleSplitDraftPayload(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
@@ -963,7 +991,7 @@ class ManagerialRoleSplitDraftPayload(BaseModel):
     problem_hypotheses: list[str]
     relevant_background: list[str]
     selected_jd_signals: list[str]
-    selected_resume_signals: list[str]
+    relevant_background_evidence: list[ManagerialRelevantBackgroundEvidence]
 
     @field_validator("role_alignment_sentence")
     @classmethod
@@ -983,13 +1011,32 @@ class ManagerialRoleSplitDraftPayload(BaseModel):
                 raise ValueError(f"each {info.field_name} bullet must be exactly 1 sentence")
         return cleaned
 
-    @field_validator("selected_jd_signals", "selected_resume_signals")
+    @field_validator("selected_jd_signals")
     @classmethod
     def _validate_debug_signals(cls, value: list[str]) -> list[str]:
         cleaned = [item.strip() for item in value if item and item.strip()]
         if len(cleaned) > 3:
             raise ValueError("debug signal lists must contain no more than 3 items")
         return cleaned
+
+    @field_validator("relevant_background_evidence")
+    @classmethod
+    def _validate_relevant_background_evidence(
+        cls,
+        value: list[ManagerialRelevantBackgroundEvidence],
+    ) -> list[ManagerialRelevantBackgroundEvidence]:
+        if len(value) != 3:
+            raise ValueError("relevant_background_evidence must contain exactly 3 entries")
+        for item in value:
+            if (
+                item.secondary_evidence_id is not None
+                and item.secondary_evidence_id == item.primary_evidence_id
+            ):
+                raise ValueError("secondary_evidence_id must differ from primary_evidence_id")
+        return value
+
+
+ManagerialRoleSplitDraftPayload.model_rebuild()
 
 
 @dataclass(frozen=True)
@@ -2090,7 +2137,13 @@ class CodexRoleSplitOutreachDraftRenderer(OutreachDraftRenderer):
         debug_payload = {
             "drafting_path": "managerial",
             "selected_jd_signals": payload.selected_jd_signals,
-            "selected_resume_signals": payload.selected_resume_signals,
+            "relevant_background_evidence": [
+                evidence.model_dump(exclude_none=True)
+                for evidence in payload.relevant_background_evidence
+            ],
+            "retrieved_profile_evidence_pack": [
+                chunk.as_prompt_dict() for chunk in context.managerial_retrieved_evidence_pack
+            ],
         }
         return RenderedDraft(
             subject=f"Interest in the {context.role_title} role at {context.company_name}",
@@ -2232,7 +2285,24 @@ TECHNICAL_ROLE_SPLIT_FIXED_SECOND_SENTENCE = (
 
 
 def _select_role_split_recipient_path(context: RoleTargetedDraftContext) -> str:
-    title = (_recipient_current_title(context) or context.position_title or "").lower()
+    return _select_role_split_recipient_path_from_profile(
+        recipient_profile=context.recipient_profile,
+        position_title=context.position_title,
+        recipient_type=context.recipient_type,
+        fallback_company_name=context.company_name,
+    )
+
+
+def _select_role_split_recipient_path_from_profile(
+    *,
+    recipient_profile: Mapping[str, Any] | None,
+    position_title: str | None,
+    recipient_type: str,
+    fallback_company_name: str,
+) -> str:
+    current_title = _recipient_profile_current_title(recipient_profile) or position_title
+    current_company = _recipient_profile_current_company(recipient_profile) or fallback_company_name
+    title = " at ".join(part for part in (current_title, current_company) if part).lower()
     if any(token in title for token in ("recruit", "talent", "sourcer", "people ops")):
         return "managerial"
     if any(token in title for token in ("manager", "director", "head", "vp", "vice president", "chief", "founder", "co-founder", "cofounder")):
@@ -2255,7 +2325,7 @@ def _select_role_split_recipient_path(context: RoleTargetedDraftContext) -> str:
         or re.search(r"\b(ai|ml)\b", title)
     ):
         return "technical"
-    if context.recipient_type in {RECIPIENT_TYPE_RECRUITER, RECIPIENT_TYPE_HIRING_MANAGER, RECIPIENT_TYPE_FOUNDER}:
+    if recipient_type in {RECIPIENT_TYPE_RECRUITER, RECIPIENT_TYPE_HIRING_MANAGER, RECIPIENT_TYPE_FOUNDER}:
         return "managerial"
     return "technical"
 
@@ -2372,7 +2442,7 @@ def _run_codex_managerial_role_split_draft(
     context: RoleTargetedDraftContext,
 ) -> ManagerialRoleSplitDraftPayload:
     prompt = _build_managerial_role_split_prompt(context)
-    return _run_codex_structured_payload(
+    payload = _run_codex_structured_payload(
         paths=paths,
         codex_bin=codex_bin,
         model=model,
@@ -2387,6 +2457,8 @@ def _run_codex_managerial_role_split_draft(
         role_title=context.role_title,
         contact_id=context.contact_id,
     )
+    _validate_managerial_role_split_payload_grounding(payload, context=context)
+    return payload
 
 
 def _run_codex_structured_payload(
@@ -2515,13 +2587,35 @@ def _normalize_subprocess_stream_text(stream: str | bytes | None) -> str:
 
 def _normalize_managerial_role_split_payload_dict(payload: dict[str, Any]) -> dict[str, Any]:
     normalized = dict(payload)
-    for key in ("selected_jd_signals", "selected_resume_signals"):
-        value = normalized.get(key)
-        if not isinstance(value, list):
-            continue
+    value = normalized.get("selected_jd_signals")
+    if isinstance(value, list):
         cleaned = [str(item).strip() for item in value if str(item).strip()]
-        normalized[key] = cleaned[:3]
+        normalized["selected_jd_signals"] = cleaned[:3]
     return normalized
+
+
+def _validate_managerial_role_split_payload_grounding(
+    payload: ManagerialRoleSplitDraftPayload,
+    *,
+    context: RoleTargetedDraftContext,
+) -> None:
+    allowed_ids = {chunk.evidence_id for chunk in context.managerial_retrieved_evidence_pack}
+    if len(allowed_ids) < 3:
+        raise OutreachDraftingError(
+            "Managerial profile-evidence retrieval did not provide a sufficient bounded prompt pack."
+        )
+    for evidence_mapping in payload.relevant_background_evidence:
+        if evidence_mapping.primary_evidence_id not in allowed_ids:
+            raise OutreachDraftingError(
+                "Managerial role-split payload referenced a primary evidence_id outside the retrieved evidence pack."
+            )
+        if (
+            evidence_mapping.secondary_evidence_id is not None
+            and evidence_mapping.secondary_evidence_id not in allowed_ids
+        ):
+            raise OutreachDraftingError(
+                "Managerial role-split payload referenced a secondary evidence_id outside the retrieved evidence pack."
+            )
 
 
 def _normalize_technical_role_split_payload_dict(
@@ -2670,7 +2764,10 @@ def _build_technical_role_split_prompt(context: RoleTargetedDraftContext) -> str
 
 def _build_managerial_role_split_prompt(context: RoleTargetedDraftContext) -> str:
     bounded_jd_relevance_pack = json.dumps(list(context.bounded_jd_relevance_pack), indent=2)
-    sender_evidence_pool = json.dumps(list(context.sender_evidence_pool), indent=2)
+    retrieved_profile_evidence_pack = json.dumps(
+        [chunk.as_prompt_dict() for chunk in context.managerial_retrieved_evidence_pack],
+        indent=2,
+    )
     public_posting_url = context.public_posting_url or "none"
     return "\n".join(
         [
@@ -2683,7 +2780,9 @@ def _build_managerial_role_split_prompt(context: RoleTargetedDraftContext) -> st
             "- problem_hypotheses: list[string]",
             "- relevant_background: list[string]",
             "- selected_jd_signals: list[string]",
-            "- selected_resume_signals: list[string]",
+            "- relevant_background_evidence: list[object]",
+            "  - each object must contain primary_evidence_id",
+            "  - each object may contain secondary_evidence_id only when two retrieved chunks are tightly related parts of one proof story",
             "",
             "Rendered email shape downstream:",
             f'- Greeting is fixed: "Hi {_first_name(context.display_name)},"',
@@ -2731,26 +2830,24 @@ def _build_managerial_role_split_prompt(context: RoleTargetedDraftContext) -> st
             "- Return exactly 3 bullets.",
             "- Each bullet should be short and easy to scan.",
             "- Each bullet should be a compact phrase, not a long sentence.",
-            "- For the first two bullets, prefer compressed shorthand metrics or concise reliability language when possible.",
-            "- Choose only from the sender evidence provided below.",
-            "- The three bullets should usually cover:",
-            "  1. strongest role-relevant production or scale proof",
-            "  2. strongest observability or reliability proof",
-            "  3. strongest relevant project proof",
+            "- Choose only from the retrieved profile-evidence pack provided below.",
+            "- Preserve strong technical signal when the role is AI, backend, data, platform, or systems heavy.",
+            "- Avoid defaulting to generic reliability bullets when more directly role-aligned AI, workflow, delivery, or stakeholder evidence is available.",
             f'- If you include Job Hunt Copilot, include the repo URL in that same bullet: {JOB_HUNT_COPILOT_REPO_URL}.',
             "- Use lowercase unless a proper noun requires capitalization.",
+            "- relevant_background_evidence must align by order with the 3 relevant_background bullets.",
             "",
             "Hard constraints:",
-            "- Use only the bounded JD relevance pack and sender evidence provided.",
+            "- Use only the bounded JD relevance pack and retrieved profile-evidence pack provided.",
             "- Do not invent unsupported team challenges, technical specifics, or fit claims.",
             "- Problem hypotheses must come from reasoning over the JD only, not from outside assumptions.",
             "- Do not mention LinkedIn or GitHub in the variable content, except for the Job Hunt Copilot repo URL if that bullet is used.",
             "- Do not mention the posting URL in the variable content. Deterministic Python will render that line separately when a public posting URL is available.",
             "- Do not add extra sections, extra CTA language, or extra questions.",
             "- The returned content should fit naturally into one concise email and should not feel like bits and pieces attached together.",
-            "- selected_jd_signals and selected_resume_signals must reflect the signals actually used in the returned bullets and sentence.",
+            "- selected_jd_signals must reflect the JD signals actually used in the returned sentence and bullets.",
             "- selected_jd_signals must contain no more than 3 items.",
-            "- selected_resume_signals must contain no more than 3 items.",
+            "- relevant_background_evidence must contain exactly 3 entries and every evidence_id must come from the retrieved pack below.",
             "",
             "Target length guidance:",
             "- The fixed parts of the email already consume most of the word budget.",
@@ -2763,7 +2860,7 @@ def _build_managerial_role_split_prompt(context: RoleTargetedDraftContext) -> st
             f"- public_posting_url: {public_posting_url}",
             f"- bounded_jd_relevance_pack: {bounded_jd_relevance_pack}",
             f"- sender_core_summary: {context.sender_core_summary}",
-            f"- sender_evidence_pool: {sender_evidence_pool}",
+            f"- retrieved_profile_evidence_pack: {retrieved_profile_evidence_pack}",
             "",
             "Valid JSON example:",
             json.dumps(
@@ -2779,7 +2876,7 @@ def _build_managerial_role_split_prompt(context: RoleTargetedDraftContext) -> st
                     ],
                     "relevant_background": [
                         "distributed data services at ~580 TPS, 99.95% uptime",
-                        "monitoring, alerting, and production reliability",
+                        "monitoring and alerting, incident response, and governed workflow checks",
                         f"built Job Hunt Copilot, an AI workflow automation tool from scratch: {JOB_HUNT_COPILOT_REPO_URL}",
                     ],
                     "selected_jd_signals": [
@@ -2787,10 +2884,10 @@ def _build_managerial_role_split_prompt(context: RoleTargetedDraftContext) -> st
                         "systems integration",
                         "troubleshooting and root-cause fixes",
                     ],
-                    "selected_resume_signals": [
-                        "~580 TPS at 99.95% uptime",
-                        "monitoring and alerting",
-                        "Job Hunt Copilot",
+                    "relevant_background_evidence": [
+                        {"primary_evidence_id": "exp_hl7_scale_platform"},
+                        {"primary_evidence_id": "exp_monitoring_reliability"},
+                        {"primary_evidence_id": "proj_job_hunt_copilot"},
                     ],
                 },
                 indent=2,
@@ -2851,6 +2948,29 @@ def _build_role_targeted_draft_context(
         connection,
         contact_id=str(contact_row["contact_id"]),
     )
+    bounded_jd_relevance_pack = _build_bounded_jd_relevance_pack(
+        posting_row=posting_row,
+        tailoring_inputs=tailoring_inputs,
+    )
+    recipient_path = _select_role_split_recipient_path_from_profile(
+        recipient_profile=recipient_profile,
+        position_title=_normalize_optional_text(contact_row["position_title"]),
+        recipient_type=str(contact_row["recipient_type"]),
+        fallback_company_name=str(posting_row["company_name"]),
+    )
+    if recipient_path == "managerial":
+        try:
+            managerial_selection = retrieve_managerial_profile_evidence(
+                connection,
+                role_title=str(posting_row["role_title"]),
+                role_theme=theme_selection.focus_phrase,
+                bounded_jd_relevance_pack=bounded_jd_relevance_pack,
+            )
+            managerial_retrieved_evidence_pack = managerial_selection.prompt_chunks
+        except ProfileEvidenceError as exc:
+            raise OutreachDraftingError(str(exc)) from exc
+    else:
+        managerial_retrieved_evidence_pack = ()
     return RoleTargetedDraftContext(
         job_posting_id=str(posting_row["job_posting_id"]),
         job_posting_contact_id=str(contact_row["job_posting_contact_id"]),
@@ -2887,12 +3007,9 @@ def _build_role_targeted_draft_context(
             apollo_candidate_payload=apollo_candidate_payload,
             apollo_employment_history_rows=apollo_employment_history_rows,
         ),
-        bounded_jd_relevance_pack=_build_bounded_jd_relevance_pack(
-            posting_row=posting_row,
-            tailoring_inputs=tailoring_inputs,
-        ),
+        bounded_jd_relevance_pack=bounded_jd_relevance_pack,
         sender_core_summary=_build_sender_core_summary(),
-        sender_evidence_pool=_build_sender_evidence_pool(tailoring_inputs),
+        managerial_retrieved_evidence_pack=managerial_retrieved_evidence_pack,
         relevant_skills_summary=_build_relevant_skills_summary(tailoring_inputs),
         job_hunt_copilot_summary=_build_job_hunt_copilot_summary(),
     )

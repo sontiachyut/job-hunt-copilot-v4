@@ -219,6 +219,10 @@ class ProjectPaths:
         return self.ops_scripts_dir / "run_followup_cycle.py"
 
     @property
+    def build_profile_evidence_corpus_script_path(self) -> Path:
+        return self.ops_scripts_dir / "build_profile_evidence_corpus.py"
+
+    @property
     def chat_session_script_path(self) -> Path:
         return self.ops_scripts_dir / "chat_session.py"
 
@@ -741,6 +745,7 @@ class ProjectPaths:
             self.assets_dir / "resume-tailoring" / "ai" / "cookbook.md",
             self.assets_dir / "resume-tailoring" / "ai" / "sop-swe-experience-tailoring.md",
             self.assets_dir / "outreach" / "cold-outreach-guide.md",
+            self.managerial_profile_evidence_source_path,
         ]
 
     def runtime_support_directories(self) -> list[Path]:
@@ -760,6 +765,7 @@ class ProjectPaths:
             self.ops_incidents_dir,
             self.ops_logs_dir,
             self.ops_launchd_dir,
+            self.ops_profile_evidence_dir,
         ]
 
     def runtime_secrets_candidates(self) -> list[Path]:
@@ -767,3 +773,19 @@ class ProjectPaths:
             self.project_root / "runtime_secrets.json",
             self.secrets_dir / "runtime_secrets.json",
         ]
+
+    @property
+    def managerial_profile_evidence_source_path(self) -> Path:
+        return self.assets_dir / "outreach" / "managerial-profile-evidence.yaml"
+
+    @property
+    def ops_profile_evidence_dir(self) -> Path:
+        return self.ops_dir / "profile-evidence"
+
+    @property
+    def ops_profile_evidence_latest_dir(self) -> Path:
+        return self.ops_profile_evidence_dir / "latest"
+
+    @property
+    def profile_evidence_mirror_json_path(self) -> Path:
+        return self.ops_profile_evidence_latest_dir / "profile_evidence_corpus.json"

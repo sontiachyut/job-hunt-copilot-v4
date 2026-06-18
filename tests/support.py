@@ -24,6 +24,36 @@ def create_minimal_project(root: Path) -> None:
     outreach_dir = root / "assets" / "outreach"
     outreach_dir.mkdir(parents=True, exist_ok=True)
     (outreach_dir / "cold-outreach-guide.md").write_text("# guide\n", encoding="utf-8")
+    (outreach_dir / "managerial-profile-evidence.yaml").write_text(
+        "\n".join(
+            [
+                "chunks:",
+                "  - evidence_id: exp_hl7_scale",
+                "    text: Built Azure-based Python and Scala data services that processed 50M+ daily HL7 records at ~580 TPS for governed analytics workloads across 1,500+ hospitals.",
+                "    source_type: resume_experience",
+                "    evidence_type: achievement",
+                "    skill_tags: [python, scala, azure, databricks, spark, hl7]",
+                "    theme_tags: [data, backend, distributed, production-systems, healthcare-analytics]",
+                "    strength: 5",
+                "  - evidence_id: exp_monitoring_triage",
+                "    text: Designed monitoring, alerting, and data-quality checks for regulated healthcare workflows while triaging production incidents and maintaining SLA compliance.",
+                "    source_type: resume_experience",
+                "    evidence_type: reliability",
+                "    skill_tags: [monitoring, alerting, incident-response]",
+                "    theme_tags: [reliability, observability, production-systems]",
+                "    strength: 4",
+                "  - evidence_id: proj_job_hunt_copilot",
+                "    text: Built Job Hunt Copilot, an AI workflow automation system that identifies roles, discovers contacts, drafts outreach, and tracks outcomes with SQLite-backed orchestration.",
+                "    source_type: job_hunt_copilot",
+                "    evidence_type: project",
+                "    skill_tags: [python, sqlite, ai-agents, workflow-automation]",
+                "    theme_tags: [ai, workflow-automation, automation, production-workflows]",
+                "    strength: 4",
+                "",
+            ]
+        ),
+        encoding="utf-8",
+    )
     (outreach_dir / "candidate-growth-areas.yaml").write_text(
         "\n".join(
             [

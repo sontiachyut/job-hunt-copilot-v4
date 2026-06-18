@@ -34,6 +34,7 @@ EXPECTED_TABLES = {
     "outreach_followup_plans",
     "override_events",
     "pipeline_runs",
+    "profile_evidence_chunks",
     "provider_budget_events",
     "provider_budget_state",
     "provider_usage_snapshots",
@@ -125,6 +126,10 @@ EXPECTED_INDEXES = {
     "idx_pipeline_runs_job_posting",
     "idx_pipeline_runs_stage",
     "idx_pipeline_runs_status",
+    "idx_profile_evidence_chunks_active",
+    "idx_profile_evidence_chunks_evidence_type",
+    "idx_profile_evidence_chunks_source_type",
+    "idx_profile_evidence_chunks_strength",
     "idx_provider_budget_events_created_at",
     "idx_provider_budget_events_provider",
     "idx_provider_usage_snapshots_observed_at",
@@ -177,7 +182,7 @@ def test_bootstrap_materializes_canonical_schema_objects(tmp_path):
     assert EXPECTED_TABLES <= tables
     assert EXPECTED_VIEWS <= views
     assert EXPECTED_INDEXES <= indexes
-    assert user_version == 10
+    assert user_version == 11
 
 
 def test_review_views_are_queryable_from_canonical_state(tmp_path):
