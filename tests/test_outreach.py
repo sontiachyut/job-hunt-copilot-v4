@@ -4876,6 +4876,19 @@ def test_codex_role_split_renderer_generates_managerial_path_body_and_debug_arti
         assert "Choose one dominant role-fit theme that reads like a coherent kind of work" in input
         assert "Troubleshooting or root-cause language should usually stay in the problem_hypotheses bullets" in input
         assert "dependable AI workflows in production" not in input
+        schema_path = Path(command[command.index("--output-schema") + 1])
+        schema = json.loads(schema_path.read_text(encoding="utf-8"))
+        evidence_item_schema = (
+            schema["properties"]["relevant_background_evidence"]["items"]
+        )
+        assert evidence_item_schema["required"] == [
+            "primary_evidence_id",
+            "secondary_evidence_id",
+        ]
+        assert evidence_item_schema["properties"]["secondary_evidence_id"]["type"] == [
+            "string",
+            "null",
+        ]
         output_path = Path(command[command.index("-o") + 1])
         payload = {
             "role_alignment_sentence": (

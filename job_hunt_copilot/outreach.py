@@ -965,7 +965,7 @@ class ManagerialRelevantBackgroundEvidence(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     primary_evidence_id: str
-    secondary_evidence_id: str | None = None
+    secondary_evidence_id: str | None
 
     @field_validator("primary_evidence_id")
     @classmethod
@@ -2604,6 +2604,17 @@ def _normalize_managerial_role_split_payload_dict(payload: dict[str, Any]) -> di
     if isinstance(value, list):
         cleaned = [str(item).strip() for item in value if str(item).strip()]
         normalized["selected_jd_signals"] = cleaned[:3]
+    evidence_rows = normalized.get("relevant_background_evidence")
+    if isinstance(evidence_rows, list):
+        normalized_rows: list[dict[str, Any]] = []
+        for item in evidence_rows:
+            if isinstance(item, dict):
+                normalized_item = dict(item)
+                normalized_item.setdefault("secondary_evidence_id", None)
+                normalized_rows.append(normalized_item)
+            else:
+                normalized_rows.append(item)
+        normalized["relevant_background_evidence"] = normalized_rows
     return normalized
 
 
@@ -2795,7 +2806,9 @@ def _build_managerial_role_split_prompt(context: RoleTargetedDraftContext) -> st
             "- selected_jd_signals: list[string]",
             "- relevant_background_evidence: list[object]",
             "  - each object must contain primary_evidence_id",
-            "  - each object may contain secondary_evidence_id only when two retrieved chunks are tightly related parts of one proof story",
+            "  - each object must also contain secondary_evidence_id",
+            "  - set secondary_evidence_id to null when no second chunk is used",
+            "  - use a non-null secondary_evidence_id only when two retrieved chunks are tightly related parts of one proof story",
             "",
             "Rendered email shape downstream:",
             f'- Greeting is fixed: "Hi {_first_name(context.display_name)},"',
@@ -2898,9 +2911,18 @@ def _build_managerial_role_split_prompt(context: RoleTargetedDraftContext) -> st
                         "troubleshooting and root-cause fixes",
                     ],
                     "relevant_background_evidence": [
-                        {"primary_evidence_id": "exp_hl7_scale_platform"},
-                        {"primary_evidence_id": "exp_monitoring_reliability"},
-                        {"primary_evidence_id": "proj_job_hunt_copilot"},
+                        {
+                            "primary_evidence_id": "exp_hl7_scale_platform",
+                            "secondary_evidence_id": None,
+                        },
+                        {
+                            "primary_evidence_id": "exp_monitoring_reliability",
+                            "secondary_evidence_id": None,
+                        },
+                        {
+                            "primary_evidence_id": "proj_job_hunt_copilot",
+                            "secondary_evidence_id": None,
+                        },
                     ],
                 },
                 indent=2,
