@@ -1147,6 +1147,8 @@ Feature: Job Hunt Copilot next-build acceptance
       And the subject is `Learning from your career path`
       And the opener says `admired your path` rather than `really admired your path`
       And the fixed Job Hunt Copilot paragraph does not use a standalone `repo is here` sentence
+      And the fixed Job Hunt Copilot paragraph does not describe the email itself as a live autonomous-workflow example
+      And the fixed technical guidance ask does not list explicit weekday availability windows
       And HTML rendering hyperlinks the `Job Hunt Copilot` label itself in that paragraph
 
     Scenario: Live role-split codex calls persist token usage events
@@ -1163,12 +1165,21 @@ Feature: Job Hunt Copilot next-build acceptance
       Then deterministic rendering emits the greeting and fixed `I hope you're doing well.` opener sentence
       And `codex exec` generates the role-alignment sentence, exactly 3 JD-challenge bullets, exactly 3 relevant-background bullets, and debug fields
       And deterministic rendering emits the fixed bold proof-of-concept sentence
+      And the plain-text body does not contain raw Markdown strong markers around that proof-of-concept sentence
+      And the HTML body renders that proof-of-concept sentence with strong emphasis
       And deterministic rendering emits the fixed CTA block and standard signature
       And the fixed JD heading is phrased as a question rather than a statement
       And the fixed CTA block mentions the proof-of-concept offer only once in the whole email body
       And the JD-challenge bullets are JD-only inferred problem hypotheses rather than verbatim JD paste
       And the relevant-background bullets come from real resume or project evidence
+      And a `Job Hunt Copilot` background bullet appears only when it materially strengthens the dominant role-fit theme
       And the subject follows `Interest in the <Role Title> role at <Company>`
+
+    Scenario: Managerial-path subject strips role-title formatting artifacts before send
+      Given a role-targeted managerial-path draft is being created for a posting whose canonical role title contains a leading formatting artifact like `#`
+      When Email Drafting and Sending renders the managerial-path subject
+      Then the subject still follows `Interest in the <Role Title> role at <Company>`
+      And the rendered subject does not contain the raw leading formatting artifact
 
     Scenario: Managerial-path posting link is rendered deterministically from canonical state
       Given a managerial-path draft is being created for a concrete job posting

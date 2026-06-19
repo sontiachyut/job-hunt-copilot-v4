@@ -67,21 +67,17 @@ TECHNICAL_PATH_PARAGRAPH_2 = (
     "that handled ~580 TPS in production while maintaining 99.95% uptime."
 )
 TECHNICAL_PATH_PARAGRAPH_3_TEMPLATE = (
-    "I'm passionate about learning new technology and building products, which is what led me to build Job Hunt Copilot ({repo_url}). "
-    "It's an AI workflow automation tool I built to help me connect with strong engineers and technical leaders while supporting my job search. "
-    "This email is a live example of that autonomous workflow. "
-    "It's something I built from scratch and have been shaping with real production use in mind, not just as a one-off prototype."
+    "I also built Job Hunt Copilot ({repo_url}), an AI workflow automation tool for my own job search "
+    "that I've been shaping with production use in mind."
 )
 TECHNICAL_PATH_PARAGRAPH_4 = (
-    "I'm currently in the job hunt process, and I'd really value your guidance. "
-    "I want to build a career like yours. "
-    "Would you be open to a 10-minute conversation sometime in the next week or two? "
-    "I'm usually free weekdays between 8 AM and 6 PM MST, and I'm flexible outside that too if another time works better for you."
+    "I'm currently exploring opportunities, and I'd really value your guidance. "
+    "If you're open to it, I'd appreciate a brief 10-minute conversation sometime in the next week or two."
 )
 MANAGERIAL_PATH_OPENER_SENTENCE_1 = "I hope you're doing well."
 MANAGERIAL_PATH_OPENER_SENTENCE_3 = (
-    "**If helpful, I'd be happy to build a small proof of concept based on my understanding "
-    "of the challenges the team is working on and share the repo.**"
+    "If helpful, I'd be happy to build a small proof of concept based on my understanding "
+    "of the challenges the team is working on and share the repo."
 )
 MANAGERIAL_PATH_JD_HEADING = "Based on the JD, would it be fair to say the team is likely working on the following?"
 MANAGERIAL_PATH_BACKGROUND_HEADING = "Relevant background from my side:"
@@ -108,6 +104,37 @@ _CANDIDATE_STATE_SAME_COMPANY_SENT = "same_company_sent"
 _CANDIDATE_STATE_UNAVAILABLE = "unavailable"
 
 OUTREACH_MODE_ROLE_TARGETED = "role_targeted"
+_MANAGERIAL_RELEVANCE_STOPWORDS = frozenset(
+    {
+        "and",
+        "the",
+        "for",
+        "with",
+        "that",
+        "this",
+        "from",
+        "into",
+        "your",
+        "team",
+        "role",
+        "roles",
+        "work",
+        "works",
+        "build",
+        "building",
+        "systems",
+        "system",
+        "production",
+        "across",
+        "their",
+        "have",
+        "has",
+        "will",
+        "would",
+        "could",
+        "about",
+    }
+)
 OUTREACH_MODE_GENERAL_LEARNING = "general_learning"
 MESSAGE_STATUS_GENERATED = "generated"
 MESSAGE_STATUS_BLOCKED = "blocked"
@@ -2027,7 +2054,7 @@ class CodexRoleSplitOutreachDraftRenderer(OutreachDraftRenderer):
             "selected_resume_signals": payload.selected_resume_signals,
         }
         return RenderedDraft(
-            subject=f"Interest in the {context.role_title} role at {context.company_name}",
+            subject=_build_role_targeted_subject(context),
             body_markdown=body_markdown,
             body_html=_render_markdown_email_html(body_markdown),
             include_forwardable_snippet=False,
@@ -2289,7 +2316,10 @@ def _run_codex_managerial_role_split_draft(
         prompt=prompt,
         schema=ManagerialRoleSplitDraftPayload.model_json_schema(),
         model_class=ManagerialRoleSplitDraftPayload,
-        payload_normalizer=_normalize_managerial_role_split_payload_dict,
+        payload_normalizer=lambda payload: _normalize_managerial_role_split_payload_dict(
+            payload,
+            context=context,
+        ),
         run_prefix="managerial-role-split",
         lead_id=context.lead_id,
         job_posting_id=context.job_posting_id,
@@ -2385,7 +2415,11 @@ def _run_codex_structured_payload(
         ) from exc
 
 
-def _normalize_managerial_role_split_payload_dict(payload: dict[str, Any]) -> dict[str, Any]:
+def _normalize_managerial_role_split_payload_dict(
+    payload: dict[str, Any],
+    *,
+    context: RoleTargetedDraftContext | None = None,
+) -> dict[str, Any]:
     normalized = dict(payload)
     for key in ("selected_jd_signals", "selected_resume_signals"):
         value = normalized.get(key)
@@ -2393,6 +2427,52 @@ def _normalize_managerial_role_split_payload_dict(payload: dict[str, Any]) -> di
             continue
         cleaned = [str(item).strip() for item in value if str(item).strip()]
         normalized[key] = cleaned[:3]
+    relevant_background = normalized.get("relevant_background")
+    if isinstance(relevant_background, list):
+        cleaned_background: list[str] = []
+        seen_background: set[str] = set()
+        for bullet in relevant_background:
+            text = _normalize_optional_text(bullet)
+            if text is None:
+                continue
+            key = text.lower()
+            if key in seen_background:
+                continue
+            seen_background.add(key)
+            cleaned_background.append(text)
+        if context is not None:
+            job_hunt_copilot_allowed = _managerial_job_hunt_copilot_allowed(
+                role_title=context.role_title,
+                bounded_jd_relevance_pack=context.bounded_jd_relevance_pack,
+            )
+            if not job_hunt_copilot_allowed:
+                cleaned_background = [
+                    bullet
+                    for bullet in cleaned_background
+                    if not _is_job_hunt_copilot_evidence_text(bullet)
+                ]
+                selected_resume_signals = normalized.get("selected_resume_signals")
+                if isinstance(selected_resume_signals, list):
+                    normalized["selected_resume_signals"] = [
+                        item
+                        for item in selected_resume_signals
+                        if "job hunt copilot" not in item.lower()
+                    ][:3]
+            chosen_lower = {bullet.lower() for bullet in cleaned_background}
+            for item in context.sender_evidence_pool:
+                proof_line = _normalize_optional_text(item.get("proof_line"))
+                if proof_line is None:
+                    continue
+                if _is_job_hunt_copilot_evidence_text(proof_line) and not job_hunt_copilot_allowed:
+                    continue
+                compact_bullet = _proof_line_to_compact_background_bullet(proof_line)
+                if compact_bullet.lower() in chosen_lower:
+                    continue
+                cleaned_background.append(compact_bullet)
+                chosen_lower.add(compact_bullet.lower())
+                if len(cleaned_background) >= 3:
+                    break
+        normalized["relevant_background"] = cleaned_background[:3]
     return normalized
 
 
@@ -2541,6 +2621,7 @@ def _build_technical_role_split_prompt(context: RoleTargetedDraftContext) -> str
 
 
 def _build_managerial_role_split_prompt(context: RoleTargetedDraftContext) -> str:
+    normalized_role_title = _normalize_role_title_for_outreach_email(context.role_title)
     bounded_jd_relevance_pack = json.dumps(list(context.bounded_jd_relevance_pack), indent=2)
     sender_evidence_pool = json.dumps(list(context.sender_evidence_pool), indent=2)
     public_posting_url = context.public_posting_url or "none"
@@ -2580,7 +2661,7 @@ def _build_managerial_role_split_prompt(context: RoleTargetedDraftContext) -> st
             "",
             "Rules for role_alignment_sentence:",
             "- It must be exactly 1 sentence.",
-            f'- It must begin with: "I came across the {context.role_title} opening at {context.company_name} and wanted to reach out because..."',
+            f'- It must begin with: "I came across the {normalized_role_title} opening at {context.company_name} and wanted to reach out because..."',
             "- It should explain why the role looks closely aligned with the kind of role-relevant engineering problems I've been trying to work on.",
             "- Choose one dominant role-fit theme that reads like a coherent kind of work, not a stitched-together list of JD signals.",
             "- Do not combine unrelated JD themes just to increase coverage.",
@@ -2603,12 +2684,14 @@ def _build_managerial_role_split_prompt(context: RoleTargetedDraftContext) -> st
             "- Return exactly 3 bullets.",
             "- Each bullet should be short and easy to scan.",
             "- Each bullet should be a compact phrase, not a long sentence.",
-            "- For the first two bullets, prefer compressed shorthand metrics or concise reliability language when possible.",
             "- Choose only from the sender evidence provided below.",
             "- The three bullets should usually cover:",
-            "  1. strongest role-relevant production or scale proof",
-            "  2. strongest observability or reliability proof",
-            "  3. strongest relevant project proof",
+            "  1. strongest direct role-theme proof",
+            "  2. strongest technical or systems proof",
+            "  3. strongest complementary proof",
+            "- Prefer relevant technical signal density over generic impressiveness.",
+            "- Do not default to generic uptime, monitoring, or large-number bullets when more role-aligned proof exists in the sender evidence.",
+            "- Use Job Hunt Copilot only when the dominant role-fit theme clearly relates to applied AI, workflow automation, agent systems, or production AI enablement.",
             f'- If you include Job Hunt Copilot, include the repo URL in that same bullet: {JOB_HUNT_COPILOT_REPO_URL}.',
             "- Use lowercase unless a proper noun requires capitalization.",
             "",
@@ -2630,7 +2713,7 @@ def _build_managerial_role_split_prompt(context: RoleTargetedDraftContext) -> st
             "",
             "Bounded evidence:",
             f"- recipient_name: {context.display_name}",
-            f"- target_role_title: {context.role_title}",
+            f"- target_role_title: {normalized_role_title}",
             f"- target_company: {context.company_name}",
             f"- public_posting_url: {public_posting_url}",
             f"- bounded_jd_relevance_pack: {bounded_jd_relevance_pack}",
@@ -2641,7 +2724,7 @@ def _build_managerial_role_split_prompt(context: RoleTargetedDraftContext) -> st
             json.dumps(
                 {
                     "role_alignment_sentence": (
-                        f"I came across the {context.role_title} opening at {context.company_name} and wanted to reach out because the role "
+                        f"I came across the {normalized_role_title} opening at {context.company_name} and wanted to reach out because the role "
                         "looks closely aligned with the kind of backend services and integration work I've been trying to do more of in production systems."
                     ),
                     "problem_hypotheses": [
@@ -2713,6 +2796,15 @@ def _build_role_targeted_draft_context(
         role_intent_summary=_normalize_optional_text(tailoring_inputs.get("role_intent_summary")),
         theme_selection=theme_selection,
     )
+    bounded_jd_relevance_pack = _build_bounded_jd_relevance_pack(
+        posting_row=posting_row,
+        tailoring_inputs=tailoring_inputs,
+    )
+    sender_evidence_pool = _rank_sender_evidence_pool_for_managerial_draft(
+        _build_sender_evidence_pool(tailoring_inputs),
+        role_title=str(posting_row["role_title"]),
+        bounded_jd_relevance_pack=bounded_jd_relevance_pack,
+    )
     apollo_candidate_payload = _load_apollo_candidate_payload(
         connection,
         paths,
@@ -2759,12 +2851,9 @@ def _build_role_targeted_draft_context(
             apollo_candidate_payload=apollo_candidate_payload,
             apollo_employment_history_rows=apollo_employment_history_rows,
         ),
-        bounded_jd_relevance_pack=_build_bounded_jd_relevance_pack(
-            posting_row=posting_row,
-            tailoring_inputs=tailoring_inputs,
-        ),
+        bounded_jd_relevance_pack=bounded_jd_relevance_pack,
         sender_core_summary=_build_sender_core_summary(),
-        sender_evidence_pool=_build_sender_evidence_pool(tailoring_inputs),
+        sender_evidence_pool=sender_evidence_pool,
         relevant_skills_summary=_build_relevant_skills_summary(tailoring_inputs),
         job_hunt_copilot_summary=_build_job_hunt_copilot_summary(),
     )
@@ -5076,6 +5165,163 @@ def _build_sender_evidence_pool(tailoring_inputs: Mapping[str, Any]) -> tuple[Ma
     return tuple(deduped[:8])
 
 
+def _normalized_tag_set(values: Any) -> set[str]:
+    if not isinstance(values, list):
+        return set()
+    normalized: set[str] = set()
+    for value in values:
+        text = _normalize_optional_text(value)
+        if text is not None:
+            normalized.add(text.lower())
+    return normalized
+
+
+def _tokenize_relevance_text(value: str) -> set[str]:
+    return {
+        token
+        for token in re.findall(r"[a-z0-9]+", value.lower())
+        if len(token) > 2 and token not in _MANAGERIAL_RELEVANCE_STOPWORDS
+    }
+
+
+def _normalize_role_title_for_outreach_email(role_title: str) -> str:
+    normalized = _normalize_optional_text(role_title) or role_title.strip()
+    normalized = re.sub(r"^[#>*+\-]+\s*", "", normalized)
+    normalized = re.sub(r"^\[[^\]]+\]\s*", "", normalized)
+    normalized = re.sub(r"\s+", " ", normalized).strip(" \t\r\n-:;,.")
+    return normalized or role_title.strip()
+
+
+def _managerial_role_query_theme_tags(
+    *,
+    role_title: str,
+    bounded_jd_relevance_pack: Sequence[Mapping[str, Any]],
+) -> set[str]:
+    tags = set(_theme_tags_from_text(role_title))
+    for item in bounded_jd_relevance_pack:
+        tags.update(_normalized_tag_set(item.get("theme_tags")))
+        for key in ("jd_signal", "supporting_line"):
+            text = _normalize_optional_text(item.get(key))
+            if text is not None:
+                tags.update(_theme_tags_from_text(text))
+    return tags
+
+
+def _managerial_role_query_tokens(
+    *,
+    role_title: str,
+    bounded_jd_relevance_pack: Sequence[Mapping[str, Any]],
+) -> set[str]:
+    parts = [role_title]
+    for item in bounded_jd_relevance_pack:
+        for key in ("jd_signal", "supporting_line"):
+            text = _normalize_optional_text(item.get(key))
+            if text is not None:
+                parts.append(text)
+    return _tokenize_relevance_text(" ".join(parts))
+
+
+def _managerial_job_hunt_copilot_allowed(
+    *,
+    role_title: str,
+    bounded_jd_relevance_pack: Sequence[Mapping[str, Any]],
+) -> bool:
+    evidence_text = " ".join(
+        filter(
+            None,
+            [role_title]
+            + [
+                _normalize_optional_text(item.get(key)) or ""
+                for item in bounded_jd_relevance_pack
+                for key in ("jd_signal", "supporting_line")
+            ],
+        )
+    ).lower()
+    return bool(
+        re.search(
+            r"\b(ai|ml|llm|genai|agent|agents)\b|machine learning|generative ai|workflow automation|workflow orchestration|production ai",
+            evidence_text,
+        )
+    )
+
+
+def _is_job_hunt_copilot_evidence_text(text: str) -> bool:
+    lowered = text.lower()
+    return "job hunt copilot" in lowered or JOB_HUNT_COPILOT_REPO_URL.lower() in lowered
+
+
+def _score_sender_evidence_pool_item_for_managerial_draft(
+    item: Mapping[str, Any],
+    *,
+    query_theme_tags: set[str],
+    query_tokens: set[str],
+    job_hunt_copilot_allowed: bool,
+) -> int:
+    proof_line = _normalize_optional_text(item.get("proof_line")) or ""
+    if not proof_line:
+        return -10_000
+    item_theme_tags = _normalized_tag_set(item.get("theme_tags"))
+    item_tokens = _tokenize_relevance_text(proof_line)
+    metric_tags = item.get("metric_tags")
+    metric_count = len(metric_tags) if isinstance(metric_tags, list) else 0
+    score = 10 * len(item_theme_tags & query_theme_tags)
+    score += 2 * len(item_tokens & query_tokens)
+    score += min(metric_count, 2)
+    if "ai" in query_theme_tags and "ai" in item_theme_tags:
+        score += 6
+    if "platform" in query_theme_tags and "platform" in item_theme_tags:
+        score += 3
+    if "data" in query_theme_tags and "data" in item_theme_tags:
+        score += 3
+    if "reliability" in item_theme_tags and not (item_theme_tags & (query_theme_tags - {"reliability"})):
+        score -= 4
+    if _is_job_hunt_copilot_evidence_text(proof_line):
+        score += 5 if job_hunt_copilot_allowed else -12
+    return score
+
+
+def _rank_sender_evidence_pool_for_managerial_draft(
+    sender_evidence_pool: Sequence[Mapping[str, Any]],
+    *,
+    role_title: str,
+    bounded_jd_relevance_pack: Sequence[Mapping[str, Any]],
+) -> tuple[Mapping[str, Any], ...]:
+    query_theme_tags = _managerial_role_query_theme_tags(
+        role_title=role_title,
+        bounded_jd_relevance_pack=bounded_jd_relevance_pack,
+    )
+    query_tokens = _managerial_role_query_tokens(
+        role_title=role_title,
+        bounded_jd_relevance_pack=bounded_jd_relevance_pack,
+    )
+    job_hunt_copilot_allowed = _managerial_job_hunt_copilot_allowed(
+        role_title=role_title,
+        bounded_jd_relevance_pack=bounded_jd_relevance_pack,
+    )
+    ranked = sorted(
+        enumerate(sender_evidence_pool),
+        key=lambda pair: (
+            -_score_sender_evidence_pool_item_for_managerial_draft(
+                pair[1],
+                query_theme_tags=query_theme_tags,
+                query_tokens=query_tokens,
+                job_hunt_copilot_allowed=job_hunt_copilot_allowed,
+            ),
+            pair[0],
+        ),
+    )
+    return tuple(pair[1] for pair in ranked[:8])
+
+
+def _proof_line_to_compact_background_bullet(proof_line: str) -> str:
+    cleaned = proof_line.strip().rstrip(".")
+    if not cleaned:
+        return cleaned
+    if cleaned[0].isalpha():
+        return cleaned[0].lower() + cleaned[1:]
+    return cleaned
+
+
 def _build_relevant_skills_summary(tailoring_inputs: Mapping[str, Any]) -> str:
     step_6_payload = tailoring_inputs.get("step_6_payload")
     if not isinstance(step_6_payload, Mapping):
@@ -6670,7 +6916,8 @@ def _build_role_targeted_opener_decision(
 
 
 def _build_role_targeted_subject(context: RoleTargetedDraftContext) -> str:
-    return f"Interest in the {context.role_title} role at {context.company_name}"
+    normalized_role_title = _normalize_role_title_for_outreach_email(context.role_title)
+    return f"Interest in the {normalized_role_title} role at {context.company_name}"
 
 
 def _compose_role_targeted_composition_plan(
@@ -8498,7 +8745,14 @@ def _render_inline_markdown_html(text: str) -> str:
         cursor = match.end()
     if cursor < len(text):
         rendered_parts.append(_render_plain_inline_email_html(text[cursor:]))
-    return "".join(rendered_parts)
+    return _apply_fixed_semantic_emphasis_html("".join(rendered_parts))
+
+
+def _apply_fixed_semantic_emphasis_html(rendered_html: str) -> str:
+    escaped_sentence = html.escape(MANAGERIAL_PATH_OPENER_SENTENCE_3)
+    if escaped_sentence not in rendered_html:
+        return rendered_html
+    return rendered_html.replace(escaped_sentence, f"<strong>{escaped_sentence}</strong>", 1)
 
 
 def _render_plain_inline_email_html(text: str) -> str:

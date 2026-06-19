@@ -4106,9 +4106,11 @@ def test_codex_role_split_renderer_generates_technical_path_body_and_debug_artif
     assert message.subject == "Learning from your career path"
     assert "I came across your LinkedIn profile and admired your path from InsightRX to Lattice" in body
     assert "I recently graduated from ASU with an MS in Computer Science." in body
-    assert "This email is a live example of that autonomous workflow." in body
-    assert "Would you be open to a 10-minute conversation sometime in the next week or two?" in body
-    assert "Job Hunt Copilot (https://github.com/sontiachyut/job-hunt-copilot-v4)." in body
+    assert "This email is a live example of that autonomous workflow." not in body
+    assert "Would you be open to a 10-minute conversation sometime in the next week or two?" not in body
+    assert "If you're open to it, I'd appreciate a brief 10-minute conversation sometime in the next week or two." in body
+    assert "weekdays between 8 AM and 6 PM MST" not in body
+    assert "I also built Job Hunt Copilot (https://github.com/sontiachyut/job-hunt-copilot-v4), an AI workflow automation tool for my own job search" in body
     assert "If you're interested, the repo is here:" not in body
     assert 'href="https://github.com/sontiachyut/job-hunt-copilot-v4"' in body_html
     assert ">Job Hunt Copilot</a>" in body_html
@@ -4207,6 +4209,170 @@ def test_normalize_managerial_role_split_payload_truncates_debug_signal_lists() 
 
     assert validated.selected_jd_signals == ["a", "b", "c"]
     assert validated.selected_resume_signals == ["x", "y", "z"]
+
+
+def test_normalize_managerial_role_split_payload_drops_weak_job_hunt_copilot_for_non_ai_roles(
+    tmp_path: Path,
+) -> None:
+    project_root, paths = bootstrap_project(tmp_path)
+    connection = connect_database(project_root / "job_hunt_copilot.db")
+    write_sender_profile(paths)
+    seed_posting(
+        connection,
+        company_name="Figma",
+        role_title="Data Platform Engineer",
+    )
+    seed_linked_contact(
+        connection,
+        contact_id="ct_manager",
+        job_posting_contact_id="jpc_manager",
+        display_name="Jordan Kim",
+        recipient_type=RECIPIENT_TYPE_HIRING_MANAGER,
+        current_working_email="jordan@figma.example",
+        created_at="2026-04-06T20:10:00Z",
+    )
+    step_6_payload = {
+        "job_posting_id": "jp_outreach",
+        "resume_tailoring_run_id": "rtr_outreach",
+        "status": "generated",
+        "summary": "Data platform and backend systems candidate.",
+        "technical_skills": [
+            {
+                "category": "Languages",
+                "items": ["Python", "Spark", "AWS", "Kubernetes"],
+                "matched_signal_ids": ["signal_must_1", "signal_core_1"],
+            }
+        ],
+        "software_engineer": {
+            "bullets": [
+                {
+                    "text": "Built Job Hunt Copilot, an AI workflow automation tool: https://github.com/sontiachyut/job-hunt-copilot-v4",
+                    "purpose": "project",
+                    "support_pointers": ["match_1"],
+                    "covered_signal_ids": ["signal_core_1"],
+                    "char_count": 104,
+                },
+                {
+                    "text": "Designed governed data pipelines and backend services for analytics platforms.",
+                    "purpose": "platform",
+                    "support_pointers": ["match_2"],
+                    "covered_signal_ids": ["signal_must_1"],
+                    "char_count": 86,
+                },
+                {
+                    "text": "Optimized Kubernetes scheduling for 200+ microservices and reduced cloud-compute spend by 25%.",
+                    "purpose": "platform",
+                    "support_pointers": ["match_3"],
+                    "covered_signal_ids": ["signal_core_1"],
+                    "char_count": 102,
+                },
+            ]
+        },
+    }
+    seed_approved_tailoring_run(
+        connection,
+        paths,
+        company_name="Figma",
+        role_title="Data Platform Engineer",
+        step_6_payload=step_6_payload,
+    )
+    step_3_path = paths.tailoring_step_3_jd_signals_path("Figma", "Data Platform Engineer")
+    step_3_path.write_text(
+        yaml.safe_dump(
+            {
+                "job_posting_id": "jp_outreach",
+                "resume_tailoring_run_id": "rtr_outreach",
+                "status": "generated",
+                "role_intent_summary": "build data platform services and governed analytics workflows",
+                "signals_by_priority": {
+                    "must_have": [
+                        {
+                            "signal_id": "signal_must_1",
+                            "priority": "must_have",
+                            "signal": "data platform services and governed analytics workflows",
+                            "tokens": ["data", "platform", "services", "analytics", "workflows"],
+                        }
+                    ],
+                    "core_responsibility": [
+                        {
+                            "signal_id": "signal_core_1",
+                            "priority": "core_responsibility",
+                            "signal": "backend service reliability and cloud efficiency",
+                            "tokens": ["backend", "service", "reliability", "cloud", "efficiency"],
+                        }
+                    ],
+                    "nice_to_have": [],
+                    "informational": [],
+                },
+                "signals": [
+                    {
+                        "signal_id": "signal_must_1",
+                        "priority": "must_have",
+                        "signal": "data platform services and governed analytics workflows",
+                        "tokens": ["data", "platform", "services", "analytics", "workflows"],
+                    },
+                    {
+                        "signal_id": "signal_core_1",
+                        "priority": "core_responsibility",
+                        "signal": "backend service reliability and cloud efficiency",
+                        "tokens": ["backend", "service", "reliability", "cloud", "efficiency"],
+                    },
+                ],
+            },
+            sort_keys=False,
+        ),
+        encoding="utf-8",
+    )
+
+    posting_row = _load_role_targeted_draft_posting_row(connection, job_posting_id="jp_outreach")
+    contact_row = _load_draft_contact_row(
+        connection,
+        job_posting_id="jp_outreach",
+        contact_id="ct_manager",
+    )
+    tailoring_inputs = _load_tailoring_draft_inputs(
+        connection,
+        paths,
+        posting_row=posting_row,
+        current_time="2026-04-06T20:30:00Z",
+    )
+    sender = _load_sender_identity(paths)
+    context = _build_role_targeted_draft_context(
+        connection,
+        paths,
+        posting_row=posting_row,
+        contact_row=contact_row,
+        sender=sender,
+        tailoring_inputs=tailoring_inputs,
+    )
+
+    normalized = _normalize_managerial_role_split_payload_dict(
+        {
+            "role_alignment_sentence": (
+                "I came across the Data Platform Engineer opening at Figma and wanted to reach out because the role looks closely aligned with the kind of platform and backend systems work I've been trying to do more of."
+            ),
+            "problem_hypotheses": [
+                "governed data platform workflows",
+                "backend service reliability",
+                "cloud efficiency across production systems",
+            ],
+            "relevant_background": [
+                "50M+ daily HL7 records, ~580 TPS, 24/7 uptime",
+                "built Job Hunt Copilot, an AI workflow automation tool: https://github.com/sontiachyut/job-hunt-copilot-v4",
+            ],
+            "selected_jd_signals": ["data platform workflows", "backend reliability"],
+            "selected_resume_signals": ["~580 TPS production services", "Job Hunt Copilot"],
+        },
+        context=context,
+    )
+
+    validated = ManagerialRoleSplitDraftPayload.model_validate(normalized)
+    assert len(validated.relevant_background) == 3
+    assert all("job hunt copilot" not in bullet.lower() for bullet in validated.relevant_background)
+    assert all("job hunt copilot" not in signal.lower() for signal in validated.selected_resume_signals)
+    assert any("data pipelines" in bullet.lower() for bullet in validated.relevant_background)
+
+    connection.close()
 
 
 def test_normalize_technical_role_split_payload_recovers_shape_and_career_steps() -> None:
@@ -4393,6 +4559,8 @@ def test_codex_role_split_renderer_generates_managerial_path_body_and_debug_arti
         assert "Choose one dominant role-fit theme that reads like a coherent kind of work" in input
         assert "Troubleshooting or root-cause language should usually stay in the problem_hypotheses bullets" in input
         assert "dependable AI workflows in production" not in input
+        assert "Prefer relevant technical signal density over generic impressiveness." in input
+        assert "Use Job Hunt Copilot only when the dominant role-fit theme clearly relates to applied AI" in input
         output_path = Path(command[command.index("-o") + 1])
         payload = {
             "role_alignment_sentence": (
@@ -4438,7 +4606,8 @@ def test_codex_role_split_renderer_generates_managerial_path_body_and_debug_arti
     assert "Posting link: https://careers.acme.example/jobs/123" in body
     assert "Based on the JD, would it be fair to say the team is likely working on the following?" in body
     assert "Relevant background from my side:" in body
-    assert "**If helpful, I'd be happy to build a small proof of concept based on my understanding of the challenges the team is working on and share the repo.**" in body
+    assert "If helpful, I'd be happy to build a small proof of concept based on my understanding of the challenges the team is working on and share the repo." in body
+    assert "**If helpful, I'd be happy to build a small proof of concept based on my understanding of the challenges the team is working on and share the repo.**" not in body
     assert "built Job Hunt Copilot, an AI workflow automation tool: https://github.com/sontiachyut/job-hunt-copilot-v4" in body
     assert "I've attached my resume for context." in body
     assert "Would you be open to a brief 10-minute conversation?" in body
@@ -4464,6 +4633,90 @@ def test_role_split_payload_schemas_require_all_top_level_properties() -> None:
 
     assert set(technical_schema["required"]) == set(technical_schema["properties"].keys())
     assert set(managerial_schema["required"]) == set(managerial_schema["properties"].keys())
+
+
+def test_managerial_role_split_normalizes_role_title_artifacts_in_prompt_and_subject(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    project_root, paths = bootstrap_project(tmp_path)
+    connection = connect_database(project_root / "job_hunt_copilot.db")
+    write_sender_profile(paths)
+    seed_posting(
+        connection,
+        company_name="Qualcomm",
+        role_title="#Software Engineer – Engineer",
+    )
+    seed_linked_contact(
+        connection,
+        contact_id="ct_outreach",
+        job_posting_contact_id="jpc_outreach",
+        display_name="Priya Shah",
+        recipient_type=RECIPIENT_TYPE_HIRING_MANAGER,
+        current_working_email="priya@qualcomm.example",
+        created_at="2026-04-06T20:05:00Z",
+    )
+    seed_approved_tailoring_run(
+        connection,
+        paths,
+        company_name="Qualcomm",
+        role_title="#Software Engineer – Engineer",
+    )
+    connection.execute(
+        """
+        UPDATE job_postings
+        SET posting_status = ?
+        WHERE job_posting_id = ?
+        """,
+        (JOB_POSTING_STATUS_READY_FOR_OUTREACH, "jp_outreach"),
+    )
+    connection.commit()
+
+    def fake_run(command, *, input, text, capture_output, check, env):  # type: ignore[no-untyped-def]
+        assert "I came across the Software Engineer – Engineer opening at Qualcomm" in input
+        assert "I came across the #Software Engineer – Engineer opening at Qualcomm" not in input
+        output_path = Path(command[command.index("-o") + 1])
+        payload = {
+            "role_alignment_sentence": (
+                "I came across the Software Engineer – Engineer opening at Qualcomm and wanted to reach out because the role "
+                "looks closely aligned with the kind of production software and systems work I've been trying to do more of."
+            ),
+            "problem_hypotheses": [
+                "backend service reliability",
+                "performance and scale tuning",
+                "cloud cost and platform efficiency",
+            ],
+            "relevant_background": [
+                "distributed data services at ~580 TPS",
+                "monitoring and alerting for 24/7 workflows",
+                "optimized Spark and backend workflow performance",
+            ],
+            "selected_jd_signals": ["backend reliability", "platform efficiency"],
+            "selected_resume_signals": ["~580 TPS production services", "monitoring and alerting"],
+        }
+        output_path.write_text(json.dumps(payload), encoding="utf-8")
+        return subprocess.CompletedProcess(command, 0, stdout="{}", stderr="tokens used: 1111")
+
+    monkeypatch.setattr("job_hunt_copilot.outreach.subprocess.run", fake_run)
+
+    renderer = CodexRoleSplitOutreachDraftRenderer(
+        project_root=project_root,
+        codex_bin="codex",
+    )
+    result = generate_role_targeted_send_set_drafts(
+        connection,
+        project_root=project_root,
+        job_posting_id="jp_outreach",
+        current_time="2026-04-06T20:30:00Z",
+        local_timezone=ZoneInfo("UTC"),
+        renderer=renderer,
+    )
+
+    message = result.drafted_messages[0]
+    assert message.subject == "Interest in the Software Engineer – Engineer role at Qualcomm"
+    assert "#Software Engineer – Engineer" not in message.subject
+
+    connection.close()
 
 
 def test_send_execution_persists_sent_metadata_and_delays_remaining_wave(tmp_path: Path):
