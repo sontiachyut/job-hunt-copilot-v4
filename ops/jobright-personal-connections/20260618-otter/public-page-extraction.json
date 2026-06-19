@@ -1,0 +1,47 @@
+{
+  "captured_at": "2026-06-18T19:27:02+00:00",
+  "job_url": "https://jobright.ai/jobs/info/6a3335ccce501060b5ceca67",
+  "storage_state_path": null,
+  "fetch": {
+    "mode": "requests",
+    "http_status": 200,
+    "page_title": null,
+    "next_data_found": true
+  },
+  "job_summary": {
+    "title": "Software Engineer, Virality and Activation",
+    "company": "Otter.ai",
+    "location": "Mountain View, CA",
+    "salary": "$136K/yr - $185K/yr",
+    "original_job_post_url": null
+  },
+  "social_connections": [
+    {
+      "fullName": "Colton Davis",
+      "linkedinUrl": "https://www.linkedin.com/in/colton-davis-695422217/",
+      "companyName": "Otter.ai"
+    },
+    {
+      "fullName": "Angus Ng",
+      "linkedinUrl": "https://www.linkedin.com/in/ngangus/",
+      "companyName": "Otter.ai"
+    },
+    {
+      "fullName": "Cheng Yuan",
+      "linkedinUrl": "https://www.linkedin.com/in/cheng-yuan-3560835b/",
+      "companyName": "Otter.ai"
+    },
+    {
+      "fullName": "Hao Chiang",
+      "linkedinUrl": "https://www.linkedin.com/in/haomingchiang/",
+      "companyName": "Otter.ai"
+    },
+    {
+      "fullName": "Bisrat Moges",
+      "linkedinUrl": "https://www.linkedin.com/in/bisrat-moges/",
+      "companyName": "Otter.ai"
+    }
+  ],
+  "personal_social_connections": null,
+  "find_more_links": {}
+}

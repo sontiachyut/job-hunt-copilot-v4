@@ -1,0 +1,62 @@
+{
+  "captured_at": "2026-06-18T21:55:00Z",
+  "capture_method": "live_authenticated_comet_session",
+  "job_url": "https://jobright.ai/jobs/info/6a3335ccce501060b5ceca67",
+  "company": "Otter.ai",
+  "title": "Software Engineer, Virality and Activation",
+  "observations": {
+    "sso_password_login_supported_in_fresh_automation": false,
+    "existing_authenticated_browser_session_required": true,
+    "personal_social_connections_present": true,
+    "school_connections": [
+      {
+        "name": "Shreyas Aiyar",
+        "title": "Software Engineer",
+        "school": "Manipal Institute of Technology"
+      },
+      {
+        "name": "Ramesh T.",
+        "title": "Senior NLP / Deep Learning Researcher",
+        "school": "Arizona State University"
+      },
+      {
+        "name": "Colton Davis",
+        "title": "Technical Recruiter",
+        "school": "Arizona State University"
+      }
+    ],
+    "beyond_your_network_connections": [
+      {
+        "name": "Will Owen",
+        "title": "Software Engineer",
+        "company": "Otter.ai"
+      },
+      {
+        "name": "Yedi Wang",
+        "title": "Software Engineer",
+        "company": "Otter.ai"
+      },
+      {
+        "name": "Colton Davis",
+        "title": "Technical Recruiter",
+        "company": "Otter.ai"
+      },
+      {
+        "name": "Angus Ng",
+        "title": "Software Engineer",
+        "company": "Otter.ai"
+      },
+      {
+        "name": "Cheng Yuan",
+        "title": "Software Engineer",
+        "company": "Otter.ai"
+      }
+    ]
+  },
+  "notes": [
+    "The fresh SSO/password login path in automated browser contexts was rejected by the identity provider.",
+    "The personalized connection names were successfully recovered from the already-authenticated Comet browser session.",
+    "The company-side referral names were recovered from socialConnections on the live page state.",
+    "This observation proves the data is accessible in-session even when fresh automated login is blocked."
+  ]
+}

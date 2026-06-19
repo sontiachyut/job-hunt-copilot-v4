@@ -1,0 +1,58 @@
+{
+  "captured_at": "2026-06-18T19:10:00+00:00",
+  "job_url": "https://jobright.ai/jobs/info/6a3335ccce501060b5ceca67",
+  "company": "Otter.ai",
+  "title": "Software Engineer, Virality and Activation",
+  "logged_in_findings": {
+    "personal_social_connections_present": true,
+    "school_connections": [
+      {
+        "name": "Shreyas Aiyar",
+        "title": "Software Engineer",
+        "school": "Manipal Institute of Technology"
+      },
+      {
+        "name": "Ramesh T.",
+        "title": "Senior NLP / Deep Learning Researcher",
+        "school": "Arizona State University"
+      },
+      {
+        "name": "Colton Davis",
+        "title": "Technical Recruiter",
+        "school": "Arizona State University"
+      }
+    ],
+    "beyond_your_network_connections": [
+      {
+        "name": "Will Owen",
+        "title": "Software Engineer"
+      },
+      {
+        "name": "Yedi Wang",
+        "title": "Software Engineer"
+      },
+      {
+        "name": "Colton Davis",
+        "title": "Technical Recruiter"
+      },
+      {
+        "name": "Angus Ng",
+        "title": "Software Engineer"
+      },
+      {
+        "name": "Cheng Yuan",
+        "title": "Software Engineer"
+      }
+    ],
+    "linkedin_search_links": {
+      "school": "https://www.linkedin.com/search/results/people/?currentCompany=35593855&schoolFilter=%5B%228992884%22%2C%22577550%22%2C%224292%22%5D",
+      "previous_company": "https://www.linkedin.com/search/results/people/?currentCompany=35593855&pastCompany=%5B%2211115%22%2C%224292%22%5D",
+      "role_keyword": "https://www.linkedin.com/search/results/people/?currentCompany=35593855&keywords=Software%20Engineer%2C%20Virality%20and%20Activation"
+    }
+  },
+  "notes": [
+    "This sample was captured from the live logged-in page, not from the public anonymous page.",
+    "Direct LinkedIn profile URLs and direct email values for the personalized people were not yet extracted in this pass.",
+    "The presence of personalized connections in page state was verified via a one-off javascript extractor that found one personalSocialConnections object."
+  ]
+}
