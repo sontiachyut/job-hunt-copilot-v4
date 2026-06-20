@@ -4,11 +4,16 @@
 from __future__ import annotations
 
 import argparse
+import asyncio
 import json
+import urllib.parse
 import sys
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
+
+import requests
+import websockets
 
 
 def parse_args() -> argparse.Namespace:
@@ -146,55 +151,144 @@ EXTRACT_JS = r"""
 """
 
 
-def build_storage_state_fallback(context: Any, pages: list[Any]) -> dict[str, Any]:
-    cookies = context.cookies()
-    origins: list[dict[str, Any]] = []
-    seen: set[str] = set()
+LOCAL_STORAGE_JS = r"""
+() => {
+  try {
+    return Object.entries(localStorage).map(([name, value]) => ({ name, value }));
+  } catch (error) {
+    return [];
+  }
+}
+"""
 
-    for page in pages:
-        try:
-            origin = page.evaluate("location.origin")
-        except Exception:
-            continue
-        if not origin or origin in seen:
-            continue
-        seen.add(origin)
-        try:
-            local_storage = page.evaluate(
-                "() => Object.entries(localStorage).map(([name, value]) => ({ name, value }))"
+
+def http_get_json(url: str) -> Any:
+    response = requests.get(url, timeout=30)
+    response.raise_for_status()
+    return response.json()
+
+
+def http_put_json(url: str) -> Any:
+    response = requests.put(url, timeout=30)
+    response.raise_for_status()
+    return response.json()
+
+
+def list_tabs(cdp_url: str) -> list[dict[str, Any]]:
+    return http_get_json(f"{cdp_url.rstrip('/')}/json/list")
+
+
+def get_or_create_tab(cdp_url: str, job_url: str) -> dict[str, Any]:
+    for tab in list_tabs(cdp_url):
+        if tab.get("type") == "page" and tab.get("url", "").startswith(job_url):
+            return tab
+
+    quoted = urllib.parse.quote(job_url, safe="")
+    return http_put_json(f"{cdp_url.rstrip('/')}/json/new?{quoted}")
+
+
+async def cdp_call(
+    ws: websockets.ClientConnection,
+    method: str,
+    params: dict[str, Any] | None = None,
+    request_id_ref: list[int] | None = None,
+) -> dict[str, Any]:
+    if request_id_ref is None:
+        request_id_ref = [0]
+    request_id_ref[0] += 1
+    request_id = request_id_ref[0]
+    payload: dict[str, Any] = {"id": request_id, "method": method}
+    if params:
+        payload["params"] = params
+    await ws.send(json.dumps(payload))
+    while True:
+        raw = await ws.recv()
+        message = json.loads(raw)
+        if message.get("id") == request_id:
+            return message
+
+
+def get_result_value(response: dict[str, Any]) -> Any:
+    return response.get("result", {}).get("result", {}).get("value")
+
+
+async def capture_via_raw_cdp(
+    ws_url: str,
+    job_url: str,
+    timeout_seconds: int,
+) -> tuple[dict[str, Any], dict[str, Any]]:
+    async with websockets.connect(ws_url, max_size=10_000_000) as ws:
+        request_id_ref = [0]
+
+        await cdp_call(ws, "Page.enable", request_id_ref=request_id_ref)
+        await cdp_call(ws, "Runtime.enable", request_id_ref=request_id_ref)
+        await cdp_call(ws, "Network.enable", request_id_ref=request_id_ref)
+
+        state = ""
+        for _ in range(timeout_seconds):
+            response = await cdp_call(
+                ws,
+                "Runtime.evaluate",
+                {"expression": "document.readyState", "returnByValue": True},
+                request_id_ref=request_id_ref,
             )
-        except Exception:
-            local_storage = []
-        origins.append({"origin": origin, "localStorage": local_storage})
+            state = get_result_value(response) or ""
+            if state == "complete":
+                break
+            await asyncio.sleep(1)
 
-    return {"cookies": cookies, "origins": origins}
-
-
-def main() -> int:
-    args = parse_args()
-
-    try:
-        from playwright.sync_api import sync_playwright
-    except ImportError:
-        sys.stderr.write(
-            "Playwright is not installed.\n"
-            "Install with:\n"
-            "  python3 -m pip install playwright\n"
-            "  python3 -m playwright install chromium\n"
+        extracted_response = await cdp_call(
+            ws,
+            "Runtime.evaluate",
+            {"expression": EXTRACT_JS, "returnByValue": True},
+            request_id_ref=request_id_ref,
         )
-        return 2
+        extracted = get_result_value(extracted_response) or {}
+        extracted["capturedAt"] = now_utc()
+        extracted["jobUrl"] = job_url
 
-    storage_output = ensure_parent(args.storage_output)
-    connections_output = ensure_parent(args.connections_output)
+        cookies_response = await cdp_call(
+            ws,
+            "Network.getCookies",
+            {"urls": [job_url]},
+            request_id_ref=request_id_ref,
+        )
+        cookies = cookies_response.get("result", {}).get("cookies", [])
+
+        origin_response = await cdp_call(
+            ws,
+            "Runtime.evaluate",
+            {"expression": "location.origin", "returnByValue": True},
+            request_id_ref=request_id_ref,
+        )
+        origin = get_result_value(origin_response)
+
+        local_storage_response = await cdp_call(
+            ws,
+            "Runtime.evaluate",
+            {"expression": LOCAL_STORAGE_JS, "returnByValue": True},
+            request_id_ref=request_id_ref,
+        )
+        local_storage = get_result_value(local_storage_response) or []
+
+        storage_state = {
+            "cookies": cookies,
+            "origins": [{"origin": origin, "localStorage": local_storage}] if origin else [],
+        }
+
+        return extracted, storage_state
+
+
+def capture_with_playwright(args: argparse.Namespace) -> tuple[dict[str, Any], dict[str, Any]]:
+    from playwright.sync_api import sync_playwright
 
     with sync_playwright() as playwright:
         browser = playwright.chromium.connect_over_cdp(args.cdp_url)
         if not browser.contexts:
-            sys.stderr.write(
+            raise RuntimeError(
                 f"No browser contexts found at {args.cdp_url}. "
-                "Launch Chrome with --remote-debugging-port first.\n"
+                "Launch Chrome with --remote-debugging-port first."
             )
-            return 3
 
         context = browser.contexts[0]
         page = None
@@ -220,15 +314,48 @@ def main() -> int:
         extracted = page.evaluate(EXTRACT_JS)
         extracted["capturedAt"] = now_utc()
         extracted["jobUrl"] = args.job_url
-
-        try:
-            state = context.storage_state()
-        except Exception:
-            state = build_storage_state_fallback(context, context.pages)
-
-        storage_output.write_text(json.dumps(state, indent=2) + "\n", encoding="utf-8")
-        connections_output.write_text(json.dumps(extracted, indent=2) + "\n", encoding="utf-8")
+        storage_state = context.storage_state()
         browser.close()
+        return extracted, storage_state
+
+
+def main() -> int:
+    args = parse_args()
+
+    storage_output = ensure_parent(args.storage_output)
+    connections_output = ensure_parent(args.connections_output)
+
+    extracted: dict[str, Any]
+    state: dict[str, Any]
+    playwright_error: Exception | None = None
+
+    try:
+        extracted, state = capture_with_playwright(args)
+    except ImportError as error:
+        playwright_error = error
+    except Exception as error:
+        playwright_error = error
+
+    if playwright_error is not None:
+        tab = get_or_create_tab(args.cdp_url, args.job_url)
+        ws_url = tab.get("webSocketDebuggerUrl")
+        if not ws_url:
+            sys.stderr.write(f"Could not resolve a page websocket from {args.cdp_url}.\n")
+            if isinstance(playwright_error, ImportError):
+                sys.stderr.write(
+                    "Playwright is not installed.\n"
+                    "Install with:\n"
+                    "  python3 -m pip install playwright\n"
+                    "  python3 -m playwright install chromium\n"
+                )
+            else:
+                sys.stderr.write(f"Playwright CDP attach failed: {playwright_error}\n")
+            return 2
+
+        extracted, state = asyncio.run(capture_via_raw_cdp(ws_url, args.job_url, args.timeout_seconds))
+
+    storage_output.write_text(json.dumps(state, indent=2) + "\n", encoding="utf-8")
+    connections_output.write_text(json.dumps(extracted, indent=2) + "\n", encoding="utf-8")
 
     print(f"Wrote storage state to {storage_output}")
     print(f"Wrote connections snapshot to {connections_output}")

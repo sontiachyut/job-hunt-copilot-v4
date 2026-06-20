@@ -15,6 +15,7 @@ Saved artifacts in this folder:
 - `public-page-extraction.json` — actual extractor output from the anonymous public page
 - `otter-software-engineer-virality-and-activation.sample.json` — curated sample of the logged-in personalized findings captured during the live investigation
 - `comet-authenticated-session-observed.json` — authenticated extraction notes captured from the real signed-in Comet session after the fresh SSO login path was rejected
+- `comet-cookie-replay-extraction.json` — sanitized extraction captured by replaying the logged-in Comet session cookies without MCP or Computer Use
 
 ## What Was Confirmed
 
@@ -70,6 +71,31 @@ Fresh automated login was blocked for the school-backed SSO flow. Entering the s
 
 That did **not** block extraction from an already-authenticated browser session. Using the signed-in Comet tab for the same Otter job, the live page state still exposed the personalized data needed for extraction.
 
+### Comet cookie replay confirmed
+
+The terminal-only replay path now works too.
+
+Using:
+
+- the logged-in Comet profile on disk
+- the Keychain-backed `Comet Safe Storage` secret
+- the encrypted `.jobright.ai` `SESSION_ID` cookie
+
+the project was able to replay the Jobright session with plain `requests` and extract personalized data from the returned `__NEXT_DATA__` payload.
+
+That means the personalized connections can be fetched **without**:
+
+- MCP
+- Computer Use
+- fresh automated browser login
+
+The working terminal path is now:
+
+1. read the Comet Jobright cookies from the local browser profile
+2. decrypt them with the `Comet Safe Storage` key from macOS Keychain
+3. replay the Jobright job request
+4. parse `personalSocialConnections` from the page payload
+
 ## Personalized Connections Captured
 
 ### From Your School
@@ -85,6 +111,14 @@ That did **not** block extraction from an already-authenticated browser session.
 - `Colton Davis` — `Technical Recruiter`
 - `Angus Ng` — `Software Engineer`
 - `Cheng Yuan` — `Software Engineer`
+
+### Terminal replay capture
+
+The cookie replay extraction preserved direct LinkedIn URLs for the personalized school connections:
+
+- `Shreyas Aiyar` — `https://www.linkedin.com/in/shreyas-aiyar/`
+- `Ramesh T.` — `https://www.linkedin.com/in/rthul/`
+- `Colton Davis` — `https://www.linkedin.com/in/colton-davis-695422217/`
 
 ### Find More Connections links observed in the logged-in UI
 
@@ -159,6 +193,15 @@ The repo now has three prototype scripts:
    - extract the personalized names from live page state or rendered cards
    - this is what `comet-authenticated-session-observed.json` documents
 
+5. `scripts/ops/jobright_extract_from_comet_session.py`
+   - reads the logged-in Comet browser profile directly
+   - retrieves the `Comet Safe Storage` secret from macOS Keychain
+   - decrypts the Jobright `SESSION_ID` cookie
+   - replays the Jobright request with plain HTTP
+   - extracts `social_connections` and `personal_social_connections`
+   - writes only sanitized output JSON, not raw auth state
+   - may trigger a one-time macOS Keychain permission prompt for `Comet Safe Storage`
+
 Validation already completed:
 
 ```bash
@@ -170,6 +213,10 @@ python3 -m py_compile \
 python3 scripts/ops/jobright_extract_connections.py \
   --job-url https://jobright.ai/jobs/info/6a3335ccce501060b5ceca67 \
   --output ops/jobright-personal-connections/20260618-otter/public-page-extraction.json
+
+python3 scripts/ops/jobright_extract_from_comet_session.py \
+  --job-url https://jobright.ai/jobs/info/6a3335ccce501060b5ceca67 \
+  --output ops/jobright-personal-connections/20260618-otter/comet-cookie-replay-extraction.json
 ```
 
 ## Suggested Usage
@@ -199,14 +246,23 @@ python3 scripts/ops/jobright_extract_connections.py \
   --output ops/jobright-personal-connections/20260618-otter/extracted-from-session.json
 ```
 
+Or, if your real logged-in browser session is in Comet and you do not want any browser automation:
+
+```bash
+python3 scripts/ops/jobright_extract_from_comet_session.py \
+  --job-url https://jobright.ai/jobs/info/6a3335ccce501060b5ceca67 \
+  --output ops/jobright-personal-connections/20260618-otter/comet-cookie-replay-extraction.json
+```
+
 ## Why This Matters For The Spec
 
 This investigation establishes these likely spec requirements:
 
 1. Jobright can be treated as a rich lead-discovery and enrichment source.
 2. Personalized connection data is gated behind authentication and should not rely on Computer Use in production.
-3. The preferred runtime shape is:
-   - saved authenticated session from a real browser
+3. A logged-in browser session can be reused by replaying the encrypted session cookies; no UI automation is required for the steady-state extractor.
+4. The preferred runtime shape is:
+   - existing logged-in browser session
    - lightweight HTTP extraction first
-   - browser fallback only if needed
-4. Jobright should still be treated as a discovery/enrichment layer, not necessarily the final authoritative employer posting source.
+   - browser/CDP fallback only if needed
+5. Jobright should still be treated as a discovery/enrichment layer, not necessarily the final authoritative employer posting source.

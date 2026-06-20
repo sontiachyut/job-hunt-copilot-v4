@@ -1,0 +1,71 @@
+{
+  "captured_at": "2026-06-20T22:21:13+00:00",
+  "job_url": "https://jobright.ai/jobs/info/6a3335ccce501060b5ceca67",
+  "source_profile": {
+    "browser": "Comet",
+    "comet_root": "/Users/achyutaramsonti/Library/Application Support/Comet",
+    "profile_name": "Default",
+    "mode": "comet_cookie_replay"
+  },
+  "fetch": {
+    "mode": "requests",
+    "http_status": 200,
+    "page_title": "Software Engineer, Virality and Activation @ Otter.ai | Jobright.ai",
+    "next_data_found": true
+  },
+  "job_summary": {
+    "title": "Software Engineer, Virality and Activation",
+    "company": "Otter.ai",
+    "location": "Mountain View, CA",
+    "salary": "$136K/yr - $185K/yr",
+    "original_job_post_url": null
+  },
+  "social_connections": [
+    {
+      "fullName": "Will Owen",
+      "linkedinUrl": "https://www.linkedin.com/in/will-m-owen/",
+      "companyName": "Otter.ai"
+    },
+    {
+      "fullName": "Yedi Wang",
+      "linkedinUrl": "https://www.linkedin.com/in/yediwang/",
+      "companyName": "Otter.ai"
+    },
+    {
+      "fullName": "Colton Davis",
+      "linkedinUrl": "https://www.linkedin.com/in/colton-davis-695422217/",
+      "companyName": "Otter.ai"
+    },
+    {
+      "fullName": "Angus Ng",
+      "linkedinUrl": "https://www.linkedin.com/in/ngangus/",
+      "companyName": "Otter.ai"
+    },
+    {
+      "fullName": "Cheng Yuan",
+      "linkedinUrl": "https://www.linkedin.com/in/cheng-yuan-3560835b/",
+      "companyName": "Otter.ai"
+    }
+  ],
+  "personal_social_connections": {
+    "company": [],
+    "school": [
+      {
+        "fullName": "Shreyas Aiyar",
+        "linkedinUrl": "https://www.linkedin.com/in/shreyas-aiyar/",
+        "companyName": "Otter.ai"
+      },
+      {
+        "fullName": "Ramesh T.",
+        "linkedinUrl": "https://www.linkedin.com/in/rthul/",
+        "companyName": "Otter.ai"
+      },
+      {
+        "fullName": "Colton Davis",
+        "linkedinUrl": "https://www.linkedin.com/in/colton-davis-695422217/",
+        "companyName": "Otter.ai"
+      }
+    ]
+  },
+  "find_more_links": {}
+}
