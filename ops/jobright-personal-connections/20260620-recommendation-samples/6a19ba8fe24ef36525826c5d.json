@@ -1,0 +1,67 @@
+{
+  "captured_at": "2026-06-20T23:03:47+00:00",
+  "job_url": "https://jobright.ai/jobs/info/6a19ba8fe24ef36525826c5d",
+  "source_profile": {
+    "browser": "Comet",
+    "comet_root": "/Users/achyutaramsonti/Library/Application Support/Comet",
+    "profile_name": "Default",
+    "mode": "comet_cookie_replay"
+  },
+  "fetch": {
+    "mode": "requests",
+    "http_status": 200,
+    "page_title": null,
+    "next_data_found": true
+  },
+  "job_summary": {
+    "title": "Software Engineer, Migrations Engineering",
+    "company": "Ridgeline",
+    "location": "Reno, NV",
+    "salary": "$153K/yr - $191K/yr",
+    "original_job_post_url": null
+  },
+  "social_connections": [
+    {
+      "fullName": "Yicheng Jin",
+      "linkedinUrl": "https://www.linkedin.com/in/yicheng-jin-83ab8831/",
+      "companyName": "Ridgeline"
+    },
+    {
+      "fullName": "Sterling Hamilton",
+      "linkedinUrl": "https://www.linkedin.com/in/sterlinghamilton/",
+      "companyName": "Ridgeline"
+    },
+    {
+      "fullName": "Jim Turbek",
+      "linkedinUrl": "https://www.linkedin.com/in/turbek/",
+      "companyName": "Ridgeline"
+    },
+    {
+      "fullName": "Adriene Mashoian",
+      "linkedinUrl": "https://www.linkedin.com/in/adrienemashoian/",
+      "companyName": "Ridgeline"
+    },
+    {
+      "fullName": "Mark Funari",
+      "linkedinUrl": "https://www.linkedin.com/in/markfunari/",
+      "companyName": "Ridgeline"
+    }
+  ],
+  "personal_social_connections": {
+    "company": [
+      {
+        "fullName": "Adithya Nagaraj Tirumale",
+        "linkedinUrl": "https://www.linkedin.com/in/aditnaga/",
+        "companyName": "Ridgeline"
+      }
+    ],
+    "school": [
+      {
+        "fullName": "Chelsea Enea",
+        "linkedinUrl": "https://www.linkedin.com/in/chelsea-enea/",
+        "companyName": "Ridgeline"
+      }
+    ]
+  },
+  "find_more_links": {}
+}

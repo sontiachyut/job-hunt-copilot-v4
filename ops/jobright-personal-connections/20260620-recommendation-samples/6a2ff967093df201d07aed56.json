@@ -1,0 +1,40 @@
+{
+  "captured_at": "2026-06-20T23:03:48+00:00",
+  "job_url": "https://jobright.ai/jobs/info/6a2ff967093df201d07aed56",
+  "source_profile": {
+    "browser": "Comet",
+    "comet_root": "/Users/achyutaramsonti/Library/Application Support/Comet",
+    "profile_name": "Default",
+    "mode": "comet_cookie_replay"
+  },
+  "fetch": {
+    "mode": "requests",
+    "http_status": 200,
+    "page_title": null,
+    "next_data_found": true
+  },
+  "job_summary": {
+    "title": "Software Engineer-Data Engineering, Machine Learning (ML)",
+    "company": "AAMVA (American Association of Motor Vehicle Administrators)",
+    "location": "Arlington, VA",
+    "salary": null,
+    "original_job_post_url": null
+  },
+  "social_connections": [
+    {
+      "fullName": "Emily Pura",
+      "linkedinUrl": "https://www.linkedin.com/in/emily-pura-b17b1b5/",
+      "companyName": "AAMVA (American Association of Motor Vehicle Administrators)"
+    },
+    {
+      "fullName": "Eileen Lombardo",
+      "linkedinUrl": "https://www.linkedin.com/in/eileenlombardo/",
+      "companyName": "AAMVA (American Association of Motor Vehicle Administrators)"
+    }
+  ],
+  "personal_social_connections": {
+    "company": [],
+    "school": []
+  },
+  "find_more_links": {}
+}

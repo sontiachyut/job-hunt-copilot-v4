@@ -1,0 +1,55 @@
+{
+  "captured_at": "2026-06-20T23:03:29+00:00",
+  "job_url": "https://jobright.ai/jobs/info/6a0708bd078fec52738a750d",
+  "source_profile": {
+    "browser": "Comet",
+    "comet_root": "/Users/achyutaramsonti/Library/Application Support/Comet",
+    "profile_name": "Default",
+    "mode": "comet_cookie_replay"
+  },
+  "fetch": {
+    "mode": "requests",
+    "http_status": 200,
+    "page_title": null,
+    "next_data_found": true
+  },
+  "job_summary": {
+    "title": "Software Engineer - Core Platform",
+    "company": "Pave",
+    "location": "San Francisco, CA",
+    "salary": "$141K/yr - $191K/yr",
+    "original_job_post_url": null
+  },
+  "social_connections": [
+    {
+      "fullName": "Max Engel",
+      "linkedinUrl": "https://www.linkedin.com/in/maxwellengel/",
+      "companyName": "Pave"
+    },
+    {
+      "fullName": "Mike McGowan",
+      "linkedinUrl": "https://www.linkedin.com/in/mikedmcgowan/",
+      "companyName": "Pave"
+    },
+    {
+      "fullName": "Tina R.",
+      "linkedinUrl": "https://www.linkedin.com/in/tina-r-58725310a/",
+      "companyName": "Pave"
+    },
+    {
+      "fullName": "Trevor Puccini",
+      "linkedinUrl": "https://www.linkedin.com/in/trevorpuccini/",
+      "companyName": "Pave"
+    },
+    {
+      "fullName": "Ian Ebinger",
+      "linkedinUrl": "https://www.linkedin.com/in/ianebinger/",
+      "companyName": "Pave"
+    }
+  ],
+  "personal_social_connections": {
+    "company": [],
+    "school": []
+  },
+  "find_more_links": {}
+}

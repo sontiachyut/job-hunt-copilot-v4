@@ -1,0 +1,79 @@
+[
+  {
+    "job_url": "https://jobright.ai/jobs/info/6926610027bf2f41a2c45abb",
+    "title": "Backend/AI Engineer",
+    "company": "Reducto",
+    "social_count": 1,
+    "school_personal_count": 0,
+    "company_personal_count": 0,
+    "school_names": [],
+    "company_names": []
+  },
+  {
+    "job_url": "https://jobright.ai/jobs/info/69e191d9fd1c0456f3faecfb",
+    "title": "Software Engineer II",
+    "company": "Kensho Technologies",
+    "social_count": 5,
+    "school_personal_count": 0,
+    "company_personal_count": 0,
+    "school_names": [],
+    "company_names": []
+  },
+  {
+    "job_url": "https://jobright.ai/jobs/info/6a0708bd078fec52738a750d",
+    "title": "Software Engineer - Core Platform",
+    "company": "Pave",
+    "social_count": 5,
+    "school_personal_count": 0,
+    "company_personal_count": 0,
+    "school_names": [],
+    "company_names": []
+  },
+  {
+    "job_url": "https://jobright.ai/jobs/info/6a36f2d129c90c607e4e5c81",
+    "title": "Staff Software Engineers",
+    "company": "Delart",
+    "social_count": 4,
+    "school_personal_count": 0,
+    "company_personal_count": 0,
+    "school_names": [],
+    "company_names": []
+  },
+  {
+    "job_url": "https://jobright.ai/jobs/info/69fd5a0bad691a11f34e89a0",
+    "title": "Software Engineer",
+    "company": "Ivo",
+    "social_count": 5,
+    "school_personal_count": 2,
+    "company_personal_count": 0,
+    "school_names": [
+      "Caitlan R.",
+      "Rebecca Lynn Baldwin"
+    ],
+    "company_names": []
+  },
+  {
+    "job_url": "https://jobright.ai/jobs/info/6a19ba8fe24ef36525826c5d",
+    "title": "Software Engineer, Migrations Engineering",
+    "company": "Ridgeline",
+    "social_count": 5,
+    "school_personal_count": 1,
+    "company_personal_count": 1,
+    "school_names": [
+      "Chelsea Enea"
+    ],
+    "company_names": [
+      "Adithya Nagaraj Tirumale"
+    ]
+  },
+  {
+    "job_url": "https://jobright.ai/jobs/info/6a2ff967093df201d07aed56",
+    "title": "Software Engineer-Data Engineering, Machine Learning (ML)",
+    "company": "AAMVA (American Association of Motor Vehicle Administrators)",
+    "social_count": 2,
+    "school_personal_count": 0,
+    "company_personal_count": 0,
+    "school_names": [],
+    "company_names": []
+  }
+]

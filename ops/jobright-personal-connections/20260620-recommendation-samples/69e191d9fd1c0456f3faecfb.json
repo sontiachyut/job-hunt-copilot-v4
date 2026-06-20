@@ -1,0 +1,55 @@
+{
+  "captured_at": "2026-06-20T23:03:28+00:00",
+  "job_url": "https://jobright.ai/jobs/info/69e191d9fd1c0456f3faecfb",
+  "source_profile": {
+    "browser": "Comet",
+    "comet_root": "/Users/achyutaramsonti/Library/Application Support/Comet",
+    "profile_name": "Default",
+    "mode": "comet_cookie_replay"
+  },
+  "fetch": {
+    "mode": "requests",
+    "http_status": 200,
+    "page_title": null,
+    "next_data_found": true
+  },
+  "job_summary": {
+    "title": "Software Engineer II",
+    "company": "Kensho Technologies",
+    "location": "New York, NY",
+    "salary": "$130K/yr - $175K/yr",
+    "original_job_post_url": null
+  },
+  "social_connections": [
+    {
+      "fullName": "Michelle K.",
+      "linkedinUrl": "https://www.linkedin.com/in/michelle-keoy/",
+      "companyName": "Kensho Technologies"
+    },
+    {
+      "fullName": "Bryce Richards",
+      "linkedinUrl": "https://www.linkedin.com/in/bryce-richards-9561a1259/",
+      "companyName": "Kensho Technologies"
+    },
+    {
+      "fullName": "Bryan Menduke",
+      "linkedinUrl": "https://www.linkedin.com/in/bryan-menduke-68130158/",
+      "companyName": "Kensho Technologies"
+    },
+    {
+      "fullName": "Ariana (Tuccelli) Donovan",
+      "linkedinUrl": "https://www.linkedin.com/in/ariana-tuccelli-donovan-56098152/",
+      "companyName": "Kensho Technologies"
+    },
+    {
+      "fullName": "Caleb Howe",
+      "linkedinUrl": "https://www.linkedin.com/in/caleb-howe-72766580/",
+      "companyName": "Kensho Technologies"
+    }
+  ],
+  "personal_social_connections": {
+    "company": [],
+    "school": []
+  },
+  "find_more_links": {}
+}

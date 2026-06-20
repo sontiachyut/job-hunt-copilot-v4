@@ -1,0 +1,35 @@
+{
+  "captured_at": "2026-06-20T23:03:27+00:00",
+  "job_url": "https://jobright.ai/jobs/info/6926610027bf2f41a2c45abb",
+  "source_profile": {
+    "browser": "Comet",
+    "comet_root": "/Users/achyutaramsonti/Library/Application Support/Comet",
+    "profile_name": "Default",
+    "mode": "comet_cookie_replay"
+  },
+  "fetch": {
+    "mode": "requests",
+    "http_status": 200,
+    "page_title": null,
+    "next_data_found": true
+  },
+  "job_summary": {
+    "title": "Backend/AI Engineer",
+    "company": "Reducto",
+    "location": "San Francisco, CA",
+    "salary": null,
+    "original_job_post_url": null
+  },
+  "social_connections": [
+    {
+      "fullName": "Fernanda Scheibner",
+      "linkedinUrl": "https://www.linkedin.com/in/fernandascheibner/",
+      "companyName": "Reducto"
+    }
+  ],
+  "personal_social_connections": {
+    "company": [],
+    "school": []
+  },
+  "find_more_links": {}
+}

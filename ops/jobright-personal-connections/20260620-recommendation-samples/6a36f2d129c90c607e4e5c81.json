@@ -1,0 +1,50 @@
+{
+  "captured_at": "2026-06-20T23:03:30+00:00",
+  "job_url": "https://jobright.ai/jobs/info/6a36f2d129c90c607e4e5c81",
+  "source_profile": {
+    "browser": "Comet",
+    "comet_root": "/Users/achyutaramsonti/Library/Application Support/Comet",
+    "profile_name": "Default",
+    "mode": "comet_cookie_replay"
+  },
+  "fetch": {
+    "mode": "requests",
+    "http_status": 200,
+    "page_title": null,
+    "next_data_found": true
+  },
+  "job_summary": {
+    "title": "Staff Software Engineers",
+    "company": "Delart",
+    "location": "Sunnyvale, California",
+    "salary": "$150K/yr - $180K/yr",
+    "original_job_post_url": null
+  },
+  "social_connections": [
+    {
+      "fullName": "Marija Stojkovic",
+      "linkedinUrl": "https://www.linkedin.com/in/marija-stojkovic-a90465162/",
+      "companyName": "Delart"
+    },
+    {
+      "fullName": "Partha Yashraj",
+      "linkedinUrl": "https://www.linkedin.com/in/partha-yashraj/",
+      "companyName": "Delart"
+    },
+    {
+      "fullName": "Marshall Porter",
+      "linkedinUrl": "https://www.linkedin.com/in/meop/",
+      "companyName": "Delart"
+    },
+    {
+      "fullName": "Abhishek Kalagoudra",
+      "linkedinUrl": "https://www.linkedin.com/in/abhishek-kalagoudra-11467a7/",
+      "companyName": "Delart"
+    }
+  ],
+  "personal_social_connections": {
+    "company": [],
+    "school": []
+  },
+  "find_more_links": {}
+}

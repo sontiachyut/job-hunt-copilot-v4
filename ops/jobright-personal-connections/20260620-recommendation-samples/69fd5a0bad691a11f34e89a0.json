@@ -1,0 +1,66 @@
+{
+  "captured_at": "2026-06-20T23:03:46+00:00",
+  "job_url": "https://jobright.ai/jobs/info/69fd5a0bad691a11f34e89a0",
+  "source_profile": {
+    "browser": "Comet",
+    "comet_root": "/Users/achyutaramsonti/Library/Application Support/Comet",
+    "profile_name": "Default",
+    "mode": "comet_cookie_replay"
+  },
+  "fetch": {
+    "mode": "requests",
+    "http_status": 200,
+    "page_title": null,
+    "next_data_found": true
+  },
+  "job_summary": {
+    "title": "Software Engineer",
+    "company": "Ivo",
+    "location": "San Francisco,CA,US",
+    "salary": "$120K/yr - $190K/yr",
+    "original_job_post_url": null
+  },
+  "social_connections": [
+    {
+      "fullName": "Dylan Fridman",
+      "linkedinUrl": "https://www.linkedin.com/in/dylan-fridman/",
+      "companyName": "Ivo"
+    },
+    {
+      "fullName": "Sebastian Schweigert",
+      "linkedinUrl": "https://www.linkedin.com/in/sebastian-schweigert/",
+      "companyName": "Ivo"
+    },
+    {
+      "fullName": "Muskaan Bawa",
+      "linkedinUrl": "https://www.linkedin.com/in/muskaan-bawa/",
+      "companyName": "Ivo"
+    },
+    {
+      "fullName": "Cole Petkevich",
+      "linkedinUrl": "https://www.linkedin.com/in/cole-petkevich/",
+      "companyName": "Ivo"
+    },
+    {
+      "fullName": "Bill Li",
+      "linkedinUrl": "https://www.linkedin.com/in/bill-li1/",
+      "companyName": "Ivo"
+    }
+  ],
+  "personal_social_connections": {
+    "company": [],
+    "school": [
+      {
+        "fullName": "Caitlan R.",
+        "linkedinUrl": "https://www.linkedin.com/in/caitlanrocha/",
+        "companyName": "Ivo"
+      },
+      {
+        "fullName": "Rebecca Lynn Baldwin",
+        "linkedinUrl": "https://www.linkedin.com/in/rebeccalbaldwin/",
+        "companyName": "Ivo"
+      }
+    ]
+  },
+  "find_more_links": {}
+}
