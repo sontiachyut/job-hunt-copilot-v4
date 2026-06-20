@@ -61,18 +61,16 @@ MAX_INTER_SEND_GAP_MINUTES = 10
 JOB_HUNT_COPILOT_REPO_URL = "https://github.com/sontiachyut/job-hunt-copilot-v4"
 TECHNICAL_PATH_SUBJECT = "Learning from your career path"
 TECHNICAL_PATH_PARAGRAPH_2 = (
-    "I recently graduated from ASU with an MS in Computer Science. "
-    "I also have about three years of experience building large-scale systems, "
-    "including distributed high-availability data services in Python and Scala on Azure "
-    "that handled ~580 TPS in production while maintaining 99.95% uptime."
+    "I recently graduated from ASU with an MS in Computer Science, and in my recent work I built "
+    "distributed Python and Scala data services on Azure that handled ~580 TPS in production while "
+    "maintaining 99.95% uptime."
 )
 TECHNICAL_PATH_PARAGRAPH_3_TEMPLATE = (
     "I also built Job Hunt Copilot ({repo_url}), an AI workflow automation tool for my own job search "
-    "that I've been shaping with production use in mind."
+    "that has pushed me to think carefully about product design, reliability, and real-world use."
 )
 TECHNICAL_PATH_PARAGRAPH_4 = (
-    "I'm currently exploring opportunities, and I'd really value your guidance. "
-    "If you're open to it, I'd appreciate a brief 10-minute conversation sometime in the next week or two."
+    "If you're open to it, I'd appreciate a brief 10-minute conversation to hear how you approached this kind of work and what helped you grow into it."
 )
 MANAGERIAL_PATH_OPENER_SENTENCE_1 = "I hope you're doing well."
 MANAGERIAL_PATH_OPENER_SENTENCE_3 = (
@@ -104,6 +102,19 @@ _CANDIDATE_STATE_SAME_COMPANY_SENT = "same_company_sent"
 _CANDIDATE_STATE_UNAVAILABLE = "unavailable"
 
 OUTREACH_MODE_ROLE_TARGETED = "role_targeted"
+TECHNICAL_PATH_LINT_BLOCK_PHRASES: tuple[str, ...] = (
+    "this email is a live example of that autonomous workflow",
+    "human-in-the-loop",
+    "(hitl)",
+    "weekdays between",
+    "i'm usually free",
+    "flexible outside that too",
+)
+ROLE_TARGETED_PLAIN_TEXT_MARKDOWN_MARKERS: tuple[str, ...] = ("**",)
+ROLE_TARGETED_ORIGINAL_WORD_LIMITS: Mapping[str, int] = {
+    "technical": 210,
+    "managerial": 230,
+}
 _MANAGERIAL_RELEVANCE_STOPWORDS = frozenset(
     {
         "and",
@@ -2930,6 +2941,7 @@ def generate_role_targeted_send_set_drafts(
                 tailoring_inputs=tailoring_inputs,
             )
             rendered = draft_renderer.render_role_targeted(context)
+            _validate_role_targeted_original_rendered_draft(rendered, context=context)
         except Exception as exc:
             failure = _persist_failed_draft_attempt(
                 connection,
@@ -3021,6 +3033,7 @@ def refresh_role_targeted_generated_drafts(
                 tailoring_inputs=tailoring_inputs,
             )
             rendered = draft_renderer.render_role_targeted(context)
+            _validate_role_targeted_original_rendered_draft(rendered, context=context)
         except Exception as exc:
             _persist_blocked_send(
                 connection,
@@ -7712,6 +7725,64 @@ def _validate_role_targeted_composition_plan(
             raise OutreachDraftingError(
                 f"Role-targeted composition failed quality validation for pattern `{pattern.pattern}`."
             )
+
+
+def _word_count(text: str) -> int:
+    return len(re.findall(r"\b\w+\b", text))
+
+
+def _contains_disallowed_control_character(text: str) -> bool:
+    return any(ord(character) < 32 and character not in "\n\r\t" for character in text) or any(
+        ord(character) == 127 for character in text
+    )
+
+
+def _validate_role_targeted_original_rendered_draft(
+    rendered: RenderedDraft,
+    *,
+    context: RoleTargetedDraftContext,
+) -> None:
+    drafting_path = None
+    if isinstance(rendered.debug_payload, Mapping):
+        candidate = rendered.debug_payload.get("drafting_path")
+        if isinstance(candidate, str):
+            drafting_path = candidate.strip().lower()
+    if drafting_path not in {"technical", "managerial"}:
+        return
+    recipient_path = drafting_path
+    subject = rendered.subject.strip()
+    body_text = rendered.body_markdown
+    body_html = rendered.body_html or ""
+    if not subject:
+        raise OutreachDraftingError("Role-targeted rendered draft is missing a subject.")
+    if not body_text.strip():
+        raise OutreachDraftingError("Role-targeted rendered draft is missing a plain-text body.")
+    if _contains_disallowed_control_character(subject) or _contains_disallowed_control_character(body_text):
+        raise OutreachDraftingError("Role-targeted rendered draft contains a disallowed control character.")
+    if body_html and _contains_disallowed_control_character(body_html):
+        raise OutreachDraftingError("Role-targeted rendered HTML contains a disallowed control character.")
+    if any(marker in body_text for marker in ROLE_TARGETED_PLAIN_TEXT_MARKDOWN_MARKERS):
+        raise OutreachDraftingError("Role-targeted plain-text body leaked raw Markdown emphasis markers.")
+    if re.search(r"Interest in the\s+[#>*+\-]", subject):
+        raise OutreachDraftingError("Role-targeted subject still contains a formatting artifact after normalization.")
+    if subject != subject.strip():
+        raise OutreachDraftingError("Role-targeted subject contains unexpected surrounding whitespace.")
+    lowered_body = body_text.lower()
+    if recipient_path == "technical":
+        blocked_phrase = next(
+            (phrase for phrase in TECHNICAL_PATH_LINT_BLOCK_PHRASES if phrase in lowered_body),
+            None,
+        )
+        if blocked_phrase is not None:
+            raise OutreachDraftingError(
+                f"Technical-path rendered draft contains blocked phrase `{blocked_phrase}`."
+            )
+    max_words = ROLE_TARGETED_ORIGINAL_WORD_LIMITS[recipient_path]
+    word_count = _word_count(body_text)
+    if word_count > max_words:
+        raise OutreachDraftingError(
+            f"Role-targeted rendered draft exceeds the {recipient_path} lint word limit ({word_count} > {max_words})."
+        )
 
 
 def _persist_rendered_draft(

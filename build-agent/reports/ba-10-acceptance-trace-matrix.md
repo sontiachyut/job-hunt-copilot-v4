@@ -1,9 +1,9 @@
 # BA-10 Acceptance Trace Matrix
 
 - Feature file: `prd/test-spec.feature`
-- Scenario count: `260`
+- Scenario count: `261`
 - Status counts:
-  - `implemented`: `257`
+  - `implemented`: `258`
   - `partial`: `1`
   - `gap`: `0`
   - `deferred_optional`: `1`
@@ -58,7 +58,7 @@
 | Failure, retry, and idempotency behavior | quality-engineer | 12 | 0 | 0 | 0 | 0 |
 | Resume Tailoring behavior | tailoring-engineer | 23 | 0 | 0 | 0 | 0 |
 | Email Discovery behavior | outreach-engineer | 22 | 0 | 0 | 0 | 0 |
-| Email Drafting and Sending behavior | outreach-engineer | 29 | 0 | 0 | 0 | 0 |
+| Email Drafting and Sending behavior | outreach-engineer | 30 | 0 | 0 | 0 | 0 |
 | Automated Follow-Up Worker behavior | outreach-engineer | 7 | 0 | 0 | 0 | 0 |
 | Delivery Feedback behavior | outreach-engineer | 13 | 0 | 0 | 0 | 0 |
 | Supervisor Agent behavior | build-lead | 35 | 1 | 0 | 0 | 0 |

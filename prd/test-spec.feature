@@ -1149,6 +1149,8 @@ Feature: Job Hunt Copilot next-build acceptance
       And the fixed Job Hunt Copilot paragraph does not use a standalone `repo is here` sentence
       And the fixed Job Hunt Copilot paragraph does not describe the email itself as a live autonomous-workflow example
       And the fixed technical guidance ask does not list explicit weekday availability windows
+      And the fixed technical guidance ask asks for the recipient's perspective rather than sender scheduling logistics
+      And the assembled technical-path body stays within the current reduced technical word target
       And HTML rendering hyperlinks the `Job Hunt Copilot` label itself in that paragraph
 
     Scenario: Live role-split codex calls persist token usage events
@@ -1180,6 +1182,15 @@ Feature: Job Hunt Copilot next-build acceptance
       When Email Drafting and Sending renders the managerial-path subject
       Then the subject still follows `Interest in the <Role Title> role at <Company>`
       And the rendered subject does not contain the raw leading formatting artifact
+
+    Scenario: Role-targeted original drafts fail closed on deterministic lint defects
+      Given a role-targeted original draft has been assembled into final subject, plain-text body, and HTML body
+      When the deterministic original-draft lint gate runs before persistence or refresh
+      Then raw Markdown emphasis leakage in plain text blocks the draft
+      And disallowed control characters block the draft
+      And banned technical-path autonomy or scheduling phrases block the draft
+      And major word-budget overshoot blocks the draft
+      And a clean draft passes without further mutation
 
     Scenario: Managerial-path posting link is rendered deterministically from canonical state
       Given a managerial-path draft is being created for a concrete job posting

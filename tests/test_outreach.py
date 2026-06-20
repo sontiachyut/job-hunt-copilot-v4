@@ -33,6 +33,7 @@ from job_hunt_copilot.outreach import (
     GmailApiOutreachSender,
     OutboundOutreachMessage,
     OutreachDraftingError,
+    RenderedDraft,
     SendAttemptOutcome,
     POSTING_CONTACT_STATUS_EXHAUSTED,
     POSTING_CONTACT_STATUS_IDENTIFIED,
@@ -4105,20 +4106,222 @@ def test_codex_role_split_renderer_generates_technical_path_body_and_debug_artif
     body_html = Path(message.body_html_artifact_path).read_text(encoding="utf-8")
     assert message.subject == "Learning from your career path"
     assert "I came across your LinkedIn profile and admired your path from InsightRX to Lattice" in body
-    assert "I recently graduated from ASU with an MS in Computer Science." in body
+    assert "I recently graduated from ASU with an MS in Computer Science, and in my recent work I built distributed Python and Scala data services on Azure that handled ~580 TPS in production while maintaining 99.95% uptime." in body
     assert "This email is a live example of that autonomous workflow." not in body
     assert "Would you be open to a 10-minute conversation sometime in the next week or two?" not in body
-    assert "If you're open to it, I'd appreciate a brief 10-minute conversation sometime in the next week or two." in body
+    assert "If you're open to it, I'd appreciate a brief 10-minute conversation to hear how you approached this kind of work and what helped you grow into it." in body
     assert "weekdays between 8 AM and 6 PM MST" not in body
-    assert "I also built Job Hunt Copilot (https://github.com/sontiachyut/job-hunt-copilot-v4), an AI workflow automation tool for my own job search" in body
+    assert "I also built Job Hunt Copilot (https://github.com/sontiachyut/job-hunt-copilot-v4), an AI workflow automation tool for my own job search that has pushed me to think carefully about product design, reliability, and real-world use." in body
     assert "If you're interested, the repo is here:" not in body
     assert 'href="https://github.com/sontiachyut/job-hunt-copilot-v4"' in body_html
     assert ">Job Hunt Copilot</a>" in body_html
     assert "If you&#x27;re interested, the repo is here:" not in body_html
+    assert len(body.split()) <= 210
     assert message.opener_decision_artifact_path is not None
     debug_payload = json.loads(Path(message.opener_decision_artifact_path).read_text(encoding="utf-8"))
     assert debug_payload["drafting_path"] == "technical"
     assert debug_payload["selected_career_steps"] == ["InsightRX", "Lattice"]
+
+    connection.close()
+
+
+def test_role_targeted_original_lint_blocks_plain_text_markdown_leakage_before_persist(
+    tmp_path: Path,
+) -> None:
+    project_root, paths = bootstrap_project(tmp_path)
+    connection = connect_database(project_root / "job_hunt_copilot.db")
+    write_sender_profile(paths)
+    seed_posting(connection)
+    seed_linked_contact(
+        connection,
+        contact_id="ct_manager",
+        job_posting_contact_id="jpc_manager",
+        display_name="Alex Rivera",
+        recipient_type=RECIPIENT_TYPE_HIRING_MANAGER,
+        current_working_email="alex@acme.example",
+        created_at="2026-04-06T20:01:00Z",
+    )
+    seed_approved_tailoring_run(connection, paths)
+    connection.execute(
+        """
+        UPDATE job_postings
+        SET posting_status = ?
+        WHERE job_posting_id = ?
+        """,
+        (JOB_POSTING_STATUS_READY_FOR_OUTREACH, "jp_outreach"),
+    )
+    connection.commit()
+
+    class StubRenderer:
+        def render_role_targeted(self, context):  # type: ignore[no-untyped-def]
+            return RenderedDraft(
+                subject="Interest in the Staff Software Engineer / AI role at Acme Robotics",
+                body_markdown=(
+                    "Hi Alex,\n\n"
+                    "I hope you're doing well. I came across the Staff Software Engineer / AI opening at Acme Robotics and wanted to reach out because the role looks closely aligned with the kind of backend systems work I've been trying to do more of. "
+                    "**If helpful, I'd be happy to build a small proof of concept based on my understanding of the challenges the team is working on and share the repo.**\n"
+                ),
+                body_html="<html><body><p>bad</p></body></html>\n",
+                include_forwardable_snippet=False,
+                debug_payload={"drafting_path": "managerial"},
+            )
+
+        def render_general_learning(self, context):  # type: ignore[no-untyped-def]
+            raise AssertionError("general learning should not be used")
+
+    result = generate_role_targeted_send_set_drafts(
+        connection,
+        project_root=project_root,
+        job_posting_id="jp_outreach",
+        current_time="2026-04-06T20:30:00Z",
+        local_timezone=ZoneInfo("UTC"),
+        renderer=StubRenderer(),
+    )
+
+    assert result.drafted_messages == ()
+    assert len(result.failed_contacts) == 1
+    assert "plain-text body leaked raw Markdown emphasis markers" in result.failed_contacts[0].message
+
+    connection.close()
+
+
+def test_role_targeted_original_lint_blocks_technical_autonomy_phrase_before_persist(
+    tmp_path: Path,
+) -> None:
+    project_root, paths = bootstrap_project(tmp_path)
+    connection = connect_database(project_root / "job_hunt_copilot.db")
+    write_sender_profile(paths)
+    seed_posting(
+        connection,
+        company_name="Lattice",
+        role_title="Software Engineer, Backend",
+    )
+    seed_linked_contact(
+        connection,
+        contact_id="ct_tech",
+        job_posting_contact_id="jpc_tech",
+        company_name="Lattice",
+        display_name="Ethan Herr",
+        recipient_type=RECIPIENT_TYPE_ENGINEER,
+        current_working_email="ethan@lattice.example",
+        created_at="2026-04-06T20:01:00Z",
+    )
+    seed_approved_tailoring_run(
+        connection,
+        paths,
+        company_name="Lattice",
+        role_title="Software Engineer, Backend",
+    )
+    connection.execute(
+        """
+        UPDATE job_postings
+        SET posting_status = ?
+        WHERE job_posting_id = ?
+        """,
+        (JOB_POSTING_STATUS_READY_FOR_OUTREACH, "jp_outreach"),
+    )
+    connection.commit()
+
+    class StubRenderer:
+        def render_role_targeted(self, context):  # type: ignore[no-untyped-def]
+            return RenderedDraft(
+                subject="Learning from your career path",
+                body_markdown=(
+                    "Hi Ethan,\n\n"
+                    "I came across your LinkedIn profile and admired your path from InsightRX to Lattice. That path stood out to me, and I'd love to grow in a similar direction.\n\n"
+                    "I recently graduated from ASU with an MS in Computer Science, and in my recent work I built distributed Python and Scala data services on Azure that handled ~580 TPS in production while maintaining 99.95% uptime.\n\n"
+                    "I also built Job Hunt Copilot (https://github.com/sontiachyut/job-hunt-copilot-v4), an AI workflow automation tool for my own job search.\n\n"
+                    "This email is a live example of that autonomous workflow.\n\n"
+                    "Best,\nAchyutaram Sonti\n"
+                ),
+                body_html="<html><body><p>bad</p></body></html>\n",
+                include_forwardable_snippet=False,
+                debug_payload={"drafting_path": "technical"},
+            )
+
+        def render_general_learning(self, context):  # type: ignore[no-untyped-def]
+            raise AssertionError("general learning should not be used")
+
+    result = generate_role_targeted_send_set_drafts(
+        connection,
+        project_root=project_root,
+        job_posting_id="jp_outreach",
+        current_time="2026-04-06T20:30:00Z",
+        local_timezone=ZoneInfo("UTC"),
+        renderer=StubRenderer(),
+    )
+
+    assert result.drafted_messages == ()
+    assert len(result.failed_contacts) == 1
+    assert "contains blocked phrase `this email is a live example of that autonomous workflow`" in result.failed_contacts[0].message
+
+    connection.close()
+
+
+def test_role_targeted_original_lint_blocks_major_word_overshoot_before_persist(
+    tmp_path: Path,
+) -> None:
+    project_root, paths = bootstrap_project(tmp_path)
+    connection = connect_database(project_root / "job_hunt_copilot.db")
+    write_sender_profile(paths)
+    seed_posting(
+        connection,
+        company_name="Lattice",
+        role_title="Software Engineer, Backend",
+    )
+    seed_linked_contact(
+        connection,
+        contact_id="ct_tech",
+        job_posting_contact_id="jpc_tech",
+        company_name="Lattice",
+        display_name="Ethan Herr",
+        recipient_type=RECIPIENT_TYPE_ENGINEER,
+        current_working_email="ethan@lattice.example",
+        created_at="2026-04-06T20:01:00Z",
+    )
+    seed_approved_tailoring_run(
+        connection,
+        paths,
+        company_name="Lattice",
+        role_title="Software Engineer, Backend",
+    )
+    connection.execute(
+        """
+        UPDATE job_postings
+        SET posting_status = ?
+        WHERE job_posting_id = ?
+        """,
+        (JOB_POSTING_STATUS_READY_FOR_OUTREACH, "jp_outreach"),
+    )
+    connection.commit()
+
+    oversized_paragraph = " ".join(["I would value your perspective on backend platform work."] * 50)
+
+    class StubRenderer:
+        def render_role_targeted(self, context):  # type: ignore[no-untyped-def]
+            return RenderedDraft(
+                subject="Learning from your career path",
+                body_markdown=f"Hi Ethan,\n\n{oversized_paragraph}\n",
+                body_html="<html><body><p>bad</p></body></html>\n",
+                include_forwardable_snippet=False,
+                debug_payload={"drafting_path": "technical"},
+            )
+
+        def render_general_learning(self, context):  # type: ignore[no-untyped-def]
+            raise AssertionError("general learning should not be used")
+
+    result = generate_role_targeted_send_set_drafts(
+        connection,
+        project_root=project_root,
+        job_posting_id="jp_outreach",
+        current_time="2026-04-06T20:30:00Z",
+        local_timezone=ZoneInfo("UTC"),
+        renderer=StubRenderer(),
+    )
+
+    assert result.drafted_messages == ()
+    assert len(result.failed_contacts) == 1
+    assert "exceeds the technical lint word limit" in result.failed_contacts[0].message
 
     connection.close()
 
