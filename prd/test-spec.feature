@@ -1086,6 +1086,8 @@ Feature: Job Hunt Copilot next-build acceptance
       Then it may retrieve up to 8 candidate evidence chunks
       And it passes no more than the top 5 retrieved chunks into the managerial Codex prompt
       And it does not pass the full profile-evidence corpus or raw resume documents into the prompt
+      And the plain-text body does not leak raw markdown emphasis markers for the fixed proof-of-concept sentence
+      And the rendered HTML may still emphasize that fixed proof-of-concept sentence semantically
 
     Scenario: Managerial relevant-background preserves technical signal for technical roles
       Given the managerial role is technical, AI/ML, data, platform, backend, or systems-heavy
@@ -1093,6 +1095,7 @@ Feature: Job Hunt Copilot next-build acceptance
       When the retrieval layer ranks evidence for the draft
       Then the retrieved evidence pack preserves visible technical signal
       And generic reliability chunks do not dominate the section when stronger role-aligned technical proof exists
+      And weak Job Hunt Copilot bullets do not survive in non-AI or non-automation managerial drafts when stronger professional proof is available
 
     Scenario: Managerial relevant-background returns bullet-aligned evidence provenance
       Given a managerial first-email draft is generated through the profile-evidence retrieval path
@@ -1113,6 +1116,20 @@ Feature: Job Hunt Copilot next-build acceptance
       When a managerial first-email draft is attempted
       Then the drafting flow fails closed
       And it does not silently fall back to the older generic sender-evidence pool
+
+    Scenario: Technical role-split fixed paragraphs stay concise and drop legacy workflow wording
+      Given a technical-path first-email draft is generated
+      When the resulting body is inspected
+      Then the fixed Job Hunt Copilot paragraph is a single concise sentence
+      And the body does not say the email is a live example of an autonomous workflow
+      And the body does not include explicit weekday availability or flexible scheduling-range language
+      And the ask requests the recipient's perspective on how they approached the work or grew into it
+
+    Scenario: Role-targeted original drafts fail closed on deterministic lint defects
+      Given a role-targeted original draft is rendered in the active role-split path
+      When the rendered plain-text body leaks raw markdown emphasis or blocked legacy technical phrases
+      Then the draft is rejected before persistence
+      And the system does not leave that invalid original in the generated queue
 
     Scenario: The curated managerial evidence source builds into canonical runtime storage and an inspection mirror
       Given the owner updates the curated managerial evidence source

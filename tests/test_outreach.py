@@ -36,6 +36,7 @@ from job_hunt_copilot.outreach import (
     GmailApiOutreachSender,
     OutboundOutreachMessage,
     OutreachDraftingError,
+    RenderedDraft,
     SendAttemptOutcome,
     POSTING_CONTACT_STATUS_EXHAUSTED,
     POSTING_CONTACT_STATUS_IDENTIFIED,
@@ -4487,14 +4488,23 @@ def test_codex_role_split_renderer_generates_technical_path_body_and_debug_artif
     body_html = Path(message.body_html_artifact_path).read_text(encoding="utf-8")
     assert message.subject == "Learning from your career path"
     assert "I came across your LinkedIn profile and admired your path from InsightRX to Lattice" in body
-    assert "I recently graduated from ASU with an MS in Computer Science." in body
-    assert "This email is a live example of that autonomous workflow." in body
-    assert "Would you be open to a 10-minute conversation sometime in the next week or two?" in body
-    assert "Job Hunt Copilot (https://github.com/sontiachyut/job-hunt-copilot-v4)." in body
-    assert "If you're interested, the repo is here:" not in body
+    assert (
+        "I recently graduated from ASU with an MS in Computer Science, and in my recent work I built "
+        "distributed Python and Scala data services on Azure that handled ~580 TPS in production while "
+        "maintaining 99.95% uptime."
+    ) in body
+    assert "This email is a live example of that autonomous workflow." not in body
+    assert "I'm usually free weekdays between 8 AM and 6 PM MST" not in body
+    assert (
+        "If you're open to it, I'd appreciate a brief 10-minute conversation to hear how you approached this kind of work and what helped you grow into it."
+    ) in body
+    assert (
+        "I also built Job Hunt Copilot (https://github.com/sontiachyut/job-hunt-copilot-v4), an AI workflow automation tool for my own job search "
+        "that has pushed me to think carefully about product design, reliability, and real-world use."
+    ) in body
     assert 'href="https://github.com/sontiachyut/job-hunt-copilot-v4"' in body_html
     assert ">Job Hunt Copilot</a>" in body_html
-    assert "If you&#x27;re interested, the repo is here:" not in body_html
+    assert "This email is a live example of that autonomous workflow." not in body_html
     assert message.opener_decision_artifact_path is not None
     debug_payload = json.loads(Path(message.opener_decision_artifact_path).read_text(encoding="utf-8"))
     assert debug_payload["drafting_path"] == "technical"
@@ -4595,6 +4605,285 @@ def test_normalize_managerial_role_split_payload_truncates_debug_signal_lists() 
     assert [
         evidence.primary_evidence_id for evidence in validated.relevant_background_evidence
     ] == ["ev_a", "ev_b", "ev_c"]
+
+
+def test_normalize_managerial_role_split_payload_drops_weak_job_hunt_copilot_for_non_ai_roles(
+    tmp_path: Path,
+) -> None:
+    project_root, paths = bootstrap_project(tmp_path)
+    connection = connect_database(project_root / "job_hunt_copilot.db")
+    write_sender_profile(paths)
+    seed_posting(
+        connection,
+        company_name="Figma",
+        role_title="Data Platform Engineer",
+    )
+    seed_linked_contact(
+        connection,
+        contact_id="ct_manager",
+        job_posting_contact_id="jpc_manager",
+        display_name="Jordan Kim",
+        recipient_type=RECIPIENT_TYPE_HIRING_MANAGER,
+        current_working_email="jordan@figma.example",
+        created_at="2026-04-06T20:10:00Z",
+    )
+    connection.execute(
+        """
+        UPDATE contacts
+        SET position_title = ?, linkedin_url = ?, updated_at = ?
+        WHERE contact_id = ?
+        """,
+        (
+            "Engineering Manager",
+            "https://www.linkedin.com/in/jordan-kim/",
+            "2026-04-06T20:10:00Z",
+            "ct_manager",
+        ),
+    )
+    connection.commit()
+    seed_recipient_profile(
+        connection,
+        paths,
+        company_name="Figma",
+        role_title="Data Platform Engineer",
+        contact_id="ct_manager",
+        display_name="Jordan Kim",
+        current_title="Engineering Manager",
+        work_signal="Data platform systems for product teams",
+    )
+    seed_approved_tailoring_run(
+        connection,
+        paths,
+        company_name="Figma",
+        role_title="Data Platform Engineer",
+        current_time="2026-04-06T20:20:00Z",
+    )
+    paths.managerial_profile_evidence_source_path.write_text(
+        "\n".join(
+            [
+                "chunks:",
+                "  - evidence_id: exp_data_platform",
+                "    text: Built Azure and Databricks data services processing 50M+ daily HL7 records for governed analytics delivery.",
+                "    source_type: resume_experience",
+                "    evidence_type: achievement",
+                "    skill_tags: [azure, databricks, spark, data-services]",
+                "    theme_tags: [data, platform, backend, production-systems]",
+                "    strength: 5",
+                "  - evidence_id: exp_lakehouse_tuning",
+                "    text: Tuned Spark and lakehouse workflows to improve throughput by 50% on large-scale production data pipelines.",
+                "    source_type: resume_experience",
+                "    evidence_type: system",
+                "    skill_tags: [spark, lakehouse, performance]",
+                "    theme_tags: [data, platform, performance, production-systems]",
+                "    strength: 4",
+                "  - evidence_id: proj_job_hunt_copilot",
+                "    text: Built Job Hunt Copilot, an AI workflow automation system with SQLite-backed orchestration and human-in-the-loop review.",
+                "    source_type: job_hunt_copilot",
+                "    evidence_type: project",
+                "    skill_tags: [python, sqlite, ai-agents, workflow-automation]",
+                "    theme_tags: [ai, workflow-automation, automation, production-workflows]",
+                "    strength: 4",
+                "  - evidence_id: exp_governed_delivery",
+                "    text: Delivered governed REST APIs, Kafka consumers, and BI tooling for secure downstream analytics workflows.",
+                "    source_type: resume_experience",
+                "    evidence_type: achievement",
+                "    skill_tags: [rest-api, kafka, analytics]",
+                "    theme_tags: [backend, platform, data, production-systems]",
+                "    strength: 4",
+            ]
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+    build_profile_evidence_corpus(connection, paths)
+
+    posting_row = _load_role_targeted_draft_posting_row(connection, job_posting_id="jp_outreach")
+    contact_row = _load_draft_contact_row(
+        connection,
+        job_posting_id="jp_outreach",
+        contact_id="ct_manager",
+    )
+    sender = _load_sender_identity(paths)
+    tailoring_inputs = _load_tailoring_draft_inputs(
+        connection,
+        paths,
+        posting_row=posting_row,
+        current_time="2026-04-06T20:30:00Z",
+    )
+    context = _build_role_targeted_draft_context(
+        connection,
+        paths,
+        posting_row=posting_row,
+        contact_row=contact_row,
+        sender=sender,
+        tailoring_inputs=tailoring_inputs,
+    )
+    payload = {
+        "role_alignment_sentence": (
+            "I came across the Data Platform Engineer opening at Figma and wanted to reach out because the role looks closely aligned with the kind of platform and workflow systems work I've been trying to do more of."
+        ),
+        "problem_hypotheses": [
+            "scalable pipelines for product data",
+            "dependable shared platform workflows",
+            "faster iteration on data infrastructure",
+        ],
+        "relevant_background": [
+            "Azure and Databricks data services processing 50M+ daily HL7 records",
+            "built Job Hunt Copilot, an AI workflow automation system: https://github.com/sontiachyut/job-hunt-copilot-v4",
+            "Spark and lakehouse tuning that improved throughput by 50%",
+        ],
+        "selected_jd_signals": ["data platform", "shared workflows", "pipeline reliability", "extra"],
+        "relevant_background_evidence": [
+            {"primary_evidence_id": "exp_data_platform"},
+            {"primary_evidence_id": "proj_job_hunt_copilot"},
+            {"primary_evidence_id": "exp_lakehouse_tuning"},
+        ],
+    }
+
+    normalized = _normalize_managerial_role_split_payload_dict(payload, context=context)
+    validated = ManagerialRoleSplitDraftPayload.model_validate(normalized)
+
+    assert validated.selected_jd_signals == ["data platform", "shared workflows", "pipeline reliability"]
+    assert all("job hunt copilot" not in bullet.lower() for bullet in validated.relevant_background)
+    assert [item.primary_evidence_id for item in validated.relevant_background_evidence] == [
+        "exp_data_platform",
+        "exp_lakehouse_tuning",
+        "exp_governed_delivery",
+    ]
+
+    connection.close()
+
+
+def test_managerial_role_split_normalizes_role_title_artifacts_in_prompt_and_subject(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    project_root, paths = bootstrap_project(tmp_path)
+    connection = connect_database(project_root / "job_hunt_copilot.db")
+    write_sender_profile(paths)
+    seed_posting(
+        connection,
+        company_name="Qualcomm",
+        role_title="#Software Engineer – Engineer",
+    )
+    seed_linked_contact(
+        connection,
+        contact_id="ct_outreach",
+        job_posting_contact_id="jpc_outreach",
+        display_name="Priya Shah",
+        recipient_type=RECIPIENT_TYPE_HIRING_MANAGER,
+        current_working_email="priya@qualcomm.example",
+        created_at="2026-04-06T20:05:00Z",
+    )
+    connection.execute(
+        """
+        UPDATE contacts
+        SET position_title = ?, linkedin_url = ?, updated_at = ?
+        WHERE contact_id = ?
+        """,
+        (
+            "Senior Manager",
+            "https://www.linkedin.com/in/priya-shah/",
+            "2026-04-06T20:05:00Z",
+            "ct_outreach",
+        ),
+    )
+    connection.commit()
+    seed_recipient_profile(
+        connection,
+        paths,
+        company_name="Qualcomm",
+        role_title="#Software Engineer – Engineer",
+        contact_id="ct_outreach",
+        display_name="Priya Shah",
+        current_title="Senior Manager",
+        work_signal="Production software and platform systems",
+    )
+    seed_approved_tailoring_run(
+        connection,
+        paths,
+        company_name="Qualcomm",
+        role_title="#Software Engineer – Engineer",
+    )
+    paths.managerial_profile_evidence_source_path.write_text(
+        "\n".join(
+            [
+                "chunks:",
+                "  - evidence_id: exp_platform_scale",
+                "    text: Built distributed backend services that handled high-volume production data workflows.",
+                "    source_type: resume_experience",
+                "    evidence_type: achievement",
+                "    skill_tags: [python, scala, backend]",
+                "    theme_tags: [backend, platform, production-systems]",
+                "    strength: 5",
+                "  - evidence_id: exp_monitoring",
+                "    text: Designed monitoring and alerting for 24/7 production workflows.",
+                "    source_type: resume_experience",
+                "    evidence_type: reliability",
+                "    skill_tags: [monitoring, alerting]",
+                "    theme_tags: [reliability, backend, production-systems]",
+                "    strength: 4",
+                "  - evidence_id: exp_perf",
+                "    text: Improved pipeline throughput and operational efficiency across large-scale systems.",
+                "    source_type: resume_experience",
+                "    evidence_type: system",
+                "    skill_tags: [performance, pipelines]",
+                "    theme_tags: [backend, platform, performance]",
+                "    strength: 4",
+            ]
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+    build_profile_evidence_corpus(connection, paths)
+
+    def fake_run(command, *, input, text, capture_output, check, env, timeout):  # type: ignore[no-untyped-def]
+        assert "I came across the Software Engineer – Engineer opening at Qualcomm" in input
+        assert "I came across the #Software Engineer – Engineer opening at Qualcomm" not in input
+        output_path = Path(command[command.index("-o") + 1])
+        payload = {
+            "role_alignment_sentence": (
+                "I came across the Software Engineer – Engineer opening at Qualcomm and wanted to reach out because the role looks closely aligned with the kind of production software and platform work I've been trying to do more of."
+            ),
+            "problem_hypotheses": [
+                "backend service reliability",
+                "performance and scale tuning",
+                "shared platform efficiency",
+            ],
+            "relevant_background": [
+                "high-volume backend production workflows",
+                "monitoring and alerting for 24/7 systems",
+                "pipeline throughput and systems efficiency improvements",
+            ],
+            "selected_jd_signals": ["backend reliability", "platform efficiency"],
+            "relevant_background_evidence": [
+                {"primary_evidence_id": "exp_platform_scale", "secondary_evidence_id": None},
+                {"primary_evidence_id": "exp_monitoring", "secondary_evidence_id": None},
+                {"primary_evidence_id": "exp_perf", "secondary_evidence_id": None},
+            ],
+        }
+        output_path.write_text(json.dumps(payload), encoding="utf-8")
+        return subprocess.CompletedProcess(command, 0, stdout="{}", stderr="tokens used: 999")
+
+    monkeypatch.setattr("job_hunt_copilot.outreach.subprocess.run", fake_run)
+
+    renderer = CodexRoleSplitOutreachDraftRenderer(
+        project_root=project_root,
+        codex_bin="codex",
+    )
+    result = generate_role_targeted_send_set_drafts(
+        connection,
+        project_root=project_root,
+        job_posting_id="jp_outreach",
+        current_time="2026-04-06T20:30:00Z",
+        local_timezone=ZoneInfo("UTC"),
+        renderer=renderer,
+    )
+
+    assert len(result.drafted_messages) == 1
+    assert result.drafted_messages[0].subject == "Interest in the Software Engineer – Engineer role at Qualcomm"
+
+    connection.close()
 
 
 def test_normalize_technical_role_split_payload_recovers_shape_and_career_steps() -> None:
@@ -4879,17 +5168,16 @@ def test_codex_role_split_renderer_generates_managerial_path_body_and_debug_arti
         assert "dependable AI workflows in production" not in input
         schema_path = Path(command[command.index("--output-schema") + 1])
         schema = json.loads(schema_path.read_text(encoding="utf-8"))
-        evidence_item_schema = (
-            schema["properties"]["relevant_background_evidence"]["items"]
-        )
+        evidence_item_schema = schema["properties"]["relevant_background_evidence"]["items"]
+        evidence_ref = evidence_item_schema.get("$ref")
+        if evidence_ref is not None:
+            evidence_item_schema = schema["$defs"][evidence_ref.rsplit("/", 1)[-1]]
         assert evidence_item_schema["required"] == [
             "primary_evidence_id",
             "secondary_evidence_id",
         ]
-        assert evidence_item_schema["properties"]["secondary_evidence_id"]["type"] == [
-            "string",
-            "null",
-        ]
+        secondary_schema = evidence_item_schema["properties"]["secondary_evidence_id"]
+        assert secondary_schema["anyOf"] == [{"type": "string"}, {"type": "null"}]
         output_path = Path(command[command.index("-o") + 1])
         payload = {
             "role_alignment_sentence": (
@@ -4908,9 +5196,9 @@ def test_codex_role_split_renderer_generates_managerial_path_body_and_debug_arti
             ],
             "selected_jd_signals": ["backend reliability", "GenAI workflows"],
             "relevant_background_evidence": [
-                {"primary_evidence_id": "exp_hl7_scale"},
-                {"primary_evidence_id": "exp_monitoring_triage"},
-                {"primary_evidence_id": "proj_job_hunt_copilot"},
+                {"primary_evidence_id": "exp_hl7_scale", "secondary_evidence_id": None},
+                {"primary_evidence_id": "exp_monitoring_triage", "secondary_evidence_id": None},
+                {"primary_evidence_id": "proj_job_hunt_copilot", "secondary_evidence_id": None},
             ],
         }
         output_path.write_text(json.dumps(payload), encoding="utf-8")
@@ -4939,7 +5227,10 @@ def test_codex_role_split_renderer_generates_managerial_path_body_and_debug_arti
     assert "Posting link: https://careers.acme.example/jobs/123" in body
     assert "Based on the JD, would it be fair to say the team is likely working on the following?" in body
     assert "Relevant background from my side:" in body
-    assert "**If helpful, I'd be happy to build a small proof of concept based on my understanding of the challenges the team is working on and share the repo.**" in body
+    assert (
+        "If helpful, I'd be happy to build a small proof of concept based on my understanding of the challenges the team is working on and share the repo."
+    ) in body
+    assert "**If helpful, I'd be happy to build a small proof of concept based on my understanding of the challenges the team is working on and share the repo.**" not in body
     assert "built Job Hunt Copilot, an AI workflow automation tool: https://github.com/sontiachyut/job-hunt-copilot-v4" in body
     assert "I've attached my resume for context." in body
     assert "Would you be open to a brief 10-minute conversation?" in body
@@ -5056,6 +5347,195 @@ def test_role_split_payload_schemas_require_all_top_level_properties() -> None:
 
     assert set(technical_schema["required"]) == set(technical_schema["properties"].keys())
     assert set(managerial_schema["required"]) == set(managerial_schema["properties"].keys())
+
+
+def test_role_targeted_original_lint_blocks_plain_text_markdown_leakage_before_persist(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    project_root, paths = bootstrap_project(tmp_path)
+    connection = connect_database(project_root / "job_hunt_copilot.db")
+    write_sender_profile(paths)
+    seed_posting(connection)
+    seed_linked_contact(
+        connection,
+        contact_id="ct_manager",
+        job_posting_contact_id="jpc_manager",
+        display_name="Alex Rivera",
+        recipient_type=RECIPIENT_TYPE_HIRING_MANAGER,
+        current_working_email="alex@acme.example",
+        created_at="2026-04-06T20:01:00Z",
+    )
+    seed_approved_tailoring_run(connection, paths)
+    connection.execute(
+        """
+        UPDATE job_postings
+        SET posting_status = ?
+        WHERE job_posting_id = ?
+        """,
+        (JOB_POSTING_STATUS_READY_FOR_OUTREACH, "jp_outreach"),
+    )
+    connection.commit()
+
+    monkeypatch.setattr(
+        "job_hunt_copilot.outreach._build_role_targeted_draft_context",
+        lambda *args, **kwargs: object(),
+    )
+
+    class StubRenderer:
+        def render_role_targeted(self, context):  # type: ignore[no-untyped-def]
+            return RenderedDraft(
+                subject="Interest in the Software Engineer, GenAI role at Abridge",
+                body_markdown=(
+                    "Hi Alex,\n\n"
+                    "I hope you're doing well. I came across the Software Engineer, GenAI opening at Abridge and wanted to reach out because the role looks closely aligned with the kind of backend systems work I've been trying to do more of. "
+                    "**If helpful, I'd be happy to build a small proof of concept based on my understanding of the challenges the team is working on and share the repo.**\n"
+                ),
+                body_html="<html><body><p>bad</p></body></html>\n",
+                include_forwardable_snippet=False,
+                debug_payload={"drafting_path": "managerial"},
+            )
+
+        def render_general_learning(self, context):  # type: ignore[no-untyped-def]
+            raise AssertionError("general learning should not be used")
+
+    result = generate_role_targeted_send_set_drafts(
+        connection,
+        project_root=project_root,
+        job_posting_id="jp_outreach",
+        current_time="2026-04-06T20:30:00Z",
+        local_timezone=ZoneInfo("UTC"),
+        renderer=StubRenderer(),
+    )
+
+    assert result.drafted_messages == ()
+    assert len(result.failed_contacts) == 1
+    assert "plain-text body leaked raw Markdown emphasis markers" in result.failed_contacts[0].message
+
+    connection.close()
+
+
+def test_role_targeted_original_lint_blocks_technical_autonomy_phrase_before_persist(
+    tmp_path: Path,
+) -> None:
+    project_root, paths = bootstrap_project(tmp_path)
+    connection = connect_database(project_root / "job_hunt_copilot.db")
+    write_sender_profile(paths)
+    seed_posting(
+        connection,
+        company_name="Lattice",
+        role_title="Software Engineer, Backend",
+    )
+    seed_linked_contact(
+        connection,
+        contact_id="ct_tech",
+        job_posting_contact_id="jpc_tech",
+        company_name="Lattice",
+        display_name="Ethan Herr",
+        recipient_type=RECIPIENT_TYPE_ENGINEER,
+        current_working_email="ethan@lattice.example",
+        created_at="2026-04-06T20:01:00Z",
+    )
+    seed_approved_tailoring_run(
+        connection,
+        paths,
+        company_name="Lattice",
+        role_title="Software Engineer, Backend",
+    )
+
+    class StubRenderer:
+        def render_role_targeted(self, context):  # type: ignore[no-untyped-def]
+            return RenderedDraft(
+                subject="Learning from your career path",
+                body_markdown=(
+                    "Hi Ethan,\n\n"
+                    "I came across your LinkedIn profile and admired your path from InsightRX to Lattice. That path stood out to me, and I'd love to grow in a similar direction.\n\n"
+                    "I recently graduated from ASU with an MS in Computer Science, and in my recent work I built distributed Python and Scala data services on Azure that handled ~580 TPS in production while maintaining 99.95% uptime.\n\n"
+                    "I also built Job Hunt Copilot (https://github.com/sontiachyut/job-hunt-copilot-v4), an AI workflow automation tool for my own job search.\n\n"
+                    "This email is a live example of that autonomous workflow.\n\n"
+                    "Best,\nAchyutaram Sonti\n"
+                ),
+                body_html="<html><body><p>bad</p></body></html>\n",
+                include_forwardable_snippet=False,
+                debug_payload={"drafting_path": "technical"},
+            )
+
+        def render_general_learning(self, context):  # type: ignore[no-untyped-def]
+            raise AssertionError("general learning should not be used")
+
+    result = generate_role_targeted_send_set_drafts(
+        connection,
+        project_root=project_root,
+        job_posting_id="jp_outreach",
+        current_time="2026-04-06T20:30:00Z",
+        local_timezone=ZoneInfo("UTC"),
+        renderer=StubRenderer(),
+    )
+
+    assert result.drafted_messages == ()
+    assert len(result.failed_contacts) == 1
+    assert "contains blocked phrase" in result.failed_contacts[0].message
+
+    connection.close()
+
+
+def test_role_targeted_original_lint_blocks_major_word_overshoot_before_persist(
+    tmp_path: Path,
+) -> None:
+    project_root, paths = bootstrap_project(tmp_path)
+    connection = connect_database(project_root / "job_hunt_copilot.db")
+    write_sender_profile(paths)
+    seed_posting(
+        connection,
+        company_name="Lattice",
+        role_title="Software Engineer, Backend",
+    )
+    seed_linked_contact(
+        connection,
+        contact_id="ct_tech",
+        job_posting_contact_id="jpc_tech",
+        company_name="Lattice",
+        display_name="Ethan Herr",
+        recipient_type=RECIPIENT_TYPE_ENGINEER,
+        current_working_email="ethan@lattice.example",
+        created_at="2026-04-06T20:01:00Z",
+    )
+    seed_approved_tailoring_run(
+        connection,
+        paths,
+        company_name="Lattice",
+        role_title="Software Engineer, Backend",
+    )
+
+    oversized_paragraph = " ".join(["I would value your perspective on backend platform work."] * 50)
+
+    class StubRenderer:
+        def render_role_targeted(self, context):  # type: ignore[no-untyped-def]
+            return RenderedDraft(
+                subject="Learning from your career path",
+                body_markdown=f"Hi Ethan,\n\n{oversized_paragraph}\n",
+                body_html="<html><body><p>bad</p></body></html>\n",
+                include_forwardable_snippet=False,
+                debug_payload={"drafting_path": "technical"},
+            )
+
+        def render_general_learning(self, context):  # type: ignore[no-untyped-def]
+            raise AssertionError("general learning should not be used")
+
+    result = generate_role_targeted_send_set_drafts(
+        connection,
+        project_root=project_root,
+        job_posting_id="jp_outreach",
+        current_time="2026-04-06T20:30:00Z",
+        local_timezone=ZoneInfo("UTC"),
+        renderer=StubRenderer(),
+    )
+
+    assert result.drafted_messages == ()
+    assert len(result.failed_contacts) == 1
+    assert "exceeds the technical lint word limit" in result.failed_contacts[0].message
+
+    connection.close()
 
 
 def test_send_execution_persists_sent_metadata_and_delays_remaining_wave(tmp_path: Path):
