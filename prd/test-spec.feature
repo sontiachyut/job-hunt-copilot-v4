@@ -1134,6 +1134,13 @@ Feature: Job Hunt Copilot next-build acceptance
       Then the draft is rejected before persistence
       And the system does not leave that invalid original in the generated queue
 
+    Scenario: Role-targeted word-budget lint does not reject realistic link and signature lines as prose overshoot
+      Given a managerial-path original draft stays within the intended prose budget
+      And the rendered body includes the normal standalone `Posting link:` line plus the standard signature links
+      When the deterministic lint gate evaluates the rendered draft
+      Then those transport-style lines do not by themselves trigger a major word-budget overshoot failure
+      But a genuinely oversized body paragraph still fails closed
+
     Scenario: The curated managerial evidence source builds into canonical runtime storage and an inspection mirror
       Given the owner updates the curated managerial evidence source
       When the explicit corpus-build step runs

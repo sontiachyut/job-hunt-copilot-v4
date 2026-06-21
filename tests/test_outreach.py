@@ -61,6 +61,7 @@ from job_hunt_copilot.outreach import (
     _normalize_technical_role_split_payload_dict,
     _resolve_outreach_codex_bin,
     _run_codex_structured_payload,
+    _validate_role_targeted_original_rendered_draft,
     execute_general_learning_outreach,
     execute_role_targeted_send_set,
     evaluate_role_targeted_send_set,
@@ -5509,6 +5510,41 @@ def test_role_targeted_original_lint_blocks_technical_autonomy_phrase_before_per
     assert "contains blocked phrase" in result.failed_contacts[0].message
 
     connection.close()
+
+
+def test_role_targeted_original_lint_ignores_posting_link_and_signature_url_inflation() -> None:
+    rendered = RenderedDraft(
+        subject="Interest in the Software Engineer role at Viasat",
+        body_markdown=(
+            "Hi Jay,\n\n"
+            "I hope you're doing well. I came across the Software Engineer opening at Viasat and wanted to reach out because it looks closely aligned with the kind of backend API design work in production systems that I've been trying to do more of. If helpful, I'd be happy to build a small proof of concept based on my understanding of the challenges the team is working on and share the repo.\n\n"
+            "Posting link: https://www.linkedin.com/jobs/view/4430132772/\n\n"
+            "Based on the JD, would it be fair to say the team is likely working on the following?\n"
+            "- new API design with clear interface boundaries\n"
+            "- keeping JSON/YAML contracts and docs in sync\n"
+            "- supporting both REST and Python library consumers\n\n"
+            "Relevant background from my side:\n"
+            "- backend APIs for a kubernetes optimization platform spanning 200+ microservices\n"
+            "- python and scala data services processing 50M+ daily HL7 records\n"
+            "- governed downstream delivery across REST APIs, Kafka consumers, and ODBC connectors\n\n"
+            "I've attached my resume for context.\n\n"
+            "Would you be open to a brief 10-minute conversation? I'd love to better understand the challenges the team is actually focused on. If this is better routed elsewhere, I'd appreciate a forward to the right person internally.\n\n"
+            "Best,\n"
+            "Achyutaram Sonti\n"
+            "https://www.linkedin.com/in/asonti/\n"
+            "https://github.com/sontiachyut\n"
+            "602-768-6071\n"
+            "asonti1@asu.edu\n"
+        ),
+        body_html="<html><body><p>ok</p></body></html>\n",
+        include_forwardable_snippet=False,
+        debug_payload={"drafting_path": "managerial"},
+    )
+
+    _validate_role_targeted_original_rendered_draft(
+        rendered,
+        context=object(),  # type: ignore[arg-type]
+    )
 
 
 def test_role_targeted_original_lint_blocks_major_word_overshoot_before_persist(

@@ -9303,6 +9303,26 @@ def _word_count(text: str) -> int:
     return len(re.findall(r"\b\w+\b", text))
 
 
+_URL_TOKEN_PATTERN = re.compile(r"https?://\S+|www\.\S+", re.IGNORECASE)
+_EMAIL_TOKEN_PATTERN = re.compile(r"\b[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}\b", re.IGNORECASE)
+_PHONE_TOKEN_PATTERN = re.compile(r"\+?\d[\d().\-\s]{6,}\d")
+
+
+def _role_targeted_lint_word_count(text: str) -> int:
+    total = 0
+    for raw_line in text.splitlines():
+        line = raw_line.strip()
+        if not line:
+            continue
+        if re.fullmatch(r"Posting link:\s+https?://\S+", line, flags=re.IGNORECASE):
+            continue
+        normalized_line = _URL_TOKEN_PATTERN.sub(" LINK ", line)
+        normalized_line = _EMAIL_TOKEN_PATTERN.sub(" EMAIL ", normalized_line)
+        normalized_line = _PHONE_TOKEN_PATTERN.sub(" PHONE ", normalized_line)
+        total += len(normalized_line.split())
+    return total
+
+
 def _contains_disallowed_control_character(text: str) -> bool:
     return any(ord(character) < 32 and character not in "\n\r\t" for character in text) or any(
         ord(character) == 127 for character in text
@@ -9349,7 +9369,7 @@ def _validate_role_targeted_original_rendered_draft(
                 f"Technical-path rendered draft contains blocked phrase `{blocked_phrase}`."
             )
     max_words = ROLE_TARGETED_ORIGINAL_WORD_LIMITS[drafting_path]
-    word_count = _word_count(body_text)
+    word_count = _role_targeted_lint_word_count(body_text)
     if word_count > max_words:
         raise OutreachDraftingError(
             f"Role-targeted rendered draft exceeds the {drafting_path} lint word limit ({word_count} > {max_words})."
