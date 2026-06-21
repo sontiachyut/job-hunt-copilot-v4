@@ -1146,10 +1146,13 @@ Feature: Job Hunt Copilot next-build acceptance
       And the draft reads Apollo employment history from the structured database-backed provider store before falling back to artifact reparsing
       And the subject is `Learning from your career path`
       And the opener says `admired your path` rather than `really admired your path`
+      And the opener does not emit placeholder ellipses or awkward same-company tenure phrasing
       And the fixed Job Hunt Copilot paragraph does not use a standalone `repo is here` sentence
       And the fixed Job Hunt Copilot paragraph does not describe the email itself as a live autonomous-workflow example
       And the fixed technical guidance ask does not list explicit weekday availability windows
-      And the fixed technical guidance ask asks for the recipient's perspective rather than sender scheduling logistics
+      And the fixed technical guidance ask asks for guidance on how the recipient approached the work or what to focus on at the sender's stage
+      And the technical-path body does not mention an attached resume
+      And the technical-path send artifact does not attach the resume file
       And the assembled technical-path body stays within the current reduced technical word target
       And HTML rendering hyperlinks the `Job Hunt Copilot` label itself in that paragraph
 

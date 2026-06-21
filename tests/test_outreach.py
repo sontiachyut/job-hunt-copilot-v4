@@ -4109,16 +4109,20 @@ def test_codex_role_split_renderer_generates_technical_path_body_and_debug_artif
     assert "I recently graduated from ASU with an MS in Computer Science, and in my recent work I built distributed Python and Scala data services on Azure that handled ~580 TPS in production while maintaining 99.95% uptime." in body
     assert "This email is a live example of that autonomous workflow." not in body
     assert "Would you be open to a 10-minute conversation sometime in the next week or two?" not in body
-    assert "If you're open to it, I'd appreciate a brief 10-minute conversation to hear how you approached this kind of work and what helped you grow into it." in body
+    assert "If you're open to it, I'd really value a brief 10-minute conversation for your guidance on how you grew into this kind of work and what you'd recommend I focus on at this stage." in body
     assert "weekdays between 8 AM and 6 PM MST" not in body
+    assert "I've attached my resume for context." not in body
     assert "I also built Job Hunt Copilot (https://github.com/sontiachyut/job-hunt-copilot-v4), an AI workflow automation tool for my own job search that has pushed me to think carefully about product design, reliability, and real-world use." in body
     assert "If you're interested, the repo is here:" not in body
     assert 'href="https://github.com/sontiachyut/job-hunt-copilot-v4"' in body_html
     assert ">Job Hunt Copilot</a>" in body_html
     assert "If you&#x27;re interested, the repo is here:" not in body_html
     assert len(body.split()) <= 210
+    assert message.resume_attachment_path is None
     assert message.opener_decision_artifact_path is not None
+    send_result_payload = json.loads(Path(message.send_result_artifact_path).read_text(encoding="utf-8"))
     debug_payload = json.loads(Path(message.opener_decision_artifact_path).read_text(encoding="utf-8"))
+    assert send_result_payload["resume_attachment_path"] is None
     assert debug_payload["drafting_path"] == "technical"
     assert debug_payload["selected_career_steps"] == ["InsightRX", "Lattice"]
 
@@ -4599,6 +4603,34 @@ def test_normalize_technical_role_split_payload_recovers_shape_and_career_steps(
 
     assert validated.paragraph_1_text.count(". ") == 1
     assert validated.selected_career_steps == ["InsightRX", "Lattice"]
+
+
+def test_normalize_technical_role_split_payload_repairs_same_company_growth_opener() -> None:
+    payload = {
+        "paragraph_1_text": (
+            "I came across your LinkedIn profile and admired your path... from your long tenure at Harvey Nash into your current role as Senior Software Engineer at Harvey Nash. "
+            "That path stood out to me, and I'd love to grow in a similar direction and ship software at that level over time."
+        ),
+        "selected_career_steps": [],
+    }
+
+    normalized = _normalize_technical_role_split_payload_dict(
+        payload,
+        employment_history_summary=(
+            "1. Senior Software Engineer at Harvey Nash — current, start 2021-01-01",
+        ),
+        current_title="Senior Software Engineer",
+        current_company="Harvey Nash",
+    )
+    validated = TechnicalRoleSplitDraftPayload.model_validate(normalized)
+
+    assert "..." not in validated.paragraph_1_text
+    assert "long tenure at Harvey Nash into your current role" not in validated.paragraph_1_text
+    assert (
+        "I came across your LinkedIn profile and admired the growth you've had at Harvey Nash into your current role as Senior Software Engineer at Harvey Nash."
+        in validated.paragraph_1_text
+    )
+    assert validated.selected_career_steps == ["Harvey Nash"]
 
 
 def test_build_outreach_codex_exec_env_includes_codex_dir_and_runtime_fallbacks(

@@ -70,7 +70,7 @@ TECHNICAL_PATH_PARAGRAPH_3_TEMPLATE = (
     "that has pushed me to think carefully about product design, reliability, and real-world use."
 )
 TECHNICAL_PATH_PARAGRAPH_4 = (
-    "If you're open to it, I'd appreciate a brief 10-minute conversation to hear how you approached this kind of work and what helped you grow into it."
+    "If you're open to it, I'd really value a brief 10-minute conversation for your guidance on how you grew into this kind of work and what you'd recommend I focus on at this stage."
 )
 MANAGERIAL_PATH_OPENER_SENTENCE_1 = "I hope you're doing well."
 MANAGERIAL_PATH_OPENER_SENTENCE_3 = (
@@ -2227,6 +2227,16 @@ def _recipient_current_company(context: RoleTargetedDraftContext) -> str:
     return context.company_name
 
 
+def _role_targeted_resume_attachment_path(
+    *,
+    context: RoleTargetedDraftContext,
+    tailoring_inputs: Mapping[str, Any],
+) -> str | None:
+    if _select_role_split_recipient_path(context) == "technical":
+        return None
+    return str(tailoring_inputs["resume_path"])
+
+
 def _compose_technical_role_split_body(
     context: RoleTargetedDraftContext,
     payload: TechnicalRoleSplitDraftPayload,
@@ -2302,6 +2312,8 @@ def _run_codex_technical_role_split_draft(
         payload_normalizer=lambda payload: _normalize_technical_role_split_payload_dict(
             payload,
             employment_history_summary=context.apollo_employment_history_summary,
+            current_title=_recipient_current_title(context),
+            current_company=_recipient_current_company(context),
         ),
         run_prefix="technical-role-split",
         lead_id=context.lead_id,
@@ -2491,6 +2503,8 @@ def _normalize_technical_role_split_payload_dict(
     payload: dict[str, Any],
     *,
     employment_history_summary: Sequence[str],
+    current_title: str | None = None,
+    current_company: str | None = None,
 ) -> dict[str, Any]:
     normalized = dict(payload)
     paragraph = str(normalized.get("paragraph_1_text") or "").strip()
@@ -2503,6 +2517,12 @@ def _normalize_technical_role_split_payload_dict(
             if first_sentence[-1:] not in ".!?":
                 first_sentence = f"{first_sentence}."
             paragraph = f"{first_sentence} {TECHNICAL_ROLE_SPLIT_FIXED_SECOND_SENTENCE}"
+        paragraph = _repair_technical_paragraph_1_text(
+            paragraph,
+            employment_history_summary=employment_history_summary,
+            current_title=current_title,
+            current_company=current_company,
+        )
         normalized["paragraph_1_text"] = paragraph
 
     selected_career_steps = normalized.get("selected_career_steps")
@@ -2518,6 +2538,42 @@ def _normalize_technical_role_split_payload_dict(
         )
     normalized["selected_career_steps"] = cleaned_steps
     return normalized
+
+
+def _repair_technical_paragraph_1_text(
+    paragraph_1_text: str,
+    *,
+    employment_history_summary: Sequence[str],
+    current_title: str | None,
+    current_company: str | None,
+) -> str:
+    paragraph = paragraph_1_text.replace("...", " ").replace("…", " ")
+    paragraph = re.sub(r"\s+", " ", paragraph).strip()
+    company_names = _extract_employment_history_company_names(employment_history_summary)
+    lowered = paragraph.casefold()
+    current_company_clean = (current_company or "").strip()
+    current_title_clean = (current_title or "").strip()
+
+    if current_company_clean and current_title_clean and "long tenure at" in lowered:
+        repeated_company = current_company_clean.casefold()
+        if lowered.count(repeated_company) >= 2:
+            return (
+                f"I came across your LinkedIn profile and admired the growth you've had at "
+                f"{current_company_clean} into your current role as {current_title_clean} at {current_company_clean}. "
+                f"{TECHNICAL_ROLE_SPLIT_FIXED_SECOND_SENTENCE}"
+            )
+
+    if current_company_clean and current_title_clean and company_names:
+        unique_companies = {company.casefold() for company in company_names}
+        if len(unique_companies) == 1 and current_company_clean.casefold() in unique_companies:
+            if " and now into your current role as " in lowered:
+                return (
+                    f"I came across your LinkedIn profile and admired the growth you've had at "
+                    f"{current_company_clean} into your current role as {current_title_clean} at {current_company_clean}. "
+                    f"{TECHNICAL_ROLE_SPLIT_FIXED_SECOND_SENTENCE}"
+                )
+
+    return paragraph
 
 
 def _infer_selected_career_steps_from_history(
@@ -2588,19 +2644,21 @@ def _build_technical_role_split_prompt(context: RoleTargetedDraftContext) -> str
             "",
             "Rules for paragraph_1_text:",
             "- Exactly 2 sentences.",
-            '- First sentence must begin: "I came across your LinkedIn profile and admired your path..."',
+            '- First sentence must begin: "I came across your LinkedIn profile and admired your path"',
             "- Use the most relevant 2 or 3 past companies plus the recipient's current exact title and company when that history is available.",
             "- When only partial career history is available, write the best truthful path sentence you can from the available evidence rather than inventing steps.",
+            "- If the available history is mostly one-company growth, write a clean current-role-focused growth sentence instead of forcing a transition chain.",
             "- selected_career_steps must contain only the past company names used for the path transitions.",
             "- selected_career_steps must never be empty when employment history contains at least one company.",
             "- The second sentence should naturally express that the path stood out and that I'd love to grow in a similar direction and ship software at that level over time.",
             "- Do not turn it into a long chronology.",
             "- Do not make it sound like a referral ask.",
+            "- Do not emit placeholder ellipses or awkward tenure phrasing.",
             "",
             "Hard constraints:",
             "- Do not invent unsupported technical specifics about the recipient's work, stack, or responsibilities.",
             "- Use only the employment-history summary provided below.",
-            "- Do not mention my background, Job Hunt Copilot, the repo, the autonomous workflow, the job hunt, guidance, a conversation ask, or availability.",
+            "- Do not mention my background, Job Hunt Copilot, the repo, the autonomous workflow, the job hunt, a conversation ask, a resume, or availability.",
             "- Do not restate or preempt the fixed later paragraphs.",
             "",
             "Recipient:",
@@ -2968,7 +3026,10 @@ def generate_role_targeted_send_set_drafts(
             recipient_email=recipient_email,
             rendered=rendered,
             current_time=current_time,
-            resume_attachment_path=str(tailoring_inputs["resume_path"]),
+            resume_attachment_path=_role_targeted_resume_attachment_path(
+                context=context,
+                tailoring_inputs=tailoring_inputs,
+            ),
             use_role_targeted_mirrors=True,
         )
         drafted_messages.append(drafted)
@@ -3054,7 +3115,10 @@ def refresh_role_targeted_generated_drafts(
             active_message=active_message,
             rendered=rendered,
             current_time=current_time,
-            resume_attachment_path=str(tailoring_inputs["resume_path"]),
+            resume_attachment_path=_role_targeted_resume_attachment_path(
+                context=context,
+                tailoring_inputs=tailoring_inputs,
+            ),
         )
         if refreshed:
             refreshed_ids.append(active_message.outreach_message_id)
@@ -3071,7 +3135,7 @@ def _refresh_persisted_role_targeted_generated_draft(
     active_message: _ActiveWaveMessage,
     rendered: RenderedDraft,
     current_time: str,
-    resume_attachment_path: str,
+    resume_attachment_path: str | None,
 ) -> bool:
     company_name = str(posting_row["company_name"])
     role_title = str(posting_row["role_title"])
