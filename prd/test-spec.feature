@@ -1117,13 +1117,16 @@ Feature: Job Hunt Copilot next-build acceptance
       Then the drafting flow fails closed
       And it does not silently fall back to the older generic sender-evidence pool
 
-    Scenario: Technical role-split fixed paragraphs stay concise and drop legacy workflow wording
+    Scenario: Technical role-split opener and fixed paragraphs stay concise and guidance-oriented
       Given a technical-path first-email draft is generated
       When the resulting body is inspected
+      Then the opener does not emit malformed ellipsis or awkward tenure phrasing when the career-history pack is weak
       Then the fixed Job Hunt Copilot paragraph is a single concise sentence
       And the body does not say the email is a live example of an autonomous workflow
       And the body does not include explicit weekday availability or flexible scheduling-range language
-      And the ask requests the recipient's perspective on how they approached the work or grew into it
+      And the ask requests guidance on how the recipient approached that work or what they would recommend someone at the sender's stage focus on
+      And the technical-path email does not mention an attached resume
+      And the technical-path send artifact does not attach the resume file
 
     Scenario: Role-targeted original drafts fail closed on deterministic lint defects
       Given a role-targeted original draft is rendered in the active role-split path
