@@ -1298,6 +1298,14 @@ Feature: Job Hunt Copilot next-build acceptance
       And due sends and due feedback polling outrank new Gmail ingestion and maintenance
       And bounded maintenance work remains the lowest default priority
 
+    Scenario: Orphaned completed postings with actionable unsent outreach recover at sending rather than delivery feedback
+      Given a role-targeted posting has no non-terminal posting-scoped pipeline run
+      And the posting still has an actionable unsent generated or retryable send frontier
+      And the posting has no sent outreach messages yet
+      When the supervisor recovers that orphaned downstream work
+      Then it recreates the durable role-targeted run at `sending`
+      And it does not recreate that run at `delivery_feedback`
+
     Scenario: Supervisor chooses only registered catalog actions and escalates unknown needs
       Given the supervisor has selected a work unit
       When it decides the next autonomous action

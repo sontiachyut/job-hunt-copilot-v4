@@ -3594,7 +3594,7 @@ def _classify_orphaned_send_stage_recovery(
         job_posting_id=job_posting_id,
     )
     if send_actionable:
-        return "delivery_feedback", frontier_kind
+        return "sending", frontier_kind
     if not sent_message_ids:
         return None
     pending_feedback_message_ids = (
