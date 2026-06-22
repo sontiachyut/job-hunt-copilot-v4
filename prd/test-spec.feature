@@ -1973,11 +1973,19 @@ Feature: Job Hunt Copilot next-build acceptance
     Scenario: Follow-up cadence and due-time logic use only the configured business-day rules
       Given an eligible original outreach thread has not yet received any follow-up
       When the worker determines whether follow-up `1`, `2`, or `3` is due
-      Then the cadence uses `4`, `5`, and `7` business days between touches
+      Then the cadence uses `3`, `4`, and `5` business days between touches
       And business day means weekdays only in `America/Phoenix`
       And no extra subjective `too recent` delay is applied beyond that cadence
       And weekend-adjacent originals receive no special timing exception
       And an original sent outside preferred business hours does not by itself block a later due follow-up
+
+    Scenario: Follow-up cadence refresh recalculates unsent plans under the current rules
+      Given one or more unsent automatic follow-up plans already exist from an older cadence
+      When the runtime refreshes follow-up eligibility under the current cadence
+      Then each unsent plan recomputes `eligible_after` from the same per-sequence business-day rules used for new plans
+      And sent follow-up history remains unchanged
+      And if the refreshed `eligible_after` is already in the past the plan becomes due immediately
+      And the recalculated due time preserves the prior touch's local `America/Phoenix` time-of-day
 
     Scenario: Historical and newly due follow-ups share one oldest-first rollout queue
       Given historical Codex-origin originals and newly due follow-up candidates both exist
