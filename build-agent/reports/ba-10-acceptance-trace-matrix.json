@@ -1,9 +1,9 @@
 {
   "trace_matrix_version": 6,
   "feature_path": "prd/test-spec.feature",
-  "scenario_count": 278,
+  "scenario_count": 279,
   "status_counts": {
-    "implemented": 275,
+    "implemented": 276,
     "partial": 1,
     "gap": 0,
     "deferred_optional": 1,
@@ -10200,7 +10200,7 @@
       ],
       "note": "Codex-only automatic follow-up eligibility, bounded prompt/rendering, shared send-lane routing, and rollout controls are validated through focused follow-up, send-lane, and outreach regressions.",
       "status_counts": {
-        "implemented": 25,
+        "implemented": 26,
         "partial": 0,
         "gap": 0,
         "deferred_optional": 0,
@@ -10340,7 +10340,7 @@
           "note": "Codex-only automatic follow-up eligibility, bounded prompt/rendering, shared send-lane routing, and rollout controls are validated through focused follow-up, send-lane, and outreach regressions."
         },
         {
-          "name": "Historical and newly due follow-ups share one oldest-first rollout queue",
+          "name": "Follow-up cadence refresh recalculates unsent plans under the current rules",
           "scenario_line": 1982,
           "status": "implemented",
           "owner_role": "outreach-engineer",
@@ -10373,8 +10373,8 @@
           "note": "Codex-only automatic follow-up eligibility, bounded prompt/rendering, shared send-lane routing, and rollout controls are validated through focused follow-up, send-lane, and outreach regressions."
         },
         {
-          "name": "The worker materializes only the next relevant follow-up step",
-          "scenario_line": 1989,
+          "name": "Historical and newly due follow-ups share one oldest-first rollout queue",
+          "scenario_line": 1990,
           "status": "implemented",
           "owner_role": "outreach-engineer",
           "epic_ids": [
@@ -10406,7 +10406,7 @@
           "note": "Codex-only automatic follow-up eligibility, bounded prompt/rendering, shared send-lane routing, and rollout controls are validated through focused follow-up, send-lane, and outreach regressions."
         },
         {
-          "name": "Follow-up suppression stays thread-rooted per contact while remaining cross-contact independent",
+          "name": "The worker materializes only the next relevant follow-up step",
           "scenario_line": 1997,
           "status": "implemented",
           "owner_role": "outreach-engineer",
@@ -10439,8 +10439,41 @@
           "note": "Codex-only automatic follow-up eligibility, bounded prompt/rendering, shared send-lane routing, and rollout controls are validated through focused follow-up, send-lane, and outreach regressions."
         },
         {
+          "name": "Follow-up suppression stays thread-rooted per contact while remaining cross-contact independent",
+          "scenario_line": 2005,
+          "status": "implemented",
+          "owner_role": "outreach-engineer",
+          "epic_ids": [
+            "BA-08",
+            "BA-09",
+            "BA-10"
+          ],
+          "slice_ids": [
+            "BA-08-S1",
+            "BA-08-S2",
+            "BA-08-S3",
+            "BA-09-S1",
+            "BA-09-S2",
+            "BA-09-S3"
+          ],
+          "code_refs": [
+            "job_hunt_copilot/followups.py",
+            "job_hunt_copilot/send_lane.py",
+            "job_hunt_copilot/outreach.py",
+            "job_hunt_copilot/local_runtime.py"
+          ],
+          "test_refs": [
+            "tests/test_followups.py",
+            "tests/test_send_lane.py",
+            "tests/test_outreach.py",
+            "tests/test_acceptance_traceability.py"
+          ],
+          "gap_ids": [],
+          "note": "Codex-only automatic follow-up eligibility, bounded prompt/rendering, shared send-lane routing, and rollout controls are validated through focused follow-up, send-lane, and outreach regressions."
+        },
+        {
           "name": "Follow-up cadence uses business-day math while final send windows run all week",
-          "scenario_line": 2004,
+          "scenario_line": 2012,
           "status": "implemented",
           "owner_role": "outreach-engineer",
           "epic_ids": [
@@ -10473,7 +10506,7 @@
         },
         {
           "name": "Follow-up prompts stay bounded, split by posture, and return structured output",
-          "scenario_line": 2011,
+          "scenario_line": 2019,
           "status": "implemented",
           "owner_role": "outreach-engineer",
           "epic_ids": [
@@ -10506,39 +10539,6 @@
         },
         {
           "name": "Deterministic runtime owns non-variable follow-up rendering boundaries",
-          "scenario_line": 2020,
-          "status": "implemented",
-          "owner_role": "outreach-engineer",
-          "epic_ids": [
-            "BA-08",
-            "BA-09",
-            "BA-10"
-          ],
-          "slice_ids": [
-            "BA-08-S1",
-            "BA-08-S2",
-            "BA-08-S3",
-            "BA-09-S1",
-            "BA-09-S2",
-            "BA-09-S3"
-          ],
-          "code_refs": [
-            "job_hunt_copilot/followups.py",
-            "job_hunt_copilot/send_lane.py",
-            "job_hunt_copilot/outreach.py",
-            "job_hunt_copilot/local_runtime.py"
-          ],
-          "test_refs": [
-            "tests/test_followups.py",
-            "tests/test_send_lane.py",
-            "tests/test_outreach.py",
-            "tests/test_acceptance_traceability.py"
-          ],
-          "gap_ids": [],
-          "note": "Codex-only automatic follow-up eligibility, bounded prompt/rendering, shared send-lane routing, and rollout controls are validated through focused follow-up, send-lane, and outreach regressions."
-        },
-        {
-          "name": "Follow-up content remains compact and does not reopen prohibited first-email material",
           "scenario_line": 2028,
           "status": "implemented",
           "owner_role": "outreach-engineer",
@@ -10571,8 +10571,41 @@
           "note": "Codex-only automatic follow-up eligibility, bounded prompt/rendering, shared send-lane routing, and rollout controls are validated through focused follow-up, send-lane, and outreach regressions."
         },
         {
+          "name": "Follow-up content remains compact and does not reopen prohibited first-email material",
+          "scenario_line": 2036,
+          "status": "implemented",
+          "owner_role": "outreach-engineer",
+          "epic_ids": [
+            "BA-08",
+            "BA-09",
+            "BA-10"
+          ],
+          "slice_ids": [
+            "BA-08-S1",
+            "BA-08-S2",
+            "BA-08-S3",
+            "BA-09-S1",
+            "BA-09-S2",
+            "BA-09-S3"
+          ],
+          "code_refs": [
+            "job_hunt_copilot/followups.py",
+            "job_hunt_copilot/send_lane.py",
+            "job_hunt_copilot/outreach.py",
+            "job_hunt_copilot/local_runtime.py"
+          ],
+          "test_refs": [
+            "tests/test_followups.py",
+            "tests/test_send_lane.py",
+            "tests/test_outreach.py",
+            "tests/test_acceptance_traceability.py"
+          ],
+          "gap_ids": [],
+          "note": "Codex-only automatic follow-up eligibility, bounded prompt/rendering, shared send-lane routing, and rollout controls are validated through focused follow-up, send-lane, and outreach regressions."
+        },
+        {
           "name": "Technical and managerial follow-ups preserve the original outreach posture",
-          "scenario_line": 2039,
+          "scenario_line": 2047,
           "status": "implemented",
           "owner_role": "outreach-engineer",
           "epic_ids": [
@@ -10605,39 +10638,6 @@
         },
         {
           "name": "Follow-up sending uses same-thread delivery and single-recipient safety",
-          "scenario_line": 2046,
-          "status": "implemented",
-          "owner_role": "outreach-engineer",
-          "epic_ids": [
-            "BA-08",
-            "BA-09",
-            "BA-10"
-          ],
-          "slice_ids": [
-            "BA-08-S1",
-            "BA-08-S2",
-            "BA-08-S3",
-            "BA-09-S1",
-            "BA-09-S2",
-            "BA-09-S3"
-          ],
-          "code_refs": [
-            "job_hunt_copilot/followups.py",
-            "job_hunt_copilot/send_lane.py",
-            "job_hunt_copilot/outreach.py",
-            "job_hunt_copilot/local_runtime.py"
-          ],
-          "test_refs": [
-            "tests/test_followups.py",
-            "tests/test_send_lane.py",
-            "tests/test_outreach.py",
-            "tests/test_acceptance_traceability.py"
-          ],
-          "gap_ids": [],
-          "note": "Codex-only automatic follow-up eligibility, bounded prompt/rendering, shared send-lane routing, and rollout controls are validated through focused follow-up, send-lane, and outreach regressions."
-        },
-        {
-          "name": "Reply, bounce, and thread-state checks suppress automatic follow-up before send",
           "scenario_line": 2054,
           "status": "implemented",
           "owner_role": "outreach-engineer",
@@ -10670,7 +10670,7 @@
           "note": "Codex-only automatic follow-up eligibility, bounded prompt/rendering, shared send-lane routing, and rollout controls are validated through focused follow-up, send-lane, and outreach regressions."
         },
         {
-          "name": "First live rollout is capped at ten successful sends and then pauses",
+          "name": "Reply, bounce, and thread-state checks suppress automatic follow-up before send",
           "scenario_line": 2062,
           "status": "implemented",
           "owner_role": "outreach-engineer",
@@ -10703,7 +10703,7 @@
           "note": "Codex-only automatic follow-up eligibility, bounded prompt/rendering, shared send-lane routing, and rollout controls are validated through focused follow-up, send-lane, and outreach regressions."
         },
         {
-          "name": "Shared outbound lane uses alternating two-hour windows across the full day",
+          "name": "First live rollout is capped at ten successful sends and then pauses",
           "scenario_line": 2070,
           "status": "implemented",
           "owner_role": "outreach-engineer",
@@ -10736,7 +10736,7 @@
           "note": "Codex-only automatic follow-up eligibility, bounded prompt/rendering, shared send-lane routing, and rollout controls are validated through focused follow-up, send-lane, and outreach regressions."
         },
         {
-          "name": "Shared outbound lane uses fallback only when the preferred queue is effectively empty",
+          "name": "Shared outbound lane uses alternating two-hour windows across the full day",
           "scenario_line": 2078,
           "status": "implemented",
           "owner_role": "outreach-engineer",
@@ -10769,8 +10769,8 @@
           "note": "Codex-only automatic follow-up eligibility, bounded prompt/rendering, shared send-lane routing, and rollout controls are validated through focused follow-up, send-lane, and outreach regressions."
         },
         {
-          "name": "Shared outbound lane preserves one global serialized pacing gate",
-          "scenario_line": 2087,
+          "name": "Shared outbound lane uses fallback only when the preferred queue is effectively empty",
+          "scenario_line": 2086,
           "status": "implemented",
           "owner_role": "outreach-engineer",
           "epic_ids": [
@@ -10802,7 +10802,7 @@
           "note": "Codex-only automatic follow-up eligibility, bounded prompt/rendering, shared send-lane routing, and rollout controls are validated through focused follow-up, send-lane, and outreach regressions."
         },
         {
-          "name": "Follow-up and original queues use deterministic ordering inside their windows",
+          "name": "Shared outbound lane preserves one global serialized pacing gate",
           "scenario_line": 2095,
           "status": "implemented",
           "owner_role": "outreach-engineer",
@@ -10835,8 +10835,41 @@
           "note": "Codex-only automatic follow-up eligibility, bounded prompt/rendering, shared send-lane routing, and rollout controls are validated through focused follow-up, send-lane, and outreach regressions."
         },
         {
+          "name": "Follow-up and original queues use deterministic ordering inside their windows",
+          "scenario_line": 2103,
+          "status": "implemented",
+          "owner_role": "outreach-engineer",
+          "epic_ids": [
+            "BA-08",
+            "BA-09",
+            "BA-10"
+          ],
+          "slice_ids": [
+            "BA-08-S1",
+            "BA-08-S2",
+            "BA-08-S3",
+            "BA-09-S1",
+            "BA-09-S2",
+            "BA-09-S3"
+          ],
+          "code_refs": [
+            "job_hunt_copilot/followups.py",
+            "job_hunt_copilot/send_lane.py",
+            "job_hunt_copilot/outreach.py",
+            "job_hunt_copilot/local_runtime.py"
+          ],
+          "test_refs": [
+            "tests/test_followups.py",
+            "tests/test_send_lane.py",
+            "tests/test_outreach.py",
+            "tests/test_acceptance_traceability.py"
+          ],
+          "gap_ids": [],
+          "note": "Codex-only automatic follow-up eligibility, bounded prompt/rendering, shared send-lane routing, and rollout controls are validated through focused follow-up, send-lane, and outreach regressions."
+        },
+        {
           "name": "Prepared-but-unsent frontiers stay bounded and freshness-aware",
-          "scenario_line": 2105,
+          "scenario_line": 2113,
           "status": "implemented",
           "owner_role": "outreach-engineer",
           "epic_ids": [
@@ -10869,7 +10902,7 @@
         },
         {
           "name": "Original prepared frontier does not let one stale posting backlog starve newer ready postings",
-          "scenario_line": 2115,
+          "scenario_line": 2123,
           "status": "implemented",
           "owner_role": "outreach-engineer",
           "epic_ids": [
@@ -10902,7 +10935,7 @@
         },
         {
           "name": "Window waits are reported separately from inter-send-gap waits",
-          "scenario_line": 2125,
+          "scenario_line": 2133,
           "status": "implemented",
           "owner_role": "outreach-engineer",
           "epic_ids": [
@@ -10935,7 +10968,7 @@
         },
         {
           "name": "Repeated follow-up drafting failures stop the automatic sequence for that thread",
-          "scenario_line": 2132,
+          "scenario_line": 2140,
           "status": "implemented",
           "owner_role": "outreach-engineer",
           "epic_ids": [
@@ -10968,7 +11001,7 @@
         },
         {
           "name": "Follow-up drafts are rendered only when a thread is actually due",
-          "scenario_line": 2139,
+          "scenario_line": 2147,
           "status": "implemented",
           "owner_role": "outreach-engineer",
           "epic_ids": [
@@ -11001,7 +11034,7 @@
         },
         {
           "name": "Sent follow-ups persist compact debug context without requiring prompt dumps",
-          "scenario_line": 2145,
+          "scenario_line": 2153,
           "status": "implemented",
           "owner_role": "outreach-engineer",
           "epic_ids": [
@@ -11036,7 +11069,7 @@
     },
     {
       "rule": "Codex-only autonomous outreach cutover acceptance",
-      "rule_line": 2153,
+      "rule_line": 2161,
       "owner_role": "outreach-engineer",
       "epic_ids": [
         "BA-08",
@@ -11074,7 +11107,7 @@
       "scenarios": [
         {
           "name": "Autonomous production workers cannot reach retired deterministic renderers",
-          "scenario_line": 2155,
+          "scenario_line": 2163,
           "status": "implemented",
           "owner_role": "outreach-engineer",
           "epic_ids": [
@@ -11107,7 +11140,7 @@
         },
         {
           "name": "Manual-only legacy helpers may remain but stay isolated from autonomous workers",
-          "scenario_line": 2162,
+          "scenario_line": 2170,
           "status": "implemented",
           "owner_role": "outreach-engineer",
           "epic_ids": [
@@ -11140,7 +11173,7 @@
         },
         {
           "name": "Deterministic-origin unsent production backlog is auto-retired during cutover",
-          "scenario_line": 2168,
+          "scenario_line": 2176,
           "status": "implemented",
           "owner_role": "outreach-engineer",
           "epic_ids": [
@@ -11173,7 +11206,7 @@
         },
         {
           "name": "Deterministic-origin automatic follow-up plans are auto-skipped during cutover",
-          "scenario_line": 2175,
+          "scenario_line": 2183,
           "status": "implemented",
           "owner_role": "outreach-engineer",
           "epic_ids": [
@@ -11206,7 +11239,7 @@
         },
         {
           "name": "Unknown-origin autonomous backlog fails closed during cutover",
-          "scenario_line": 2182,
+          "scenario_line": 2190,
           "status": "implemented",
           "owner_role": "outreach-engineer",
           "epic_ids": [
@@ -11239,7 +11272,7 @@
         },
         {
           "name": "Autonomous Codex outage raises incident and pauses the smallest safe worker scope",
-          "scenario_line": 2189,
+          "scenario_line": 2197,
           "status": "implemented",
           "owner_role": "outreach-engineer",
           "epic_ids": [
@@ -11272,7 +11305,7 @@
         },
         {
           "name": "Surviving Codex-origin unsent backlog is refreshed before autonomous send",
-          "scenario_line": 2196,
+          "scenario_line": 2204,
           "status": "implemented",
           "owner_role": "outreach-engineer",
           "epic_ids": [

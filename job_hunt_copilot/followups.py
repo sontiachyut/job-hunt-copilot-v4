@@ -67,9 +67,9 @@ LEGACY_FOLLOWUP_MODES = frozenset({"follow_up", OUTREACH_MODE_ROLE_TARGETED_FOLL
 
 FOLLOWUP_MAX_SEQUENCE = 3
 FOLLOWUP_DAY_GAPS = {
-    1: 4,
-    2: 5,
-    3: 7,
+    1: 3,
+    2: 4,
+    3: 5,
 }
 FOLLOWUP_BUSINESS_TIMEZONE = SEND_LANE_TIMEZONE
 FOLLOWUP_DRAFT_RETRY_LIMIT = 3
@@ -92,6 +92,14 @@ PREPARED_FOLLOWUP_PLAN_STATUSES = (
     PLAN_STATUS_AGENT_REVIEWED,
     PLAN_STATUS_WAITING_FOR_PACING,
     PLAN_STATUS_RETRYABLE,
+)
+CADENCE_REFRESHABLE_PLAN_STATUSES = (
+    PLAN_STATUS_PENDING,
+    PLAN_STATUS_DRY_RUN_READY,
+    PLAN_STATUS_AGENT_REVIEWED,
+    PLAN_STATUS_WAITING_FOR_PACING,
+    PLAN_STATUS_RETRYABLE,
+    PLAN_STATUS_HELD_FOR_REVIEW,
 )
 
 TERMINAL_PLAN_STATUSES = frozenset(
@@ -777,6 +785,7 @@ def run_followup_cycle(
             current_time=effective_time,
             limit=resolved_batch_size,
         )
+        _refresh_unsent_plan_eligibility(connection, current_time=effective_time)
         if followup_auto_send_is_available:
             _release_auto_send_disabled_holds(connection, current_time=effective_time)
             _release_missing_sender_identity_holds(connection, current_time=effective_time)
@@ -1566,6 +1575,99 @@ def _reopen_pre_cutover_archive_skips(
             ],
         )
     return int(cursor.rowcount or 0)
+
+
+def _refresh_unsent_plan_eligibility(
+    connection: sqlite3.Connection,
+    *,
+    current_time: str,
+) -> int:
+    rows = connection.execute(
+        f"""
+        SELECT fp.outreach_followup_plan_id,
+               fp.original_outreach_message_id,
+               fp.followup_sequence,
+               fp.eligible_after,
+               om.sent_at AS original_sent_at
+        FROM outreach_followup_plans fp
+        JOIN outreach_messages om
+          ON om.outreach_message_id = fp.original_outreach_message_id
+        WHERE fp.plan_status IN ({",".join("?" for _ in CADENCE_REFRESHABLE_PLAN_STATUSES)})
+        ORDER BY fp.original_outreach_message_id ASC,
+                 fp.followup_sequence ASC,
+                 fp.outreach_followup_plan_id ASC
+        """,
+        CADENCE_REFRESHABLE_PLAN_STATUSES,
+    ).fetchall()
+    if not rows:
+        return 0
+
+    cached_rows_by_original: dict[str, Sequence[sqlite3.Row]] = {}
+    updates: list[tuple[str, str, str]] = []
+    for row in rows:
+        original_outreach_message_id = str(row["original_outreach_message_id"])
+        existing_rows = cached_rows_by_original.get(original_outreach_message_id)
+        if existing_rows is None:
+            existing_rows = _load_plan_rows_for_original(connection, original_outreach_message_id)
+            cached_rows_by_original[original_outreach_message_id] = existing_rows
+        base_sent_at = _base_sent_at_for_refresh(
+            original_sent_at=str(row["original_sent_at"]),
+            target_sequence=int(row["followup_sequence"]),
+            existing_rows=existing_rows,
+        )
+        if base_sent_at is None:
+            continue
+        refreshed_eligible_after = _eligible_after(
+            base_sent_at,
+            int(row["followup_sequence"]),
+            FOLLOWUP_BUSINESS_TIMEZONE,
+        )
+        if refreshed_eligible_after == str(row["eligible_after"]):
+            continue
+        updates.append(
+            (
+                refreshed_eligible_after,
+                current_time,
+                str(row["outreach_followup_plan_id"]),
+            )
+        )
+    if not updates:
+        return 0
+    with connection:
+        connection.executemany(
+            """
+            UPDATE outreach_followup_plans
+            SET eligible_after = ?,
+                updated_at = ?
+            WHERE outreach_followup_plan_id = ?
+            """,
+            updates,
+        )
+    return len(updates)
+
+
+def _base_sent_at_for_refresh(
+    *,
+    original_sent_at: str,
+    target_sequence: int,
+    existing_rows: Sequence[sqlite3.Row],
+) -> str | None:
+    if target_sequence <= FOLLOWUP_SEQUENCE_START:
+        return original_sent_at
+    prior_sent_rows = [
+        row
+        for row in existing_rows
+        if str(row["plan_status"]) == PLAN_STATUS_SENT
+        and row["sent_at"]
+        and int(row["followup_sequence"]) < target_sequence
+    ]
+    if not prior_sent_rows:
+        return None
+    latest_prior_sent = max(
+        prior_sent_rows,
+        key=lambda row: (int(row["followup_sequence"]), str(row["sent_at"])),
+    )
+    return str(latest_prior_sent["sent_at"])
 
 
 def _load_plan_rows_for_original(

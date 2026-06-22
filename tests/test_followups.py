@@ -493,6 +493,89 @@ def test_materializes_only_next_followup_step(tmp_path):
     ]
 
 
+def test_followup_due_date_skips_weekends_under_new_cadence(tmp_path):
+    project_root, connection = _bootstrap_connection(tmp_path)
+    del project_root
+    connection.close()
+
+    eligible_after = followups_module._eligible_after(
+        "2026-06-19T20:30:00Z",
+        1,
+        followups_module.FOLLOWUP_BUSINESS_TIMEZONE,
+    )
+
+    assert eligible_after == "2026-06-24T20:30:00Z"
+
+
+def test_existing_pending_followup_plan_refreshes_to_new_cadence_and_becomes_due(tmp_path):
+    project_root, connection = _bootstrap_connection(tmp_path)
+    _seed_sent_role_targeted_message(
+        connection,
+        project_root,
+        send_result_payload={
+            "draft_origin_kind": "codex_role_split",
+            "draft_posture_family": "technical",
+            "autonomous_origin": True,
+        },
+    )
+    _seed_sent_followup_plan(
+        connection,
+        original_outreach_message_id="om_original",
+        sequence=1,
+        sent_at="2026-06-17T03:10:03Z",
+        followup_message_id="msg_followup_1",
+    )
+    connection.execute(
+        """
+        INSERT INTO outreach_followup_plans (
+          outreach_followup_plan_id, original_outreach_message_id, contact_id, job_posting_id,
+          plan_status, followup_sequence, eligible_after, created_at, updated_at
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+        """,
+        (
+            "fup_pending_seq_2",
+            "om_original",
+            "ct_1",
+            "jp_1",
+            PLAN_STATUS_PENDING,
+            2,
+            "2026-06-24T03:10:03Z",
+            NOW,
+            NOW,
+        ),
+    )
+    connection.commit()
+
+    result = run_followup_cycle(
+        connection,
+        project_root=project_root,
+        current_time="2026-06-23T04:00:00Z",
+        dry_run=True,
+        thread_inspector=FakeThreadInspector(
+            ThreadInspectionResult(result="clear", checked_at="2026-06-23T04:00:00Z")
+        ),
+        renderer=FakeRenderer(
+            (
+                "Following up once more on my earlier note.",
+                "I would still value a brief 10-minute conversation if you are open to it.",
+            )
+        ),
+    )
+
+    refreshed_plan = connection.execute(
+        """
+        SELECT plan_status, followup_sequence, eligible_after
+        FROM outreach_followup_plans
+        WHERE outreach_followup_plan_id = ?
+        """,
+        ("fup_pending_seq_2",),
+    ).fetchone()
+    assert result.drafts_created == 1
+    assert refreshed_plan["plan_status"] == PLAN_STATUS_DRY_RUN_READY
+    assert refreshed_plan["followup_sequence"] == 2
+    assert refreshed_plan["eligible_after"] == "2026-06-23T03:10:03Z"
+
+
 def test_historical_codex_origin_outside_old_recent_slice_materializes_followup(tmp_path):
     project_root, connection = _bootstrap_connection(tmp_path)
     _seed_sent_role_targeted_message(
