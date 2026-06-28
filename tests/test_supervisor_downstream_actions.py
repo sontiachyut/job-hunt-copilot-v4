@@ -1118,11 +1118,101 @@ def test_people_search_stage_executes_and_advances_to_email_discovery(tmp_path: 
     assert updated_run.run_status == RUN_STATUS_IN_PROGRESS
     assert updated_run.current_stage == "email_discovery"
     assert posting_status == "requires_contacts"
-    assert len(shortlist_rows) == 3
-    assert {row["recipient_type"] for row in shortlist_rows} == {"hiring_manager", "engineer"}
+    assert len(shortlist_rows) == 4
+    assert {row["recipient_type"] for row in shortlist_rows} == {"recruiter", "hiring_manager", "engineer"}
     assert sum(1 for row in shortlist_rows if row["recipient_type"] == "engineer") == 2
     assert all(row["link_level_status"] == "shortlisted" for row in shortlist_rows)
     assert (project_root / people_search_artifact_path).exists()
+
+
+def test_people_search_stage_succeeds_with_open_runtime_write_transaction(tmp_path: Path) -> None:
+    project_root = bootstrap_project(tmp_path)
+    paths = ProjectPaths.from_root(project_root)
+    connection = connect_database(project_root / "job_hunt_copilot.db")
+    lead_id, job_posting_id = seed_role_targeted_posting(
+        connection,
+        posting_status="requires_contacts",
+    )
+    seed_approved_tailoring_run(connection, job_posting_id=job_posting_id)
+    resume_agent(
+        connection,
+        manual_command="jhc-agent-start",
+        timestamp="2026-04-08T00:10:00Z",
+    )
+    pipeline_run, _ = ensure_role_targeted_pipeline_run(
+        connection,
+        lead_id=lead_id,
+        job_posting_id=job_posting_id,
+        current_stage="people_search",
+        started_at="2026-04-08T00:11:00Z",
+    )
+    search_provider = FakeApolloSearchProvider(
+        candidates=[
+            build_candidate(
+                provider_person_id="pp_r1",
+                display_name="Priya Recruiter",
+                title="Technical Recruiter",
+            ),
+            build_candidate(
+                provider_person_id="pp_m1",
+                display_name="Morgan Manager",
+                title="Engineering Manager",
+            ),
+            build_candidate(
+                provider_person_id="pp_e1",
+                display_name="Jamie Engineer",
+                title="Staff Software Engineer",
+            ),
+            build_candidate(
+                provider_person_id="pp_e2",
+                display_name="Casey Engineer",
+                title="Software Engineer",
+            ),
+        ]
+    )
+    enrichment_provider = FakeApolloEnrichmentProvider(
+        {"pp_r1": None, "pp_m1": None, "pp_e1": None, "pp_e2": None}
+    )
+
+    connection.execute(
+        """
+        UPDATE agent_control_state
+        SET control_value = ?
+        WHERE control_key = 'agent_mode'
+        """,
+        ("running",),
+    )
+
+    execution = run_supervisor_cycle(
+        connection,
+        paths,
+        trigger_type="launchd_heartbeat",
+        scheduler_name="launchd",
+        started_at="2026-04-08T00:12:00Z",
+        action_dependencies=SupervisorActionDependencies(
+            apollo_people_search_provider=search_provider,
+            apollo_contact_enrichment_provider=enrichment_provider,
+        ),
+    )
+    updated_run = get_pipeline_run(connection, pipeline_run.pipeline_run_id)
+    shortlist_count = connection.execute(
+        """
+        SELECT COUNT(*)
+        FROM job_posting_contacts
+        WHERE job_posting_id = ?
+          AND link_level_status = 'shortlisted'
+        """,
+        (job_posting_id,),
+    ).fetchone()[0]
+    connection.close()
+
+    assert execution.cycle.result == SUPERVISOR_CYCLE_RESULT_SUCCESS
+    assert execution.selected_work is not None
+    assert execution.selected_work.action_id == ACTION_RUN_ROLE_TARGETED_PEOPLE_SEARCH
+    assert execution.incident is None
+    assert updated_run is not None
+    assert updated_run.current_stage == "email_discovery"
+    assert shortlist_count == 4
 
 
 def test_people_search_stage_escalates_cleanly_when_no_contacts_are_found(tmp_path: Path) -> None:
@@ -1484,9 +1574,9 @@ def test_people_search_stage_sets_aside_posting_when_apollo_settles_shortlist_wi
         "SELECT posting_status FROM job_postings WHERE job_posting_id = ?",
         (job_posting_id,),
     ).fetchone()[0]
-    exhausted_row = connection.execute(
+    enriched_row = connection.execute(
         """
-        SELECT c.contact_status, jpc.link_level_status
+        SELECT c.contact_status, c.discovery_summary, jpc.link_level_status
         FROM contacts c
         JOIN job_posting_contacts jpc
           ON jpc.contact_id = c.contact_id
@@ -1499,13 +1589,13 @@ def test_people_search_stage_sets_aside_posting_when_apollo_settles_shortlist_wi
     assert execution.selected_work is not None
     assert execution.selected_work.action_id == ACTION_RUN_ROLE_TARGETED_PEOPLE_SEARCH
     assert updated_run is not None
-    assert updated_run.run_status == RUN_STATUS_ESCALATED
-    assert updated_run.current_stage == "people_search"
-    assert "Apollo settled the bounded shortlist without producing any usable emails" in (updated_run.run_summary or "")
+    assert updated_run.run_status == RUN_STATUS_IN_PROGRESS
+    assert updated_run.current_stage == "email_discovery"
     assert posting_status == "requires_contacts"
-    assert dict(exhausted_row) == {
-        "contact_status": "exhausted",
-        "link_level_status": "exhausted",
+    assert dict(enriched_row) == {
+        "contact_status": "identified",
+        "discovery_summary": "Apollo enrichment matched this contact as `Engineering Manager`.",
+        "link_level_status": "shortlisted",
     }
 
 
@@ -2308,16 +2398,16 @@ def test_email_discovery_stage_settles_legacy_apollo_no_email_contacts_before_ex
     assert execution.cycle.result == SUPERVISOR_CYCLE_RESULT_SUCCESS
     assert execution.selected_work is not None
     assert execution.selected_work.action_id == ACTION_RUN_ROLE_TARGETED_EMAIL_DISCOVERY
-    assert finder.calls == []
+    assert len(finder.calls) == 1
     assert updated_run is not None
-    assert updated_run.run_status == RUN_STATUS_ESCALATED
+    assert updated_run.run_status == RUN_STATUS_IN_PROGRESS
     assert updated_run.current_stage == "email_discovery"
-    assert "exhausted the current send set" in (updated_run.last_error_summary or "")
+    assert updated_run.last_error_summary is None
     assert dict(contact_row) == {
-        "contact_status": "exhausted",
-        "discovery_summary": "apollo_enrichment_no_usable_email",
+        "contact_status": "identified",
+        "discovery_summary": "not_found",
     }
-    assert link_row["link_level_status"] == "exhausted"
+    assert link_row["link_level_status"] == "shortlisted"
 
 
 def test_email_discovery_run_waiting_for_provider_cooldown_does_not_block_new_posting_bootstrap(

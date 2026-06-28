@@ -62,6 +62,22 @@ class ProjectPaths:
         return self.project_root / "linkedin-scraping" / "runtime" / "gmail"
 
     @property
+    def lead_ingestion_runtime_dir(self) -> Path:
+        return self.project_root / "lead-ingestion" / "runtime"
+
+    @property
+    def jobright_runtime_dir(self) -> Path:
+        return self.lead_ingestion_runtime_dir / "jobright"
+
+    @property
+    def jobright_runs_dir(self) -> Path:
+        return self.jobright_runtime_dir / "runs"
+
+    @property
+    def lead_ingestion_leads_dir(self) -> Path:
+        return self.lead_ingestion_runtime_dir / "leads"
+
+    @property
     def ops_dir(self) -> Path:
         return self.project_root / "ops"
 
@@ -275,6 +291,84 @@ class ProjectPaths:
             / workspace_slug(role_title)
             / lead_id
         )
+
+    def lead_ingestion_lead_workspace_dir(
+        self,
+        company_name: str,
+        role_title: str,
+        lead_id: str,
+    ) -> Path:
+        return (
+            self.lead_ingestion_leads_dir
+            / workspace_slug(company_name)
+            / workspace_slug(role_title)
+            / lead_id
+        )
+
+    def lead_ingestion_source_observations_path(
+        self,
+        company_name: str,
+        role_title: str,
+        lead_id: str,
+    ) -> Path:
+        return self.lead_ingestion_lead_workspace_dir(company_name, role_title, lead_id) / "source-observations.json"
+
+    def lead_ingestion_source_contacts_path(
+        self,
+        company_name: str,
+        role_title: str,
+        lead_id: str,
+    ) -> Path:
+        return self.lead_ingestion_lead_workspace_dir(company_name, role_title, lead_id) / "source-contacts.json"
+
+    def lead_ingestion_lead_manifest_path(
+        self,
+        company_name: str,
+        role_title: str,
+        lead_id: str,
+    ) -> Path:
+        return self.lead_ingestion_lead_workspace_dir(company_name, role_title, lead_id) / "lead-manifest.yaml"
+
+    def lead_ingestion_jd_path(
+        self,
+        company_name: str,
+        role_title: str,
+        lead_id: str,
+    ) -> Path:
+        return self.lead_ingestion_lead_workspace_dir(company_name, role_title, lead_id) / "jd.md"
+
+    def lead_ingestion_jd_provenance_path(
+        self,
+        company_name: str,
+        role_title: str,
+        lead_id: str,
+    ) -> Path:
+        return self.lead_ingestion_lead_workspace_dir(company_name, role_title, lead_id) / "jd-provenance.json"
+
+    def lead_ingestion_promotion_decision_path(
+        self,
+        company_name: str,
+        role_title: str,
+        lead_id: str,
+    ) -> Path:
+        return self.lead_ingestion_lead_workspace_dir(company_name, role_title, lead_id) / "promotion-decision.json"
+
+    def lead_ingestion_raw_dir(
+        self,
+        company_name: str,
+        role_title: str,
+        lead_id: str,
+    ) -> Path:
+        return self.lead_ingestion_lead_workspace_dir(company_name, role_title, lead_id) / "raw"
+
+    def jobright_run_dir(self, ingestion_run_id: str) -> Path:
+        return self.jobright_runs_dir / ingestion_run_id
+
+    def jobright_run_payload_path(self, ingestion_run_id: str) -> Path:
+        return self.jobright_run_dir(ingestion_run_id) / "batch.json"
+
+    def jobright_run_summary_path(self, ingestion_run_id: str) -> Path:
+        return self.jobright_run_dir(ingestion_run_id) / "summary.json"
 
     def lead_raw_dir(self, company_name: str, role_title: str, lead_id: str) -> Path:
         return self.lead_workspace_dir(company_name, role_title, lead_id) / "raw"
@@ -754,6 +848,10 @@ class ProjectPaths:
             self.project_root / "applications",
             self.gmail_runtime_dir,
             self.project_root / "linkedin-scraping" / "runtime" / "leads",
+            self.lead_ingestion_runtime_dir,
+            self.jobright_runtime_dir,
+            self.jobright_runs_dir,
+            self.lead_ingestion_leads_dir,
             self.tailoring_input_dir / "job-postings",
             self.project_root / "resume-tailoring" / "output" / "tailored",
             self.project_root / "discovery" / "output",

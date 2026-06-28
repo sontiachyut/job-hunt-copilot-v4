@@ -23,6 +23,9 @@ EXPECTED_TABLES = {
     "expert_review_packets",
     "feedback_sync_runs",
     "followup_cycle_runs",
+    "lead_contacts",
+    "lead_source_observations",
+    "leads",
     "job_posting_contacts",
     "job_posting_provider_contexts",
     "job_postings",
@@ -91,15 +94,31 @@ EXPECTED_INDEXES = {
     "idx_followup_cycle_runs_result",
     "idx_followup_cycle_runs_scheduler_name",
     "idx_followup_cycle_runs_started_at",
+    "idx_job_posting_contacts_intended_set",
     "idx_job_posting_contacts_pair",
     "idx_job_posting_contacts_recipient_type",
+    "idx_job_posting_contacts_source_type",
     "idx_job_posting_contacts_status",
+    "idx_job_posting_contacts_lead_contact_id",
     "idx_job_posting_provider_contexts_posting_provider_stage_created",
     "idx_job_postings_application_state",
     "idx_job_postings_company_key",
     "idx_job_postings_identity_key",
     "idx_job_postings_lead_id",
+    "idx_job_postings_promoted_source_observation_id",
     "idx_job_postings_status",
+    "idx_lead_contacts_initial_intended",
+    "idx_lead_contacts_pair",
+    "idx_lead_contacts_priority",
+    "idx_lead_contacts_source_type",
+    "idx_lead_source_observations_jobright_job_id",
+    "idx_lead_source_observations_lead_id",
+    "idx_lead_source_observations_observed_at",
+    "idx_lead_source_observations_promotion_status",
+    "idx_lead_source_observations_run_kind",
+    "idx_leads_active_source_observation_id",
+    "idx_leads_identity_key",
+    "idx_leads_status",
     "idx_linkedin_lead_contacts_pair",
     "idx_linkedin_lead_contacts_recipient_type",
     "idx_linkedin_lead_contacts_role",
@@ -182,7 +201,7 @@ def test_bootstrap_materializes_canonical_schema_objects(tmp_path):
     assert EXPECTED_TABLES <= tables
     assert EXPECTED_VIEWS <= views
     assert EXPECTED_INDEXES <= indexes
-    assert user_version == 11
+    assert user_version == 12
 
 
 def test_review_views_are_queryable_from_canonical_state(tmp_path):

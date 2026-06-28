@@ -149,12 +149,16 @@ WORK_TYPE_INCIDENT_CLUSTER: Final = "incident_cluster"
 WORK_TYPE_CONTACT: Final = "contact"
 WORK_TYPE_GMAIL_ALERT_BATCH: Final = "gmail_alert_batch"
 WORK_TYPE_GMAIL_LEAD_REPAIR: Final = "gmail_lead_repair"
+WORK_TYPE_JOBRIGHT_RECOMMENDATION_BATCH: Final = "jobright_recommendation_batch"
+WORK_TYPE_LEAD: Final = "lead"
 WORK_TYPE_JOB_POSTING: Final = "job_posting"
 WORK_TYPE_MAINTENANCE_CYCLE: Final = "maintenance_cycle"
 WORK_TYPE_PIPELINE_RUN: Final = "pipeline_run"
 
 ACTION_POLL_GMAIL_LINKEDIN_ALERTS: Final = "poll_gmail_linkedin_alerts"
 ACTION_REPAIR_STALE_GMAIL_LEAD: Final = "repair_stale_gmail_lead"
+ACTION_POLL_JOBRIGHT_RECOMMENDATIONS: Final = "poll_jobright_recommendations"
+ACTION_PROMOTE_JOBRIGHT_LEAD: Final = "promote_jobright_lead"
 ACTION_BOOTSTRAP_ROLE_TARGETED_RUN: Final = "bootstrap_role_targeted_run"
 ACTION_CHECKPOINT_PIPELINE_RUN: Final = "checkpoint_pipeline_run"
 ACTION_RUN_ROLE_TARGETED_RESUME_TAILORING: Final = (
@@ -226,6 +230,10 @@ CONTROL_DEFAULTS = MappingProxyType(
         "gmail_poll_last_history_id": "",
         "gmail_poll_last_checkpoint_at": "",
         "gmail_poll_last_strategy": "",
+        "jobright_poll_last_run_at": "",
+        "jobright_poll_last_result": "",
+        "jobright_last_ingestion_run_id": "",
+        "jobright_reauth_required_at": "",
         "apollo_discovery_paused": "false",
         "apollo_discovery_pause_reason": "",
         "apollo_discovery_pause_until": "",
@@ -610,6 +618,7 @@ class SupervisorCycleExecution:
 @dataclass(frozen=True)
 class SupervisorActionDependencies:
     gmail_alert_collector: object | None = None
+    jobright_recommendation_collector: object | None = None
     apollo_people_search_provider: object | None = None
     apollo_contact_enrichment_provider: object | None = None
     recipient_profile_extractor: object | None = None
@@ -648,6 +657,44 @@ SUPERVISOR_ACTION_CATALOG = MappingProxyType(
             validation_references=(
                 "prd/spec.md FR-SYS-38 and current-build Gmail intake requirements",
                 "prd/test-spec.feature bounded supervisor work-unit and Gmail-ingestion scenarios",
+            ),
+        ),
+        ACTION_POLL_JOBRIGHT_RECOMMENDATIONS: SupervisorActionCatalogEntry(
+            action_id=ACTION_POLL_JOBRIGHT_RECOMMENDATIONS,
+            work_type=WORK_TYPE_JOBRIGHT_RECOMMENDATION_BATCH,
+            description="Poll the authenticated Jobright recommendation feed, enrich each recommended role with its Jobright job page, and persist discovery leads into canonical lead-ingestion state.",
+            prerequisites=(
+                "a Jobright recommendation collector is configured for the current runtime",
+                "the authenticated Jobright session remains reusable from the configured browser profile",
+                "the selected recommendation batch stays bounded so one supervisor cycle only ingests a small number of recommendations",
+            ),
+            expected_outputs=(
+                "one bounded Jobright recommendation batch is persisted under lead-ingestion/runtime/jobright",
+                "new or existing leads refresh inside canonical leads and lead_source_observations tables",
+                "Jobright-seeded contacts are materialized into canonical contacts plus lead_contacts for later downstream use",
+            ),
+            validation_references=(
+                "prd/spec.md FR-SYS-01A through FR-SYS-01H4",
+                "prd/test-spec.feature Jobright lead-ingestion and discovery-refresh scenarios",
+            ),
+        ),
+        ACTION_PROMOTE_JOBRIGHT_LEAD: SupervisorActionCatalogEntry(
+            action_id=ACTION_PROMOTE_JOBRIGHT_LEAD,
+            work_type=WORK_TYPE_LEAD,
+            description="Evaluate the current Jobright discovery queue, select the best promotable lead under the active gate, materialize a canonical job_posting immediately, and carry all Jobright-seeded contacts into job_posting_contacts.",
+            prerequisites=(
+                "lead exists in canonical Jobright lead-ingestion state",
+                "lead has a usable persisted canonical JD and remains in a promotable discovery state",
+                "no canonical job_posting already exists for the selected lead",
+            ),
+            expected_outputs=(
+                "the selected lead is promoted into canonical job_posting state with posting_status `sourced`",
+                "all Jobright-seeded contacts are carried forward into job_posting_contacts for later Apollo enrichment and top-up",
+                "promotion-decision and JD-provenance artifacts are persisted in the lead workspace",
+            ),
+            validation_references=(
+                "prd/spec.md FR-SYS-01F through FR-SYS-01H7",
+                "prd/test-spec.feature Jobright promotion and seeded-contact carry-forward scenarios",
             ),
         ),
         ACTION_REPAIR_STALE_GMAIL_LEAD: SupervisorActionCatalogEntry(
@@ -2638,6 +2685,22 @@ def select_next_supervisor_work_unit(
     if orphaned_generated_sending_work is not None:
         return orphaned_generated_sending_work
 
+    jobright_work = _select_jobright_recommendation_work_unit(
+        current_time=current_time,
+        jobright_recommendation_collector=action_dependencies.jobright_recommendation_collector,
+        jobright_last_run_at=control_state.values.get("jobright_poll_last_run_at"),
+    )
+    if jobright_work is not None:
+        return jobright_work
+
+    jobright_promotion_work = _select_jobright_promotion_work_unit(
+        connection,
+        project_root=project_root,
+        current_time=current_time,
+    )
+    if jobright_promotion_work is not None:
+        return jobright_promotion_work
+
     gmail_alert_work = _select_gmail_alert_collection_work_unit(
         current_time=current_time,
         gmail_alert_collector=action_dependencies.gmail_alert_collector,
@@ -3085,6 +3148,73 @@ def _select_gmail_alert_collection_work_unit(
     )
 
 
+def _select_jobright_recommendation_work_unit(
+    *,
+    current_time: str,
+    jobright_recommendation_collector: object | None,
+    jobright_last_run_at: str | None,
+) -> SupervisorWorkUnit | None:
+    if jobright_recommendation_collector is None:
+        return None
+    prepare_batch = getattr(jobright_recommendation_collector, "prepare_batch", None)
+    if not callable(prepare_batch):
+        return None
+    try:
+        prepared_batch = prepare_batch(
+            current_time=current_time,
+            last_polled_at=_optional_text(jobright_last_run_at),
+        )
+    except Exception:
+        return None
+    if prepared_batch is None:
+        return None
+    message_count = len(prepared_batch.recommendations)
+    if prepared_batch.result == "reauth_required":
+        return SupervisorWorkUnit(
+            work_type=WORK_TYPE_JOBRIGHT_RECOMMENDATION_BATCH,
+            work_id=prepared_batch.ingestion_run_id,
+            action_id=ACTION_POLL_JOBRIGHT_RECOMMENDATIONS,
+            summary="Persist a recoverable Jobright reauthentication requirement for later manual session refresh.",
+        )
+    return SupervisorWorkUnit(
+        work_type=WORK_TYPE_JOBRIGHT_RECOMMENDATION_BATCH,
+        work_id=prepared_batch.ingestion_run_id,
+        action_id=ACTION_POLL_JOBRIGHT_RECOMMENDATIONS,
+        summary=(
+            "Collect a bounded Jobright recommendation batch of "
+            f"{message_count} role{'s' if message_count != 1 else ''} into canonical lead discovery."
+        ),
+    )
+
+
+def _select_jobright_promotion_work_unit(
+    connection: sqlite3.Connection,
+    *,
+    project_root: Path | str,
+    current_time: str,
+) -> SupervisorWorkUnit | None:
+    from .jobright_promotion import refresh_jobright_promotion_frontier
+
+    frontier = refresh_jobright_promotion_frontier(
+        connection,
+        ProjectPaths.from_root(project_root),
+        current_time=current_time,
+    )
+    candidate = frontier.selected_candidate
+    if candidate is None:
+        return None
+    return SupervisorWorkUnit(
+        work_type=WORK_TYPE_LEAD,
+        work_id=candidate.lead_id,
+        action_id=ACTION_PROMOTE_JOBRIGHT_LEAD,
+        summary=(
+            "Promote the best currently eligible Jobright discovery lead into a "
+            "canonical job_posting and carry its seeded contacts forward."
+        ),
+        lead_id=candidate.lead_id,
+    )
+
+
 def _select_stale_gmail_lead_repair_work_unit(
     connection: sqlite3.Connection,
 ) -> SupervisorWorkUnit | None:
@@ -3351,6 +3481,7 @@ def _select_open_pipeline_run_work_unit(
                     if not is_role_targeted_people_search_actionable_now(
                         connection,
                         current_time=current_time,
+                        job_posting_id=job_posting_id,
                     ):
                         continue
 
@@ -3783,6 +3914,11 @@ def _select_general_learning_priority_work_unit(
           AND c.contact_status NOT IN ('outreach_in_progress', 'sent', 'exhausted')
           AND NOT EXISTS (
             SELECT 1
+            FROM lead_contacts lc
+            WHERE lc.contact_id = c.contact_id
+          )
+          AND NOT EXISTS (
+            SELECT 1
             FROM job_posting_contacts jpc
             WHERE jpc.contact_id = c.contact_id
           )
@@ -3886,6 +4022,11 @@ def _select_general_learning_discovery_work_unit(
           AND c.contact_status NOT IN ('outreach_in_progress', 'sent', 'exhausted')
           AND NOT EXISTS (
             SELECT 1
+            FROM lead_contacts lc
+            WHERE lc.contact_id = c.contact_id
+          )
+          AND NOT EXISTS (
+            SELECT 1
             FROM job_posting_contacts jpc
             WHERE jpc.contact_id = c.contact_id
           )
@@ -3939,6 +4080,73 @@ def _validate_selected_work(
             f"Selected work type {selected_work.work_type!r} does not match "
             f"catalog action {catalog_entry.action_id!r}."
         )
+
+    if catalog_entry.action_id == ACTION_POLL_JOBRIGHT_RECOMMENDATIONS:
+        if selected_work.work_type != WORK_TYPE_JOBRIGHT_RECOMMENDATION_BATCH:
+            return (
+                "Jobright recommendation polling selected a mismatched work type "
+                f"{selected_work.work_type!r}."
+            )
+        collector = action_dependencies.jobright_recommendation_collector
+        if collector is None:
+            return "Autonomous Jobright polling is not enabled for the current runtime."
+        peek_prepared_batch = getattr(collector, "peek_prepared_batch", None)
+        if not callable(peek_prepared_batch):
+            return "Configured Jobright recommendation collector does not expose peek_prepared_batch()."
+        prepared_batch = peek_prepared_batch(selected_work.work_id)
+        if prepared_batch is None:
+            return (
+                "Selected Jobright recommendation batch is no longer prepared for ingestion_run_id "
+                f"{selected_work.work_id!r}."
+            )
+        if prepared_batch.result == "ready" and not prepared_batch.recommendations:
+            return (
+                "Prepared Jobright recommendation batch is empty for ingestion_run_id "
+                f"{selected_work.work_id!r}."
+            )
+        return None
+
+    if catalog_entry.action_id == ACTION_PROMOTE_JOBRIGHT_LEAD:
+        if selected_work.work_type != WORK_TYPE_LEAD:
+            return (
+                "Jobright lead promotion selected a mismatched work type "
+                f"{selected_work.work_type!r}."
+            )
+        lead_row = connection.execute(
+            """
+            SELECT lead_status, source_mode
+            FROM leads
+            WHERE lead_id = ?
+            """,
+            (selected_work.work_id,),
+        ).fetchone()
+        if lead_row is None:
+            return f"lead {selected_work.work_id!r} no longer exists."
+        if lead_row["source_mode"] != "jobright_recommendation":
+            return (
+                f"lead {selected_work.work_id!r} is not a Jobright lead; "
+                f"found source_mode={lead_row['source_mode']!r}."
+            )
+        if lead_row["lead_status"] not in {"discovered", "held"}:
+            return (
+                f"lead {selected_work.work_id!r} is not in a promotable discovery state; "
+                f"found lead_status={lead_row['lead_status']!r}."
+            )
+        posting_row = connection.execute(
+            """
+            SELECT job_posting_id
+            FROM job_postings
+            WHERE lead_id = ?
+            LIMIT 1
+            """,
+            (selected_work.work_id,),
+        ).fetchone()
+        if posting_row is not None:
+            return (
+                f"lead {selected_work.work_id!r} already materialized job_posting "
+                f"{posting_row['job_posting_id']!r}."
+            )
+        return None
 
     if catalog_entry.action_id == ACTION_POLL_GMAIL_LINKEDIN_ALERTS:
         if selected_work.work_type != WORK_TYPE_GMAIL_ALERT_BATCH:
@@ -4215,10 +4423,11 @@ def _validate_selected_work(
         if not is_role_targeted_people_search_actionable_now(
             connection,
             current_time=current_time,
+            job_posting_id=job_posting_id,
         ):
             return (
                 f"pipeline_run {selected_work.work_id!r} is at people_search without "
-                "a callable Apollo provider now."
+                "callable shortlist/top-up work now."
             )
         latest_run = connection.execute(
             """
@@ -4653,6 +4862,71 @@ def _execute_selected_work_unit(
     timestamp: str,
     action_dependencies: SupervisorActionDependencies,
 ) -> tuple[PipelineRunRecord | None, AgentIncidentRecord | None, str | None]:
+    if catalog_entry.action_id == ACTION_POLL_JOBRIGHT_RECOMMENDATIONS:
+        from .jobright_ingestion import JOBRIGHT_BATCH_RESULT_REAUTH_REQUIRED, ingest_jobright_recommendation_batch
+
+        collector = _require_dependency(
+            action_dependencies.jobright_recommendation_collector,
+            "Supervisor Jobright polling requires an injected Jobright recommendation collector.",
+        )
+        pop_prepared_batch = getattr(collector, "pop_prepared_batch", None)
+        if not callable(pop_prepared_batch):
+            raise SupervisorStateError(
+                "Configured Jobright recommendation collector does not expose pop_prepared_batch()."
+            )
+        prepared_batch = pop_prepared_batch(selected_work.work_id)
+        if prepared_batch is None:
+            prepare_batch = getattr(collector, "prepare_batch", None)
+            if callable(prepare_batch):
+                prepared_batch = prepare_batch(
+                    current_time=timestamp,
+                    last_polled_at=read_agent_control_state(
+                        connection,
+                        timestamp=timestamp,
+                    ).values.get("jobright_poll_last_run_at"),
+                )
+        if prepared_batch is None or prepared_batch.ingestion_run_id != selected_work.work_id:
+            raise SupervisorStateError(
+                "Supervisor lost the prepared Jobright recommendation batch before execution for "
+                f"ingestion_run_id {selected_work.work_id!r}."
+            )
+
+        ingestion_result = ingest_jobright_recommendation_batch(
+            paths.project_root,
+            batch=prepared_batch,
+        )
+        updated_controls = {
+            "jobright_poll_last_run_at": timestamp,
+            "jobright_poll_last_result": ingestion_result.result,
+            "jobright_last_ingestion_run_id": prepared_batch.ingestion_run_id,
+        }
+        if ingestion_result.result == JOBRIGHT_BATCH_RESULT_REAUTH_REQUIRED:
+            updated_controls["jobright_reauth_required_at"] = timestamp
+        else:
+            updated_controls["jobright_reauth_required_at"] = ""
+        upsert_control_values(
+            connection,
+            updated_controls,
+            timestamp=timestamp,
+        )
+        return None, None, None
+
+    if catalog_entry.action_id == ACTION_PROMOTE_JOBRIGHT_LEAD:
+        from .jobright_promotion import promote_jobright_lead
+
+        promotion_result = promote_jobright_lead(
+            paths.project_root,
+            lead_id=selected_work.work_id,
+            current_time=timestamp,
+            connection=connection,
+        )
+        if promotion_result.result != "promoted":
+            raise SupervisorStateError(
+                "Supervisor Jobright promotion did not materialize a posting for lead "
+                f"{selected_work.work_id!r}: {promotion_result.reason_code or promotion_result.result}."
+            )
+        return None, None, None
+
     if catalog_entry.action_id == ACTION_POLL_GMAIL_LINKEDIN_ALERTS:
         from .linkedin_scraping import (
             ingest_gmail_alert_batch_to_leads,
@@ -5060,12 +5334,12 @@ def _execute_selected_work_unit(
             if not is_role_targeted_people_search_actionable_now(
                 connection,
                 current_time=timestamp,
+                job_posting_id=job_posting_id,
             ):
                 next_stage = "people_search"
                 run_summary = (
                     "Supervisor kept the durable pipeline run at people_search "
-                    "because Apollo is in provider cooldown or abnormal-usage "
-                    "guardrail pause and is not callable yet."
+                    "because no callable shortlist/top-up work is available yet."
                 )
                 pipeline_run = advance_pipeline_run(
                     connection,
@@ -5082,14 +5356,17 @@ def _execute_selected_work_unit(
                     provider=action_dependencies.apollo_people_search_provider,
                     current_time=timestamp,
                     pipeline_run_id=selected_work.work_id,
+                    connection=connection,
                 )
                 enrichment_result = run_apollo_contact_enrichment(
                     project_root=paths.project_root,
                     job_posting_id=job_posting_id,
                     provider=action_dependencies.apollo_contact_enrichment_provider,
+                    allow_default_provider_fallback=False,
                     recipient_profile_extractor=action_dependencies.recipient_profile_extractor,
                     current_time=timestamp,
                     pipeline_run_id=selected_work.work_id,
+                    connection=connection,
                 )
             except EmailDiscoveryError as exc:
                 if _optional_text(exc.reason_code) in DISCOVERY_PROVIDER_COOLDOWN_OUTCOMES:
@@ -5278,9 +5555,11 @@ def _execute_selected_work_unit(
                     project_root=paths.project_root,
                     job_posting_id=job_posting_id,
                     provider=action_dependencies.apollo_contact_enrichment_provider,
+                    allow_default_provider_fallback=False,
                     recipient_profile_extractor=action_dependencies.recipient_profile_extractor,
                     current_time=timestamp,
                     pipeline_run_id=selected_work.work_id,
+                    connection=connection,
                 )
                 current_posting_status = enrichment_result.posting_status
             except EmailDiscoveryError as exc:
@@ -5449,11 +5728,11 @@ def _execute_selected_work_unit(
     if catalog_entry.action_id == ACTION_RUN_ROLE_TARGETED_SENDING:
         from .email_discovery import refresh_same_company_contact_frontier
         from .outreach import (
-            CodexRoleSplitOutreachDraftRenderer,
             JOB_POSTING_STATUS_COMPLETED,
             JOB_POSTING_STATUS_OUTREACH_IN_PROGRESS,
             JOB_POSTING_STATUS_READY_FOR_OUTREACH,
             JOB_POSTING_STATUS_REQUIRES_CONTACTS,
+            _resolve_role_targeted_draft_renderer,
             execute_role_targeted_send_set,
             evaluate_role_targeted_send_set,
             generate_role_targeted_send_set_drafts,
@@ -5486,11 +5765,9 @@ def _execute_selected_work_unit(
         blocked_count = 0
         failed_count = 0
         delayed_count = 0
-        role_targeted_renderer = (
-            action_dependencies.role_targeted_draft_renderer
-            or CodexRoleSplitOutreachDraftRenderer(
-                project_root=paths.project_root,
-            )
+        role_targeted_renderer = _resolve_role_targeted_draft_renderer(
+            action_dependencies.role_targeted_draft_renderer,
+            project_root=paths.project_root,
         )
 
         latest_posting_status = current_posting_status
@@ -5859,6 +6136,105 @@ def _validate_selected_work_result(
     incident: AgentIncidentRecord | None,
     maintenance_batch_id: str | None,
 ) -> str | None:
+    if catalog_entry.action_id == ACTION_POLL_JOBRIGHT_RECOMMENDATIONS:
+        summary_path = paths.jobright_run_summary_path(selected_work.work_id)
+        if not summary_path.exists():
+            return (
+                "Supervisor Jobright polling completed without persisting the expected "
+                f"summary artifact for ingestion_run_id {selected_work.work_id!r}."
+            )
+        try:
+            payload = json.loads(summary_path.read_text(encoding="utf-8"))
+        except json.JSONDecodeError:
+            return (
+                "Supervisor Jobright polling wrote an unreadable summary artifact for "
+                f"ingestion_run_id {selected_work.work_id!r}."
+            )
+        result = _optional_text(payload.get("result"))
+        if result == "reauth_required":
+            return None
+        lead_count = int(connection.execute("SELECT COUNT(*) FROM lead_source_observations WHERE ingestion_run_id = ?", (selected_work.work_id,)).fetchone()[0] or 0)
+        if lead_count > 0:
+            return None
+        return (
+            "Supervisor Jobright polling completed without persisting any lead_source_observations "
+            f"for ingestion_run_id {selected_work.work_id!r}."
+        )
+
+    if catalog_entry.action_id == ACTION_PROMOTE_JOBRIGHT_LEAD:
+        lead_row = connection.execute(
+            """
+            SELECT lead_status
+            FROM leads
+            WHERE lead_id = ?
+            """,
+            (selected_work.work_id,),
+        ).fetchone()
+        if lead_row is None:
+            return (
+                "Supervisor Jobright promotion completed but the selected lead "
+                f"{selected_work.work_id!r} no longer exists."
+            )
+        if _optional_text(lead_row["lead_status"]) != "promoted":
+            return (
+                "Supervisor Jobright promotion completed without promoting the selected "
+                f"lead {selected_work.work_id!r}; found lead_status={lead_row['lead_status']!r}."
+            )
+        posting_row = connection.execute(
+            """
+            SELECT job_posting_id, posting_status
+            FROM job_postings
+            WHERE lead_id = ?
+            ORDER BY created_at ASC, job_posting_id ASC
+            LIMIT 1
+            """,
+            (selected_work.work_id,),
+        ).fetchone()
+        if posting_row is None:
+            return (
+                "Supervisor Jobright promotion completed without materializing a canonical "
+                f"job_posting for lead {selected_work.work_id!r}."
+            )
+        if _optional_text(posting_row["posting_status"]) != "sourced":
+            return (
+                "Supervisor Jobright promotion materialized job_posting "
+                f"{posting_row['job_posting_id']!r}, but it is not in `sourced`; "
+                f"found posting_status={posting_row['posting_status']!r}."
+            )
+        contact_count = int(
+            connection.execute(
+                """
+                SELECT COUNT(*)
+                FROM job_posting_contacts
+                WHERE job_posting_id = ?
+                """,
+                (posting_row["job_posting_id"],),
+            ).fetchone()[0]
+            or 0
+        )
+        if contact_count <= 0:
+            return (
+                "Supervisor Jobright promotion completed without carrying any seeded "
+                f"contacts into job_posting_contacts for posting {posting_row['job_posting_id']!r}."
+            )
+        promotion_artifact = paths.lead_ingestion_promotion_decision_path(
+            connection.execute(
+                "SELECT company_name FROM leads WHERE lead_id = ?",
+                (selected_work.work_id,),
+            ).fetchone()[0],
+            connection.execute(
+                "SELECT role_title FROM leads WHERE lead_id = ?",
+                (selected_work.work_id,),
+            ).fetchone()[0],
+            selected_work.work_id,
+        )
+        if not promotion_artifact.exists():
+            return (
+                "Supervisor Jobright promotion completed without persisting the expected "
+                f"promotion-decision artifact for lead {selected_work.work_id!r}."
+            )
+        return None
+
     if catalog_entry.action_id == ACTION_POLL_GMAIL_LINKEDIN_ALERTS:
         matching_batches = 0
         for email_json_path in sorted(paths.gmail_runtime_dir.glob("*/email.json")):
@@ -6179,10 +6555,11 @@ def _validate_selected_work_result(
             if is_role_targeted_people_search_actionable_now(
                 connection,
                 current_time=current_time,
+                job_posting_id=str(pipeline_run.job_posting_id),
             ):
                 return (
-                    "People search stayed at the same boundary even though Apollo "
-                    "was callable and downstream progression should have resumed."
+                    "People search stayed at the same boundary even though shortlist/top-up "
+                    "work was actionable and downstream progression should have resumed."
                 )
             return None
         if pipeline_run.current_stage not in {"email_discovery", "sending"}:

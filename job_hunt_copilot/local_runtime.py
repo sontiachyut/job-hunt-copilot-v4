@@ -1,10 +1,12 @@
 from __future__ import annotations
 
 import json
+import os
 import plistlib
 import re
 import sqlite3
 import subprocess
+import tempfile
 import uuid
 from datetime import datetime, timezone
 from pathlib import Path
@@ -27,6 +29,7 @@ from .gmail_alerts import (
     GmailLinkedInAlertMailboxCollector,
     gmail_mailbox_polling_configured,
 )
+from .jobright_ingestion import JobrightRecommendationCollector, JobrightSessionClient
 from .followups import (
     FOLLOWUP_INTERVAL_SECONDS,
     FOLLOWUP_SCHEDULER_NAME,
@@ -301,6 +304,26 @@ def _default_gmail_alert_collector(
     return GmailLinkedInAlertMailboxCollector(paths)
 
 
+def _default_jobright_recommendation_collector(
+    paths: ProjectPaths,
+) -> JobrightRecommendationCollector | None:
+    if os.environ.get("JHC_ENABLE_DEFAULT_JOBRIGHT_COLLECTOR", "").strip().lower() in {
+        "0",
+        "false",
+        "no",
+    }:
+        return None
+    project_root = paths.project_root.resolve()
+    temp_root = Path(tempfile.gettempdir()).resolve()
+    if project_root == temp_root or temp_root in project_root.parents:
+        if os.environ.get("JHC_ENABLE_DEFAULT_JOBRIGHT_COLLECTOR", "").strip() != "1":
+            return None
+    session_client = JobrightSessionClient()
+    if not session_client.is_configured():
+        return None
+    return JobrightRecommendationCollector(session_client)
+
+
 def _default_outreach_sender(
     paths: ProjectPaths,
 ) -> GmailApiOutreachSender | None:
@@ -322,12 +345,14 @@ def _resolve_supervisor_action_dependencies(
     action_dependencies: SupervisorActionDependencies | None,
 ) -> SupervisorActionDependencies:
     default_gmail_alert_collector = _default_gmail_alert_collector(paths)
+    default_jobright_recommendation_collector = _default_jobright_recommendation_collector(paths)
     default_outreach_sender = _default_outreach_sender(paths)
     default_feedback_observer = _default_feedback_observer(paths)
     default_maintenance_dependencies = _default_maintenance_dependencies(paths)
     if action_dependencies is None:
         return SupervisorActionDependencies(
             gmail_alert_collector=default_gmail_alert_collector,
+            jobright_recommendation_collector=default_jobright_recommendation_collector,
             outreach_sender=default_outreach_sender,
             feedback_observer=default_feedback_observer,
             maintenance_dependencies=default_maintenance_dependencies
@@ -335,6 +360,9 @@ def _resolve_supervisor_action_dependencies(
     resolved_gmail_alert_collector = action_dependencies.gmail_alert_collector
     if resolved_gmail_alert_collector is None:
         resolved_gmail_alert_collector = default_gmail_alert_collector
+    resolved_jobright_recommendation_collector = action_dependencies.jobright_recommendation_collector
+    if resolved_jobright_recommendation_collector is None:
+        resolved_jobright_recommendation_collector = default_jobright_recommendation_collector
 
     resolved_maintenance_dependencies = action_dependencies.maintenance_dependencies
     if resolved_maintenance_dependencies is None:
@@ -347,6 +375,7 @@ def _resolve_supervisor_action_dependencies(
         resolved_feedback_observer = default_feedback_observer
     if (
         resolved_gmail_alert_collector is action_dependencies.gmail_alert_collector
+        and resolved_jobright_recommendation_collector is action_dependencies.jobright_recommendation_collector
         and resolved_outreach_sender is action_dependencies.outreach_sender
         and resolved_feedback_observer is action_dependencies.feedback_observer
         and resolved_maintenance_dependencies is action_dependencies.maintenance_dependencies
@@ -354,6 +383,7 @@ def _resolve_supervisor_action_dependencies(
         return action_dependencies
     return SupervisorActionDependencies(
         gmail_alert_collector=resolved_gmail_alert_collector,
+        jobright_recommendation_collector=resolved_jobright_recommendation_collector,
         apollo_people_search_provider=action_dependencies.apollo_people_search_provider,
         apollo_contact_enrichment_provider=action_dependencies.apollo_contact_enrichment_provider,
         recipient_profile_extractor=action_dependencies.recipient_profile_extractor,

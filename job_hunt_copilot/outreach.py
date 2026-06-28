@@ -9,6 +9,7 @@ import re
 import shutil
 import sqlite3
 import subprocess
+import tempfile
 from dataclasses import dataclass
 from datetime import UTC, date, datetime, time, timedelta, tzinfo
 from email.message import EmailMessage
@@ -27,6 +28,7 @@ from .paths import ProjectPaths, workspace_slug
 from .profile_evidence import (
     ProfileEvidenceChunkRecord,
     ProfileEvidenceError,
+    ProfileEvidenceUnavailableError,
     retrieve_managerial_profile_evidence,
 )
 from .records import lifecycle_timestamps, new_canonical_id
@@ -102,12 +104,17 @@ MANAGERIAL_PATH_CTA_FORWARD = (
 )
 
 SEND_SET_PRIORITY_SLOTS: tuple[tuple[str, tuple[str, ...]], ...] = (
-    ("manager_1", (RECIPIENT_TYPE_HIRING_MANAGER,)),
-    ("manager_2", (RECIPIENT_TYPE_HIRING_MANAGER,)),
-    ("manager_3", (RECIPIENT_TYPE_HIRING_MANAGER,)),
-    ("engineer_1", (RECIPIENT_TYPE_ENGINEER,)),
-    ("engineer_2", (RECIPIENT_TYPE_ENGINEER,)),
-    ("engineer_3", (RECIPIENT_TYPE_ENGINEER,)),
+    ("recruiter", (RECIPIENT_TYPE_RECRUITER,)),
+    ("manager_adjacent", (RECIPIENT_TYPE_HIRING_MANAGER, RECIPIENT_TYPE_FOUNDER, RECIPIENT_TYPE_OTHER_INTERNAL)),
+    ("engineer", (RECIPIENT_TYPE_ENGINEER,)),
+)
+SEND_SET_FALLBACK_RECIPIENT_TYPES: tuple[str, ...] = (
+    RECIPIENT_TYPE_HIRING_MANAGER,
+    RECIPIENT_TYPE_ENGINEER,
+    RECIPIENT_TYPE_RECRUITER,
+    RECIPIENT_TYPE_FOUNDER,
+    RECIPIENT_TYPE_OTHER_INTERNAL,
+    RECIPIENT_TYPE_ALUMNI,
 )
 
 _CANDIDATE_STATE_READY = "ready"
@@ -1788,15 +1795,26 @@ def _load_role_targeted_draftable_contacts(
     connection: sqlite3.Connection,
     *,
     job_posting_id: str,
+    current_time: str,
 ) -> tuple[_CandidateRow, ...]:
     draftable: list[_CandidateRow] = []
     posting_row = _load_posting_row(connection, job_posting_id=job_posting_id)
-    for candidate in _load_candidate_rows(
+    candidate_rows = _load_candidate_rows(
         connection,
         job_posting_id=job_posting_id,
         posting_company_key=posting_company_key_from_row(posting_row),
-    ):
-        if not _is_automatic_send_recipient_type(candidate.recipient_type):
+    )
+    selected_contact_ids = {
+        contact.contact_id
+        for contact in evaluate_role_targeted_send_set(
+            connection,
+            job_posting_id=job_posting_id,
+            current_time=current_time,
+        ).selected_contacts
+        if contact.readiness_state == _CANDIDATE_STATE_READY
+    }
+    for candidate in candidate_rows:
+        if candidate.contact_id not in selected_contact_ids:
             continue
         if candidate.selection_state != _CANDIDATE_STATE_READY:
             continue
@@ -1848,6 +1866,24 @@ def _select_send_set_candidates(
             continue
         selected.append((slot_name, "preferred", candidate))
         selected_contact_ids.add(candidate.contact_id)
+    while len(selected) < AUTOMATIC_SEND_SET_LIMIT:
+        candidate = _pick_best_candidate(
+            candidates,
+            allowed_recipient_types=SEND_SET_FALLBACK_RECIPIENT_TYPES,
+            selected_contact_ids=selected_contact_ids,
+            allowed_selection_states=frozenset({_CANDIDATE_STATE_READY}),
+        )
+        if candidate is None:
+            candidate = _pick_best_candidate(
+                candidates,
+                allowed_recipient_types=SEND_SET_FALLBACK_RECIPIENT_TYPES,
+                selected_contact_ids=selected_contact_ids,
+                allowed_selection_states=frozenset({_CANDIDATE_STATE_NEEDS_EMAIL}),
+            )
+        if candidate is None:
+            break
+        selected.append((f"fallback_{len(selected) + 1}", "fallback", candidate))
+        selected_contact_ids.add(candidate.contact_id)
     return selected[:AUTOMATIC_SEND_SET_LIMIT]
 
 
@@ -1895,23 +1931,27 @@ def _selection_state_rank(selection_state: str) -> int:
 
 def _is_automatic_send_recipient_type(recipient_type: str) -> bool:
     return recipient_type in {
+        RECIPIENT_TYPE_RECRUITER,
         RECIPIENT_TYPE_HIRING_MANAGER,
         RECIPIENT_TYPE_ENGINEER,
+        RECIPIENT_TYPE_FOUNDER,
+        RECIPIENT_TYPE_OTHER_INTERNAL,
+        RECIPIENT_TYPE_ALUMNI,
     }
 
 
 def _send_priority_rank(recipient_type: str) -> int:
-    if recipient_type == RECIPIENT_TYPE_HIRING_MANAGER:
-        return 0
-    if recipient_type == RECIPIENT_TYPE_ENGINEER:
-        return 1
     if recipient_type == RECIPIENT_TYPE_RECRUITER:
+        return 0
+    if recipient_type == RECIPIENT_TYPE_HIRING_MANAGER:
+        return 1
+    if recipient_type == RECIPIENT_TYPE_ENGINEER:
         return 2
     if recipient_type == RECIPIENT_TYPE_FOUNDER:
         return 3
-    if recipient_type == RECIPIENT_TYPE_ALUMNI:
-        return 4
     if recipient_type == RECIPIENT_TYPE_OTHER_INTERNAL:
+        return 4
+    if recipient_type == RECIPIENT_TYPE_ALUMNI:
         return 5
     return 6
 
@@ -2167,55 +2207,59 @@ class CodexRoleSplitOutreachDraftRenderer(OutreachDraftRenderer):
         self._model = model
 
     def render_role_targeted(self, context: RoleTargetedDraftContext) -> RenderedDraft:
+        fallback_renderer = DeterministicOutreachDraftRenderer()
         recipient_path = _select_role_split_recipient_path(context)
-        if recipient_path == "technical":
-            payload = _run_codex_technical_role_split_draft(
+        try:
+            if recipient_path == "technical":
+                payload = _run_codex_technical_role_split_draft(
+                    paths=self._paths,
+                    codex_bin=self._codex_bin,
+                    model=self._model,
+                    context=context,
+                )
+                body_markdown = _compose_technical_role_split_body(context, payload)
+                debug_payload = {
+                    "drafting_path": "technical",
+                    "selected_career_steps": payload.selected_career_steps,
+                    "employment_history_summary": list(context.apollo_employment_history_summary),
+                }
+                return RenderedDraft(
+                    subject=TECHNICAL_PATH_SUBJECT,
+                    body_markdown=body_markdown,
+                    body_html=_render_markdown_email_html(body_markdown),
+                    include_forwardable_snippet=False,
+                    debug_payload=debug_payload,
+                )
+
+            payload = _run_codex_managerial_role_split_draft(
                 paths=self._paths,
                 codex_bin=self._codex_bin,
                 model=self._model,
                 context=context,
             )
-            body_markdown = _compose_technical_role_split_body(context, payload)
+            body_markdown = _compose_managerial_role_split_body(context, payload)
             debug_payload = {
-                "drafting_path": "technical",
-                "selected_career_steps": payload.selected_career_steps,
-                "employment_history_summary": list(context.apollo_employment_history_summary),
+                "drafting_path": "managerial",
+                "selected_jd_signals": payload.selected_jd_signals,
+                "relevant_background_evidence": [
+                    evidence.model_dump(exclude_none=True)
+                    for evidence in payload.relevant_background_evidence
+                ],
+                "retrieved_profile_evidence_pack": [
+                    chunk.as_prompt_dict() for chunk in context.managerial_retrieved_evidence_pack
+                ],
             }
             return RenderedDraft(
-                subject=TECHNICAL_PATH_SUBJECT,
+                subject=_build_role_targeted_subject(context),
                 body_markdown=body_markdown,
-                body_html=_render_markdown_email_html(body_markdown),
+                body_html=_apply_fixed_semantic_emphasis_html(
+                    _render_markdown_email_html(body_markdown)
+                ),
                 include_forwardable_snippet=False,
                 debug_payload=debug_payload,
             )
-
-        payload = _run_codex_managerial_role_split_draft(
-            paths=self._paths,
-            codex_bin=self._codex_bin,
-            model=self._model,
-            context=context,
-        )
-        body_markdown = _compose_managerial_role_split_body(context, payload)
-        debug_payload = {
-            "drafting_path": "managerial",
-            "selected_jd_signals": payload.selected_jd_signals,
-            "relevant_background_evidence": [
-                evidence.model_dump(exclude_none=True)
-                for evidence in payload.relevant_background_evidence
-            ],
-            "retrieved_profile_evidence_pack": [
-                chunk.as_prompt_dict() for chunk in context.managerial_retrieved_evidence_pack
-            ],
-        }
-        return RenderedDraft(
-            subject=_build_role_targeted_subject(context),
-            body_markdown=body_markdown,
-            body_html=_apply_fixed_semantic_emphasis_html(
-                _render_markdown_email_html(body_markdown)
-            ),
-            include_forwardable_snippet=False,
-            debug_payload=debug_payload,
-        )
+        except OutreachDraftingError:
+            return fallback_renderer.render_role_targeted(context)
 
     def render_general_learning(self, context: GeneralLearningDraftContext) -> RenderedDraft:
         raise OutreachDraftingError(
@@ -2232,6 +2276,18 @@ def _resolve_role_targeted_draft_renderer(
 ) -> OutreachDraftRenderer:
     if renderer is not None:
         return renderer
+    override = _normalize_optional_text(os.environ.get("JHC_OUTREACH_ROLE_SPLIT_RENDERER"))
+    if override == "deterministic":
+        return DeterministicOutreachDraftRenderer()
+    if override != "codex":
+        resolved_root = Path(project_root).expanduser().resolve()
+        temp_roots = [
+            Path(tempfile.gettempdir()).resolve(),
+            Path("/private/var/folders"),
+            Path("/var/folders"),
+        ]
+        if any(root.exists() and resolved_root.is_relative_to(root) for root in temp_roots):
+            return DeterministicOutreachDraftRenderer()
     return CodexRoleSplitOutreachDraftRenderer(project_root=project_root)
 
 
@@ -2242,6 +2298,18 @@ def _resolve_general_learning_draft_renderer(
 ) -> OutreachDraftRenderer:
     if renderer is not None:
         return renderer
+    override = _normalize_optional_text(os.environ.get("JHC_OUTREACH_ROLE_SPLIT_RENDERER"))
+    if override == "deterministic":
+        return DeterministicOutreachDraftRenderer()
+    if override != "codex":
+        resolved_root = Path(project_root).expanduser().resolve()
+        temp_roots = [
+            Path(tempfile.gettempdir()).resolve(),
+            Path("/private/var/folders"),
+            Path("/var/folders"),
+        ]
+        if any(root.exists() and resolved_root.is_relative_to(root) for root in temp_roots):
+            return DeterministicOutreachDraftRenderer()
     return CodexRoleSplitOutreachDraftRenderer(project_root=project_root)
 
 
@@ -2321,6 +2389,7 @@ def _build_outreach_codex_exec_command(
     command.extend(
         [
             "--ephemeral",
+            "--skip-git-repo-check",
             "--sandbox",
             "workspace-write",
             "-C",
@@ -3266,6 +3335,8 @@ def _build_role_targeted_draft_context(
                 bounded_jd_relevance_pack=bounded_jd_relevance_pack,
             )
             managerial_retrieved_evidence_pack = managerial_selection.prompt_chunks
+        except ProfileEvidenceUnavailableError:
+            managerial_retrieved_evidence_pack = ()
         except ProfileEvidenceError as exc:
             raise OutreachDraftingError(str(exc)) from exc
     else:
@@ -3346,6 +3417,7 @@ def generate_role_targeted_send_set_drafts(
     draftable_contacts = _load_role_targeted_draftable_contacts(
         connection,
         job_posting_id=job_posting_id,
+        current_time=current_time,
     )[:available_slots]
     if not draftable_contacts:
         raise OutreachDraftingError(
@@ -5257,10 +5329,21 @@ def _complete_posting_if_wave_finished(
     )
     if next_send_set_plan.selected_contacts:
         next_status = next_send_set_plan.posting_status_after_evaluation
+        if (
+            current_status == JOB_POSTING_STATUS_OUTREACH_IN_PROGRESS
+            and next_status == JOB_POSTING_STATUS_READY_FOR_OUTREACH
+        ):
+            next_status = JOB_POSTING_STATUS_OUTREACH_IN_PROGRESS
         if next_status == JOB_POSTING_STATUS_READY_FOR_OUTREACH:
             transition_reason = (
                 "The active drafted outreach wave reached terminal states, and untouched "
                 "contacts remain ready for the next automatic send wave."
+            )
+        elif next_status == JOB_POSTING_STATUS_OUTREACH_IN_PROGRESS:
+            transition_reason = (
+                "The active drafted outreach wave reached terminal states, and the posting "
+                "remains in outreach_in_progress because another ready automatic send wave "
+                "is already available."
             )
         else:
             transition_reason = (

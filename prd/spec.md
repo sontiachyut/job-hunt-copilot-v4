@@ -1,7 +1,7 @@
 # Job Hunt Copilot — Technical Spec (V4 Draft)
 
-- **Status:** Draft v0.3 (v4 two-pronged LinkedIn leads update)
-- **Date:** April 1, 2026
+- **Status:** Draft v0.4 (Jobright lead-ingestion update)
+- **Date:** June 27, 2026
 - **Owner:** Achyutaram Sonti
 - **Source:** Consolidated from working conversation transcript
 - **Document Type:** Living specification (iterative updates expected)
@@ -11,11 +11,10 @@
 ## 1. Project Goal
 
 Build a progressively autonomous **Job Hunt Copilot** that can:
-1. Capture LinkedIn-rooted leads through two complementary upstream modes:
-   - manual browser capture for high-signal posts, profiles, and selected text
-   - autonomous Gmail job-alert intake for passive lead collection
+1. Collect role-targeted job leads from:
+   - authenticated `Jobright` recommendations for fit-ranked discovery and connection-aware enrichment
 2. Tailor a resume for a specific job description (JD)
-3. Discover relevant internal contacts and valid email IDs for role-targeted outreach
+3. Capture suggested contacts during lead ingestion, then enrich or expand that contact set for outreach
 4. Draft and send personalized outreach, attaching the tailored resume for role-targeted outreach and supporting learning-first outreach when no role-specific resume is needed
 
 This spec captures what has been finalized so far and what remains open.
@@ -26,7 +25,11 @@ This spec captures what has been finalized so far and what remains open.
 ```text
 Job Hunt Copilot
 |
-|-- LinkedIn Lead Acquisition
+|-- Lead Ingestion
+|   |
+|   |-- Jobright Recommendation Intake
+|   |-- Lead Normalization / Dedup
+|   |-- Promotion Gate
 |
 |-- Resume Tailoring
 |
@@ -42,17 +45,19 @@ Job Hunt Copilot
 
 ### Flow View (Primary Role-Targeted Flow)
 ```text
-Manual Capture or Gmail Job Alert
+Jobright Recommendation Feed
     ->
-Lead Normalization / Handoff
+Lead Normalization / Source Contact Seeding
+    ->
+Discovery Queue
+    ->
+Promotion Gate
     ->
 Resume Tailoring
     ->
 Mandatory Agent Review
     ->
-Contact Search / Linking
-    ->
-Email Discovery
+Source-Seeded Contact Enrichment / Apollo Top-Up
     ->
 Email Drafting and Sending
     ->
@@ -67,11 +72,11 @@ General learning outreach is a lighter contact-rooted path that may skip resume 
 
 ### Responsibility View
 ```text
-LinkedIn Lead Acquisition
-    writes: canonical lead source, split/review artifacts, lead manifest
+Lead Ingestion
+    writes: source observations, source contact seeds, promotion decisions, lead manifest
 
 Contact Search / Email Discovery
-    writes: candidate contacts, discovered email state, provider budget state, discovery history
+    writes: seeded-contact email enrichment, Apollo top-up contacts, discovered email state, provider budget state, discovery history
 
 Resume Tailoring
     writes: tailored resume
@@ -92,8 +97,10 @@ Other components
 ### Current vs Future
 ```text
 Now:
-- two-pronged LinkedIn lead acquisition
-- Apollo-first people search for company-scoped contact discovery
+- Jobright-first lead discovery with authenticated recommendation ingestion
+- promotion gating before resume tailoring or outreach
+- source-seeded contacts from Jobright
+- Apollo email enrichment for seeded contacts plus Apollo top-up to a minimum outreach set
 - provider-based email discovery and enrichment for selected contacts
 - resume tailoring
 - full-frontier draft preparation with per-posting send pacing
@@ -101,8 +108,9 @@ Now:
 - launchd-driven supervisor heartbeat with chat-first control and post-run expert review packets
 
 Later:
+- additional lead sources beyond Jobright
 - richer browser-side ergonomics and higher-automation capture flows
-- multi-provider people-search waterfall beyond the Apollo-first path
+- multi-provider people-search waterfall beyond the Apollo top-up path
 - Email Pattern Learning Engine
 - provider-independent discovery for eligible domains
 ```
@@ -120,30 +128,30 @@ This document now uses these reading rules:
 4. `Deferred` means the behavior is intentionally out of the current build's required implementation path.
 
 Current-build required path:
-1. autonomous Gmail LinkedIn job-alert intake
-2. JD recovery and lead handoff into canonical posting state
-3. Resume Tailoring
-4. mandatory agent review of the tailored resume after verification/finalize
-5. DB-first Outreach bootstrap by `job_posting_id`
-6. Apollo-first company-scoped people search
-7. shortlist-time contact materialization
-8. selected-contact enrichment
-9. person-scoped email discovery only when enrichment still lacks a usable email
-10. send-set-ready batch drafting
-11. paced autonomous sending
-12. immediate per-message delivery feedback plus delayed mailbox polling
-13. post-run expert review packet generation by the supervisor agent
-14. dedicated follow-up worker for unreplied sent outreach, with reply-guarded, agent-reviewed automatic same-thread sending
+1. authenticated `Jobright` recommendation ingestion
+2. unified discovery queue and canonical lead normalization
+3. promotion gating before `job_postings` materialization
+4. JD recovery and lead handoff into canonical posting state only for promoted leads
+5. source-seeded contact capture during lead ingestion
+6. Resume Tailoring
+7. mandatory agent review of the tailored resume after verification/finalize
+8. DB-first Outreach bootstrap by `job_posting_id`
+9. email enrichment for all source-seeded contacts
+10. Apollo top-up when seeded contacts are fewer than 5 for a posting
+11. send-set-ready batch drafting
+12. paced autonomous sending
+13. immediate per-message delivery feedback plus delayed mailbox polling
+14. post-run expert review packet generation by the supervisor agent
+15. dedicated follow-up worker for unreplied sent outreach, with reply-guarded, agent-reviewed automatic same-thread sending
 
 Current-build optional / best-effort behavior:
-1. company-site or careers-page JD recovery and company resolution enrichment
-2. LinkedIn public-profile extraction into `recipient_profile.json`
-3. optional AI second pass for ambiguous lead splits after the rule-based review path flags ambiguity
-4. mirrored `post.md` / `poster-profile.md` tailoring context when available
+1. company-site or careers-page enrichment beyond the chosen authoritative source
+2. public professional-profile extraction into `recipient_profile.json`
+3. additional same-company observation merging across repeated Jobright captures or public-source refreshes when it materially improves canonical job identity
 
 Deferred / later behavior:
-1. richer manual browser-capture UX beyond the current initial path
-2. multi-provider people-search waterfall beyond Apollo-first
+1. broader lead-source expansion beyond Jobright
+2. multi-provider people-search waterfall beyond Apollo top-up
 3. company-level email-pattern reuse / Email Pattern Learning Engine
 4. detailed two-step learning-first outreach operational flow
 5. broader recipient-type-specific drafting strategy expansion
@@ -155,11 +163,9 @@ Deferred / later behavior:
 ## 2. Scope and Components
 
 ### 2.1 In Scope
-1. LinkedIn Lead Acquisition upstream component
+1. Lead Ingestion upstream component
    Current intake modes:
-   - manual browser capture with hotkeys, context menu, and selected-text support
-   - autonomous Gmail LinkedIn job-alert intake with JD fetch
-   - repo-local paste inbox as manual fallback
+   - authenticated `Jobright` recommendation ingestion with recommendation-feed capture and job-page enrichment
 2. Resume Tailoring Component
 3. Email Outreach Component
    Current subcomponents:
@@ -171,8 +177,8 @@ Deferred / later behavior:
 5. Structured artifact persistence so work can be resumed/audited
 
 ### 2.2 Future Scope
-1. Richer browser extension UX beyond the initial tray/hotkey/context-menu flow
-2. Multi-provider people-search waterfall beyond the Apollo-first implementation
+1. Additional lead sources beyond `Jobright`
+2. Multi-provider people-search waterfall beyond the Apollo top-up implementation
 3. WhatsApp integration
 4. Email Pattern Learning Engine rollout beyond the current provider-based discovery flow
 
@@ -181,13 +187,13 @@ Deferred / later behavior:
 ## 3. User Roles
 
 1. **Primary User (Candidate)**
-   - Provides job and lead context
+   - Reviews promoted jobs and controls autonomous execution
 
 2. **AI Agent (Supervisor / Copilot)**
-   - Extracts structured signals
+   - Ingests and ranks job leads
    - Generates tailored resumes
    - Runs email outreach workflows
-   - Understands each lead profile
+   - Understands each promoted lead profile
    - Writes outreach drafts using the relevant context for the current outreach mode
    - Attaches the tailored resume for role-targeted outreach when required and sends the email
    - Runs the autonomous control loop, performs mandatory agent review gates, repairs bounded operational failures, and prepares expert review packets after terminal or otherwise review-worthy end-to-end run outcomes
@@ -227,158 +233,161 @@ This is the agreed vocabulary for design discussions.
 ## 5. System Inputs and Outputs
 
 ### 5.1 Required Input Context (role-targeted flow)
-1. Every role-targeted lead shall enter through one of two upstream modes:
-   - `manual_capture`: browser extension, hotkeys, context menu, or manual paste fallback
-   - `gmail_job_alert`: LinkedIn alert email ingested from Gmail and enriched with JD fetch
-2. Both upstream modes shall converge into one canonical lead workspace and one shared downstream handoff shape.
-3. The minimum upstream goal is to persist enough raw evidence to recover company, role, and job-context signals, plus post/profile context when that evidence exists.
-4. Candidate base resume track / base resume evidence
-5. Candidate master profile file with expanded background details
+1. Every role-targeted lead shall enter through the upstream mode `jobright_recommendation`, meaning an authenticated recommendation-feed item enriched by the Jobright job page.
+2. The upstream Jobright lead shall converge into one canonical lead workspace and one shared downstream handoff shape.
+3. All upstream leads shall first land in a discovery queue. Only promoted leads may materialize `job_postings` and continue to resume tailoring or outreach.
+4. The minimum upstream goal is to persist enough evidence to recover company, role, canonical JD source, fit signals, and source-suggested contacts.
+5. Candidate base resume track / base resume evidence
+6. Candidate master profile file with expanded background details
 
-### 5.1.1 LinkedIn Lead Acquisition Modes
-1. `LinkedIn Scraping` is the historical upstream component name and now covers both manual LinkedIn capture and autonomous Gmail job-alert intake.
-2. Manual capture is the high-signal path for LinkedIn browsing, selected text, copied posts, profile context, and one-click capture bundles.
-3. Autonomous Gmail alert intake is the passive path for job-alert ingestion, JD fetch, and company-scoped contact search preparation.
-4. Both modes shall produce a lead workspace keyed by `lead_id` and a machine-readable `lead-manifest.yaml`.
-5. Manual-capture leads shall also persist a canonical `raw/source.md` plus split/review artifacts.
-6. Autonomous Gmail-alert leads are not required to persist `raw/source.md` in the lead workspace and may instead rely on Gmail collection artifacts, references to parsed job-card metadata, and JD/provenance artifacts as their upstream source bundle.
+### 5.1.1 Lead Ingestion Source Mode
+1. `Lead Ingestion` is the upstream component for role-targeted discovery and promotion.
+2. `jobright_recommendation` is the primary fit-ranked discovery lane.
+3. The Jobright lane shall produce a canonical lead workspace keyed by `lead_id` and a machine-readable `lead-manifest.yaml`.
+4. The Jobright lane shall also persist one or more source observations so the same canonical lead can carry feed-level and job-page-level evidence without duplicating downstream work.
 
-### 5.1.2 LinkedIn Scraping Input Source Precedence
-1. If both URL and raw text are available for post/JD/profile context, the raw captured text is the source-of-truth for that section when the lead mode materializes a canonical raw-source artifact.
-2. For manual capture, explicitly selected text shall be preserved verbatim as captured evidence rather than being overwritten by later full-page normalization.
-3. URLs are retained as references unless the selected `LinkedIn Scraping` mode explicitly marks a fetched body as the canonical source for a missing section.
-4. For manual-capture leads, the canonical persisted lead source shall be the copied `raw/source.md` artifact in the lead workspace.
-5. For autonomous Gmail-alert leads, the canonical upstream source bundle shall be the collected Gmail email artifact plus references to parsed job-card metadata and any persisted JD/provenance artifacts, rather than a required `raw/source.md` in the lead workspace.
+### 5.1.2 Jobright Recommendation Workflow
+1. The Jobright path shall execute as an authenticated ingestion run using the live signed-in browser profile/session.
+2. A normal session expiry or sign-out shall transition Jobright ingestion into `reauth_required` rather than corrupting canonical lead state.
+3. `reauth_required` shall block new Jobright ingestion only. It shall not pause or invalidate already-promoted leads that have already persisted their canonical JD, score, and source-contact artifacts.
+4. Each Jobright recommendation observation shall persist, when available:
+   - job URL and Jobright job identifier
+   - company, role title, location, freshness, salary, work model, and employment type
+   - `displayScore`, `rankDesc`, and available recommendation-score breakdowns
+   - public `socialConnections`
+   - personalized `personalSocialConnections`
+5. The Jobright job page shall be the source for canonical JD enrichment, public connections, personalized connections, and other job-page metadata.
+6. If the Jobright job page does not yield a full usable JD, the lead shall remain in discovery and shall not be promoted based on score and connections alone.
+7. Personalized connections are optional enrichment. Missing personalized connections is a valid source result, not an ingestion failure.
+8. Missing salary or compensation metadata is a valid source result and shall not by itself block promotion or keep a lead in discovery.
+9. Jobright recommendation observations shall remain in the discovery queue even when they are not promoted.
+10. In the current build, auto-promotion shall not require a separate deterministic employer/apply-page liveness verification step beyond the captured Jobright evidence and canonical JD artifact.
+11. Once a lead has been promoted and materialized, later disappearance of that role from new Jobright recommendation runs shall not by itself alter the downstream posting lifecycle or invalidate the already captured lead state.
+12. Jobright recommendation polling shall follow the same supervisor-heartbeat model used by the prior autonomous lead-ingestion path rather than a separate long-interval batch scheduler. In the current local deployment, Jobright polling may be evaluated on each normal `launchd` supervisor heartbeat.
 
-### 5.1.3 Manual Capture and Paste Fallback Workflow
-1. The manual capture path shall support hotkeys, popup-tray submission, and a context-menu or equivalent `send selected text` action.
-2. Each manual submission should carry a capture bundle with one or more capture items that can include:
-   - `capture_mode` such as `selected_text` or `full_page`
-   - `page_type` such as `post`, `job`, `profile`, or `unknown`
-   - `source_url`, `page_title`, `selected_text`, `full_text`, and `captured_at`
-3. The browser-side capture flow shall send data to a local upstream receiver owned by the copilot; the browser extension is not expected to write arbitrary repo files directly.
-4. When a manual submission is accepted, the upstream shall persist a machine-readable capture artifact such as `capture-bundle.json` and shall assemble the canonical human-readable `raw/source.md`.
-5. The next build shall also keep a repo-local paste inbox at `paste/paste.txt` as a manual fallback for copied lead dumps when the browser capture flow is not used.
-6. The user may replace the contents of `paste/paste.txt` between leads; the inbox file is reusable scratch input, not canonical history.
-7. When `LinkedIn Scraping` ingests from the paste inbox, the pasted file contents shall be copied unchanged into the lead's canonical raw source.
+### 5.1.3 Lead Normalization, Dedup, and Promotion
+1. All source observations shall first normalize into a canonical lead record in a discovery queue.
+2. The same underlying job may carry multiple source observations, such as:
+   - Jobright recommendation-feed observation + Jobright job-page observation
+   - repeated Jobright observations for the same company/role across multiple ingestion runs
+3. Promotion to downstream processing shall happen at the canonical lead level, not at the raw source-observation level.
+4. Only promoted leads may materialize `job_postings` and continue into resume tailoring or outreach.
+5. The default active promotion cap shall be 6 promoted jobs in flight at a time unless the owner explicitly overrides it.
+6. Promotion shall prefer quality over quantity and shall use Jobright-native fit signals as the primary ranking authority when Jobright evidence exists.
+7. If the same not-yet-promoted Jobright lead appears again in later polling runs, the discovery lead shall refresh to the latest available Jobright score, connection, freshness, and related upstream metadata rather than freezing the first-seen snapshot.
+8. When that refreshed Jobright view lowers the lead's score or otherwise weakens its promotability, the discovery lead shall keep the newer weaker state rather than preserving an older stronger score for promotion decisions.
+9. If a refreshed unpromoted Jobright lead later improves enough to satisfy the current lane, connection, and JD-based promotion rules, it shall become eligible for promotion automatically on that later cycle.
 
-### 5.1.4 Autonomous Gmail Job Alert Workflow
-1. The autonomous path shall execute as an agent-invoked Gmail ingestion run. In each such run, `LinkedIn Scraping` shall ingest LinkedIn job-alert emails from Gmail and persist each collected alert email once in a dedicated Gmail collection area owned by `LinkedIn Scraping` before per-card lead materialization begins.
-2. Each collected Gmail alert email shall be stored as a collected-email unit keyed by `received_at + gmail_message_id`. Collection order shall be represented through explicit Gmail `received_at` timestamps and timestamp-keyed path naming rather than inferred from filesystem ordering alone.
-3. For Gmail collection idempotency, the same Gmail message shall be determined by `gmail_message_id`. If a message with an already-collected `gmail_message_id` is encountered again, the autonomous path shall ignore that duplicate rather than overwriting or versioning the existing collected-email unit.
-4. `gmail_thread_id` shall be retained as reference metadata only. Multiple Gmail messages in the same thread shall still be collected and parsed independently, and thread membership alone shall not suppress collection or job-card parsing for any individual message.
-5. In the current build, the autonomous parser shall target `LinkedIn Job Alerts <jobalerts-noreply@linkedin.com>` as the primary mailbox source and shall treat broader recommendation mail such as `jobs-listings@linkedin.com` as later-scope or secondary intake.
-6. The autonomous parser shall prefer the Gmail `text/plain` body first and use HTML-derived text only as fallback when the plain-text body is missing or unusable.
-7. The human-readable Gmail snapshot artifact `email.md` shall store one clean readable raw email snapshot for review, using `text/plain` when available and a noise-minimized HTML-derived text fallback only when plain text is unavailable or unusable. The machine-readable companion artifact `email.json` shall store normalized Gmail message metadata plus only the specific raw body parts and parse-relevant fields actually used by intake and review, rather than mirroring the full Gmail provider payload.
-8. One Gmail alert email may contain multiple job cards. The collection artifact `job-cards.json` shall retain each parsed non-duplicate job card from that email even if JD recovery later fails for that card. If a collected Gmail message yields zero parseable job cards, the collected email artifacts shall still be retained, `job-cards.json` may be empty, and no lead workspace shall be created from that message. Zero-card Gmail-parse cases shall be surfaced for review when more than 3 such collected emails occur within a single Gmail ingestion run or when the cumulative unresolved count of such collected emails exceeds 3 across history.
-9. Each parsed job card that survives validation and deduplication shall become its own candidate lead.
-10. After a parsed alert card survives validation and deduplication, the autonomous path shall create the per-lead workspace immediately rather than waiting for JD recovery to succeed first.
-11. A newly created autonomous lead workspace shall be marked `incomplete` until JD recovery succeeds and the lead is eligible for downstream handoff.
-12. For autonomous Gmail-alert intake, LinkedIn `job_id` shall be the primary duplicate key for determining whether two parsed alert cards refer to the same underlying job.
-13. If a newly parsed alert card resolves to a LinkedIn `job_id` that is already present for an existing autonomous lead, the duplicate card shall be ignored and the system shall not create a second lead for that same job.
-14. If a parsed alert card does not yield a usable LinkedIn `job_id`, the autonomous path shall create and persist a synthetic fallback identity key for that card rather than dropping it solely for missing `job_id`.
-15. When a synthetic fallback identity key is needed for an autonomous alert card, it shall be derived from the normalized LinkedIn job URL when that URL is available.
-16. If a parsed alert card does not yield either a usable LinkedIn `job_id` or a usable LinkedIn job URL, that identifier gap alone shall not force review or rejection.
-17. In that identifier-missing case, if no usable JD can be recovered from any supported source, the lead shall transition to `blocked_no_jd`.
-18. The autonomous path shall extract, when available, company, role title, location, badge lines, source job URL, Gmail metadata, and alert metadata from the Gmail message.
-19. When a usable LinkedIn job URL or job id is available, the autonomous path shall fetch the LinkedIn guest JD candidate as an input to canonical JD assembly.
-20. If the company name or role title recovered from the fetched LinkedIn JD materially disagrees with the parsed Gmail alert-card identity, the lead shall be marked for review and downstream canonical company/role materialization shall remain blocked until that mismatch is resolved by the user.
-21. Minor normalization differences such as legal-suffix variants in company names or abbreviation/expansion variants in role titles shall not be treated as a material disagreement and shall not require review.
-22. The autonomous path shall resolve or derive company website/domain information for downstream people search and email discovery when possible, and may attempt company-site or careers-page JD recovery as best-effort enrichment.
-23. When both a LinkedIn-derived JD candidate and a company-site-derived JD candidate are available for the same lead, the autonomous path shall compare them and treat matching content as the same underlying JD content.
-24. If one JD source contains additional non-conflicting information that is absent from the other source, the autonomous path shall merge that additional information into the canonical `jd.md`.
-25. If the LinkedIn-derived JD candidate and the company-site-derived JD candidate conflict materially, the autonomous path shall prefer the LinkedIn-derived JD content for the conflicting portion while still recording source provenance.
-26. The canonical `jd.md` for an autonomous lead may therefore be a merged JD assembled from multiple recovered sources, with LinkedIn-derived content preferred for conflicts, and its provenance must record the final merged outcome and which sources contributed to that merged result.
-27. Exact recovery of the same role from the company-hosted careers site is desirable but not required for candidate-lead creation when a usable JD can already be assembled from the available sources.
-28. Autonomous leads may legitimately lack LinkedIn post or poster-profile context. In those cases, the lead manifest and split-review artifact shall explicitly mark those sections as unavailable rather than pretending the artifacts exist.
-29. When JD recovery succeeds, the autonomous path shall persist the final canonical JD text into `jd.md` as a reviewable markdown artifact before later structured extraction runs.
-30. Any later structured extraction for tailoring or eligibility shall read from the persisted `jd.md` artifact and associated canonical context files rather than depending only on transient fetch responses.
-31. Once the lead has a valid non-mismatched company and role identity plus a usable JD, the system shall materialize a company/role-scoped downstream workspace so the posting's files are saved under that company-scoped area rather than as ad hoc loose files. The exact folder layout is deferred to the dedicated folder-structure pass.
+### 5.1.3A Promotion Rules (Current Build)
+1. The system shall use lane-based Jobright score thresholds instead of one global threshold.
+2. For backend/platform/data/distributed-systems lanes, the default auto-promotion threshold is `displayScore >= 80`.
+3. For AI/applied-AI/ML-infra/forward-deployed lanes, the default auto-promotion threshold is `displayScore >= 70`.
+4. For AI/applied-AI/ML-infra/forward-deployed lanes, leads in the `70-74.9` band are eligible under the normal AI threshold and do not require a separate stretch-band exception.
+5. Roles that are not clearly in the target backend/platform/data/distributed-systems or AI/applied-AI/ML-infra/forward-deployed lanes shall remain in discovery even if their Jobright score and connection counts are otherwise strong.
+6. Overly senior roles, such as Staff-, Principal-, Director-, Head-, or similarly scope-heavy roles, shall remain in discovery by default unless the owner explicitly overrides that decision.
+7. Staffing, consulting, or recruiter-intermediary roles shall be excluded from promotion in the current build even when their Jobright score is high.
+8. The system shall apply a contactability gate before promotion:
+   - preferred: at least 1 personalized Jobright connection
+   - acceptable fallback: at least 2 public Jobright connections
+   - if personalized connections are 0 and public connections are only 1, the lead shall remain in discovery and shall not be promoted
+   - if total Jobright connections are 0, the lead shall remain in discovery and shall not be promoted
+9. If Jobright surfaces multiple candidate roles from the same company, only the highest-fit role from that company should remain eligible for promotion in the current build unless the owner explicitly overrides that rule.
+10. If one promoted role from a company is already active in the downstream pipeline, later roles from that same company shall remain in discovery until the active role finishes, is blocked, or is otherwise explicitly removed from the active frontier.
+11. A prior application to the same company does not by itself block promotion of a later Jobright lead when the job is materially different and the intended contact set is also materially different from the earlier posting's contacted set.
+12. A previously completed or otherwise inactive posting at the same company shall not by itself block promotion of a new qualifying lead. Only currently active same-company postings apply the active-company block rule.
+13. When an active promoted slot opens because a posting finishes, is blocked, or otherwise leaves the active frontier, the system may refill that slot after the current ingestion/reranking cycle by promoting the best currently eligible discovery lead rather than waiting for the next day.
+14. Backlog pressure shall be considered active when 3 or more promoted postings are simultaneously stalled in pre-send states such as `resume_review_pending`, `requires_contacts`, or `ready_for_outreach` without an actionable send frontier, or when the active promoted in-flight count is already at the configured cap.
+15. When backlog pressure is high, the promotion gate shall tighten rather than widen. In that mode, leads without strong connection leverage should be held in discovery rather than promoted.
+16. When multiple eligible leads are competing for promotion and their `displayScore` gap is 5 points or less, stronger Jobright connection quality may outrank the modest score advantage.
+17. For this ranking tie-break, connection quality order is:
+   - personalized Jobright connections
+   - public Jobright connections
+18. When the eligible-lead `displayScore` gap is greater than 5 points, the higher score shall win over connection-quality tie-breaks.
 
-### 5.1.4A Autonomous Feature Intent (Current Product Idea)
-1. The autonomous feature starts from LinkedIn job-alert emails that already arrive in the user's Gmail inbox.
-2. Each parsed alert job card becomes a candidate role-targeted lead rather than treating the whole email as one lead.
-3. For each captured job, the system should first recover the JD from the LinkedIn guest job payload when the job URL supports it.
-4. The system should also try to recover the company website, company careers page, or exact company-hosted job page as provenance or enrichment, but those company-site lookups are best-effort rather than the hard first step.
-5. The JD used to create the tailored resume may come from the LinkedIn guest payload or a stable company-hosted job page, but it must carry persisted provenance so the source is reviewable later.
-6. After JD capture, the system shall use Apollo to search the company for relevant internal people such as engineering managers, software engineers, recruiters, and other potentially helpful employees who may be able to route the candidate to the right person.
-7. The autonomous concept is intentionally high-recall: gather as many relevant people records as practical from Apollo before later filtering or pacing decisions are applied.
-8. The outreach intent for this autonomous mode is not limited to asking for the job directly. The default posture is to cold email those discovered people asking whether they can connect the candidate to the right hiring person or otherwise help route the application internally.
-9. The current v4 spec records this as the product intent for the autonomous path; later iterations will narrow the exact filtering, ranking, and send policy details.
+### 5.1.4 Source-Seeded Contact Strategy
+1. During lead ingestion, the system shall persist the named contacts the source already provides instead of starting with broad company search.
+2. For Jobright leads, all available public and personalized Jobright contacts shall be persisted as source-seeded contacts.
+3. The outreach priority within the intended contact set shall be:
+   - first: personalized Jobright connections
+   - second: public Jobright connections
+   - third: Apollo top-up contacts
+   Personalized `school_connection` and `company_connection` contacts are equal-priority within the personalized tier.
+4. All Jobright-seeded contacts shall automatically enter the intended outreach set for that promoted posting.
+5. Public Jobright connections shall remain in the intended outreach set even when the posting already has enough personalized Jobright connections; public contacts are not dropped merely because personalized contacts are sufficient on their own.
+6. The system shall attempt outreach to all source-seeded contacts that survive downstream email enrichment and send-eligibility rules.
+7. If the available Jobright-seeded contacts are recruiter-only, the lead may still progress and those recruiter contacts may still be used, as long as the lead passes the score and contactability rules.
+8. Apollo shall then be used in two ways:
+   - email enrichment for all source-seeded contacts
+   - company-scoped top-up search when the seeded contact count is fewer than 5
+9. If the promoted posting starts with fewer than 5 Jobright-seeded contacts, Apollo top-up should continue until the intended outreach set reaches at least 5 contacts whenever provider coverage allows it.
+10. If Jobright plus Apollo still produce fewer than 5 reachable current-company contacts after provider coverage is exhausted, the posting may proceed with that smaller reachable set rather than remaining blocked solely because the 5-contact target was not reached.
+11. Apollo top-up contacts shall fill the gap only when seeded contacts are fewer than 5 or when some seeded contacts fail email enrichment.
+12. Apollo top-up contacts shall not all auto-enter the intended outreach set. The system shall add only the best-ranked Apollo current-company contacts needed to fill the remaining gap toward the target outreach set.
+13. Apollo top-up shall only add current-company contacts for the target employer and shall not add external alumni-style or unrelated out-of-company contacts.
+14. Apollo top-up priority for startup-style and engineering roles should prefer:
+   - founding engineer / head of engineering
+   - engineering manager / technical lead
+   - senior engineer / relevant engineer
+   - recruiter / talent
+15. When multiple Apollo candidates fall into the same priority tier, the deterministic tie-break should prefer candidates with fuller non-obfuscated identity and a professional-profile URL when available; if that still ties, stable alphabetical ordering by display name is acceptable.
+16. Once the initial intended outreach set has been built from Jobright-seeded contacts plus any needed Apollo top-up, that set shall remain frozen by default rather than auto-expanding whenever new candidate contacts later appear.
+17. The system may reopen top-up or replacement selection only when the current intended outreach set degrades, becomes unusable, or falls below the needed size because of enrichment failures, repeat-contact exclusions, or other concrete loss of usable contacts.
+18. Source-seeded contacts remain first-class even when Apollo adds more contacts. Apollo does not replace the source-seeded set; it supplements it.
+19. Jobright-seeded contacts shall be carried forward into `contacts` plus `lead_contacts` during lead ingestion, and into `job_posting_contacts` on promotion, so downstream discovery can enrich those same contacts with Apollo-backed identity and usable-email data.
 
-### 5.1.4B Autonomous Dry-Run Findings (April 2026)
-1. A real `jobalerts-noreply@linkedin.com` sample email required whitespace-tolerant parsing around dashed separators before all visible job cards were recovered from the plain-text digest.
-2. After that parser fix, one sampled LinkedIn alert email produced 6 parseable job cards.
-3. In that same sample, LinkedIn guest JD recovery succeeded for all 6 parsed cards.
-4. In that same sample, company-site exact-role recovery yielded only 1 weak search-page match and no dependable exact same-role page for the other 5 cards.
-5. Therefore the current product direction treats LinkedIn guest JD recovery as the operational baseline for autonomous intake and treats company-site resolution as best-effort enrichment/provenance.
-
-### 5.1.5 LinkedIn Scraping Split and Review Strategy
-1. `LinkedIn Scraping` shall use a deterministic rule-based first pass before any optional AI assistance is considered when the lead mode includes a canonical `raw/source.md`.
-2. For leads that include `raw/source.md`, the rule-based first pass shall derive `jd.md`, `post.md`, and `poster-profile.md` from that canonical raw source when the source contains those sections.
-3. Manual capture bundles may seed page-type-aware section boundaries before the generic rule-based pass runs, but the persisted canonical source remains `raw/source.md`.
-4. For leads that include `raw/source.md`, the selected split shall be persisted as a machine-readable metadata artifact at `linkedin-scraping/runtime/leads/<company>/<role>/<lead_id>/source-split.yaml`.
-5. For leads that include `raw/source.md`, split review shall also produce a machine-readable review artifact at `linkedin-scraping/runtime/leads/<company>/<role>/<lead_id>/source-split-review.yaml`.
-6. The review artifact shall include at least split status, confidence, coverage, validation checks, findings, recommended next action, acquisition mode, and derived-artifact availability when split review is applicable.
-7. If the first pass is ambiguous, the system shall preserve the canonical raw source and derived outputs, mark the lead for review, and may optionally attempt an AI second pass.
-8. Any AI second pass shall be bounded by the canonical raw source, shall record whether it was attempted and whether it was accepted, and shall never overwrite or discard the original `raw/source.md`.
-9. The system shall prefer reviewability over aggressive cleanup: if there is doubt, it shall retain more source text in the derived sections rather than drop potentially useful evidence.
-10. The splitter shall recognize recruiter-authored hiring posts even when the copied post uses plain-language hiring markers such as `We're hiring`, `We’re hiring`, or `hiring at` instead of a literal `#hiring` token.
-11. The splitter shall preserve networking-relevant post signals, such as copied alumni counts or similar relationship hints, when those signals may materially affect outreach strategy, prioritization, or contact selection.
-12. For autonomous Gmail-alert leads that do not materialize `raw/source.md`, source-split and split-review artifacts are not required by default.
-
-### 5.1.6 Lead Handoff and Entity Materialization
-1. `LinkedIn Scraping` is the upstream component for lead ingestion and handoff.
+### 5.1.5 Lead Handoff and Entity Materialization
+1. `Lead Ingestion` shall own the upstream lead workspace, source observations, promotion decision artifacts, source-contact artifacts, and machine handoff manifest for each lead.
 2. Each ingested lead shall receive a stable internal `lead_id`.
-3. `LinkedIn Scraping` shall own the upstream raw-source workspace, source-mode artifacts, split files, split-review artifacts, and machine handoff manifest for that lead.
-4. The canonical lead workspace root shall be `linkedin-scraping/runtime/leads/<company>/<role>/<lead_id>/`.
-5. Every lead workspace shall contain `lead-manifest.yaml` plus the source-mode-specific artifacts needed for that lead.
-6. Manual-capture leads shall also contain `raw/source.md`, `source-split.yaml`, and `source-split-review.yaml`.
-7. Autonomous Gmail-derived leads are not required to contain `raw/source.md`, `source-split.yaml`, or `source-split-review.yaml` in the lead workspace by default.
-8. For autonomous Gmail-derived leads, the originating Gmail collection references and parsed job-card references should be carried in `lead-manifest.yaml` rather than requiring additional lead-local metadata files by default.
-9. The source-of-truth external-source metadata for a lead, such as source mode, source reference, and source URL, shall belong to the lead entity rather than to `job_postings`.
-10. `LinkedIn Scraping` shall hand off to downstream components through `lead-manifest.yaml` plus the referenced lead artifacts rather than through hardcoded path assumptions.
-11. Downstream handoff shall be blocked whenever split review remains `ambiguous` when split review is applicable for that lead mode.
-12. A valid non-ambiguous JD shall be required before the component auto-creates a canonical `job_posting`.
-13. When a poster or other explicit person/profile block is identifiable in a non-ambiguous lead, the component may auto-create canonical `contacts`, lead-contact trace rows, and posting-contact links as part of lead handoff.
-14. The component shall support overwrite-in-place refresh of the live lead workspace while preserving prior source and review snapshots under lead-local history artifacts for auditability.
+3. The canonical lead workspace root shall be `lead-ingestion/runtime/leads/<company>/<role>/<lead_id>/`.
+4. Every lead workspace shall contain `lead-manifest.yaml` plus the source-mode-specific artifacts needed for that lead.
+5. The source-of-truth external-source metadata for a lead, such as source mode, source reference, source URL, match score, and upstream provenance, shall belong to the lead and its source observations rather than to `job_postings`.
+6. `Lead Ingestion` shall hand off to downstream components through `lead-manifest.yaml` plus the referenced lead artifacts rather than through hardcoded path assumptions.
+7. A valid canonical JD shall be required before the component auto-creates a canonical `job_posting`.
+8. A lead that remains in discovery but is not promoted shall not auto-create a `job_posting`.
+9. Once a lead is promoted and has a valid JD, the system shall create or update the canonical `job_posting` immediately rather than waiting for the full seeded-contact set or Apollo enrichment to finish.
+10. Source-seeded Jobright contact persistence and later Apollo enrichment remain required upstream and outreach activities, but they are not prerequisite gates for `job_posting` creation.
+11. Once a lead is promoted and materialized, downstream execution shall follow the current pipeline order, with eligibility and resume tailoring starting on the normal path rather than waiting for contact enrichment to finish.
+12. Once a lead is promoted and has a valid JD, the system shall materialize a company/role-scoped downstream workspace so the posting's files are saved under that company-scoped area rather than as loose files.
 
-### 5.1.6A Component-Oriented Filesystem Layout
+### 5.1.5A Component-Oriented Filesystem Layout
 1. The next build shall use a component-oriented filesystem layout: each major component owns its own code, runtime/output folders, and machine handoff artifacts under its top-level directory.
 2. The stable business identity shared across those component-owned folders shall be `{company_slug}/{role_slug}` for role-targeted work, with `lead_id`, `contact_id`, and `outreach_message_id` remaining the canonical object identifiers inside artifacts and DB state.
-3. For basic functioning, `company_slug` and `role_slug` shall be lowercase kebab-case path segments derived from the chosen canonical company and role text by trimming, lowercasing, converting whitespace and slash-like separators to `-`, removing other punctuation, and collapsing repeated hyphens. The dry-run path `applications/prepass/software-engineer/...` is the reference shape.
+3. For basic functioning, `company_slug` and `role_slug` shall be lowercase kebab-case path segments derived from the chosen canonical company and role text by trimming, lowercasing, converting whitespace and slash-like separators to `-`, removing other punctuation, and collapsing repeated hyphens.
 4. The current component-owned path direction is:
    - `applications/{company}/{role}/application.yaml` for the readable posting-local mirror of manual application state
-   - `linkedin-scraping/runtime/gmail/{YYYYMMDDTHHMMSSZ}-{gmail_message_id}/...` for collected Gmail email snapshots and parse artifacts before per-lead fan-out
-   - `linkedin-scraping/runtime/leads/{company}/{role}/{lead_id}/...` for upstream lead-intake artifacts
+   - `lead-ingestion/runtime/jobright/{run_id}/...` for Jobright recommendation-feed snapshots and job-page enrichments
+   - `lead-ingestion/runtime/leads/{company}/{role}/{lead_id}/...` for canonical upstream lead artifacts
    - `resume-tailoring/output/tailored/{company}/{role}/...` for resume-tailoring workspace artifacts
-   - `discovery/output/{company}/{role}/...` for people-search and email-discovery runtime outputs
+   - `discovery/output/{company}/{role}/...` for contact-enrichment and email-discovery runtime outputs
    - `outreach/output/{company}/{role}/...` for draft/send/delivery runtime outputs
 5. Component-level caches, learned data, and provider-budget state that are not specific to one posting may remain in component-owned shared folders such as `discovery/data/` or `outreach/data/`.
 6. The spec intentionally prefers this component-oriented layout over a single shared `companies/` root for now, so implementation can follow the current repo's component boundaries.
 
 ### 5.2 Contact Search / Discovery Input (minimum)
-1. For company-scoped people search:
+1. For source-seeded contact enrichment:
+   - person full name or display name
+   - company name
+   - role title when known
+   - public professional-profile URL when known
+2. For Apollo company-scoped top-up search:
    - company name
    - role title or job family
    - JD text or job URL when available
    - company domain/website when available
-2. For person-scoped email discovery:
-   - person full name
-   - company name
-   - LinkedIn URL (if available)
 
 ### 5.2.1 Contact Search / Discovery Interpretation (Current)
-1. In the current workflow, role-targeted leads should first attempt company-scoped people search when explicit internal contacts are not already available from the lead itself.
-2. Apollo is the current primary provider for company-scoped people search. PDL, Coresignal, ContactOut, and Clay-style waterfalls are later expansion options.
-3. If people search or enrichment returns a usable work email for a selected contact, the system may skip separate person-scoped email-finder calls for that contact.
-4. Email Discovery shall use company name directly for provider lookup when the selected provider supports it.
-5. Email Discovery shall resolve or derive the usable company domain internally only when a provider requires domain input.
+1. In the current workflow, promoted leads should first use source-seeded contacts rather than broad company-scoped people search.
+2. Apollo is the current provider for:
+   - seeded-contact email enrichment
+   - company-scoped top-up search when fewer than 5 intended contacts exist
+3. If source-seeded enrichment returns a usable work email for a contact, the system may skip separate email-finder calls for that contact.
+4. If source-seeded enrichment does not return a usable work email, that contact may continue into the separate email-discovery path.
+5. When Apollo top-up search is required, the search should aim to fill the intended outreach set to 5 contacts rather than gather a broad unbounded company pool by default.
 6. Company domain is an internal operational field in this build, not a required user-facing input.
 
 ### 5.3 Core Outputs
 1. Tailored resume artifact(s)
-2. Company-scoped contact candidates and discovered email candidate(s) with confidence metadata
+2. Source-seeded and Apollo-top-up contact candidates with discovered email candidate(s) and confidence metadata
 3. Personalized outreach draft(s)
 4. Delivery status metadata (sent/bounced/replied)
 
@@ -386,19 +395,20 @@ This is the agreed vocabulary for design discussions.
 
 ## 6. End-to-End Workflow (High Level)
 
-1. Ingest lead through `LinkedIn Scraping` using either manual browser capture or autonomous Gmail job-alert intake
-2. Persist the canonical raw source plus any source-mode-specific artifacts
-3. Derive available `jd.md`, `post.md`, and `poster-profile.md` sections and publish `lead-manifest.yaml`
-4. Materialize lead, posting, and explicit-contact entities when the lead is eligible for handoff
-5. Run eligibility gate (hard disqualifiers first)
-6. Map JD signals to real candidate evidence
-7. Generate tailored resume
-8. Run the mandatory agent resume review, then approve, revise, retry, or escalate based on that review outcome
-9. Run Apollo-first company-scoped people search to gather relevant internal contacts for the company
-10. Enrich or discover missing emails for the selected contacts
-11. Generate drafts across the ready posting frontier and send personalized outreach that asks those contacts to connect the candidate to the right person, using ranked waves, active send slices, and per-posting pacing
-12. Capture delivery feedback
-13. Feed outcomes back into lead/contact history and learning signals
+1. Ingest source observations from authenticated `Jobright` recommendations
+2. Persist source evidence, source-suggested contacts, and canonical lead artifacts
+3. Normalize and dedupe into the discovery queue
+4. Apply promotion rules and active-pipeline capacity limits
+5. Materialize `job_postings` only for promoted leads with valid canonical JD coverage
+6. Run eligibility gate (hard disqualifiers first)
+7. Map JD signals to real candidate evidence
+8. Generate tailored resume
+9. Run the mandatory agent resume review, then approve, revise, retry, or escalate based on that review outcome
+10. Enrich emails for all source-seeded contacts
+11. If fewer than 5 intended contacts remain, run Apollo top-up search and enrich the added contacts
+12. Generate drafts across the ready posting frontier and send personalized outreach to all intended contacts, using ranked waves, active send slices, and per-posting pacing
+13. Capture delivery feedback
+14. Feed outcomes back into lead/contact history and learning signals
 
 ---
 
@@ -406,83 +416,95 @@ This is the agreed vocabulary for design discussions.
 
 ## 7.1 System-Level FRs
 
-- **FR-SYS-01:** System shall accept and persist lead-rooted input context through the `LinkedIn Scraping` upstream component.
-- **FR-SYS-01A (Two Lead-Acquisition Modes):** `LinkedIn Scraping` shall support both `manual_capture` and `gmail_job_alert` as first-class upstream lead-ingestion modes.
-- **FR-SYS-01B (Shared Lead Workspace Rule):** Both upstream modes shall converge into the same canonical lead workspace shape and lead-manifest handoff contract.
-- **FR-SYS-01C (Manual Browser-Capture Support):** The manual path shall support browser-driven capture actions such as hotkeys, popup-tray submission, and selected-text capture.
-- **FR-SYS-01C1 (Selected-Text Immediate-Submit Default):** When the user has explicitly selected text and invokes manual capture through the selected-text path, the default behavior should be immediate submission of that selected text into the local upstream receiver rather than forcing a tray-review detour first.
-- **FR-SYS-01C2 (Tray-Review Default for Full-Page Capture):** When manual capture is invoked without explicit selected text, the default behavior should open the tray/popup review surface first so the user can confirm or adjust the full-page capture payload before submission.
-- **FR-SYS-01C3 (Manual Capture UX Convergence Rule):** Both the selected-text path and the tray-review path shall converge into the same shared capture bundle contract. Selected text remains preserved verbatim when present, while the tray-review path remains the place to add notes, confirm metadata, or submit a full-page capture intentionally.
-- **FR-SYS-01D (Selected-Text Preservation Rule):** When manual capture provides explicit selected text, that selected text shall be preserved verbatim in the source-mode artifacts and shall not be silently overwritten by later full-page extraction.
-- **FR-SYS-01E (Manual Transport Boundary):** Manual browser capture shall reach the repo through a local copilot-owned upstream receiver rather than by granting the browser direct arbitrary file-write access to the workspace.
-- **FR-SYS-01F (Paste Inbox Availability):** The next build shall materialize a repo-local paste inbox at `paste/paste.txt` so large copied lead dumps can still be provided through the filesystem as a manual fallback.
-- **FR-SYS-01G (Paste Inbox LinkedIn-Scraping Entry Path):** The system shall support starting lead ingestion from `paste/paste.txt` or an explicitly provided replacement paste-file path.
-- **FR-SYS-01H (Autonomous Gmail-Alert Intake):** The autonomous path shall support agent-invoked LinkedIn job-alert ingestion runs from Gmail and shall persist alert-derived lead context into the shared lead workspace.
-- **FR-SYS-01H1 (Primary Gmail Sender Rule):** In the current build, the autonomous Gmail-alert path shall target `LinkedIn Job Alerts <jobalerts-noreply@linkedin.com>` as the primary mailbox source. Support for other LinkedIn recommendation senders may be added later without changing the shared lead contract.
-- **FR-SYS-01H2 (Plain-Text-First Gmail Parse Rule):** The autonomous parser shall prefer the Gmail `text/plain` body first and shall use HTML-derived text only as fallback when the plain-text body is unavailable or unusable.
-- **FR-SYS-01H2A (Readable Gmail Snapshot Rule):** The human-readable Gmail snapshot artifact `email.md` shall contain one clean readable raw email snapshot for review, using `text/plain` when available and a noise-minimized HTML-derived text fallback only when plain text is unavailable or unusable.
-- **FR-SYS-01H2B (Machine-Readable Gmail Snapshot Rule):** The machine-readable Gmail snapshot artifact `email.json` shall store normalized Gmail message metadata plus only the specific raw body parts and parse-relevant fields actually used by intake and review, rather than mirroring the full Gmail provider payload.
-- **FR-SYS-01H3 (Gmail Collection Staging Rule):** In the autonomous Gmail-alert mode, each collected Gmail message shall be persisted once in a Gmail collection area under `linkedin-scraping/runtime/gmail/`, keyed by `received_at + gmail_message_id`, before per-card lead materialization begins.
-- **FR-SYS-01H3A0 (Idempotent Gmail Collection Rule):** For Gmail collection idempotency, the same Gmail message shall be determined by `gmail_message_id`. If a message with an already-collected `gmail_message_id` is encountered again, the autonomous path shall ignore that duplicate rather than overwriting or versioning the existing collected-email unit.
-- **FR-SYS-01H3A1 (Gmail Thread Reference Rule):** `gmail_thread_id` shall be treated as reference metadata only. Multiple collected Gmail messages in the same thread shall still be collected and parsed independently, and thread membership alone shall not suppress collection or job-card parsing for any individual message.
-- **FR-SYS-01H3A (Gmail Job-Card Retention Rule):** The Gmail collection artifact `job-cards.json` shall retain each parsed non-duplicate job card from the collected email even if JD recovery later fails for that card.
-- **FR-SYS-01H3B (Zero-Card Gmail Parse Escalation Rule):** If a collected Gmail message yields zero parseable job cards, the collected email artifacts shall still be retained, `job-cards.json` may be empty, and no lead workspace shall be created from that message. These zero-card cases shall be surfaced for review when more than 3 such collected emails occur within a single Gmail ingestion run or when the cumulative unresolved count of such collected emails exceeds 3 across history.
-- **FR-SYS-01H3C (Durable Gmail Sender-Search Checkpoint Rule):** Autonomous Gmail lead polling shall persist a durable mailbox history checkpoint, but the current single-sender LinkedIn job-alert intake shall use a bounded direct sender search for `jobalerts-noreply@linkedin.com` as the authoritative collection path and dedupe by `gmail_message_id`. The mailbox history checkpoint may be used as bookkeeping or an optimization, but a valid checkpoint shall not suppress direct sender search for currently available uncollected alert emails.
-- **FR-SYS-01H3C1 (Sender-Search Recovery Rule):** If mailbox checkpoint bookkeeping is stale, incomplete, or references a Gmail message that can no longer be fetched, the collector shall not stall intake. It shall continue using bounded direct sender search over the configured LinkedIn alert senders and collect currently available uncollected messages.
-- **FR-SYS-01H3D (Checkpoint-Seed No-Work Rule):** When Gmail intake seeds or refreshes the mailbox history checkpoint without materializing any new lead cards, the run shall persist an auditable no-work outcome rather than surfacing a false incident or pretending a collection unit exists.
-- **FR-SYS-01H3E (Digest-Summary Header Filter Rule):** Gmail alert fan-out shall ignore digest-summary headers or summary-only cards, such as `30+ new jobs match your preferences` or `Your job alert for ...`, and shall not materialize them as canonical leads or job postings.
-- **FR-SYS-01H3F (Duplicate-Identity Canonicalization Rule):** If autonomous Gmail intake encounters a lead identity that resolves to an already-existing canonical lead or posting, the system shall merge or refresh that canonical identity instead of crashing on duplicate creation.
-- **FR-SYS-01I (Autonomous JD-Fetch Provenance):** When the autonomous path assembles a canonical JD from LinkedIn guest job data, a company job page, or another stable job source, the system shall persist one final merged provenance-and-outcome record for that canonical JD.
-- **FR-SYS-01I1 (Alert-Card-to-Lead Rule):** In the autonomous mode, each parsed LinkedIn job-alert card that survives validation and deduplication shall become a candidate role-targeted lead.
-- **FR-SYS-01I1A0 (Autonomous Workspace-Creation Timing Rule):** After a parsed autonomous alert card survives validation and deduplication, the system shall create the per-lead workspace immediately rather than waiting for JD recovery to succeed first.
-- **FR-SYS-01I1A1 (Autonomous Incomplete-Until-JD Rule):** A newly created autonomous lead workspace shall be marked `incomplete` until JD recovery succeeds and downstream handoff can be evaluated.
-- **FR-SYS-01I1A2 (Autonomous Blocked-No-JD Rule):** If JD recovery does not succeed for an autonomous lead workspace, that lead shall transition from `incomplete` to `blocked_no_jd`.
-- **FR-SYS-01I1A (Autonomous Duplicate-Key Rule):** For autonomous Gmail-alert intake, LinkedIn `job_id` shall be the primary duplicate key for determining whether two parsed alert cards refer to the same underlying job.
-- **FR-SYS-01I1B (Autonomous Duplicate-Ignoring Rule):** If a newly parsed alert card resolves to a LinkedIn `job_id` already associated with an existing autonomous lead, the system shall ignore that duplicate card rather than create a second lead for the same job.
-- **FR-SYS-01I1C (Autonomous Missing-Job-ID Fallback Rule):** If a parsed autonomous alert card does not yield a usable LinkedIn `job_id`, the system shall create and persist a synthetic fallback identity key for that card rather than dropping it solely for missing `job_id`.
-- **FR-SYS-01I1D (Autonomous URL-Derived Fallback Key Rule):** When an autonomous alert card needs a synthetic fallback identity key, that key shall be derived from the normalized LinkedIn job URL when that URL is available.
-- **FR-SYS-01I1E (Autonomous Identifier-Gap Non-Blocking Rule):** If a parsed autonomous alert card yields neither a usable LinkedIn `job_id` nor a usable LinkedIn job URL, that identifier gap alone shall not force review or rejection.
-- **FR-SYS-01I1F (Autonomous No-JD Terminal Rule):** In that missing-identifier case, if no usable JD can be recovered from any supported source, the lead shall transition to `blocked_no_jd`.
-- **FR-SYS-01I2 (LinkedIn JD Candidate Recovery Rule):** When a parsed alert card exposes a usable LinkedIn job URL or job id, the autonomous mode shall fetch the LinkedIn guest JD candidate as an input to canonical JD assembly.
-- **FR-SYS-01I2A (Autonomous Identity-Mismatch Review Rule):** If the company name or role title recovered from the fetched LinkedIn JD materially disagrees with the parsed Gmail alert-card identity, the lead shall be marked for review and downstream canonical company/role materialization shall remain blocked until the user resolves that mismatch.
-- **FR-SYS-01I2B (Autonomous Identity-Normalization Tolerance Rule):** Minor normalization differences such as legal-suffix variants in company names or abbreviation/expansion variants in role titles shall not be treated as a material disagreement and shall not require review.
-- **FR-SYS-01I3 (Company-Site JD Candidate Recovery Rule):** The autonomous mode should attempt company-website or careers-page JD recovery and record the result, but failure to recover an exact company-hosted job page shall not block lead creation when a usable JD can still be assembled from the available sources.
-- **FR-SYS-01I4 (Autonomous JD Compare-and-Merge Rule):** When more than one JD candidate source is available for the same autonomous lead, the system shall compare the recovered JD candidates, treat matching content as the same underlying JD content, and merge additional non-conflicting information into the canonical `jd.md`.
-- **FR-SYS-01I4A (Autonomous JD Conflict Preference Rule):** If the recovered JD candidates conflict materially, the system shall prefer LinkedIn-derived JD content for the conflicting portion while still recording source provenance.
-- **FR-SYS-01I5 (Canonical Merged JD Persistence Rule):** When autonomous JD recovery succeeds, the system shall persist the final canonical JD text in `jd.md`, and that canonical JD may be a merged result assembled from multiple recovered sources with one final merged provenance record.
-- **FR-SYS-01I6 (Structured-From-Persisted-JD Rule):** Eligibility checks, JD-signal extraction, and other downstream structuring stages shall derive their structured outputs from the persisted `jd.md` artifact and canonical context files rather than only from transient fetch responses.
-- **FR-SYS-01I7 (Company-Scoped Workspace Rule):** Once a valid company and role are known for a role-targeted lead, the downstream posting/application files shall be materialized under a company/role-scoped workspace. The exact folder layout is deferred, but company-scoped filesystem grouping is required.
-- **FR-SYS-01J (Canonical Lead Raw Source Rule):** For lead modes that materialize a canonical raw-source artifact, the system shall persist exactly one canonical raw-source artifact at `linkedin-scraping/runtime/leads/<company>/<role>/<lead_id>/raw/source.md`.
-- **FR-SYS-01K (Lead-Specific Source Artifact Rule):** The lead workspace may additionally persist source-mode-specific artifacts such as `capture-bundle.json` for manual capture or lead-local references to originating Gmail collection artifacts, references to parsed job-card metadata, JD-fetch provenance, and company-resolution artifacts for Gmail-alert intake.
-- **FR-SYS-01L (Derived Lead Artifact Availability Rule):** `linkedin-scraping/runtime/leads/<company>/<role>/<lead_id>/jd.md`, `post.md`, and `poster-profile.md` are derived/normalized lead artifacts. They shall exist when the upstream evidence supports them and shall otherwise be explicitly marked unavailable in lead metadata rather than being treated as raw-source artifacts.
-- **FR-SYS-01M (Lead Refresh Replacement Rule):** If `LinkedIn Scraping` is explicitly rerun with a new raw source file for a lead that materializes `raw/source.md`, the live canonical `raw/source.md` shall be replaced by that new explicit source. If later updates do not provide a new raw source, the existing live `raw/source.md` shall be preserved.
-- **FR-SYS-01N (Rules-First Lead Split Rule):** `LinkedIn Scraping` shall run a deterministic rule-based first pass over the canonical `raw/source.md` before any optional AI-assisted re-segmentation is attempted when that lead mode materializes `raw/source.md`.
-- **FR-SYS-01O (Lead Split Metadata Rule):** When a lead mode materializes `raw/source.md`, the first-pass or selected lead split shall be persisted as `linkedin-scraping/runtime/leads/<company>/<role>/<lead_id>/source-split.yaml` with machine-readable section boundaries, selected method, omitted-segment metadata, and any explicit page-type hints received from manual capture.
-- **FR-SYS-01P (Lead Split Review Rule):** When a lead mode materializes `raw/source.md`, `LinkedIn Scraping` shall also persist `linkedin-scraping/runtime/leads/<company>/<role>/<lead_id>/source-split-review.yaml` containing review status, confidence, validation checks, findings, recommended next action, acquisition mode, and derived-artifact availability.
-- **FR-SYS-01Q (Ambiguous Lead Split Escalation Rule):** If the rule-based first pass is ambiguous, the system shall preserve the canonical raw source, keep the derived artifacts reviewable, and mark the lead for review rather than silently treating the split as trustworthy.
-- **FR-SYS-01R (Optional AI Second-Pass Rule):** An AI second pass may run only after the rule-based split has been reviewed and found ambiguous. Any accepted second-pass result shall record its provider/method provenance and shall be chosen only when it improves the split confidence relative to the rule baseline.
-- **FR-SYS-01S (Plain-Language Hiring Marker Rule):** `LinkedIn Scraping` shall treat recruiter-authored phrases such as `We're hiring`, `We’re hiring`, `we are hiring`, and `hiring at` as valid post-start signals even when a copied lead dump does not include `#hiring`.
-- **FR-SYS-01T (Networking-Signal Preservation Rule):** `LinkedIn Scraping` shall preserve networking-relevant post signals that may influence outreach planning, prioritization, or contact selection, such as copied alumni-count hints like `1 school alumni works here`.
-- **FR-SYS-02:** System shall execute a pipeline across three top-level components: `LinkedIn Scraping -> Resume Tailoring -> Email Outreach`. The Email Outreach component shall contain discovery, drafting/sending, and delivery-feedback subcomponents.
+- **FR-SYS-01:** System shall accept and persist lead-rooted input context through the `Lead Ingestion` upstream component.
+- **FR-SYS-01A (Jobright Lead-Ingestion Mode):** `Lead Ingestion` shall support `jobright_recommendation` as the current first-class upstream lead-ingestion mode.
+- **FR-SYS-01B (Shared Lead Workspace Rule):** Recommendation-feed and job-page observations for the same Jobright lead shall converge into the same canonical lead workspace shape and lead-manifest handoff contract.
+- **FR-SYS-01B1 (Jobright Lead Identity Key Rule):** For Jobright leads, `lead_identity_key` shall prefer the stable Jobright job identifier and shall fall back to a normalized Jobright job URL only when the stable job identifier is unavailable.
+- **FR-SYS-01C (Source Observation Persistence Rule):** Each upstream collection event shall persist one or more source observations so the same canonical lead can retain evidence from multiple sources without duplicating downstream work.
+- **FR-SYS-01D (Jobright Authenticated Ingestion Rule):** The Jobright path shall ingest through an authenticated browser-backed session and shall persist recommendation-feed metadata plus job-page enrichment into durable artifacts.
+- **FR-SYS-01D0 (Jobright Heartbeat Polling Rule):** Jobright recommendation polling shall follow the normal supervisor-heartbeat model rather than a separate long-interval batch scheduler. In the current local deployment, Jobright polling may be evaluated on each normal `launchd` supervisor heartbeat.
+- **FR-SYS-01D1 (Jobright Session Recovery Rule):** If the Jobright authenticated session is missing or expired, the run shall persist a recoverable `reauth_required` outcome rather than corrupting canonical lead state or creating partial promoted postings.
+- **FR-SYS-01D1A (Session-Expiry Boundary Rule):** `reauth_required` shall block new Jobright ingestion only and shall not pause or invalidate already-promoted leads that already have their persisted canonical JD, fit metadata, and source-contact artifacts.
+- **FR-SYS-01D2 (Jobright Score Capture Rule):** When available, Jobright observations shall persist `displayScore`, `rankDesc`, and recommendation-score breakdowns as structured fit metadata.
+- **FR-SYS-01D3 (Jobright Connection Capture Rule):** Jobright observations shall persist both public `socialConnections` and personalized `personalSocialConnections` when present.
+- **FR-SYS-01D4 (Optional Personalized Connections Rule):** Missing personalized connections on a Jobright job shall be treated as a valid source result, not as an ingestion failure.
+- **FR-SYS-01D4A (Usable-JD Promotion Requirement Rule):** If the Jobright job page does not yield a full usable JD, the lead shall remain in discovery and shall not be promoted based on score and connections alone.
+- **FR-SYS-01D5 (Missing Compensation Non-Blocking Rule):** Missing salary or compensation metadata on a Jobright lead shall be treated as a valid source result and shall not by itself block promotion or keep the lead in discovery.
+- **FR-SYS-01D6 (Post-Promotion Feed Independence Rule):** Once a Jobright lead has been promoted and materialized, later disappearance of that role from new Jobright recommendation runs shall not by itself alter the downstream posting lifecycle or invalidate the already captured lead state.
+- **FR-SYS-01F (Discovery Queue Rule):** All ingested leads shall first land in a discovery queue before any `job_posting` is materialized.
+- **FR-SYS-01F0A (Unpromoted Lead Refresh Rule):** If the same not-yet-promoted Jobright lead appears again in later polling runs, the canonical discovery lead shall refresh to the latest available Jobright score, connection, freshness, and related upstream metadata rather than freezing the first-seen snapshot.
+- **FR-SYS-01F0B (Latest Discovery State Wins Rule):** When a refreshed unpromoted Jobright lead returns with a lower score or otherwise weaker promotability, the discovery lead shall keep that newer weaker state rather than preserving an older stronger score for promotion decisions.
+- **FR-SYS-01F0C (Auto-Eligibility-On-Improvement Rule):** If a refreshed unpromoted Jobright lead later improves enough to satisfy the current lane, connection, and JD-based promotion rules, it shall become eligible for promotion automatically on that later cycle.
+- **FR-SYS-01F1 (Promotion Gate Rule):** Only promoted leads may materialize `job_postings` and continue into resume tailoring or outreach.
+- **FR-SYS-01F2 (Active Promotion Cap Rule):** The current default active promotion cap shall be 6 promoted jobs in flight at a time unless the owner explicitly overrides that cap.
+- **FR-SYS-01F3 (Lane-Based Score Threshold Rule):** The promotion gate shall use lane-based Jobright score thresholds instead of one global threshold.
+- **FR-SYS-01F4 (Backend-Platform Threshold Rule):** For backend, platform, data, and distributed-systems lanes, the default auto-promotion threshold is `displayScore >= 80`.
+- **FR-SYS-01F5 (AI-Lane Threshold Rule):** For AI, applied-AI, ML-infra, and forward-deployed lanes, the default auto-promotion threshold is `displayScore >= 70`.
+- **FR-SYS-01F6 (AI Stretch-Band Inclusion Rule):** For AI, applied-AI, ML-infra, and forward-deployed lanes, leads in the `70-74.9` band are eligible under the normal AI threshold and do not require a separate stretch-band exception.
+- **FR-SYS-01F7 (Target-Lane Eligibility Rule):** Roles that are not clearly in the target backend/platform/data/distributed-systems or AI/applied-AI/ML-infra/forward-deployed lanes shall remain in discovery even when their score and connection counts are otherwise strong.
+- **FR-SYS-01F7A (Overly Senior Role Hold Rule):** Overly senior roles, such as Staff-, Principal-, Director-, Head-, or similarly scope-heavy roles, shall remain in discovery by default unless the owner explicitly overrides that decision.
+- **FR-SYS-01F8 (Intermediary Exclusion Rule):** Staffing, consulting, and recruiter-intermediary roles shall be excluded from promotion in the current build even when their fit score is high.
+- **FR-SYS-01F9 (Contactability Gate Rule):** Promotion shall prefer jobs with at least 1 personalized Jobright connection, shall allow jobs with at least 2 public Jobright connections as fallback, shall keep jobs with only 1 public Jobright connection and 0 personalized Jobright connections in discovery, and shall keep jobs with 0 total Jobright connections in discovery rather than promoting them.
+- **FR-SYS-01F10 (Highest-Fit Same-Company Candidate Rule):** If Jobright surfaces multiple candidate roles from the same company, only the highest-fit role from that company shall remain eligible for promotion in the current build unless the owner explicitly overrides that rule.
+- **FR-SYS-01F10A (One Active Promoted Role Per Company Rule):** If one promoted role from a company is already active in the downstream pipeline, later roles from that same company shall remain in discovery until the active role finishes, is blocked, or is otherwise explicitly removed from the active frontier.
+- **FR-SYS-01F11 (Same-Company Reapplication Eligibility Rule):** A prior application to the same company shall not by itself block promotion of a later Jobright lead when the job is materially different and the intended contact set is also materially different from the earlier posting's contacted set.
+- **FR-SYS-01F11A (Inactive Same-Company History Non-Blocking Rule):** A previously completed or otherwise inactive posting at the same company shall not by itself block promotion of a new qualifying lead. Only currently active same-company postings apply the active-company block rule.
+- **FR-SYS-01F12 (Immediate Refill Rule):** When an active promoted slot opens because a posting finishes, is blocked, or otherwise leaves the active frontier, the system may refill that slot after the current ingestion/reranking cycle by promoting the best currently eligible discovery lead rather than waiting for a new day boundary.
+- **FR-SYS-01F13 (Backlog-Pressure Trigger Rule):** Backlog pressure shall be considered active when 3 or more promoted postings are simultaneously stalled in pre-send states such as `resume_review_pending`, `requires_contacts`, or `ready_for_outreach` without an actionable send frontier, or when the active promoted in-flight count is already at the configured cap.
+- **FR-SYS-01F14 (Backlog-Pressure Tightening Rule):** When active backlog pressure is high, the promotion gate shall tighten rather than widen and shall prefer leads with stronger existing outreach paths.
+- **FR-SYS-01F15 (Connection-Quality Tie-Break Rule):** When multiple eligible leads are competing for promotion and their `displayScore` gap is 5 points or less, stronger Jobright connection quality may outrank the modest score advantage.
+- **FR-SYS-01F16 (Connection-Quality Order Rule):** For the promotion tie-break, connection quality shall rank personalized Jobright connections above public Jobright connections.
+- **FR-SYS-01F17 (Large Score Gap Wins Rule):** When the eligible-lead `displayScore` gap is greater than 5 points, the higher score shall win over connection-quality tie-breaks.
+- **FR-SYS-01G (Source-Seeded Contacts Rule):** Lead ingestion shall persist the contacts the source already provides instead of defaulting immediately to broad company-scoped people search.
+- **FR-SYS-01G0A (Auto-Include Seeded Contacts Rule):** All Jobright-seeded contacts shall automatically enter the intended outreach set for that promoted posting, subject only to later email-enrichment and send-eligibility outcomes.
+- **FR-SYS-01G0B (Keep Public Contacts Alongside Personalized Rule):** Public Jobright connections shall remain in the intended outreach set even when the posting already has enough personalized Jobright connections; public contacts shall not be dropped merely because personalized contacts are sufficient on their own.
+- **FR-SYS-01G0C (Contact Carry-Forward Rule):** Jobright-seeded contacts shall be materialized into canonical `contacts` plus `lead_contacts` during lead ingestion, and into `job_posting_contacts` on promotion, so downstream discovery can enrich those same contacts with Apollo-backed identity and usable-email data.
+- **FR-SYS-01G1 (Seeded-Contact Enrichment Rule):** Apollo shall be used to enrich all source-seeded contacts with fuller identity and usable-email data when available.
+- **FR-SYS-01G2 (Apollo Top-Up Rule):** If the source-seeded contact count for a promoted posting is fewer than 5, Apollo shall discover and add additional company contacts until the intended outreach set reaches 5 contacts or provider coverage is exhausted.
+- **FR-SYS-01G2B (Ranked Apollo Inclusion Rule):** Apollo top-up contacts shall not all auto-enter the intended outreach set. The system shall add only the best-ranked current-company Apollo contacts needed to fill the remaining gap toward the target outreach set.
+- **FR-SYS-01G2BA (Apollo Same-Tier Tie-Break Rule):** When multiple Apollo candidates fall into the same priority tier, the deterministic tie-break shall prefer candidates with fuller non-obfuscated identity and a professional-profile URL when available; if that still ties, stable alphabetical ordering by display name is acceptable.
+- **FR-SYS-01G2C (Frozen Intended Contact Set Rule):** Once the initial intended outreach set has been built from Jobright-seeded contacts plus any needed Apollo top-up, that set shall remain frozen by default rather than auto-expanding whenever new candidate contacts later appear.
+- **FR-SYS-01G2D (Refill-On-Degradation Rule):** The system may reopen top-up or replacement selection only when the current intended outreach set degrades, becomes unusable, or falls below the needed size because of enrichment failures, repeat-contact exclusions, or other concrete loss of usable contacts.
+- **FR-SYS-01G2A (Smaller Reachable Set Continuation Rule):** If Jobright plus Apollo still produce fewer than 5 reachable current-company contacts after provider coverage is exhausted, the posting shall be allowed to continue with that smaller reachable set rather than remaining blocked solely because the 5-contact target was not reached.
+- **FR-SYS-01G3 (Apollo Current-Company-Only Rule):** Apollo top-up shall add only current-company contacts for the target employer and shall not add external alumni-style or unrelated out-of-company contacts.
+- **FR-SYS-01G4 (Seeded-Contacts-First Rule):** Source-seeded contacts remain first-class even when Apollo adds more contacts; Apollo supplements the source set rather than replacing it.
+- **FR-SYS-01G5 (Apollo Top-Up Priority Rule):** Apollo top-up for startup-style roles should prefer founding engineers, engineering leaders, engineers, and then recruiter/talent contacts.
+- **FR-SYS-01H (Lead Handoff Rule):** `Lead Ingestion` shall hand off to downstream components through `lead-manifest.yaml` plus referenced artifacts rather than through hardcoded path assumptions.
+- **FR-SYS-01H1 (JD Requirement For Posting Materialization):** A valid canonical JD shall be required before the system auto-creates a canonical `job_posting`.
+- **FR-SYS-01H2 (Held-Lead Non-Materialization Rule):** Leads that remain in discovery but are not promoted shall not auto-create `job_postings`.
+- **FR-SYS-01H3 (Immediate Posting Materialization Rule):** Once a lead is promoted and has a valid canonical JD, the system shall create or update the canonical `job_posting` immediately rather than waiting for the full seeded-contact set or Apollo enrichment to finish.
+- **FR-SYS-01H4 (Contacts-After-Materialization Rule):** Source-seeded Jobright contact persistence and later Apollo enrichment shall continue as required upstream and outreach work, but they shall not be prerequisite gates for canonical `job_posting` creation.
+- **FR-SYS-01H5 (No Separate Employer-Liveness Gate In V1):** In the current build, auto-promotion shall not require a separate deterministic employer/apply-page liveness verification step beyond the captured Jobright evidence and canonical JD artifact.
+- **FR-SYS-01H6 (Tailoring-First Continuation Rule):** Once a lead is promoted and materialized, downstream execution shall follow the current pipeline order, with eligibility and resume tailoring starting on the normal path rather than waiting for contact enrichment to finish.
+- **FR-SYS-01H7 (Structured-From-Persisted-JD Rule):** Eligibility checks, JD-signal extraction, and downstream structuring shall derive their outputs from the persisted canonical `jd.md` and referenced canonical context files rather than only from transient fetch responses.
+- **FR-SYS-02:** System shall execute a pipeline across three top-level components: `Lead Ingestion -> Resume Tailoring -> Email Outreach`. The Email Outreach component shall contain discovery, drafting/sending, and delivery-feedback subcomponents.
 - **FR-SYS-03:** System shall persist intermediate structured artifacts for resumability and auditing.
 - **FR-SYS-04:** System shall support iterative refinement (spec, prompts, and outputs are revisitable and updatable).
-- **FR-SYS-05 (Input Precedence Policy):** In this build, raw text inputs take precedence over URLs for post/JD/profile context when both are present; URLs are treated as references.
+- **FR-SYS-05 (Source Provenance Policy):** In this build, canonical JD evidence, fit ranking, and source contacts may come from different Jobright surfaces or downstream enrichment steps. The system shall persist source-specific provenance rather than pretending one source owns every field.
 - **FR-SYS-06 (Central State Database):** The system shall use one central SQLite database, `job_hunt_copilot.db`, as the canonical source of truth for overall application/pipeline state and long-lived searchable operational data.
 - **FR-SYS-07 (Files vs Database Boundary):** File artifacts remain the primary communication/handoff mechanism between components, while `job_hunt_copilot.db` stores canonical state, status, identifiers, and artifact metadata. If a file and the database disagree about system state, the database wins for state.
 - **FR-SYS-08 (Entity-Based State Model):** The central database shall use an entity-based model rather than forcing the whole system to be rooted only in applications or only in contacts.
 - **FR-SYS-09 (Primary Core Entities):** The central database shall treat these as the primary first-class entities:
-  1. `linkedin_leads`
-  2. `job_postings`
-  3. `contacts`
-- **FR-SYS-10 (Attached Supporting Records):** Other records, such as resume artifacts, lead-split artifacts, discovery attempts, drafts, sends, delivery-feedback events, and review metadata, shall attach to `linkedin_leads`, `job_postings`, `contacts`, or their linking records as appropriate.
+  1. `leads`
+  2. `lead_source_observations`
+  3. `job_postings`
+  4. `contacts`
+- **FR-SYS-10 (Attached Supporting Records):** Other records, such as source-contact links, resume artifacts, discovery attempts, drafts, sends, delivery-feedback events, and review metadata, shall attach to `leads`, `job_postings`, `contacts`, or their linking records as appropriate.
 - **FR-SYS-11 (Resume Tailoring Attachment Rule):** Resume-tailoring state and artifacts shall attach primarily to `job_postings`.
 - **FR-SYS-12 (Email Discovery Attachment Rule):** Email-discovery state and history shall attach primarily to `contacts`.
 - **FR-SYS-13 (Email Drafting and Sending Attachment Rule):** Email Drafting and Sending records shall always attach to `contacts`. They may additionally link to `job_postings` when the outreach is tied to a specific role or posting.
-- **FR-SYS-14 (LinkedIn-Rooted Contact Identity):** When LinkedIn data is available, contacts shall be rooted in LinkedIn-derived identity and profile context. Outreach-side records such as discovery, draft/send, and delivery-feedback data shall attach to that contact record.
+- **FR-SYS-14 (Canonical Contact Identity Rule):** Contacts shall be rooted in canonical person identity plus the best available professional-profile context. Outreach-side records such as discovery, draft/send, and delivery-feedback data shall attach to that contact record.
 - **FR-SYS-15 (Top-Level State Split):** Top-level pipeline state shall be split by entity type:
-  1. `linkedin_leads` carry upstream lead-ingestion, split-review, and handoff readiness state
+  1. `leads` carry discovery-queue, promotion, and handoff readiness state
   2. `job_postings` carry tailoring/application progression state
   3. `contacts` carry outreach/discovery progression state
+- **FR-SYS-15A (Lead Status Set):** For this build, `leads` should support a lightweight top-level state set such as:
+  1. `discovered`
+  2. `held`
+  3. `promoted`
+  4. `blocked_no_jd`
+  5. `reauth_required`
+  6. `closed`
 - **FR-SYS-15A (Contact Status Set):** For this build, `contacts` should support a lightweight top-level status set such as:
   1. `identified`
   2. `discovery_in_progress`
@@ -536,15 +558,14 @@ This is the agreed vocabulary for design discussions.
   10. `closed_by_user`
   These values summarize posting-level lifecycle only. Detailed contact, discovery, draft/send, and delivery progress shall remain in their own linked records.
 - **FR-SYS-17B (No-Contact Ready State):** If a `job_posting` has cleared tailoring and mandatory agent review but does not yet have the required linked contacts and discovered outreach-ready emails for the current role-targeted flow, its posting-level status shall remain `requires_contacts` rather than advancing to `ready_for_outreach`.
-- **FR-SYS-17B1 (Required Linked Contacts Meaning):** For this build, `required linked contacts` should mean at least one actionable linked contact in the best currently available priority tier for that posting. In practice:
-  1. prefer `hiring_manager` or `recruiter`
-  2. if neither exists, a role-relevant `engineer`
-  3. if no stronger role-proximate option exists, `alumni` or `other_internal` may serve as the fallback starting contact
-  Additional contacts are desirable and may still be added later, but they do not need to be present before the posting can leave `requires_contacts`.
+- **FR-SYS-17B1 (Required Linked Contacts Meaning):** For this build, `required linked contacts` should mean:
+  1. preserve every viable source-seeded contact for that posting
+  2. top up toward 5 intended contacts when provider coverage allows it
+  3. allow the posting to progress once at least 1 send-eligible contact exists and the current contact plan either reaches 5 or exhausts the current automatic top-up path
 - **FR-SYS-17C (Ready-for-Outreach Meaning):** A `job_posting` shall be considered `ready_for_outreach` when:
   1. resume tailoring is complete
   2. the active tailoring run is approved by the mandatory agent review
-  3. the posting has the required linked contacts for the current intended outreach set
+  3. the posting has the current intended outreach set for that job, including all viable source-seeded contacts plus any available top-up contacts
   4. at least one contact in the current intended outreach set has a discovered usable email address and is otherwise automatically send-eligible
 - **FR-SYS-17C1 (Ready-Subset Non-Blocking Rule):** In the current role-targeted flow, contacts in the current intended outreach set that are still missing usable emails may remain pending for continued discovery, but they shall not block the posting from becoming `ready_for_outreach` once at least one stronger-or-equal currently selected contact is ready. The posting may progress into drafting and sending for the currently ready subset while unresolved contacts continue through later discovery or replacement selection.
 - **FR-SYS-17D (Outreach-in-Progress Meaning):** A `job_posting` shall be considered `outreach_in_progress` once drafting and/or sending is actively occurring for the current outreach set tied to that posting.
@@ -599,11 +620,12 @@ This is the agreed vocabulary for design discussions.
   Until those triggers are present, `company` remains a field-level concept in the canonical schema.
 - **FR-SYS-25 (Artifact Metadata in Central DB):** The central database should persist metadata and references for generated file artifacts, such as artifact type, file path, linked `job_posting_id` and/or `contact_id`, and creation timestamp, so the system can query what artifacts exist without relying on directory inspection alone.
 - **FR-SYS-25A (Shared Artifact Records Table):** The central database shall include a shared `artifact_records` table to store artifact metadata across components. For this build, this table should at minimum support an artifact identifier, artifact type, file path, linked `job_posting_id` and/or `contact_id`, and creation timestamp.
-- **FR-SYS-25B (Canonical Lead Raw Artifact Metadata Rule):** For `LinkedIn Scraping`, `artifact_records` shall track the canonical raw-source artifact as `lead_raw_source`.
-- **FR-SYS-25C (Lead Review Artifact Metadata Rule):** For `LinkedIn Scraping`, `artifact_records` shall also track the derived split metadata artifact (`lead_split_metadata`), the split-review artifact (`lead_split_review`), and the lead handoff manifest (`lead_manifest`) so the current upstream interpretation can be queried without manual directory spelunking.
+- **FR-SYS-25B (Canonical Lead Artifact Metadata Rule):** For `Lead Ingestion`, `artifact_records` shall track the canonical lead artifacts such as source observations, source-contact snapshots, promotion decisions, and lead manifests.
+- **FR-SYS-25C (Lead Observation Artifact Metadata Rule):** `artifact_records` shall also track source-mode-specific artifacts such as Jobright recommendation snapshots, Jobright job-page extractions, and authoritative JD provenance records so the current upstream interpretation can be queried without manual directory spelunking.
 - **FR-SYS-26 (Artifact Content Boundary):** The central database shall store artifact metadata and references, not the full contents of generated runtime files by default. The file system remains the primary home for artifact content itself.
 - **FR-SYS-27 (Stable Job Posting Identifier):** Each `job_posting` shall have its own stable internal identifier, such as `job_posting_id`, rather than relying on company name, role title, or file paths as the primary linkage key.
 - **FR-SYS-28 (Job Posting Identity Key):** `job_postings` should also support a normalized deduplication identity key in addition to `job_posting_id`, so the system can recognize likely duplicate postings that arrive from different sources or at different times.
+- **FR-SYS-28A (Posting Identity Key Preference Rule):** When a promoted Jobright lead carries a stable external job identity such as a Jobright job identifier or stable apply URL, `posting_identity_key` should prefer that stronger identity before falling back to a conservative normalized company-role-location composite.
 - **FR-SYS-29 (Conservative Job Posting Merge Rule):** The system shall merge a new posting into an existing `job_posting` record only when identity matching is confident. If the match is ambiguous, the system shall create a new posting record rather than risk an incorrect automatic merge.
 - **FR-SYS-30 (Major State-Transition Audit Trail):** The central database should preserve a lightweight audit trail of major state transitions, such as changes to `job_postings` status, `contacts` status, and `job_posting_contacts` link-level status, so major lifecycle changes remain traceable over time.
 - **FR-SYS-31 (Retention-First Deletion Policy):** The system shall not hard-delete operational records by default. When records need to be retired from active use, the preferred build behavior is to represent that through status changes, archival-style markers, or other reversible state transitions rather than destructive deletion.
@@ -619,7 +641,7 @@ This is the agreed vocabulary for design discussions.
   2. `identity_key`
   3. `display_name`
   4. company name
-  5. `linkedin_url` when available
+  5. `professional_profile_url` when available
   6. contact-level status
   7. current working email when known
 - **FR-SYS-33A (Apollo Contact Anchor Fields):** Because Apollo is the primary company-scoped people-search provider in this build, `contacts` should also persist lightweight latest-known Apollo anchor fields when available, including:
@@ -628,7 +650,7 @@ This is the agreed vocabulary for design discussions.
   3. latest-known Apollo current title
   4. latest-known Apollo current company name
   5. latest Apollo profile refresh/enrichment timestamp
-  6. latest-known Apollo LinkedIn URL
+  6. latest-known Apollo professional-profile URL
   7. latest-known Apollo location string
   8. latest-known Apollo headline when available
   9. latest-known Apollo work email when Apollo itself returned one
@@ -656,7 +678,7 @@ This is the agreed vocabulary for design discussions.
   18. `contact_employment_history`
   19. `job_posting_provider_contexts`
 - **FR-SYS-37 (Lean Supporting-Table Rule):** This build should prefer this minimal supporting-table set rather than introducing separate per-component tables unless a clear new requirement appears. Shared needs such as artifact metadata should use shared tables where possible instead of multiplying narrowly scoped tables.
-- **FR-SYS-38 (Primary Orchestration Sequence):** The primary role-targeted workflow shall run in this dependency order: LinkedIn Scraping -> eligibility/tailoring -> mandatory agent review of the tailored output -> company-scoped contact search and/or contact linking or contact reuse -> selected-contact enrichment and recipient-profile extraction -> email discovery for contacts still missing usable emails -> drafting/sending -> delivery feedback.
+- **FR-SYS-38 (Primary Orchestration Sequence):** The primary role-targeted workflow shall run in this dependency order: Lead Ingestion -> promotion gate -> eligibility/tailoring -> mandatory agent review of the tailored output -> source-seeded contact enrichment -> Apollo top-up when needed -> selected-contact recipient-profile extraction -> email discovery for contacts still missing usable emails -> drafting/sending -> delivery feedback.
 - **FR-SYS-38A (General Learning Outreach Path):** When outreach is not tied to a specific job posting, the system may run a lighter contact-rooted flow: identify contact -> discover email if needed -> generate/send learning-first outreach -> capture delivery feedback. This path does not require posting-specific resume tailoring or the role-targeted agent review gate.
 - **FR-SYS-38A1 (Role-Targeted Company-Scoped Contact Search):** When a role-targeted posting lacks enough explicit internal contacts from the lead itself, the system shall be able to run company-scoped people search using company, role, and JD-linked filters to identify likely recipients before person-scoped email discovery begins.
 - **FR-SYS-38A1B (Location-Relaxation Retry Rule):** When a location-filtered company-scoped people search returns no useful candidates, the system shall be able to retry the same search with the location constraint relaxed rather than treating the location miss as final.
@@ -671,12 +693,12 @@ This is the agreed vocabulary for design discussions.
 - **FR-SYS-38A6 (Relevant-People Search Classes):** The first autonomous people-search pass should look for engineering managers, software engineers, recruiters, and other internal employees who may plausibly help route the candidate to the right person.
 - **FR-SYS-38B (Priority-Wave Outreach Rule):** For role-targeted outreach, the system shall proceed in priority waves rather than contacting every linked contact across all recipient types at once. Higher-priority recipient groups shall be attempted before lower-priority groups.
 - **FR-SYS-38B1 (Recipient-Type Wave Order):** For this build, the default role-targeted outreach wave order should be:
-  1. `recruiter`
+  1. equal-priority personalized Jobright connections: `school_connection` and `company_connection`
   2. `hiring_manager`
   3. `engineer`
-  4. `alumni`
-  5. `other_internal`
-- **FR-SYS-38B1A (Current Guide Recipient Groups):** The current outreach guide should explicitly cover these working recipient groups: recruiting managers who post openings on LinkedIn, people who may be working on that team or adjacent area, ASU alumni connections, and previous job connections.
+  4. `recruiter`
+  6. `other_internal`
+- **FR-SYS-38B1A (Current Guide Recipient Groups):** The current outreach guide should explicitly cover these working recipient groups: hiring managers, engineering leaders, people who may be working on that team or adjacent area, school/company-connection contacts from Jobright, and previous warm connections when available.
 - **FR-SYS-38B1B (Current Guide Focus Profiles):** The current deepest drafting guidance is optimized first for recruiting-manager posters and team-adjacent engineers. Alumni and previous-job-connection outreach remain supported, but their more detailed playbooks may stay lighter until later refinement.
 - **FR-SYS-38B1C (Autonomous Enrichment Shortlist Size):** In the autonomous role-targeted flow, the first shortlist taken from the broad people-search result should contain at most 10 contacts for enrichment unless the user explicitly overrides that limit.
 - **FR-SYS-38B1D (Autonomous Shortlist Composition):** The autonomous enrichment shortlist should prefer useful outreach candidates in this order:
@@ -693,7 +715,7 @@ This is the agreed vocabulary for design discussions.
 - **FR-SYS-38B3B (Quota-Blocked Send Yield Rule):** If a posting's current send work is blocked only by the per-posting daily cap or the next eligible paced-send time, that delayed-only sending run shall yield to other runnable supervisor work rather than monopolizing heartbeat selection.
 - **FR-SYS-38B3C (Actionable Sending Priority Rule):** When role-targeted `sending` work is actionable now, the supervisor shall prefer that send-stage work over older ordinary `email_discovery` or `people_search` backlog so ready postings do not remain indefinitely starved behind contact-discovery work.
 - **FR-SYS-38B3D (Generated Send-Frontier Priority Rule):** Within actionable role-targeted send-stage work, a posting that already has a generated send frontier ready to execute shall outrank a posting that still needs fresh draft generation. The scheduler should drain already-generated send-ready drafts before spending the next cycle on new role-targeted draft generation.
-- **FR-SYS-38B3E (Generated Sending Over Gmail Polling Rule):** When at least one role-targeted send-stage posting has a generated send frontier that is actionable now, the supervisor shall prefer that send-stage work over routine `gmail_alert_batch` polling for the current heartbeat. Gmail polling remains periodic, but it should not preempt currently send-ready role-targeted outreach throughput.
+- **FR-SYS-38B3E (Generated Sending Over Jobright Polling Rule):** When at least one role-targeted send-stage posting has a generated send frontier that is actionable now, the supervisor shall prefer that send-stage work over routine Jobright recommendation polling for the current heartbeat. Jobright polling remains periodic, but it should not preempt currently send-ready role-targeted outreach throughput.
 - **FR-SYS-38B3F (Generated-Frontier Pre-Pass Isolation Rule):** The supervisor's generated-frontier pre-pass is an isolation filter, not a general fallback selector. When that pre-pass is invoked in generated-frontier-only mode, it may return only an actionable generated send frontier or `None`. It shall not leak unrelated pipeline work such as `email_discovery`, `people_search`, or draft-generation-only `sending` runs.
 - **FR-SYS-38B3F1 (Send-Ready Pre-Pass Isolation Rule):** The supervisor's send-ready pre-pass is also an isolation filter, not a general fallback selector. When that pre-pass is invoked in send-ready-only mode, it may return only actionable role-targeted `sending` work with a current generated frontier, existing send frontier, or draftable ready send set, or `None`. It shall not leak unrelated pipeline work such as `email_discovery`, `people_search`, or stale-reconciliation-only `sending` runs.
 - **FR-SYS-38B3G (Orphaned Send-Stage Run Recovery Rule):** If a role-targeted posting still has send-stage work actionable now but no non-terminal posting-scoped `pipeline_run` remains for that posting, the supervisor shall recreate one durable role-targeted run at the correct downstream boundary instead of leaving the posting stranded behind ordinary discovery backlog. In the current role-targeted flow, any posting that still has an actionable unsent send frontier, including a `completed` posting stranded with generated or retryable unsent messages, shall recover at `sending`. Only feedback-only postings with at least one already-sent outreach message and no actionable unsent send frontier shall recover at `delivery_feedback`.
@@ -811,14 +833,14 @@ This is the agreed vocabulary for design discussions.
   2. the posting-level status is `requires_contacts`
   This is the explicit boundary state for starting people search and contact expansion in the current build.
 - **FR-SYS-46B1 (Current Tailoring Input Boundary):** Resume Tailoring shall primarily consume posting-level canonical state plus the derived `jd.md` lead artifact. The canonical `raw/source.md` is retained for traceability and re-derivation, not as a required direct input to Tailoring.
-- **FR-SYS-46B1A (LinkedIn-to-Tailoring Bootstrap Rule):** In the role-targeted flow, Resume Tailoring shall bootstrap from `lead-manifest.yaml` plus canonical DB state. Concretely, Tailoring shall read the lead handoff manifest, require `handoff_targets.resume_tailoring.ready = true`, read the referenced `artifacts.jd_path`, read the linked `created_entities.job_posting_id` when present, and then mirror that JD and posting-linked context into the tailoring workspace before JD-signal extraction or other structuring begins.
+- **FR-SYS-46B1A (Lead-Ingestion-to-Tailoring Bootstrap Rule):** In the role-targeted flow, Resume Tailoring shall bootstrap from `lead-manifest.yaml` plus canonical DB state. Concretely, Tailoring shall read the lead handoff manifest, require `handoff_targets.resume_tailoring.ready = true`, read the referenced `artifacts.jd_path`, read the linked `created_entities.job_posting_id` when present, and then mirror that JD and posting-linked context into the tailoring workspace before JD-signal extraction or other structuring begins.
 - **FR-SYS-46B2 (Current Optional Tailoring Context Files):** Derived lead artifacts such as `post.md` and `poster-profile.md` may be mirrored into the tailoring workspace for traceability or future use, but they are not required inputs for the core JD-signal extraction and evidence-mapping logic.
 - **FR-SYS-46C (Discovery-to-Drafting Handoff Artifact):** For this build, the primary Discovery-to-Drafting runtime handoff artifact shall be `discovery_result.json`. At minimum, it should expose `contact_id`, optional `job_posting_id`, discovery outcome, discovered/working email when found, provider/confidence metadata when available, and a recipient-profile artifact reference when such context has been extracted.
 - **FR-SYS-46D (Human-Readable Draft Artifact Role):** For this build, `email_draft.md` may be produced as a human-readable draft artifact for inspection, audit, or later reference, but it shall not be treated as the sole machine contract for downstream delivery tracking.
 - **FR-SYS-46E (Drafting-to-Feedback Handoff Artifact):** For this build, the primary Drafting-and-Sending-to-Delivery-Feedback runtime handoff artifact shall be `send_result.json`. At minimum, it should expose `outreach_message_id`, `contact_id`, optional `job_posting_id`, send timestamp, delivery-tracking identifier or thread ID when available, and send status.
 - **FR-SYS-46F (Feedback Handoff Artifact):** For this build, the primary Delivery-Feedback runtime handoff artifact shall be `delivery_outcome.json`. At minimum, it should expose `outreach_message_id`, `contact_id`, optional `job_posting_id`, delivery state/event type, event timestamp, and reply summary/context when available.
 - **FR-SYS-47 (Failure Persistence and Blocking):** When a stage fails or becomes blocked, the system shall persist the failure/block reason in canonical state and shall prevent dependent downstream stages from silently proceeding as though the upstream stage succeeded.
-- **FR-SYS-48 (Retry and Resume Rule):** The system shall support retry/resume from the last successfully persisted stage boundary rather than requiring the entire pipeline to restart from `LinkedIn Scraping` after every partial failure.
+- **FR-SYS-48 (Retry and Resume Rule):** The system shall support retry/resume from the last successfully persisted stage boundary rather than requiring the entire pipeline to restart from `Lead Ingestion` after every partial failure.
 - **FR-SYS-49 (Failure Isolation Rule):** Failures should be isolated as narrowly as possible. For example, one contact's discovery or outreach failure should not invalidate unrelated contacts for the same posting, while a failed resume-tailoring or agent-review stage may block only the posting-dependent outreach that relies on that tailored resume.
 - **FR-SYS-49B (Retailoring Regression Isolation Rule):** A failed refreshed tailoring run is a posting-scoped failure. It may block that one posting until a newer approved run exists, but it shall not remain as runnable Outreach-side work and shall not stop unrelated postings from continuing through people search, email discovery, drafting, or sending.
 - **FR-SYS-49A (Stage Success Completeness Rule):** A stage shall not be considered truly successful until it has both:
@@ -862,11 +884,11 @@ This is the agreed vocabulary for design discussions.
 - **FR-SYS-57 (Autonomous Draft/Send Boundary):** Outside the mandatory agent review gates and explicit review-escalation cases, Email Drafting and Sending remains autonomous in this build and does not require pre-send human approval.
 - **FR-SYS-58 (Observability and Review Layer):** The system shall provide lightweight observability and review surfaces so the owner can understand what the pipeline has done, what is currently waiting, what failed, and what needs manual attention without reconstructing the story from raw files alone.
 - **FR-SYS-59 (Primary Status Query Surfaces):** The central database should support direct query/review of the primary entities and link records by current status, including:
-  1. `linkedin_leads` by lead-level status or split-review status
+  1. `leads` by discovery or promotion status
   2. `job_postings` by posting-level status
   3. `contacts` by contact-level status
   4. `job_posting_contacts` by link-level status
-- **FR-SYS-60 (Lead and Posting Review Queues):** The system should make it easy to list upstream `linkedin_leads` that are in operationally important states such as:
+- **FR-SYS-60 (Lead and Posting Review Queues):** The system should make it easy to list upstream `leads` that are in operationally important states such as:
   1. `captured`
   2. `split_ready`
   3. `reviewed`
@@ -915,7 +937,7 @@ This is the agreed vocabulary for design discussions.
 
 ### 7.1.1 Next-Build Central DB Logical Schema
 
-This section defines the next-build logical schema shape for `job_hunt_copilot.db`, with `LinkedIn Scraping` as the upstream root. The SQL DDL skeleton appears immediately below so the next build can implement against a concrete schema target.
+This section defines the next-build logical schema shape for `job_hunt_copilot.db`, with `Lead Ingestion` as the upstream root. The SQL DDL skeleton appears immediately below so the next build can implement against a concrete schema target.
 
 #### Shared Schema Conventions
 1. All primary identifiers should be stored as `TEXT`.
@@ -926,7 +948,7 @@ This section defines the next-build logical schema shape for `job_hunt_copilot.d
 
 #### Primary Entity Tables
 
-**`linkedin_leads`**
+**`leads`**
 - Primary key:
   - `lead_id`
 - Required columns:
@@ -934,25 +956,74 @@ This section defines the next-build logical schema shape for `job_hunt_copilot.d
   - `lead_identity_key`
   - `lead_status`
   - `lead_shape`
-  - `split_review_status`
-  - `source_type`
-  - `source_reference`
-  - `source_mode`
+  - `promotion_status`
   - `created_at`
   - `updated_at`
 - Optional columns:
-  - `source_url`
   - `company_name`
   - `role_title`
   - `location`
   - `work_mode`
   - `compensation_summary`
-  - `poster_name`
-  - `poster_title`
-  - `last_scraped_at`
+  - `primary_source_mode`
+  - `active_source_observation_id`
+  - `reason_code`
+  - `latest_match_score`
+  - `latest_match_label`
+  - `latest_public_connection_count`
+  - `latest_personal_connection_count`
+  - `latest_total_connection_count`
+  - `fit_summary`
+  - `top_contact_summary`
+  - `last_ingested_at`
 - Notes:
   - `lead_shape` should support at least `posting_only`, `posting_plus_contacts`, `contact_only`, and `invalid`.
-  - `split_review_status` stores lead-level upstream review state such as `confident`, `needs_review`, or `ambiguous`.
+  - `lead_status` stores upstream discovery state such as `discovered`, `blocked_no_jd`, `reauth_required`, or `closed`.
+  - `promotion_status` stores promotion-queue state such as `pending`, `held`, `promoted`, or `dropped`.
+  - For Jobright leads, `lead_identity_key` should prefer the stable Jobright job identifier and should fall back to a normalized Jobright job URL only when the stable job identifier is unavailable.
+  - The `leads` row stores the latest refreshable Jobright state used for current promotion decisions, while full historical snapshots remain in `lead_source_observations`.
+
+**`lead_source_observations`**
+- Primary key:
+  - `lead_source_observation_id`
+- Required columns:
+  - `lead_source_observation_id`
+  - `lead_id`
+  - `source_mode`
+  - `source_type`
+  - `source_reference`
+  - `source_url`
+  - `observation_status`
+  - `created_at`
+  - `updated_at`
+- Optional columns:
+  - `ingestion_run_id`
+  - `jobright_job_id`
+  - `apply_url`
+  - `match_score`
+  - `match_label`
+  - `recommendation_summary`
+  - `recommendation_breakdown_json`
+  - `jd_source_url`
+  - `posted_at`
+  - `observed_at`
+  - `last_seen_open_at`
+  - `source_contact_count`
+  - `public_connection_count`
+  - `personal_school_connection_count`
+  - `personal_company_connection_count`
+  - `personal_connection_count`
+  - `total_connection_count`
+  - `jd_is_usable`
+  - `jd_hash`
+  - `jd_artifact_path`
+  - `promotion_eligible_snapshot`
+  - `raw_observation_path`
+- Notes:
+  - This table preserves multiple source observations for the same canonical lead.
+  - `source_mode` should support at least `jobright_recommendation`.
+  - `source_type` should capture concrete origin such as `jobright_feed` or `jobright_job_page`.
+  - One row represents one persisted Jobright snapshot or sighting. Earlier rows remain as history even after a newer Jobright refresh becomes the active discovery state.
 
 **`job_postings`**
 - Primary key:
@@ -973,6 +1044,10 @@ This section defines the next-build logical schema shape for `job_hunt_copilot.d
   - `location`
   - `employment_type`
   - `posted_at`
+  - `promoted_from_source_observation_id`
+  - `promotion_match_score_snapshot`
+  - `promotion_match_label_snapshot`
+  - `promotion_contact_summary`
   - `jd_artifact_path`
   - `archived_at`
   - `application_state`
@@ -985,6 +1060,7 @@ This section defines the next-build logical schema shape for `job_hunt_copilot.d
   - `canonical_company_key` is the operational same-company grouping key used for multi-posting contact reuse and repeat-outreach exclusion.
   - `provider_company_key` may retain a stronger provider-backed company identifier such as Apollo `organization_id` when available.
   - `company_key_source` records whether the current grouping key came from provisional normalized-name derivation or a provider-backed resolution.
+  - `promoted_from_source_observation_id` identifies which upstream Jobright observation snapshot was used at promotion time so the posting keeps a stable promotion-time fit/JD context even if later unpromoted discovery refreshes drift.
   - `posting_status` stores the posting-level lifecycle state such as `sourced`, `resume_review_pending`, `requires_contacts`, or `completed`.
   - `application_state` is separate owner-managed application tracking and does not drive the autonomous posting lifecycle.
   - `lead_id` points back to the originating upstream lead.
@@ -1005,7 +1081,8 @@ This section defines the next-build logical schema shape for `job_hunt_copilot.d
   - `full_name`
   - `first_name`
   - `last_name`
-  - `linkedin_url`
+  - `professional_profile_url`
+  - `professional_profile_provider`
   - `position_title`
   - `location`
   - `discovery_summary`
@@ -1024,26 +1101,38 @@ This section defines the next-build logical schema shape for `job_hunt_copilot.d
   - `identity_key` is the normalized person-lookup key and is not required to be globally unique because same-name ambiguity may still exist in name-based fallback cases.
   - `contact_status` stores the current top-level contact lifecycle state such as `identified`, `working_email_found`, `sent`, or `replied`.
   - `responder_state` is separate relationship metadata for reply-positive or warm contacts and does not replace `contact_status`.
-  - Contacts auto-created from lead extraction should set `origin_component = linkedin_scraping`.
+  - Contacts auto-created from lead extraction should set `origin_component = lead_ingestion`.
 
-**`linkedin_lead_contacts`**
+**`lead_contacts`**
 - Primary key:
-  - `linkedin_lead_contact_id`
+  - `lead_contact_id`
 - Required columns:
-  - `linkedin_lead_contact_id`
+  - `lead_contact_id`
   - `lead_id`
   - `contact_id`
   - `contact_role`
   - `recipient_type_inferred`
-  - `is_primary_poster`
+  - `contact_source_type`
+  - `is_source_seeded`
   - `created_at`
   - `updated_at`
 - Optional columns:
+  - `lead_source_observation_id`
   - `extraction_confidence`
+  - `source_reference`
+  - `source_priority_tier`
+  - `source_priority_rank`
+  - `is_in_initial_intended_set`
+  - `entered_intended_set_at`
+  - `removed_from_intended_set_at`
+  - `removal_reason_code`
 - Constraints:
   - unique (`lead_id`, `contact_id`)
 - Notes:
-  - This table preserves lead-to-contact extraction traceability even when a canonical contact is later reused elsewhere.
+  - This table preserves lead-to-contact traceability even when a canonical contact is later reused elsewhere.
+  - `contact_source_type` should distinguish `jobright_public`, `jobright_personal_school`, `jobright_personal_company`, or `apollo_topup`.
+  - `source_priority_tier` and `source_priority_rank` preserve the Jobright-first then Apollo ordering used to build the intended outreach set.
+  - `lead_contacts` is the bridge that carries Jobright-provided contacts into downstream discovery so Apollo can enrich those same contacts with fuller identity and usable-email data.
 
 **`job_posting_contacts`**
 - Primary key:
@@ -1052,16 +1141,27 @@ This section defines the next-build logical schema shape for `job_hunt_copilot.d
   - `job_posting_contact_id`
   - `job_posting_id`
   - `contact_id`
+  - `lead_contact_id`
   - `recipient_type`
+  - `contact_source_type`
+  - `priority_tier`
+  - `priority_rank`
+  - `is_in_current_intended_set`
   - `relevance_reason`
   - `link_level_status`
+  - `entered_intended_set_at`
   - `created_at`
   - `updated_at`
+- Optional columns:
+  - `removed_from_intended_set_at`
+  - `removal_reason_code`
 - Constraints:
   - unique (`job_posting_id`, `contact_id`)
 - Notes:
-  - `recipient_type` stores values such as `hiring_manager`, `recruiter`, `engineer`, `alumni`, `founder`, or `other_internal`.
+  - `recipient_type` stores values such as `founder`, `hiring_manager`, `recruiter`, `engineer`, `school_connection`, `company_connection`, or `other_internal`.
   - `link_level_status` stores the posting-specific relationship state such as `identified`, `shortlisted`, `outreach_in_progress`, `outreach_done`, or `exhausted`.
+  - `lead_contact_id` preserves lineage back to the originating carried-forward lead contact, while the priority and intended-set fields preserve the frozen outreach ordering used for that posting.
+  - `is_in_current_intended_set`, `entered_intended_set_at`, and the optional removal fields preserve the frozen intended outreach set and later refill/degradation behavior explicitly at the posting-contact layer.
 
 #### Supporting Operational Tables
 
@@ -1105,8 +1205,8 @@ This section defines the next-build logical schema shape for `job_hunt_copilot.d
 - Constraint:
   - at least one linkage column should be populated so each artifact is tied to a real system object
 - Notes:
-  - For `LinkedIn Scraping`, the canonical raw-source artifact type is `lead_raw_source` and points to `linkedin-scraping/runtime/leads/<company>/<role>/<lead_id>/raw/source.md` when that lead mode materializes a raw-source artifact.
-  - The next build should also emit `lead_split_metadata`, `lead_split_review`, and `lead_manifest` for upstream lead interpretation when those artifacts are applicable to the lead mode.
+  - For `Lead Ingestion`, the canonical lead artifact types include `lead_manifest`, `source_observation`, `source_contact_snapshot`, `promotion_decision`, and `jd_provenance`.
+  - The next build should also emit source-mode-specific artifacts such as Jobright recommendation snapshots, Jobright job-page extractions, and authoritative JD provenance records.
 
 **`state_transition_events`**
 - Primary key:
@@ -1486,7 +1586,7 @@ This section defines the next-build logical schema shape for `job_hunt_copilot.d
   - `first_name`
   - `last_name`
   - `full_name`
-  - `linkedin_url`
+  - `professional_profile_url`
   - `position_title`
   - `location`
   - `provider_person_id`
@@ -1598,7 +1698,7 @@ This section defines the next-build logical schema shape for `job_hunt_copilot.d
    - index on `posting_status`
 2. `contacts`:
    - index on `identity_key`
-   - index on `linkedin_url`
+   - index on `professional_profile_url`
    - index on `contact_status`
    - index on `current_working_email`
 3. `job_posting_contacts`:
@@ -1690,26 +1790,65 @@ The following SQL DDL skeleton captures the next-build schema in implementation-
 ```sql
 PRAGMA foreign_keys = ON;
 
-CREATE TABLE IF NOT EXISTS linkedin_leads (
+CREATE TABLE IF NOT EXISTS leads (
   lead_id TEXT PRIMARY KEY,
   lead_identity_key TEXT NOT NULL,
   lead_status TEXT NOT NULL,
   lead_shape TEXT NOT NULL,
-  split_review_status TEXT NOT NULL,
-  source_type TEXT NOT NULL,
-  source_reference TEXT NOT NULL,
-  source_mode TEXT NOT NULL,
-  source_url TEXT,
+  promotion_status TEXT NOT NULL,
   company_name TEXT,
   role_title TEXT,
   location TEXT,
   work_mode TEXT,
   compensation_summary TEXT,
-  poster_name TEXT,
-  poster_title TEXT,
-  last_scraped_at TEXT,
+  primary_source_mode TEXT,
+  active_source_observation_id TEXT,
+  reason_code TEXT,
+  latest_match_score REAL,
+  latest_match_label TEXT,
+  latest_public_connection_count INTEGER,
+  latest_personal_connection_count INTEGER,
+  latest_total_connection_count INTEGER,
+  fit_summary TEXT,
+  top_contact_summary TEXT,
+  last_ingested_at TEXT,
   created_at TEXT NOT NULL,
   updated_at TEXT NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS lead_source_observations (
+  lead_source_observation_id TEXT PRIMARY KEY,
+  lead_id TEXT NOT NULL,
+  source_mode TEXT NOT NULL,
+  source_type TEXT NOT NULL,
+  source_reference TEXT NOT NULL,
+  source_url TEXT NOT NULL,
+  observation_status TEXT NOT NULL,
+  ingestion_run_id TEXT,
+  jobright_job_id TEXT,
+  apply_url TEXT,
+  match_score REAL,
+  match_label TEXT,
+  recommendation_summary TEXT,
+  recommendation_breakdown_json TEXT,
+  jd_source_url TEXT,
+  posted_at TEXT,
+  observed_at TEXT,
+  last_seen_open_at TEXT,
+  source_contact_count INTEGER,
+  public_connection_count INTEGER,
+  personal_school_connection_count INTEGER,
+  personal_company_connection_count INTEGER,
+  personal_connection_count INTEGER,
+  total_connection_count INTEGER,
+  jd_is_usable INTEGER,
+  jd_hash TEXT,
+  jd_artifact_path TEXT,
+  promotion_eligible_snapshot INTEGER,
+  raw_observation_path TEXT,
+  created_at TEXT NOT NULL,
+  updated_at TEXT NOT NULL,
+  FOREIGN KEY (lead_id) REFERENCES leads(lead_id)
 );
 
 CREATE TABLE IF NOT EXISTS job_postings (
@@ -1725,6 +1864,10 @@ CREATE TABLE IF NOT EXISTS job_postings (
   location TEXT,
   employment_type TEXT,
   posted_at TEXT,
+  promoted_from_source_observation_id TEXT,
+  promotion_match_score_snapshot REAL,
+  promotion_match_label_snapshot TEXT,
+  promotion_contact_summary TEXT,
   jd_artifact_path TEXT,
   archived_at TEXT,
   application_state TEXT,
@@ -1734,7 +1877,8 @@ CREATE TABLE IF NOT EXISTS job_postings (
   application_updated_at TEXT,
   created_at TEXT NOT NULL,
   updated_at TEXT NOT NULL,
-  FOREIGN KEY (lead_id) REFERENCES linkedin_leads(lead_id)
+  FOREIGN KEY (lead_id) REFERENCES leads(lead_id),
+  FOREIGN KEY (promoted_from_source_observation_id) REFERENCES lead_source_observations(lead_source_observation_id)
 );
 
 CREATE TABLE IF NOT EXISTS contacts (
@@ -1747,7 +1891,8 @@ CREATE TABLE IF NOT EXISTS contacts (
   full_name TEXT,
   first_name TEXT,
   last_name TEXT,
-  linkedin_url TEXT,
+  professional_profile_url TEXT,
+  professional_profile_provider TEXT,
   position_title TEXT,
   location TEXT,
   discovery_summary TEXT,
@@ -1764,18 +1909,28 @@ CREATE TABLE IF NOT EXISTS contacts (
   updated_at TEXT NOT NULL
 );
 
-CREATE TABLE IF NOT EXISTS linkedin_lead_contacts (
-  linkedin_lead_contact_id TEXT PRIMARY KEY,
+CREATE TABLE IF NOT EXISTS lead_contacts (
+  lead_contact_id TEXT PRIMARY KEY,
   lead_id TEXT NOT NULL,
   contact_id TEXT NOT NULL,
   contact_role TEXT NOT NULL,
   recipient_type_inferred TEXT NOT NULL,
-  is_primary_poster INTEGER NOT NULL,
-  extraction_confidence TEXT,
+  contact_source_type TEXT NOT NULL,
+  is_source_seeded INTEGER NOT NULL,
+  lead_source_observation_id TEXT,
+  extraction_confidence REAL,
+  source_reference TEXT,
+  source_priority_tier INTEGER,
+  source_priority_rank INTEGER,
+  is_in_initial_intended_set INTEGER,
+  entered_intended_set_at TEXT,
+  removed_from_intended_set_at TEXT,
+  removal_reason_code TEXT,
   created_at TEXT NOT NULL,
   updated_at TEXT NOT NULL,
-  FOREIGN KEY (lead_id) REFERENCES linkedin_leads(lead_id),
+  FOREIGN KEY (lead_id) REFERENCES leads(lead_id),
   FOREIGN KEY (contact_id) REFERENCES contacts(contact_id),
+  FOREIGN KEY (lead_source_observation_id) REFERENCES lead_source_observations(lead_source_observation_id),
   UNIQUE (lead_id, contact_id)
 );
 
@@ -1783,13 +1938,22 @@ CREATE TABLE IF NOT EXISTS job_posting_contacts (
   job_posting_contact_id TEXT PRIMARY KEY,
   job_posting_id TEXT NOT NULL,
   contact_id TEXT NOT NULL,
+  lead_contact_id TEXT NOT NULL,
   recipient_type TEXT NOT NULL,
+  contact_source_type TEXT NOT NULL,
+  priority_tier INTEGER NOT NULL,
+  priority_rank INTEGER NOT NULL,
+  is_in_current_intended_set INTEGER NOT NULL,
   relevance_reason TEXT NOT NULL,
   link_level_status TEXT NOT NULL,
+  entered_intended_set_at TEXT NOT NULL,
+  removed_from_intended_set_at TEXT,
+  removal_reason_code TEXT,
   created_at TEXT NOT NULL,
   updated_at TEXT NOT NULL,
   FOREIGN KEY (job_posting_id) REFERENCES job_postings(job_posting_id),
   FOREIGN KEY (contact_id) REFERENCES contacts(contact_id),
+  FOREIGN KEY (lead_contact_id) REFERENCES lead_contacts(lead_contact_id),
   UNIQUE (job_posting_id, contact_id)
 );
 
@@ -1820,7 +1984,7 @@ CREATE TABLE IF NOT EXISTS artifact_records (
   contact_id TEXT,
   outreach_message_id TEXT,
   created_at TEXT NOT NULL,
-  FOREIGN KEY (lead_id) REFERENCES linkedin_leads(lead_id),
+  FOREIGN KEY (lead_id) REFERENCES leads(lead_id),
   FOREIGN KEY (job_posting_id) REFERENCES job_postings(job_posting_id),
   FOREIGN KEY (contact_id) REFERENCES contacts(contact_id),
   FOREIGN KEY (outreach_message_id) REFERENCES outreach_messages(outreach_message_id),
@@ -1845,7 +2009,7 @@ CREATE TABLE IF NOT EXISTS state_transition_events (
   lead_id TEXT,
   job_posting_id TEXT,
   contact_id TEXT,
-  FOREIGN KEY (lead_id) REFERENCES linkedin_leads(lead_id),
+  FOREIGN KEY (lead_id) REFERENCES leads(lead_id),
   FOREIGN KEY (job_posting_id) REFERENCES job_postings(job_posting_id),
   FOREIGN KEY (contact_id) REFERENCES contacts(contact_id)
 );
@@ -1863,7 +2027,7 @@ CREATE TABLE IF NOT EXISTS override_events (
   lead_id TEXT,
   job_posting_id TEXT,
   contact_id TEXT,
-  FOREIGN KEY (lead_id) REFERENCES linkedin_leads(lead_id),
+  FOREIGN KEY (lead_id) REFERENCES leads(lead_id),
   FOREIGN KEY (job_posting_id) REFERENCES job_postings(job_posting_id),
   FOREIGN KEY (contact_id) REFERENCES contacts(contact_id)
 );
@@ -1918,7 +2082,7 @@ CREATE TABLE IF NOT EXISTS pipeline_runs (
   started_at TEXT NOT NULL,
   created_at TEXT NOT NULL,
   updated_at TEXT NOT NULL,
-  FOREIGN KEY (lead_id) REFERENCES linkedin_leads(lead_id),
+  FOREIGN KEY (lead_id) REFERENCES leads(lead_id),
   FOREIGN KEY (job_posting_id) REFERENCES job_postings(job_posting_id)
 );
 
@@ -1969,7 +2133,7 @@ CREATE TABLE IF NOT EXISTS agent_incidents (
   created_at TEXT NOT NULL,
   updated_at TEXT NOT NULL,
   FOREIGN KEY (pipeline_run_id) REFERENCES pipeline_runs(pipeline_run_id),
-  FOREIGN KEY (lead_id) REFERENCES linkedin_leads(lead_id),
+  FOREIGN KEY (lead_id) REFERENCES leads(lead_id),
   FOREIGN KEY (job_posting_id) REFERENCES job_postings(job_posting_id),
   FOREIGN KEY (contact_id) REFERENCES contacts(contact_id),
   FOREIGN KEY (outreach_message_id) REFERENCES outreach_messages(outreach_message_id)
@@ -2071,7 +2235,7 @@ CREATE TABLE IF NOT EXISTS discovery_attempts (
   first_name TEXT,
   last_name TEXT,
   full_name TEXT,
-  linkedin_url TEXT,
+  professional_profile_url TEXT,
   position_title TEXT,
   location TEXT,
   provider_person_id TEXT,
@@ -2142,12 +2306,27 @@ CREATE TABLE IF NOT EXISTS delivery_feedback_events (
   FOREIGN KEY (job_posting_id) REFERENCES job_postings(job_posting_id)
 );
 
-CREATE INDEX IF NOT EXISTS idx_linkedin_leads_identity_key
-  ON linkedin_leads(lead_identity_key);
-CREATE INDEX IF NOT EXISTS idx_linkedin_leads_status
-  ON linkedin_leads(lead_status);
-CREATE INDEX IF NOT EXISTS idx_linkedin_leads_split_review_status
-  ON linkedin_leads(split_review_status);
+CREATE INDEX IF NOT EXISTS idx_leads_identity_key
+  ON leads(lead_identity_key);
+CREATE INDEX IF NOT EXISTS idx_leads_status
+  ON leads(lead_status);
+CREATE INDEX IF NOT EXISTS idx_leads_promotion_status
+  ON leads(promotion_status);
+CREATE INDEX IF NOT EXISTS idx_leads_active_source_observation_id
+  ON leads(active_source_observation_id);
+
+CREATE INDEX IF NOT EXISTS idx_lead_source_observations_lead_id
+  ON lead_source_observations(lead_id);
+CREATE INDEX IF NOT EXISTS idx_lead_source_observations_mode
+  ON lead_source_observations(source_mode);
+CREATE INDEX IF NOT EXISTS idx_lead_source_observations_status
+  ON lead_source_observations(observation_status);
+CREATE INDEX IF NOT EXISTS idx_lead_source_observations_source_reference
+  ON lead_source_observations(source_reference);
+CREATE INDEX IF NOT EXISTS idx_lead_source_observations_jobright_job_id
+  ON lead_source_observations(jobright_job_id);
+CREATE INDEX IF NOT EXISTS idx_lead_source_observations_observed_at
+  ON lead_source_observations(observed_at);
 
 CREATE INDEX IF NOT EXISTS idx_job_postings_lead_id
   ON job_postings(lead_id);
@@ -2157,11 +2336,13 @@ CREATE INDEX IF NOT EXISTS idx_job_postings_status
   ON job_postings(posting_status);
 CREATE INDEX IF NOT EXISTS idx_job_postings_application_state
   ON job_postings(application_state);
+CREATE INDEX IF NOT EXISTS idx_job_postings_promoted_from_source_observation_id
+  ON job_postings(promoted_from_source_observation_id);
 
 CREATE INDEX IF NOT EXISTS idx_contacts_identity_key
   ON contacts(identity_key);
-CREATE INDEX IF NOT EXISTS idx_contacts_linkedin_url
-  ON contacts(linkedin_url);
+CREATE INDEX IF NOT EXISTS idx_contacts_professional_profile_url
+  ON contacts(professional_profile_url);
 CREATE INDEX IF NOT EXISTS idx_contacts_responder_state
   ON contacts(responder_state);
 CREATE INDEX IF NOT EXISTS idx_contacts_provider_person
@@ -2173,12 +2354,16 @@ CREATE INDEX IF NOT EXISTS idx_contacts_working_email
 CREATE INDEX IF NOT EXISTS idx_contacts_origin_component
   ON contacts(origin_component);
 
-CREATE UNIQUE INDEX IF NOT EXISTS idx_linkedin_lead_contacts_pair
-  ON linkedin_lead_contacts(lead_id, contact_id);
-CREATE INDEX IF NOT EXISTS idx_linkedin_lead_contacts_role
-  ON linkedin_lead_contacts(contact_role);
-CREATE INDEX IF NOT EXISTS idx_linkedin_lead_contacts_recipient_type
-  ON linkedin_lead_contacts(recipient_type_inferred);
+CREATE UNIQUE INDEX IF NOT EXISTS idx_lead_contacts_pair
+  ON lead_contacts(lead_id, contact_id);
+CREATE INDEX IF NOT EXISTS idx_lead_contacts_role
+  ON lead_contacts(contact_role);
+CREATE INDEX IF NOT EXISTS idx_lead_contacts_recipient_type
+  ON lead_contacts(recipient_type_inferred);
+CREATE INDEX IF NOT EXISTS idx_lead_contacts_source_type
+  ON lead_contacts(contact_source_type);
+CREATE INDEX IF NOT EXISTS idx_lead_contacts_intended_set
+  ON lead_contacts(lead_id, is_in_initial_intended_set, source_priority_tier, source_priority_rank);
 
 CREATE UNIQUE INDEX IF NOT EXISTS idx_job_posting_contacts_pair
   ON job_posting_contacts(job_posting_id, contact_id);
@@ -2186,6 +2371,8 @@ CREATE INDEX IF NOT EXISTS idx_job_posting_contacts_status
   ON job_posting_contacts(link_level_status);
 CREATE INDEX IF NOT EXISTS idx_job_posting_contacts_recipient_type
   ON job_posting_contacts(recipient_type);
+CREATE INDEX IF NOT EXISTS idx_job_posting_contacts_intended_set
+  ON job_posting_contacts(job_posting_id, is_in_current_intended_set, priority_tier, priority_rank);
 
 CREATE INDEX IF NOT EXISTS idx_resume_tailoring_runs_job_posting
   ON resume_tailoring_runs(job_posting_id);
@@ -2366,58 +2553,100 @@ The next build should define exact payload shapes for the primary machine handof
 
 ```yaml
 contract_version: "1.0"
-produced_at: "2026-03-22T01:15:00Z"
-producer_component: "linkedin_scraping"
+produced_at: "2026-06-27T01:15:00Z"
+producer_component: "lead_ingestion"
 result: "success"
 reason_code: null
 message: null
 lead_id: "ld_001"
-lead_status: "reviewed"
+lead_status: "discovered"
 lead_shape: "posting_plus_contacts"
-split_review_status: "confident"
+promotion_status: "promoted"
+active_source_observation_id: "lso_002"
+reason_code: null
 source:
-  source_type: "manual_paste"
-  source_reference: "paste/paste.txt"
-  source_mode: "manual_paste"
-  source_url: null
+  primary_source_mode: "jobright_recommendation"
+  source_reference: "jobright:6a3335ccce501060b5ceca67"
+  source_url: "https://jobright.ai/jobs/info/6a3335ccce501060b5ceca67"
 summary:
-  company_name: "Guidewire Software"
-  role_title: "Software Engineer (Full-Stack)"
-  location: "Bedford, MA"
+  company_name: "Otter.ai"
+  role_title: "Software Engineer, Virality and Activation"
+  location: "Mountain View, CA"
   work_mode: "Hybrid"
-  compensation_summary: "$86K/yr - $130K/yr"
-  poster_name: "Alex Kordun"
-  poster_title: "Director of Engineering, Guidewire"
+  compensation_summary: "$136K/yr - $185K/yr"
+  fit_summary: "Strong Match (87.7)"
+  top_contact_summary: "3 personalized, 5 public"
+  latest_match_score: 87.7
+  latest_match_label: "Strong Match"
+  latest_public_connection_count: 5
+  latest_personal_connection_count: 3
+  latest_total_connection_count: 8
 artifacts:
-  raw_source_path: "/abs/path/linkedin-scraping/runtime/leads/guidewire-software/software-engineer-full-stack/ld_001/raw/source.md"
-  post_path: "/abs/path/linkedin-scraping/runtime/leads/guidewire-software/software-engineer-full-stack/ld_001/post.md"
-  jd_path: "/abs/path/linkedin-scraping/runtime/leads/guidewire-software/software-engineer-full-stack/ld_001/jd.md"
-  poster_profile_path: "/abs/path/linkedin-scraping/runtime/leads/guidewire-software/software-engineer-full-stack/ld_001/poster-profile.md"
-  split_metadata_path: "/abs/path/linkedin-scraping/runtime/leads/guidewire-software/software-engineer-full-stack/ld_001/source-split.yaml"
-  split_review_path: "/abs/path/linkedin-scraping/runtime/leads/guidewire-software/software-engineer-full-stack/ld_001/source-split-review.yaml"
+  lead_workspace_path: "/abs/path/lead-ingestion/runtime/leads/otter-ai/software-engineer-virality-and-activation/ld_001"
+  source_observations_path: "/abs/path/lead-ingestion/runtime/leads/otter-ai/software-engineer-virality-and-activation/ld_001/source-observations.json"
+  source_contacts_path: "/abs/path/lead-ingestion/runtime/leads/otter-ai/software-engineer-virality-and-activation/ld_001/source-contacts.json"
+  promotion_decision_path: "/abs/path/lead-ingestion/runtime/leads/otter-ai/software-engineer-virality-and-activation/ld_001/promotion-decision.json"
+  jd_path: "/abs/path/lead-ingestion/runtime/leads/otter-ai/software-engineer-virality-and-activation/ld_001/jd.md"
+observations:
+  - source_mode: "jobright_recommendation"
+    source_type: "jobright_feed"
+    lead_source_observation_id: "lso_001"
+    jobright_job_id: "6a3335ccce501060b5ceca67"
+    match_score: 87.7
+    match_label: "Strong Match"
+    public_connection_count: 0
+    personal_connection_count: 0
+  - source_mode: "jobright_recommendation"
+    source_type: "jobright_job_page"
+    lead_source_observation_id: "lso_002"
+    jobright_job_id: "6a3335ccce501060b5ceca67"
+    source_contact_count: 8
+    public_connection_count: 5
+    personal_school_connection_count: 2
+    personal_company_connection_count: 1
+    personal_connection_count: 3
+    total_connection_count: 8
+    jd_is_usable: true
 created_entities:
   job_posting_id: "jp_001"
   contact_ids:
     - "ct_001"
+    - "ct_002"
+    - "ct_003"
+    - "ct_004"
+    - "ct_005"
+  lead_contact_ids:
+    - "lc_001"
+    - "lc_002"
+    - "lc_003"
+    - "lc_004"
+    - "lc_005"
   job_posting_contact_ids:
     - "jpc_001"
-  linkedin_lead_contact_ids:
-    - "llc_001"
+    - "jpc_002"
+    - "jpc_003"
+    - "jpc_004"
+    - "jpc_005"
 handoff_targets:
   resume_tailoring:
     ready: true
     reason_code: null
     required_artifacts:
-      - "/abs/path/linkedin-scraping/runtime/leads/guidewire-software/software-engineer-full-stack/ld_001/jd.md"
+      - "/abs/path/lead-ingestion/runtime/leads/otter-ai/software-engineer-virality-and-activation/ld_001/jd.md"
   email_outreach:
-    ready: false
-    reason_code: "missing_working_email"
+    ready: true
+    reason_code: null
     required_artifacts:
-      - "/abs/path/linkedin-scraping/runtime/leads/guidewire-software/software-engineer-full-stack/ld_001/poster-profile.md"
+      - "/abs/path/lead-ingestion/runtime/leads/otter-ai/software-engineer-virality-and-activation/ld_001/source-contacts.json"
+    intended_contact_summary:
+      current_intended_count: 5
+      personalized_count: 3
+      public_count: 2
+      apollo_topup_count: 0
 ```
 
 Rules:
-1. `lead-manifest.yaml` is the authoritative machine handoff manifest from `LinkedIn Scraping`.
+1. `lead-manifest.yaml` is the authoritative machine handoff manifest from `Lead Ingestion`.
 2. `lead-manifest.yaml` shall exist even when the lead is blocked or ambiguous.
 3. `result = success` means the upstream lead bundle was persisted successfully; downstream readiness is determined separately per target in `handoff_targets`.
 4. `handoff_targets` shall be the source-of-truth for whether a downstream may proceed from that lead bundle.
@@ -2462,58 +2691,62 @@ Rules:
 ```json
 {
   "contract_version": "1.0",
-  "produced_at": "2026-04-04T20:40:00Z",
+  "produced_at": "2026-06-27T20:40:00Z",
   "producer_component": "email_discovery",
   "result": "success",
   "reason_code": null,
   "message": null,
-  "job_posting_id": "jp_acme_backend_001",
-  "company_name": "Acme",
+  "job_posting_id": "jp_otter_growth_001",
+  "company_name": "Otter.ai",
   "provider_name": "apollo",
+  "seeded_contact_target": 5,
+  "seeded_contact_count": 3,
+  "apollo_top_up_needed": 2,
   "resolved_company": {
-    "organization_id": "57c4f624a6da9869ef365816",
-    "organization_name": "PrePass",
-    "primary_domain": "prepass.com",
-    "website_url": "http://www.prepass.com",
-    "linkedin_url": "http://www.linkedin.com/company/prepass-llc"
+    "organization_id": "57c4f624a6da9869ef365999",
+    "organization_name": "Otter.ai",
+    "primary_domain": "otter.ai",
+    "website_url": "https://otter.ai",
+    "professional_profile_url": "https://profiles.example.com/company/otter-ai"
   },
   "applied_filters": {
     "titles": [
+      "Founding Engineer",
+      "Head of Engineering",
       "Engineering Manager",
-      "Director of Engineering",
       "Recruiter",
       "Software Engineer"
     ]
   },
-  "candidate_count": 31,
+  "candidate_count": 8,
   "candidates": [
     {
-      "provider_person_id": "54a44d9174686934427dd13c",
+      "provider_person_id": "54a44d9174686934427ab321",
       "contact_id": "ct_001",
-      "display_name": "Mike De***s",
+      "display_name": "Colton Davis",
       "name_quality": "provider_obfuscated",
       "full_name": null,
-      "linkedin_url": null,
-      "title": "Director of Engineering",
-      "recipient_type_inferred": "hiring_manager",
-      "relevance_reason": "engineering leadership for likely hiring area",
+      "professional_profile_url": null,
+      "title": "Technical Recruiter",
+      "recipient_type_inferred": "source_seeded",
+      "relevance_reason": "Jobright personalized connection",
       "has_email": false,
       "has_direct_phone": true,
-      "last_refreshed_at": "2026-03-20T04:11:39Z"
+      "last_refreshed_at": "2026-06-27T04:11:39Z"
     },
     {
-      "provider_person_id": "6710a593c236120001921676",
+      "provider_person_id": "6710a593c236120001934999",
       "contact_id": "ct_002",
-      "display_name": "Isaiah Lo***e",
+      "display_name": "Hao Ch***g",
       "name_quality": "provider_obfuscated",
       "full_name": null,
-      "linkedin_url": null,
-      "title": "Corporate Recruiter",
-      "recipient_type_inferred": "recruiter",
-      "relevance_reason": "recruiting function close to current role",
+      "professional_profile_url": null,
+      "title": "Software Engineer",
+      "recipient_type_inferred": "apollo_topup",
+      "relevance_reason": "technical company contact added to reach the 5-contact outreach set",
       "has_email": true,
       "has_direct_phone": true,
-      "last_refreshed_at": "2026-03-30T17:50:12Z"
+      "last_refreshed_at": "2026-06-27T17:50:12Z"
     }
   ]
 }
@@ -2522,7 +2755,7 @@ Rules:
 Rules:
 1. `people_search_result.json` is the authoritative machine artifact for the company-scoped people-search stage before person-scoped email discovery begins.
 2. The artifact shall preserve the resolved company identity, the applied search filters, and the full candidate list returned by the broad search stage, even when many candidates are not later shortlisted.
-3. Candidate rows may omit `full_name`, `linkedin_url`, and real email values at search time. Sparse or obfuscated search-stage identity is valid in this artifact.
+3. Candidate rows may omit `full_name`, `professional_profile_url`, and real email values at search time. Sparse or obfuscated search-stage identity is valid in this artifact.
 4. For Apollo-backed candidates, `provider_person_id` shall be preserved whenever available because it is the stable bridge into later enrichment and contact identity.
 5. `contact_id` should be present for candidates that have already been materialized into canonical `contacts`. It may be omitted for candidates that remain artifact-only search results.
 
@@ -2531,25 +2764,25 @@ Rules:
 ```json
 {
   "contract_version": "1.0",
-  "produced_at": "2026-04-04T20:55:00Z",
+  "produced_at": "2026-06-27T20:55:00Z",
   "producer_component": "email_discovery",
   "result": "success",
   "reason_code": null,
   "message": null,
   "contact_id": "ct_002",
-  "job_posting_id": "jp_acme_backend_001",
-  "profile_source": "linkedin_public_profile",
+  "job_posting_id": "jp_otter_growth_001",
+  "profile_source": "public_professional_profile",
   "source_method": "public_profile_html",
-  "linkedin_url": "http://www.linkedin.com/in/isaiah-love-9170b9150",
+  "professional_profile_url": "https://profiles.example.com/in/example-contact",
   "profile": {
     "identity": {
-      "display_name": "Isaiah Love",
-      "full_name": "Isaiah Love",
-      "first_name": "Isaiah",
-      "last_name": "Love"
+      "display_name": "Example Contact",
+      "full_name": "Example Contact",
+      "first_name": "Example",
+      "last_name": "Contact"
     },
     "top_card": {
-      "current_company": "PrePass",
+      "current_company": "Otter.ai",
       "current_title": null,
       "headline": null,
       "location": "Phoenix, Arizona, United States",
@@ -2589,8 +2822,8 @@ Rules:
 ```
 
 Rules:
-1. `recipient_profile.json` is the persisted internal snapshot for selected-contact profile context used by drafting when LinkedIn-profile extraction succeeds.
-2. The artifact shall be rooted in stable internal IDs such as `contact_id` and optional `job_posting_id`, while preserving the source LinkedIn URL used for extraction.
+1. `recipient_profile.json` is the persisted internal snapshot for selected-contact profile context used by drafting when professional-profile extraction succeeds.
+2. The artifact shall be rooted in stable internal IDs such as `contact_id` and optional `job_posting_id`, while preserving the source professional-profile URL used for extraction.
 3. The snapshot shall be sectioned and broad, with the current preferred sections being `identity`, `top_card`, `about`, `experience_hints`, `recent_public_activity`, `public_signals`, `work_signals`, `evidence_snippets`, and `source_coverage`.
 4. The extraction goal is to preserve as much clean public profile information as possible from the selected contact's public page, provided that the information is available without requiring hidden/member-only sections and can be stored in a stable structured form.
 5. `top_card`, `about`, `experience_hints`, `recent_public_activity`, and `public_signals` are all optional. Sparse profiles may expose only a subset of these sections.
@@ -2598,8 +2831,8 @@ Rules:
 7. `evidence_snippets` shall contain short grounded strings that explain where `work_signals` came from, such as visible about-preview text, public activity excerpts, company hints, or recommendation/certification clues.
 8. `source_coverage` shall explicitly record which useful signal groups were actually exposed on the public page so downstream drafting can distinguish between `missing`, `not exposed`, and `not extracted`.
 9. The artifact shall not invent hidden or member-only fields. `current_title`, `headline`, exact experience rows, full education history, skills, and other rich profile sections may be stored when they are clearly and cleanly available from the public page, but they shall otherwise remain `null`, empty, or omitted.
-10. The artifact may be absent when no LinkedIn URL is available or extraction fails. In that case, drafting shall fall back to the best available search/enrichment context.
-11. In practice, the highest-value LinkedIn-derived enrichment signals remain `recent_public_activity`, `about`, `work_signals`, and `evidence_snippets`, but the artifact should still preserve the broader clean public profile context because it may become useful for later ranking, review, or drafting improvements.
+10. The artifact may be absent when no professional-profile URL is available or extraction fails. In that case, drafting shall fall back to the best available search/enrichment context.
+11. In practice, the highest-value public professional-profile enrichment signals remain `recent_public_activity`, `about`, `work_signals`, and `evidence_snippets`, but the artifact should still preserve the broader clean public profile context because it may become useful for later ranking, review, or drafting improvements.
 
 #### `discovery_result.json`
 
@@ -2691,60 +2924,41 @@ Rules:
 3. `reply_summary` and `raw_reply_excerpt` should be populated only when useful reply content exists.
 4. `mailbox_reference` may store a secondary mailbox-specific identifier but does not replace `outreach_message_id` as the canonical internal linkage key.
 
-### 7.1.1C LinkedIn Scraping Upstream Model
+### 7.1.1C Lead Ingestion Upstream Model
 
-This section supplements the main system requirements and schema sections with the machine handoff contract for `LinkedIn Scraping`. The lead lifecycle, lead entity model, and lead-linked schema shape are defined primarily in Sections `5.1`, `7.1`, and `12.5A`.
+This section supplements the main system requirements and schema sections with the machine handoff contract for `Lead Ingestion`. The lead lifecycle, lead entity model, and lead-linked schema shape are defined primarily in Sections `5.1`, `7.1`, and `12.5A`.
 
 #### `lead-manifest.yaml` Contract
 
 `lead-manifest.yaml` should include, at minimum:
 
 1. shared contract envelope fields such as `contract_version`, `produced_at`, `producer_component`, and `result`
-2. lead identifiers and state such as `lead_id`, `lead_status`, `lead_shape`, `source_mode`, and `split_review_status`
-3. extracted summary fields such as company, role, location, work mode, compensation summary, poster name, and poster title
-4. direct artifact paths for `raw/source.md`, `source-split.yaml`, and `source-split-review.yaml` when those artifacts exist for the lead mode, plus available derived/source-mode artifacts such as `post.md`, `jd.md`, `poster-profile.md`, `capture-bundle.json`, and references to originating Gmail collection artifacts and parsed job-card metadata when the source mode is `gmail_job_alert`
+2. lead identifiers and state such as `lead_id`, `lead_status`, `lead_shape`, `promotion_status`, primary `source_mode`, the current `active_source_observation_id`, and any current `reason_code`
+3. extracted summary fields such as company, role, location, work mode, compensation summary, fit summary, top-contact summary, current match score/label, and current connection counts
+4. direct artifact paths for `source-observations.json`, `source-contacts.json`, `promotion-decision.json`, `jd.md`, and any source-mode-specific raw snapshots or provenance artifacts
 5. created entity identifiers such as `job_posting_id`, created `contact_id` values, and created posting-contact link identifiers when they exist
-6. artifact availability and provenance fields, such as whether `post.md` or `poster-profile.md` are unavailable and whether `jd.md` came from manual capture or autonomous fetch
-7. `handoff_targets`, where each downstream target records at least readiness, reason code, required artifact references, and relevant created entities
-8. for autonomous Gmail-derived leads, the originating Gmail collection references and parsed job-card references should be carried directly in `lead-manifest.yaml` rather than requiring additional lead-local metadata files by default
-9. for autonomous Gmail-derived leads, `lead-manifest.yaml` should be able to represent `incomplete` before JD recovery succeeds and `blocked_no_jd` when JD recovery ultimately fails
-10. for autonomous Gmail-derived leads, the minimum source-reference set in `lead-manifest.yaml` should include the originating `gmail_message_id`, `gmail_thread_id` when available, `received_at`, the Gmail collection artifact reference, the parsed job-card reference or card index, the LinkedIn `job_url`, and either the recovered `job_id` or the persisted synthetic fallback identity key
-11. for autonomous Gmail-derived leads that are blocked or review-required, `lead-manifest.yaml` should still persist the current `lead_status`, a machine-readable `reason_code`, the known summary fields recovered so far, and `handoff_targets` entries with `ready = false` and the blocking reason
+6. artifact availability and provenance fields, such as whether additional source observations or professional-profile artifacts are unavailable and which source supplied the current JD and contact set
+7. per-observation summary fields sufficient to understand the latest feed snapshot versus latest job-page snapshot, including Jobright job id/reference, match score, connection counts, and JD usability when available
+8. `handoff_targets`, where each downstream target records at least readiness, reason code, required artifact references, relevant created entities, and the current intended-contact summary when the outreach target is ready
+9. for blocked or held leads, `lead-manifest.yaml` should still persist the current `lead_status`, a machine-readable `reason_code`, the known summary fields recovered so far, and `handoff_targets` entries with `ready = false` and the blocking reason
 
-#### Manual Capture Submission Contract
+#### Jobright Recommendation Intake Contract
 
-The upstream manual-capture submission contract should include, at minimum:
+The Jobright intake contract should include, at minimum:
 
-1. `source_mode = manual_capture`
-2. a stable submission identifier or request identifier
-3. one or more `captures[]` entries with fields such as `capture_mode`, `page_type`, `source_url`, `page_title`, `selected_text`, `full_text`, and `captured_at`
-4. enough metadata to preserve capture order so the canonical `raw/source.md` can be reconstructed deterministically
-
-#### Gmail Job Alert Intake Contract
-
-The upstream Gmail-alert intake contract should include, at minimum:
-
-1. `source_mode = gmail_job_alert`
-2. Gmail message identity fields such as `gmail_message_id` and `gmail_thread_id` when available, with `gmail_thread_id` treated as a secondary reference rather than a collection or deduplication key
-3. source-mailbox metadata such as sender identity, subject, and alert timing fields such as `received_at`
-4. run metadata identifying the agent-invoked Gmail ingestion run, plus collection metadata such as `collected_at` and a Gmail collection path or reference keyed by `received_at + gmail_message_id`
-5. idempotent collection behavior keyed by `gmail_message_id`, so re-encountering a message with an already-collected `gmail_message_id` does not overwrite or create a second collected-email unit
-6. enough snapshot content to preserve one clean human-readable alert-body snapshot plus a compact machine-readable snapshot containing normalized message metadata and only the raw body parts and parse-relevant fields actually used, without requiring a mailbox refetch for review
-7. zero or more parsed non-duplicate alert-card entries, where each entry can carry company, role, location, badge lines, `job_url`, and extracted job identifier when available, and where entries may remain present even if later JD recovery for that card fails
-8. zero-card parse outcomes, including retention of the collected email artifacts, an allowed empty `job-cards.json`, and the rule that no lead workspace is created from that message
-9. zero-card review-threshold metadata so those collected emails are surfaced for review when more than 3 occur in a single Gmail ingestion run or when the cumulative unresolved count exceeds 3 across history
-10. when `job_id` is unavailable, a persisted synthetic fallback identity key derived from the normalized LinkedIn job URL when that URL is available
-11. when both `job_id` and usable LinkedIn job URL are unavailable, a reviewable recovery outcome indicating whether a usable JD was recovered from another supported source
-12. final merged JD provenance fields such as canonical JD outcome, final canonical JD artifact reference, contributing source types, and the conflict-resolution policy used when sources differed
-13. final company-resolution fields such as resolved company website, selected careers URL when found, final exact-match outcome, and final resolution reason
-14. identity-reconciliation fields such as parsed alert-card company/role, JD-derived company/role when available, mismatch status, and the review-block reason when those identities disagree materially
-15. for basic functioning, `email.json` should at minimum carry `gmail_message_id`, `gmail_thread_id` when available, sender, subject, `received_at`, `collected_at`, the agent-invoked Gmail ingestion run identifier, which body representation was used for parsing, the parse outcome, the parseable job-card count, and the specific raw body part or body-derived text actually used by the parser
-16. for basic functioning, each `job-cards.json` entry should at minimum carry `card_index`, `role_title`, `company_name`, `location`, `badge_lines`, `job_url`, `job_id` when available, and the source `gmail_message_id`
+1. `source_mode = jobright_recommendation`
+2. a stable Jobright job reference such as the Jobright job URL or job identifier
+3. run metadata identifying the authenticated recommendation-ingestion run
+4. recommendation-feed fields such as `displayScore`, `rankDesc`, freshness, and recommendation-score breakdowns when available
+5. job-page fields such as canonical JD content, job metadata, public connections, and personalized connections when available
+6. source-contact counts split by public and personalized categories
+7. the stable Jobright job identifier when available, with fallback to Jobright job URL when it is not
+8. a recoverable `reauth_required` outcome when the authenticated session is unavailable
 
 ### 7.1.2 External Integration Boundary
 
 - **FR-SYS-72 (External Integration Classes):** In this build, the system's external integrations should be understood in these main classes:
-  1. input/context sources such as job postings, LinkedIn-derived profile context, and other lead-source material
+  1. input/context sources such as job postings, public professional-profile context, and other lead-source material
   2. email-discovery providers
   3. outbound email sending or mailbox integrations
   4. inbound delivery-feedback or mailbox-observation integrations
@@ -2814,7 +3028,7 @@ The upstream Gmail-alert intake contract should include, at minimum:
      - resolve the target company to an Apollo `organization_id`
      - run people search anchored on that resolved `organization_id`
      - shortlist or rank the returned people
-     - enrich only the selected contacts that need fuller identity, LinkedIn URL, or a usable work email
+     - enrich only the selected contacts that need fuller identity, professional-profile URL, or a usable work email
   7. Request filters should support `organization_id` plus title, seniority, or location filters as needed for the current role-targeted search
   8. Search success criteria:
      - HTTP `200`
@@ -2838,14 +3052,14 @@ The upstream Gmail-alert intake contract should include, at minimum:
   1. Base endpoint: `POST https://api.prospeo.io/enrich-person`
   2. Credits/account endpoint: `GET https://api.prospeo.io/account-information`
   3. Auth method: `X-KEY` request header
-  4. Primary request body when LinkedIn URL exists:
+  4. Primary request body when a public professional-profile URL exists:
      ```json
      {
        "only_verified_email": true,
-       "data": {"linkedin_url": "..."}
+       "data": {"professional_profile_url": "..."}
      }
      ```
-  5. Fallback request body when LinkedIn URL does not exist:
+  5. Fallback request body when a public professional-profile URL does not exist:
      ```json
      {
        "only_verified_email": true,
@@ -3436,9 +3650,9 @@ For each lead, persist an eligibility decision artifact with:
 
 ### 7.3.1 Subcomponent Responsibilities
 
-- **FR-EO-00 (Contact Search Responsibility):** The Outreach-side discovery layer shall own company-scoped people search for role-targeted leads when the upstream lead itself does not already provide enough internal contacts.
-- **FR-EO-00A (Selected-Contact Enrichment Responsibility):** The Outreach-side discovery layer shall own selected-contact enrichment after the broad people-search pass, including fuller identity recovery, LinkedIn URL recovery, and usable-email recovery when the selected enrichment provider can supply them.
-- **FR-EO-00B (Recipient-Profile Extraction Responsibility):** When a selected contact has a usable LinkedIn profile URL, the Outreach-side discovery layer shall own extracting and persisting as much clean workflow-relevant recipient-profile context as is actually exposed on the public page for later drafting use.
+- **FR-EO-00 (Contact Search Responsibility):** The Outreach-side discovery layer shall own seeded-contact enrichment and bounded Apollo top-up for role-targeted leads when the upstream lead itself does not already provide enough internal contacts.
+- **FR-EO-00A (Selected-Contact Enrichment Responsibility):** The Outreach-side discovery layer shall own selected-contact enrichment after source-seeded contact capture or Apollo top-up, including fuller identity recovery, professional-profile URL recovery, and usable-email recovery when the selected enrichment provider can supply them.
+- **FR-EO-00B (Recipient-Profile Extraction Responsibility):** When a selected contact has a usable professional-profile URL, the Outreach-side discovery layer shall own extracting and persisting as much clean workflow-relevant recipient-profile context as is actually exposed on the public page for later drafting use.
 - **FR-EO-01 (Email Discovery Responsibility):** The Email Discovery subcomponent shall own person-scoped email lookup or enrichment, provider-budget tracking, discovery confidence, persistent discovery history, and future learning-data collection.
 - **FR-EO-02 (Discovery Boundary):** The Email Discovery subcomponent shall not own email sending. It may consume delivery outcomes such as bounce feedback, but it does not originate send operations.
 - **FR-EO-03 (Email Drafting and Sending Responsibility):** The Email Drafting and Sending subcomponent shall own outreach draft generation, attachment of the tailored resume, send execution, and persistence of the final sent content plus raw send metadata needed for downstream feedback tracking.
@@ -3450,13 +3664,14 @@ For each lead, persist an eligibility decision artifact with:
 #### 7.3.2.1 Current Provider-Based Discovery
 
 The current discovery behavior combines:
-1. company-scoped people search to identify likely internal contacts for a posting
-2. person-scoped email enrichment or email-finder lookup for selected contacts that still need usable work emails
+1. source-seeded contact capture from Jobright during lead ingestion
+2. Apollo enrichment and bounded Apollo top-up when the seeded set is fewer than 5
+3. person-scoped email enrichment or email-finder lookup for selected contacts that still need usable work emails
 
 It uses the active provider cascade to identify contacts, discover emails, capture provider-verified confidence signals, track budget usage, preserve bounce/outcome feedback, and collect the data needed for future learning.
 For discovery-state persistence, the system shall use discovery-specific tables inside the central SQLite database rather than splitting long-lived discovery data across multiple JSON/JSONL files.
 - **FR-ED-00 (Discovery Source of Truth):** Discovery-side persistent history, provider budget tracking, unresolved review data, bounced-email review data, and future learning state shall live inside `job_hunt_copilot.db`. JSON artifacts such as `discovery_result.json` and `delivery_outcome.json` shall be treated as runtime handoff outputs for pipeline communication rather than canonical long-term storage.
-- **FR-ED-00A (Company-Scoped People Search Entry):** For role-targeted postings that still need internal contacts, the discovery layer shall accept company/job context and run company-scoped people search before person-scoped email-finder calls.
+- **FR-ED-00A (Source-Seeded Discovery Entry):** For role-targeted postings, the discovery layer shall begin from the source-seeded contacts captured during lead ingestion and only use company-scoped Apollo search when that seeded set is insufficient.
 - **FR-ED-00B (Apollo-First Contact Search):** The current first-build company-scoped people-search provider shall be Apollo.
 - **FR-ED-00B1 (Company Resolution Before Apollo People Search):** The Apollo path should first resolve the target company to an Apollo organization record and capture the resolved `organization_id` before broad people search begins.
 - **FR-ED-00B2 (Organization-ID-Anchored Search):** When Apollo organization resolution succeeds, people search should anchor on the resolved `organization_id` rather than relying only on company name or raw domain filters.
@@ -3494,16 +3709,16 @@ For discovery-state persistence, the system shall use discovery-specific tables 
 - **FR-ED-00D5 (Apollo Search Artifact Plus Database Rule):** The broad search artifact remains the historical record for the whole search run, but shortlisted contacts shall additionally have database-backed Apollo profile snapshots so later components do not depend on reparsing the artifact file to recover provider fields.
 - **FR-ED-00D6 (Shortlist-Only DB Persistence Boundary):** Full Apollo person-payload persistence in the main database is required only for shortlisted or otherwise materialized contacts. Non-shortlisted broad-search candidates may remain artifact-only rows inside the search artifact and do not need separate database-backed person snapshots in this build.
 - **FR-ED-00E (Skip Extra Email Lookup on Usable Provider Email):** If the selected people-search or enrichment provider already returns a usable work email for a selected contact, the system may skip separate person-scoped email-finder calls for that contact.
-- **FR-ED-00E1 (Selective Apollo Enrichment After Search):** After the broad Apollo search pass, the system should enrich only the shortlisted contacts that need fuller identity, LinkedIn URL, or a usable work email. It should not bulk-enrich every broad-search candidate by default.
+- **FR-ED-00E1 (Selective Apollo Enrichment After Search):** After seeded-contact capture or Apollo top-up selection, the system should enrich only the contacts that need fuller identity, professional-profile URL, or a usable work email. It should not bulk-enrich every broad-search candidate by default.
 - **FR-ED-00E1A (Bounded-Shortlist Enrichment Settlement Rule):** In the current bounded role-targeted flow, Apollo shortlist enrichment shall settle the full bounded shortlisted set for that posting, not only the current frontier contact. Because the shortlist is already capped, the system shall eagerly run Apollo enrichment across the shortlisted contacts needed to determine whether the posting has any Apollo-revealed sendable contacts, rather than deferring most shortlisted contacts into later repeated cycles.
 - **FR-ED-00E2 (Search-To-Enrichment Boundary):** Apollo Search is the high-recall candidate-generation step. Apollo enrichment is the identity-clarification and optional email-returning step for selected contacts.
 - **FR-ED-00E2A (Enrichment-To-Email-Discovery Boundary):** Person-scoped email discovery shall begin only when shortlist-time enrichment has completed for that contact and still did not return a usable work email. Enrichment alone does not hand a contact into email discovery if it already produced a usable email.
 - **FR-ED-00E2B (Frontier-Only Paid Email-Discovery Rule):** In the role-targeted autonomous flow, person-scoped paid email-finder calls should be limited to contacts in the current automatic send frontier that still lack a usable work email. Other shortlisted or identified contacts may remain materialized and unresolved until a later wave makes them part of the active frontier.
 - **FR-ED-00E3 (Search-Stage Recipient Typing):** The search stage should infer a preliminary `recipient_type` and `relevance_reason` from the returned title and job context, such as `recruiter`, `hiring_manager`, `engineer`, or `other_internal`, before later ranking or wave selection narrows the final outreach set.
-- **FR-ED-00E4 (LinkedIn-URL-Driven Profile Extraction):** When enrichment yields a LinkedIn profile URL for a selected contact, the system may use that URL to extract as much clean public profile context as is actually visible and useful before drafting begins.
-- **FR-ED-00E5 (Recipient-Profile Snapshot Scope):** LinkedIn-profile extraction should persist a structured public-profile snapshot that keeps useful identity fields, top-card fields, about preview, experience hints, recent public activity, visible public signals, and grounded work signals when they are actually exposed. It should not attempt to persist unrelated personal data or invent hidden/member-only fields.
-- **FR-ED-00E6 (Recipient-Profile Artifact Persistence):** Extracted LinkedIn-profile context shall be persisted as a recipient-profile artifact linked to the canonical `contact_id` so drafting can consume a stable internal snapshot rather than refetching the live profile during generation.
-- **FR-ED-00E7 (LinkedIn-Profile Extraction Failure Tolerance):** If a selected contact lacks a LinkedIn URL, or LinkedIn-profile extraction fails, the contact may still continue through email discovery and drafting using the best available sparse recipient context from search and enrichment. Missing LinkedIn-profile context alone does not block outreach.
+- **FR-ED-00E4 (Profile-URL-Driven Profile Extraction):** When enrichment yields a professional-profile URL for a selected contact, the system may use that URL to extract as much clean public profile context as is actually visible and useful before drafting begins.
+- **FR-ED-00E5 (Recipient-Profile Snapshot Scope):** Professional-profile extraction should persist a structured public-profile snapshot that keeps useful identity fields, top-card fields, about preview, experience hints, recent public activity, visible public signals, and grounded work signals when they are actually exposed. It should not attempt to persist unrelated personal data or invent hidden/member-only fields.
+- **FR-ED-00E6 (Recipient-Profile Artifact Persistence):** Extracted professional-profile context shall be persisted as a recipient-profile artifact linked to the canonical `contact_id` so drafting can consume a stable internal snapshot rather than refetching the live profile during generation.
+- **FR-ED-00E7 (Recipient-Profile Extraction Failure Tolerance):** If a selected contact lacks a professional-profile URL, or profile extraction fails, the contact may still continue through email discovery and drafting using the best available sparse recipient context from search and enrichment. Missing professional-profile context alone does not block outreach.
 - **FR-ED-00E8 (Email Outcome After Enrichment):** If Apollo enrichment returns a usable work email for a shortlisted contact, that contact may continue into automatic role-targeted outreach readiness without needing a separate third-party email-finder cascade.
 - **FR-ED-00E8A (Apollo No-Email Terminal Rule):** In the current autonomous role-targeted flow, if Apollo enrichment completes for a shortlisted contact and still does not return a usable work email, that Apollo no-email outcome shall be treated as terminal for automatic role-targeted contact discovery for that posting-contact pair. The system shall mark that contact/link exhausted for the current role-targeted flow rather than continuing into separate third-party email-finder retries for that contact.
 - **FR-ED-00E8B (Apollo No-Email Yield Rule):** If the bounded shortlisted set for a role-targeted posting settles with no remaining shortlisted contact holding a usable email after Apollo enrichment, the posting shall remain `requires_contacts`, but the current durable pipeline run shall be set aside from the ordinary runnable queue with a clear exhausted-summary reason rather than continuing to occupy active `people_search` or `email_discovery` backlog. That parked posting may later be revisited only through an explicit future recovery/refresh path rather than by silent automatic looping.
@@ -3512,16 +3727,16 @@ For discovery-state persistence, the system shall use discovery-specific tables 
 - **FR-ED-00E11 (Apollo Employment History Extraction Rule):** If Apollo search or enrichment returns employment history, the system shall persist each returned employment-history item as a structured row linked to the canonical `contact_id`, retaining ordering, employer/company labels, role titles, date ranges, current-role flags when available, and a raw per-item payload copy.
 - **FR-ED-00E12 (Employment History Latest-State Refresh Rule):** When a newer Apollo payload is persisted for a contact, the contact's structured Apollo employment-history rows shall be refreshed to match the newest provider snapshot rather than accumulating stale duplicate role rows indefinitely.
 - **FR-ED-00E13 (Provider Snapshot Lifecycle Rule):** `contact_provider_profiles` and `job_posting_provider_contexts` shall behave as append-only snapshot history. New Apollo search, enrichment, or company-resolution payloads create newer snapshot rows rather than overwriting earlier raw payloads.
-- **FR-ED-00E14 (Promoted Latest-State Precedence Rule):** When Apollo search-stage and enrichment-stage payloads disagree, the newer enrichment-stage payload shall take precedence for promoted latest-known contact fields on `contacts` such as current title, current company, LinkedIn URL, location, and Apollo-returned work email. Search-stage fields may still backfill those promoted fields only when the newer stage does not provide a usable value.
-- **FR-ED-00F (Autonomous People-Search Breadth):** For the autonomous LinkedIn-alert mode, the initial Apollo search should prefer high recall over narrow precision so the system can collect a broad internal contact set before later ranking or pacing decisions.
+- **FR-ED-00E14 (Promoted Latest-State Precedence Rule):** When Apollo search-stage and enrichment-stage payloads disagree, the newer enrichment-stage payload shall take precedence for promoted latest-known contact fields on `contacts` such as current title, current company, professional-profile URL, location, and Apollo-returned work email. Search-stage fields may still backfill those promoted fields only when the newer stage does not provide a usable value.
+- **FR-ED-00F (Apollo Top-Up Breadth):** For the autonomous source-seeded mode, Apollo top-up should be broad enough to fill the intended outreach set but still bounded by the current contact target rather than unconstrained high-recall search.
 - **FR-ED-00G (Autonomous Helpful-Contact Scope):** The autonomous search set is not limited to one exact title. It should include any role-relevant internal people who might realistically help route the candidate to the right hiring person.
 
-- **FR-ED-01:** System shall accept either company/job context for people search or explicit per-contact identity for each selected contact, such as name + company name, LinkedIn URL, or provider-scoped person ID.
+- **FR-ED-01:** System shall accept either company/job context for people search or explicit per-contact identity for each selected contact, such as name + company name, professional-profile URL, or provider-scoped person ID.
 - **FR-ED-01A (Internal Domain Resolution):** When provider lookup requires a company domain, Email Discovery shall resolve or derive the domain internally from the available company context before running the provider cascade.
 - **FR-ED-01A1 (Reuse Saved Resolved Company Domain):** If `people_search_result.json` already contains a resolved company record with `primary_domain`, person-scoped Email Discovery shall reuse that saved domain before falling back to source-URL parsing or weaker derivation heuristics.
 - **FR-ED-01B (Domain Unresolved Outcome):** If Email Discovery cannot resolve a usable company domain for a provider path that requires it, the system shall record a distinct `domain_unresolved` outcome rather than collapsing that case into generic `not_found`.
 - **FR-ED-01C (Continue Other Provider Paths):** A `domain_unresolved` condition shall block only the provider paths that require domain input. Email Discovery shall still continue through any remaining provider paths that can operate using company name or other available context.
-- **FR-ED-01D (Provider-Owned Input Eligibility):** The discovery loop shall not globally skip a provider only because `company_domain` is absent. If a provider can still operate using other supported inputs, such as `linkedin_url`, provider-scoped identity, or company name, the provider shall still be called and allowed to determine whether the available input set is sufficient.
+- **FR-ED-01D (Provider-Owned Input Eligibility):** The discovery loop shall not globally skip a provider only because `company_domain` is absent. If a provider can still operate using other supported inputs, such as `professional_profile_url`, provider-scoped identity, or company name, the provider shall still be called and allowed to determine whether the available input set is sufficient.
 - **FR-ED-02:** System shall run provider cascade with ordered fallbacks.
 - **FR-ED-02A (Stop on First Successful Discovery):** If a provider returns a usable email candidate, Email Discovery shall stop the provider cascade for that contact instead of continuing to spend credits on additional providers in the same run.
 - **FR-ED-02B (Post-Bounce Fallback):** If a discovered email is later observed as bounced, the system may re-enter provider-based discovery for that contact in a later attempt using remaining providers or a fresh cascade run.
@@ -3532,7 +3747,7 @@ For discovery-state persistence, the system shall use discovery-specific tables 
 - **FR-ED-02G (No Pattern Reuse Across Contacts Yet):** In this build, Email Discovery shall not use one discovered email at a company to infer or generate emails for other contacts at that same company. Company-level reuse of discovered patterns is deferred to the future Email Pattern Learning Engine.
 - **FR-ED-02H (No Separate Reporting Layer for Stored Discovery Context):** If discovery history already exists in `job_hunt_copilot.db`, the system does not need a separate reporting mechanism for that context. Stored discovery data itself is the lookup source that AI can read when needed.
 - **FR-ED-02I (Reuse Known Working Email for Same Contact):** If `job_hunt_copilot.db` already contains a known working email outcome for the same contact, Email Discovery shall reuse that stored working email directly and skip new provider calls for that contact.
-- **FR-ED-02J (Identity Clarity Requirement for Reuse):** Reuse of a stored working email is allowed only when AI can clearly identify that the current lead refers to the same contact using the available distinguishing information. AI shall use any non-common identifying context available for that person, such as LinkedIn URL, position title, location, or other unique profile context. If identity remains ambiguous, Email Discovery shall not auto-reuse the stored working email.
+- **FR-ED-02J (Identity Clarity Requirement for Reuse):** Reuse of a stored working email is allowed only when AI can clearly identify that the current lead refers to the same contact using the available distinguishing information. AI shall use any non-common identifying context available for that person, such as professional-profile URL, position title, location, or other unique profile context. If identity remains ambiguous, Email Discovery shall not auto-reuse the stored working email.
 - **FR-ED-02K (Fresh Lookup on Identity Ambiguity):** If a stored working email exists for a possible contact match but identity is not clear enough to confirm it is the same person, Email Discovery shall not rely on that stored email and shall proceed with a fresh provider-based lookup for the current contact.
 - **FR-ED-02L (Create New Contact Record on Unresolved Identity):** If a fresh provider-based lookup is performed for an ambiguously matched contact and the resulting information still cannot be confidently tied to an existing contact record, the system shall create a new contact record rather than merging it into a possible existing match.
 - **FR-ED-03:** System shall return best candidate email with confidence/verification metadata using provider-verified status as the pre-send validity signal.
@@ -3608,7 +3823,7 @@ The engine itself is not required to be implemented yet and shall be built later
 - **FR-ED-29 (Two-Key Identity Model):** The dataset shall use:
   1. `identity_key` for deterministic lookup
   2. `contact_id` for unique contact-instance linkage
-  Provider secondary identifiers such as Apollo person ID and LinkedIn URL shall be stored on the contact when available because they may be the strongest stable identity signals for retrieval and deduplication.
+  Provider secondary identifiers such as Apollo person ID and professional-profile URL shall be stored on the contact when available because they may be the strongest stable identity signals for retrieval and deduplication.
 - **FR-ED-29A (Contact Provider Profile Table):** The main database shall include a `contact_provider_profiles` table for provider-specific person payload snapshots. At minimum this table should support:
   1. `contact_provider_profile_id`
   2. `contact_id`
@@ -3641,13 +3856,13 @@ The engine itself is not required to be implemented yet and shall be built later
   3. `contact_employment_history(contact_id, provider_name, source_sort_index)`
   4. `job_posting_provider_contexts(job_posting_id, provider_name, context_stage, created_at)`
 - **FR-ED-30 (Identity Key Generation Policy):** `identity_key` shall be created using the strongest deterministic identifier available in this priority order:
-  1. normalized LinkedIn profile URL when available
+  1. normalized professional-profile URL when available
   2. normalized provider-scoped person key such as `apollo:{provider_person_id}` when a stable provider person ID exists
   3. hash of normalized company name plus normalized full name as the fallback path when stronger identifiers are absent
   The same chosen identity source must always produce the same `identity_key` so the key can be recomputed later for dataset lookup.
 - **FR-ED-31 (Contact ID Uniqueness Policy):** `contact_id` shall be a unique machine identifier for one specific contact instance. Multiple contact records may share the same `identity_key` if they represent same-name conflicts at the same company.
 - **FR-ED-32 (Normalization Rules for Identity Key):** Before generating `identity_key`, the chosen identity source shall be normalized using these rules:
-  1. for LinkedIn URL identity:
+  1. for professional-profile URL identity:
      - convert to lowercase
      - trim leading and trailing whitespace
      - strip the URL scheme such as `http://` or `https://`
@@ -3670,9 +3885,9 @@ The engine itself is not required to be implemented yet and shall be built later
 - **FR-ED-35 (Provider Verification Features):** Each attempt record shall also store provider verification/confidence fields such as provider verification status and provider score when available.
 - **FR-ED-36 (Minimal Bounce Outcome Storage):** For this build, attempt records only need a minimal bounce outcome field indicating whether the email bounced. Detailed bounce metadata is not required.
 - **FR-ED-37 (Provider Audit Field):** Each attempt record shall store the provider name that produced the final cascade result for audit and later analysis, even if provider identity is not used as a training feature.
-- **FR-ED-38 (Stored Identity and Disambiguation Fields):** Each attempt or contact snapshot shall store `display_name`, `first_name`, `last_name`, `full_name`, `linkedin_url`, `position_title`, `location`, `provider_name`, `provider_person_id`, and `name_quality` when available. These fields support identity lookup and same-name disambiguation. Full LinkedIn profile text is not required in the Email Pattern Learning Engine dataset.
+- **FR-ED-38 (Stored Identity and Disambiguation Fields):** Each attempt or contact snapshot shall store `display_name`, `first_name`, `last_name`, `full_name`, `professional_profile_url`, `position_title`, `location`, `provider_name`, `provider_person_id`, and `name_quality` when available. These fields support identity lookup and same-name disambiguation. Full public profile text is not required in the Email Pattern Learning Engine dataset.
 - **FR-ED-39 (Lookup and Disambiguation Behavior):** When retrieving stored data for a person, the system shall use the strongest available identifier in this order:
-  1. `linkedin_url`
+  1. `professional_profile_url`
   2. provider-scoped person ID such as Apollo person ID
   3. company name plus full name
   Then it may use `position_title`, `location`, and other profile context as disambiguation fields when needed.
@@ -3700,10 +3915,10 @@ The engine itself is not required to be implemented yet and shall be built later
 - **FR-EM-03A1 (Pending Draft Refresh Rule):** If a role-targeted outreach message is still unsent in `generated` status, the system shall refresh that pending draft from the current accepted drafting logic before automatic send rather than sending stale generated wording that predates a material drafting-quality fix.
 - **FR-EM-03A2 (Operator Stale Backlog Retirement Rule):** When the owner explicitly retires a bounded stale role-targeted send backlog, the system shall convert the selected unsent role-targeted messages into a non-resumable terminal state, preserve already-sent history, and prevent the supervisor from later retrying or resurrecting that retired backlog automatically. For postings that are not already `completed`, the cleanup shall move canonical posting state out of the active send-stage statuses before normal selection resumes.
 - **FR-EM-03B (Initial Outreach Plus Follow-Up Scope):** For this build, the Email Drafting and Sending subcomponent shall support both the initial outreach email and the approved first unreplied follow-up email, with follow-up orchestration owned by the dedicated follow-up worker.
-- **FR-EM-03C (Standard Signature Block):** Drafts shall include a standard sender signature block containing the sender's name, LinkedIn URL, phone number, and email address.
+- **FR-EM-03C (Standard Signature Block):** Drafts shall include a standard sender signature block containing the sender's name, public profile URL, phone number, and email address.
 - **FR-EM-03D (Shared Signature):** For this build, the same signature block may be used across recipient types. Recipient-specific signature variation is not required yet.
 - **FR-EM-03E (Signature Source of Truth):** The actual signature values shall be sourced from the candidate master profile or equivalent runtime configuration rather than hardcoded into the specification itself.
-- **FR-EM-03E1 (Sender Signature Identity Scope Rule):** When the sender identity is loaded from the candidate master profile, signature fields such as name, email, phone, LinkedIn URL, and GitHub URL shall be read only from the profile's `Personal` section. Project-level or portfolio-specific `GitHub` bullets elsewhere in the profile shall not override the sender's public GitHub profile URL in the signature.
+- **FR-EM-03E1 (Sender Signature Identity Scope Rule):** When the sender identity is loaded from the candidate master profile, signature fields such as name, email, phone, public profile URL, and GitHub URL shall be read only from the profile's `Personal` section. Project-level or portfolio-specific `GitHub` bullets elsewhere in the profile shall not override the sender's public GitHub profile URL in the signature.
 - **FR-EM-03F (Pacing-Aware Send Execution):** For this build, once the relevant drafts for ready untouched contacts have been generated and persisted, the subcomponent may execute sends without a separate manual send trigger or mandatory pre-send draft approval, but only when the current active send-slice, per-posting daily-cap, and inter-send pacing rules allow each send at that time.
 - **FR-EM-03F00 (Codex-Only Scheduled/Autonomous Outreach Boundary):** All scheduled or otherwise autonomous production outreach drafting paths in `main`, including autonomous initial outreach, autonomous follow-up drafting, and their real production send execution paths, shall be Codex-only. These paths shall not silently fall back to any retired deterministic or shared template renderer once the owner has moved production to the Codex-based outreach model.
 - **FR-EM-03F00A (Codex-Only Dry-Run And Review Rendering Boundary):** The same Codex-only rule shall apply to the production workers' dry-run, inspection, review, and pre-send rendering paths. Dry-run or review output must mirror the same Codex-driven drafting path that live autonomous production would use, rather than reaching old deterministic or template renderers through a non-send code path.
@@ -3723,7 +3938,7 @@ The engine itself is not required to be implemented yet and shall be built later
 - **FR-EM-03F3 (Posting-Scoped Retry Continuation Rule):** While a transient blocked role-targeted send remains within its automatic retry budget, the posting shall remain `outreach_in_progress` and the durable run shall remain at `sending` so later heartbeats can resume from that same message once the cooldown expires.
 - **FR-EM-03G (Persist Final Sent Content):** The system shall persist the exact final sent subject and body for each outreach email so the user can later inspect what was actually sent.
 - **FR-EM-03H (Persist Final Rendered HTML):** When rich HTML formatting is used, the system shall also persist the final rendered HTML version that was sent so later review can reflect the real recipient-facing rendering.
-- **FR-EM-03I (Restrained Body-Link Rule):** For this build, the email body should remain link-light. LinkedIn and GitHub belong in the signature by default, but the current role-split playbooks may include the `Job Hunt Copilot` repo URL in the fixed technical path or in one managerial technical-highlight bullet when that project materially strengthens fit.
+- **FR-EM-03I (Restrained Body-Link Rule):** For this build, the email body should remain link-light. The sender's public profile URL and GitHub belong in the signature by default, but the current role-split playbooks may include the `Job Hunt Copilot` repo URL in the fixed technical path or in one managerial technical-highlight bullet when that project materially strengthens fit.
 - **FR-EM-03J (Outreach Messages Table):** The central database shall include an `outreach_messages` table as the minimum canonical store for generated/sent outreach messages. For this build, it should at minimum capture an outreach-message identifier, required `contact_id`, optional `job_posting_id`, final sent subject, final sent body, final rendered HTML when applicable, delivery-tracking identifier or thread ID when available, and send timestamp.
 - **FR-EM-03K (Ambiguous Repeat-Outreach Review):** If the same contact already has prior outreach history and the correct next action depends on interpreting what was already sent, the system shall not auto-decide a new outreach message. It shall surface the case to the user for review.
 - **FR-EM-03K1 (Role-Targeted Unsent Cross-Posting Scope Rule):** In role-targeted automatic sending, unsent `generated`, `blocked`, or `failed` outreach history from other postings shall not by itself create an `ambiguous_send_state` block for the current posting. Send-time ambiguity from multiple active unsent messages is scoped to the current posting context. Prior successful sent history for that contact may still trigger repeat-outreach review.
@@ -3928,8 +4143,8 @@ The engine itself is not required to be implemented yet and shall be built later
 - **FR-EM-03M3G1 (Generic Salutation Non-Blocking Rule):** A generic original salutation such as `Hi,` or `Hello,` shall not by itself exclude an otherwise eligible thread from automatic follow-up. The worker shall preserve the generic salutation and continue only if the other follow-up gates pass.
 - **FR-EM-03M3H (Original Role/Company Wording Preference):** The `{role_title}` and `{company_name}` wording in the follow-up shall prefer the original sent email body or subject when recoverable. Canonical database fields may be used as fallback, but the worker shall not silently change the role/company wording in a way that conflicts with the original email.
 - **FR-EM-03M3H1 (Role/Company Mention By Sequence):** Follow-up `1` shall explicitly mention the role title and company name. Follow-up `2` and follow-up `3` may omit the explicit role/company restatement when the existing Gmail thread context already makes the reference clear and the shorter wording reads more naturally, but the draft shall still remain unambiguous as a continuation of the same thread.
-- **FR-EM-03M3I (Ignore Signature For Fit Extraction):** When extracting `{background_fit_areas}` or other follow-up grounding signals from the original sent email, the worker shall ignore the sender signature and contact block so LinkedIn URL, phone, email, and signoff text do not contaminate fit-area selection.
-- **FR-EM-03M4 (Short Follow-Up Signature):** Follow-up emails shall use the short follow-up signature only: `Best,` followed by `Achyutaram Sonti`. They shall not include the full LinkedIn, phone, and email signature block unless the owner explicitly changes the follow-up signature policy.
+- **FR-EM-03M3I (Ignore Signature For Fit Extraction):** When extracting `{background_fit_areas}` or other follow-up grounding signals from the original sent email, the worker shall ignore the sender signature and contact block so public-profile URL, phone, email, and signoff text do not contaminate fit-area selection.
+- **FR-EM-03M4 (Short Follow-Up Signature):** Follow-up emails shall use the short follow-up signature only: `Best,` followed by `Achyutaram Sonti`. They shall not include the full public-profile, phone, and email signature block unless the owner explicitly changes the follow-up signature policy.
 - **FR-EM-03M4A (Fixed Follow-Up Signoff Rule):** Automatic follow-ups shall preserve that same short signoff across follow-up `1`, `2`, and `3`. The Codex follow-up drafter shall not vary the closing into alternatives such as `Thanks,`, `Thanks again,`, or other signoff variants by default.
 - **FR-EM-03M5 (Retired Follow-Up Template):** The older terse JD-theme follow-up template shall not be used for unreplied follow-ups.
 - **FR-EM-03N (Follow-Up Agent Review Gate):** The system shall generate and send eligible follow-ups automatically without owner review, but only after the follow-up worker completes internal agent review and validation gates comparable to the normal initial-outreach drafting and sending gates.
@@ -3969,11 +4184,11 @@ The engine itself is not required to be implemented yet and shall be built later
 - **FR-EM-05D (JD-Faithful Focus Compression Rule):** When the opening compresses or summarizes JD language, it shall remain faithful to the JD and shall not widen a narrower backend/full-stack signal into a broader abstraction that the JD does not clearly support.
 - **FR-EM-06 (Draft Input Grounding):** Draft generation shall be grounded in the relevant context for the current outreach mode rather than relying on generic generation alone.
 - **FR-EM-06A (No Raw JD-Boilerplate Leak Rule):** Role-targeted outreach shall not paste raw JD boilerplate, marketing copy, or long employer-branding language directly into live emails. JD grounding should be summarized into concise, human-sounding role-relevant hooks instead.
-- **FR-EM-07 (Lead-Profile Personalization):** The subcomponent shall extract personalization hooks from the contact's available profile context, especially LinkedIn-derived information such as role, work, projects, posts, focus areas, or other distinctive details that can help make the outreach feel thoughtful and specific.
+- **FR-EM-07 (Lead-Profile Personalization):** The subcomponent shall extract personalization hooks from the contact's available profile context, especially public professional-profile information such as role, work, projects, posts, focus areas, or other distinctive details that can help make the outreach feel thoughtful and specific.
 - **FR-EM-07A (Primary Personalization Hook Selection):** The draft should usually anchor on one strongest personalization hook rather than trying to mention too many things at once. A second hook may be used when it naturally reinforces the first without making the message feel crowded.
 - **FR-EM-07B (Work-Centric Opening Hook):** When a draft intentionally uses recipient-profile-driven personalization, the opening should reference something specific about the recipient's present or past work that genuinely caught the sender's attention or triggered curiosity to learn more. This work-centric hook should be used to create connection before transitioning into fit or ask.
 - **FR-EM-07C (Specific Appreciation in Hook):** The work-centric opening may include a small amount of specific appreciation or praise when it is grounded in a real observation about the recipient's work and helps strengthen the hook. The appreciation should feel earned and restrained rather than generic.
-- **FR-EM-07D (Recipient-Profile-First Hooking):** In recipient-profile-driven variants such as imported legacy playbooks, the hook should prefer the recipient's own LinkedIn-derived present work, past work, projects, or other person-specific profile signals before falling back to broader team or role context. The outreach should feel person-to-person rather than driven primarily by generic team language.
+- **FR-EM-07D (Recipient-Profile-First Hooking):** In recipient-profile-driven variants such as imported legacy playbooks, the hook should prefer the recipient's own present work, past work, projects, or other person-specific profile signals before falling back to broader team or role context. The outreach should feel person-to-person rather than driven primarily by generic team language.
 - **FR-EM-07E (Overlap-First Hook Construction):** When a recipient-profile-driven hook is used and a credible overlap exists between the recipient's work and the sender's background or interests, the hook should center that overlap. When no meaningful overlap exists, the opening may still center the recipient's work with light, grounded appreciation and curiosity to learn more.
 - **FR-EM-07F (Technical-Signal Preference in Hooking):** When choosing among available recipient-profile signals for a recipient-profile-driven hook, the draft should prefer technical, product, system, or problem-space work over generic managerial or recruiting activity. The opening should not rely on praise of hiring or management behavior unless no stronger person-specific work signal exists.
 - **FR-EM-08 (Reader-Centric Framing):** The draft shall be framed around why the recipient should care, including role fit, relevant alignment, or a credible reason the sender's background may be useful or interesting to the recipient.
@@ -3996,7 +4211,7 @@ The engine itself is not required to be implemented yet and shall be built later
 - **FR-EM-10 (Low-Friction Call to Action):** Drafts shall end with a simple, low-friction next step, such as openness to a short call or brief conversation, rather than a heavy or demanding ask.
 - **FR-EM-10A (Recipient-Type-Dependent Ask):** The closing ask shall depend on recipient type. For example, hiring-manager outreach may lean toward a short conversation, while internal employee outreach may lean toward forwarding help, guidance, or light support.
 - **FR-EM-10B (Current Default Conversation Ask):** For the current recruiter and team-adjacent one-step outreach flows, the default CTA should be a request for a short 15-minute Zoom conversation rather than a phone call.
-- **FR-EM-10C (Autonomous Routing Ask):** In the autonomous LinkedIn-alert mode, the default outreach ask should explicitly allow for connection or routing help, such as connecting the candidate to the right hiring person or forwarding the resume internally, rather than assuming the recipient is already the exact target person.
+- **FR-EM-10C (Autonomous Routing Ask):** In the autonomous Jobright mode, the default outreach ask should explicitly allow for connection or routing help, such as connecting the candidate to the right hiring person or forwarding the resume internally, rather than assuming the recipient is already the exact target person.
 - **FR-EM-10D (Single-Ask Discipline):** Even when the email contains both curiosity and role fit, the draft should end with one clear primary ask rather than stacking multiple different asks in the same message.
 - **FR-EM-11 (Default Length Direction):** The default cold outreach style shall be medium-short: long enough to include real personalization and fit, but short enough to remain easy to read in one pass.
 - **FR-EM-12 (Draft Priority Order):** When the draft must prioritize, it shall generally favor:
@@ -4024,7 +4239,7 @@ The engine itself is not required to be implemented yet and shall be built later
 - **FR-EM-12C5 (Technical Path Intent Rule):** The technical path shall be a career-guidance email rather than a direct application note. It should express admiration for the recipient's path, make clear that the sender wants to grow in a similar direction and ship software at that level, and end with a low-pressure 10-minute guidance ask.
 - **FR-EM-12C5A (Technical Path Output Boundary):** In the current technical path, `codex exec` shall generate only Paragraph 1 plus debug fields. Deterministic Python shall append the fixed Paragraph 2, fixed Job Hunt Copilot Paragraph 3, fixed guidance Paragraph 4, and the standard signature block.
 - **FR-EM-12C5B (Technical Path Subject Rule):** The current technical-path subject shall stay fixed as `Learning from your career path`.
-- **FR-EM-12C5C (Technical Path Paragraph-1 Rule):** Technical Paragraph 1 shall stay at exactly two sentences, begin with `I came across your LinkedIn profile and admired your path ...`, prefer two to three past company transitions plus the recipient's exact current title and company when available, and avoid restating the fixed later paragraphs.
+- **FR-EM-12C5C (Technical Path Paragraph-1 Rule):** Technical Paragraph 1 shall stay at exactly two sentences, begin with a grounded appreciation of the recipient's work or profile, prefer two to three past company transitions plus the recipient's exact current title and company when available, and avoid restating the fixed later paragraphs.
 - **FR-EM-12C5C1 (Technical Path Clean Career-Step Fallback Rule):** If the bounded employment-history pack is too sparse, repetitive, or awkward to support a clean transition narrative, the technical opener shall fall back to a simpler current-role-focused sentence rather than forcing malformed phrasing. It shall not emit placeholder ellipses, `path... from`, or unnatural tenure wording such as `from your long tenure at <Company> into your current role at <Company>`.
 - **FR-EM-12C5D (Technical Path Fixed Paragraphs Rule):** Technical Paragraph 2 through Paragraph 4 shall remain deterministic and fixed in wording for the current build, but the fixed note should stay compact: one concise background sentence, one concise Job Hunt Copilot sentence, and one concise guidance ask.
 - **FR-EM-12C5D1 (Technical Job Hunt Copilot Link Rendering Rule):** In the current technical path, the fixed Job Hunt Copilot paragraph shall mention `Job Hunt Copilot` inline in its opening sentence and carry the repo URL there rather than as a separate trailing sentence. Plain-text fallback may keep the repo URL inline in parentheses, but HTML rendering shall hyperlink the `Job Hunt Copilot` label itself instead of displaying a separate `repo is here` sentence.
@@ -4119,7 +4334,7 @@ The engine itself is not required to be implemented yet and shall be built later
   `Would you be open to a brief 10-minute conversation?`
   `I'd love to better understand the challenges the team is actually focused on.`
   `If this is better routed elsewhere, I'd appreciate a forward to the right person internally.`
-- **FR-EM-12C6G2 (Managerial Public Posting-Link Rule):** When a managerial-path draft is triggered from a concrete job posting and a public posting URL is available in canonical state, the drafting flow may include that posting URL in the rendered email so the recipient can reference the exact opening quickly. For the current build, the LinkedIn posting URL is sufficient when it is the only reliable public posting link available.
+- **FR-EM-12C6G2 (Managerial Public Posting-Link Rule):** When a managerial-path draft is triggered from a concrete job posting and a public posting URL is available in canonical state, the drafting flow may include that posting URL in the rendered email so the recipient can reference the exact opening quickly. For the current build, the best available public posting link from Jobright or the authoritative company/ATS source is sufficient.
 - **FR-EM-12C6G2A (Managerial Posting-Link Placement Rule):** When a managerial-path draft includes a public posting URL, deterministic Python shall render it as one standalone line in the body using the exact prefix `Posting link:` immediately after the fixed bold proof-of-concept sentence and before the `Based on the JD, would it be fair to say the team is likely working on the following?` heading.
 - **FR-EM-12C6G2B (Managerial Bullet Rendering Rule):** The managerial `problem_hypotheses` and `relevant_background` sections shall render as actual bullet lists in both plain-text and HTML email bodies. Downstream HTML rendering shall not collapse heading-plus-bullets into one paragraph.
 - **FR-EM-12C6G3 (No Internal Requisition-ID Requirement Yet):** The current build does not require capture or inclusion of a company-internal requisition ID, employee-searchable job ID, or equivalent employer-native identifier in managerial-path emails. If no such identifier is already present in canonical state, the drafting flow shall not invent one or block on its absence.
@@ -4172,16 +4387,16 @@ Current imported guidance should include, at minimum:
 1. **Current recipient groups**
    - ASU alumni connections
    - previous job connections
-   - recruiting managers who post job openings on LinkedIn
+   - hiring managers or engineering leads surfaced by the upstream sources
    - people who may be working on that team, especially software engineers
 2. **Current recipient priority**
-   - recruiting managers who post the job on LinkedIn
+   - hiring managers or engineering leads surfaced by the upstream sources
    - team-adjacent people who may work in or near that area, especially software engineers
    - ASU alumni connections
    - previous job connections
 3. **Current focus profiles**
    - For now, the guide is designed most deeply first for:
-     1. recruiting managers who post job openings on LinkedIn
+     1. hiring managers or engineering leads surfaced by the upstream sources
      2. people who may be working on that team, especially software engineers
 4. **Current one-step playbook shape**
    - hook about the recipient's work
@@ -4513,7 +4728,7 @@ Current imported guidance should include, at minimum:
   1. `refresh_control_state`
   2. `evaluate_auto_pause`
   3. `create_or_resume_pipeline_run`
-  4. `ingest_gmail_alert_batch`
+  4. `ingest_jobright_recommendation_batch`
   5. `advance_lead_handoff`
   6. `run_resume_tailoring`
   7. `perform_mandatory_agent_review`
@@ -4949,26 +5164,26 @@ Current imported guidance should include, at minimum:
 28. The Tailoring-to-Outreach handoff is DB-first by `job_posting_id`, with `meta.yaml` and referenced resume artifacts available as supporting runtime references and audit surfaces.
 
 ## 12.2 Email Discovery
-1. Given a role-targeted posting that needs internal contacts, the system can run Apollo-first company-scoped people search and persist the broad candidate search result for the posting.
+1. Given a promoted role-targeted posting, the system first preserves all source-seeded contacts provided by Jobright before running any Apollo top-up search.
 2. The Apollo path resolves the company to an organization record first and uses the resolved `organization_id` as the preferred anchor for people search when available.
 3. When the posting or company group already has a persisted Apollo company identifier from earlier work, the system reuses that identifier and skips a fresh company-resolution call unless that identifier is missing or invalid.
-4. `people_search_result.json` is produced and preserves the resolved company record, applied search filters, and the broad candidate list returned by people search.
+4. `people_search_result.json` is produced and preserves the resolved company record, applied search filters, the source-seeded contacts, and any Apollo top-up candidate list returned by people search.
 5. The system correctly handles sparse Apollo search results, including candidates whose search-stage identity is only a partial or obfuscated display name plus stable Apollo person ID.
 6. Shortlist-stage contact materialization can proceed from stable provider identity such as Apollo person ID even before a non-obfuscated full name is known.
 7. For each shortlisted/materialized Apollo contact, the main database persists the full Apollo search-stage or enrichment-stage provider payload linked to the canonical `contact_id`.
 8. When Apollo returns employment history for a shortlisted/materialized contact, that employment history is also persisted in structured database rows linked to the same `contact_id`.
-9. Non-shortlisted broad-search Apollo candidates may remain artifact-only rows in `people_search_result.json` and do not require separate database-backed person snapshots in this build.
+9. Non-shortlisted Apollo top-up candidates may remain artifact-only rows in `people_search_result.json` and do not require separate database-backed person snapshots in this build.
 10. The Apollo resolved company/organization payload used for the posting is persisted in the main database as posting-scoped provider context linked to `job_posting_id`.
 11. Apollo provider snapshots are append-only raw payload history rather than destructive overwrites of earlier payloads.
 12. Promoted latest-known Apollo fields on `contacts` prefer newer enrichment-stage values over older search-stage values, while search-stage values may still backfill missing fields.
-13. After the broad search pass, the system enriches only shortlisted contacts that need fuller identity, LinkedIn URL, or a usable work email rather than enriching every broad-search candidate by default.
-14. In the current high-recall role-targeted flow, Apollo enrichment for shortlisted contacts is demand-driven. Contacts that are not yet on the active send or discovery frontier remain shortlisted but are not eagerly enriched.
-15. In autonomous role-targeted mode, the initial enrichment shortlist is capped at 10 contacts and prefers as many manager-adjacent contacts as available before senior engineers and then other engineers.
-16. When a saved broad Apollo people-search artifact exists, the system can later replay that artifact to backfill additional shortlisted contacts up to the current 10-contact limit without rerunning external people search immediately.
+13. After source-seeded capture or Apollo top-up, the system enriches only the intended outreach contacts that need fuller identity, professional-profile URL, or a usable work email rather than enriching every broad-search candidate by default.
+14. In the current role-targeted flow, Apollo enrichment for source-seeded and top-up contacts is demand-driven. Contacts that are not yet on the active send or discovery frontier remain shortlisted but are not eagerly enriched.
+15. In autonomous role-targeted mode, the intended outreach set targets 5 contacts per posting and orders contacts like this: personalized Jobright connections first, then public Jobright connections, then Apollo top-up contacts chosen from hiring managers, engineering leaders, engineers, and then recruiters based on what the sources and Apollo can supply.
+16. When a saved Apollo top-up artifact exists, the system can later replay that artifact to backfill additional shortlisted contacts up to the current 5-contact target without rerunning external people search immediately.
 17. Apollo broad-search runs should omit the location filter when the posting is remote, hybrid, United States-wide, multi-location, or otherwise broad enough that a geographic constraint is more likely to suppress good candidates than improve precision.
 18. When a location-filtered Apollo search yields no useful contacts, the search logic can retry with the location constraint relaxed rather than dead-ending on the first miss.
 19. When Apollo company-scoped search or enrichment hits a quota-exhaustion signal such as `HTTP 422 insufficient credits`, the outcome is normalized to `quota_exhausted`, Apollo cooldown state is persisted, and immediate repeated Apollo retries are suppressed until the cooldown expires.
-20. When Apollo enrichment yields a LinkedIn URL for a shortlisted contact, the system can extract and persist a structured public-profile `recipient_profile.json` snapshot before drafting.
+20. When Apollo enrichment yields a professional-profile URL for a shortlisted contact, the system can extract and persist a structured public-profile `recipient_profile.json` snapshot before drafting.
 21. If Apollo enrichment returns a usable work email for a selected contact, the system can skip the separate email-finder cascade for that contact.
 22. If enrichment does not return a usable work email, that contact can continue into the separate person-scoped email-discovery path.
 23. In the role-targeted autonomous flow, paid person-scoped email-finder calls run only for contacts in the current automatic send frontier that still lack a usable work email. Later-wave contacts stay unresolved until the frontier advances to them.
@@ -4977,15 +5192,15 @@ Current imported guidance should include, at minimum:
 26. Provider-specific `HTTP 200` no-match responses are normalized correctly, such as Prospeo `NO_MATCH`, GetProspect `success = false` with `status = not_found`, and Hunter responses with `data.email = null`.
 27. Discovery reuses an already known working email for the same clearly identified contact instead of rerunning provider discovery unnecessarily.
 28. Attempts, outcomes, provider-budget history, unresolved review data, bounced-email review data, Apollo provider snapshots, Apollo company-resolution context, and structured Apollo employment history are queryable from the same central SQLite store.
-23. Pattern-learning data is preserved so discovery quality can be improved in later iterations without redesigning storage.
-24. System can perform high-confidence cached discovery for eligible domains once readiness criteria are met.
-25. Pre-send confidence is provider-verified confidence.
-26. Post-send confidence is set to 100% only for sent emails with no bounce observed in the configured feedback window.
-27. Per-provider credit balances are auto-updated after each provider usage event when the provider exposes a reliable balance signal, and otherwise remain explicitly unknown rather than synthetic.
-28. Combined budget totals, when shown, are derived only from known provider balances rather than fabricated placeholders.
-29. Provider exhaustion automatically triggers fallback to remaining providers in cascade order.
-30. The autonomous LinkedIn-alert mode can use Apollo to gather a broad set of engineering managers, software engineers, recruiters, and other potentially helpful internal people before later filtering.
-31. `discovery_result.json` is produced as the machine handoff artifact for Drafting and includes the shared contract envelope, relevant root IDs, discovery outcome, discovered email when found, and the recipient-profile artifact reference when one exists.
+29. Pattern-learning data is preserved so discovery quality can be improved in later iterations without redesigning storage.
+30. System can perform high-confidence cached discovery for eligible domains once readiness criteria are met.
+31. Pre-send confidence is provider-verified confidence.
+32. Post-send confidence is set to 100% only for sent emails with no bounce observed in the configured feedback window.
+33. Per-provider credit balances are auto-updated after each provider usage event when the provider exposes a reliable balance signal, and otherwise remain explicitly unknown rather than synthetic.
+34. Combined budget totals, when shown, are derived only from known provider balances rather than fabricated placeholders.
+35. Provider exhaustion automatically triggers fallback to remaining providers in cascade order.
+36. The autonomous Jobright mode can use Apollo to top up a promoted posting's source-seeded contacts to the intended 5-contact outreach set when the upstream source alone does not provide enough viable people.
+37. `discovery_result.json` is produced as the machine handoff artifact for Drafting and includes the shared contract envelope, relevant root IDs, discovery outcome, discovered email when found, and the recipient-profile artifact reference when one exists.
 
 ## 12.3 Email Drafting and Sending
 1. Given role-targeted context, system produces a personalized outreach draft using job-posting context, tailored-resume context, and a discovered working email, with recipient-profile context incorporated when it is available and genuinely useful.
@@ -4999,7 +5214,7 @@ Current imported guidance should include, at minimum:
 9. `email_draft.md` is available as the human-readable companion artifact, while `send_result.json` is produced as the machine handoff artifact with the shared contract envelope and relevant IDs.
 10. Repeat-outreach cases that require interpretation of prior outreach are not auto-sent and instead surface for user review.
 11. If the same canonical contact appears on multiple postings at the same company, automatic role-targeted outreach uses that person at most once after an actual successful send, and later postings must continue with alternate company contacts when available.
-12. In the autonomous LinkedIn-alert mode, the default outreach objective is to ask discovered contacts for connection or routing help to the right hiring person rather than assuming the discovered recipient is already the exact target.
+12. In the autonomous Jobright mode, the default outreach objective is to ask discovered contacts for connection or routing help to the right hiring person rather than assuming the discovered recipient is already the exact target.
 13. Autonomous role-targeted sending respects the per-posting cap of at most 4 emails per posting per day, and uses a randomized 6 to 10 minute gap between any two automatic sends rather than a fixed interval.
 14. Autonomous role-targeted sending does not impose a separate global cross-company daily send cap in this build.
 15. The default autonomous active send slice for one posting covers as many manager-class internal contacts as possible first, up to the 3-contact cap, and only then fills any remaining slots with role-relevant engineers.
@@ -5013,7 +5228,7 @@ Current imported guidance should include, at minimum:
 22. In the current role-split build, managerial contacts receive a concise problem-solver body: a greeting, a three-sentence opener, JD-challenge bullets, relevant-background bullets, and a fixed CTA paragraph.
 23. The current managerial opener includes a bold proof-of-concept offer sentence near the top of the email body, and the managerial CTA stays fixed while codex drafts only the variable opener sentence and bullet content.
 24. The current technical path may include the `Job Hunt Copilot` repo URL in the fixed project paragraph, and the current managerial path may include that repo URL only inside a role-relevant `Job Hunt Copilot` background bullet.
-25. The current managerial path mentions the attached resume briefly in the body and keeps LinkedIn and GitHub in the signature.
+25. The current managerial path mentions the attached resume briefly in the body and keeps the sender's public profile URL and GitHub in the signature.
 26. When role-targeted drafting reuses tailored-resume or Step 6 bullet text inside email bodies or summaries, LaTeX-safe resume escapes are converted back to human-readable plain text before send, so recipients never see raw sequences such as `\%` or `\$`.
 
 ## 12.4 Delivery Feedback
@@ -5032,13 +5247,13 @@ Current imported guidance should include, at minimum:
 
 ## 12.5 System-Level
 1. Overall canonical system state is queryable from `job_hunt_copilot.db` without reconstructing the pipeline from ad hoc file inspection.
-2. The central database exposes the primary entity states for `linkedin_leads`, `job_postings`, and `contacts`, plus relationship state for `linkedin_lead_contacts` and `job_posting_contacts`.
+2. The central database exposes the primary entity states for `leads`, `lead_source_observations`, `job_postings`, and `contacts`, plus relationship state for `lead_contacts` and `job_posting_contacts`.
 3. Runtime file artifacts remain usable as component handoff contracts without becoming the canonical source of system state.
 4. Machine handoff artifacts use structured formats and include the shared contract envelope fields: `contract_version`, `produced_at`, `producer_component`, `result`, and blocked/failed reason details when applicable.
 5. Machine handoff artifacts carry the relevant stable root identifiers such as `lead_id`, `job_posting_id`, `contact_id`, and `outreach_message_id` when those objects exist at that boundary.
 6. Review surfaces are queryable for at least: `resume_review_pending`, `requires_contacts`, unresolved discovery, bounced emails, repeat-outreach review, blocked/failed unresolved cases, pending expert review packets, and open agent incidents.
 7. When the user indicates they are ready to review, the AI agent can surface the current review items from statuses, review queues, and linked artifacts.
-8. Major state transitions for `linkedin_leads`, `job_postings`, `contacts`, `linkedin_lead_contacts`, and `job_posting_contacts` are auditable from the central system state.
+8. Major state transitions for `leads`, `lead_source_observations`, `job_postings`, `contacts`, `lead_contacts`, and `job_posting_contacts` are auditable from the central system state.
 9. Owner overrides are queryable with previous value, new value, reason, and timestamp.
 10. Retry attempts and retry exhaustion are queryable for later review.
 11. External provider identifiers and mailbox identifiers may be retained as secondary references, but internal canonical identifiers remain the authoritative linkage keys across the system.
@@ -5048,20 +5263,20 @@ Current imported guidance should include, at minimum:
 15. Autonomous outreach remains bounded by evidence-grounding, repeat-contact review, the mandatory agent-review gate, and explicit escalation rules for role-targeted flow.
 16. Persisted review surfaces expose only workflow-relevant contact/context data rather than unnecessarily broad personal-data copies.
 17. This build can be operated conversationally through the AI agent without requiring a fixed user command catalog.
-18. A lead can arrive through manual browser capture, the repo-local paste fallback, or autonomous Gmail job-alert intake, and each path converges into one canonical lead workspace.
-19. Manual browser capture can preserve selected text, full-page text, source URLs, and capture order in source-mode artifacts while still producing one canonical `raw/source.md`.
-20. Autonomous Gmail-alert intake persists the alert snapshot, prefers the plain-text mailbox body for parsing, uses durable Gmail history checkpoints for incremental polling when available, attempts JD fetch when possible, and records JD-fetch provenance for later review.
-21. In the autonomous mode, each parsed LinkedIn alert job card becomes a candidate role-targeted lead, and the LinkedIn guest JD is the default common tailoring input when it is available.
-22. If the parsed Gmail alert-card company or role title materially disagrees with the fetched LinkedIn JD identity, the lead is surfaced for user review and downstream canonical company/role materialization remains blocked until resolved.
+18. A lead arrives through authenticated Jobright recommendation ingestion and converges into one canonical lead workspace.
+19. Lead ingestion preserves source observations, source contacts, promotion decisions, JD provenance, and company/role identity in machine-readable artifacts before downstream work begins.
+20. Jobright ingestion persists recommendation-feed and job-page evidence, including fit score, connection data, and a recoverable `reauth_required` state when the signed-in session expires.
+21. In the autonomous mode, each Jobright recommendation becomes a candidate role-targeted lead in the discovery queue, and promotion decides whether it becomes a downstream posting.
+22. If source observations for the same company or role disagree materially about the role identity or canonical JD, the lead is surfaced for user review and downstream canonical company/role materialization remains blocked until resolved.
 23. Minor normalization differences such as `Google` vs `Google LLC` or `SWE II` vs `Software Engineer II` do not by themselves trigger review.
-24. Company-website and careers-page resolution in the autonomous mode is persisted as best-effort enrichment and provenance, even when exact same-role recovery fails.
+24. Company-website and careers-page resolution in the autonomous mode is persisted as best-effort enrichment and provenance when it materially improves the canonical JD or job-state view.
 25. In the autonomous mode, the full recovered JD is persisted to `jd.md` before later structured extraction or tailoring interpretation begins.
 26. In the autonomous mode, structured eligibility and tailoring artifacts are derived from persisted markdown/context files rather than only from transient fetch responses.
-27. Once a valid non-mismatched company and role are known, downstream posting files are materialized in a company/role-scoped workspace.
-28. The autonomous mode uses Apollo to gather broad internal contact coverage before later filtering, ranking, and pacing decisions narrow the actual active send slice.
-29. Digest-summary headers or summary-only Gmail cards are filtered and do not materialize as canonical leads or postings.
-30. If autonomous Gmail intake encounters a duplicate canonical lead identity during fan-out, it canonicalizes or refreshes the existing lead instead of crashing on duplicate creation.
-31. For lead modes that materialize `raw/source.md`, `LinkedIn Scraping` runs a deterministic first pass over that artifact, persists `source-split.yaml`, `source-split-review.yaml`, and `lead-manifest.yaml`, and keeps those artifacts queryable from `artifact_records`.
+27. Once a valid company and role are known for a promoted lead, downstream posting files are materialized in a company/role-scoped workspace.
+28. The autonomous mode uses source-seeded contacts first and Apollo only to enrich emails or top up a promoted posting's intended contact set toward 5 people.
+29. Jobs that stay in discovery but are not promoted do not materialize downstream postings or active outreach work.
+30. If autonomous lead ingestion encounters a duplicate canonical lead identity during fan-out, it canonicalizes or refreshes the existing lead instead of crashing on duplicate creation.
+31. For lead modes that materialize `raw/source.md`, `Lead Ingestion` runs a deterministic first pass over that artifact, persists `source-split.yaml`, `source-split-review.yaml`, and `lead-manifest.yaml`, and keeps those artifacts queryable from `artifact_records`.
 32. Ambiguous lead splits remain reviewable and may use an optional AI second pass only after the rule-based review flags ambiguity and only if that second pass improves confidence.
 33. Recruiter-authored lead dumps that say `We're hiring` or similar plain-language variants are still recognized as valid posts by the deterministic first pass.
 34. Networking-relevant copied post hints, such as alumni-count lines like `1 school alumni works here`, are preserved in the extracted post when they may affect outreach strategy, prioritization, or contact selection.
@@ -5187,54 +5402,42 @@ Current imported guidance should include, at minimum:
 118. The current `launchd` feedback-sync plist uses the exact current-build wiring of `Label = com.jobhuntcopilot.feedback-sync`, `RunAtLoad = true`, `StartInterval = 300`, `KeepAlive = false`, `WorkingDirectory = <absolute project root>`, `ProgramArguments = [<absolute project root>/bin/jhc-feedback-sync-cycle]`, and dedicated stdout/stderr log paths under `ops/logs/`.
 119. The current build includes `bin/jhc-agent-cycle`, `bin/jhc-feedback-sync-cycle`, `scripts/ops/run_supervisor_cycle.py`, `scripts/ops/run_feedback_sync.py`, `scripts/ops/build_runtime_pack.py`, and `scripts/ops/chat_session.py`, and the shell entrypoints `jhc-agent-start`, `jhc-agent-stop`, and `jhc-chat` are wired through those repo-local helpers plus `launchctl`.
 
-## 12.5B LinkedIn Scraping
-1. A new upstream lead ingested through `LinkedIn Scraping` receives a stable `lead_id`.
-2. In the autonomous Gmail-alert mode, each agent-invoked Gmail ingestion run first persists each collected Gmail message once under `linkedin-scraping/runtime/gmail/{YYYYMMDDTHHMMSSZ}-{gmail_message_id}/...` before job-card fan-out into per-lead workspaces begins.
-3. If a Gmail message with an already-collected `gmail_message_id` is encountered again, collection behaves idempotently and the duplicate message is ignored rather than overwriting or creating another collected-email unit.
-4. Multiple Gmail messages in the same `gmail_thread_id` are still collected and parsed independently; thread membership alone does not suppress collection or job-card parsing for any message.
-5. If a collected Gmail message yields zero parseable job cards, the collected email artifacts are retained, `job-cards.json` may be empty, no lead workspace is created from that message, and review is triggered only when more than 3 such emails occur in one Gmail ingestion run or when the cumulative unresolved count exceeds 3 across history.
-6. The canonical lead workspace is rooted at `linkedin-scraping/runtime/leads/<company>/<role>/<lead_id>/`.
-7. In the autonomous Gmail-alert mode, the per-lead workspace is created immediately after a parsed job card survives validation and deduplication.
-8. A newly created autonomous lead workspace is marked `incomplete` until JD recovery succeeds and downstream handoff can be evaluated.
-9. If JD recovery does not succeed, the autonomous lead workspace transitions to `blocked_no_jd`.
-10. Every lead workspace contains `lead-manifest.yaml` plus the artifacts required by that lead mode.
-11. Manual-capture leads contain `raw/source.md`, `source-split.yaml`, and `source-split-review.yaml`.
-12. Autonomous Gmail-derived leads are not required to contain `raw/source.md`, `source-split.yaml`, or `source-split-review.yaml` in the lead workspace by default.
-13. `lead-manifest.yaml` exists even when the lead is blocked by ambiguous split review.
-14. If split review is `ambiguous`, downstream handoff readiness is blocked and the manifest records that blocked state rather than silently omitting the lead when split review is applicable for that lead mode.
-15. In the autonomous Gmail-alert mode, parsed alert cards that resolve to a LinkedIn `job_id` already seen for an existing autonomous lead do not create a second lead.
-16. In the autonomous Gmail-alert mode, a parsed alert card without a usable LinkedIn `job_id` may still create a lead when a synthetic fallback identity key is materialized and persisted for that card.
-17. In that same missing-`job_id` case, the synthetic fallback identity key shall be derived from the normalized LinkedIn job URL when that URL is available.
-18. In the autonomous Gmail-alert mode, a parsed alert card that lacks both a usable LinkedIn `job_id` and a usable LinkedIn job URL transitions to `blocked_no_jd` if no usable JD can be recovered from any supported source.
-19. In the autonomous Gmail-alert mode, when multiple JD candidate sources are available for the same lead, those sources are compared and any additional non-conflicting information is merged into the canonical `jd.md`.
-20. If those JD candidate sources conflict materially, LinkedIn-derived JD content is preferred for the conflicting portion while provenance still records all contributing sources.
-21. If a lead has a valid non-ambiguous JD, a canonical `job_posting` can be created and linked back through `lead_id`.
-22. If a lead does not have a valid non-ambiguous JD, a canonical `job_posting` is not auto-created.
-23. When a non-ambiguous lead contains an identifiable poster profile, the poster contact is auto-created, linked to the lead through `linkedin_lead_contacts`, and linked to the posting when the posting exists.
-24. The recipient typing model includes `founder` as a first-class value in addition to the current recipient types.
-25. Source metadata such as `source_type`, `source_reference`, `source_url`, `source_mode`, and source-mode-specific provenance is source-of-truth on the lead entity rather than on `job_postings`.
-26. Downstream components consume artifact references from `lead-manifest.yaml` rather than relying on hardcoded upstream directory assumptions.
-27. Refreshing an existing lead updates the live lead workspace in place while preserving older source or review snapshots in lead-local history artifacts.
+## 12.5B Lead Ingestion
+1. A new upstream lead ingested through `Lead Ingestion` receives a stable `lead_id`.
+2. Jobright ingestion persists authenticated recommendation-feed evidence and job-page enrichment under `lead-ingestion/runtime/jobright/{run_id}/...`.
+3. The canonical lead workspace is rooted at `lead-ingestion/runtime/leads/<company>/<role>/<lead_id>/`.
+4. Each lead workspace contains `lead-manifest.yaml`, `source-observations.json`, and `source-contacts.json`.
+5. Promoted leads also persist `promotion-decision.json` and the canonical `jd.md`.
+6. The lead workspace is created as soon as the system has enough source identity to materialize a canonical lead, even if promotion has not happened yet.
+7. Leads that do not yet have a usable canonical JD remain in upstream states such as `blocked_no_jd` or `held` and do not materialize `job_postings`.
+8. Multiple source observations may attach to the same canonical lead without creating duplicate promoted postings.
+9. The Jobright path persists fit data, public connections, and personalized connections when available.
+10. `lead-manifest.yaml` exists even when the lead is blocked, held, or waiting on re-authentication.
+11. If the authenticated Jobright session is expired or unavailable, the lead/source observation state records `reauth_required` and no corrupted promoted state is created.
+12. `reauth_required` blocks new Jobright ingestion only and does not pause already-promoted postings that are already moving through tailoring, contact enrichment, drafting, or outreach.
+13. If a lead has a valid canonical JD and passes promotion, a canonical `job_posting` can be created and linked back through `lead_id`.
+14. If a lead does not have a valid canonical JD or does not pass promotion, a canonical `job_posting` is not auto-created.
+15. Source metadata such as `source_type`, `source_reference`, `source_url`, `source_mode`, fit score, and source-mode-specific provenance is source-of-truth on the lead and its source observations rather than on `job_postings`.
+16. Downstream components consume artifact references from `lead-manifest.yaml` rather than relying on hardcoded upstream directory assumptions.
+17. Refreshing an existing lead updates the live lead workspace in place while preserving older source snapshots in lead-local history artifacts.
 
 ## 12.6 End-to-End
-1. The role-targeted flow can run from `LinkedIn Scraping` through delivery feedback with intermediate artifacts persisted at each stage boundary.
-2. The role-targeted flow may start from either manual browser capture or autonomous Gmail job-alert intake without changing the downstream contract shape.
+1. The role-targeted flow can run from `Lead Ingestion` through delivery feedback with intermediate artifacts persisted at each stage boundary.
+2. The role-targeted flow starts from authenticated Jobright recommendations without changing the downstream contract shape.
 3. The role-targeted flow does not require a mandatory human pause after Tailoring, but it does require a mandatory agent review. Downstream progression continues only after that agent review approves the active tailoring run.
 4. The general learning-outreach flow can run contact-rooted without requiring posting-specific resume tailoring or a resume attachment.
-5. In the autonomous LinkedIn-alert flow, the system first attempts to recover the JD from LinkedIn guest job data when the parsed alert exposes a usable job URL or job id, and that JD becomes the default tailoring input.
-6. In the autonomous LinkedIn-alert flow, company-website or careers-page resolution is attempted as best-effort enrichment and provenance rather than as a hard prerequisite for lead creation.
-7. In the autonomous LinkedIn-alert flow, the full recovered JD is written to `jd.md` before eligibility or tailoring structuring runs.
-8. In the autonomous LinkedIn-alert flow, downstream structuring reads from that persisted `jd.md` and company/role context files.
-9. Company-scoped people search can identify candidate contacts before person-scoped email discovery, and selected contacts without usable emails can continue into the email-finder cascade.
-10. In the autonomous LinkedIn-alert flow, Apollo is used to gather many relevant internal people, and the outreach posture asks those contacts for connection or routing help to the right person.
+5. In the autonomous Jobright flow, all source observations first land in the discovery queue before the promotion gate decides whether they become downstream postings.
+6. In the autonomous Jobright flow, the full recovered JD is written to `jd.md` before eligibility or tailoring structuring runs for promoted leads.
+7. In the autonomous Jobright flow, downstream structuring reads from that persisted `jd.md` and company/role context files.
+8. Source-seeded contacts are preserved first, Apollo is used to enrich their emails, and Apollo top-up is used only when the intended outreach set is still smaller than 5 contacts.
+9. The outreach posture asks those contacts for connection or routing help to the right person, rather than assuming the discovered recipient is already the exact target.
 11. Discovery may begin per linked contact once prerequisites are satisfied, drafting may proceed across the ready untouched posting frontier as contacts become ready, and automatic sending remains separately governed by active send-slice selection and pacing.
-12. Failures resume from the last successful stage boundary rather than forcing a restart from `LinkedIn Scraping`.
+12. Failures resume from the last successful stage boundary rather than forcing a restart from `Lead Ingestion`.
 13. A failure on one contact does not invalidate unrelated contacts for the same posting.
 14. For any `job_posting`, `contact`, or `outreach_message`, the system can show its current state, linked artifacts, and downstream history.
 15. If send outcome is ambiguous, the system does not automatically resend and instead surfaces the case for review.
 16. A bounce or reply that arrives after the interactive send session has ended can still be captured later by the delayed feedback-sync process and written back into canonical state.
 17. This build can run sequentially without requiring concurrency in discovery, drafting, sending, or delayed feedback sync.
-18. Replacing the contents of `paste/paste.txt` for a new lead does not modify historical lead records because each ingested lead keeps its own copied `linkedin-scraping/runtime/leads/.../raw/source.md`.
 19. Autonomous role-targeted outreach respects ranked recipient waves plus per-posting send pacing rather than emailing every discovered contact immediately.
 20. After a terminal or otherwise review-worthy role-targeted run reaches its current end-to-end boundary, the supervisor produces an expert review packet without requiring the whole system to stop by default.
 
@@ -5242,24 +5445,16 @@ Current imported guidance should include, at minimum:
 
 ## 13. Suggested Artifacts
 
-### LinkedIn Scraping Gmail Collection Artifacts
-1. `linkedin-scraping/runtime/gmail/{YYYYMMDDTHHMMSSZ}-{gmail_message_id}/email.md` (one clean human-readable raw email snapshot, `text/plain` first with noise-minimized HTML-derived fallback only when needed)
-2. `linkedin-scraping/runtime/gmail/{YYYYMMDDTHHMMSSZ}-{gmail_message_id}/email.json` (normalized Gmail metadata plus only the specific raw body parts and parse-relevant fields actually used by intake/review; not a full provider payload dump; minimum fields should include `gmail_message_id`, `gmail_thread_id` when available, sender, subject, `received_at`, `collected_at`, Gmail ingestion run id, body format used, parse outcome, and parseable-job-card count)
-3. `linkedin-scraping/runtime/gmail/{YYYYMMDDTHHMMSSZ}-{gmail_message_id}/job-cards.json` (parsed non-duplicate job cards from that email; may be empty when no cards are parseable; retained even when a given card later ends in `blocked_no_jd`; minimum per-card fields should include `card_index`, `role_title`, `company_name`, `location`, `badge_lines`, `job_url`, `job_id` when present, and source `gmail_message_id`)
-
-### LinkedIn Scraping Upstream Artifacts
-1. `paste/paste.txt`
-2. `linkedin-scraping/runtime/leads/{company}/{role}/{lead_id}/raw/source.md` (when the lead mode materializes a canonical raw source)
-3. `linkedin-scraping/runtime/leads/{company}/{role}/{lead_id}/capture-bundle.json` (manual capture when used)
-4. `linkedin-scraping/runtime/leads/{company}/{role}/{lead_id}/jd-fetch.json` (final merged JD provenance and outcome metadata for the canonical `jd.md`)
-5. `linkedin-scraping/runtime/leads/{company}/{role}/{lead_id}/company-resolution.json` (final company website and careers resolution outcome for autonomous mode)
-6. `linkedin-scraping/runtime/leads/{company}/{role}/{lead_id}/jd.md`
-7. `linkedin-scraping/runtime/leads/{company}/{role}/{lead_id}/post.md`
-8. `linkedin-scraping/runtime/leads/{company}/{role}/{lead_id}/poster-profile.md`
-9. `linkedin-scraping/runtime/leads/{company}/{role}/{lead_id}/source-split.yaml` (when split processing is applicable for that lead mode)
-10. `linkedin-scraping/runtime/leads/{company}/{role}/{lead_id}/source-split-review.yaml` (when split review is applicable for that lead mode)
-11. `linkedin-scraping/runtime/leads/{company}/{role}/{lead_id}/lead-manifest.yaml`
-12. `linkedin-scraping/runtime/leads/{company}/{role}/{lead_id}/history/`
+### Lead Ingestion Artifacts
+1. `lead-ingestion/runtime/jobright/{run_id}/recommendations.json`
+2. `lead-ingestion/runtime/jobright/{run_id}/job-pages/{jobright_job_id}.json`
+3. `lead-ingestion/runtime/leads/{company}/{role}/{lead_id}/source-observations.json`
+4. `lead-ingestion/runtime/leads/{company}/{role}/{lead_id}/source-contacts.json`
+5. `lead-ingestion/runtime/leads/{company}/{role}/{lead_id}/promotion-decision.json`
+6. `lead-ingestion/runtime/leads/{company}/{role}/{lead_id}/jd.md`
+7. `lead-ingestion/runtime/leads/{company}/{role}/{lead_id}/jd-provenance.json`
+8. `lead-ingestion/runtime/leads/{company}/{role}/{lead_id}/lead-manifest.yaml`
+9. `lead-ingestion/runtime/leads/{company}/{role}/{lead_id}/history/`
 
 ### Downstream Artifacts
 1. `applications/{company}/{role}/application.yaml`

@@ -7,6 +7,9 @@ from uuid import uuid4
 
 CANONICAL_ID_PREFIXES = MappingProxyType(
     {
+        "leads": "led",
+        "lead_source_observations": "lso",
+        "lead_contacts": "lc",
         "linkedin_leads": "ld",
         "job_postings": "jp",
         "contacts": "ct",

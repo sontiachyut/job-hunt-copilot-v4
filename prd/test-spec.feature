@@ -49,10 +49,11 @@ Feature: Job Hunt Copilot next-build acceptance
     Scenario: Canonical database schema includes the next-build required tables
       Given a fresh build has initialized `job_hunt_copilot.db`
       When the next-build schema is inspected
-      Then the database contains `linkedin_leads`
+      Then the database contains `leads`
+      And the database contains `lead_source_observations`
       And the database contains `job_postings`
       And the database contains `contacts`
-      And the database contains `linkedin_lead_contacts`
+      And the database contains `lead_contacts`
       And the database contains `job_posting_contacts`
       And the database contains `resume_tailoring_runs`
       And the database contains `pipeline_runs`
@@ -70,9 +71,15 @@ Feature: Job Hunt Copilot next-build acceptance
       And the database contains `windows`
       And the database contains `provider_budget_state`
       And the database contains `provider_budget_events`
+      And the database contains `llm_usage_events`
       And the database contains `discovery_attempts`
       And the database contains `outreach_messages`
+      And the database contains `outreach_followup_plans`
+      And the database contains `followup_cycle_runs`
       And the database contains `delivery_feedback_events`
+      And the database contains `contact_provider_profiles`
+      And the database contains `contact_employment_history`
+      And the database contains `job_posting_provider_contexts`
 
     Scenario: Build input pack is sufficient for a fresh build
       Given the build input pack contains `spec.md`
@@ -84,12 +91,12 @@ Feature: Job Hunt Copilot next-build acceptance
       And the build can use `assets/outreach/cold-outreach-guide.md` as the outreach guide
       And no additional personal-context files are required to start the build
 
-    Scenario: Fresh build materializes the paste inbox workflow
+    Scenario: Fresh build can materialize lead-ingestion runtime roots
       Given a fresh build implementation is bootstrapped
-      When workspace-support directories are inspected
-      Then `paste/` exists at the repo root
-      And `paste/paste.txt` exists as the reusable local inbox file
-      And the paste inbox is available before the first lead is ingested
+      When the first authenticated Jobright ingestion run is prepared
+      Then runtime-support directories under `lead-ingestion/runtime/jobright/` can be created locally
+      And canonical lead workspaces under `lead-ingestion/runtime/leads/` can be created locally
+      And the build does not require the retired paste-inbox workflow to begin lead ingestion
 
     Scenario: Fresh build materializes the supervisor runtime pack and local entrypoints
       Given a fresh build implementation is bootstrapped
@@ -155,12 +162,12 @@ Feature: Job Hunt Copilot next-build acceptance
       And Outreach starts only when `resume_review_status = approved`
       And Outreach starts only when posting status is `requires_contacts`
 
-    Scenario: Resume Tailoring input boundary is centered on `jd.md` rather than the raw lead dump
-      Given `LinkedIn Scraping` has produced `raw/source.md` and the available derived lead artifacts for a lead
+    Scenario: Resume Tailoring input boundary is centered on `jd.md` rather than any raw upstream dump
+      Given `Lead Ingestion` has produced `jd.md` and the available lead artifacts for a lead
       When Resume Tailoring begins for that posting
       Then the core tailoring logic consumes the derived `jd.md` plus posting-level canonical state
-      And the build does not require direct reading of `raw/source.md` to run Tailoring
-      And mirrored `post.md` or `poster-profile.md` may exist for traceability without being mandatory inputs to the core tailoring decision path
+      And the build does not require direct reading of any raw upstream source dump to run Tailoring
+      And additional upstream artifacts may exist for traceability without being mandatory inputs to the core tailoring decision path
 
     Scenario: Discovery handoff artifact includes the current required payload fields
       Given Email Discovery has completed for a contact
@@ -250,8 +257,9 @@ Feature: Job Hunt Copilot next-build acceptance
     Scenario: Primary entity records expose the next-build minimum canonical fields
       Given the next-build schema has been initialized
       When the primary entity tables are inspected
-      Then `linkedin_leads` includes a stable `lead_id`
-      And `linkedin_leads` includes source metadata and split-review state
+      Then `leads` includes a stable `lead_id`
+      And `leads` includes promotion state plus the latest refreshable Jobright fit and connection metadata
+      And `lead_source_observations` includes persisted Jobright recommendation and job-page observations
       And `job_postings` includes a stable `job_posting_id`
       And `job_postings` includes `lead_id`
       And `job_postings` includes a normalized posting identity key
@@ -260,12 +268,13 @@ Feature: Job Hunt Copilot next-build acceptance
       And `contacts` includes an `identity_key`
       And `contacts` includes `origin_component`
       And `contacts` includes full name, company name, contact status, and current working email when known
+      And `lead_contacts` includes source-contact lineage and intended-set priority metadata
       And all primary entity tables include lifecycle timestamps
 
     Scenario: Lead and job posting follow forward-only lifecycle progression
       Given a role-targeted lead enters the pipeline
       When it progresses through the normal next-build flow
-      Then the lead moves forward through `captured`, `split_ready`, `reviewed`, and `handed_off` when eligible
+      Then the lead moves forward through discovery-oriented upstream states such as `discovered`, `held`, or `promoted` when eligible
       And the linked job posting moves forward through the applicable states from `sourced`
       And it does not automatically move backward to an earlier lifecycle state
       And any deliberate backward move would require explicit user action or reset
@@ -308,7 +317,7 @@ Feature: Job Hunt Copilot next-build acceptance
     Scenario: Source metadata is owned by the lead rather than the posting
       Given a role-targeted lead has been ingested
       When canonical source metadata is inspected
-      Then `linkedin_leads` stores the authoritative source metadata for that lead
+      Then `leads` and `lead_source_observations` store the authoritative source metadata for that lead
       And `job_postings` rely on `lead_id` rather than owning that source metadata as the primary source-of-truth
 
     Scenario: Valid non-ambiguous JD creates a posting linked back to the lead
@@ -323,19 +332,19 @@ Feature: Job Hunt Copilot next-build acceptance
       Then a canonical `job_posting` is not auto-created
       And the lead remains available for review or later refresh
 
-    Scenario: Identifiable poster profile creates lead-contact traceability
-      Given a non-ambiguous lead contains an identifiable poster profile
+    Scenario: Jobright-seeded contacts create lead-contact and posting-contact traceability
+      Given a non-ambiguous Jobright lead contains one or more source-seeded contacts
       And a canonical `job_posting` has been created for that lead
       When canonical entities are materialized
-      Then a canonical `contact` is auto-created for the poster
-      And a `linkedin_lead_contacts` row links that `contact` back to the `lead`
-      And a `job_posting_contacts` row links that `contact` to the `job_posting`
+      Then canonical `contacts` are created or reused for those source-seeded people
+      And `lead_contacts` rows link those contacts back to the `lead`
+      And `job_posting_contacts` rows link those contacts to the `job_posting`
 
-    Scenario: Founder is treated as a first-class inferred recipient type
-      Given an identifiable poster title contains `Founder` or `Co-Founder`
-      When recipient typing is inferred from that lead
-      Then the inferred recipient type may be `founder`
-      And that inferred type remains queryable through lead-contact or posting-contact linkage
+    Scenario: Personalized Jobright connections are treated as first-class source contacts
+      Given a Jobright observation contains personalized school or company connections
+      When source contacts are materialized from that lead
+      Then those contacts remain queryable through `lead_contacts`
+      And their source type and priority metadata remain distinguishable from public Jobright connections and Apollo top-up contacts
 
     Scenario: New postings merge only when identity matching is confident
       Given a new posting resembles an existing posting in company and role metadata
@@ -351,12 +360,6 @@ Feature: Job Hunt Copilot next-build acceptance
 
   @integrations @build
   Rule: External integrations and bootstrap configuration
-
-    Scenario: Raw text input takes precedence over URLs during LinkedIn Scraping normalization
-      Given both raw JD or post text and a source URL are supplied for the same lead item
-      When LinkedIn Scraping normalization runs
-      Then the raw text is treated as the primary content source
-      And the URL is treated as a reference rather than the canonical input body
 
     Scenario: Consolidated runtime secrets can materialize vendor-specific local secret files
       Given `runtime_secrets.json` is present with the required provider and Gmail configuration content
@@ -382,151 +385,84 @@ Feature: Job Hunt Copilot next-build acceptance
       Then a usable internal snapshot, mirror, or normalized artifact is persisted
       And later review does not depend on re-fetching mutable external content
 
-    Scenario: Manual browser capture creates a capture bundle and canonical raw source
-      Given a browser-side manual LinkedIn capture submission contains one or more capture items
-      When the local upstream receiver accepts that submission
-      Then a lead workspace is created for that submission
-      And `capture-bundle.json` is persisted for that lead
-      And the canonical `linkedin-scraping/runtime/leads/<company>/<role>/<lead_id>/raw/source.md` is assembled from that accepted capture bundle
-
-    Scenario: Manual capture defaults selected-text and full-page flows differently before converging into one bundle contract
-      Given the manual browser-capture path is available
-      When the user invokes capture with explicit selected text
-      Then the default behavior is immediate selected-text submission into the local upstream receiver
-      And the selected text remains preserved verbatim in the resulting capture artifacts
-      When the user invokes capture without explicit selected text
-      Then the default behavior opens the tray or popup review surface before submission
-      And both paths still converge into the same shared capture-bundle contract
-
-    Scenario: Selected text from manual capture is preserved verbatim
-      Given a manual capture item includes explicit selected text and surrounding full-page text
-      When that capture is persisted into the lead workspace
-      Then the selected text remains available verbatim in the source-mode artifacts
-      And later normalization does not silently overwrite that selected text with only full-page content
-
-    Scenario: Autonomous Gmail job-alert intake persists the alert snapshot and JD-fetch provenance
-      Given a LinkedIn job-alert email from `jobalerts-noreply@linkedin.com` is ingested from Gmail
-      And the Gmail message contains one or more parseable job cards in its plain-text body
+    Scenario: Authenticated Jobright recommendation ingestion persists feed and job-page evidence
+      Given an authenticated Jobright recommendation batch contains one or more candidate roles
       When the autonomous lead-ingestion path runs
-      Then a lead workspace is created for each parsed job card that survives validation and deduplication
-      And `alert-email.md` is persisted for that lead
-      And machine-readable alert metadata or parsed-card artifacts are persisted for that lead
-      And the JD fetch outcome or fetch failure reason is recorded in lead metadata or artifacts
-      And the lead manifest records whether `post.md` or `poster-profile.md` are unavailable for that lead
+      Then recommendation-feed evidence is persisted under `lead-ingestion/runtime/jobright/{run_id}/`
+      And job-page enrichment evidence is persisted for each observed Jobright job
+      And a canonical lead workspace is created for each deduplicated lead that has enough identity to materialize
 
-    Scenario: Autonomous Gmail parser prefers the plain-text digest and can emit multiple parsed job cards
-      Given a LinkedIn alert email from `jobalerts-noreply@linkedin.com` contains multiple `View job` cards in the plain-text body
-      And the digest uses dashed card separators with surrounding blank lines or whitespace
-      When the autonomous Gmail parser runs
-      Then the plain-text body is used as the primary parse input
-      And one parsed alert-card entry is emitted for each valid job card discovered in that digest
-      And later HTML parsing is needed only when the plain-text body is unavailable or unusable
+    Scenario: Canonical lead workspaces and artifacts follow the lead-ingestion layout
+      Given a deduplicated Jobright lead has been materialized
+      When the lead workspace is inspected
+      Then upstream lead artifacts live under `lead-ingestion/runtime/leads/<company>/<role>/<lead_id>/`
+      And that workspace contains `lead-manifest.yaml`
+      And that workspace contains `source-observations.json`
+      And that workspace contains `source-contacts.json`
+      And promoted leads also persist `promotion-decision.json`, `jd.md`, and `jd-provenance.json`
 
-    Scenario: Autonomous lead creation can proceed from a LinkedIn guest JD even when the exact company-hosted page is not recovered
-      Given an autonomous alert card exposes a usable LinkedIn job URL or job id
-      And the company website or careers page cannot be matched back to the same exact role
-      When autonomous JD recovery runs
-      Then `jd.md` can still be created from LinkedIn guest job data
-      And the company-resolution outcome is persisted as best-effort provenance
-      And the lead manifest records whether `post.md` or `poster-profile.md` are unavailable for that lead
-      And downstream posting creation is not blocked solely because exact company-site role recovery failed
+    Scenario: Jobright recommendation-feed and job-page observations converge into one canonical lead
+      Given the same Jobright role appears in both a recommendation-feed snapshot and a job-page enrichment snapshot
+      When canonical lead state is materialized
+      Then one canonical `lead_id` is reused
+      And separate `lead_source_observations` rows preserve the feed-level and job-page-level evidence
+      And downstream work is not duplicated merely because multiple upstream observations exist
 
-    Scenario: Autonomous JD is persisted fully in markdown before structured extraction
-      Given an autonomous alert card yields a usable JD through LinkedIn guest recovery or another accepted JD source
-      When the downstream posting workspace is materialized
-      Then the full fetched JD text is persisted into `jd.md`
-      And later structured eligibility or tailoring artifacts read from that persisted markdown
-      And the build does not require direct reuse of only the transient network response payload
+    Scenario: Jobright observations refresh an existing discovery lead instead of duplicating it
+      Given an unpromoted Jobright lead already exists in discovery
+      When a later authenticated Jobright run sees that same lead again
+      Then the canonical discovery lead is refreshed to the latest score, connection, freshness, and related upstream metadata
+      And a new canonical lead is not created for that same job identity
 
-    Scenario: Autonomous posting files are grouped under a company or role workspace
-      Given an autonomous lead has a valid company identity, role identity, and usable JD
-      When downstream posting files are materialized
-      Then a company or role-scoped workspace is created for that posting
-      And posting-specific files such as `jd.md`, workspace metadata, and later structured artifacts are saved inside that grouped workspace
+    Scenario: Jobright session expiry records a recoverable reauth-required state
+      Given Jobright ingestion depends on an authenticated browser-backed session
+      When that session is expired or unavailable during a lead-ingestion run
+      Then canonical lead state records `reauth_required`
+      And no corrupted promoted posting is created from that failed ingestion cycle
+      And already-promoted postings remain eligible to continue downstream tailoring, contact enrichment, drafting, and outreach
+
+    Scenario: Jobright job-page JD is persisted fully before downstream structuring
+      Given a Jobright observation yields a usable JD
+      When the downstream lead workspace is materialized
+      Then the full recovered JD text is persisted into `jd.md`
+      And later eligibility or tailoring artifacts read from that persisted markdown
+      And the build does not require direct reuse of only a transient network response payload
+
+    Scenario: Missing usable Jobright JD blocks promotion while preserving the discovery lead
+      Given a Jobright observation does not yield a full usable JD
+      When promotion eligibility is evaluated
+      Then the lead remains in discovery or another upstream held state
+      And a canonical `job_posting` is not auto-created from that lead
+      And the source observations still remain queryable for later review or refresh
+
+    Scenario: Jobright public and personalized connections are persisted as source-seeded contacts
+      Given a Jobright lead yields public connections and personalized school or company connections
+      When source contacts are materialized
+      Then canonical contacts are created or reused for those people
+      And `lead_contacts` preserves whether each one came from `jobright_public`, `jobright_personal_school`, or `jobright_personal_company`
+      And the lead-contact records preserve the intended-set priority order needed by downstream outreach
 
     Scenario: Component-oriented layout keeps runtime artifacts under the owning component folders
       Given a role-targeted lead has progressed through lead intake, tailoring, discovery, and drafting boundaries
       When the resulting filesystem artifacts are inspected
-      Then upstream lead artifacts live under `linkedin-scraping/runtime/leads/<company>/<role>/<lead_id>/`
+      Then upstream lead artifacts live under `lead-ingestion/runtime/leads/<company>/<role>/<lead_id>/`
       And posting manifests live under `applications/<company>/<role>/`
       And tailoring workspace artifacts live under `resume-tailoring/output/tailored/<company>/<role>/`
       And discovery runtime outputs live under `discovery/output/<company>/<role>/`
       And outreach runtime outputs live under `outreach/output/<company>/<role>/`
 
-    Scenario: Paste inbox ingestion creates one canonical lead raw source artifact
-      Given `paste/paste.txt` contains a copied lead dump for a new lead
-      When `LinkedIn Scraping` is started from the paste inbox
-      Then the pasted file contents are copied unchanged into `linkedin-scraping/runtime/leads/<company>/<role>/<lead_id>/raw/source.md`
-      And the lead raw folder contains only `source.md`
-      And `artifact_records` contains `lead_raw_source` for that lead
-
-    Scenario: Explicit new paste source replaces the live canonical lead source while later normalized-only reruns preserve it
-      Given a lead already has a canonical `linkedin-scraping/runtime/leads/<company>/<role>/<lead_id>/raw/source.md`
-      When `LinkedIn Scraping` is rerun for that same lead with a new explicit paste source file
-      Then the live canonical `raw/source.md` is replaced by the new explicit source
-      When `LinkedIn Scraping` is later rerun for that same lead without a new raw source file
-      Then the existing live canonical `raw/source.md` is preserved
-
-    Scenario: Derived lead files are split from the canonical raw source with review metadata
-      Given a lead has a canonical `linkedin-scraping/runtime/leads/<company>/<role>/<lead_id>/raw/source.md`
-      When lead context is derived from that canonical source
-      Then available derived artifacts such as `post.md`, `jd.md`, or `poster-profile.md` are created from the source when that evidence exists
-      And unavailable sections are recorded as unavailable in split-review or manifest metadata rather than being faked
-      And `linkedin-scraping/runtime/leads/<company>/<role>/<lead_id>/source-split.yaml` records the selected split method and section ranges
-      And `linkedin-scraping/runtime/leads/<company>/<role>/<lead_id>/source-split-review.yaml` records review status, confidence, checks, and recommended action
-      And `linkedin-scraping/runtime/leads/<company>/<role>/<lead_id>/lead-manifest.yaml` records downstream handoff readiness
-      And `artifact_records` contains `lead_split_metadata`, `lead_split_review`, and `lead_manifest` for that lead
-
-    Scenario: Well-structured pasted lead dumps succeed with the rule-based first pass alone
-      Given a pasted lead dump contains recognizable hiring-post, job-description, and poster-profile markers
-      When lead context is derived from the canonical source
-      Then the current selected split method is `rule_based_first_pass`
-      And the review artifact is `confident` or `needs_review`
-      And the pipeline does not require an AI second pass to produce usable derived lead files
-
-    Scenario: Recruiter-authored pasted lead dump with plain-language hiring text is recognized by the rule-based first pass
-      Given a pasted lead dump contains a recruiter-authored post that says `We're hiring` or `We’re hiring` instead of `#hiring`
-      And the same dump also contains a recognizable `About the job` block and a poster profile block
-      When lead context is derived from the canonical source
-      Then `post.md` includes the recruiter-authored hiring text
-      And the selected split method remains `rule_based_first_pass`
-      And the review artifact is `confident` or `needs_review`
-
-    Scenario: Networking-relevant post hints are preserved while obvious job-CTA chrome is dropped
-      Given a pasted lead dump contains a copied post with both `View job` and `1 school alumni works here`
-      When lead context is derived from the canonical source
-      Then the extracted `post.md` does not retain `View job`
-      But the extracted `post.md` preserves `1 school alumni works here`
-
-    Scenario: Recruiter-profile chrome is cleaned from the derived poster profile in the Wilcore-style lead format
-      Given a pasted lead dump contains recruiter-profile chrome such as `HighlightsHighlights` or `Introduce myself`
-      When lead context is derived from the canonical source
-      Then the derived `poster-profile.md` does not retain those profile-chrome lines
-      And the substantive recruiter summary and experience content remain available in the derived profile
-
-    Scenario: Ambiguous source dumps are escalated for review when no second-pass classifier is configured
-      Given a pasted lead dump lacks enough structure for a confident deterministic split
-      And no AI second-pass classifier is configured
-      When lead context is reviewed from the canonical source
-      Then the review artifact is `ambiguous`
-      And the recommended action says the split should be reviewed rather than silently trusted
-      And the canonical `raw/source.md` remains unchanged
-
-    Scenario: Ambiguous lead review still publishes a blocked manifest
-      Given a lead remains `ambiguous` after split review
+    Scenario: Held or blocked upstream leads still publish a blocked manifest
+      Given a lead remains held, blocked, or waiting on reauthentication in upstream lead ingestion
       When the lead workspace is finalized
       Then `lead-manifest.yaml` still exists for that lead
       And the lead is marked not ready for downstream handoff
-      And no downstream target is marked ready without an explicit non-ambiguous review result
+      And no downstream target is marked ready without a promotable upstream state
 
-    Scenario: Optional AI second pass can replace an ambiguous rule split only when confidence improves
-      Given a pasted lead dump is ambiguous under the deterministic first pass
-      And an AI second-pass classifier is configured
-      When lead context is derived from the canonical source
-      Then the system may attempt an AI second pass for that lead
-      And the attempt outcome is recorded in split metadata or review metadata
-      And the AI-selected split is accepted only when its review confidence is higher than the rule-based baseline
-      And the canonical `raw/source.md` remains unchanged regardless of the selected split method
+    Scenario: Source-observation history remains preserved after discovery refreshes
+      Given a Jobright lead has been refreshed by later recommendation or job-page observations
+      When the lead workspace history is inspected
+      Then older source observations remain preserved in history artifacts
+      And the latest live workspace state still points to the active refreshed source observation
 
     Scenario: Vendor usage is auditable without exposing secrets
       Given a provider-based discovery call has been attempted
@@ -583,6 +519,13 @@ Feature: Job Hunt Copilot next-build acceptance
       Then it does not automatically resend when a prior successful send cannot be ruled out
       And the case is surfaced for review rather than risking a duplicate outreach
 
+    Scenario: Cross-posting unsent outreach history does not block a new role-targeted send
+      Given a contact has older unsent generated, blocked, or failed role-targeted outreach rows from other postings
+      And the current posting has a fresh role-targeted draft for that same contact
+      When automatic sending evaluates duplicate-send ambiguity for the current posting
+      Then those older unsent rows from other postings do not by themselves create `ambiguous_send_state`
+      And prior successful sent history may still trigger repeat-outreach review
+
     Scenario: Transient Gmail send failures are blocked and retried later
       Given a role-targeted automatic send hits a clearly transient Gmail auth or transport failure
       When the system persists that send outcome
@@ -590,6 +533,15 @@ Feature: Job Hunt Copilot next-build acceptance
       And it keeps the posting `outreach_in_progress`
       And it keeps the durable run at `sending`
       And it stops the rest of the current posting wave immediately
+
+    Scenario: A stale sending run falls back to discovery when the next frontier still needs emails
+      Given a role-targeted posting is still marked `ready_for_outreach`
+      And its durable run is at `sending`
+      And reevaluating the next selected frontier finds no draftable ready contacts because those contacts still need usable emails
+      When the supervisor executes that sending work
+      Then it does not call drafting for that stale send frontier
+      And it persists the posting back to `requires_contacts`
+      And it moves the durable run back to `email_discovery`
 
     Scenario: Transient send retries wait for cooldown and stay bounded
       Given a role-targeted message is `blocked` because of a transient Gmail auth or transport failure
@@ -824,12 +776,33 @@ Feature: Job Hunt Copilot next-build acceptance
       And the system tolerates sparse candidate rows such as obfuscated names when stable provider identity exists
       And `people_search_result.json` preserves the resolved company record, applied filters, and returned candidate rows
 
+    Scenario: Apollo company resolution is persisted as posting-scoped provider context
+      Given Apollo resolves company identity for a role-targeted posting
+      When the resolved company context is persisted
+      Then `job_posting_provider_contexts` stores that raw Apollo company-resolution payload for the `job_posting_id`
+      And newer company-resolution payloads append newer provider-context rows rather than overwriting older raw snapshots
+
     Scenario: Initial enrichment stays selective and capped to the current shortlist policy
       Given a broad Apollo people search has returned many candidate contacts for a posting
       When the build chooses the first enrichment wave
       Then no more than 6 contacts are selected into the initial enrichment shortlist
       And that shortlist aims to cover recruiter, manager-adjacent, and engineer recipient classes before lower-priority internals
       And broad-search candidates outside that shortlist are not enriched by default
+
+    Scenario: Shortlisted Apollo contacts persist full person snapshots and structured employment history
+      Given a broad Apollo people search has yielded a shortlisted candidate for a posting
+      And Apollo search or enrichment returns person payload for that shortlisted candidate
+      When that candidate is materialized into canonical contact state
+      Then `contact_provider_profiles` stores the full Apollo person payload for that contact
+      And `contact_employment_history` stores any returned employment-history items as structured rows linked to the same `contact_id`
+      And downstream drafting may query that stored Apollo context without reparsing only the raw provider artifact
+
+    Scenario: Newer Apollo person payloads refresh latest employment history while preserving raw snapshot history
+      Given a canonical contact already has one persisted Apollo person snapshot and structured Apollo employment history
+      When a newer Apollo search or enrichment payload is persisted for that same contact
+      Then `contact_provider_profiles` preserves both raw Apollo snapshots as append-only history
+      And the contact's current structured Apollo employment history is refreshed to match the newest Apollo payload
+      And stale duplicate employment-history rows do not accumulate indefinitely
 
     Scenario: LinkedIn URL from enrichment can produce a recipient profile snapshot before drafting
       Given a shortlisted contact has completed enrichment successfully
@@ -952,6 +925,14 @@ Feature: Job Hunt Copilot next-build acceptance
       And the exact final sent subject and body are persisted
       And `send_result.json` is produced as the machine handoff artifact
 
+    Scenario: Role-targeted drafting chooses the current technical or managerial path by recipient type
+      Given a job posting is ready for role-targeted outreach
+      And a linked contact has a usable email
+      When Email Drafting and Sending chooses the current role-split playbook for that contact
+      Then technical individual contributors may use the technical path
+      And managers, recruiters, and routing-side contacts may use the managerial path
+      And the chosen path is recoverable from draft artifacts or review evidence
+
     Scenario: General learning outreach does not require a tailored resume or posting linkage
       Given a contact-rooted outreach is not tied to a specific job posting
       When Email Drafting and Sending runs in general learning mode
@@ -971,6 +952,35 @@ Feature: Job Hunt Copilot next-build acceptance
       Then no more than 4 emails are sent for the same posting on the same day
       And additional same-posting sends are delayed or queued for a later allowed send window
       And any two automatic sends are separated by the current randomized 6-to-10-minute pacing gap rather than sent back-to-back
+
+    Scenario: Scheduled role-targeted drafting resolves Codex outside the scheduler PATH
+      Given the launchd environment does not expose the full interactive shell PATH
+      And the local machine still has a valid `codex` binary in a deterministic install location
+      When scheduled role-targeted drafting enters the send stage
+      Then the drafter still resolves the `codex` executable successfully
+      And the scheduler does not crash only because `codex` was absent from the ambient PATH
+      And the drafter also supplies a runtime PATH that can resolve the local `node` launcher dependency when `codex` is a Node-based script
+
+    Scenario: Sender signature keeps the public GitHub profile URL
+      Given the sender master profile contains a personal GitHub profile URL in `Personal`
+      And later project sections also contain project-specific `GitHub` bullets
+      When role-targeted drafting loads the sender signature
+      Then the signature uses the personal GitHub profile URL
+      And the signature does not substitute a project repository URL or local filesystem path
+
+    Scenario: Technical role-split payload drift is normalized before persistence
+      Given the technical drafter returns a truthful opener that still drifts on debug scaffolding
+      And the payload leaves `selected_career_steps` empty or returns more than two opener sentences
+      When deterministic runtime validates the technical role-split payload
+      Then runtime infers at least one supported career-step company from bounded employment history
+      And runtime restores the exact two-sentence opener shape before the draft is persisted
+
+    Scenario: Managerial debug lists are truncated instead of failing the draft
+      Given the managerial drafter returns a valid email body payload
+      But the managerial debug signal lists contain more than three items
+      When deterministic runtime validates the managerial role-split payload
+      Then runtime truncates those debug lists to the first three non-empty items
+      And the draft is not failed solely because of oversized debug lists
 
     Scenario: Later postings at the same company proactively skip an already-contacted person
       Given one posting at a company has already sent automatic outreach to a canonical contact
@@ -1034,10 +1044,11 @@ Feature: Job Hunt Copilot next-build acceptance
       Then successfully generated drafts from that same frontier may still proceed into sending
       And the failed draft case is surfaced for review
 
-    Scenario: Recruiter and team-adjacent outreach defaults to a short Zoom conversation ask
-      Given the recipient type is recruiter or another team-adjacent one-step outreach target
-      When a role-targeted outreach draft is generated
-      Then the default call to action is a short 15-minute Zoom conversation
+    Scenario: Managerial-path outreach uses the fixed concise 10-minute CTA
+      Given the recipient type is recruiter, manager, or another routing-side role-targeted target
+      When a managerial-path outreach draft is generated
+      Then the CTA uses the fixed brief 10-minute conversation ask
+      And the draft asks to better understand the team's real challenges
       And the draft does not default to a phone-call ask for that current-path recipient
 
     Scenario: Rich HTML outreach preserves readable fallback content and canonical message persistence
@@ -1053,100 +1064,168 @@ Feature: Job Hunt Copilot next-build acceptance
       When the resulting artifacts are inspected
       Then `email_draft.md` is available as a human-readable companion artifact
       And `send_result.json` is available as the machine handoff artifact
+      And a draft-debug artifact is available for role-split drafts
       And `send_result.json` includes the shared contract envelope and relevant stable IDs
 
-    Scenario: Default v4 shared template uses the current unified structure
-      Given a role-targeted draft is generated with the default v4 shared template
-      When the resulting draft is inspected
-      Then it opens from role, team, or work-area context rather than requiring recipient-background hooks
-      And it includes an explicit `why I am reaching out to you` line
-      And it includes one concrete proof point of fit
-      And it includes the Job Hunt Copilot / AI-agent block
-      And it uses one 15-minute Zoom ask
-      And the forwardable snippet is placed directly below the routing-help line
-      And the default body does not rely on an education-status sentence such as `I am currently finishing my MS ...`
-
-    Scenario: The current shared role-targeted template includes a compact forwardable summary snippet
-      Given a role-targeted draft is generated with the current shared template
-      When the draft is inspected
-      Then the draft includes a compact forwardable summary snippet
-      And that snippet stays small enough to be plausibly forwarded with little or no editing
-      And that snippet is JD-aware rather than a generic skills list
-
-    Scenario: Managerial relevant-background drafting uses the curated profile-evidence corpus
-      Given the curated managerial profile-evidence source has been built into the canonical corpus
-      And a managerial first-email draft is being generated
-      When the drafting flow prepares the managerial relevant-background section
-      Then it retrieves evidence from the canonical profile-evidence corpus rather than the old generic sender-evidence pool
-      And the technical-path first email remains on its existing bounded drafting path
-
-    Scenario: Managerial Codex prompting stays bounded while using retrieved evidence
-      Given a managerial first-email draft is being generated
-      When the retrieval layer prepares evidence for Codex
-      Then it may retrieve up to 8 candidate evidence chunks
-      And it passes no more than the top 5 retrieved chunks into the managerial Codex prompt
-      And it does not pass the full profile-evidence corpus or raw resume documents into the prompt
-      And the plain-text body does not leak raw markdown emphasis markers for the fixed proof-of-concept sentence
-      And the rendered HTML may still emphasize that fixed proof-of-concept sentence semantically
-
-    Scenario: Managerial relevant-background preserves technical signal for technical roles
-      Given the managerial role is technical, AI/ML, data, platform, backend, or systems-heavy
-      And the profile-evidence corpus contains both direct technical proof and generic reliability proof
-      When the retrieval layer ranks evidence for the draft
-      Then the retrieved evidence pack preserves visible technical signal
-      And generic reliability chunks do not dominate the section when stronger role-aligned technical proof exists
-      And weak Job Hunt Copilot bullets do not survive in non-AI or non-automation managerial drafts when stronger professional proof is available
-
-    Scenario: Managerial relevant-background returns bullet-aligned evidence provenance
-      Given a managerial first-email draft is generated through the profile-evidence retrieval path
-      When the structured managerial output is validated
-      Then the final relevant-background section still contains exactly 3 bullets
-      And the output returns exactly 3 bullet-aligned provenance entries
-      And each final bullet maps to one primary retrieved evidence chunk
-
-    Scenario: Managerial drafting fails closed when evidence is under-grounded
-      Given a managerial first-email draft is being generated
-      And retrieval cannot support 3 credible grounded background bullets
-      When the draft is evaluated
-      Then the draft is rejected as under-grounded
-      And the system does not pad the section with weak generic filler bullets
-
-    Scenario: Missing or unreadable managerial evidence corpus does not fall back silently
-      Given the managerial profile-evidence corpus is missing or unreadable
-      When a managerial first-email draft is attempted
-      Then the drafting flow fails closed
-      And it does not silently fall back to the older generic sender-evidence pool
-
-    Scenario: Technical role-split opener and fixed paragraphs stay concise and guidance-oriented
-      Given a technical-path first-email draft is generated
-      When the resulting body is inspected
-      Then the opener does not emit malformed ellipsis or awkward tenure phrasing when the career-history pack is weak
-      Then the fixed Job Hunt Copilot paragraph is a single concise sentence
-      And the body does not say the email is a live example of an autonomous workflow
-      And the body does not include explicit weekday availability or flexible scheduling-range language
-      And the ask requests guidance on how the recipient approached that work or what they would recommend someone at the sender's stage focus on
-      And the technical-path email does not mention an attached resume
+    Scenario: Technical-path draft is codex-generated only for the opener and reads Apollo history DB-first
+      Given a role-targeted technical-path draft is being created for a linked contact
+      And structured Apollo employment history exists for that contact in canonical state
+      When Email Drafting and Sending renders the technical-path body
+      Then `codex exec` generates only Technical Paragraph 1 plus debug fields
+      And deterministic rendering appends the fixed later paragraphs and standard signature
+      And the draft reads Apollo employment history from the structured database-backed provider store before falling back to artifact reparsing
+      And the subject is `Learning from your career path`
+      And the opener says `admired your path` rather than `really admired your path`
+      And the opener does not emit placeholder ellipses or awkward same-company tenure phrasing
+      And the fixed Job Hunt Copilot paragraph does not use a standalone `repo is here` sentence
+      And the fixed Job Hunt Copilot paragraph does not describe the email itself as a live autonomous-workflow example
+      And the fixed technical guidance ask does not list explicit weekday availability windows
+      And the fixed technical guidance ask asks for guidance on how the recipient approached the work or what to focus on at the sender's stage
+      And the technical-path body does not mention an attached resume
       And the technical-path send artifact does not attach the resume file
+      And the assembled technical-path body stays within the current reduced technical word target
+      And HTML rendering hyperlinks the `Job Hunt Copilot` label itself in that paragraph
+
+    Scenario: Live role-split codex calls persist token usage events
+      Given a live role-targeted role-split drafting call invokes `codex exec`
+      When the subprocess completes and writes its stderr usage footer
+      Then the system persists one `llm_usage_events` row for that call
+      And the row records invocation success or failure plus the exit code
+      And the row records the total token count when stderr reports it
+      And the row still exists with an explicit missing-usage status when stderr omits token usage
+
+    Scenario: Managerial-path draft uses fixed deterministic structure around codex-generated reasoning
+      Given a role-targeted managerial-path draft is being created for a linked contact
+      When Email Drafting and Sending renders the managerial-path body
+      Then deterministic rendering emits the greeting and fixed `I hope you're doing well.` opener sentence
+      And `codex exec` generates the role-alignment sentence, exactly 3 JD-challenge bullets, exactly 3 relevant-background bullets, and debug fields
+      And deterministic rendering emits the fixed bold proof-of-concept sentence
+      And the plain-text body does not contain raw Markdown strong markers around that proof-of-concept sentence
+      And the HTML body renders that proof-of-concept sentence with strong emphasis
+      And deterministic rendering emits the fixed CTA block and standard signature
+      And the fixed JD heading is phrased as a question rather than a statement
+      And the fixed CTA block mentions the proof-of-concept offer only once in the whole email body
+      And the JD-challenge bullets are JD-only inferred problem hypotheses rather than verbatim JD paste
+      And the relevant-background bullets come from real resume or project evidence
+      And a `Job Hunt Copilot` background bullet appears only when it materially strengthens the dominant role-fit theme
+      And the subject follows `Interest in the <Role Title> role at <Company>`
+
+    Scenario: Managerial-path subject strips role-title formatting artifacts before send
+      Given a role-targeted managerial-path draft is being created for a posting whose canonical role title contains a leading formatting artifact like `#`
+      When Email Drafting and Sending renders the managerial-path subject
+      Then the subject still follows `Interest in the <Role Title> role at <Company>`
+      And the rendered subject does not contain the raw leading formatting artifact
 
     Scenario: Role-targeted original drafts fail closed on deterministic lint defects
-      Given a role-targeted original draft is rendered in the active role-split path
-      When the rendered plain-text body leaks raw markdown emphasis or blocked legacy technical phrases
-      Then the draft is rejected before persistence
-      And the system does not leave that invalid original in the generated queue
+      Given a role-targeted original draft has been assembled into final subject, plain-text body, and HTML body
+      When the deterministic original-draft lint gate runs before persistence or refresh
+      Then raw Markdown emphasis leakage in plain text blocks the draft
+      And disallowed control characters block the draft
+      And banned technical-path autonomy or scheduling phrases block the draft
+      And major word-budget overshoot blocks the draft
+      And a clean draft passes without further mutation
 
-    Scenario: Role-targeted word-budget lint does not reject realistic link and signature lines as prose overshoot
-      Given a managerial-path original draft stays within the intended prose budget
-      And the rendered body includes the normal standalone `Posting link:` line plus the standard signature links
-      When the deterministic lint gate evaluates the rendered draft
-      Then those transport-style lines do not by themselves trigger a major word-budget overshoot failure
-      But a genuinely oversized body paragraph still fails closed
+    Scenario: Managerial-path posting link is rendered deterministically from canonical state
+      Given a managerial-path draft is being created for a concrete job posting
+      And a public posting URL is available in canonical state
+      When the body is rendered
+      Then the email includes one standalone `Posting link:` line
+      And that line appears immediately after the fixed bold proof-of-concept sentence
+      And the line uses the canonical public posting URL rather than model-generated URL text
 
-    Scenario: The curated managerial evidence source builds into canonical runtime storage and an inspection mirror
-      Given the owner updates the curated managerial evidence source
-      When the explicit corpus-build step runs
-      Then the canonical SQLite profile-evidence corpus is refreshed
-      And a human-readable corpus mirror is written under ops/profile-evidence
-      And malformed evidence chunks are rejected before runtime storage is updated
+    Scenario: Generated send-ready work outranks new draft generation and Jobright polling
+      Given one role-targeted `sending` run has an already-generated send frontier actionable now
+      And another role-targeted `sending` run is actionable only for fresh draft generation
+      And routine Jobright recommendation polling is also due
+      When the supervisor selects the next work unit
+      Then it chooses the generated send-ready `sending` run first
+      And it does not choose the Jobright recommendation batch for that heartbeat
+      And the generated-frontier-only pre-pass does not fall through to unrelated pipeline work when no generated frontier exists
+
+    Scenario: Managerial-path bullets render as real lists in HTML
+      Given a managerial-path draft contains exactly 3 JD-challenge bullets and exactly 3 relevant-background bullets
+      When the draft is rendered to HTML for Gmail delivery
+      Then each section is rendered as a list rather than a flattened paragraph
+      And each bullet remains visually separate under its heading
+
+    Scenario: Role-split codex outputs are schema-validated before the draft is accepted
+      Given a role-split draft is generated through `codex exec`
+      When the structured output contract is inspected
+      Then the provider-facing JSON schema marks every top-level output field as required
+      And the draft is rejected if runtime validation fails
+      And accepted draft-debug artifacts record the selected JD, career-step, or sender-evidence signals actually used in the draft
+
+  @followups
+  Rule: Automated Follow-Up Worker behavior
+
+    Scenario: Follow-up candidates are selected from sent role-targeted emails, not postings
+      Given multiple `role_targeted` outreach messages have been sent
+      And some of those messages are more than 4 calendar days old in `America/Phoenix`
+      When the follow-up worker evaluates candidates
+      Then it starts from sent `outreach_messages` rather than job postings
+      And it considers only original sent `role_targeted` messages as follow-up roots
+      And it excludes `general_learning`, `manual_reply`, `follow_up`, and `role_targeted_followup` messages as new follow-up roots
+      And it processes due candidates oldest original sent email first
+      And it does not render follow-up draft bodies before the 4-calendar-day eligibility threshold
+
+    Scenario: Follow-up rendering uses the strict approved template
+      Given an eligible unreplied original `role_targeted` outreach message exists
+      And the original email body, role, company, recipient salutation, and grounding evidence are available
+      When the follow-up worker renders the follow-up draft
+      Then the body matches the approved warmer mutual-fit template shape
+      And the only filled fields are first name or preserved salutation, role title, company name, and `background_fit_areas`
+      And `background_fit_areas` contains 2 to 3 concise role-specific noun phrases grounded in allowed evidence
+      And the draft uses the short signature only
+      And the draft does not include attachments, quoted original content, full contact signature, retired terse JD-theme wording, internal artifact text, or metric-heavy proof paragraphs
+      And a generic ungrounded background phrase blocks or escalates the candidate rather than being sent
+
+    Scenario: Reply, bounce, and duplicate-follow-up guards suppress automatic follow-ups
+      Given an original sent `role_targeted` outreach message is due for follow-up
+      When the follow-up worker checks the original Gmail thread and canonical feedback state
+      Then a bounce tied to the original message, recipient, delivery tracking ID, or thread suppresses the follow-up
+      And any inbound reply in the same Gmail thread after the original `sent_at` suppresses the follow-up
+      And a later outbound message from the sender in the same Gmail thread suppresses the follow-up as already followed up
+      And existing `follow_up` or `role_targeted_followup` evidence suppresses another automatic follow-up for the same original thread
+      And unknown reply state does not permit automatic sending
+
+    Scenario: Follow-up send uses persisted same-thread content and immutable original outreach
+      Given an eligible follow-up has passed internal follow-up review gates
+      And the immediately-before-send Gmail-thread recheck still shows no reply, bounce, or later outbound follow-up
+      When automatic follow-up sending is enabled and the shared pacing queue permits a send
+      Then the worker sends a reply in the original Gmail thread rather than a new standalone email
+      And it preserves the original recipient envelope from the first sent email
+      And it sends the exact persisted follow-up draft body rather than regenerating text at send time
+      And it records a separate `role_targeted_followup` outreach message linked to the original
+      And it does not mutate the original `role_targeted` outreach message body, mode, sent timestamp, or delivery identity
+
+    Scenario: Dry-run validates follow-up behavior without sending or sent-state mutation
+      Given due follow-up candidates exist
+      When the follow-up worker runs in dry-run mode
+      Then it evaluates a bounded batch of 25 candidates ordered oldest original sent email first
+      And it may create or refresh `outreach_followup_plans` rows and dry-run artifacts with clear dry-run markers
+      And it renders and persists the actual draft text and agent-review evidence for would-send candidates
+      And it performs only read-only Gmail checks
+      And it does not call Gmail send APIs
+      And it does not set `sent_at`, `message_status = sent`, `plan_status = sent`, or successful send-result state
+
+    Scenario: Follow-up worker records plans, cycle audits, and reviewable failures
+      Given the follow-up worker runs a scheduled or manual cycle
+      When the cycle completes with sends, skips, pacing waits, retryable failures, or no-op results
+      Then a `followup_cycle_runs` audit row is written for that invocation
+      And one `outreach_followup_plans` row represents one allowed follow-up opportunity for one original sent outreach message
+      And uniqueness on `original_outreach_message_id` plus `followup_sequence` prevents duplicate first-follow-up plans
+      And structural same-thread failures or ambiguous may-have-sent states create blocked or reviewable follow-up state
+      And real-mode blocked, ambiguous, failed, or escalated cases include enough review-packet context to inspect the original email, draft if present, thread evidence, bounce evidence, grounding evidence, and recommended owner action
+
+    Scenario: Follow-up auto-send rollout is gated and paced
+      Given the follow-up worker is deployed for the first time
+      When runtime control state is inspected
+      Then automatic follow-up sending is disabled by default
+      And dry-run validation can run before enablement
+      When automatic sending is later explicitly enabled
+      Then follow-up sends share the global 6-to-10-minute send pacing queue with first emails
+      And the worker sends at most one follow-up per cycle
+      And the initial rollout pauses follow-up auto-send after 10 successful follow-up sends for inspection
 
   @delivery_feedback
   Rule: Delivery Feedback behavior
@@ -1296,15 +1375,8 @@ Feature: Job Hunt Copilot next-build acceptance
       Then control-state changes outrank all other work
       And open incidents and health-critical failures outrank ordinary pipeline advancement
       And due sends and due feedback polling outrank new Gmail ingestion and maintenance
+      And actionable role-targeted sending outranks older ordinary discovery backlog
       And bounded maintenance work remains the lowest default priority
-
-    Scenario: Orphaned completed postings with actionable unsent outreach recover at sending rather than delivery feedback
-      Given a role-targeted posting has no non-terminal posting-scoped pipeline run
-      And the posting still has an actionable unsent generated or retryable send frontier
-      And the posting has no sent outreach messages yet
-      When the supervisor recovers that orphaned downstream work
-      Then it recreates the durable role-targeted run at `sending`
-      And it does not recreate that run at `delivery_feedback`
 
     Scenario: Supervisor chooses only registered catalog actions and escalates unknown needs
       Given the supervisor has selected a work unit
@@ -1327,6 +1399,16 @@ Feature: Job Hunt Copilot next-build acceptance
       When 3 unresolved incidents of the same type occur in the same stage, provider area, or operational area within 45 minutes
       Then the system also auto-pauses
       And new pipeline runs and new automatic sends do not begin while that auto-pause remains active
+
+    Scenario: Failed refreshed tailoring is quarantined without pausing unrelated postings
+      Given posting A previously reached `people_search`, `email_discovery`, `sending`, or `delivery_feedback`
+      And posting A now has a newer `resume_tailoring_runs` row with `tailoring_status = needs_revision` and `resume_review_status = not_ready`
+      And posting B still has independently actionable role-targeted pipeline work
+      When the supervisor reconciles open pipeline work before normal progression
+      Then posting A returns to `tailoring_in_progress`
+      And any active Outreach-side pipeline run for posting A is retired from the runnable queue
+      And the supervisor does not let posting A create a blocking prerequisite-incident cluster
+      And the supervisor may continue selecting posting B work
 
     Scenario: Paused and stopped modes have different operational boundaries
       Given the supervisor control state is persisted canonically
@@ -1370,11 +1452,23 @@ Feature: Job Hunt Copilot next-build acceptance
       When `jhc-agent-start` is invoked
       Then it runs the runtime-pack materialization step before enabling background execution
       And it ensures the supervisor plist is rendered with absolute project-root paths
+      And it ensures the follow-up worker plist is rendered with absolute project-root paths
       And it uses `launchctl bootstrap` or an equivalent idempotent load-if-needed step
       And it uses `launchctl kickstart -k gui/$UID/com.jobhuntcopilot.supervisor` for the immediate first heartbeat
+      And it manages the dedicated follow-up launchd job alongside the supervisor and feedback-sync jobs
       When `jhc-agent-stop` is invoked
       Then it writes disabled or stopped control state before unloading the job
       And it uses `launchctl bootout` or an equivalent idempotent unload step
+      And it stops or disables the dedicated follow-up launchd job as part of the normal stop path
+
+    Scenario: Dedicated follow-up worker has its own local runtime wiring
+      Given the current local helper entrypoints are installed
+      When follow-up worker runtime wiring is inspected
+      Then a dedicated launchd job exists for the follow-up worker
+      And it runs every 60 seconds without overriding shared send pacing
+      And it points to a manual cycle entrypoint such as `bin/jhc-followup-cycle`
+      And follow-up stdout and stderr are written to dedicated files under `ops/logs/`
+      And follow-up control state can be paused or resumed independently from the primary supervisor
 
     Scenario: jhc-chat is the direct Codex-backed operator entrypoint
       Given the expert wants to inspect or control the autonomous system
@@ -1401,6 +1495,7 @@ Feature: Job Hunt Copilot next-build acceptance
       And it always includes pending expert review items, open incidents, and maintenance state
       And it includes runtime totals for today, yesterday, and rolling average daily runtime
       And it includes successful run counts, successful send counts, bounce counts, and reply counts for today and yesterday
+      And it includes compact follow-up fields for `due_now`, `waiting_for_pacing`, `sent_today`, `blocked_or_review`, `last_cycle_at`, and `last_cycle_result`
 
     Scenario: Startup dashboard runtime metrics count only active autonomous execution
       Given the system has both active autonomous runtime and paused expert-interaction time
@@ -1602,7 +1697,7 @@ Feature: Job Hunt Copilot next-build acceptance
     Scenario: Role-targeted orchestration follows the current dependency order
       Given a role-targeted posting is being processed in the build
       When the main pipeline runs
-      Then the dependency order is LinkedIn Scraping, eligibility or tailoring, mandatory agent review, company-scoped contact search or contact linking or contact reuse, selected-contact enrichment, email discovery when still needed, frontier drafting for ready untouched contacts, sending, and delivery feedback
+      Then the dependency order is Lead Ingestion, promotion gate, eligibility or tailoring, mandatory agent review, source-seeded contact enrichment, Apollo top-up when needed, selected-contact recipient-profile extraction, email discovery when still needed, frontier drafting for ready untouched contacts, sending, and delivery feedback
       And later stages do not proceed before their upstream prerequisites are satisfied
 
     Scenario: Posting remains requires-contacts until minimum outreach prerequisites exist
@@ -1630,18 +1725,19 @@ Feature: Job Hunt Copilot next-build acceptance
       And `ready_for_outreach` requires at least one actionable linked contact in the best currently available priority tier
       And `ready_for_outreach` requires usable discovered email addresses for the intended current outreach set
 
-    Scenario: Role-targeted outreach uses the current recipient priority order with pacing-aware progression
+    Scenario: Role-targeted outreach uses the current source-priority order with pacing-aware progression
       Given a posting has multiple linked contacts across recipient types
       When the build runs role-targeted outreach
-      Then contacts are processed in this order when available: `recruiter`, `hiring_manager`, `engineer`, `alumni`, `other_internal`
+      Then contacts are processed in this order when available: equal-priority personalized Jobright connections, then public Jobright connections, then Apollo top-up contacts
+      And Apollo top-up contacts are internally ranked before inclusion by engineering-lead and current-company relevance
       And sends may be delayed by pacing rules instead of blasting every recipient group immediately
 
     Scenario: Posting-contact linking is created before per-contact discovery or outreach begins
-      Given a role-targeted posting has run broad company-scoped people search
-      And a candidate has been shortlisted for outreach handling
+      Given a role-targeted posting has source-seeded Jobright contacts or Apollo top-up candidates
+      And a candidate has entered the intended outreach set for that posting
       When the workflow prepares that shortlisted candidate for discovery or drafting
       Then a `job_posting_contacts` relationship is already present for that posting-contact pair
-      And broad people search may have happened before that canonical link existed
+      And upstream source capture or Apollo top-up may have happened before that canonical link existed
       But person-scoped discovery or outreach does not begin first and create the link later as an afterthought
 
     Scenario: Link records become shortlisted when contacts enter the intended outreach set
@@ -1778,107 +1874,52 @@ Feature: Job Hunt Copilot next-build acceptance
       Then the system may backfill additional shortlisted contacts from the saved broad-search artifact
       But it does not need to rerun external company-scoped people search immediately just to continue the posting
 
-  @linkedin_scraping
-  Rule: LinkedIn Scraping acceptance
+  @lead_ingestion
+  Rule: Lead Ingestion acceptance
 
-    Scenario: New leads receive stable lead identity and canonical lead workspaces
-      Given a new upstream lead is ingested through `LinkedIn Scraping`
+    Scenario: New Jobright leads receive stable lead identity and canonical lead workspaces
+      Given a new upstream lead is ingested through authenticated Jobright recommendation intake
       When canonical lead state is materialized
       Then the lead receives a stable `lead_id`
-      And the canonical lead workspace is rooted at `linkedin-scraping/runtime/leads/<company>/<role>/<lead_id>/`
+      And the canonical lead workspace is rooted at `lead-ingestion/runtime/leads/<company>/<role>/<lead_id>/`
 
-    Scenario: Autonomous Gmail collection persists one collected-email unit before fan-out and remains idempotent by message id
-      Given an agent-invoked Gmail ingestion run sees a LinkedIn job-alert email
-      When that email is collected
-      Then the collected email is first persisted under `linkedin-scraping/runtime/gmail/{YYYYMMDDTHHMMSSZ}-{gmail_message_id}/...`
-      And job-card fan-out into per-lead workspaces happens only after that collected-email unit exists
-      When the same `gmail_message_id` is encountered again later
-      Then the duplicate email is ignored instead of overwriting or creating another collected-email unit
+    Scenario: Jobright recommendation-feed and job-page observations both persist before downstream promotion
+      Given an authenticated Jobright ingestion run sees one or more candidate roles
+      When that ingestion run is collected
+      Then the recommendation-feed snapshot is persisted under `lead-ingestion/runtime/jobright/{run_id}/...`
+      And per-job page enrichments are persisted for the observed Jobright jobs
+      And canonical lead fan-out into per-lead workspaces happens only after that upstream evidence exists
 
-    Scenario: Autonomous Gmail intake uses direct sender search while preserving the durable checkpoint
-      Given autonomous Gmail intake has already persisted a mailbox history checkpoint
-      When the next Gmail intake poll runs
-      Then the poll searches directly for recent messages from `jobalerts-noreply@linkedin.com`
-      And already-collected `gmail_message_id` values are ignored
-      And the durable mailbox history checkpoint may still be refreshed for audit or future optimization
-
-    Scenario: Checkpoint seed without new leads is recorded as auditable no-work
-      Given autonomous Gmail intake needs to seed or refresh the mailbox history checkpoint
-      And no new parseable lead cards are produced in that seed pass
-      When the seed pass completes
-      Then the checkpoint update is still persisted
-      And the result is recorded as auditable no-work rather than a false incident
-
-    Scenario: Gmail thread membership does not suppress collection or parsing
-      Given multiple LinkedIn job-alert emails belong to the same `gmail_thread_id`
-      When Gmail ingestion runs
-      Then each message is still collected independently
-      And thread membership alone does not suppress job-card parsing for any of those messages
-
-    Scenario: Zero-card Gmail collections are retained and reviewed only after the configured threshold
-      Given a collected Gmail message yields zero parseable job cards
-      When the collection result is persisted
-      Then the collected email artifacts are retained
-      And `job-cards.json` may be empty
-      And no lead workspace is created from that message
-      And review is triggered only when more than 3 such emails occur in one Gmail ingestion run or when the cumulative unresolved count exceeds 3 across history
-
-    Scenario: Digest-summary headers do not materialize as canonical leads
-      Given a LinkedIn Gmail alert contains only digest-summary headers or summary-only cards
-      When autonomous Gmail fan-out runs
-      Then those summary headers are ignored
-      And no canonical lead or job posting is created from them
-
-    Scenario: Gmail-derived lead workspaces start incomplete and become blocked-no-jd when JD recovery fails
-      Given a parsed Gmail alert card survives validation and deduplication
-      When the autonomous lead workspace is created
-      Then that workspace is created immediately for the parsed card
-      And the new workspace starts in `incomplete`
-      When JD recovery later fails for that lead
-      Then the autonomous lead workspace transitions to `blocked_no_jd`
-
-    Scenario: Lead workspace artifacts differ by lead mode and blocked manifests still exist
-      Given one lead was ingested from manual capture and another from autonomous Gmail intake
-      When their lead workspaces are inspected
-      Then every lead workspace contains `lead-manifest.yaml` plus the artifacts required by that lead mode
-      And manual-capture leads contain `raw/source.md`, `source-split.yaml`, and `source-split-review.yaml`
-      And autonomous Gmail-derived leads are not required to contain `raw/source.md`, `source-split.yaml`, or `source-split-review.yaml` by default
-      And `lead-manifest.yaml` still exists even when the lead is blocked by ambiguous split review
-
-    Scenario: Autonomous Gmail job-card deduplication prefers job id and falls back to normalized LinkedIn job URL
-      Given an autonomous parsed alert card resolves to a LinkedIn `job_id` already seen for an existing autonomous lead
+    Scenario: Jobright lead deduplication prefers stable job id and falls back to normalized Jobright URL
+      Given a Jobright observation resolves to a stable `jobright_job_id` already seen for an existing lead
       When lead creation is evaluated
-      Then a second lead is not created
-      Given a parsed alert card lacks a usable LinkedIn `job_id`
-      And a usable LinkedIn job URL is available
+      Then a second canonical lead is not created
+      Given a later Jobright observation lacks a usable stable job identifier
+      And a usable Jobright job URL is available
       When fallback identity is materialized
-      Then a synthetic fallback identity key is created from the normalized LinkedIn job URL
-      And the lead may still be created from that fallback identity
+      Then a synthetic fallback identity key is created from the normalized Jobright job URL
+      And the lead may still be created or refreshed from that fallback identity
 
     Scenario: Duplicate canonical lead identities are refreshed instead of crashing
-      Given autonomous Gmail intake encounters a parsed alert card that resolves to an existing canonical lead identity
+      Given authenticated Jobright ingestion encounters a recommendation that resolves to an existing canonical lead identity
       When canonical lead materialization runs
       Then the existing lead is refreshed or reused
       But the run does not crash on duplicate canonical creation
 
-    Scenario: Missing both job id and job URL blocks the autonomous lead only when no JD can be recovered
-      Given a parsed autonomous alert card lacks both a usable LinkedIn `job_id` and a usable LinkedIn job URL
-      When no usable JD can be recovered from any supported source
-      Then the lead transitions to `blocked_no_jd`
+    Scenario: New lead workspaces start in discovery and become blocked-no-jd only when usable JD recovery fails
+      Given a Jobright recommendation survives validation and deduplication
+      When the autonomous lead workspace is created
+      Then that workspace is created immediately for the deduplicated lead
+      And the new workspace starts in an upstream discovery or held state
+      When usable JD recovery later fails for that lead
+      Then the lead may transition to `blocked_no_jd`
 
-    Scenario: Multiple JD sources merge into canonical jd.md while LinkedIn wins conflicts
-      Given an autonomous lead has JD candidate content from LinkedIn and a company-hosted source
-      When canonical JD persistence is produced
-      Then non-conflicting additional information is merged into `jd.md`
-      And materially conflicting portions prefer LinkedIn-derived JD content
-      And provenance still records the contributing sources
-
-    Scenario: Company-role mismatch from Gmail card versus fetched JD is reviewed while minor normalization differences are tolerated
-      Given the parsed Gmail alert-card company or role title materially disagrees with the fetched LinkedIn JD identity
-      When autonomous lead review evaluates the mismatch
-      Then the lead is surfaced for user review
-      And downstream canonical company or role materialization remains blocked until resolved
-      But minor normalization differences such as `Google` versus `Google LLC` or `SWE II` versus `Software Engineer II` do not by themselves trigger review
+    Scenario: Lead workspace artifacts remain present even when a lead is blocked, held, or waiting on reauthentication
+      Given one lead is blocked by missing usable JD and another is waiting on Jobright reauthentication
+      When their lead workspaces are inspected
+      Then every lead workspace still contains `lead-manifest.yaml`
+      And every lead workspace still contains the source-observation artifacts already captured for that lead
+      And blocked or reauth-held leads are not required to materialize downstream `job_postings`
 
     Scenario: Source metadata is owned by the lead and downstreams use lead-manifest artifact references
       Given a lead has been ingested and normalized
@@ -1886,20 +1927,42 @@ Feature: Job Hunt Copilot next-build acceptance
       Then source metadata such as `source_type`, `source_reference`, `source_url`, `source_mode`, and source-mode-specific provenance is source-of-truth on the lead entity
       And downstream components consume artifact references from `lead-manifest.yaml` rather than relying on hardcoded upstream directory assumptions
 
-    Scenario: Refreshing an existing lead updates the live workspace while preserving history snapshots
-      Given an existing lead is refreshed with newer source or review state
+    Scenario: Refreshing an existing discovery lead updates the live workspace while preserving history snapshots
+      Given an existing unpromoted lead is refreshed with newer Jobright source state
       When the lead workspace is updated
       Then the live lead workspace is updated in place
-      And older source or review snapshots remain preserved in lead-local history artifacts
+      And older source snapshots remain preserved in lead-local history artifacts
+
+    Scenario: Lower refreshed scores replace older stronger discovery scores until a later improvement occurs
+      Given an unpromoted Jobright lead previously had a stronger score and connections snapshot
+      When a later authenticated Jobright run returns that same lead with a lower score or weaker promotability
+      Then the newer weaker discovery state becomes the active promotion state
+      When a still-later Jobright run improves that same lead enough to satisfy the current promotion gate
+      Then the lead becomes automatically eligible for promotion on that later cycle
+
+    Scenario: Promotion creates the posting immediately and carries source-seeded contacts forward
+      Given a Jobright lead has a usable JD and passes the current promotion rules
+      When the lead is promoted
+      Then a canonical `job_posting` is created immediately
+      And the promoting source observation is linked to that posting
+      And all Jobright-seeded contacts are carried forward into `job_posting_contacts`
+      And Apollo top-up may continue later without blocking posting creation
+
+    Scenario: Promotion keeps all Jobright-seeded contacts and Apollo fills only the remaining gap
+      Given a promoted Jobright lead already has some public or personalized source-seeded contacts
+      When the intended outreach set is built
+      Then all Jobright-seeded contacts automatically enter that set
+      And Apollo enrichment is used to recover fuller identity and usable-email data for those same contacts
+      And Apollo top-up adds only the best-ranked current-company contacts needed to fill the remaining gap toward 5 contacts
 
   @end_to_end
   Rule: End-to-end acceptance
 
-    Scenario: Role-targeted flow completes from LinkedIn Scraping through delivery feedback
-      Given a role-targeted lead entered through manual browser capture or autonomous Gmail job-alert intake
+    Scenario: Role-targeted flow completes from Lead Ingestion through delivery feedback
+      Given a role-targeted lead entered through authenticated Jobright recommendation intake
       And the required secrets, assets, and environment prerequisites are all available
       When the build runs the primary role-targeted flow
-      Then the flow progresses through LinkedIn Scraping, tailoring, mandatory agent review, company-scoped contact search, shortlist-time contact materialization, selected-contact enrichment, email discovery when needed, frontier drafting for ready untouched contacts, sending, and delivery feedback
+      Then the flow progresses through Lead Ingestion, promotion gate, tailoring, mandatory agent review, source-seeded contact enrichment, Apollo top-up when needed, selected-contact recipient-profile extraction, email discovery when needed, frontier drafting for ready untouched contacts, sending, and delivery feedback
       And intermediate machine artifacts are persisted at each stage boundary
       And canonical state remains queryable throughout the flow
 
@@ -1913,7 +1976,7 @@ Feature: Job Hunt Copilot next-build acceptance
       Given a build workflow has successfully completed some earlier stages
       And a later stage fails or is blocked
       When the workflow is retried
-      Then the system resumes from the last successful stage boundary rather than restarting from LinkedIn Scraping
+      Then the system resumes from the last successful stage boundary rather than restarting from Lead Ingestion
       And previously successful stages do not need to be recomputed unless the user explicitly resets them
 
     Scenario: Two-step outreach is excluded from required acceptance
@@ -1944,265 +2007,3 @@ Feature: Job Hunt Copilot next-build acceptance
       Then role-targeted flow still requires successful mandatory agent review before outreach begins
       And repeat-contact ambiguity still routes to review
       And evidence-grounding rules still apply to the resulting message
-
-  @followups @codex @system
-  Rule: Codex follow-up worker acceptance
-
-    Scenario: Codex follow-up behavior extends the existing dedicated follow-up worker
-      Given the runtime already includes the dedicated follow-up worker
-      When Codex-based follow-up drafting is enabled
-      Then the same dedicated follow-up worker remains the integration point for planning, drafting, review, and send execution
-      And the worker continues to use canonical `outreach_followup_plans`, `followup_cycle_runs`, and `outreach_messages` state
-      And the build does not introduce a second parallel follow-up pipeline with separate canonical storage
-
-    Scenario: Automatic follow-up eligibility is limited to Codex-origin autonomous originals
-      Given historical and current sent `role_targeted` original emails exist
-      When automatic follow-up eligibility is evaluated
-      Then only autonomous original `role_targeted` emails are candidates
-      And only originals produced by the newer Codex role-split production path are eligible
-      And historical deterministic-origin originals are skipped with durable structured reasons rather than silently disappearing
-
-    Scenario: Codex-origin detection uses provenance precedence before body fallback
-      Given an original sent `role_targeted` email is being classified for follow-up eligibility
-      When the worker determines whether that original came from the Codex role-split production path
-      Then it prefers explicit persisted origin metadata first
-      And it prefers nearby local role-split artifact evidence second
-      And it uses original sent email body or subject only as the last fallback
-      And body-style fallback succeeds only for a strong match to the known technical or managerial production first-email families
-
-    Scenario: Follow-up cadence and due-time logic use only the configured business-day rules
-      Given an eligible original outreach thread has not yet received any follow-up
-      When the worker determines whether follow-up `1`, `2`, or `3` is due
-      Then the cadence uses `3`, `4`, and `5` business days between touches
-      And business day means weekdays only in `America/Phoenix`
-      And no extra subjective `too recent` delay is applied beyond that cadence
-      And weekend-adjacent originals receive no special timing exception
-      And an original sent outside preferred business hours does not by itself block a later due follow-up
-
-    Scenario: Follow-up cadence refresh recalculates unsent plans under the current rules
-      Given one or more unsent automatic follow-up plans already exist from an older cadence
-      When the runtime refreshes follow-up eligibility under the current cadence
-      Then each unsent plan recomputes `eligible_after` from the same per-sequence business-day rules used for new plans
-      And sent follow-up history remains unchanged
-      And if the refreshed `eligible_after` is already in the past the plan becomes due immediately
-      And the recalculated due time preserves the prior touch's local `America/Phoenix` time-of-day
-
-    Scenario: Historical and newly due follow-ups share one oldest-first rollout queue
-      Given historical Codex-origin originals and newly due follow-up candidates both exist
-      When the first live follow-up rollout is enabled
-      Then the worker draws from one combined eligible queue
-      And the queue is ordered by oldest original sent email first
-      And older threads do not jump directly to follow-up `2` or `3` solely because more time has elapsed
-
-    Scenario: The worker materializes only the next relevant follow-up step
-      Given an eligible original outreach thread has not yet received any follow-up
-      When the worker evaluates whether the thread should enter automatic follow-up
-      Then it creates or refreshes only the next due or next-upcoming sequence step
-      And it does not create all three follow-up plan rows upfront
-      And follow-up `2` is not materialized until follow-up `1` has been sent successfully
-      And follow-up `3` is not materialized until follow-up `2` has been sent successfully
-
-    Scenario: Follow-up suppression stays thread-rooted per contact while remaining cross-contact independent
-      Given multiple original outreach threads may exist across one or more contacts
-      When follow-up suppression and selection are evaluated
-      Then the worker allows only one active automatic follow-up thread per contact at a time
-      And other unreplied threads at the same company do not suppress a different contact by default
-      And any inbound reply or explicit do-not-contact state still blocks future automatic follow-up for that same contact
-
-    Scenario: Follow-up cadence uses business-day math while final send windows run all week
-      Given an otherwise eligible automatic follow-up becomes due
-      When the worker decides whether it may send immediately
-      Then the follow-up due date still uses business-day math in `America/Phoenix`
-      And once the thread is due it may use any eligible shared send window on any day of the week
-      And the worker does not keep a separate Monday-through-Friday business-hours-only send window for follow-ups
-
-    Scenario: Follow-up prompts stay bounded, split by posture, and return structured output
-      Given a due Codex-origin follow-up candidate is ready for drafting
-      When the worker prepares the `codex exec` call
-      Then it chooses the technical or managerial follow-up prompt family that matches the original first-email posture
-      And the bounded follow-up pack includes the full exact original outbound email and any earlier sent follow-ups in the same thread
-      And role or company summary, sender-evidence summary, and thread metadata remain compact
-      And the prompt does not receive the full raw JD, full raw resume, or full mailbox thread by default
-      And the model returns JSON-only structured output rather than a free-form full email blob
-
-    Scenario: Deterministic runtime owns non-variable follow-up rendering boundaries
-      Given a Codex follow-up draft payload has been returned
-      When deterministic validation and rendering finalize the message
-      Then the original thread subject behavior is preserved rather than regenerated
-      And the recovered salutation is owned by deterministic runtime
-      And the fixed short signoff `Best,` plus `Achyutaram Sonti` is preserved across follow-up `1`, `2`, and `3`
-      And follow-up `3` includes the exact deterministic final-touch sentence
-
-    Scenario: Follow-up content remains compact and does not reopen prohibited first-email material
-      Given an automatic follow-up draft has been rendered
-      When deterministic validation checks the body
-      Then the follow-up stays within two short paragraphs by default, with a third short paragraph allowed only when truly needed
-      And follow-up `1` remains mostly a reminder
-      And follow-up `2` may include only one compact mutual-fit reminder
-      And follow-up `3` stays light and final rather than proof-heavy
-      And the draft does not reintroduce `Job Hunt Copilot` details by default
-      And the draft does not mention resume or attachment language by default
-      And the draft does not quote prior thread text, emit bullets, or emit Markdown formatting
-
-    Scenario: Technical and managerial follow-ups preserve the original outreach posture
-      Given both technical-path and managerial-path original emails exist
-      When follow-ups are drafted for those threads
-      Then technical follow-ups remain guidance-oriented and do not switch into direct application language
-      And managerial follow-ups remain role-interest-oriented with the specific role still anchoring the thread
-      And later managerial follow-ups may soften into role or team perspective framing without becoming generic networking notes
-
-    Scenario: Follow-up sending uses same-thread delivery and single-recipient safety
-      Given a due automatic follow-up has passed all eligibility and content gates
-      When the worker sends the follow-up
-      Then it sends as an actual reply in the original Gmail thread
-      And it preserves the original recipient envelope
-      And it does not auto-send follow-ups for multi-recipient original threads
-      And it does not attach a resume or any other file by default
-
-    Scenario: Reply, bounce, and thread-state checks suppress automatic follow-up before send
-      Given a follow-up candidate exists for a sent original outreach thread
-      When the worker performs reply, bounce, and same-thread checks
-      Then any bounce tied to the original thread suppresses automatic follow-up
-      And any inbound reply after the original `sent_at` suppresses automatic follow-up
-      And ambiguous reply classification still hands the contact to the owner manually without requiring sentiment classification first
-      And the worker rechecks the thread immediately before send so stale pre-draft evidence cannot allow an invalid follow-up
-
-    Scenario: First live rollout is capped at ten successful sends and then pauses
-      Given the owner enables live automatic follow-up sending for the first time
-      When the worker sends follow-ups successfully
-      Then the first live rollout stops after `10` successful follow-up sends
-      And only follow-up auto-send pauses at that point
-      And the worker surfaces an inspection packet summarizing those ten sends plus compact skipped or blocked context
-      And the worker remains paused until the owner explicitly resumes it
-
-    Scenario: Shared outbound lane uses alternating two-hour windows across the full day
-      Given both a new role-targeted outreach email and a due automatic follow-up are simultaneously send-eligible
-      When the shared outbound lane evaluates the current local send window in `America/Phoenix`
-      Then the lane alternates preferred queue every `2` hours across the full `24` hour day
-      And the cycle starts with a follow-up-preferred window at local midnight
-      And the same alternating window schedule applies all `7` days of the week
-      And the actual queue choice is evaluated at final send-attempt time rather than draft-ready time
-
-    Scenario: Shared outbound lane uses fallback only when the preferred queue is effectively empty
-      Given the current `2` hour send window prefers one queue
-      When the lane evaluates whether the other queue may use the turn
-      Then only `sendable now` candidates are considered for active-window ownership
-      And stale drafts that still need refresh do not count as `sendable now`
-      And dormant persisted drafts outside the active prepared frontier do not count as `sendable now`
-      And if the preferred queue has no actually sendable candidate the other queue may use the turn
-      But if both queues have a sendable-now candidate the active window preference still wins
-
-    Scenario: Shared outbound lane preserves one global serialized pacing gate
-      Given the preferred queue for the active window has a sendable candidate
-      And the non-preferred queue also has a sendable candidate
-      When the global randomized `6` to `10` minute inter-send gap is still closed
-      Then neither queue may bypass that shared pacing gate
-      And a routing handoff or wrong-worker yield does not consume the pacing gap
-      And the next actual send turn is decided only after the pacing gate opens
-
-    Scenario: Follow-up and original queues use deterministic ordering inside their windows
-      Given multiple sendable follow-ups and multiple sendable original outreach drafts exist
-      When a follow-up-preferred window chooses among follow-up candidates
-      Then the follow-up queue is ordered by oldest due first
-      And ties favor follow-up `3` before `2` before `1`
-      And remaining ties favor the older original thread before stable canonical row order
-      When an original-outreach-preferred window chooses among original drafts
-      Then the original queue is ordered by oldest generated draft first
-      And remaining ties favor older posting or thread context before stable canonical row order
-
-    Scenario: Prepared-but-unsent frontiers stay bounded and freshness-aware
-      Given preparation may happen outside the currently preferred send window
-      When the runtime maintains ready-to-send drafts for the shared lane
-      Then each queue keeps at most `10` active prepared drafts in its canonical frontier
-      And the prepared frontier cap is global across workers rather than per process
-      And a draft older than `24` hours must refresh before send
-      And a stale draft continues to occupy its frontier slot until it is refreshed, invalidated, or turned over normally
-      And a stale original draft inside the active prepared frontier still remains actionable for supervisor refresh work even though it is not `sendable now`
-      And persisted drafts outside the active frontier remain dormant rather than participating in live routing
-
-    Scenario: Original prepared frontier does not let one stale posting backlog starve newer ready postings
-      Given multiple postings already hold persisted generated original drafts
-      And one older posting has many generated originals but only one current next generated send candidate
-      And another older posting is blocked by the per-posting daily cap for the current local day
-      And a newer posting is `ready_for_outreach` with no generated originals yet
-      When the runtime builds the active original prepared frontier
-      Then each posting contributes only its current next generated send candidate
-      And the daily-cap-blocked posting does not consume an active original frontier slot
-      And the newer `ready_for_outreach` posting may use the newly freed original frontier capacity for draft generation
-
-    Scenario: Window waits are reported separately from inter-send-gap waits
-      Given a candidate is otherwise sendable but the active `2` hour window currently prefers the other queue
-      When the worker persists the deferred candidate state
-      Then the durable status may remain `waiting_for_pacing`
-      But the structured reason is `waiting_for_window` rather than `waiting_for_pacing_gap`
-      And candidates that are not otherwise fully sendable do not use `waiting_for_window`
-
-    Scenario: Repeated follow-up drafting failures stop the automatic sequence for that thread
-      Given a due automatic follow-up step repeatedly fails Codex drafting validation
-      When the same follow-up step exhausts `3` automatic drafting retries
-      Then that follow-up step becomes held for owner review
-      And the automatic follow-up sequence stops for that thread
-      And the worker does not materialize or send the later follow-up step automatically until the owner intervenes
-
-    Scenario: Follow-up drafts are rendered only when a thread is actually due
-      Given an otherwise eligible follow-up thread will become due later but is not due yet
-      When the worker evaluates the thread before that due time
-      Then it does not pre-render or persist a follow-up draft just because the thread is due soon
-      And it waits until the thread is actually due before creating the draft artifact
-
-    Scenario: Sent follow-ups persist compact debug context without requiring prompt dumps
-      Given an automatic follow-up has been sent successfully
-      When follow-up audit artifacts and canonical state are inspected
-      Then the sent follow-up persists a compact `why sent` review/debug note
-      And that note includes sequence step, preserved posture family, grounding path, fallback usage when applicable, and role or company wording mode
-      And the system does not require storing a verbose prompt dump or chain-of-thought style reasoning trace for normal follow-up audit
-
-  @outreach @codex @cutover @system
-  Rule: Codex-only autonomous outreach cutover acceptance
-
-    Scenario: Autonomous production workers cannot reach retired deterministic renderers
-      Given `main` has been cut over to Codex-only autonomous outreach
-      When the supervisor, follow-up worker, or their mirrored dry-run or review rendering paths prepare a production draft
-      Then those workers use only the Codex-backed production drafting path
-      And they do not reach the retired deterministic or shared-template renderer through a live send path
-      And they do not reach the retired deterministic or shared-template renderer through dry-run, inspection, or review rendering
-
-    Scenario: Manual-only legacy helpers may remain but stay isolated from autonomous workers
-      Given some legacy deterministic drafting helper still exists for owner-invoked manual use
-      When autonomous runtime wiring and controls are inspected
-      Then that helper is not reachable from supervisor, follow-up worker, rollout evaluation, or other autonomous worker entrypoints
-      And runtime control state and incidents continue to describe autonomous production as Codex-only
-
-    Scenario: Deterministic-origin unsent production backlog is auto-retired during cutover
-      Given unsent autonomous outreach items still exist from the retired deterministic or shared-template renderer
-      When the Codex-only cutover repair runs
-      Then those unsent deterministic-origin items are moved into a non-resumable terminal state
-      And already-sent history and prior audit artifacts are preserved
-      And autonomous workers do not later resurrect that retired backlog automatically
-
-    Scenario: Deterministic-origin automatic follow-up plans are auto-skipped during cutover
-      Given pending automatic follow-up plans still exist for deterministic-origin original outreach threads
-      When the Codex-only cutover repair runs
-      Then those follow-up plans are marked terminal skipped with a structured cutover reason
-      And they remain queryable for audit
-      And the follow-up worker no longer treats them as actionable automatic follow-up backlog
-
-    Scenario: Unknown-origin autonomous backlog fails closed during cutover
-      Given an unsent autonomous production outreach item cannot be proven valid under the active Codex-origin rules
-      When the cutover evaluates whether that item may remain automatically sendable
-      Then the worker fails closed
-      And it retires, skips, or otherwise removes that item from autonomous sendability with a structured unknown-origin reason
-      And it does not allow the item to continue only because the visible content looks acceptable
-
-    Scenario: Autonomous Codex outage raises incident and pauses the smallest safe worker scope
-      Given an autonomous production worker can no longer initialize or execute the required Codex drafting path
-      When that worker next attempts to draft within its production scope
-      Then the system creates a clear incident describing the Codex outage
-      And it pauses the smallest autonomous worker scope that prevents repeated retries or accidental sends
-      And it fails closed rather than falling back to a retired deterministic or shared-template production renderer
-
-    Scenario: Surviving Codex-origin unsent backlog is refreshed before autonomous send
-      Given an unsent autonomous production outreach item survives the Codex-only cutover because its origin is valid
-      When that item later becomes sendable
-      Then the worker refreshes it from the current accepted Codex drafting logic when the normal stale-draft refresh gates apply
-      And the cutover does not assume an older unsent Codex-origin draft is automatically safe to send unchanged

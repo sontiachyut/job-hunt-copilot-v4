@@ -20,6 +20,7 @@ REQUIRED_MODULES = {
     "google-auth-oauthlib": "google_auth_oauthlib",
     "google-api-python-client": "googleapiclient",
     "requests": "requests",
+    "cryptography": "cryptography",
     "dnspython": "dns",
     "PyYAML": "yaml",
     "pytest": "pytest",

@@ -60,6 +60,9 @@ RECIPIENT_TYPE_OTHER_INTERNAL = "other_internal"
 RECIPIENT_TYPE_FOUNDER = "founder"
 
 DEFAULT_SHORTLIST_LIMIT = 10
+MIN_INTENDED_CONTACT_TARGET = 5
+CONTACT_SOURCE_TYPE_APOLLO_TOPUP = "apollo_topup"
+CONTACT_SOURCE_PRIORITY_TIER_APOLLO_TOPUP = 3
 
 DISCOVERY_OUTCOME_FOUND = "found"
 DISCOVERY_OUTCOME_NOT_FOUND = "not_found"
@@ -1340,103 +1343,105 @@ def run_apollo_people_search(
     shortlist_limit: int = DEFAULT_SHORTLIST_LIMIT,
     current_time: str | None = None,
     pipeline_run_id: str | None = None,
+    connection: sqlite3.Connection | None = None,
 ) -> PeopleSearchRunResult:
     if shortlist_limit <= 0:
         raise EmailDiscoveryError("shortlist_limit must be greater than zero.")
 
     paths = ProjectPaths.from_root(project_root)
-    connection = sqlite3.connect(paths.db_path)
-    connection.row_factory = sqlite3.Row
-    connection.execute("PRAGMA foreign_keys = ON;")
+    owns_connection = connection is None
+    if owns_connection:
+        connection = sqlite3.connect(paths.db_path)
+        connection.row_factory = sqlite3.Row
+        connection.execute("PRAGMA foreign_keys = ON;")
+    assert connection is not None
 
     try:
         timestamp = current_time or now_utc_iso()
         with connection:
             ensure_missing_posting_company_keys(connection, current_time=timestamp)
         posting_row = _load_search_ready_posting(connection, job_posting_id=job_posting_id)
+        with connection:
+            seeded_shortlist = _shortlist_existing_intended_contacts(
+                connection,
+                job_posting_id=str(posting_row["job_posting_id"]),
+                current_time=timestamp,
+            )
+        seeded_contact_ids = tuple(item["contact_id"] for item in seeded_shortlist)
+        seeded_job_posting_contact_ids = tuple(item["job_posting_contact_id"] for item in seeded_shortlist)
+        active_intended_contact_count = _count_active_intended_contacts(
+            connection,
+            job_posting_id=str(posting_row["job_posting_id"]),
+        )
+        apollo_top_up_needed = max(0, MIN_INTENDED_CONTACT_TARGET - active_intended_contact_count)
         jd_text = _load_posting_jd(paths, posting_row)
-        search_filters = _build_apollo_search_filters(posting_row, jd_text=jd_text, shortlist_limit=shortlist_limit)
+        effective_shortlist_limit = min(shortlist_limit, apollo_top_up_needed) if apollo_top_up_needed > 0 else 0
+        search_filters = _build_apollo_search_filters(
+            posting_row,
+            jd_text=jd_text,
+            shortlist_limit=effective_shortlist_limit or shortlist_limit,
+        )
         company_domain = _derive_company_domain(posting_row)
         company_website = _derive_company_website(posting_row)
-        search_provider = provider or ConfiguredApolloClient.from_paths(paths)
+        search_provider = provider if apollo_top_up_needed > 0 else None
         attempted_filters: list[dict[str, Any]] = []
         resolved_company_from_provider_call = False
-
-        try:
-            resolved_company = _reuse_persisted_apollo_company(
-                connection,
-                paths=paths,
-                posting_row=posting_row,
-            )
-            if resolved_company is None:
-                _ensure_apollo_request_allowed(
-                    connection,
-                    endpoint_key=APOLLO_USAGE_ENDPOINT_COMPANY_SEARCH,
-                    usage_provider=search_provider,
-                    current_time=timestamp,
-                    pipeline_run_id=pipeline_run_id,
-                    lead_id=str(posting_row["lead_id"]),
-                    job_posting_id=str(posting_row["job_posting_id"]),
-                )
-                resolved_company = search_provider.resolve_company(
-                    company_name=posting_row["company_name"],
-                    company_domain=company_domain,
-                    company_website=company_website,
-                )
-                resolved_company_from_provider_call = resolved_company is not None
-            if resolved_company is not None and resolved_company.organization_id:
-                with connection:
-                    promote_company_group_to_provider_key(
+        resolved_company = _reuse_persisted_apollo_company(
+            connection,
+            paths=paths,
+            posting_row=posting_row,
+        )
+        raw_candidates: Sequence[PeopleSearchCandidate | Mapping[str, Any]] = ()
+        if apollo_top_up_needed > 0:
+            if search_provider is None:
+                search_provider = ConfiguredApolloClient.from_paths(paths)
+            try:
+                if resolved_company is None:
+                    _ensure_apollo_request_allowed(
                         connection,
-                        company_name=_normalize_optional_text(posting_row["company_name"]),
-                        provider_name=PROVIDER_NAME_APOLLO,
-                        provider_company_id=resolved_company.organization_id,
+                        endpoint_key=APOLLO_USAGE_ENDPOINT_COMPANY_SEARCH,
+                        usage_provider=search_provider,
                         current_time=timestamp,
-                )
-                posting_row = _load_search_ready_posting(connection, job_posting_id=job_posting_id)
-            if (
-                resolved_company_from_provider_call
-                and resolved_company is not None
-                and isinstance(resolved_company.raw_payload, Mapping)
-            ):
-                with connection:
-                    _persist_job_posting_provider_context(
-                        connection,
+                        pipeline_run_id=pipeline_run_id,
+                        lead_id=str(posting_row["lead_id"]),
                         job_posting_id=str(posting_row["job_posting_id"]),
-                        provider_name=PROVIDER_NAME_APOLLO,
-                        context_stage="apollo_company_resolution",
-                        provider_organization_id=resolved_company.organization_id,
-                        raw_payload=resolved_company.raw_payload,
-                        provider_observed_at=resolved_company.provider_observed_at,
-                        current_time=timestamp,
                     )
-            attempted_filters.append(
-                {
-                    "attempt": "primary",
-                    "search_filters": deepcopy(search_filters),
-                }
-            )
-            _ensure_apollo_request_allowed(
-                connection,
-                endpoint_key=APOLLO_USAGE_ENDPOINT_PEOPLE_SEARCH,
-                usage_provider=search_provider,
-                current_time=timestamp,
-                pipeline_run_id=pipeline_run_id,
-                lead_id=str(posting_row["lead_id"]),
-                job_posting_id=str(posting_row["job_posting_id"]),
-            )
-            raw_candidates = search_provider.search_people(
-                company_name=posting_row["company_name"],
-                resolved_company=resolved_company,
-                search_filters=search_filters,
-            )
-            if not raw_candidates and search_filters.get("locations"):
-                relaxed_filters = deepcopy(search_filters)
-                relaxed_filters["locations"] = []
+                    resolved_company = search_provider.resolve_company(
+                        company_name=posting_row["company_name"],
+                        company_domain=company_domain,
+                        company_website=company_website,
+                    )
+                    resolved_company_from_provider_call = resolved_company is not None
+                if resolved_company is not None and resolved_company.organization_id:
+                    with connection:
+                        promote_company_group_to_provider_key(
+                            connection,
+                            company_name=_normalize_optional_text(posting_row["company_name"]),
+                            provider_name=PROVIDER_NAME_APOLLO,
+                            provider_company_id=resolved_company.organization_id,
+                            current_time=timestamp,
+                        )
+                    posting_row = _load_search_ready_posting(connection, job_posting_id=job_posting_id)
+                if (
+                    resolved_company_from_provider_call
+                    and resolved_company is not None
+                    and isinstance(resolved_company.raw_payload, Mapping)
+                ):
+                    with connection:
+                        _persist_job_posting_provider_context(
+                            connection,
+                            job_posting_id=str(posting_row["job_posting_id"]),
+                            provider_name=PROVIDER_NAME_APOLLO,
+                            context_stage="apollo_company_resolution",
+                            provider_organization_id=resolved_company.organization_id,
+                            raw_payload=resolved_company.raw_payload,
+                            provider_observed_at=resolved_company.provider_observed_at,
+                            current_time=timestamp,
+                        )
                 attempted_filters.append(
                     {
-                        "attempt": "drop_location_after_zero_primary_candidates",
-                        "search_filters": deepcopy(relaxed_filters),
+                        "attempt": "primary",
+                        "search_filters": deepcopy(search_filters),
                     }
                 )
                 _ensure_apollo_request_allowed(
@@ -1451,32 +1456,55 @@ def run_apollo_people_search(
                 raw_candidates = search_provider.search_people(
                     company_name=posting_row["company_name"],
                     resolved_company=resolved_company,
-                    search_filters=relaxed_filters,
+                    search_filters=search_filters,
                 )
-                search_filters = relaxed_filters
-        except EmailDiscoveryError as exc:
-            with connection:
-                _persist_provider_budget_signal(
-                    connection,
-                    result=_provider_result_from_error(
-                        provider_name=PROVIDER_NAME_APOLLO,
-                        error=exc,
-                    ),
-                    discovery_attempt_id=None,
-                    contact_id=None,
-                    created_at=timestamp,
-                )
-            raise
+                if not raw_candidates and search_filters.get("locations"):
+                    relaxed_filters = deepcopy(search_filters)
+                    relaxed_filters["locations"] = []
+                    attempted_filters.append(
+                        {
+                            "attempt": "drop_location_after_zero_primary_candidates",
+                            "search_filters": deepcopy(relaxed_filters),
+                        }
+                    )
+                    _ensure_apollo_request_allowed(
+                        connection,
+                        endpoint_key=APOLLO_USAGE_ENDPOINT_PEOPLE_SEARCH,
+                        usage_provider=search_provider,
+                        current_time=timestamp,
+                        pipeline_run_id=pipeline_run_id,
+                        lead_id=str(posting_row["lead_id"]),
+                        job_posting_id=str(posting_row["job_posting_id"]),
+                    )
+                    raw_candidates = search_provider.search_people(
+                        company_name=posting_row["company_name"],
+                        resolved_company=resolved_company,
+                        search_filters=relaxed_filters,
+                    )
+                    search_filters = relaxed_filters
+            except EmailDiscoveryError as exc:
+                with connection:
+                    _persist_provider_budget_signal(
+                        connection,
+                        result=_provider_result_from_error(
+                            provider_name=PROVIDER_NAME_APOLLO,
+                            error=exc,
+                        ),
+                        discovery_attempt_id=None,
+                        contact_id=None,
+                        created_at=timestamp,
+                    )
+                raise
         candidates = tuple(_normalize_candidate_rows(raw_candidates))
         shortlist = select_initial_enrichment_shortlist(
             candidates,
-            limit=shortlist_limit,
+            limit=effective_shortlist_limit or shortlist_limit,
             connection=connection,
             posting_row=posting_row,
         )
 
-        shortlisted_contact_ids: list[str] = []
-        shortlisted_job_posting_contact_ids: list[str] = []
+        shortlisted_contact_ids: list[str] = list(seeded_contact_ids)
+        shortlisted_job_posting_contact_ids: list[str] = list(seeded_job_posting_contact_ids)
         shortlisted_candidate_ids: dict[str, str] = {}
         with connection:
             for candidate in shortlist:
@@ -1520,7 +1548,12 @@ def run_apollo_people_search(
                 ),
                 "applied_filters": search_filters,
                 "attempted_filters": attempted_filters,
-                "shortlist_limit": shortlist_limit,
+                "shortlist_limit": effective_shortlist_limit or shortlist_limit,
+                "seeded_shortlist_contact_ids": list(seeded_contact_ids),
+                "seeded_shortlist_job_posting_contact_ids": list(seeded_job_posting_contact_ids),
+                "active_intended_contact_count_before_top_up": active_intended_contact_count,
+                "apollo_top_up_needed": apollo_top_up_needed,
+                "apollo_top_up_added_count": len(shortlisted_contact_ids) - len(seeded_contact_ids),
                 "candidate_count": len(candidates),
                 "shortlisted_contact_ids": shortlisted_contact_ids,
                 "shortlisted_job_posting_contact_ids": shortlisted_job_posting_contact_ids,
@@ -1540,7 +1573,8 @@ def run_apollo_people_search(
             resolved_company=resolved_company,
         )
     finally:
-        connection.close()
+        if owns_connection:
+            connection.close()
 
 
 def run_apollo_contact_enrichment(
@@ -1548,14 +1582,19 @@ def run_apollo_contact_enrichment(
     project_root: Path | str,
     job_posting_id: str,
     provider: ApolloContactEnrichmentProvider | None = None,
+    allow_default_provider_fallback: bool = True,
     recipient_profile_extractor: RecipientProfileExtractor | None = None,
     current_time: str | None = None,
     pipeline_run_id: str | None = None,
+    connection: sqlite3.Connection | None = None,
 ) -> ContactEnrichmentRunResult:
     paths = ProjectPaths.from_root(project_root)
-    connection = sqlite3.connect(paths.db_path)
-    connection.row_factory = sqlite3.Row
-    connection.execute("PRAGMA foreign_keys = ON;")
+    owns_connection = connection is None
+    if owns_connection:
+        connection = sqlite3.connect(paths.db_path)
+        connection.row_factory = sqlite3.Row
+        connection.execute("PRAGMA foreign_keys = ON;")
+    assert connection is not None
 
     try:
         posting_row = dict(_load_search_ready_posting(connection, job_posting_id=job_posting_id))
@@ -1566,15 +1605,15 @@ def run_apollo_contact_enrichment(
             job_posting_id=job_posting_id,
             current_time=timestamp,
         )
-        settle_full_shortlist = not send_set_plan.ready_for_outreach
         target_contact_ids = (
             {str(contact_row["contact_id"]) for contact_row in shortlisted_rows}
-            if settle_full_shortlist
+            if not send_set_plan.ready_for_outreach
             else {contact.contact_id for contact in send_set_plan.selected_contacts}
         )
 
         provider_client = provider
         profile_extractor = recipient_profile_extractor or LinkedInPublicProfileExtractor()
+        apollo_enrichment_available = True
 
         people_search_payload = _load_people_search_payload(paths, posting_row)
         company_domain = (
@@ -1597,39 +1636,52 @@ def run_apollo_contact_enrichment(
                 str(refreshed_row["contact_id"]) in target_contact_ids
                 and _needs_apollo_contact_enrichment(refreshed_row)
             ):
-                if provider_client is None:
-                    provider_client = ConfiguredApolloClient.from_paths(paths)
-                try:
-                    _ensure_apollo_request_allowed(
-                        connection,
-                        endpoint_key=APOLLO_USAGE_ENDPOINT_PEOPLE_MATCH,
-                        usage_provider=provider_client,
-                        current_time=timestamp,
-                        pipeline_run_id=pipeline_run_id,
-                        lead_id=str(posting_row["lead_id"]),
-                        job_posting_id=str(posting_row["job_posting_id"]),
-                        contact_id=str(refreshed_row["contact_id"]),
-                    )
-                    enriched_payload = provider_client.enrich_person(
-                        provider_person_id=_normalize_optional_text(refreshed_row["provider_person_id"]),
-                        linkedin_url=_normalize_optional_text(refreshed_row["linkedin_url"]),
-                        person_name=_best_known_contact_name(refreshed_row),
-                        company_domain=company_domain,
-                        company_name=_normalize_optional_text(posting_row["company_name"]),
-                    )
-                except EmailDiscoveryError as exc:
-                    with connection:
-                        _persist_provider_budget_signal(
+                if (
+                    provider_client is None
+                    and apollo_enrichment_available
+                    and allow_default_provider_fallback
+                ):
+                    try:
+                        provider_client = ConfiguredApolloClient.from_paths(paths)
+                    except EmailDiscoveryError as exc:
+                        if exc.reason_code == "missing_apollo_api_key":
+                            apollo_enrichment_available = False
+                        else:
+                            raise
+                if provider_client is not None and apollo_enrichment_available:
+                    try:
+                        _ensure_apollo_request_allowed(
                             connection,
-                            result=_provider_result_from_error(
-                                provider_name=PROVIDER_NAME_APOLLO,
-                                error=exc,
-                            ),
-                            discovery_attempt_id=None,
-                            contact_id=None,
-                            created_at=timestamp,
+                            endpoint_key=APOLLO_USAGE_ENDPOINT_PEOPLE_MATCH,
+                            usage_provider=provider_client,
+                            current_time=timestamp,
+                            pipeline_run_id=pipeline_run_id,
+                            lead_id=str(posting_row["lead_id"]),
+                            job_posting_id=str(posting_row["job_posting_id"]),
+                            contact_id=str(refreshed_row["contact_id"]),
                         )
-                    raise
+                        enriched_payload = provider_client.enrich_person(
+                            provider_person_id=_normalize_optional_text(refreshed_row["provider_person_id"]),
+                            linkedin_url=_normalize_optional_text(refreshed_row["linkedin_url"]),
+                            person_name=_best_known_contact_name(refreshed_row),
+                            company_domain=company_domain,
+                            company_name=_normalize_optional_text(posting_row["company_name"]),
+                        )
+                    except EmailDiscoveryError as exc:
+                        with connection:
+                            _persist_provider_budget_signal(
+                                connection,
+                                result=_provider_result_from_error(
+                                    provider_name=PROVIDER_NAME_APOLLO,
+                                    error=exc,
+                                ),
+                                discovery_attempt_id=None,
+                                contact_id=None,
+                                created_at=timestamp,
+                            )
+                        raise
+                else:
+                    enriched_payload = None
                 normalized_enrichment = _normalize_enriched_person(enriched_payload)
                 if normalized_enrichment is not None:
                     with connection:
@@ -1659,19 +1711,6 @@ def run_apollo_contact_enrichment(
                 job_posting_contact_id=str(contact_row["job_posting_contact_id"]),
             )
             if refreshed_row is None:
-                continue
-            if (
-                str(refreshed_row["contact_id"]) in target_contact_ids
-                and settle_full_shortlist
-                and not _is_usable_email(_normalize_optional_text(refreshed_row.get("current_working_email")))
-            ):
-                with connection:
-                    _apply_role_targeted_apollo_no_email_exhaustion(
-                        connection,
-                        posting_row=posting_row,
-                        contact_row=refreshed_row,
-                        current_time=timestamp,
-                    )
                 continue
             if _is_terminal_enrichment_dead_end(refreshed_row):
                 with connection:
@@ -1743,7 +1782,8 @@ def run_apollo_contact_enrichment(
             posting_status=posting_status,
         )
     finally:
-        connection.close()
+        if owns_connection:
+            connection.close()
 
 
 def replay_historical_people_search_shortlist(
@@ -2385,8 +2425,11 @@ def select_initial_enrichment_shortlist(
 
 def _candidate_is_shortlist_eligible(candidate: PeopleSearchCandidate) -> bool:
     return candidate.recipient_type in {
+        RECIPIENT_TYPE_RECRUITER,
         RECIPIENT_TYPE_HIRING_MANAGER,
         RECIPIENT_TYPE_ENGINEER,
+        RECIPIENT_TYPE_OTHER_INTERNAL,
+        RECIPIENT_TYPE_FOUNDER,
     }
 
 
@@ -2400,7 +2443,11 @@ def _shortlist_priority_key(candidate: PeopleSearchCandidate) -> int:
         return 1
     if recipient_type == RECIPIENT_TYPE_ENGINEER:
         return 2
-    return 3
+    if recipient_type == RECIPIENT_TYPE_RECRUITER:
+        return 3
+    if recipient_type == RECIPIENT_TYPE_FOUNDER:
+        return 4
+    return 5
 
 
 def _is_senior_engineer_title(title: str) -> bool:
@@ -2569,6 +2616,81 @@ def _count_active_shortlisted_contacts(
         ),
     ).fetchone()
     return int(row[0] or 0)
+
+
+def _count_active_intended_contacts(
+    connection: sqlite3.Connection,
+    *,
+    job_posting_id: str,
+) -> int:
+    row = connection.execute(
+        """
+        SELECT COUNT(*)
+        FROM job_posting_contacts
+        WHERE job_posting_id = ?
+          AND is_in_intended_outreach_set = 1
+          AND removed_from_intended_outreach_set_at IS NULL
+          AND link_level_status <> ?
+        """,
+        (
+            job_posting_id,
+            POSTING_CONTACT_STATUS_EXHAUSTED,
+        ),
+    ).fetchone()
+    return int(row[0] or 0)
+
+
+def _shortlist_existing_intended_contacts(
+    connection: sqlite3.Connection,
+    *,
+    job_posting_id: str,
+    current_time: str,
+) -> list[dict[str, str]]:
+    rows = connection.execute(
+        """
+        SELECT job_posting_contact_id, contact_id, link_level_status
+        FROM job_posting_contacts
+        WHERE job_posting_id = ?
+          AND is_in_intended_outreach_set = 1
+          AND removed_from_intended_outreach_set_at IS NULL
+          AND link_level_status IN (?, ?)
+        ORDER BY
+          COALESCE(contact_source_priority_tier, 999) ASC,
+          COALESCE(contact_source_rank, 999999) ASC,
+          created_at ASC,
+          job_posting_contact_id ASC
+        """,
+        (
+            job_posting_id,
+            POSTING_CONTACT_STATUS_IDENTIFIED,
+            POSTING_CONTACT_STATUS_SHORTLISTED,
+        ),
+    ).fetchall()
+    materialized: list[dict[str, str]] = []
+    for row in rows:
+        job_posting_contact_id = str(row["job_posting_contact_id"])
+        contact_id = str(row["contact_id"])
+        previous_status = str(row["link_level_status"])
+        if previous_status == POSTING_CONTACT_STATUS_IDENTIFIED:
+            connection.execute(
+                """
+                UPDATE job_posting_contacts
+                SET link_level_status = ?, updated_at = ?
+                WHERE job_posting_contact_id = ?
+                """,
+                (
+                    POSTING_CONTACT_STATUS_SHORTLISTED,
+                    current_time,
+                    job_posting_contact_id,
+                ),
+            )
+        materialized.append(
+            {
+                "job_posting_contact_id": job_posting_contact_id,
+                "contact_id": contact_id,
+            }
+        )
+    return materialized
 
 
 def _load_search_ready_posting(
@@ -4013,7 +4135,28 @@ def is_role_targeted_people_search_actionable_now(
     connection: sqlite3.Connection,
     *,
     current_time: str,
+    job_posting_id: str | None = None,
 ) -> bool:
+    if job_posting_id:
+        pending_seeded_count = int(
+            connection.execute(
+                """
+                SELECT COUNT(*)
+                FROM job_posting_contacts
+                WHERE job_posting_id = ?
+                  AND is_in_intended_outreach_set = 1
+                  AND removed_from_intended_outreach_set_at IS NULL
+                  AND link_level_status = ?
+                """,
+                (
+                    job_posting_id,
+                    POSTING_CONTACT_STATUS_IDENTIFIED,
+                ),
+            ).fetchone()[0]
+            or 0
+        )
+        if pending_seeded_count > 0:
+            return True
     return (
         not _provider_cooldown_active(
             connection,
@@ -6009,16 +6152,30 @@ def _materialize_shortlisted_candidate(
         job_posting_contact_id = str(existing_link[0]["job_posting_contact_id"])
         previous_status = str(existing_link[0]["link_level_status"])
         new_status = _promote_link_status(previous_status)
+        apollo_rank = _next_apollo_top_up_rank(
+            connection,
+            job_posting_id=str(posting_row["job_posting_id"]),
+        )
         connection.execute(
             """
             UPDATE job_posting_contacts
-            SET recipient_type = ?, relevance_reason = ?, link_level_status = ?, updated_at = ?
+            SET recipient_type = ?, relevance_reason = ?, link_level_status = ?,
+                contact_source_type = COALESCE(contact_source_type, ?),
+                contact_source_priority_tier = COALESCE(contact_source_priority_tier, ?),
+                contact_source_rank = COALESCE(contact_source_rank, ?),
+                is_in_intended_outreach_set = COALESCE(is_in_intended_outreach_set, 1),
+                entered_intended_outreach_set_at = COALESCE(entered_intended_outreach_set_at, ?),
+                updated_at = ?
             WHERE job_posting_contact_id = ?
             """,
             (
                 candidate.recipient_type,
                 candidate.relevance_reason,
                 new_status,
+                CONTACT_SOURCE_TYPE_APOLLO_TOPUP,
+                CONTACT_SOURCE_PRIORITY_TIER_APOLLO_TOPUP,
+                apollo_rank,
+                current_time,
                 current_time,
                 job_posting_contact_id,
             ),
@@ -6040,12 +6197,19 @@ def _materialize_shortlisted_candidate(
     else:
         job_posting_contact_id = new_canonical_id("job_posting_contacts")
         timestamps = lifecycle_timestamps(current_time)
+        apollo_rank = _next_apollo_top_up_rank(
+            connection,
+            job_posting_id=str(posting_row["job_posting_id"]),
+        )
         connection.execute(
             """
             INSERT INTO job_posting_contacts (
               job_posting_contact_id, job_posting_id, contact_id, recipient_type, relevance_reason,
-              link_level_status, created_at, updated_at
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+              link_level_status, lead_contact_id, contact_source_type,
+              contact_source_priority_tier, contact_source_rank,
+              is_in_intended_outreach_set, entered_intended_outreach_set_at,
+              created_at, updated_at
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """,
             (
                 job_posting_contact_id,
@@ -6054,6 +6218,12 @@ def _materialize_shortlisted_candidate(
                 candidate.recipient_type,
                 candidate.relevance_reason,
                 POSTING_CONTACT_STATUS_SHORTLISTED,
+                None,
+                CONTACT_SOURCE_TYPE_APOLLO_TOPUP,
+                CONTACT_SOURCE_PRIORITY_TIER_APOLLO_TOPUP,
+                apollo_rank,
+                1,
+                current_time,
                 timestamps["created_at"],
                 timestamps["updated_at"],
             ),
@@ -6084,6 +6254,26 @@ def _materialize_shortlisted_candidate(
         "contact_id": contact_id,
         "job_posting_contact_id": job_posting_contact_id,
     }
+
+
+def _next_apollo_top_up_rank(
+    connection: sqlite3.Connection,
+    *,
+    job_posting_id: str,
+) -> int:
+    row = connection.execute(
+        """
+        SELECT MAX(COALESCE(contact_source_rank, 0))
+        FROM job_posting_contacts
+        WHERE job_posting_id = ?
+          AND contact_source_type = ?
+        """,
+        (
+            job_posting_id,
+            CONTACT_SOURCE_TYPE_APOLLO_TOPUP,
+        ),
+    ).fetchone()
+    return int(row[0] or 0) + 1
 
 
 def _find_reusable_contact(

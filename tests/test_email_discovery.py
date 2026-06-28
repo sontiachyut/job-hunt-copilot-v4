@@ -43,6 +43,7 @@ from job_hunt_copilot.email_discovery import (
     load_provider_budget_summary,
     refresh_same_company_contact_frontier,
     replay_historical_people_search_shortlist,
+    is_role_targeted_people_search_actionable_now,
     run_apollo_contact_enrichment,
     run_apollo_people_search,
     run_email_discovery_for_contact,
@@ -239,6 +240,7 @@ def test_select_initial_enrichment_shortlist_prefers_managers_then_senior_engine
         "pp_e1",
         "pp_e3",
         "pp_e2",
+        "pp_r1",
     ]
 
 
@@ -490,6 +492,10 @@ def seed_linked_contact(
     provider_name: str | None = PROVIDER_NAME_APOLLO,
     provider_person_id: str | None = "pp_target",
     identity_key: str = "apollo_person|pp_target",
+    contact_source_type: str | None = None,
+    contact_source_priority_tier: int | None = None,
+    contact_source_rank: int | None = None,
+    is_in_intended_outreach_set: int = 0,
     created_at: str = "2026-04-06T21:30:00Z",
 ) -> None:
     connection.execute(
@@ -528,8 +534,10 @@ def seed_linked_contact(
         """
         INSERT INTO job_posting_contacts (
           job_posting_contact_id, job_posting_id, contact_id, recipient_type, relevance_reason,
-          link_level_status, created_at, updated_at
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+          link_level_status, contact_source_type, contact_source_priority_tier,
+          contact_source_rank, is_in_intended_outreach_set, entered_intended_outreach_set_at,
+          created_at, updated_at
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         """,
         (
             job_posting_contact_id,
@@ -538,6 +546,11 @@ def seed_linked_contact(
             recipient_type,
             "Selected contact for person-scoped discovery.",
             link_level_status,
+            contact_source_type,
+            contact_source_priority_tier,
+            contact_source_rank,
+            is_in_intended_outreach_set,
+            created_at if is_in_intended_outreach_set else None,
             created_at,
             created_at,
         ),
@@ -738,31 +751,25 @@ def test_apollo_people_search_persists_broad_result_and_shortlists_only_selected
     assert payload["resolved_company"]["organization_id"] == "org_acme"
     assert payload["search_anchor"] == "organization_id"
     assert payload["candidate_count"] == 9
-    assert len(payload["shortlisted_contact_ids"]) == 9
+    assert payload["apollo_top_up_needed"] == 5
+    assert payload["apollo_top_up_added_count"] == 5
+    assert len(payload["shortlisted_contact_ids"]) == 5
 
     shortlist_candidates = [candidate for candidate in payload["candidates"] if candidate.get("contact_id")]
     shortlist_provider_ids = {candidate["provider_person_id"] for candidate in shortlist_candidates}
-    assert shortlist_provider_ids == {
-        "pp_r1",
-        "pp_r2",
-        "pp_r3",
-        "pp_m1",
-        "pp_m2",
-        "pp_m3",
-        "pp_e1",
-        "pp_e2",
-        "pp_o1",
-    }
+    assert len(shortlist_provider_ids) == 5
+    assert {"pp_m1", "pp_m2", "pp_m3", "pp_e1"} <= shortlist_provider_ids
+    assert {"pp_r1", "pp_r2", "pp_r3"} & shortlist_provider_ids == set()
 
     sparse_candidate = next(candidate for candidate in payload["candidates"] if candidate["provider_person_id"] == "pp_r1")
     assert sparse_candidate["display_name"] == "Isaiah Lo***e"
     assert sparse_candidate["full_name"] is None
     assert sparse_candidate["name_quality"] == "provider_obfuscated"
 
-    assert connection.execute("SELECT COUNT(*) FROM contacts").fetchone()[0] == 9
-    assert connection.execute("SELECT COUNT(*) FROM job_posting_contacts").fetchone()[0] == 9
-    assert connection.execute("SELECT COUNT(*) FROM contact_provider_profiles").fetchone()[0] == 9
-    assert connection.execute("SELECT COUNT(*) FROM contact_employment_history").fetchone()[0] == 1
+    assert connection.execute("SELECT COUNT(*) FROM contacts").fetchone()[0] == 5
+    assert connection.execute("SELECT COUNT(*) FROM job_posting_contacts").fetchone()[0] == 5
+    assert connection.execute("SELECT COUNT(*) FROM contact_provider_profiles").fetchone()[0] == 5
+    assert connection.execute("SELECT COUNT(*) FROM contact_employment_history").fetchone()[0] == 0
     provider_context_row = connection.execute(
         """
         SELECT provider_name, context_stage, provider_organization_id
@@ -784,24 +791,7 @@ def test_apollo_people_search_persists_broad_result_and_shortlists_only_selected
         LIMIT 1
         """
     ).fetchone()
-    assert dict(provider_profile_row) == {
-        "provider_name": PROVIDER_NAME_APOLLO,
-        "profile_stage": "apollo_search",
-        "provider_person_id": "pp_r1",
-    }
-    history_row = connection.execute(
-        """
-        SELECT company_label, role_title, is_current
-        FROM contact_employment_history
-        ORDER BY source_sort_index ASC
-        LIMIT 1
-        """
-    ).fetchone()
-    assert dict(history_row) == {
-        "company_label": "Acme Robotics",
-        "role_title": "Corporate Recruiter",
-        "is_current": 1,
-    }
+    assert provider_profile_row is None
     assert connection.execute(
         "SELECT COUNT(*) FROM contacts WHERE provider_person_id = 'pp_o1'"
     ).fetchone()[0] == 1
@@ -816,11 +806,9 @@ def test_apollo_people_search_persists_broad_result_and_shortlists_only_selected
             """
         ).fetchall()
     }
-    assert recipient_counts == {
-        RECIPIENT_TYPE_ENGINEER: 2,
-        RECIPIENT_TYPE_HIRING_MANAGER: 4,
-        RECIPIENT_TYPE_RECRUITER: 3,
-    }
+    assert recipient_counts[RECIPIENT_TYPE_HIRING_MANAGER] >= 3
+    assert recipient_counts[RECIPIENT_TYPE_ENGINEER] >= 1
+    assert RECIPIENT_TYPE_RECRUITER not in recipient_counts
     assert all(
         row["link_level_status"] == POSTING_CONTACT_STATUS_SHORTLISTED
         for row in connection.execute("SELECT link_level_status FROM job_posting_contacts").fetchall()
@@ -968,6 +956,259 @@ def test_apollo_people_search_reuses_existing_contact_and_promotes_identified_li
     assert transition["new_state"] == POSTING_CONTACT_STATUS_SHORTLISTED
     assert transition["caused_by"] == "email_discovery"
 
+    connection.close()
+
+
+def test_apollo_people_search_shortlists_seeded_intended_contacts_without_provider_topup(tmp_path: Path):
+    project_root = bootstrap_project(tmp_path)
+    paths = ProjectPaths.from_root(project_root)
+    connection = connect_database(project_root / "job_hunt_copilot.db")
+    seed_search_ready_posting(connection, paths)
+    for index, recipient_type in enumerate(
+        (
+            RECIPIENT_TYPE_HIRING_MANAGER,
+            RECIPIENT_TYPE_ENGINEER,
+            RECIPIENT_TYPE_RECRUITER,
+            RECIPIENT_TYPE_ENGINEER,
+            RECIPIENT_TYPE_HIRING_MANAGER,
+        ),
+        start=1,
+    ):
+        seed_linked_contact(
+            connection,
+            contact_id=f"ct_seed_{index}",
+            job_posting_contact_id=f"jpc_seed_{index}",
+            display_name=f"Seeded Contact {index}",
+            recipient_type=recipient_type,
+            provider_name=None,
+            provider_person_id=None,
+            identity_key=f"jobright|seeded|{index}",
+            contact_source_type="jobright_public",
+            contact_source_priority_tier=2,
+            contact_source_rank=index,
+            link_level_status=POSTING_CONTACT_STATUS_IDENTIFIED,
+            is_in_intended_outreach_set=1,
+            created_at=f"2026-04-06T21:3{index}:00Z",
+        )
+
+    provider = FakeApolloProvider(
+        resolved_company=ApolloResolvedCompany(
+            organization_id="org_should_not_run",
+            organization_name="Acme Robotics",
+        ),
+        candidates=[
+            build_candidate(
+                provider_person_id="pp_unused",
+                display_name="Should Not Run",
+                title="Engineering Manager",
+            )
+        ],
+    )
+    result = run_apollo_people_search(
+        project_root=project_root,
+        job_posting_id="jp_search",
+        provider=provider,
+    )
+
+    assert provider.resolve_calls == []
+    assert provider.search_calls == []
+    assert len(result.shortlisted_contact_ids) == 5
+    assert set(result.shortlisted_contact_ids) == {f"ct_seed_{index}" for index in range(1, 6)}
+
+    payload = json.loads(result.artifact_path.read_text(encoding="utf-8"))
+    assert payload["apollo_top_up_needed"] == 0
+    assert payload["apollo_top_up_added_count"] == 0
+    assert payload["candidate_count"] == 0
+    assert len(payload["seeded_shortlist_contact_ids"]) == 5
+
+    shortlisted_rows = connection.execute(
+        """
+        SELECT contact_id, link_level_status
+        FROM job_posting_contacts
+        WHERE job_posting_id = 'jp_search'
+        ORDER BY contact_id ASC
+        """
+    ).fetchall()
+    assert all(row["link_level_status"] == POSTING_CONTACT_STATUS_SHORTLISTED for row in shortlisted_rows)
+    connection.close()
+
+
+def test_apollo_people_search_reuses_caller_connection_when_transaction_is_already_open(tmp_path: Path):
+    project_root = bootstrap_project(tmp_path)
+    paths = ProjectPaths.from_root(project_root)
+    connection = connect_database(project_root / "job_hunt_copilot.db")
+    seed_search_ready_posting(connection, paths)
+    connection.execute(
+        """
+        UPDATE job_postings
+        SET updated_at = ?
+        WHERE job_posting_id = 'jp_search'
+        """,
+        ("2026-04-06T21:33:00Z",),
+    )
+
+    provider = FakeApolloProvider(
+        resolved_company=ApolloResolvedCompany(
+            organization_id="org_acme",
+            organization_name="Acme Robotics",
+            primary_domain="acmerobotics.com",
+        ),
+        candidates=[
+            build_candidate(
+                provider_person_id="pp_txn",
+                display_name="Priya Recruiter",
+                title="Technical Recruiter",
+            )
+        ],
+    )
+
+    result = run_apollo_people_search(
+        project_root=project_root,
+        job_posting_id="jp_search",
+        provider=provider,
+        connection=connection,
+        current_time="2026-04-06T21:34:00Z",
+    )
+
+    assert len(result.shortlisted_contact_ids) == 1
+    assert provider.resolve_calls
+    assert provider.search_calls
+    assert connection.execute(
+        """
+        SELECT link_level_status
+        FROM job_posting_contacts
+        WHERE job_posting_id = 'jp_search'
+        """
+    ).fetchone()[0] == POSTING_CONTACT_STATUS_SHORTLISTED
+
+    connection.close()
+
+
+def test_apollo_people_search_tops_up_seeded_contacts_only_to_five(tmp_path: Path):
+    project_root = bootstrap_project(tmp_path)
+    paths = ProjectPaths.from_root(project_root)
+    connection = connect_database(project_root / "job_hunt_copilot.db")
+    seed_search_ready_posting(connection, paths)
+    for index, recipient_type in enumerate(
+        (
+            RECIPIENT_TYPE_HIRING_MANAGER,
+            RECIPIENT_TYPE_ENGINEER,
+            RECIPIENT_TYPE_RECRUITER,
+        ),
+        start=1,
+    ):
+        seed_linked_contact(
+            connection,
+            contact_id=f"ct_seed_gap_{index}",
+            job_posting_contact_id=f"jpc_seed_gap_{index}",
+            display_name=f"Gap Seeded Contact {index}",
+            recipient_type=recipient_type,
+            provider_name=None,
+            provider_person_id=None,
+            identity_key=f"jobright|gap|{index}",
+            contact_source_type="jobright_public",
+            contact_source_priority_tier=2,
+            contact_source_rank=index,
+            link_level_status=POSTING_CONTACT_STATUS_IDENTIFIED,
+            is_in_intended_outreach_set=1,
+            created_at=f"2026-04-06T21:4{index}:00Z",
+        )
+
+    provider = FakeApolloProvider(
+        resolved_company=ApolloResolvedCompany(
+            organization_id="org_acme",
+            organization_name="Acme Robotics",
+            primary_domain="acmerobotics.com",
+        ),
+        candidates=[
+            build_candidate(
+                provider_person_id="pp_topup_1",
+                display_name="Apollo Manager",
+                title="Engineering Manager",
+            ),
+            build_candidate(
+                provider_person_id="pp_topup_2",
+                display_name="Apollo Engineer",
+                title="Senior Software Engineer",
+            ),
+            build_candidate(
+                provider_person_id="pp_topup_3",
+                display_name="Apollo Recruiter",
+                title="Technical Recruiter",
+            ),
+        ],
+    )
+    result = run_apollo_people_search(
+        project_root=project_root,
+        job_posting_id="jp_search",
+        provider=provider,
+    )
+
+    assert len(provider.resolve_calls) == 1
+    assert len(provider.search_calls) == 1
+    assert len(result.shortlisted_contact_ids) == 5
+
+    payload = json.loads(result.artifact_path.read_text(encoding="utf-8"))
+    assert payload["apollo_top_up_needed"] == 2
+    assert payload["apollo_top_up_added_count"] == 2
+    assert payload["candidate_count"] == 3
+
+    source_rows = connection.execute(
+        """
+        SELECT contact_source_type, COUNT(*) AS row_count
+        FROM job_posting_contacts
+        WHERE job_posting_id = 'jp_search'
+        GROUP BY contact_source_type
+        ORDER BY contact_source_type ASC
+        """
+    ).fetchall()
+    assert [dict(row) for row in source_rows] == [
+        {"contact_source_type": "apollo_topup", "row_count": 2},
+        {"contact_source_type": "jobright_public", "row_count": 3},
+    ]
+    connection.close()
+
+
+def test_people_search_remains_actionable_for_pending_seeded_contacts_even_when_apollo_is_paused(
+    tmp_path: Path,
+):
+    project_root = bootstrap_project(tmp_path)
+    paths = ProjectPaths.from_root(project_root)
+    connection = connect_database(project_root / "job_hunt_copilot.db")
+    seed_search_ready_posting(connection, paths)
+    seed_linked_contact(
+        connection,
+        contact_id="ct_seed_actionable",
+        job_posting_contact_id="jpc_seed_actionable",
+        recipient_type=RECIPIENT_TYPE_RECRUITER,
+        provider_name=None,
+        provider_person_id=None,
+        identity_key="jobright|seed|actionable",
+        contact_source_type="jobright_public",
+        contact_source_priority_tier=2,
+        contact_source_rank=1,
+        link_level_status=POSTING_CONTACT_STATUS_IDENTIFIED,
+        is_in_intended_outreach_set=1,
+    )
+    connection.execute(
+        """
+        INSERT INTO provider_budget_state (
+          provider_name, cooldown_until, updated_at
+        ) VALUES (?, ?, ?)
+        """,
+        (
+            PROVIDER_NAME_APOLLO,
+            "2026-04-07T00:00:00Z",
+            "2026-04-06T22:00:00Z",
+        ),
+    )
+    connection.commit()
+
+    assert is_role_targeted_people_search_actionable_now(
+        connection,
+        current_time="2026-04-06T22:10:00Z",
+        job_posting_id="jp_search",
+    ) is True
     connection.close()
 
 
@@ -1133,11 +1374,11 @@ def test_refresh_same_company_contact_frontier_exhausts_reused_contact_and_backf
     )
     assert len(initial.shortlisted_contact_ids) == 3
 
-    recruiter_contact_id = connection.execute(
+    reused_contact_id = connection.execute(
         """
         SELECT contact_id
         FROM contacts
-        WHERE provider_person_id = 'pp_r1'
+        WHERE provider_person_id = 'pp_m1'
         """
     ).fetchone()["contact_id"]
     connection.execute(
@@ -1150,8 +1391,8 @@ def test_refresh_same_company_contact_frontier_exhausts_reused_contact_and_backf
         (
             "jpc_other_r1",
             "jp_other",
-            recruiter_contact_id,
-            RECIPIENT_TYPE_RECRUITER,
+            reused_contact_id,
+            RECIPIENT_TYPE_HIRING_MANAGER,
             "Previously used on another posting.",
             POSTING_CONTACT_STATUS_OUTREACH_DONE,
             "2026-04-05T18:00:00Z",
@@ -1167,9 +1408,9 @@ def test_refresh_same_company_contact_frontier_exhausts_reused_contact_and_backf
         """,
         (
             "msg_other_r1",
-            recruiter_contact_id,
+            reused_contact_id,
             "role_targeted",
-            "taylor@acmerobotics.com",
+            "morgan@acmerobotics.com",
             "sent",
             "jp_other",
             "jpc_other_r1",
@@ -1206,7 +1447,8 @@ def test_refresh_same_company_contact_frontier_exhausts_reused_contact_and_backf
         """
     ).fetchall()
     statuses_by_provider = {str(row["provider_person_id"]): str(row["link_level_status"]) for row in primary_links}
-    assert statuses_by_provider["pp_r1"] == POSTING_CONTACT_STATUS_EXHAUSTED
+    assert statuses_by_provider["pp_m1"] == POSTING_CONTACT_STATUS_EXHAUSTED
+    assert statuses_by_provider["pp_r1"] == POSTING_CONTACT_STATUS_SHORTLISTED
     assert "pp_e2" in statuses_by_provider
     active_count = connection.execute(
         """
@@ -1585,7 +1827,7 @@ def test_apollo_contact_enrichment_settles_full_shortlisted_set_when_posting_is_
     connection.close()
 
 
-def test_apollo_contact_enrichment_exhausts_shortlisted_contacts_when_apollo_returns_no_email(
+def test_apollo_contact_enrichment_keeps_shortlisted_contacts_when_apollo_returns_no_email(
     tmp_path: Path,
 ):
     project_root = bootstrap_project(tmp_path)
@@ -1651,7 +1893,7 @@ def test_apollo_contact_enrichment_exhausts_shortlisted_contacts_when_apollo_ret
         current_time="2026-04-06T22:30:00Z",
     )
 
-    exhausted_rows = connection.execute(
+    enriched_rows = connection.execute(
         """
         SELECT c.provider_person_id, c.contact_status, c.discovery_summary, jpc.link_level_status
         FROM contacts c
@@ -1661,18 +1903,18 @@ def test_apollo_contact_enrichment_exhausts_shortlisted_contacts_when_apollo_ret
         ORDER BY c.provider_person_id ASC
         """
     ).fetchall()
-    assert [dict(row) for row in exhausted_rows] == [
+    assert [dict(row) for row in enriched_rows] == [
         {
             "provider_person_id": "pp_e1",
-            "contact_status": CONTACT_STATUS_EXHAUSTED,
-            "discovery_summary": DISCOVERY_SUMMARY_APOLLO_NO_USABLE_EMAIL,
-            "link_level_status": POSTING_CONTACT_STATUS_EXHAUSTED,
+            "contact_status": CONTACT_STATUS_IDENTIFIED,
+            "discovery_summary": "Apollo enrichment matched this contact as `Staff Software Engineer`.",
+            "link_level_status": POSTING_CONTACT_STATUS_SHORTLISTED,
         },
         {
             "provider_person_id": "pp_m1",
-            "contact_status": CONTACT_STATUS_EXHAUSTED,
-            "discovery_summary": DISCOVERY_SUMMARY_APOLLO_NO_USABLE_EMAIL,
-            "link_level_status": POSTING_CONTACT_STATUS_EXHAUSTED,
+            "contact_status": CONTACT_STATUS_IDENTIFIED,
+            "discovery_summary": "Apollo enrichment matched this contact as `Engineering Manager`.",
+            "link_level_status": POSTING_CONTACT_STATUS_SHORTLISTED,
         },
     ]
     assert result.posting_status == "requires_contacts"
