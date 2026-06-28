@@ -20,6 +20,7 @@ from job_hunt_copilot.chat_runtime import (
 import job_hunt_copilot.maintenance as maintenance_runtime
 import job_hunt_copilot.local_runtime as local_runtime
 from job_hunt_copilot.delivery_feedback import DeliveryFeedbackSignal, GmailMailboxFeedbackObserver
+from job_hunt_copilot.email_discovery import ConfiguredApolloClient
 from job_hunt_copilot.maintenance import (
     MaintenanceDependencies,
     MaintenancePlan,
@@ -124,11 +125,17 @@ def test_supervisor_dependencies_default_to_gmail_outreach_sender_when_available
     project_root = tmp_path / "repo"
     project_root.mkdir()
     create_minimal_project(project_root)
+    (project_root / "secrets" / "apollo_keys.json").write_text(
+        json.dumps({"api_key": "apollo-key"}) + "\n",
+        encoding="utf-8",
+    )
     run_bootstrap(project_root=project_root)
     paths = ProjectPaths.from_root(project_root)
 
     resolved = local_runtime._resolve_supervisor_action_dependencies(paths, None)
 
+    assert isinstance(resolved.apollo_people_search_provider, ConfiguredApolloClient)
+    assert isinstance(resolved.apollo_contact_enrichment_provider, ConfiguredApolloClient)
     assert isinstance(resolved.outreach_sender, GmailApiOutreachSender)
     assert isinstance(resolved.feedback_observer, GmailMailboxFeedbackObserver)
 

@@ -25,6 +25,7 @@ from .delivery_feedback import (
     MailboxFeedbackObserver,
     sync_delivery_feedback,
 )
+from .email_discovery import ConfiguredApolloClient, EmailDiscoveryError
 from .gmail_alerts import (
     GmailLinkedInAlertMailboxCollector,
     gmail_mailbox_polling_configured,
@@ -324,6 +325,17 @@ def _default_jobright_recommendation_collector(
     return JobrightRecommendationCollector(session_client)
 
 
+def _default_apollo_client(
+    paths: ProjectPaths,
+) -> ConfiguredApolloClient | None:
+    try:
+        return ConfiguredApolloClient.from_paths(paths)
+    except EmailDiscoveryError as exc:
+        if exc.reason_code in {"missing_apollo_secret", "missing_apollo_api_key"}:
+            return None
+        raise
+
+
 def _default_outreach_sender(
     paths: ProjectPaths,
 ) -> GmailApiOutreachSender | None:
@@ -346,6 +358,7 @@ def _resolve_supervisor_action_dependencies(
 ) -> SupervisorActionDependencies:
     default_gmail_alert_collector = _default_gmail_alert_collector(paths)
     default_jobright_recommendation_collector = _default_jobright_recommendation_collector(paths)
+    default_apollo_client = _default_apollo_client(paths)
     default_outreach_sender = _default_outreach_sender(paths)
     default_feedback_observer = _default_feedback_observer(paths)
     default_maintenance_dependencies = _default_maintenance_dependencies(paths)
@@ -353,6 +366,8 @@ def _resolve_supervisor_action_dependencies(
         return SupervisorActionDependencies(
             gmail_alert_collector=default_gmail_alert_collector,
             jobright_recommendation_collector=default_jobright_recommendation_collector,
+            apollo_people_search_provider=default_apollo_client,
+            apollo_contact_enrichment_provider=default_apollo_client,
             outreach_sender=default_outreach_sender,
             feedback_observer=default_feedback_observer,
             maintenance_dependencies=default_maintenance_dependencies
@@ -363,6 +378,12 @@ def _resolve_supervisor_action_dependencies(
     resolved_jobright_recommendation_collector = action_dependencies.jobright_recommendation_collector
     if resolved_jobright_recommendation_collector is None:
         resolved_jobright_recommendation_collector = default_jobright_recommendation_collector
+    resolved_apollo_people_search_provider = action_dependencies.apollo_people_search_provider
+    if resolved_apollo_people_search_provider is None:
+        resolved_apollo_people_search_provider = default_apollo_client
+    resolved_apollo_contact_enrichment_provider = action_dependencies.apollo_contact_enrichment_provider
+    if resolved_apollo_contact_enrichment_provider is None:
+        resolved_apollo_contact_enrichment_provider = default_apollo_client
 
     resolved_maintenance_dependencies = action_dependencies.maintenance_dependencies
     if resolved_maintenance_dependencies is None:
@@ -376,6 +397,8 @@ def _resolve_supervisor_action_dependencies(
     if (
         resolved_gmail_alert_collector is action_dependencies.gmail_alert_collector
         and resolved_jobright_recommendation_collector is action_dependencies.jobright_recommendation_collector
+        and resolved_apollo_people_search_provider is action_dependencies.apollo_people_search_provider
+        and resolved_apollo_contact_enrichment_provider is action_dependencies.apollo_contact_enrichment_provider
         and resolved_outreach_sender is action_dependencies.outreach_sender
         and resolved_feedback_observer is action_dependencies.feedback_observer
         and resolved_maintenance_dependencies is action_dependencies.maintenance_dependencies
@@ -384,8 +407,8 @@ def _resolve_supervisor_action_dependencies(
     return SupervisorActionDependencies(
         gmail_alert_collector=resolved_gmail_alert_collector,
         jobright_recommendation_collector=resolved_jobright_recommendation_collector,
-        apollo_people_search_provider=action_dependencies.apollo_people_search_provider,
-        apollo_contact_enrichment_provider=action_dependencies.apollo_contact_enrichment_provider,
+        apollo_people_search_provider=resolved_apollo_people_search_provider,
+        apollo_contact_enrichment_provider=resolved_apollo_contact_enrichment_provider,
         recipient_profile_extractor=action_dependencies.recipient_profile_extractor,
         email_finder_providers=action_dependencies.email_finder_providers,
         outreach_sender=resolved_outreach_sender,
