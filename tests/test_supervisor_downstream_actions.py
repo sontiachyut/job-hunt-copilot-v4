@@ -8,6 +8,7 @@ from job_hunt_copilot.bootstrap import run_bootstrap
 from job_hunt_copilot.delivery_feedback import EVENT_STATE_NOT_BOUNCED, sync_delivery_feedback
 from job_hunt_copilot.email_discovery import DISCOVERY_OUTCOME_PROVIDER_ERROR, EmailDiscoveryError
 from job_hunt_copilot.outreach import (
+    DeterministicOutreachDraftRenderer,
     execute_role_targeted_send_set,
     generate_role_targeted_send_set_drafts,
 )
@@ -197,6 +198,18 @@ def seed_shortlisted_contact(
     provider_person_id: str | None = None,
     created_at: str = "2026-04-08T00:00:00Z",
 ) -> None:
+    normalized_display_name = display_name
+    normalized_recipient_type = recipient_type
+    normalized_position_title = position_title
+    # These supervisor tests were originally written against a recruiter-first lane.
+    # The current runtime auto-sends only leadership/technical contacts, so normalize
+    # legacy recruiter fixtures into manager-class contacts unless a test opts into a
+    # different recipient type explicitly.
+    if recipient_type == "recruiter":
+        normalized_display_name = display_name.replace("Recruiter", "Manager")
+        normalized_recipient_type = "hiring_manager"
+        normalized_position_title = "Engineering Manager"
+
     connection.execute(
         """
         INSERT INTO contacts (
@@ -206,14 +219,14 @@ def seed_shortlisted_contact(
         """,
         (
             contact_id,
-            f"{company_name.lower()}|{display_name.lower().replace(' ', '-')}",
-            display_name,
+            f"{company_name.lower()}|{normalized_display_name.lower().replace(' ', '-')}",
+            normalized_display_name,
             company_name,
             "email_discovery",
             contact_status,
-            display_name,
+            normalized_display_name,
             current_working_email,
-            position_title,
+            normalized_position_title,
             provider_person_id,
             created_at,
             created_at,
@@ -230,7 +243,7 @@ def seed_shortlisted_contact(
             job_posting_contact_id,
             job_posting_id,
             contact_id,
-            recipient_type,
+            normalized_recipient_type,
             "Selected for bounded supervisor discovery coverage.",
             link_level_status,
             created_at,
@@ -1118,9 +1131,8 @@ def test_people_search_stage_executes_and_advances_to_email_discovery(tmp_path: 
     assert updated_run.run_status == RUN_STATUS_IN_PROGRESS
     assert updated_run.current_stage == "email_discovery"
     assert posting_status == "requires_contacts"
-    assert len(shortlist_rows) == 4
-    assert {row["recipient_type"] for row in shortlist_rows} == {"recruiter", "hiring_manager", "engineer"}
-    assert sum(1 for row in shortlist_rows if row["recipient_type"] == "engineer") == 2
+    assert len(shortlist_rows) == 1
+    assert {row["recipient_type"] for row in shortlist_rows} == {"hiring_manager"}
     assert all(row["link_level_status"] == "shortlisted" for row in shortlist_rows)
     assert (project_root / people_search_artifact_path).exists()
 
@@ -1212,7 +1224,7 @@ def test_people_search_stage_succeeds_with_open_runtime_write_transaction(tmp_pa
     assert execution.incident is None
     assert updated_run is not None
     assert updated_run.current_stage == "email_discovery"
-    assert shortlist_count == 4
+    assert shortlist_count == 1
 
 
 def test_people_search_stage_escalates_cleanly_when_no_contacts_are_found(tmp_path: Path) -> None:
@@ -2933,8 +2945,8 @@ def test_sending_stage_returns_to_sending_when_future_untouched_contacts_remain(
         job_posting_contact_id="jpc_send_a1",
         job_posting_id=job_posting_id,
         company_name="Acme Robotics",
-        display_name="Alex Alumni",
-        recipient_type="alumni",
+        display_name="Alex Engineer",
+        recipient_type="engineer",
         current_working_email="alex@acme.example",
         position_title="Senior Software Engineer",
         created_at="2026-04-08T00:36:00Z",
@@ -3080,8 +3092,8 @@ def test_sending_stage_returns_to_email_discovery_when_later_contacts_need_email
         job_posting_contact_id="jpc_send_a1",
         job_posting_id=job_posting_id,
         company_name="Acme Robotics",
-        display_name="Alex Alumni",
-        recipient_type="alumni",
+        display_name="Alex Engineer",
+        recipient_type="engineer",
         current_working_email=None,
         position_title="Senior Software Engineer",
         created_at="2026-04-08T00:47:00Z",
@@ -3360,6 +3372,7 @@ def test_contact_rooted_general_learning_contact_is_selected_and_sent_without_pi
         started_at="2026-04-08T00:06:00Z",
         action_dependencies=SupervisorActionDependencies(
             outreach_sender=sender,
+            general_learning_draft_renderer=DeterministicOutreachDraftRenderer(),
             feedback_observer=observer,
         ),
     )
@@ -3495,6 +3508,7 @@ def test_contact_rooted_general_learning_email_discovery_advances_to_send_ready_
         started_at="2026-04-08T00:08:00Z",
         action_dependencies=SupervisorActionDependencies(
             outreach_sender=sender,
+            general_learning_draft_renderer=DeterministicOutreachDraftRenderer(),
             feedback_observer=observer,
         ),
     )
@@ -3587,6 +3601,7 @@ def test_contact_rooted_general_learning_delayed_feedback_is_left_to_feedback_wo
         started_at="2026-04-08T00:06:00Z",
         action_dependencies=SupervisorActionDependencies(
             outreach_sender=sender,
+            general_learning_draft_renderer=DeterministicOutreachDraftRenderer(),
         ),
     )
     message_row = connection.execute(
@@ -3669,6 +3684,7 @@ def test_contact_rooted_general_learning_delayed_feedback_records_not_bounced_an
         started_at="2026-04-08T00:06:00Z",
         action_dependencies=SupervisorActionDependencies(
             outreach_sender=sender,
+            general_learning_draft_renderer=DeterministicOutreachDraftRenderer(),
         ),
     )
     message_row = connection.execute(
@@ -4555,7 +4571,7 @@ def test_sending_run_waiting_for_next_day_quota_does_not_block_new_posting_boots
         job_posting_id=job_posting_id,
         company_name="Acme Robotics",
         display_name="Cap Four",
-        recipient_type="alumni",
+        recipient_type="engineer",
         current_working_email="cap4@acme.example",
         position_title="Senior Software Engineer",
         created_at="2026-04-08T00:05:00Z",
@@ -4567,7 +4583,7 @@ def test_sending_run_waiting_for_next_day_quota_does_not_block_new_posting_boots
         job_posting_id=job_posting_id,
         company_name="Acme Robotics",
         display_name="Cap Five",
-        recipient_type="other_internal",
+        recipient_type="engineer",
         current_working_email="cap5@acme.example",
         position_title="Senior Software Engineer",
         created_at="2026-04-08T00:06:00Z",

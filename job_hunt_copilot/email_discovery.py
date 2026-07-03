@@ -61,6 +61,11 @@ RECIPIENT_TYPE_FOUNDER = "founder"
 
 DEFAULT_SHORTLIST_LIMIT = 10
 MIN_INTENDED_CONTACT_TARGET = 5
+MAX_MANAGER_EXPANSION_CONTACT_TARGET = 10
+MID_MANAGER_EXPANSION_CONTACT_TARGET = 7
+LARGE_MANAGER_EXPANSION_CONTACT_TARGET = 10
+SMALL_MANAGER_EXPANSION_POOL_MAX = 5
+MID_MANAGER_EXPANSION_POOL_MAX = 10
 CONTACT_SOURCE_TYPE_APOLLO_TOPUP = "apollo_topup"
 CONTACT_SOURCE_PRIORITY_TIER_APOLLO_TOPUP = 3
 
@@ -1373,17 +1378,33 @@ def run_apollo_people_search(
             connection,
             job_posting_id=str(posting_row["job_posting_id"]),
         )
+        active_manager_contact_count = _count_active_manager_contacts(
+            connection,
+            job_posting_id=str(posting_row["job_posting_id"]),
+        )
+        active_apollo_manager_contact_count = _count_active_apollo_manager_contacts(
+            connection,
+            job_posting_id=str(posting_row["job_posting_id"]),
+        )
         apollo_top_up_needed = max(0, MIN_INTENDED_CONTACT_TARGET - active_intended_contact_count)
+        apollo_manager_search_needed = max(
+            0,
+            MAX_MANAGER_EXPANSION_CONTACT_TARGET - active_apollo_manager_contact_count,
+        )
         jd_text = _load_posting_jd(paths, posting_row)
-        effective_shortlist_limit = min(shortlist_limit, apollo_top_up_needed) if apollo_top_up_needed > 0 else 0
         search_filters = _build_apollo_search_filters(
             posting_row,
             jd_text=jd_text,
-            shortlist_limit=effective_shortlist_limit or shortlist_limit,
+            shortlist_limit=shortlist_limit,
+        )
+        search_filter_plan = _build_apollo_search_filter_plan(
+            posting_row,
+            jd_text=jd_text,
+            shortlist_limit=shortlist_limit,
         )
         company_domain = _derive_company_domain(posting_row)
         company_website = _derive_company_website(posting_row)
-        search_provider = provider if apollo_top_up_needed > 0 else None
+        search_provider = provider if apollo_manager_search_needed > 0 else None
         attempted_filters: list[dict[str, Any]] = []
         resolved_company_from_provider_call = False
         resolved_company = _reuse_persisted_apollo_company(
@@ -1392,7 +1413,7 @@ def run_apollo_people_search(
             posting_row=posting_row,
         )
         raw_candidates: Sequence[PeopleSearchCandidate | Mapping[str, Any]] = ()
-        if apollo_top_up_needed > 0:
+        if apollo_manager_search_needed > 0:
             if search_provider is None:
                 search_provider = ConfiguredApolloClient.from_paths(paths)
             try:
@@ -1438,33 +1459,12 @@ def run_apollo_people_search(
                             provider_observed_at=resolved_company.provider_observed_at,
                             current_time=timestamp,
                         )
-                attempted_filters.append(
-                    {
-                        "attempt": "primary",
-                        "search_filters": deepcopy(search_filters),
-                    }
-                )
-                _ensure_apollo_request_allowed(
-                    connection,
-                    endpoint_key=APOLLO_USAGE_ENDPOINT_PEOPLE_SEARCH,
-                    usage_provider=search_provider,
-                    current_time=timestamp,
-                    pipeline_run_id=pipeline_run_id,
-                    lead_id=str(posting_row["lead_id"]),
-                    job_posting_id=str(posting_row["job_posting_id"]),
-                )
-                raw_candidates = search_provider.search_people(
-                    company_name=posting_row["company_name"],
-                    resolved_company=resolved_company,
-                    search_filters=search_filters,
-                )
-                if not raw_candidates and search_filters.get("locations"):
-                    relaxed_filters = deepcopy(search_filters)
-                    relaxed_filters["locations"] = []
+                aggregated_raw_candidates: list[PeopleSearchCandidate | Mapping[str, Any]] = []
+                for plan_step in search_filter_plan:
                     attempted_filters.append(
                         {
-                            "attempt": "drop_location_after_zero_primary_candidates",
-                            "search_filters": deepcopy(relaxed_filters),
+                            "attempt": str(plan_step["pass_name"]),
+                            "search_filters": deepcopy(plan_step["search_filters"]),
                         }
                     )
                     _ensure_apollo_request_allowed(
@@ -1476,12 +1476,14 @@ def run_apollo_people_search(
                         lead_id=str(posting_row["lead_id"]),
                         job_posting_id=str(posting_row["job_posting_id"]),
                     )
-                    raw_candidates = search_provider.search_people(
-                        company_name=posting_row["company_name"],
-                        resolved_company=resolved_company,
-                        search_filters=relaxed_filters,
+                    aggregated_raw_candidates.extend(
+                        search_provider.search_people(
+                            company_name=posting_row["company_name"],
+                            resolved_company=resolved_company,
+                            search_filters=plan_step["search_filters"],
+                        )
                     )
-                    search_filters = relaxed_filters
+                raw_candidates = aggregated_raw_candidates
             except EmailDiscoveryError as exc:
                 with connection:
                     _persist_provider_budget_signal(
@@ -1495,13 +1497,22 @@ def run_apollo_people_search(
                         created_at=timestamp,
                     )
                 raise
-        candidates = tuple(_normalize_candidate_rows(raw_candidates))
-        shortlist = select_initial_enrichment_shortlist(
+        candidates = tuple(_dedupe_candidates(_normalize_candidate_rows(raw_candidates)))
+        ranked_candidates = _rank_shortlist_candidates(
             candidates,
-            limit=effective_shortlist_limit or shortlist_limit,
             connection=connection,
             posting_row=posting_row,
         )
+        eligible_manager_candidate_count = len(ranked_candidates)
+        manager_shortlist_target = _manager_expansion_target_for_pool_size(
+            eligible_manager_candidate_count
+        )
+        apollo_manager_needed = max(
+            0,
+            manager_shortlist_target - active_apollo_manager_contact_count,
+        )
+        effective_shortlist_limit = min(shortlist_limit, apollo_manager_needed) if apollo_manager_needed > 0 else 0
+        shortlist = tuple(ranked_candidates[:effective_shortlist_limit])
 
         shortlisted_contact_ids: list[str] = list(seeded_contact_ids)
         shortlisted_job_posting_contact_ids: list[str] = list(seeded_job_posting_contact_ids)
@@ -1552,7 +1563,13 @@ def run_apollo_people_search(
                 "seeded_shortlist_contact_ids": list(seeded_contact_ids),
                 "seeded_shortlist_job_posting_contact_ids": list(seeded_job_posting_contact_ids),
                 "active_intended_contact_count_before_top_up": active_intended_contact_count,
+                "active_manager_contact_count_before_top_up": active_manager_contact_count,
+                "active_apollo_manager_contact_count_before_top_up": active_apollo_manager_contact_count,
                 "apollo_top_up_needed": apollo_top_up_needed,
+                "apollo_manager_search_needed_before_search": apollo_manager_search_needed,
+                "eligible_manager_candidate_count": eligible_manager_candidate_count,
+                "manager_shortlist_target": manager_shortlist_target,
+                "apollo_manager_needed": apollo_manager_needed,
                 "apollo_top_up_added_count": len(shortlisted_contact_ids) - len(seeded_contact_ids),
                 "candidate_count": len(candidates),
                 "shortlisted_contact_ids": shortlisted_contact_ids,
@@ -2392,7 +2409,21 @@ def select_initial_enrichment_shortlist(
 ) -> tuple[PeopleSearchCandidate, ...]:
     if limit <= 0:
         raise EmailDiscoveryError("Shortlist limit must be greater than zero.")
+    return tuple(
+        _rank_shortlist_candidates(
+            candidates,
+            connection=connection,
+            posting_row=posting_row,
+        )[:limit]
+    )
 
+
+def _rank_shortlist_candidates(
+    candidates: Sequence[PeopleSearchCandidate],
+    *,
+    connection: sqlite3.Connection | None = None,
+    posting_row: Mapping[str, Any] | None = None,
+) -> list[PeopleSearchCandidate]:
     excluded_indices: set[int] = set()
     if connection is not None and posting_row is not None:
         excluded_indices = {
@@ -2405,49 +2436,109 @@ def select_initial_enrichment_shortlist(
             )
         }
 
-    ranked_candidates = sorted(
-        (
-            (index, candidate)
-            for index, candidate in enumerate(candidates)
-            if index not in excluded_indices
-            and _candidate_is_shortlist_eligible(candidate)
-        ),
-        key=lambda item: (_shortlist_priority_key(item[1]), item[0]),
+    eligible_candidates = [
+        (index, candidate)
+        for index, candidate in enumerate(candidates)
+        if index not in excluded_indices
+        and _candidate_is_shortlist_eligible(candidate)
+    ]
+    founder_priority_mode = _should_promote_founders_for_small_startup_pool(
+        candidate_count=len(eligible_candidates),
     )
-    selected_indices: list[int] = []
-    for index, _candidate in ranked_candidates:
-        selected_indices.append(index)
-        if len(selected_indices) >= limit:
-            break
+    ranked_candidates = sorted(
+        eligible_candidates,
+        key=lambda item: (
+            _shortlist_priority_key(item[1], founder_priority_mode=founder_priority_mode),
+            0 if item[1].has_email or _is_usable_email(item[1].email) else 1,
+            0 if item[1].full_name and not _name_is_obfuscated(item[1].full_name) else 1,
+            0 if item[1].linkedin_url else 1,
+            (item[1].display_name or "~").lower(),
+            item[0],
+        ),
+    )
+    return [candidate for _index, candidate in ranked_candidates]
 
-    return tuple(candidates[index] for index in selected_indices)
+
+def _manager_expansion_target_for_pool_size(eligible_manager_candidate_count: int) -> int:
+    if eligible_manager_candidate_count <= 0:
+        return 0
+    if eligible_manager_candidate_count <= SMALL_MANAGER_EXPANSION_POOL_MAX:
+        return eligible_manager_candidate_count
+    if eligible_manager_candidate_count <= MID_MANAGER_EXPANSION_POOL_MAX:
+        return MID_MANAGER_EXPANSION_CONTACT_TARGET
+    return LARGE_MANAGER_EXPANSION_CONTACT_TARGET
 
 
 def _candidate_is_shortlist_eligible(candidate: PeopleSearchCandidate) -> bool:
-    return candidate.recipient_type in {
-        RECIPIENT_TYPE_RECRUITER,
-        RECIPIENT_TYPE_HIRING_MANAGER,
-        RECIPIENT_TYPE_ENGINEER,
-        RECIPIENT_TYPE_OTHER_INTERNAL,
-        RECIPIENT_TYPE_FOUNDER,
-    }
+    return _candidate_is_manager_class(candidate)
 
 
-def _shortlist_priority_key(candidate: PeopleSearchCandidate) -> int:
+def _shortlist_priority_key(
+    candidate: PeopleSearchCandidate,
+    *,
+    founder_priority_mode: bool = False,
+) -> int:
+    normalized_title = (candidate.title or "").lower()
     recipient_type = candidate.recipient_type
-    if recipient_type == RECIPIENT_TYPE_HIRING_MANAGER:
+    if any(token in normalized_title for token in ("engineering manager", "hiring manager", "technical lead", "team lead")):
         return 0
-    if recipient_type == RECIPIENT_TYPE_ENGINEER and _is_senior_engineer_title(
-        (candidate.title or "").lower()
-    ):
+    if founder_priority_mode and recipient_type == RECIPIENT_TYPE_FOUNDER:
         return 1
-    if recipient_type == RECIPIENT_TYPE_ENGINEER:
+    if any(token in normalized_title for token in ("director", "head of engineering", "head of ", "vp", "vice president")):
         return 2
-    if recipient_type == RECIPIENT_TYPE_RECRUITER:
+    if any(token in normalized_title for token in ("cto", "chief technology", "chief engineering", "chief architect")):
         return 3
-    if recipient_type == RECIPIENT_TYPE_FOUNDER:
+    if any(token in normalized_title for token in ("lead engineer", "lead software engineer", "lead machine learning engineer", "lead platform engineer")):
         return 4
-    return 5
+    if recipient_type == RECIPIENT_TYPE_FOUNDER:
+        return 5
+    return 6
+
+
+def _should_promote_founders_for_small_startup_pool(*, candidate_count: int) -> bool:
+    return 0 < candidate_count <= SMALL_MANAGER_EXPANSION_POOL_MAX
+
+
+def _candidate_is_manager_class(candidate: PeopleSearchCandidate) -> bool:
+    normalized_title = (candidate.title or "").lower()
+    if not normalized_title:
+        return False
+    if any(token in normalized_title for token in ("founder", "co-founder", "cofounder")):
+        return True
+    if any(
+        token in normalized_title
+        for token in (
+            "recruit",
+            "talent",
+            "people ops",
+            "human resources",
+            "hr",
+            "support",
+            "customer success",
+            "qa",
+            "quality assurance",
+            "sales",
+            "marketing",
+            "finance",
+            "operations",
+            "program manager",
+            "product manager",
+        )
+    ):
+        return False
+    if any(token in normalized_title for token in ("manager", "director", "head", "vp", "vice president", "chief", "cto")):
+        return True
+    return any(
+        token in normalized_title
+        for token in (
+            "technical lead",
+            "team lead",
+            "lead engineer",
+            "lead software engineer",
+            "lead machine learning engineer",
+            "lead platform engineer",
+        )
+    )
 
 
 def _is_senior_engineer_title(title: str) -> bool:
@@ -2477,6 +2568,18 @@ def _normalize_candidate_rows(
         else:
             raise EmailDiscoveryError("Apollo candidate rows must be mappings or PeopleSearchCandidate values.")
     return normalized
+
+
+def _dedupe_candidates(candidates: Sequence[PeopleSearchCandidate]) -> list[PeopleSearchCandidate]:
+    deduped: list[PeopleSearchCandidate] = []
+    seen_keys: set[str] = set()
+    for candidate in candidates:
+        identity_key = candidate.provider_person_id or candidate.identity_key()
+        if identity_key in seen_keys:
+            continue
+        seen_keys.add(identity_key)
+        deduped.append(candidate)
+    return deduped
 
 
 def _candidate_has_prior_same_company_send(
@@ -2640,6 +2743,102 @@ def _count_active_intended_contacts(
     return int(row[0] or 0)
 
 
+def _count_active_manager_contacts(
+    connection: sqlite3.Connection,
+    *,
+    job_posting_id: str,
+) -> int:
+    rows = connection.execute(
+        """
+        SELECT jpc.recipient_type, c.position_title, c.apollo_current_title
+        FROM job_posting_contacts jpc
+        JOIN contacts c
+          ON c.contact_id = jpc.contact_id
+        WHERE jpc.job_posting_id = ?
+          AND jpc.is_in_intended_outreach_set = 1
+          AND jpc.removed_from_intended_outreach_set_at IS NULL
+          AND jpc.link_level_status <> ?
+        """,
+        (
+            job_posting_id,
+            POSTING_CONTACT_STATUS_EXHAUSTED,
+        ),
+    ).fetchall()
+    count = 0
+    for row in rows:
+        recipient_type = _normalize_optional_text(row["recipient_type"]) or ""
+        title = _normalize_optional_text(row["apollo_current_title"]) or _normalize_optional_text(row["position_title"]) or ""
+        if recipient_type == RECIPIENT_TYPE_HIRING_MANAGER:
+            count += 1
+            continue
+        candidate = PeopleSearchCandidate(
+            provider_person_id=None,
+            display_name="",
+            full_name=None,
+            linkedin_url=None,
+            title=title or None,
+            location=None,
+            has_email=False,
+            email=None,
+            has_direct_phone=False,
+            last_refreshed_at=None,
+            employment_history=(),
+            raw_payload=None,
+        )
+        if _candidate_is_manager_class(candidate):
+            count += 1
+    return count
+
+
+def _count_active_apollo_manager_contacts(
+    connection: sqlite3.Connection,
+    *,
+    job_posting_id: str,
+) -> int:
+    rows = connection.execute(
+        """
+        SELECT jpc.recipient_type, c.position_title, c.apollo_current_title
+        FROM job_posting_contacts jpc
+        JOIN contacts c
+          ON c.contact_id = jpc.contact_id
+        WHERE jpc.job_posting_id = ?
+          AND jpc.is_in_intended_outreach_set = 1
+          AND jpc.removed_from_intended_outreach_set_at IS NULL
+          AND jpc.link_level_status <> ?
+          AND jpc.contact_source_type = ?
+        """,
+        (
+            job_posting_id,
+            POSTING_CONTACT_STATUS_EXHAUSTED,
+            CONTACT_SOURCE_TYPE_APOLLO_TOPUP,
+        ),
+    ).fetchall()
+    count = 0
+    for row in rows:
+        recipient_type = _normalize_optional_text(row["recipient_type"]) or ""
+        title = _normalize_optional_text(row["apollo_current_title"]) or _normalize_optional_text(row["position_title"]) or ""
+        if recipient_type == RECIPIENT_TYPE_HIRING_MANAGER:
+            count += 1
+            continue
+        candidate = PeopleSearchCandidate(
+            provider_person_id=None,
+            display_name="",
+            full_name=None,
+            linkedin_url=None,
+            title=title or None,
+            location=None,
+            has_email=False,
+            email=None,
+            has_direct_phone=False,
+            last_refreshed_at=None,
+            employment_history=(),
+            raw_payload=None,
+        )
+        if _candidate_is_manager_class(candidate):
+            count += 1
+    return count
+
+
 def _shortlist_existing_intended_contacts(
     connection: sqlite3.Connection,
     *,
@@ -2655,6 +2854,12 @@ def _shortlist_existing_intended_contacts(
           AND removed_from_intended_outreach_set_at IS NULL
           AND link_level_status IN (?, ?)
         ORDER BY
+          CASE
+            WHEN contact_source_type = 'apollo_topup' THEN 0
+            WHEN contact_source_type IN ('jobright_personal_school', 'jobright_personal_company') THEN 1
+            WHEN contact_source_type = 'jobright_public' THEN 2
+            ELSE 9
+          END ASC,
           COALESCE(contact_source_priority_tier, 999) ASC,
           COALESCE(contact_source_rank, 999999) ASC,
           created_at ASC,
@@ -2859,49 +3064,16 @@ def _build_apollo_search_filters(
     shortlist_limit: int,
 ) -> dict[str, Any]:
     role_title = str(posting_row["role_title"]).strip()
-    location = _normalize_optional_text(posting_row["location"])
-    title_tokens = _role_title_tokens(role_title)
-    title_hints = [
-        role_title,
-        _normalize_engineer_title(role_title),
-        "Recruiter",
-        "Technical Recruiter",
-        "Talent Acquisition Partner",
-        "Engineering Manager",
-        "Director of Engineering",
-        "Head of Engineering",
-        "Software Engineer",
-    ]
-    if title_tokens:
-        title_hints.extend(
-            [
-                " ".join([token.capitalize() for token in title_tokens]),
-                " ".join([token.capitalize() for token in title_tokens] + ["Engineer"]),
-            ]
-        )
-
-    if "machine learning" in jd_text.lower() or "artificial intelligence" in jd_text.lower() or " ai " in f" {jd_text.lower()} ":
-        title_hints.extend(["Machine Learning Engineer", "AI Engineer"])
-
-    sanitized_title_hints = tuple(
-        sanitized
-        for sanitized in (
-            _sanitize_apollo_person_title_hint(title_hint)
-            for title_hint in title_hints
-        )
-        if sanitized
-    )
-
+    title_hints = _apollo_manager_title_hints(role_title, jd_text=jd_text)
     return {
-        "titles": _dedupe_preserve_order(sanitized_title_hints),
-        "functions": ["engineering", "recruiting"],
+        "titles": title_hints,
+        "functions": ["engineering"],
         "seniority_levels": _derive_seniority_levels(role_title, jd_text=jd_text),
-        "locations": [location] if _should_apply_apollo_location_filter(location) else [],
+        "locations": [],
         "target_classes": [
-            RECIPIENT_TYPE_RECRUITER,
             RECIPIENT_TYPE_HIRING_MANAGER,
             RECIPIENT_TYPE_ENGINEER,
-            RECIPIENT_TYPE_OTHER_INTERNAL,
+            RECIPIENT_TYPE_FOUNDER,
         ],
         "shortlist_policy": {
             "limit": shortlist_limit,
@@ -2924,12 +3096,229 @@ def _build_apollo_search_filters(
     }
 
 
+def _build_apollo_search_filter_plan(
+    posting_row: sqlite3.Row,
+    *,
+    jd_text: str,
+    shortlist_limit: int,
+) -> list[dict[str, Any]]:
+    combined_filters = _build_apollo_search_filters(
+        posting_row,
+        jd_text=jd_text,
+        shortlist_limit=shortlist_limit,
+    )
+    all_titles = list(combined_filters["titles"])
+    leadership_titles = [
+        title
+        for title in all_titles
+        if _candidate_is_manager_class(
+            PeopleSearchCandidate(
+                provider_person_id=None,
+                display_name="",
+                full_name=None,
+                linkedin_url=None,
+                title=title,
+                location=None,
+                has_email=False,
+                email=None,
+                has_direct_phone=False,
+                last_refreshed_at=None,
+                employment_history=(),
+                raw_payload=None,
+            )
+        )
+    ]
+    executive_titles = [
+        title
+        for title in all_titles
+        if _title_is_technical_cxo(title)
+    ]
+    founder_titles = _apollo_founder_title_hints()
+    broad_leadership_seniorities = _dedupe_preserve_order(
+        [
+            "manager",
+            "head",
+            "director",
+            "vp",
+            "c_suite",
+            *list(combined_filters["seniority_levels"]),
+        ]
+    )
+
+    def _plan_step(pass_name: str, titles: Sequence[str], seniorities: Sequence[str]) -> dict[str, Any]:
+        return {
+            "pass_name": pass_name,
+            "search_filters": {
+                **combined_filters,
+                "titles": list(titles),
+                "seniority_levels": list(seniorities),
+            },
+        }
+
+    plan = [
+        _plan_step("broad_engineering_leadership", (), broad_leadership_seniorities),
+        _plan_step("engineering_leadership_titles", leadership_titles, broad_leadership_seniorities),
+        _plan_step("technical_cxo_titles", executive_titles, ["c_suite", "vp", "head", "director"]),
+        _plan_step("founder_executive_titles", founder_titles, ["founder", "owner", "c_suite"]),
+    ]
+    deduped_plan: list[dict[str, Any]] = []
+    seen_signatures: set[tuple[tuple[str, ...], tuple[str, ...], tuple[str, ...]]] = set()
+    for plan_step in plan:
+        filters = plan_step["search_filters"]
+        signature = (
+            tuple(filters.get("titles") or ()),
+            tuple(filters.get("functions") or ()),
+            tuple(filters.get("seniority_levels") or ()),
+        )
+        if signature in seen_signatures:
+            continue
+        seen_signatures.add(signature)
+        deduped_plan.append(plan_step)
+    return deduped_plan
+
+
 def _derive_seniority_levels(role_title: str, *, jd_text: str) -> list[str]:
     normalized = f"{role_title} {jd_text}".lower()
-    seniority_levels = ["manager", "director", "senior", "individual_contributor"]
-    if "staff" in normalized or "principal" in normalized:
-        seniority_levels.insert(0, "staff")
+    seniority_levels = ["manager", "head", "director", "vp", "c_suite"]
+    if any(token in normalized for token in ("lead", "manager", "director", "head", "vp", "vice president", "chief")):
+        seniority_levels.insert(0, "senior")
     return _dedupe_preserve_order(seniority_levels)
+
+
+def _title_is_technical_cxo(title: str) -> bool:
+    lowered = title.lower()
+    if "chief technology officer" in lowered or "chief engineering officer" in lowered:
+        return True
+    title_tokens = {token.lower() for token in WORD_RE.findall(title)}
+    return "cto" in title_tokens
+
+
+def _apollo_manager_title_hints(role_title: str, *, jd_text: str) -> list[str]:
+    title_tokens = _role_title_tokens(role_title)
+    title_hints = [
+        "Engineering Manager",
+        "Software Engineering Manager",
+        "Senior Engineering Manager",
+        "Technical Lead",
+        "Team Lead",
+        "Lead Engineer",
+        "Lead Software Engineer",
+        "Director of Engineering",
+        "Engineering Director",
+        "Senior Director of Engineering",
+        "Head of Engineering",
+        "VP Engineering",
+        "Vice President Engineering",
+        "Vice President of Engineering",
+        "CTO",
+        "Chief Technology Officer",
+        "Chief Engineering Officer",
+        "Chief Architect",
+        "Chief Software Architect",
+    ]
+    if title_tokens:
+        normalized_tokens = [token.capitalize() for token in title_tokens]
+        title_hints.extend(
+            [
+                " ".join(normalized_tokens + ["Manager"]),
+                " ".join(normalized_tokens + ["Lead"]),
+                "Head of " + " ".join(normalized_tokens),
+                "Director of " + " ".join(normalized_tokens),
+                "Vice President of " + " ".join(normalized_tokens),
+            ]
+        )
+
+    jd_text_lower = jd_text.lower()
+    role_title_lower = role_title.lower()
+    if "platform" in jd_text_lower or "platform" in role_title_lower:
+        title_hints.extend(
+            [
+                "Platform Engineering Manager",
+                "Director of Platform Engineering",
+                "Head of Platform Engineering",
+                "VP Platform Engineering",
+            ]
+        )
+    if "backend" in jd_text_lower or "backend" in role_title_lower:
+        title_hints.extend(
+            [
+                "Backend Engineering Manager",
+                "Director of Backend Engineering",
+                "Head of Backend Engineering",
+                "VP Backend Engineering",
+            ]
+        )
+    if "infrastructure" in jd_text_lower or "infrastructure" in role_title_lower:
+        title_hints.extend(
+            [
+                "Infrastructure Engineering Manager",
+                "Director of Infrastructure Engineering",
+                "Head of Infrastructure Engineering",
+                "VP Infrastructure Engineering",
+            ]
+        )
+    if "data" in jd_text_lower or "data" in role_title_lower:
+        title_hints.extend(
+            [
+                "Data Engineering Manager",
+                "Director of Data Engineering",
+                "Head of Data Engineering",
+                "VP Data Engineering",
+            ]
+        )
+    if "machine learning" in jd_text_lower or "artificial intelligence" in jd_text_lower or " ai " in f" {jd_text_lower} ":
+        title_hints.extend(
+            [
+                "AI Engineering Manager",
+                "ML Engineering Manager",
+                "Director of AI Engineering",
+                "Director of Machine Learning Engineering",
+                "Head of AI Engineering",
+                "Head of ML Engineering",
+                "VP AI Engineering",
+                "VP Machine Learning Engineering",
+                "Chief AI Officer",
+            ]
+        )
+
+    sanitized_title_hints = tuple(
+        sanitized
+        for sanitized in (
+            _sanitize_apollo_person_title_hint(title_hint)
+            for title_hint in title_hints
+        )
+        if sanitized
+    )
+    return _dedupe_preserve_order(sanitized_title_hints)
+
+
+def _apollo_founder_title_hints() -> list[str]:
+    title_hints = [
+        "Founder",
+        "Co-Founder",
+        "Cofounder",
+        "CEO",
+        "Chief Executive Officer",
+        "Founder and CEO",
+        "Founder & CEO",
+        "Co-Founder and CEO",
+        "Co-Founder & CEO",
+        "Founder and CTO",
+        "Founder & CTO",
+        "Co-Founder and CTO",
+        "Co-Founder & CTO",
+        "Founder and Chief Technology Officer",
+        "Founder & Chief Technology Officer",
+    ]
+    sanitized_title_hints = tuple(
+        sanitized
+        for sanitized in (
+            _sanitize_apollo_person_title_hint(title_hint)
+            for title_hint in title_hints
+        )
+        if sanitized
+    )
+    return _dedupe_preserve_order(sanitized_title_hints)
 
 
 def _sanitize_apollo_person_title_hint(title_hint: str) -> str | None:

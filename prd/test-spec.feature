@@ -344,7 +344,7 @@ Feature: Job Hunt Copilot next-build acceptance
       Given a Jobright observation contains personalized school or company connections
       When source contacts are materialized from that lead
       Then those contacts remain queryable through `lead_contacts`
-      And their source type and priority metadata remain distinguishable from public Jobright connections and Apollo top-up contacts
+      And their source type and priority metadata remain distinguishable from public Jobright connections and Apollo-shortlisted contacts
 
     Scenario: New postings merge only when identity matching is confident
       Given a new posting resembles an existing posting in company and role metadata
@@ -763,6 +763,7 @@ Feature: Job Hunt Copilot next-build acceptance
       Given a role-targeted posting needs internal contacts
       When company-scoped contact search runs
       Then Apollo is used first for people search
+      And the manager-expansion harvest runs as a broad multi-pass current-company manager, technical-CxO, and founder-title search without location restriction
       And the broad candidate result is preserved in `people_search_result.json`
       And only shortlisted candidates are normalized into canonical `contacts`
       And posting-contact links are created or updated only for shortlisted candidates
@@ -782,11 +783,19 @@ Feature: Job Hunt Copilot next-build acceptance
       Then `job_posting_provider_contexts` stores that raw Apollo company-resolution payload for the `job_posting_id`
       And newer company-resolution payloads append newer provider-context rows rather than overwriting older raw snapshots
 
-    Scenario: Initial enrichment stays selective and capped to the current shortlist policy
+    Scenario: Adaptive manager-expansion shortlist scales with the eligible Apollo manager pool
       Given a broad Apollo people search has returned many candidate contacts for a posting
-      When the build chooses the first enrichment wave
-      Then no more than 6 contacts are selected into the initial enrichment shortlist
-      And that shortlist aims to cover recruiter, manager-adjacent, and engineer recipient classes before lower-priority internals
+      When the build chooses the first manager-expansion wave
+      Then the Apollo manager-expansion shortlist keeps all eligible manager/executive contacts when the eligible pool is 5 or fewer
+      And it keeps up to 7 when the eligible pool is 6 to 10
+      And it keeps up to 10 when the eligible pool is 11 or more
+      And that shortlist prefers engineering managers first
+      And in very small startup-style pools it raises founder-style executive routing above director/head/vp engineering leadership and above relevant technical CxO roles, even when the founder title is plain
+      And in larger pools it keeps founder-style executive routing below director/head/vp engineering leadership and relevant technical CxO roles
+      And plain CEO fallback contacts are searched but rank below founder-style executive routing and relevant technical CxO roles
+      And lead-engineer variants remain below technical CxO in this manager-expansion lane
+      And within the same priority bucket it prefers contacts that already have a usable work email
+      And that priority order does not flip merely because the company appears larger
       And broad-search candidates outside that shortlist are not enriched by default
 
     Scenario: Shortlisted Apollo contacts persist full person snapshots and structured employment history
@@ -1002,10 +1011,13 @@ Feature: Job Hunt Copilot next-build acceptance
       Then the system does not auto-send a second role-targeted email to that same canonical contact
       And the later posting is surfaced for review instead
 
-    Scenario: Current autonomous active send slice prefers recruiter, manager-adjacent, and engineer coverage without a global daily cap
+    Scenario: Current autonomous active send slice prefers manager-heavy coverage without a global daily cap
       Given a posting has enough viable contacts across multiple recipient classes
       When the build forms the current autonomous active send slice for that posting
-      Then the default active send slice prefers one recruiter, one manager-adjacent contact, and one team-adjacent engineer when those classes are available
+      Then the default active send slice prefers up to four manager-class contacts first and only then uses team-adjacent engineers for any remaining slots
+      And the per-posting daily automatic send cap is 4 in the current build
+      And recruiters and generic non-technical internal contacts are not auto-selected into that default active send slice
+      And recruiter or talent contacts remain available only as manual-review fallback when stronger automatic contacts are unavailable or exhausted
       And the current build does not impose a separate global cross-company daily send cap
 
     Scenario: Quota-blocked sending work yields to other runnable supervisor work
@@ -1697,7 +1709,7 @@ Feature: Job Hunt Copilot next-build acceptance
     Scenario: Role-targeted orchestration follows the current dependency order
       Given a role-targeted posting is being processed in the build
       When the main pipeline runs
-      Then the dependency order is Lead Ingestion, promotion gate, eligibility or tailoring, mandatory agent review, source-seeded contact enrichment, Apollo top-up when needed, selected-contact recipient-profile extraction, email discovery when still needed, frontier drafting for ready untouched contacts, sending, and delivery feedback
+      Then the dependency order is Lead Ingestion, promotion gate, eligibility or tailoring, mandatory agent review, source-seeded contact enrichment, Apollo company-scoped search when needed or useful for the posting, selected-contact recipient-profile extraction, email discovery when still needed, frontier drafting for ready untouched contacts, sending, and delivery feedback
       And later stages do not proceed before their upstream prerequisites are satisfied
 
     Scenario: Posting remains requires-contacts until minimum outreach prerequisites exist
@@ -1728,16 +1740,16 @@ Feature: Job Hunt Copilot next-build acceptance
     Scenario: Role-targeted outreach uses the current source-priority order with pacing-aware progression
       Given a posting has multiple linked contacts across recipient types
       When the build runs role-targeted outreach
-      Then contacts are processed in this order when available: equal-priority personalized Jobright connections, then public Jobright connections, then Apollo top-up contacts
-      And Apollo top-up contacts are internally ranked before inclusion by engineering-lead and current-company relevance
+      Then when otherwise comparable contacts are available, Apollo manager / executive / founder contacts are processed ahead of personalized or public Jobright contacts
+      And Apollo-added contacts are internally ranked before inclusion by engineering-lead relevance, technical-leadership seniority, role-family relevance, and current-company relevance
       And sends may be delayed by pacing rules instead of blasting every recipient group immediately
 
     Scenario: Posting-contact linking is created before per-contact discovery or outreach begins
-      Given a role-targeted posting has source-seeded Jobright contacts or Apollo top-up candidates
+      Given a role-targeted posting has source-seeded Jobright contacts or Apollo-shortlisted candidates
       And a candidate has entered the intended outreach set for that posting
       When the workflow prepares that shortlisted candidate for discovery or drafting
       Then a `job_posting_contacts` relationship is already present for that posting-contact pair
-      And upstream source capture or Apollo top-up may have happened before that canonical link existed
+      And upstream source capture or Apollo company-scoped search may have happened before that canonical link existed
       But person-scoped discovery or outreach does not begin first and create the link later as an afterthought
 
     Scenario: Link records become shortlisted when contacts enter the intended outreach set
@@ -1788,6 +1800,26 @@ Feature: Job Hunt Copilot next-build acceptance
       When orchestration evaluates the remaining active-wave work
       Then that reply does not retroactively cancel outreach already issued in the same active wave
       And later-wave contacts already eligible under the current send order are not paused only because of that reply
+
+    Scenario: Positive reply from one contact does not stop later waves for the posting
+      Given one contact on a posting has replied positively
+      And additional intended contacts still remain for later automatic waves on that same posting
+      When orchestration evaluates the posting on a later eligible cycle
+      Then the remaining contacts still continue automatically under the normal wave, pacing, and cap rules
+      And only the replied contact or thread is removed from further automatic outbound progression
+
+    Scenario: Remaining intended contacts continue automatically on the next eligible day
+      Given a posting has already used its current-day automatic send slice and per-posting daily send capacity
+      And additional intended contacts still remain for later waves
+      When the next eligible local day arrives and the posting is still otherwise sendable
+      Then the system automatically continues with the next eligible wave without requiring manual approval
+
+    Scenario: Later waves continue even if the posting later closes
+      Given a posting already has an intended outreach set and remaining untouched contacts
+      And the posting is later marked closed, archived, removed, or otherwise unavailable
+      When orchestration evaluates the posting on a later eligible cycle
+      Then the remaining already-captured contacts still continue automatically under the normal wave, pacing, and cap rules
+      And the later posting lifecycle change does not by itself stop automatic continuation for those already-captured contacts
 
     Scenario: Discovery, drafting, and feedback stages require both state persistence and handoff publication before downstream progression
       Given an upstream stage has completed its internal work for a posting or contact
@@ -1948,12 +1980,14 @@ Feature: Job Hunt Copilot next-build acceptance
       And all Jobright-seeded contacts are carried forward into `job_posting_contacts`
       And Apollo top-up may continue later without blocking posting creation
 
-    Scenario: Promotion keeps all Jobright-seeded contacts and Apollo fills only the remaining gap
+    Scenario: Promotion keeps all Jobright-seeded contacts and Apollo adds shortlisted current-company plus manager-class contacts
       Given a promoted Jobright lead already has some public or personalized source-seeded contacts
       When the intended outreach set is built
       Then all Jobright-seeded contacts automatically enter that set
       And Apollo enrichment is used to recover fuller identity and usable-email data for those same contacts
-      And Apollo top-up adds only the best-ranked current-company contacts needed to fill the remaining gap toward 5 contacts
+      And Apollo current-company search may shortlist additional manager-class technical-leadership contacts for that posting
+      And all Apollo manager-class contacts explicitly shortlisted for that posting enter the intended outreach set
+      And Apollo may also add current-company manager-class contacts for that posting under the adaptive manager-expansion cap
 
   @end_to_end
   Rule: End-to-end acceptance
@@ -1962,7 +1996,7 @@ Feature: Job Hunt Copilot next-build acceptance
       Given a role-targeted lead entered through authenticated Jobright recommendation intake
       And the required secrets, assets, and environment prerequisites are all available
       When the build runs the primary role-targeted flow
-      Then the flow progresses through Lead Ingestion, promotion gate, tailoring, mandatory agent review, source-seeded contact enrichment, Apollo top-up when needed, selected-contact recipient-profile extraction, email discovery when needed, frontier drafting for ready untouched contacts, sending, and delivery feedback
+      Then the flow progresses through Lead Ingestion, promotion gate, tailoring, mandatory agent review, source-seeded contact enrichment, Apollo company-scoped search when needed or useful for the posting, selected-contact recipient-profile extraction, email discovery when needed, frontier drafting for ready untouched contacts, sending, and delivery feedback
       And intermediate machine artifacts are persisted at each stage boundary
       And canonical state remains queryable throughout the flow
 

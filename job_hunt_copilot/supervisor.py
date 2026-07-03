@@ -625,6 +625,7 @@ class SupervisorActionDependencies:
     email_finder_providers: tuple[object, ...] | None = None
     outreach_sender: object | None = None
     role_targeted_draft_renderer: object | None = None
+    general_learning_draft_renderer: object | None = None
     feedback_observer: object | None = None
     local_timezone: object | str | None = None
     maintenance_dependencies: MaintenanceDependencies | None = None
@@ -6075,6 +6076,7 @@ def _execute_selected_work_unit(
                 action_dependencies.outreach_sender,
                 "Supervisor general-learning outreach requires an injected outreach sender.",
             ),
+            renderer=action_dependencies.general_learning_draft_renderer,
             feedback_observer=action_dependencies.feedback_observer,
         )
         if general_learning_result.message_status_after_execution == "sent":

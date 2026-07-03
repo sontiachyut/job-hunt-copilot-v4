@@ -69,7 +69,7 @@ RECIPIENT_TYPE_ALUMNI = "alumni"
 RECIPIENT_TYPE_OTHER_INTERNAL = "other_internal"
 RECIPIENT_TYPE_FOUNDER = "founder"
 
-AUTOMATIC_SEND_SET_LIMIT = 3
+AUTOMATIC_SEND_SET_LIMIT = 4
 AUTOMATIC_POSTING_DAILY_SEND_CAP = 4
 MIN_INTER_SEND_GAP_MINUTES = 6
 MAX_INTER_SEND_GAP_MINUTES = 10
@@ -104,17 +104,15 @@ MANAGERIAL_PATH_CTA_FORWARD = (
 )
 
 SEND_SET_PRIORITY_SLOTS: tuple[tuple[str, tuple[str, ...]], ...] = (
-    ("recruiter", (RECIPIENT_TYPE_RECRUITER,)),
-    ("manager_adjacent", (RECIPIENT_TYPE_HIRING_MANAGER, RECIPIENT_TYPE_FOUNDER, RECIPIENT_TYPE_OTHER_INTERNAL)),
-    ("engineer", (RECIPIENT_TYPE_ENGINEER,)),
+    ("manager_1", (RECIPIENT_TYPE_HIRING_MANAGER, RECIPIENT_TYPE_FOUNDER)),
+    ("manager_2", (RECIPIENT_TYPE_HIRING_MANAGER, RECIPIENT_TYPE_FOUNDER)),
+    ("manager_3", (RECIPIENT_TYPE_HIRING_MANAGER, RECIPIENT_TYPE_FOUNDER)),
+    ("manager_4", (RECIPIENT_TYPE_HIRING_MANAGER, RECIPIENT_TYPE_FOUNDER)),
 )
 SEND_SET_FALLBACK_RECIPIENT_TYPES: tuple[str, ...] = (
     RECIPIENT_TYPE_HIRING_MANAGER,
     RECIPIENT_TYPE_ENGINEER,
-    RECIPIENT_TYPE_RECRUITER,
     RECIPIENT_TYPE_FOUNDER,
-    RECIPIENT_TYPE_OTHER_INTERNAL,
-    RECIPIENT_TYPE_ALUMNI,
 )
 
 _CANDIDATE_STATE_READY = "ready"
@@ -1405,6 +1403,7 @@ class _CandidateRow:
     job_posting_contact_id: str
     recipient_type: str
     display_name: str
+    contact_source_type: str | None
     current_working_email: str | None
     contact_status: str
     link_level_status: str
@@ -1760,7 +1759,7 @@ def _load_candidate_rows(
           GROUP BY om.contact_id
         )
         SELECT jpc.job_posting_contact_id, jpc.contact_id, jpc.recipient_type, jpc.link_level_status,
-               jpc.created_at AS link_created_at, c.display_name, c.current_working_email,
+               jpc.contact_source_type, jpc.created_at AS link_created_at, c.display_name, c.current_working_email,
                c.contact_status, COALESCE(oh.prior_outreach_count, 0) AS prior_outreach_count,
                COALESCE(oh.prior_same_company_outreach_count, 0) AS prior_same_company_outreach_count
         FROM job_posting_contacts jpc
@@ -1779,6 +1778,7 @@ def _load_candidate_rows(
             job_posting_contact_id=str(row["job_posting_contact_id"]),
             recipient_type=str(row["recipient_type"]).strip(),
             display_name=str(row["display_name"]).strip(),
+            contact_source_type=_normalize_optional_text(row["contact_source_type"]),
             current_working_email=_normalize_optional_text(row["current_working_email"]),
             contact_status=str(row["contact_status"]).strip(),
             link_level_status=str(row["link_level_status"]).strip(),
@@ -1912,9 +1912,20 @@ def _preferred_sort_key(candidate: _CandidateRow) -> tuple[int, int, str, str]:
     return (
         _selection_state_rank(candidate.selection_state),
         0 if candidate.link_level_status == POSTING_CONTACT_STATUS_SHORTLISTED else 1,
+        _contact_source_sort_rank(candidate.contact_source_type),
         candidate.link_created_at,
         candidate.contact_id,
     )
+
+
+def _contact_source_sort_rank(contact_source_type: str | None) -> int:
+    if contact_source_type == "apollo_topup":
+        return 0
+    if contact_source_type in {"jobright_personal_school", "jobright_personal_company"}:
+        return 1
+    if contact_source_type == "jobright_public":
+        return 2
+    return 9
 
 
 def _selection_state_rank(selection_state: str) -> int:
@@ -2301,15 +2312,6 @@ def _resolve_general_learning_draft_renderer(
     override = _normalize_optional_text(os.environ.get("JHC_OUTREACH_ROLE_SPLIT_RENDERER"))
     if override == "deterministic":
         return DeterministicOutreachDraftRenderer()
-    if override != "codex":
-        resolved_root = Path(project_root).expanduser().resolve()
-        temp_roots = [
-            Path(tempfile.gettempdir()).resolve(),
-            Path("/private/var/folders"),
-            Path("/var/folders"),
-        ]
-        if any(root.exists() and resolved_root.is_relative_to(root) for root in temp_roots):
-            return DeterministicOutreachDraftRenderer()
     return CodexRoleSplitOutreachDraftRenderer(project_root=project_root)
 
 
@@ -6276,6 +6278,36 @@ def _role_theme_rule(role_title: str | None) -> Mapping[str, Any] | None:
     return None
 
 
+def _is_backend_ai_hybrid_role_title(role_title: str | None) -> bool:
+    normalized_title = _normalize_optional_text(role_title)
+    if normalized_title is None:
+        return False
+    lowered_title = normalized_title.lower()
+    return "backend" in lowered_title and bool(
+        re.search(r"\b(?:ai|ml|machine learning|deep learning|generative)\b", lowered_title)
+    )
+
+
+def _ensure_hybrid_backend_ai_theme_parts(
+    parts: Sequence[str],
+    *,
+    role_title: str | None,
+) -> list[str]:
+    ordered_parts = list(parts)
+    if not _is_backend_ai_hybrid_role_title(role_title):
+        return ordered_parts
+    labels = {ROLE_THEME_PART_LABELS.get(part, "") for part in ordered_parts}
+    if "backend" in labels or "ai_ml" not in labels:
+        return ordered_parts
+    backend_part = "backend APIs and services"
+    inserted_parts = [backend_part, *ordered_parts]
+    deduped_parts: list[str] = []
+    for part in inserted_parts:
+        if part not in deduped_parts:
+            deduped_parts.append(part)
+    return deduped_parts
+
+
 def _extract_cloud_provider_suffix(value: str) -> str | None:
     lowered = value.lower()
     providers: list[str] = []
@@ -6866,6 +6898,10 @@ def _synthesize_role_theme_focus(
             if len(chosen_parts) >= 4:
                 break
     ordered_parts = _order_theme_parts(chosen_parts, role_title=role_title)
+    ordered_parts = _ensure_hybrid_backend_ai_theme_parts(
+        ordered_parts,
+        role_title=role_title,
+    )
     specific_parts = [
         part
         for part in ordered_parts

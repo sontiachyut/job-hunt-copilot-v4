@@ -50,7 +50,9 @@ from job_hunt_copilot.email_discovery import (
     run_general_learning_email_discovery,
     select_initial_enrichment_shortlist,
     _build_apollo_search_filters,
+    _manager_expansion_target_for_pool_size,
     _normalize_apollo_usage_snapshots,
+    _shortlist_existing_intended_contacts,
 )
 from job_hunt_copilot.outreach import evaluate_role_targeted_send_set
 from job_hunt_copilot.paths import ProjectPaths
@@ -186,7 +188,7 @@ def build_candidate(
     return payload
 
 
-def test_select_initial_enrichment_shortlist_prefers_managers_then_senior_engineers_then_engineers():
+def test_select_initial_enrichment_shortlist_keeps_only_manager_class_technical_leadership():
     shortlist = select_initial_enrichment_shortlist(
         [
             PeopleSearchCandidate.from_mapping(
@@ -237,14 +239,170 @@ def test_select_initial_enrichment_shortlist_prefers_managers_then_senior_engine
     assert [candidate.provider_person_id for candidate in shortlist] == [
         "pp_m1",
         "pp_m2",
-        "pp_e1",
-        "pp_e3",
-        "pp_e2",
-        "pp_r1",
     ]
 
 
-def test_build_apollo_search_filters_sanitizes_bracketed_role_titles(tmp_path: Path):
+def test_select_initial_enrichment_shortlist_raises_founder_above_director_for_small_startup_style_pool():
+    shortlist = select_initial_enrichment_shortlist(
+        [
+            PeopleSearchCandidate.from_mapping(
+                build_candidate(
+                    provider_person_id="pp_m1",
+                    display_name="Morgan Manager",
+                    title="Engineering Manager",
+                )
+            ),
+            PeopleSearchCandidate.from_mapping(
+                build_candidate(
+                    provider_person_id="pp_f1",
+                    display_name="Taylor Founder",
+                    title="Founder & CTO",
+                )
+            ),
+            PeopleSearchCandidate.from_mapping(
+                build_candidate(
+                    provider_person_id="pp_m2",
+                    display_name="Avery Director",
+                    title="Director of Engineering",
+                )
+            ),
+            PeopleSearchCandidate.from_mapping(
+                build_candidate(
+                    provider_person_id="pp_c1",
+                    display_name="Pat CTO",
+                    title="Chief Technology Officer",
+                )
+            ),
+        ],
+        limit=4,
+    )
+
+    assert [candidate.provider_person_id for candidate in shortlist] == [
+        "pp_m1",
+        "pp_f1",
+        "pp_m2",
+        "pp_c1",
+    ]
+
+
+def test_select_initial_enrichment_shortlist_prefers_plain_founder_above_technical_cxo_for_small_startup_style_pool():
+    shortlist = select_initial_enrichment_shortlist(
+        [
+            PeopleSearchCandidate.from_mapping(
+                build_candidate(
+                    provider_person_id="pp_m1",
+                    display_name="Morgan Manager",
+                    title="Engineering Manager",
+                )
+            ),
+            PeopleSearchCandidate.from_mapping(
+                build_candidate(
+                    provider_person_id="pp_f1",
+                    display_name="Taylor Founder",
+                    title="Founder",
+                )
+            ),
+            PeopleSearchCandidate.from_mapping(
+                build_candidate(
+                    provider_person_id="pp_c1",
+                    display_name="Pat CTO",
+                    title="Chief Technology Officer",
+                )
+            ),
+            PeopleSearchCandidate.from_mapping(
+                build_candidate(
+                    provider_person_id="pp_d1",
+                    display_name="Avery Director",
+                    title="Director of Engineering",
+                )
+            ),
+        ],
+        limit=4,
+    )
+
+    assert [candidate.provider_person_id for candidate in shortlist] == [
+        "pp_m1",
+        "pp_f1",
+        "pp_d1",
+        "pp_c1",
+    ]
+
+
+def test_select_initial_enrichment_shortlist_keeps_plain_ceo_below_founder_and_technical_cxo():
+    shortlist = select_initial_enrichment_shortlist(
+        [
+            PeopleSearchCandidate.from_mapping(
+                build_candidate(
+                    provider_person_id="pp_m1",
+                    display_name="Morgan Manager",
+                    title="Engineering Manager",
+                )
+            ),
+            PeopleSearchCandidate.from_mapping(
+                build_candidate(
+                    provider_person_id="pp_f1",
+                    display_name="Taylor Founder",
+                    title="Founder",
+                )
+            ),
+            PeopleSearchCandidate.from_mapping(
+                build_candidate(
+                    provider_person_id="pp_c1",
+                    display_name="Pat CTO",
+                    title="Chief Technology Officer",
+                )
+            ),
+            PeopleSearchCandidate.from_mapping(
+                build_candidate(
+                    provider_person_id="pp_e1",
+                    display_name="Casey CEO",
+                    title="Chief Executive Officer",
+                )
+            ),
+        ],
+        limit=4,
+    )
+
+    assert [candidate.provider_person_id for candidate in shortlist] == [
+        "pp_m1",
+        "pp_f1",
+        "pp_c1",
+        "pp_e1",
+    ]
+
+
+def test_select_initial_enrichment_shortlist_prefers_usable_email_within_same_priority_bucket():
+    shortlist = select_initial_enrichment_shortlist(
+        [
+            PeopleSearchCandidate.from_mapping(
+                build_candidate(
+                    provider_person_id="pp_m1",
+                    display_name="Morgan Manager",
+                    title="Engineering Manager",
+                    has_email=False,
+                    email=None,
+                )
+            ),
+            PeopleSearchCandidate.from_mapping(
+                build_candidate(
+                    provider_person_id="pp_m2",
+                    display_name="Avery Manager",
+                    title="Engineering Manager",
+                    has_email=True,
+                    email="avery@acme.example",
+                )
+            ),
+        ],
+        limit=2,
+    )
+
+    assert [candidate.provider_person_id for candidate in shortlist] == [
+        "pp_m2",
+        "pp_m1",
+    ]
+
+
+def test_build_apollo_search_filters_targets_manager_class_engineering_leadership(tmp_path: Path):
     project_root = bootstrap_project(tmp_path)
     paths = ProjectPaths.from_root(project_root)
     connection = connect_database(project_root / "job_hunt_copilot.db")
@@ -268,7 +426,31 @@ def test_build_apollo_search_filters_sanitizes_bracketed_role_titles(tmp_path: P
     connection.close()
 
     assert "AI/ML Engineer [Multiple Positions Available]" not in search_filters["titles"]
-    assert "AI ML Engineer Multiple Positions Available" in search_filters["titles"]
+    assert any("AI" in title and "Manager" in title for title in search_filters["titles"])
+    assert "AI Engineering Manager" in search_filters["titles"]
+    assert "Head of AI Engineering" in search_filters["titles"]
+    assert "Chief Technology Officer" in search_filters["titles"]
+    assert search_filters["functions"] == ["engineering"]
+    assert search_filters["locations"] == []
+
+
+@pytest.mark.parametrize(
+    ("eligible_pool_size", "expected_target"),
+    [
+        (0, 0),
+        (1, 1),
+        (5, 5),
+        (6, 7),
+        (10, 7),
+        (11, 10),
+        (20, 10),
+    ],
+)
+def test_manager_expansion_target_scales_with_eligible_pool_size(
+    eligible_pool_size: int,
+    expected_target: int,
+):
+    assert _manager_expansion_target_for_pool_size(eligible_pool_size) == expected_target
 
 
 class FakeApolloProvider:
@@ -752,23 +934,26 @@ def test_apollo_people_search_persists_broad_result_and_shortlists_only_selected
     assert payload["search_anchor"] == "organization_id"
     assert payload["candidate_count"] == 9
     assert payload["apollo_top_up_needed"] == 5
-    assert payload["apollo_top_up_added_count"] == 5
-    assert len(payload["shortlisted_contact_ids"]) == 5
+    assert payload["eligible_manager_candidate_count"] == 3
+    assert payload["manager_shortlist_target"] == 3
+    assert payload["apollo_manager_needed"] == 3
+    assert payload["apollo_top_up_added_count"] == 3
+    assert len(payload["shortlisted_contact_ids"]) == 3
 
     shortlist_candidates = [candidate for candidate in payload["candidates"] if candidate.get("contact_id")]
     shortlist_provider_ids = {candidate["provider_person_id"] for candidate in shortlist_candidates}
-    assert len(shortlist_provider_ids) == 5
-    assert {"pp_m1", "pp_m2", "pp_m3", "pp_e1"} <= shortlist_provider_ids
-    assert {"pp_r1", "pp_r2", "pp_r3"} & shortlist_provider_ids == set()
+    assert len(shortlist_provider_ids) == 3
+    assert shortlist_provider_ids == {"pp_m1", "pp_m2", "pp_m3"}
+    assert {"pp_r1", "pp_r2", "pp_r3", "pp_e1", "pp_e2", "pp_o1"} & shortlist_provider_ids == set()
 
     sparse_candidate = next(candidate for candidate in payload["candidates"] if candidate["provider_person_id"] == "pp_r1")
     assert sparse_candidate["display_name"] == "Isaiah Lo***e"
     assert sparse_candidate["full_name"] is None
     assert sparse_candidate["name_quality"] == "provider_obfuscated"
 
-    assert connection.execute("SELECT COUNT(*) FROM contacts").fetchone()[0] == 5
-    assert connection.execute("SELECT COUNT(*) FROM job_posting_contacts").fetchone()[0] == 5
-    assert connection.execute("SELECT COUNT(*) FROM contact_provider_profiles").fetchone()[0] == 5
+    assert connection.execute("SELECT COUNT(*) FROM contacts").fetchone()[0] == 3
+    assert connection.execute("SELECT COUNT(*) FROM job_posting_contacts").fetchone()[0] == 3
+    assert connection.execute("SELECT COUNT(*) FROM contact_provider_profiles").fetchone()[0] == 3
     assert connection.execute("SELECT COUNT(*) FROM contact_employment_history").fetchone()[0] == 0
     provider_context_row = connection.execute(
         """
@@ -794,7 +979,7 @@ def test_apollo_people_search_persists_broad_result_and_shortlists_only_selected
     assert provider_profile_row is None
     assert connection.execute(
         "SELECT COUNT(*) FROM contacts WHERE provider_person_id = 'pp_o1'"
-    ).fetchone()[0] == 1
+    ).fetchone()[0] == 0
 
     recipient_counts = {
         row["recipient_type"]: row["count"]
@@ -807,7 +992,6 @@ def test_apollo_people_search_persists_broad_result_and_shortlists_only_selected
         ).fetchall()
     }
     assert recipient_counts[RECIPIENT_TYPE_HIRING_MANAGER] >= 3
-    assert recipient_counts[RECIPIENT_TYPE_ENGINEER] >= 1
     assert RECIPIENT_TYPE_RECRUITER not in recipient_counts
     assert all(
         row["link_level_status"] == POSTING_CONTACT_STATUS_SHORTLISTED
@@ -959,18 +1143,18 @@ def test_apollo_people_search_reuses_existing_contact_and_promotes_identified_li
     connection.close()
 
 
-def test_apollo_people_search_shortlists_seeded_intended_contacts_without_provider_topup(tmp_path: Path):
+def test_apollo_people_search_still_runs_manager_harvest_when_seeded_contacts_already_meet_total_minimum(tmp_path: Path):
     project_root = bootstrap_project(tmp_path)
     paths = ProjectPaths.from_root(project_root)
     connection = connect_database(project_root / "job_hunt_copilot.db")
     seed_search_ready_posting(connection, paths)
-    for index, recipient_type in enumerate(
+    for index, (recipient_type, position_title) in enumerate(
         (
-            RECIPIENT_TYPE_HIRING_MANAGER,
-            RECIPIENT_TYPE_ENGINEER,
-            RECIPIENT_TYPE_RECRUITER,
-            RECIPIENT_TYPE_ENGINEER,
-            RECIPIENT_TYPE_HIRING_MANAGER,
+            (RECIPIENT_TYPE_HIRING_MANAGER, "Engineering Manager"),
+            (RECIPIENT_TYPE_ENGINEER, "Software Engineer"),
+            (RECIPIENT_TYPE_RECRUITER, "Technical Recruiter"),
+            (RECIPIENT_TYPE_ENGINEER, "Software Engineer"),
+            (RECIPIENT_TYPE_HIRING_MANAGER, "Director of Engineering"),
         ),
         start=1,
     ):
@@ -980,6 +1164,7 @@ def test_apollo_people_search_shortlists_seeded_intended_contacts_without_provid
             job_posting_contact_id=f"jpc_seed_{index}",
             display_name=f"Seeded Contact {index}",
             recipient_type=recipient_type,
+            position_title=position_title,
             provider_name=None,
             provider_person_id=None,
             identity_key=f"jobright|seeded|{index}",
@@ -1010,15 +1195,19 @@ def test_apollo_people_search_shortlists_seeded_intended_contacts_without_provid
         provider=provider,
     )
 
-    assert provider.resolve_calls == []
-    assert provider.search_calls == []
-    assert len(result.shortlisted_contact_ids) == 5
-    assert set(result.shortlisted_contact_ids) == {f"ct_seed_{index}" for index in range(1, 6)}
+    assert len(provider.resolve_calls) == 1
+    assert len(provider.search_calls) == 4
+    assert len(result.shortlisted_contact_ids) == 6
+    assert {f"ct_seed_{index}" for index in range(1, 6)}.issubset(set(result.shortlisted_contact_ids))
 
     payload = json.loads(result.artifact_path.read_text(encoding="utf-8"))
     assert payload["apollo_top_up_needed"] == 0
-    assert payload["apollo_top_up_added_count"] == 0
-    assert payload["candidate_count"] == 0
+    assert payload["active_apollo_manager_contact_count_before_top_up"] == 0
+    assert payload["eligible_manager_candidate_count"] == 1
+    assert payload["manager_shortlist_target"] == 1
+    assert payload["apollo_manager_needed"] == 1
+    assert payload["apollo_top_up_added_count"] == 1
+    assert payload["candidate_count"] == 1
     assert len(payload["seeded_shortlist_contact_ids"]) == 5
 
     shortlisted_rows = connection.execute(
@@ -1056,11 +1245,11 @@ def test_apollo_people_search_reuses_caller_connection_when_transaction_is_alrea
         candidates=[
             build_candidate(
                 provider_person_id="pp_txn",
-                display_name="Priya Recruiter",
-                title="Technical Recruiter",
-            )
-        ],
-    )
+                    display_name="Jordan Manager",
+                    title="Engineering Manager",
+                )
+            ],
+        )
 
     result = run_apollo_people_search(
         project_root=project_root,
@@ -1084,16 +1273,16 @@ def test_apollo_people_search_reuses_caller_connection_when_transaction_is_alrea
     connection.close()
 
 
-def test_apollo_people_search_tops_up_seeded_contacts_only_to_five(tmp_path: Path):
+def test_apollo_people_search_adds_manager_contacts_even_when_only_some_seeded_contacts_exist(tmp_path: Path):
     project_root = bootstrap_project(tmp_path)
     paths = ProjectPaths.from_root(project_root)
     connection = connect_database(project_root / "job_hunt_copilot.db")
     seed_search_ready_posting(connection, paths)
-    for index, recipient_type in enumerate(
+    for index, (recipient_type, position_title) in enumerate(
         (
-            RECIPIENT_TYPE_HIRING_MANAGER,
-            RECIPIENT_TYPE_ENGINEER,
-            RECIPIENT_TYPE_RECRUITER,
+            (RECIPIENT_TYPE_HIRING_MANAGER, "Engineering Manager"),
+            (RECIPIENT_TYPE_ENGINEER, "Software Engineer"),
+            (RECIPIENT_TYPE_RECRUITER, "Technical Recruiter"),
         ),
         start=1,
     ):
@@ -1103,6 +1292,7 @@ def test_apollo_people_search_tops_up_seeded_contacts_only_to_five(tmp_path: Pat
             job_posting_contact_id=f"jpc_seed_gap_{index}",
             display_name=f"Gap Seeded Contact {index}",
             recipient_type=recipient_type,
+            position_title=position_title,
             provider_name=None,
             provider_person_id=None,
             identity_key=f"jobright|gap|{index}",
@@ -1128,13 +1318,13 @@ def test_apollo_people_search_tops_up_seeded_contacts_only_to_five(tmp_path: Pat
             ),
             build_candidate(
                 provider_person_id="pp_topup_2",
-                display_name="Apollo Engineer",
-                title="Senior Software Engineer",
+                display_name="Apollo Director",
+                title="Director of Engineering",
             ),
             build_candidate(
                 provider_person_id="pp_topup_3",
-                display_name="Apollo Recruiter",
-                title="Technical Recruiter",
+                display_name="Apollo VP",
+                title="VP Engineering",
             ),
         ],
     )
@@ -1145,12 +1335,16 @@ def test_apollo_people_search_tops_up_seeded_contacts_only_to_five(tmp_path: Pat
     )
 
     assert len(provider.resolve_calls) == 1
-    assert len(provider.search_calls) == 1
-    assert len(result.shortlisted_contact_ids) == 5
+    assert len(provider.search_calls) == 4
+    assert len(result.shortlisted_contact_ids) == 6
 
     payload = json.loads(result.artifact_path.read_text(encoding="utf-8"))
     assert payload["apollo_top_up_needed"] == 2
-    assert payload["apollo_top_up_added_count"] == 2
+    assert payload["active_apollo_manager_contact_count_before_top_up"] == 0
+    assert payload["eligible_manager_candidate_count"] == 3
+    assert payload["manager_shortlist_target"] == 3
+    assert payload["apollo_manager_needed"] == 3
+    assert payload["apollo_top_up_added_count"] == 3
     assert payload["candidate_count"] == 3
 
     source_rows = connection.execute(
@@ -1163,7 +1357,7 @@ def test_apollo_people_search_tops_up_seeded_contacts_only_to_five(tmp_path: Pat
         """
     ).fetchall()
     assert [dict(row) for row in source_rows] == [
-        {"contact_source_type": "apollo_topup", "row_count": 2},
+        {"contact_source_type": "apollo_topup", "row_count": 3},
         {"contact_source_type": "jobright_public", "row_count": 3},
     ]
     connection.close()
@@ -1294,11 +1488,11 @@ def test_replay_historical_people_search_shortlist_materializes_missing_candidat
             primary_domain="acmerobotics.com",
         ),
         candidates=[
-            build_candidate(provider_person_id="pp_r1", display_name="Taylor Recruiter", title="Recruiter"),
             build_candidate(provider_person_id="pp_m1", display_name="Morgan Manager", title="Engineering Manager"),
-            build_candidate(provider_person_id="pp_e1", display_name="Jamie Engineer", title="Senior Software Engineer"),
-            build_candidate(provider_person_id="pp_e2", display_name="Casey Engineer", title="Software Engineer", has_email=True, email="casey@acmerobotics.com"),
-            build_candidate(provider_person_id="pp_o1", display_name="Pat Internal", title="Platform Architect"),
+            build_candidate(provider_person_id="pp_m2", display_name="Avery Director", title="Director of Engineering"),
+            build_candidate(provider_person_id="pp_m3", display_name="Robin Head", title="Head of Engineering"),
+            build_candidate(provider_person_id="pp_m4", display_name="Casey VP", title="VP Engineering", has_email=True, email="casey@acmerobotics.com"),
+            build_candidate(provider_person_id="pp_m5", display_name="Pat CTO", title="Chief Technology Officer"),
         ],
     )
 
@@ -1358,10 +1552,10 @@ def test_refresh_same_company_contact_frontier_exhausts_reused_contact_and_backf
             primary_domain="acmerobotics.com",
         ),
         candidates=[
-            build_candidate(provider_person_id="pp_r1", display_name="Taylor Recruiter", title="Recruiter"),
             build_candidate(provider_person_id="pp_m1", display_name="Morgan Manager", title="Engineering Manager"),
-            build_candidate(provider_person_id="pp_e1", display_name="Jamie Engineer", title="Senior Software Engineer"),
-            build_candidate(provider_person_id="pp_e2", display_name="Casey Engineer", title="Software Engineer"),
+            build_candidate(provider_person_id="pp_f1", display_name="Taylor Founder", title="Founder & CTO"),
+            build_candidate(provider_person_id="pp_d1", display_name="Avery Director", title="Director of Engineering"),
+            build_candidate(provider_person_id="pp_c1", display_name="Pat CTO", title="Chief Technology Officer"),
         ],
     )
 
@@ -1448,8 +1642,8 @@ def test_refresh_same_company_contact_frontier_exhausts_reused_contact_and_backf
     ).fetchall()
     statuses_by_provider = {str(row["provider_person_id"]): str(row["link_level_status"]) for row in primary_links}
     assert statuses_by_provider["pp_m1"] == POSTING_CONTACT_STATUS_EXHAUSTED
-    assert statuses_by_provider["pp_r1"] == POSTING_CONTACT_STATUS_SHORTLISTED
-    assert "pp_e2" in statuses_by_provider
+    assert statuses_by_provider["pp_f1"] == POSTING_CONTACT_STATUS_SHORTLISTED
+    assert "pp_d1" in statuses_by_provider or "pp_c1" in statuses_by_provider
     active_count = connection.execute(
         """
         SELECT COUNT(*)
@@ -1479,8 +1673,8 @@ def test_apollo_people_search_falls_back_to_company_name_anchor_when_resolution_
         candidates=[
             build_candidate(
                 provider_person_id="pp_only",
-                display_name="Taylor Recruiter",
-                title="Recruiter",
+                display_name="Taylor Director",
+                title="Director of Engineering",
             )
         ],
     )
@@ -1843,7 +2037,7 @@ def test_apollo_contact_enrichment_keeps_shortlisted_contacts_when_apollo_return
         ),
         candidates=[
             build_candidate(provider_person_id="pp_m1", display_name="Morgan Manager", title="Engineering Manager"),
-            build_candidate(provider_person_id="pp_e1", display_name="Jamie Engineer", title="Staff Software Engineer"),
+            build_candidate(provider_person_id="pp_m2", display_name="Avery Director", title="Director of Engineering"),
         ],
     )
     run_apollo_people_search(
@@ -1868,14 +2062,14 @@ def test_apollo_contact_enrichment_keeps_shortlisted_contacts_when_apollo_return
                     "organization_name": "Acme Robotics",
                 }
             },
-            "pp_e1": {
+            "pp_m2": {
                 "person": {
-                    "id": "pp_e1",
-                    "first_name": "Jamie",
-                    "last_name": "Engineer",
-                    "name": "Jamie Engineer",
-                    "linkedin_url": "https://linkedin.example/pp_e1",
-                    "title": "Staff Software Engineer",
+                    "id": "pp_m2",
+                    "first_name": "Avery",
+                    "last_name": "Director",
+                    "name": "Avery Director",
+                    "linkedin_url": "https://linkedin.example/pp_m2",
+                    "title": "Director of Engineering",
                     "email": None,
                     "email_status": "unavailable",
                     "organization_id": "org_acme",
@@ -1905,15 +2099,15 @@ def test_apollo_contact_enrichment_keeps_shortlisted_contacts_when_apollo_return
     ).fetchall()
     assert [dict(row) for row in enriched_rows] == [
         {
-            "provider_person_id": "pp_e1",
-            "contact_status": CONTACT_STATUS_IDENTIFIED,
-            "discovery_summary": "Apollo enrichment matched this contact as `Staff Software Engineer`.",
-            "link_level_status": POSTING_CONTACT_STATUS_SHORTLISTED,
-        },
-        {
             "provider_person_id": "pp_m1",
             "contact_status": CONTACT_STATUS_IDENTIFIED,
             "discovery_summary": "Apollo enrichment matched this contact as `Engineering Manager`.",
+            "link_level_status": POSTING_CONTACT_STATUS_SHORTLISTED,
+        },
+        {
+            "provider_person_id": "pp_m2",
+            "contact_status": CONTACT_STATUS_IDENTIFIED,
+            "discovery_summary": "Apollo enrichment matched this contact as `Director of Engineering`.",
             "link_level_status": POSTING_CONTACT_STATUS_SHORTLISTED,
         },
     ]
@@ -1968,7 +2162,7 @@ def test_apollo_contact_enrichment_removes_terminal_dead_end_shortlist_contacts(
     connection.close()
 
 
-def test_apollo_people_search_retries_without_location_after_zero_primary_candidates(tmp_path: Path):
+def test_apollo_people_search_uses_location_free_manager_query(tmp_path: Path):
     project_root = bootstrap_project(tmp_path)
     paths = ProjectPaths.from_root(project_root)
     connection = connect_database(project_root / "job_hunt_copilot.db")
@@ -1991,8 +2185,8 @@ def test_apollo_people_search_retries_without_location_after_zero_primary_candid
         candidates=[
             build_candidate(
                 provider_person_id="pp_relaxed",
-                display_name="Priya Recruiter",
-                title="Technical Recruiter",
+                display_name="Priya Director",
+                title="Director of Engineering",
             )
         ],
     )
@@ -2003,13 +2197,11 @@ def test_apollo_people_search_retries_without_location_after_zero_primary_candid
         provider=provider,
     )
 
-    assert len(provider.search_calls) == 2
-    assert provider.search_calls[0]["search_filters"]["locations"] == ["Phoenix, AZ"]
-    assert provider.search_calls[1]["search_filters"]["locations"] == []
+    assert len(provider.search_calls) == 4
+    assert all(call["search_filters"]["locations"] == [] for call in provider.search_calls)
     payload = json.loads(result.artifact_path.read_text(encoding="utf-8"))
     assert payload["candidate_count"] == 1
-    assert len(payload["attempted_filters"]) == 2
-    assert payload["attempted_filters"][1]["attempt"] == "drop_location_after_zero_primary_candidates"
+    assert len(payload["attempted_filters"]) == 4
     assert payload["applied_filters"]["locations"] == []
     assert len(result.shortlisted_contact_ids) == 1
 
@@ -2051,10 +2243,10 @@ def test_apollo_people_search_omits_broad_remote_location_filters(tmp_path: Path
         provider=provider,
     )
 
-    assert len(provider.search_calls) == 1
-    assert provider.search_calls[0]["search_filters"]["locations"] == []
+    assert len(provider.search_calls) == 4
+    assert all(call["search_filters"]["locations"] == [] for call in provider.search_calls)
     payload = json.loads(result.artifact_path.read_text(encoding="utf-8"))
-    assert len(payload["attempted_filters"]) == 1
+    assert len(payload["attempted_filters"]) == 4
     assert payload["applied_filters"]["locations"] == []
 
     connection.close()
@@ -2525,13 +2717,13 @@ def test_email_discovery_promotes_posting_when_ready_subset_exists_but_other_con
         connection,
         contact_id="ct_ready",
         job_posting_contact_id="jpc_ready",
-        display_name="Priya Recruiter",
-        full_name="Priya Recruiter",
+        display_name="Priya Engineer",
+        full_name="Priya Engineer",
         first_name="Priya",
-        last_name="Recruiter",
+        last_name="Engineer",
         linkedin_url="https://linkedin.example/priya",
-        position_title="Technical Recruiter",
-        recipient_type=RECIPIENT_TYPE_RECRUITER,
+        position_title="Software Engineer",
+        recipient_type=RECIPIENT_TYPE_ENGINEER,
         provider_person_id="pp_ready",
         identity_key="apollo_person|pp_ready",
         created_at="2026-04-06T21:30:00Z",
@@ -3440,3 +3632,54 @@ def test_provider_no_match_payloads_normalize_to_not_found():
         {"data": {"email": None}},
         company_domain="acmerobotics.com",
     ).outcome == DISCOVERY_OUTCOME_NOT_FOUND
+
+
+def test_shortlist_existing_intended_contacts_prefers_apollo_before_jobright(tmp_path: Path):
+    project_root = bootstrap_project(tmp_path)
+    paths = ProjectPaths.from_root(project_root)
+    connection = connect_database(project_root / "job_hunt_copilot.db")
+    seed_search_ready_posting(connection, paths)
+    seed_linked_contact(
+        connection,
+        contact_id="ct_jobright_priority",
+        job_posting_contact_id="jpc_jobright_priority",
+        display_name="Jobright Contact",
+        recipient_type=RECIPIENT_TYPE_HIRING_MANAGER,
+        provider_name=None,
+        provider_person_id=None,
+        identity_key="jobright|priority",
+        contact_source_type="jobright_public",
+        contact_source_priority_tier=2,
+        contact_source_rank=1,
+        link_level_status=POSTING_CONTACT_STATUS_IDENTIFIED,
+        is_in_intended_outreach_set=1,
+        created_at="2026-04-06T21:01:00Z",
+    )
+    seed_linked_contact(
+        connection,
+        contact_id="ct_apollo_priority",
+        job_posting_contact_id="jpc_apollo_priority",
+        display_name="Apollo Contact",
+        recipient_type=RECIPIENT_TYPE_HIRING_MANAGER,
+        provider_name=None,
+        provider_person_id=None,
+        identity_key="apollo|priority",
+        contact_source_type="apollo_topup",
+        contact_source_priority_tier=3,
+        contact_source_rank=1,
+        link_level_status=POSTING_CONTACT_STATUS_IDENTIFIED,
+        is_in_intended_outreach_set=1,
+        created_at="2026-04-06T21:02:00Z",
+    )
+
+    shortlisted = _shortlist_existing_intended_contacts(
+        connection,
+        job_posting_id="jp_search",
+        current_time="2026-04-06T21:05:00Z",
+    )
+
+    assert [row["contact_id"] for row in shortlisted[:2]] == [
+        "ct_apollo_priority",
+        "ct_jobright_priority",
+    ]
+    connection.close()
