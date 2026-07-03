@@ -5,9 +5,6 @@ ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 PLIST="$ROOT/ops/launchd/job-hunt-copilot-supervisor.plist"
 FEEDBACK_PLIST="$ROOT/ops/launchd/job-hunt-copilot-feedback-sync.plist"
 FOLLOWUP_PLIST="$ROOT/ops/launchd/job-hunt-copilot-followups.plist"
-LABEL="gui/$UID/com.jobhuntcopilot.supervisor"
-FEEDBACK_LABEL="gui/$UID/com.jobhuntcopilot.feedback-sync"
-FOLLOWUP_LABEL="gui/$UID/com.jobhuntcopilot.followups"
 PYTHON_BIN="${JHC_PYTHON_BIN:-}"
 if [[ -z "$PYTHON_BIN" && -x /opt/homebrew/opt/python@3.11/libexec/bin/python3 ]]; then
   PYTHON_BIN="/opt/homebrew/opt/python@3.11/libexec/bin/python3"
@@ -22,6 +19,23 @@ if [[ -z "$PYTHON_BIN" ]]; then
   echo "python3 not found for supervisor shutdown" >&2
   exit 127
 fi
+
+LAUNCHD_LABELS_TEXT="$("$PYTHON_BIN" - "$ROOT" <<'PY'
+from pathlib import Path
+import sys
+
+from job_hunt_copilot.local_runtime import resolve_launchd_labels
+
+labels = resolve_launchd_labels(Path(sys.argv[1]))
+print(labels["supervisor"])
+print(labels["feedback_sync"])
+print(labels["followups"])
+PY
+)"
+LAUNCHD_LABELS=("${(@f)LAUNCHD_LABELS_TEXT}")
+LABEL="gui/$UID/${LAUNCHD_LABELS[1]}"
+FEEDBACK_LABEL="gui/$UID/${LAUNCHD_LABELS[2]}"
+FOLLOWUP_LABEL="gui/$UID/${LAUNCHD_LABELS[3]}"
 
 "$PYTHON_BIN" "$ROOT/scripts/ops/control_agent.py" stop --project-root "$ROOT" --manual-command jhc-agent-stop >/dev/null
 

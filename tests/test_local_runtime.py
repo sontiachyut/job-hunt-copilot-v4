@@ -1530,6 +1530,27 @@ def test_materialize_supervisor_plist_script_renders_required_launchd_shape(tmp_
     assert plist_path.stat().st_mode & 0o777 == 0o644
 
 
+def test_materialize_supervisor_plist_script_uses_implementation_label_namespace_for_implementation_repo_root(
+    tmp_path,
+):
+    project_root = tmp_path / "job-hunt-copilot-v4-implementation"
+    project_root.mkdir()
+    create_minimal_project(project_root)
+
+    result = run_script(
+        "scripts/ops/materialize_supervisor_plist.py",
+        "--project-root",
+        str(project_root),
+    )
+    report = json.loads(result.stdout)
+
+    plist_path = project_root / "ops" / "launchd" / "job-hunt-copilot-supervisor.plist"
+    payload = plistlib.loads(plist_path.read_bytes())
+
+    assert report["launchd_label"] == "com.jobhuntcopilot.implementation.supervisor"
+    assert payload["Label"] == "com.jobhuntcopilot.implementation.supervisor"
+
+
 def test_materialize_feedback_sync_plist_script_renders_required_launchd_shape(tmp_path):
     project_root = tmp_path / "repo"
     project_root.mkdir()
@@ -1585,6 +1606,40 @@ def test_materialize_followup_plist_script_renders_required_launchd_shape(tmp_pa
     assert payload["StandardOutPath"] == str(project_root / "ops" / "logs" / "followups.stdout.log")
     assert payload["StandardErrorPath"] == str(project_root / "ops" / "logs" / "followups.stderr.log")
     assert plist_path.stat().st_mode & 0o777 == 0o644
+
+
+def test_resolve_launchd_labels_defaults_to_production_namespace(tmp_path):
+    project_root = tmp_path / "repo"
+    labels = local_runtime.resolve_launchd_labels(project_root)
+
+    assert labels == {
+        "supervisor": "com.jobhuntcopilot.supervisor",
+        "feedback_sync": "com.jobhuntcopilot.feedback-sync",
+        "followups": "com.jobhuntcopilot.followups",
+    }
+
+
+def test_resolve_launchd_labels_uses_implementation_project_root_suffix(tmp_path):
+    project_root = tmp_path / "job-hunt-copilot-v4-implementation"
+    labels = local_runtime.resolve_launchd_labels(project_root)
+
+    assert labels == {
+        "supervisor": "com.jobhuntcopilot.implementation.supervisor",
+        "feedback_sync": "com.jobhuntcopilot.implementation.feedback-sync",
+        "followups": "com.jobhuntcopilot.implementation.followups",
+    }
+
+
+def test_resolve_launchd_labels_honors_env_namespace_override(monkeypatch, tmp_path):
+    monkeypatch.setenv("JHC_LAUNCHD_NAMESPACE", "qa-sandbox")
+    project_root = tmp_path / "repo"
+    labels = local_runtime.resolve_launchd_labels(project_root)
+
+    assert labels == {
+        "supervisor": "com.jobhuntcopilot.qa-sandbox.supervisor",
+        "feedback_sync": "com.jobhuntcopilot.qa-sandbox.feedback-sync",
+        "followups": "com.jobhuntcopilot.qa-sandbox.followups",
+    }
 
 
 def test_control_agent_script_persists_running_and_stopped_modes(tmp_path):
@@ -5359,17 +5414,19 @@ def test_repo_agent_wrappers_use_expected_repo_local_wiring():
     assert "trap rollback_start_failure ERR" in start_wrapper
     assert 'launchctl bootstrap "gui/$UID" "$PLIST"' in start_wrapper
     assert 'launchctl kickstart -k "$LABEL"' in start_wrapper
-    assert "com.jobhuntcopilot.supervisor" in start_wrapper
-    assert "com.jobhuntcopilot.feedback-sync" in start_wrapper
-    assert "com.jobhuntcopilot.followups" in start_wrapper
+    assert "resolve_launchd_labels" in start_wrapper
+    assert 'LABEL="gui/$UID/${LAUNCHD_LABELS[1]}"' in start_wrapper
+    assert 'FEEDBACK_LABEL="gui/$UID/${LAUNCHD_LABELS[2]}"' in start_wrapper
+    assert 'FOLLOWUP_LABEL="gui/$UID/${LAUNCHD_LABELS[3]}"' in start_wrapper
 
     assert 'launchctl bootout "gui/$UID" "$FOLLOWUP_PLIST"' in stop_wrapper
     assert 'launchctl bootout "gui/$UID" "$FEEDBACK_PLIST"' in stop_wrapper
     assert "scripts/ops/control_agent.py\" stop" in stop_wrapper
     assert 'launchctl bootout "gui/$UID" "$PLIST"' in stop_wrapper
-    assert "com.jobhuntcopilot.supervisor" in stop_wrapper
-    assert "com.jobhuntcopilot.feedback-sync" in stop_wrapper
-    assert "com.jobhuntcopilot.followups" in stop_wrapper
+    assert "resolve_launchd_labels" in stop_wrapper
+    assert 'LABEL="gui/$UID/${LAUNCHD_LABELS[1]}"' in stop_wrapper
+    assert 'FEEDBACK_LABEL="gui/$UID/${LAUNCHD_LABELS[2]}"' in stop_wrapper
+    assert 'FOLLOWUP_LABEL="gui/$UID/${LAUNCHD_LABELS[3]}"' in stop_wrapper
 
     assert "scripts/ops/run_supervisor_cycle.py" in cycle_wrapper
     assert '--project-root "$ROOT"' in cycle_wrapper

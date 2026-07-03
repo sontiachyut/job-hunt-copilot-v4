@@ -100,6 +100,8 @@ FEEDBACK_SYNC_INTERVAL_SECONDS = DELAYED_FEEDBACK_POLL_INTERVAL_MINUTES * 60
 FEEDBACK_SYNC_SCHEDULER_NAME = "job-hunt-copilot-feedback-sync"
 FEEDBACK_SYNC_SCHEDULER_TYPE = "launchd"
 FOLLOWUP_WORKER_LAUNCHD_LABEL = "com.jobhuntcopilot.followups"
+LAUNCHD_NAMESPACE_ENV_VAR = "JHC_LAUNCHD_NAMESPACE"
+IMPLEMENTATION_PROJECT_SUFFIX = "-implementation"
 LOCAL_RUNTIME_COMPONENT = "local_runtime_control"
 JOB_POSTING_STATUS_SOURCED = "sourced"
 JOB_POSTING_STATUS_TAILORING_IN_PROGRESS = "tailoring_in_progress"
@@ -180,6 +182,40 @@ RESPONDER_STATE_FORWARD_TRANSITIONS = {
     ),
     RESPONDER_STATE_WARM: frozenset({RESPONDER_STATE_WARM}),
 }
+
+
+def _normalize_launchd_namespace(raw_namespace: str | None) -> str | None:
+    if raw_namespace is None:
+        return None
+    normalized = re.sub(r"[^a-z0-9]+", "-", raw_namespace.strip().lower()).strip("-")
+    return normalized or None
+
+
+def resolve_launchd_namespace(project_root: Path | str | None = None) -> str | None:
+    explicit = _normalize_launchd_namespace(os.getenv(LAUNCHD_NAMESPACE_ENV_VAR))
+    if explicit is not None:
+        return explicit
+    if project_root is None:
+        return None
+    root = Path(project_root)
+    if root.name.endswith(IMPLEMENTATION_PROJECT_SUFFIX):
+        return "implementation"
+    return None
+
+
+def resolve_launchd_labels(project_root: Path | str | None = None) -> dict[str, str]:
+    namespace = resolve_launchd_namespace(project_root)
+    if namespace is None:
+        return {
+            "supervisor": SUPERVISOR_LAUNCHD_LABEL,
+            "feedback_sync": FEEDBACK_SYNC_LAUNCHD_LABEL,
+            "followups": FOLLOWUP_WORKER_LAUNCHD_LABEL,
+        }
+    return {
+        "supervisor": f"com.jobhuntcopilot.{namespace}.supervisor",
+        "feedback_sync": f"com.jobhuntcopilot.{namespace}.feedback-sync",
+        "followups": f"com.jobhuntcopilot.{namespace}.followups",
+    }
 ABANDONABLE_POSTING_STATUSES = frozenset(
     {
         JOB_POSTING_STATUS_SOURCED,
@@ -1387,8 +1423,9 @@ def _ensure_guidance_incident(
 
 
 def render_supervisor_launchd_plist_payload(paths: ProjectPaths) -> dict[str, Any]:
+    launchd_labels = resolve_launchd_labels(paths.project_root)
     return {
-        "Label": SUPERVISOR_LAUNCHD_LABEL,
+        "Label": launchd_labels["supervisor"],
         "RunAtLoad": True,
         "StartInterval": SUPERVISOR_HEARTBEAT_INTERVAL_SECONDS,
         "KeepAlive": False,
@@ -1408,6 +1445,7 @@ def materialize_supervisor_launchd_plist(
     project_root: Path | str | None = None,
 ) -> dict[str, Any]:
     paths = ProjectPaths.from_root(project_root)
+    launchd_labels = resolve_launchd_labels(paths.project_root)
     paths.ops_logs_dir.mkdir(parents=True, exist_ok=True)
     paths.ops_launchd_dir.mkdir(parents=True, exist_ok=True)
 
@@ -1421,7 +1459,7 @@ def materialize_supervisor_launchd_plist(
         "generated_at": now_utc_iso(),
         "project_root": str(paths.project_root),
         "plist_path": str(paths.supervisor_plist_path),
-        "launchd_label": SUPERVISOR_LAUNCHD_LABEL,
+        "launchd_label": launchd_labels["supervisor"],
         "heartbeat_interval_seconds": SUPERVISOR_HEARTBEAT_INTERVAL_SECONDS,
         "program_arguments": [str(paths.agent_cycle_entrypoint_path)],
         "stdout_log_path": str(paths.supervisor_stdout_log_path),
@@ -1431,8 +1469,9 @@ def materialize_supervisor_launchd_plist(
 
 
 def render_feedback_sync_launchd_plist_payload(paths: ProjectPaths) -> dict[str, Any]:
+    launchd_labels = resolve_launchd_labels(paths.project_root)
     return {
-        "Label": FEEDBACK_SYNC_LAUNCHD_LABEL,
+        "Label": launchd_labels["feedback_sync"],
         "RunAtLoad": True,
         "StartInterval": FEEDBACK_SYNC_INTERVAL_SECONDS,
         "KeepAlive": False,
@@ -1452,6 +1491,7 @@ def materialize_feedback_sync_launchd_plist(
     project_root: Path | str | None = None,
 ) -> dict[str, Any]:
     paths = ProjectPaths.from_root(project_root)
+    launchd_labels = resolve_launchd_labels(paths.project_root)
     paths.ops_logs_dir.mkdir(parents=True, exist_ok=True)
     paths.ops_launchd_dir.mkdir(parents=True, exist_ok=True)
 
@@ -1465,7 +1505,7 @@ def materialize_feedback_sync_launchd_plist(
         "generated_at": now_utc_iso(),
         "project_root": str(paths.project_root),
         "plist_path": str(paths.feedback_sync_plist_path),
-        "launchd_label": FEEDBACK_SYNC_LAUNCHD_LABEL,
+        "launchd_label": launchd_labels["feedback_sync"],
         "poll_interval_seconds": FEEDBACK_SYNC_INTERVAL_SECONDS,
         "program_arguments": [str(paths.feedback_sync_cycle_entrypoint_path)],
         "stdout_log_path": str(paths.feedback_sync_stdout_log_path),
@@ -1475,8 +1515,9 @@ def materialize_feedback_sync_launchd_plist(
 
 
 def render_followup_worker_launchd_plist_payload(paths: ProjectPaths) -> dict[str, Any]:
+    launchd_labels = resolve_launchd_labels(paths.project_root)
     return {
-        "Label": FOLLOWUP_WORKER_LAUNCHD_LABEL,
+        "Label": launchd_labels["followups"],
         "RunAtLoad": True,
         "StartInterval": FOLLOWUP_INTERVAL_SECONDS,
         "KeepAlive": False,
@@ -1496,6 +1537,7 @@ def materialize_followup_worker_launchd_plist(
     project_root: Path | str | None = None,
 ) -> dict[str, Any]:
     paths = ProjectPaths.from_root(project_root)
+    launchd_labels = resolve_launchd_labels(paths.project_root)
     paths.ops_logs_dir.mkdir(parents=True, exist_ok=True)
     paths.ops_launchd_dir.mkdir(parents=True, exist_ok=True)
 
@@ -1509,7 +1551,7 @@ def materialize_followup_worker_launchd_plist(
         "generated_at": now_utc_iso(),
         "project_root": str(paths.project_root),
         "plist_path": str(paths.followup_worker_plist_path),
-        "launchd_label": FOLLOWUP_WORKER_LAUNCHD_LABEL,
+        "launchd_label": launchd_labels["followups"],
         "poll_interval_seconds": FOLLOWUP_INTERVAL_SECONDS,
         "program_arguments": [str(paths.followup_cycle_entrypoint_path), "--send"],
         "stdout_log_path": str(paths.followup_worker_stdout_log_path),
