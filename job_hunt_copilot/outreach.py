@@ -3531,6 +3531,7 @@ def refresh_role_targeted_generated_drafts(
     current_time: str,
     local_timezone: tzinfo | str | None = None,
     renderer: OutreachDraftRenderer | None = None,
+    stale_only: bool = False,
 ) -> tuple[str, ...]:
     paths = ProjectPaths.from_root(project_root)
     posting_row = _load_role_targeted_draft_posting_row(connection, job_posting_id=job_posting_id)
@@ -3551,6 +3552,13 @@ def refresh_role_targeted_generated_drafts(
             project_root=project_root,
             current_time=current_time,
             local_timezone=local_timezone,
+        )
+        and _generated_message_requires_refresh(
+            paths,
+            posting_row=posting_row,
+            active_message=message,
+            current_time=current_time,
+            stale_only=stale_only,
         )
     ]
     if not generated_messages:
@@ -3761,6 +3769,50 @@ def _refresh_persisted_role_targeted_generated_draft(
         paths.outreach_latest_send_result_path(company_name, role_title),
         send_result_path.read_text(encoding="utf-8"),
     )
+    return True
+
+
+def _generated_message_requires_refresh(
+    paths: ProjectPaths,
+    *,
+    posting_row: Mapping[str, Any],
+    active_message: _ActiveWaveMessage,
+    current_time: str,
+    stale_only: bool,
+) -> bool:
+    if active_message.message_status != MESSAGE_STATUS_GENERATED:
+        return False
+    company_name = str(posting_row["company_name"])
+    role_title = str(posting_row["role_title"])
+    draft_path = paths.outreach_message_draft_path(
+        company_name,
+        role_title,
+        active_message.outreach_message_id,
+    )
+    send_result_path = paths.outreach_message_send_result_path(
+        company_name,
+        role_title,
+        active_message.outreach_message_id,
+    )
+    html_path = paths.outreach_message_html_path(
+        company_name,
+        role_title,
+        active_message.outreach_message_id,
+    )
+    critical_artifact_missing = (
+        active_message.subject is None
+        or active_message.body_text is None
+        or not draft_path.exists()
+        or not send_result_path.exists()
+        or (active_message.body_html is not None and not html_path.exists())
+    )
+    if critical_artifact_missing:
+        return True
+    if stale_only:
+        return not _is_active_message_draft_fresh(
+            active_message,
+            current_time=current_time,
+        )
     return True
 
 
@@ -4150,6 +4202,7 @@ def execute_role_targeted_send_set(
         current_time=current_time,
         local_timezone=local_timezone,
         renderer=renderer,
+        stale_only=True,
     )
     active_wave = _load_active_role_targeted_wave(connection, job_posting_id=job_posting_id)
     if not active_wave:

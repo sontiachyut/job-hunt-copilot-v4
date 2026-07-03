@@ -5590,6 +5590,7 @@ def _execute_selected_work_unit(
                 current_time=timestamp,
                 local_timezone=action_dependencies.local_timezone,
                 renderer=role_targeted_renderer,
+                stale_only=True,
             )
             if is_role_targeted_sending_actionable_now(
                 connection,

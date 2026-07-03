@@ -529,6 +529,25 @@ class FailingRoleTargetedRenderer:
         return DeterministicOutreachDraftRenderer().render_general_learning(context)
 
 
+class RecordingRoleTargetedRenderer:
+    def __init__(self, *, fail_on_role_targeted: bool = False) -> None:
+        self.fail_on_role_targeted = fail_on_role_targeted
+        self.role_targeted_calls: list[str] = []
+
+    def render_role_targeted(self, context):  # type: ignore[no-untyped-def]
+        self.role_targeted_calls.append(context.contact_id)
+        if self.fail_on_role_targeted:
+            raise AssertionError("role-targeted renderer should not have been invoked")
+        from job_hunt_copilot.outreach import DeterministicOutreachDraftRenderer
+
+        return DeterministicOutreachDraftRenderer().render_role_targeted(context)
+
+    def render_general_learning(self, context):  # type: ignore[no-untyped-def]
+        from job_hunt_copilot.outreach import DeterministicOutreachDraftRenderer
+
+        return DeterministicOutreachDraftRenderer().render_general_learning(context)
+
+
 class RecordingOutreachSender:
     def __init__(
         self,
@@ -6145,6 +6164,105 @@ def test_refresh_role_targeted_generated_drafts_refreshes_stale_generated_messag
     assert refreshed == ("om_stale_generated",)
     assert message_row["updated_at"] == "2026-04-06T21:00:00Z"
     assert message_row["subject"] != "Old subject"
+
+
+def test_refresh_role_targeted_generated_drafts_skips_fresh_generated_messages_when_stale_only(
+    tmp_path: Path,
+) -> None:
+    project_root, paths = bootstrap_project(tmp_path)
+    connection = connect_database(project_root / "job_hunt_copilot.db")
+    write_sender_profile(paths)
+    seed_posting(
+        connection,
+        company_name="Acme Platform",
+        role_title="Backend Developer",
+    )
+    seed_linked_contact(
+        connection,
+        contact_id="ct_refresh_skip",
+        job_posting_contact_id="jpc_refresh_skip",
+        display_name="Taylor Manager",
+        recipient_type=RECIPIENT_TYPE_HIRING_MANAGER,
+        current_working_email="taylor@acme.example",
+        created_at="2026-04-06T20:01:00Z",
+    )
+    seed_approved_tailoring_run(
+        connection,
+        paths,
+        company_name="Acme Platform",
+        role_title="Backend Developer",
+    )
+
+    draft_batch = generate_role_targeted_send_set_drafts(
+        connection,
+        project_root=project_root,
+        job_posting_id="jp_outreach",
+        current_time="2026-04-06T20:30:00Z",
+        local_timezone=ZoneInfo("UTC"),
+    )
+    message_id = draft_batch.drafted_messages[0].outreach_message_id
+    guard_renderer = RecordingRoleTargetedRenderer(fail_on_role_targeted=True)
+
+    refreshed_ids = refresh_role_targeted_generated_drafts(
+        connection,
+        project_root=project_root,
+        job_posting_id="jp_outreach",
+        current_time="2026-04-06T20:40:00Z",
+        local_timezone=ZoneInfo("UTC"),
+        renderer=guard_renderer,
+        stale_only=True,
+    )
+
+    message_row = connection.execute(
+        "SELECT updated_at FROM outreach_messages WHERE outreach_message_id = ?",
+        (message_id,),
+    ).fetchone()
+    assert refreshed_ids == ()
+    assert guard_renderer.role_targeted_calls == []
+    assert message_row["updated_at"] == "2026-04-06T20:30:00Z"
+
+
+def test_execute_role_targeted_send_set_skips_fresh_generated_redraft_before_sending(
+    tmp_path: Path,
+) -> None:
+    project_root, paths = bootstrap_project(tmp_path)
+    connection = connect_database(project_root / "job_hunt_copilot.db")
+    write_sender_profile(paths)
+    seed_posting(connection)
+    seed_linked_contact(
+        connection,
+        contact_id="ct_send_skip_refresh",
+        job_posting_contact_id="jpc_send_skip_refresh",
+        display_name="Priya Manager",
+        recipient_type=RECIPIENT_TYPE_HIRING_MANAGER,
+        current_working_email="priya@acme.example",
+        created_at="2026-04-06T20:01:00Z",
+    )
+    seed_approved_tailoring_run(connection, paths)
+
+    draft_batch = generate_role_targeted_send_set_drafts(
+        connection,
+        project_root=project_root,
+        job_posting_id="jp_outreach",
+        current_time="2026-04-06T20:30:00Z",
+        local_timezone=ZoneInfo("UTC"),
+    )
+    drafted_message_id = draft_batch.drafted_messages[0].outreach_message_id
+    sender = RecordingOutreachSender()
+    guard_renderer = RecordingRoleTargetedRenderer(fail_on_role_targeted=True)
+
+    send_result = execute_role_targeted_send_set(
+        connection,
+        project_root=project_root,
+        job_posting_id="jp_outreach",
+        current_time="2026-04-06T20:40:00Z",
+        local_timezone=ZoneInfo("UTC"),
+        sender=sender,
+        renderer=guard_renderer,
+    )
+
+    assert guard_renderer.role_targeted_calls == []
+    assert [message.outreach_message_id for message in send_result.sent_messages] == [drafted_message_id]
 
 
 def test_original_send_actionable_keeps_stale_frontier_refreshable(tmp_path: Path):
