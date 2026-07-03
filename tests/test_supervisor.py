@@ -11,7 +11,6 @@ import yaml
 
 from job_hunt_copilot.bootstrap import run_bootstrap
 from job_hunt_copilot.gmail_alerts import GmailAlertBatch
-from job_hunt_copilot.linkedin_scraping import ingest_gmail_alert_batch_to_leads
 from job_hunt_copilot.maintenance import (
     MaintenanceDependencies,
     MaintenancePlan,
@@ -183,45 +182,6 @@ class FakeGmailAlertCollector:
 
     def pop_prepared_batch(self, ingestion_run_id: str) -> GmailAlertBatch | None:
         return self._prepared_batches.pop(ingestion_run_id, None)
-
-
-def downgrade_gmail_lead_to_stale_parser_state(project_root: Path, lead_result) -> None:
-    alert_card = json.loads(lead_result.alert_card_path.read_text(encoding="utf-8"))
-    collection_job_cards_path = project_root / alert_card["collection_job_cards_path"]
-    job_cards_payload = json.loads(collection_job_cards_path.read_text(encoding="utf-8"))
-    card_index = int(alert_card["card_index"]) - 1
-    job_cards_payload["cards"][card_index]["job_url"] = None
-    job_cards_payload["cards"][card_index]["job_id"] = None
-    job_cards_payload["cards"][card_index]["synthetic_identity_key"] = None
-    collection_job_cards_path.write_text(
-        json.dumps(job_cards_payload, indent=2) + "\n",
-        encoding="utf-8",
-    )
-
-    alert_card["job_url"] = None
-    alert_card["job_id"] = None
-    alert_card["synthetic_identity_key"] = None
-    lead_result.alert_card_path.write_text(
-        json.dumps(alert_card, indent=2) + "\n",
-        encoding="utf-8",
-    )
-
-    manifest = yaml.safe_load(lead_result.lead_manifest_path.read_text(encoding="utf-8"))
-    manifest["source"]["source_url"] = None
-    manifest["source"]["gmail"]["job_url"] = None
-    manifest["source"]["gmail"]["job_id"] = None
-    manifest["source"]["gmail"]["synthetic_identity_key"] = None
-    lead_result.lead_manifest_path.write_text(
-        yaml.safe_dump(manifest, sort_keys=False),
-        encoding="utf-8",
-    )
-    connection = connect_database(project_root / "job_hunt_copilot.db")
-    connection.execute(
-        "UPDATE linkedin_leads SET source_url = NULL WHERE lead_id = ?",
-        (lead_result.lead_id,),
-    )
-    connection.commit()
-    connection.close()
 
 
 def seed_role_targeted_posting(
@@ -1202,175 +1162,7 @@ def test_run_supervisor_cycle_bootstraps_new_posting_run_and_persists_snapshot(t
     assert final_lease is None
 
 
-def test_run_supervisor_cycle_polls_gmail_alerts_and_materializes_ready_postings(
-    tmp_path,
-    monkeypatch,
-):
-    project_root = bootstrap_project(tmp_path)
-    paths = ProjectPaths.from_root(project_root)
-    connection = connect_database(project_root / "job_hunt_copilot.db")
-    resume_agent(
-        connection,
-        manual_command="jhc-agent-start",
-        timestamp="2026-04-06T00:00:00Z",
-    )
-    gmail_collector = FakeGmailAlertCollector(
-        GmailAlertBatch.from_mapping(
-            {
-                "ingestion_run_id": "gmail-auto-20260406T000100Z",
-                "mailbox_history_id_before": "history-before-001",
-                "mailbox_history_id_after": "history-after-001",
-                "poll_strategy": "history_checkpoint",
-                "messages": [
-                    {
-                        "gmail_message_id": "gmail-supervisor-001",
-                        "gmail_thread_id": "gmail-thread-supervisor-001",
-                        "sender": "jobalerts-noreply@linkedin.com",
-                        "subject": "LinkedIn job alerts",
-                        "received_at": "2026-04-06T00:00:30Z",
-                        "text_plain_body": (
-                            "-----\n"
-                            "Senior Software Engineer\n"
-                            "Guidewire Software\n"
-                            "Boston, MA (Hybrid)\n"
-                            "Actively recruiting\n"
-                            "View job\n"
-                            "https://www.linkedin.com/jobs/view/1234567890/\n"
-                        ),
-                        "jd_recovery": [
-                            {
-                                "job_id": "1234567890",
-                                "source_type": "linkedin_guest_job_payload",
-                                "source_url": "https://www.linkedin.com/jobs/view/1234567890/",
-                                "company_name": "Guidewire Software",
-                                "role_title": "Senior Software Engineer",
-                                "jd_text": "About the job\nBuild backend systems.\n",
-                            }
-                        ],
-                    }
-                ],
-            }
-        )
-    )
-    monkeypatch.setattr(
-        "job_hunt_copilot.linkedin_scraping._fetch_live_gmail_jd_recovery_candidate",
-        lambda card: {
-            "job_id": card.get("job_id"),
-            "job_url": card.get("job_url"),
-            "source_type": "linkedin_guest_job_page",
-            "source_url": card.get("job_url"),
-            "company_name": "Guidewire Software",
-            "role_title": "Senior Software Engineer",
-            "jd_text": "About the job\nBuild backend systems.\n",
-        },
-    )
-
-    execution = run_supervisor_cycle(
-        connection,
-        paths,
-        trigger_type="launchd_heartbeat",
-        scheduler_name="launchd",
-        started_at="2026-04-06T00:01:00Z",
-        action_dependencies=SupervisorActionDependencies(
-            gmail_alert_collector=gmail_collector,
-            local_timezone="UTC",
-        ),
-    )
-    lead_row = connection.execute(
-        """
-        SELECT lead_id, lead_status, source_mode
-        FROM linkedin_leads
-        ORDER BY created_at ASC, lead_id ASC
-        LIMIT 1
-        """
-    ).fetchone()
-    posting_row = connection.execute(
-        """
-        SELECT lead_id, posting_status
-        FROM job_postings
-        ORDER BY created_at ASC, job_posting_id ASC
-        LIMIT 1
-        """
-    ).fetchone()
-    run_count = int(connection.execute("SELECT COUNT(*) FROM pipeline_runs").fetchone()[0])
-    control_state = read_agent_control_state(connection, timestamp="2026-04-06T00:01:00Z")
-    connection.close()
-
-    assert execution.cycle.result == SUPERVISOR_CYCLE_RESULT_SUCCESS
-    assert execution.selected_work is not None
-    assert execution.selected_work.work_type == "gmail_alert_batch"
-    assert execution.selected_work.work_id == "gmail-auto-20260406T000100Z"
-    assert execution.action_id == "poll_gmail_linkedin_alerts"
-    assert lead_row is not None
-    assert dict(lead_row) == {
-        "lead_id": lead_row["lead_id"],
-        "lead_status": "handed_off",
-        "source_mode": "gmail_job_alert",
-    }
-    assert posting_row is not None
-    assert posting_row["lead_id"] == lead_row["lead_id"]
-    assert posting_row["posting_status"] == "sourced"
-    assert run_count == 0
-    assert control_state.gmail_poll_last_history_id == "history-after-001"
-    assert control_state.gmail_poll_last_checkpoint_at == "2026-04-06T00:01:00Z"
-    assert control_state.gmail_poll_last_strategy == "history_checkpoint"
-
-
-def test_run_supervisor_cycle_seeds_gmail_history_checkpoint_without_collection_units(
-    tmp_path,
-):
-    project_root = bootstrap_project(tmp_path)
-    paths = ProjectPaths.from_root(project_root)
-    connection = connect_database(project_root / "job_hunt_copilot.db")
-    resume_agent(
-        connection,
-        manual_command="jhc-agent-start",
-        timestamp="2026-04-06T00:00:00Z",
-    )
-    gmail_collector = FakeGmailAlertCollector(
-        GmailAlertBatch(
-            ingestion_run_id="gmail-auto-20260406T000100Z",
-            messages=(),
-            mailbox_history_id_before=None,
-            mailbox_history_id_after="history-after-seed-001",
-            poll_strategy="history_checkpoint_seed",
-        )
-    )
-
-    execution = run_supervisor_cycle(
-        connection,
-        paths,
-        trigger_type="launchd_heartbeat",
-        scheduler_name="launchd",
-        started_at="2026-04-06T00:01:00Z",
-        action_dependencies=SupervisorActionDependencies(
-            gmail_alert_collector=gmail_collector,
-            local_timezone="UTC",
-        ),
-    )
-    control_state = read_agent_control_state(connection, timestamp="2026-04-06T00:01:00Z")
-    lead_count = int(connection.execute("SELECT COUNT(*) FROM linkedin_leads").fetchone()[0] or 0)
-    posting_count = int(connection.execute("SELECT COUNT(*) FROM job_postings").fetchone()[0] or 0)
-    connection.close()
-
-    seed_path = paths.gmail_runtime_dir / "_checkpoint-seeds" / "gmail-auto-20260406T000100Z.json"
-    assert execution.cycle.result == SUPERVISOR_CYCLE_RESULT_SUCCESS
-    assert execution.selected_work is not None
-    assert execution.selected_work.work_type == "gmail_alert_batch"
-    assert execution.selected_work.work_id == "gmail-auto-20260406T000100Z"
-    assert lead_count == 0
-    assert posting_count == 0
-    assert control_state.gmail_poll_last_history_id == "history-after-seed-001"
-    assert control_state.gmail_poll_last_checkpoint_at == "2026-04-06T00:01:00Z"
-    assert control_state.gmail_poll_last_strategy == "history_checkpoint_seed"
-    assert seed_path.exists()
-    seed_payload = json.loads(seed_path.read_text(encoding="utf-8"))
-    assert seed_payload["ingestion_run_id"] == "gmail-auto-20260406T000100Z"
-    assert seed_payload["mailbox_history_id_after"] == "history-after-seed-001"
-    assert seed_payload["seeded_without_messages"] is True
-
-
-def test_select_next_supervisor_work_unit_prefers_generated_send_frontier_over_gmail_and_draft_generation(
+def test_select_next_supervisor_work_unit_prefers_generated_send_frontier_over_draft_generation(
     tmp_path,
 ):
     project_root = bootstrap_project(tmp_path)
@@ -1435,27 +1227,11 @@ def test_select_next_supervisor_work_unit_prefers_generated_send_frontier_over_g
         created_at="2026-04-06T00:06:00Z",
     )
 
-    gmail_collector = FakeGmailAlertCollector(
-        GmailAlertBatch(
-            ingestion_run_id="gmail-auto-20260406T000700Z",
-            messages=(
-                {
-                    "gmail_message_id": "gm_test_001",
-                    "subject": "LinkedIn Jobs: 1 new role",
-                },
-            ),
-            mailbox_history_id_before=None,
-            mailbox_history_id_after="history-after-002",
-            poll_strategy="history_checkpoint",
-        )
-    )
-
     selected_work = select_next_supervisor_work_unit(
         connection,
         project_root=project_root,
         current_time="2026-04-06T00:07:00Z",
         action_dependencies=SupervisorActionDependencies(
-            gmail_alert_collector=gmail_collector,
             local_timezone="UTC",
         ),
     )
@@ -2644,95 +2420,6 @@ def test_run_supervisor_cycle_completes_stale_sending_run_without_new_frontier(
     assert execution.pipeline_run.run_status == RUN_STATUS_COMPLETED
     assert posting_status == "completed"
     assert current_posting_message_count == 0
-
-
-def test_run_supervisor_cycle_repairs_stale_blocked_gmail_lead(tmp_path, monkeypatch):
-    project_root = bootstrap_project(tmp_path)
-    paths = ProjectPaths.from_root(project_root)
-    connection = connect_database(project_root / "job_hunt_copilot.db")
-    resume_agent(
-        connection,
-        manual_command="jhc-agent-start",
-        timestamp="2026-04-06T00:00:00Z",
-    )
-
-    monkeypatch.setattr(
-        "job_hunt_copilot.linkedin_scraping._fetch_live_gmail_jd_recovery_candidate",
-        lambda card: None,
-    )
-    ingestion = ingest_gmail_alert_batch_to_leads(
-        project_root,
-        batch=GmailAlertBatch.from_mapping(
-            {
-                "ingestion_run_id": "gmail-repair-run-001",
-                "messages": [
-                    {
-                        "gmail_message_id": "gmail-repair-001",
-                        "gmail_thread_id": "gmail-thread-repair-001",
-                        "sender": "jobalerts-noreply@linkedin.com",
-                        "subject": "LinkedIn job alerts",
-                        "received_at": "2026-04-06T00:00:30Z",
-                        "text_plain_body": (
-                            "Your job alert has been created: Software Engineer Hiring in Greater Phoenix Area.\n"
-                            "You’ll receive notifications when new jobs are posted that match your search preferences.\n"
-                            "-----\n"
-                            "Full Stack Engineer\n"
-                            "LHH\n"
-                            "Phoenix, Arizona, United States\n"
-                            "Apply with resume & profile\n"
-                            "View job\n"
-                            "https://www.linkedin.com/comm/jobs/view/4389508705?trackingId=abc\n"
-                        ),
-                    }
-                ],
-            }
-        ),
-    )
-    lead = ingestion.lead_results[0]
-    downgrade_gmail_lead_to_stale_parser_state(project_root, lead)
-
-    monkeypatch.setattr(
-        "job_hunt_copilot.linkedin_scraping._fetch_live_gmail_jd_recovery_candidate",
-        lambda card: {
-            "job_id": card.get("job_id"),
-            "job_url": card.get("job_url"),
-            "source_type": "linkedin_guest_job_page",
-            "source_url": card.get("job_url"),
-            "company_name": "LHH",
-            "role_title": "Full Stack Engineer",
-            "jd_text": "About the job\nBuild .NET services.\n",
-        },
-    )
-
-    execution = run_supervisor_cycle(
-        connection,
-        paths,
-        trigger_type="launchd_heartbeat",
-        scheduler_name="launchd",
-        started_at="2026-04-06T00:01:00Z",
-        action_dependencies=SupervisorActionDependencies(local_timezone="UTC"),
-    )
-    lead_row = connection.execute(
-        """
-        SELECT lead_status, source_url
-        FROM linkedin_leads
-        WHERE lead_id = ?
-        """,
-        (lead.lead_id,),
-    ).fetchone()
-    posting_count = int(connection.execute("SELECT COUNT(*) FROM job_postings").fetchone()[0])
-    connection.close()
-
-    assert execution.cycle.result == SUPERVISOR_CYCLE_RESULT_SUCCESS
-    assert execution.selected_work is not None
-    assert execution.selected_work.work_type == "gmail_lead_repair"
-    assert execution.selected_work.work_id == lead.lead_id
-    assert execution.action_id == "repair_stale_gmail_lead"
-    assert dict(lead_row) == {
-        "lead_status": "handed_off",
-        "source_url": "https://www.linkedin.com/jobs/view/4389508705/",
-    }
-    assert posting_count == 1
 
 
 def test_run_supervisor_cycle_reuses_existing_pipeline_run_without_duplicate_history(tmp_path):

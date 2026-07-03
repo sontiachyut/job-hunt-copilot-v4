@@ -26,10 +26,7 @@ from .delivery_feedback import (
     sync_delivery_feedback,
 )
 from .email_discovery import ConfiguredApolloClient, EmailDiscoveryError
-from .gmail_alerts import (
-    GmailLinkedInAlertMailboxCollector,
-    gmail_mailbox_polling_configured,
-)
+from .gmail_alerts import gmail_mailbox_polling_configured
 from .jobright_ingestion import JobrightRecommendationCollector, JobrightSessionClient
 from .followups import (
     FOLLOWUP_INTERVAL_SECONDS,
@@ -297,14 +294,6 @@ def _default_maintenance_dependencies(
         return None
 
 
-def _default_gmail_alert_collector(
-    paths: ProjectPaths,
-) -> GmailLinkedInAlertMailboxCollector | None:
-    if not gmail_mailbox_polling_configured(paths):
-        return None
-    return GmailLinkedInAlertMailboxCollector(paths)
-
-
 def _default_jobright_recommendation_collector(
     paths: ProjectPaths,
 ) -> JobrightRecommendationCollector | None:
@@ -356,7 +345,6 @@ def _resolve_supervisor_action_dependencies(
     paths: ProjectPaths,
     action_dependencies: SupervisorActionDependencies | None,
 ) -> SupervisorActionDependencies:
-    default_gmail_alert_collector = _default_gmail_alert_collector(paths)
     default_jobright_recommendation_collector = _default_jobright_recommendation_collector(paths)
     default_apollo_client = _default_apollo_client(paths)
     default_outreach_sender = _default_outreach_sender(paths)
@@ -364,7 +352,7 @@ def _resolve_supervisor_action_dependencies(
     default_maintenance_dependencies = _default_maintenance_dependencies(paths)
     if action_dependencies is None:
         return SupervisorActionDependencies(
-            gmail_alert_collector=default_gmail_alert_collector,
+            gmail_alert_collector=None,
             jobright_recommendation_collector=default_jobright_recommendation_collector,
             apollo_people_search_provider=default_apollo_client,
             apollo_contact_enrichment_provider=default_apollo_client,
@@ -372,9 +360,6 @@ def _resolve_supervisor_action_dependencies(
             feedback_observer=default_feedback_observer,
             maintenance_dependencies=default_maintenance_dependencies
         )
-    resolved_gmail_alert_collector = action_dependencies.gmail_alert_collector
-    if resolved_gmail_alert_collector is None:
-        resolved_gmail_alert_collector = default_gmail_alert_collector
     resolved_jobright_recommendation_collector = action_dependencies.jobright_recommendation_collector
     if resolved_jobright_recommendation_collector is None:
         resolved_jobright_recommendation_collector = default_jobright_recommendation_collector
@@ -395,8 +380,7 @@ def _resolve_supervisor_action_dependencies(
     if resolved_feedback_observer is None:
         resolved_feedback_observer = default_feedback_observer
     if (
-        resolved_gmail_alert_collector is action_dependencies.gmail_alert_collector
-        and resolved_jobright_recommendation_collector is action_dependencies.jobright_recommendation_collector
+        resolved_jobright_recommendation_collector is action_dependencies.jobright_recommendation_collector
         and resolved_apollo_people_search_provider is action_dependencies.apollo_people_search_provider
         and resolved_apollo_contact_enrichment_provider is action_dependencies.apollo_contact_enrichment_provider
         and resolved_outreach_sender is action_dependencies.outreach_sender
@@ -405,7 +389,7 @@ def _resolve_supervisor_action_dependencies(
     ):
         return action_dependencies
     return SupervisorActionDependencies(
-        gmail_alert_collector=resolved_gmail_alert_collector,
+        gmail_alert_collector=action_dependencies.gmail_alert_collector,
         jobright_recommendation_collector=resolved_jobright_recommendation_collector,
         apollo_people_search_provider=resolved_apollo_people_search_provider,
         apollo_contact_enrichment_provider=resolved_apollo_contact_enrichment_provider,

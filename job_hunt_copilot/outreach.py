@@ -3402,7 +3402,7 @@ def generate_role_targeted_send_set_drafts(
         raise OutreachDraftingError(
             f"Job posting `{job_posting_id}` is `{posting_row['posting_status']}`; drafting starts only from `ready_for_outreach`."
         )
-    active_frontier_ids = _load_global_original_prepared_frontier_message_ids(
+    active_frontier_ids = _load_global_original_prepared_capacity_message_ids(
         connection,
         project_root=project_root,
         current_time=current_time,
@@ -3955,13 +3955,13 @@ class _ActiveWaveMessage:
     message_updated_at: str
 
 
-def _load_global_original_prepared_frontier_message_ids(
+def _collect_global_original_prepared_frontier_messages(
     connection: sqlite3.Connection,
     *,
     project_root: Path | str,
     current_time: str,
     local_timezone: tzinfo | str | None = None,
-) -> tuple[str, ...]:
+) -> tuple[_ActiveWaveMessage, ...]:
     rows = connection.execute(
         """
         SELECT job_posting_id
@@ -4023,7 +4023,48 @@ def _load_global_original_prepared_frontier_message_ids(
             message.outreach_message_id,
         )
     )
+    return tuple(frontier_messages)
+
+
+def _load_global_original_prepared_frontier_message_ids(
+    connection: sqlite3.Connection,
+    *,
+    project_root: Path | str,
+    current_time: str,
+    local_timezone: tzinfo | str | None = None,
+) -> tuple[str, ...]:
+    frontier_messages = _collect_global_original_prepared_frontier_messages(
+        connection,
+        project_root=project_root,
+        current_time=current_time,
+        local_timezone=local_timezone,
+    )
     return tuple(message.outreach_message_id for message in frontier_messages[:PREPARED_FRONTIER_CAP])
+
+
+def _load_global_original_prepared_capacity_message_ids(
+    connection: sqlite3.Connection,
+    *,
+    project_root: Path | str,
+    current_time: str,
+    local_timezone: tzinfo | str | None = None,
+) -> tuple[str, ...]:
+    frontier_messages = _collect_global_original_prepared_frontier_messages(
+        connection,
+        project_root=project_root,
+        current_time=current_time,
+        local_timezone=local_timezone,
+    )
+    fresh_frontier_messages = [
+        message
+        for message in frontier_messages
+        if message.message_status != MESSAGE_STATUS_GENERATED
+        or _is_active_message_draft_fresh(message, current_time=current_time)
+    ]
+    return tuple(
+        message.outreach_message_id
+        for message in fresh_frontier_messages[:PREPARED_FRONTIER_CAP]
+    )
 
 
 def _original_generated_frontier_has_capacity(
@@ -4035,7 +4076,7 @@ def _original_generated_frontier_has_capacity(
 ) -> bool:
     return (
         len(
-            _load_global_original_prepared_frontier_message_ids(
+            _load_global_original_prepared_capacity_message_ids(
                 connection,
                 project_root=project_root,
                 current_time=current_time,

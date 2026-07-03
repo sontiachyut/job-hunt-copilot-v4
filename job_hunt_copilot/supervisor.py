@@ -147,16 +147,12 @@ AUTO_PAUSE_CRITICAL_INCIDENT_TYPES = frozenset(
 WORK_TYPE_AGENT_INCIDENT: Final = "agent_incident"
 WORK_TYPE_INCIDENT_CLUSTER: Final = "incident_cluster"
 WORK_TYPE_CONTACT: Final = "contact"
-WORK_TYPE_GMAIL_ALERT_BATCH: Final = "gmail_alert_batch"
-WORK_TYPE_GMAIL_LEAD_REPAIR: Final = "gmail_lead_repair"
 WORK_TYPE_JOBRIGHT_RECOMMENDATION_BATCH: Final = "jobright_recommendation_batch"
 WORK_TYPE_LEAD: Final = "lead"
 WORK_TYPE_JOB_POSTING: Final = "job_posting"
 WORK_TYPE_MAINTENANCE_CYCLE: Final = "maintenance_cycle"
 WORK_TYPE_PIPELINE_RUN: Final = "pipeline_run"
 
-ACTION_POLL_GMAIL_LINKEDIN_ALERTS: Final = "poll_gmail_linkedin_alerts"
-ACTION_REPAIR_STALE_GMAIL_LEAD: Final = "repair_stale_gmail_lead"
 ACTION_POLL_JOBRIGHT_RECOMMENDATIONS: Final = "poll_jobright_recommendations"
 ACTION_PROMOTE_JOBRIGHT_LEAD: Final = "promote_jobright_lead"
 ACTION_BOOTSTRAP_ROLE_TARGETED_RUN: Final = "bootstrap_role_targeted_run"
@@ -641,25 +637,6 @@ class AutoPauseDecision:
 
 SUPERVISOR_ACTION_CATALOG = MappingProxyType(
     {
-        ACTION_POLL_GMAIL_LINKEDIN_ALERTS: SupervisorActionCatalogEntry(
-            action_id=ACTION_POLL_GMAIL_LINKEDIN_ALERTS,
-            work_type=WORK_TYPE_GMAIL_ALERT_BATCH,
-            description="Poll Gmail for a bounded batch of new LinkedIn job-alert emails, ingest them into canonical lead state, and materialize any ready job postings.",
-            prerequisites=(
-                "a Gmail alert collector is configured for the current runtime",
-                "at least one uncollected LinkedIn job-alert email is currently visible in Gmail",
-                "the batch remains bounded so one supervisor cycle only ingests a small number of messages",
-            ),
-            expected_outputs=(
-                "one bounded Gmail alert batch is persisted under linkedin-scraping/runtime/gmail",
-                "new Gmail-derived linkedin_leads rows are created or safely deduplicated by gmail_message_id and lead identity",
-                "ready Gmail-derived leads materialize into canonical job_postings for downstream pipeline bootstrap on later cycles",
-            ),
-            validation_references=(
-                "prd/spec.md FR-SYS-38 and current-build Gmail intake requirements",
-                "prd/test-spec.feature bounded supervisor work-unit and Gmail-ingestion scenarios",
-            ),
-        ),
         ACTION_POLL_JOBRIGHT_RECOMMENDATIONS: SupervisorActionCatalogEntry(
             action_id=ACTION_POLL_JOBRIGHT_RECOMMENDATIONS,
             work_type=WORK_TYPE_JOBRIGHT_RECOMMENDATION_BATCH,
@@ -696,25 +673,6 @@ SUPERVISOR_ACTION_CATALOG = MappingProxyType(
             validation_references=(
                 "prd/spec.md FR-SYS-01F through FR-SYS-01H7",
                 "prd/test-spec.feature Jobright promotion and seeded-contact carry-forward scenarios",
-            ),
-        ),
-        ACTION_REPAIR_STALE_GMAIL_LEAD: SupervisorActionCatalogEntry(
-            action_id=ACTION_REPAIR_STALE_GMAIL_LEAD,
-            work_type=WORK_TYPE_GMAIL_LEAD_REPAIR,
-            description="Repair one stale Gmail-derived lead whose original collection artifacts were persisted before the LinkedIn alert parser could recover canonical job URLs.",
-            prerequisites=(
-                "linkedin_lead exists in canonical state",
-                "linkedin_lead.source_mode is `gmail_job_alert` and lead_status is `blocked_no_jd`",
-                "the stale lead is repairable from persisted Gmail collection artifacts without fetching a new mailbox batch",
-            ),
-            expected_outputs=(
-                "the persisted Gmail collection artifacts are refreshed with the current parser",
-                "the selected Gmail lead refreshes its alert card and JD recovery artifacts from the repaired collection",
-                "the repaired lead either materializes into a canonical job_posting or remains honestly blocked for a non-parser reason",
-            ),
-            validation_references=(
-                "prd/spec.md Gmail intake durability and canonical artifact requirements",
-                "prd/test-spec.feature bounded supervisor work-unit and canonical lead repair scenarios",
             ),
         ),
         ACTION_BOOTSTRAP_ROLE_TARGETED_RUN: SupervisorActionCatalogEntry(
@@ -2702,18 +2660,6 @@ def select_next_supervisor_work_unit(
     if jobright_promotion_work is not None:
         return jobright_promotion_work
 
-    gmail_alert_work = _select_gmail_alert_collection_work_unit(
-        current_time=current_time,
-        gmail_alert_collector=action_dependencies.gmail_alert_collector,
-        gmail_history_checkpoint=control_state.gmail_poll_last_history_id,
-    )
-    if gmail_alert_work is not None:
-        return gmail_alert_work
-
-    stale_gmail_repair_work = _select_stale_gmail_lead_repair_work_unit(connection)
-    if stale_gmail_repair_work is not None:
-        return stale_gmail_repair_work
-
     priority_pipeline_run_work = _select_open_pipeline_run_work_unit(
         connection,
         project_root=project_root,
@@ -3107,48 +3053,6 @@ def _quarantine_postings_with_unapproved_latest_tailoring(
     return len(quarantined_postings)
 
 
-def _select_gmail_alert_collection_work_unit(
-    *,
-    current_time: str,
-    gmail_alert_collector: object | None,
-    gmail_history_checkpoint: str | None,
-) -> SupervisorWorkUnit | None:
-    if gmail_alert_collector is None:
-        return None
-    prepare_batch = getattr(gmail_alert_collector, "prepare_batch", None)
-    if not callable(prepare_batch):
-        return None
-    try:
-        prepared_batch = prepare_batch(
-            current_time=current_time,
-            mailbox_history_checkpoint=gmail_history_checkpoint,
-        )
-    except Exception:
-        return None
-    if prepared_batch is None:
-        return None
-    message_count = len(prepared_batch.messages)
-    if message_count == 0:
-        if prepared_batch.mailbox_history_id_after:
-            return SupervisorWorkUnit(
-                work_type=WORK_TYPE_GMAIL_ALERT_BATCH,
-                work_id=prepared_batch.ingestion_run_id,
-                action_id=ACTION_POLL_GMAIL_LINKEDIN_ALERTS,
-                summary="Seed the Gmail mailbox history checkpoint for future incremental lead polling.",
-            )
-        return None
-    return SupervisorWorkUnit(
-        work_type=WORK_TYPE_GMAIL_ALERT_BATCH,
-        work_id=prepared_batch.ingestion_run_id,
-        action_id=ACTION_POLL_GMAIL_LINKEDIN_ALERTS,
-        summary=(
-            "Collect a bounded Gmail alert batch of "
-            f"{message_count} LinkedIn job-alert message"
-            f"{'' if message_count == 1 else 's'} into canonical lead intake."
-        ),
-    )
-
-
 def _select_jobright_recommendation_work_unit(
     *,
     current_time: str,
@@ -3213,35 +3117,6 @@ def _select_jobright_promotion_work_unit(
             "canonical job_posting and carry its seeded contacts forward."
         ),
         lead_id=candidate.lead_id,
-    )
-
-
-def _select_stale_gmail_lead_repair_work_unit(
-    connection: sqlite3.Connection,
-) -> SupervisorWorkUnit | None:
-    row = connection.execute(
-        """
-        SELECT lead_id, company_name, role_title
-        FROM linkedin_leads
-        WHERE source_mode = 'gmail_job_alert'
-          AND lead_status = 'blocked_no_jd'
-          AND (source_url IS NULL OR TRIM(source_url) = '')
-        ORDER BY created_at ASC, lead_id ASC
-        LIMIT 1
-        """
-    ).fetchone()
-    if row is None:
-        return None
-    return SupervisorWorkUnit(
-        work_type=WORK_TYPE_GMAIL_LEAD_REPAIR,
-        work_id=row["lead_id"],
-        action_id=ACTION_REPAIR_STALE_GMAIL_LEAD,
-        lead_id=row["lead_id"],
-        summary=(
-            "Repair stale Gmail lead artifacts for "
-            f"{row['company_name'] or 'unknown company'} / {row['role_title'] or 'unknown role'} "
-            "so JD recovery can retry with the current parser."
-        ),
     )
 
 
@@ -4149,64 +4024,6 @@ def _validate_selected_work(
             )
         return None
 
-    if catalog_entry.action_id == ACTION_POLL_GMAIL_LINKEDIN_ALERTS:
-        if selected_work.work_type != WORK_TYPE_GMAIL_ALERT_BATCH:
-            return (
-                "Gmail alert polling selected a mismatched work type "
-                f"{selected_work.work_type!r}."
-            )
-        collector = action_dependencies.gmail_alert_collector
-        if collector is None:
-            return "Autonomous Gmail polling is not enabled for the current runtime."
-        peek_prepared_batch = getattr(collector, "peek_prepared_batch", None)
-        if not callable(peek_prepared_batch):
-            return "Configured Gmail alert collector does not expose peek_prepared_batch()."
-        prepared_batch = peek_prepared_batch(selected_work.work_id)
-        if prepared_batch is None:
-            return (
-                "Selected Gmail alert batch is no longer prepared for ingestion_run_id "
-                f"{selected_work.work_id!r}."
-            )
-        if not prepared_batch.messages and not prepared_batch.mailbox_history_id_after:
-            return (
-                "Prepared Gmail alert batch is empty for ingestion_run_id "
-                f"{selected_work.work_id!r}."
-            )
-        return None
-
-    if catalog_entry.action_id == ACTION_REPAIR_STALE_GMAIL_LEAD:
-        if selected_work.work_type != WORK_TYPE_GMAIL_LEAD_REPAIR:
-            return (
-                "Stale Gmail lead repair selected a mismatched work type "
-                f"{selected_work.work_type!r}."
-            )
-        lead_row = connection.execute(
-            """
-            SELECT lead_status, source_mode, source_url
-            FROM linkedin_leads
-            WHERE lead_id = ?
-            """,
-            (selected_work.work_id,),
-        ).fetchone()
-        if lead_row is None:
-            return f"linkedin_lead {selected_work.work_id!r} no longer exists."
-        if lead_row["source_mode"] != "gmail_job_alert":
-            return (
-                f"linkedin_lead {selected_work.work_id!r} is not a Gmail lead; "
-                f"found source_mode={lead_row['source_mode']!r}."
-            )
-        if lead_row["lead_status"] != "blocked_no_jd":
-            return (
-                f"linkedin_lead {selected_work.work_id!r} is no longer blocked_no_jd; "
-                f"found {lead_row['lead_status']!r}."
-            )
-        if _optional_text(lead_row["source_url"]):
-            return (
-                f"linkedin_lead {selected_work.work_id!r} already has a source_url and "
-                "does not match the stale Gmail parser backlog."
-            )
-        return None
-
     if catalog_entry.action_id == ACTION_BOOTSTRAP_ROLE_TARGETED_RUN:
         posting_row = connection.execute(
             """
@@ -4926,96 +4743,6 @@ def _execute_selected_work_unit(
                 "Supervisor Jobright promotion did not materialize a posting for lead "
                 f"{selected_work.work_id!r}: {promotion_result.reason_code or promotion_result.result}."
             )
-        return None, None, None
-
-    if catalog_entry.action_id == ACTION_POLL_GMAIL_LINKEDIN_ALERTS:
-        from .linkedin_scraping import (
-            ingest_gmail_alert_batch_to_leads,
-            materialize_gmail_lead_entities,
-        )
-        from .gmail_alerts import persist_gmail_checkpoint_seed
-
-        collector = _require_dependency(
-            action_dependencies.gmail_alert_collector,
-            "Supervisor Gmail polling requires an injected Gmail alert collector.",
-        )
-        pop_prepared_batch = getattr(collector, "pop_prepared_batch", None)
-        if not callable(pop_prepared_batch):
-            raise SupervisorStateError(
-                "Configured Gmail alert collector does not expose pop_prepared_batch()."
-            )
-        prepared_batch = pop_prepared_batch(selected_work.work_id)
-        if prepared_batch is None:
-            prepare_batch = getattr(collector, "prepare_batch", None)
-            if callable(prepare_batch):
-                prepared_batch = prepare_batch(
-                    current_time=timestamp,
-                    mailbox_history_checkpoint=read_agent_control_state(
-                        connection,
-                        timestamp=timestamp,
-                    ).gmail_poll_last_history_id,
-                )
-        if prepared_batch is None or prepared_batch.ingestion_run_id != selected_work.work_id:
-            raise SupervisorStateError(
-                "Supervisor lost the prepared Gmail alert batch before execution for "
-                f"ingestion_run_id {selected_work.work_id!r}."
-            )
-
-        if not prepared_batch.messages:
-            if not prepared_batch.mailbox_history_id_after:
-                raise SupervisorStateError(
-                    "Supervisor cannot seed a Gmail mailbox checkpoint from an empty batch "
-                    f"without mailbox_history_id_after for ingestion_run_id {selected_work.work_id!r}."
-                )
-            persist_gmail_checkpoint_seed(
-                paths,
-                prepared_batch=prepared_batch,
-                collected_at=timestamp,
-            )
-            upsert_control_values(
-                connection,
-                {
-                    "gmail_poll_last_history_id": prepared_batch.mailbox_history_id_after,
-                    "gmail_poll_last_checkpoint_at": timestamp,
-                    "gmail_poll_last_strategy": prepared_batch.poll_strategy,
-                },
-                timestamp=timestamp,
-            )
-            return None, None, None
-
-        ingestion_result = ingest_gmail_alert_batch_to_leads(
-            paths.project_root,
-            batch=prepared_batch,
-        )
-        lead_ids = sorted(
-            {
-                lead_result.lead_id
-                for lead_result in ingestion_result.lead_results
-                if lead_result.lead_id
-            }
-        )
-        for lead_id in lead_ids:
-            materialize_gmail_lead_entities(paths.project_root, lead_id=lead_id)
-        if prepared_batch.mailbox_history_id_after:
-            upsert_control_values(
-                connection,
-                {
-                    "gmail_poll_last_history_id": prepared_batch.mailbox_history_id_after,
-                    "gmail_poll_last_checkpoint_at": timestamp,
-                    "gmail_poll_last_strategy": prepared_batch.poll_strategy,
-                },
-                timestamp=timestamp,
-            )
-        return None, None, None
-
-    if catalog_entry.action_id == ACTION_REPAIR_STALE_GMAIL_LEAD:
-        from .linkedin_scraping import repair_stale_blocked_gmail_leads
-
-        repair_stale_blocked_gmail_leads(
-            paths.project_root,
-            lead_id=_require_text(selected_work.work_id, "work_id"),
-            limit=1,
-        )
         return None, None, None
 
     if catalog_entry.action_id == ACTION_BOOTSTRAP_ROLE_TARGETED_RUN:
@@ -6234,54 +5961,6 @@ def _validate_selected_work_result(
             return (
                 "Supervisor Jobright promotion completed without persisting the expected "
                 f"promotion-decision artifact for lead {selected_work.work_id!r}."
-            )
-        return None
-
-    if catalog_entry.action_id == ACTION_POLL_GMAIL_LINKEDIN_ALERTS:
-        matching_batches = 0
-        for email_json_path in sorted(paths.gmail_runtime_dir.glob("*/email.json")):
-            try:
-                payload = json.loads(email_json_path.read_text(encoding="utf-8"))
-            except json.JSONDecodeError:
-                continue
-            if not isinstance(payload, dict):
-                continue
-            if payload.get("ingestion_run_id") == selected_work.work_id:
-                matching_batches += 1
-        if matching_batches > 0:
-            return None
-        checkpoint_seed_path = paths.gmail_runtime_dir / "_checkpoint-seeds" / f"{selected_work.work_id}.json"
-        if checkpoint_seed_path.exists():
-            try:
-                payload = json.loads(checkpoint_seed_path.read_text(encoding="utf-8"))
-            except json.JSONDecodeError:
-                payload = None
-            if isinstance(payload, dict) and payload.get("ingestion_run_id") == selected_work.work_id:
-                return None
-        return (
-            "Supervisor Gmail polling completed without persisting any Gmail "
-            "collection units for ingestion_run_id "
-            f"{selected_work.work_id!r}."
-        )
-
-    if catalog_entry.action_id == ACTION_REPAIR_STALE_GMAIL_LEAD:
-        lead_row = connection.execute(
-            """
-            SELECT lead_status, source_url
-            FROM linkedin_leads
-            WHERE lead_id = ?
-            """,
-            (selected_work.work_id,),
-        ).fetchone()
-        if lead_row is None:
-            return (
-                "Supervisor stale Gmail lead repair completed but the selected lead "
-                f"{selected_work.work_id!r} no longer exists."
-            )
-        if not _optional_text(lead_row["source_url"]):
-            return (
-                "Supervisor stale Gmail lead repair completed without restoring a "
-                f"canonical source_url for lead {selected_work.work_id!r}."
             )
         return None
 

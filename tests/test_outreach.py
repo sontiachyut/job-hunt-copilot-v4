@@ -6483,6 +6483,129 @@ def test_original_prepared_frontier_ignores_daily_cap_blocked_posting_and_multi_
     connection.close()
 
 
+def test_stale_generated_backlog_does_not_consume_new_draft_capacity(
+    tmp_path: Path,
+):
+    project_root, paths = bootstrap_project(tmp_path)
+    connection = connect_database(project_root / "job_hunt_copilot.db")
+    write_sender_profile(paths)
+
+    for index in range(1, 11):
+        job_posting_id = f"jp_stale_{index}"
+        contact_id = f"ct_stale_{index}"
+        job_posting_contact_id = f"jpc_stale_{index}"
+        created_at = f"2026-04-05T20:{index:02d}:00Z"
+        seed_posting(
+            connection,
+            lead_id=f"ld_stale_{index}",
+            job_posting_id=job_posting_id,
+            company_name=f"Stale Backlog {index}",
+            role_title=f"Backend Engineer {index}",
+            created_at=created_at,
+        )
+        seed_linked_contact(
+            connection,
+            contact_id=contact_id,
+            job_posting_contact_id=job_posting_contact_id,
+            job_posting_id=job_posting_id,
+            company_name=f"Stale Backlog {index}",
+            display_name=f"Stale Manager {index}",
+            recipient_type=RECIPIENT_TYPE_HIRING_MANAGER,
+            current_working_email=f"stale{index}@example.com",
+            contact_status=CONTACT_STATUS_OUTREACH_IN_PROGRESS,
+            link_level_status=POSTING_CONTACT_STATUS_OUTREACH_IN_PROGRESS,
+            created_at=created_at,
+        )
+        connection.execute(
+            "UPDATE job_postings SET posting_status = ?, updated_at = ? WHERE job_posting_id = ?",
+            (JOB_POSTING_STATUS_OUTREACH_IN_PROGRESS, "2026-04-05T20:40:00Z", job_posting_id),
+        )
+        connection.execute(
+            """
+            INSERT INTO outreach_messages (
+              outreach_message_id, contact_id, outreach_mode, recipient_email, message_status,
+              job_posting_id, job_posting_contact_id, subject, body_text, created_at, updated_at
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """,
+            (
+                f"om_stale_{index}",
+                contact_id,
+                "role_targeted",
+                f"stale{index}@example.com",
+                MESSAGE_STATUS_GENERATED,
+                job_posting_id,
+                job_posting_contact_id,
+                f"Old stale subject {index}",
+                f"Old stale body {index}",
+                created_at,
+                created_at,
+            ),
+        )
+
+    seed_posting(
+        connection,
+        lead_id="ld_fresh_ready",
+        job_posting_id="jp_fresh_ready",
+        company_name="Fresh Draft Co",
+        role_title="Software Engineer II",
+        created_at="2026-04-06T20:30:00Z",
+    )
+    seed_linked_contact(
+        connection,
+        contact_id="ct_fresh_ready",
+        job_posting_contact_id="jpc_fresh_ready",
+        job_posting_id="jp_fresh_ready",
+        company_name="Fresh Draft Co",
+        display_name="Fresh Engineer",
+        recipient_type=RECIPIENT_TYPE_ENGINEER,
+        current_working_email="fresh-manager@example.com",
+        created_at="2026-04-06T20:31:00Z",
+    )
+    seed_approved_tailoring_run(
+        connection,
+        paths,
+        company_name="Fresh Draft Co",
+        role_title="Software Engineer II",
+        job_posting_id="jp_fresh_ready",
+        current_time="2026-04-06T20:32:00Z",
+    )
+    connection.commit()
+    build_profile_evidence_corpus(connection, paths)
+
+    frontier_ids = _load_global_original_prepared_frontier_message_ids(
+        connection,
+        project_root=project_root,
+        current_time="2026-04-06T21:00:00Z",
+        local_timezone="America/Phoenix",
+    )
+
+    assert len(frontier_ids) == 10
+    assert frontier_ids[0] == "om_stale_1"
+    assert (
+        is_role_targeted_sending_actionable_now(
+            connection,
+            project_root=project_root,
+            job_posting_id="jp_stale_1",
+            current_time="2026-04-06T21:00:00Z",
+            local_timezone="America/Phoenix",
+        )
+        is True
+    )
+
+    draft_batch = generate_role_targeted_send_set_drafts(
+        connection,
+        project_root=project_root,
+        job_posting_id="jp_fresh_ready",
+        current_time="2026-04-06T21:00:00Z",
+        local_timezone="America/Phoenix",
+        renderer=DeterministicOutreachDraftRenderer(),
+    )
+
+    assert [message.contact_id for message in draft_batch.drafted_messages] == ["ct_fresh_ready"]
+
+    connection.close()
+
+
 def test_send_execution_runs_immediate_feedback_poll_when_observer_is_provided(tmp_path: Path):
     project_root, paths = bootstrap_project(tmp_path)
     connection = connect_database(project_root / "job_hunt_copilot.db")
