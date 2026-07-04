@@ -257,7 +257,8 @@ This is the agreed vocabulary for design discussions.
    - public `socialConnections`
    - personalized `personalSocialConnections`
 5. The Jobright job page shall be the source for canonical JD enrichment, public connections, personalized connections, and other job-page metadata.
-6. If the Jobright job page does not yield a full usable JD, the lead shall remain in discovery and shall not be promoted based on score and connections alone.
+6. When the Jobright job page exposes structured JD sections such as responsibilities, qualifications, requirements, benefits, or role-summary blocks, the ingestor shall assemble those sections into the persisted canonical `jd.md` rather than relying only on one narrow free-text field.
+7. If the Jobright job page still does not yield a full usable JD after structured-section extraction, the lead shall remain in discovery and shall not be promoted based on score and connections alone.
 7. Personalized connections are optional enrichment. Missing personalized connections is a valid source result, not an ingestion failure.
 8. Missing salary or compensation metadata is a valid source result and shall not by itself block promotion or keep a lead in discovery.
 9. Jobright recommendation observations shall remain in the discovery queue even when they are not promoted.
@@ -453,6 +454,7 @@ This is the agreed vocabulary for design discussions.
 - **FR-SYS-01D3 (Jobright Connection Capture Rule):** Jobright observations shall persist both public `socialConnections` and personalized `personalSocialConnections` when present.
 - **FR-SYS-01D4 (Optional Personalized Connections Rule):** Missing personalized connections on a Jobright job shall be treated as a valid source result, not as an ingestion failure.
 - **FR-SYS-01D4A (Usable-JD Promotion Requirement Rule):** If the Jobright job page does not yield a full usable JD, the lead shall remain in discovery and shall not be promoted based on score and connections alone.
+- **FR-SYS-01D4B (Structured Jobright JD Assembly Rule):** When the Jobright page exposes JD content in structured fields such as responsibilities, qualifications, requirements, benefits, or other role-summary sections, the ingestor shall assemble that structured content into canonical `jd.md` so those sections count toward JD usability instead of being silently dropped.
 - **FR-SYS-01D5 (Missing Compensation Non-Blocking Rule):** Missing salary or compensation metadata on a Jobright lead shall be treated as a valid source result and shall not by itself block promotion or keep the lead in discovery.
 - **FR-SYS-01D6 (Post-Promotion Feed Independence Rule):** Once a Jobright lead has been promoted and materialized, later disappearance of that role from new Jobright recommendation runs shall not by itself alter the downstream posting lifecycle or invalidate the already captured lead state.
 - **FR-SYS-01F (Discovery Queue Rule):** All ingested leads shall first land in a discovery queue before any `job_posting` is materialized.

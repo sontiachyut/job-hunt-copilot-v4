@@ -428,6 +428,12 @@ Feature: Job Hunt Copilot next-build acceptance
       And later eligibility or tailoring artifacts read from that persisted markdown
       And the build does not require direct reuse of only a transient network response payload
 
+    Scenario: Structured Jobright sections count toward usable JD recovery
+      Given a Jobright page exposes responsibilities, qualifications, or benefits as structured sections rather than one long free-text description
+      When Jobright JD recovery assembles the canonical `jd.md`
+      Then those structured sections are included in the persisted JD markdown
+      And the JD usability gate evaluates the assembled structured content rather than only one narrow text field
+
     Scenario: Missing usable Jobright JD blocks promotion while preserving the discovery lead
       Given a Jobright observation does not yield a full usable JD
       When promotion eligibility is evaluated

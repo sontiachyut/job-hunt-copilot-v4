@@ -8,6 +8,7 @@ from job_hunt_copilot.jobright_ingestion import (
     JOBRIGHT_BATCH_RESULT_READY,
     JobrightRecommendation,
     JobrightRecommendationBatch,
+    _extract_page_payload,
     _extract_recommendation_entries,
     ingest_jobright_recommendation_batch,
 )
@@ -332,3 +333,72 @@ def test_extract_recommendation_entries_supports_live_joblist_jobresult_shape():
             "feed_payload": payload["result"]["jobList"][0],
         }
     ]
+
+
+def test_extract_page_payload_assembles_structured_jobright_sections_into_usable_jd():
+    next_data = {
+        "props": {
+            "pageProps": {
+                "dataSource": {
+                    "jobResult": {
+                        "jobTitle": "Software Engineer, Platform - Frisco, TX, USA",
+                        "companyName": "Speechify",
+                        "jobLocation": "United States",
+                        "salaryDesc": "$140K/yr - $200K/yr",
+                        "jobSummary": (
+                            "Speechify is a company dedicated to making reading accessible through "
+                            "innovative text-to-speech products. The Software Engineer, Platform "
+                            "will be responsible for building and maintaining backend services, "
+                            "ensuring they meet business and scalability requirements while "
+                            "collaborating with cross-functional teams."
+                        ),
+                        "coreResponsibilities": [
+                            "Design, develop, and maintain robust APIs including public TTS API, internal APIs like Payment, Subscription, Auth and Consumption Tracking, ensuring they meet business and scalability requirements",
+                            "Oversee the full backend API landscape, enhancing and optimizing for performance and maintainability",
+                            "Collaborate on B2B solutions, focusing on customization and integration needs for enterprise clients",
+                            "Work closely with cross-functional teams to align backend architecture with overall product strategy and user experience",
+                        ],
+                        "qualifications": {
+                            "mustHave": [
+                                "Proven experience in backend development: TS/Node (required)",
+                                "Direct experience with GCP and knowledge of AWS, Azure, or other cloud providers",
+                                "Efficiency in ideation and implementation, prioritizing tasks based on urgency and impact",
+                            ],
+                            "preferredHave": [
+                                "Experience with Docker and containerized deployments",
+                                "Proficiency in deploying high availability applications on Kubernetes",
+                            ],
+                        },
+                        "benefitsSummaries": [
+                            "Bonus",
+                            "Stock depending on experience",
+                            "Autonomy, fostering focus and creativity",
+                        ],
+                    }
+                }
+            }
+        }
+    }
+    html = (
+        "<html><head><title>Speechify</title></head><body>"
+        f'<script id="__NEXT_DATA__" type="application/json">{json.dumps(next_data)}</script>'
+        "</body></html>"
+    )
+
+    payload = _extract_page_payload(
+        html,
+        fallback_entry={
+            "jobTitle": "Software Engineer, Platform - Frisco, TX, USA",
+            "companyName": "Speechify",
+            "location": "United States",
+        },
+    )
+
+    jd_text = payload["jd_text"]
+    assert payload["jd_is_usable"] is True
+    assert jd_text is not None
+    assert "Responsibilities" in jd_text
+    assert "Qualifications" in jd_text
+    assert "Benefits" in jd_text
+    assert "public TTS API" in jd_text
+    assert "Proficiency in deploying high availability applications on Kubernetes" in jd_text

@@ -67,6 +67,15 @@ JD_TEXT_KEYS = (
     "aboutTheJob",
     "jobSummary",
 )
+STRUCTURED_JD_SECTION_KEYS = (
+    ("jobSummary", "Summary"),
+    ("coreResponsibilities", "Responsibilities"),
+    ("responsibilities", "Responsibilities"),
+    ("requirements", "Requirements"),
+    ("skillSummaries", "Qualifications"),
+    ("educationSummaries", "Education"),
+    ("benefitsSummaries", "Benefits"),
+)
 
 
 class JobrightSessionError(RuntimeError):
@@ -322,7 +331,7 @@ def _extract_job_summary(
     }
 
 
-def _collect_candidate_jd_text(next_data: dict[str, Any] | None) -> str | None:
+def _collect_candidate_jd_text_legacy(next_data: dict[str, Any] | None) -> str | None:
     if next_data is None:
         return None
     candidates: list[str] = []
@@ -343,6 +352,79 @@ def _collect_candidate_jd_text(next_data: dict[str, Any] | None) -> str | None:
     if not candidates:
         return None
     return max(candidates, key=len)
+
+
+def _qualification_section_text(value: Any) -> str | None:
+    if isinstance(value, dict):
+        blocks: list[str] = []
+        must_have = _flatten_jd_value(value.get("mustHave"))
+        preferred_have = _flatten_jd_value(value.get("preferredHave"))
+        if must_have:
+            blocks.append(f"Must Have\n{must_have}")
+        if preferred_have:
+            blocks.append(f"Preferred\n{preferred_have}")
+        remaining = {
+            key: nested_value
+            for key, nested_value in value.items()
+            if key not in {"mustHave", "preferredHave"}
+        }
+        extra = _flatten_jd_value(remaining)
+        if extra:
+            blocks.append(extra)
+        merged = "\n\n".join(block for block in blocks if block.strip()).strip()
+        return merged or None
+    return _flatten_jd_value(value)
+
+
+def _append_structured_jd_section(
+    blocks: list[str],
+    seen_bodies: set[str],
+    *,
+    heading: str,
+    body: str | None,
+) -> None:
+    if body is None:
+        return
+    normalized_body = re.sub(r"\s+", " ", body).strip().lower()
+    if not normalized_body or normalized_body in seen_bodies:
+        return
+    seen_bodies.add(normalized_body)
+    blocks.append(f"{heading}\n{body.strip()}")
+
+
+def _collect_structured_jd_text(next_data: dict[str, Any] | None) -> str | None:
+    if next_data is None:
+        return None
+    blocks: list[str] = []
+    seen_bodies: set[str] = set()
+
+    for key, heading in STRUCTURED_JD_SECTION_KEYS:
+        body = _flatten_jd_value(_find_first_key(next_data, key))
+        _append_structured_jd_section(
+            blocks,
+            seen_bodies,
+            heading=heading,
+            body=body,
+        )
+
+    qualifications_body = _qualification_section_text(_find_first_key(next_data, "qualifications"))
+    _append_structured_jd_section(
+        blocks,
+        seen_bodies,
+        heading="Qualifications",
+        body=qualifications_body,
+    )
+
+    if not blocks:
+        return None
+    return "\n\n".join(blocks).strip() or None
+
+
+def _collect_candidate_jd_text(next_data: dict[str, Any] | None) -> str | None:
+    structured = _collect_structured_jd_text(next_data)
+    if structured is not None:
+        return structured
+    return _collect_candidate_jd_text_legacy(next_data)
 
 
 def _flatten_jd_value(value: Any) -> str | None:
