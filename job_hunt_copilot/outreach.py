@@ -1432,6 +1432,11 @@ def evaluate_role_targeted_send_set(
     local_timezone: tzinfo | str | None = None,
 ) -> RoleTargetedSendSetPlan:
     ensure_missing_posting_company_keys(connection, current_time=current_time)
+    _refresh_posting_contact_recipient_types_from_contact_titles(
+        connection,
+        job_posting_id=job_posting_id,
+        current_time=current_time,
+    )
     posting_row = _load_posting_row(connection, job_posting_id=job_posting_id)
     candidates = _load_candidate_rows(
         connection,
@@ -1715,6 +1720,86 @@ def _load_posting_row(
     if posting_row is None:
         raise ValueError(f"Job posting `{job_posting_id}` was not found.")
     return posting_row
+
+
+def _recipient_type_from_current_title(
+    title: str | None,
+    *,
+    fallback: str,
+) -> str:
+    normalized = (title or "").lower()
+    if "founder" in normalized or "co-founder" in normalized or "cofounder" in normalized:
+        return RECIPIENT_TYPE_FOUNDER
+    if any(token in normalized for token in ("recruit", "talent", "sourcer", "people ops")):
+        return RECIPIENT_TYPE_RECRUITER
+    if "alumni" in normalized:
+        return RECIPIENT_TYPE_ALUMNI
+    if any(token in normalized for token in ("manager", "director", "head", "vp", "vice president", "chief")):
+        return RECIPIENT_TYPE_HIRING_MANAGER
+    if any(token in normalized for token in ("engineer", "developer", "architect", "swe", "software")):
+        return RECIPIENT_TYPE_ENGINEER
+    return fallback
+
+
+def _relevance_reason_for_refreshed_recipient_type(recipient_type: str, title: str | None) -> str | None:
+    if recipient_type == RECIPIENT_TYPE_RECRUITER:
+        return "Apollo enrichment title indicates a recruiting contact close to this role."
+    if recipient_type == RECIPIENT_TYPE_HIRING_MANAGER:
+        return "Apollo enrichment title indicates engineering leadership close to the likely hiring loop."
+    if recipient_type == RECIPIENT_TYPE_ENGINEER:
+        return "Apollo enrichment title indicates a role-relevant internal engineer."
+    if recipient_type == RECIPIENT_TYPE_FOUNDER:
+        return "Apollo enrichment title indicates founder-level routing context inside the company."
+    if recipient_type == RECIPIENT_TYPE_ALUMNI:
+        return "Apollo enrichment title indicates an alumni-style internal networking path."
+    if title:
+        return f"Apollo enrichment refreshed this linked contact as `{title}`."
+    return None
+
+
+def _refresh_posting_contact_recipient_types_from_contact_titles(
+    connection: sqlite3.Connection,
+    *,
+    job_posting_id: str,
+    current_time: str,
+) -> None:
+    rows = connection.execute(
+        """
+        SELECT jpc.job_posting_contact_id, jpc.recipient_type, jpc.relevance_reason,
+               c.position_title, c.apollo_current_title
+        FROM job_posting_contacts jpc
+        JOIN contacts c
+          ON c.contact_id = jpc.contact_id
+        WHERE jpc.job_posting_id = ?
+        """,
+        (job_posting_id,),
+    ).fetchall()
+    for row in rows:
+        current_recipient_type = str(row["recipient_type"]).strip()
+        title = _normalize_optional_text(row["apollo_current_title"]) or _normalize_optional_text(row["position_title"])
+        refreshed_recipient_type = _recipient_type_from_current_title(
+            title,
+            fallback=current_recipient_type,
+        )
+        if refreshed_recipient_type == current_recipient_type:
+            continue
+        refreshed_relevance_reason = _relevance_reason_for_refreshed_recipient_type(
+            refreshed_recipient_type,
+            title,
+        ) or (_normalize_optional_text(row["relevance_reason"]) or "")
+        connection.execute(
+            """
+            UPDATE job_posting_contacts
+            SET recipient_type = ?, relevance_reason = ?, updated_at = ?
+            WHERE job_posting_contact_id = ?
+            """,
+            (
+                refreshed_recipient_type,
+                refreshed_relevance_reason,
+                current_time,
+                row["job_posting_contact_id"],
+            ),
+        )
 
 
 def _load_candidate_rows(

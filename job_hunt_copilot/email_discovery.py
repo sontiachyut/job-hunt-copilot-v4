@@ -291,34 +291,11 @@ class PeopleSearchCandidate:
 
     @property
     def recipient_type(self) -> str:
-        normalized = (self.title or "").lower()
-        if "founder" in normalized or "co-founder" in normalized or "cofounder" in normalized:
-            return RECIPIENT_TYPE_FOUNDER
-        if any(token in normalized for token in ("recruit", "talent", "sourcer", "people ops")):
-            return RECIPIENT_TYPE_RECRUITER
-        if "alumni" in normalized:
-            return RECIPIENT_TYPE_ALUMNI
-        if any(token in normalized for token in ("manager", "director", "head", "vp", "vice president", "chief")):
-            return RECIPIENT_TYPE_HIRING_MANAGER
-        if any(token in normalized for token in ("engineer", "developer", "architect", "swe", "software")):
-            return RECIPIENT_TYPE_ENGINEER
-        return RECIPIENT_TYPE_OTHER_INTERNAL
+        return _recipient_type_from_title(self.title)
 
     @property
     def relevance_reason(self) -> str:
-        if self.recipient_type == RECIPIENT_TYPE_RECRUITER:
-            return "Apollo title indicates a recruiting contact close to this role."
-        if self.recipient_type == RECIPIENT_TYPE_HIRING_MANAGER:
-            return "Apollo title indicates engineering leadership close to the likely hiring loop."
-        if self.recipient_type == RECIPIENT_TYPE_ENGINEER:
-            return "Apollo title indicates a role-relevant internal engineer."
-        if self.recipient_type == RECIPIENT_TYPE_FOUNDER:
-            return "Apollo title indicates founder-level routing context inside the company."
-        if self.recipient_type == RECIPIENT_TYPE_ALUMNI:
-            return "Apollo title indicates an alumni-style internal networking path."
-        if self.title:
-            return f"Apollo search returned this internal contact as `{self.title}`."
-        return "Apollo search returned this internal contact for the company."
+        return _relevance_reason_for_recipient_type(self.recipient_type, self.title)
 
     def identity_key(self) -> str:
         if self.provider_person_id:
@@ -356,6 +333,37 @@ class PeopleSearchCandidate:
 
 def _normalize_candidate_employment_history(payload: Mapping[str, Any]) -> tuple[Mapping[str, Any], ...]:
     return _extract_apollo_employment_history_items(payload) or ()
+
+
+def _recipient_type_from_title(title: str | None) -> str:
+    normalized = (title or "").lower()
+    if "founder" in normalized or "co-founder" in normalized or "cofounder" in normalized:
+        return RECIPIENT_TYPE_FOUNDER
+    if any(token in normalized for token in ("recruit", "talent", "sourcer", "people ops")):
+        return RECIPIENT_TYPE_RECRUITER
+    if "alumni" in normalized:
+        return RECIPIENT_TYPE_ALUMNI
+    if any(token in normalized for token in ("manager", "director", "head", "vp", "vice president", "chief")):
+        return RECIPIENT_TYPE_HIRING_MANAGER
+    if any(token in normalized for token in ("engineer", "developer", "architect", "swe", "software")):
+        return RECIPIENT_TYPE_ENGINEER
+    return RECIPIENT_TYPE_OTHER_INTERNAL
+
+
+def _relevance_reason_for_recipient_type(recipient_type: str, title: str | None) -> str:
+    if recipient_type == RECIPIENT_TYPE_RECRUITER:
+        return "Apollo title indicates a recruiting contact close to this role."
+    if recipient_type == RECIPIENT_TYPE_HIRING_MANAGER:
+        return "Apollo title indicates engineering leadership close to the likely hiring loop."
+    if recipient_type == RECIPIENT_TYPE_ENGINEER:
+        return "Apollo title indicates a role-relevant internal engineer."
+    if recipient_type == RECIPIENT_TYPE_FOUNDER:
+        return "Apollo title indicates founder-level routing context inside the company."
+    if recipient_type == RECIPIENT_TYPE_ALUMNI:
+        return "Apollo title indicates an alumni-style internal networking path."
+    if title:
+        return f"Apollo search returned this internal contact as `{title}`."
+    return "Apollo search returned this internal contact for the company."
 
 
 def _extract_apollo_employment_history_items(
@@ -4500,11 +4508,18 @@ def is_role_targeted_email_discovery_actionable_now(
     current_time: str,
     providers: Sequence[EmailFinderProvider] | None = None,
 ) -> bool:
-    pending_contact_ids = _list_pending_email_discovery_contact_ids(
+    send_set_plan = evaluate_role_targeted_send_set(
         connection,
         job_posting_id=job_posting_id,
         current_time=current_time,
     )
+    if send_set_plan.ready_for_outreach and send_set_plan.selected_contacts:
+        return True
+    pending_contact_ids = [
+        contact.contact_id
+        for contact in send_set_plan.selected_contacts
+        if not contact.has_usable_email
+    ]
     if not pending_contact_ids:
         return False
     return any(
@@ -6053,6 +6068,12 @@ def _apply_contact_enrichment(
         contact_row.get("current_working_email")
     )
     title = enrichment.title or _normalize_optional_text(contact_row.get("position_title"))
+    recipient_type = (
+        _recipient_type_from_title(title)
+        if title
+        else (_normalize_optional_text(contact_row.get("recipient_type")) or RECIPIENT_TYPE_OTHER_INTERNAL)
+    )
+    relevance_reason = _relevance_reason_for_recipient_type(recipient_type, title)
     location = enrichment.location or _normalize_optional_text(contact_row.get("location"))
     company_name = enrichment.organization_name or _normalize_optional_text(posting_row.get("company_name"))
     identity_key = _contact_identity_key(
@@ -6104,6 +6125,20 @@ def _apply_contact_enrichment(
             contact_row["contact_id"],
         ),
     )
+    if contact_row.get("job_posting_contact_id") is not None:
+        connection.execute(
+            """
+            UPDATE job_posting_contacts
+            SET recipient_type = ?, relevance_reason = ?, updated_at = ?
+            WHERE job_posting_contact_id = ?
+            """,
+            (
+                recipient_type,
+                relevance_reason,
+                current_time,
+                contact_row["job_posting_contact_id"],
+            ),
+        )
     if isinstance(enrichment.raw_payload, Mapping):
         _persist_contact_provider_profile(
             connection,

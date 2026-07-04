@@ -2225,6 +2225,114 @@ def test_email_discovery_stage_waits_for_provider_cooldown_without_exhausting_co
     assert link_row["link_level_status"] == "shortlisted"
 
 
+def test_email_discovery_stage_advances_ready_subset_before_cooldown_blocked_later_contacts(
+    tmp_path: Path,
+) -> None:
+    project_root = bootstrap_project(tmp_path)
+    paths = ProjectPaths.from_root(project_root)
+    connection = connect_database(project_root / "job_hunt_copilot.db")
+    lead_id, job_posting_id = seed_role_targeted_posting(
+        connection,
+        posting_status="requires_contacts",
+    )
+    seed_approved_tailoring_run(connection, job_posting_id=job_posting_id)
+    seed_shortlisted_contact(
+        connection,
+        contact_id="ct_ready_mgr",
+        job_posting_contact_id="jpc_ready_mgr",
+        job_posting_id=job_posting_id,
+        display_name="Morgan Manager",
+        recipient_type="hiring_manager",
+        position_title="Engineering Manager",
+        current_working_email="morgan@acme.example",
+        contact_status="working_email_found",
+        provider_person_id="pp_ready_mgr",
+        created_at="2026-04-08T00:15:00Z",
+    )
+    seed_shortlisted_contact(
+        connection,
+        contact_id="ct_pending_eng",
+        job_posting_contact_id="jpc_pending_eng",
+        job_posting_id=job_posting_id,
+        display_name="Priya Engineer",
+        recipient_type="engineer",
+        position_title="Software Engineer",
+        provider_person_id="pp_pending_eng",
+        created_at="2026-04-08T00:16:00Z",
+    )
+    connection.execute(
+        """
+        INSERT INTO provider_budget_state (
+          provider_name, remaining_credits, credit_limit, cooldown_until,
+          cooldown_reason, cooldown_message, cooldown_set_at, updated_at
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+        """,
+        (
+            "getprospect",
+            10,
+            10,
+            "2026-04-08T01:00:00Z",
+            "rate_limited",
+            "Provider asked us to back off.",
+            "2026-04-08T00:10:00Z",
+            "2026-04-08T00:10:00Z",
+        ),
+    )
+    resume_agent(
+        connection,
+        manual_command="jhc-agent-start",
+        timestamp="2026-04-08T00:17:00Z",
+    )
+    pipeline_run, _ = ensure_role_targeted_pipeline_run(
+        connection,
+        lead_id=lead_id,
+        job_posting_id=job_posting_id,
+        current_stage="email_discovery",
+        started_at="2026-04-08T00:18:00Z",
+    )
+    enrichment_provider = FakeApolloEnrichmentProvider({})
+    finder = FakeEmailFinderProvider(
+        provider_name="getprospect",
+        requires_domain=False,
+        responses=[{"outcome": "not_found"}],
+    )
+
+    execution = run_supervisor_cycle(
+        connection,
+        paths,
+        trigger_type="launchd_heartbeat",
+        scheduler_name="launchd",
+        started_at="2026-04-08T00:19:00Z",
+        action_dependencies=SupervisorActionDependencies(
+            apollo_contact_enrichment_provider=enrichment_provider,
+            email_finder_providers=(finder,),
+        ),
+    )
+    updated_run = get_pipeline_run(connection, pipeline_run.pipeline_run_id)
+    posting_status = connection.execute(
+        """
+        SELECT posting_status
+        FROM job_postings
+        WHERE job_posting_id = ?
+        """,
+        (job_posting_id,),
+    ).fetchone()[0]
+    connection.close()
+
+    assert execution.cycle.result == SUPERVISOR_CYCLE_RESULT_SUCCESS
+    assert execution.selected_work is not None
+    assert execution.selected_work.work_id == pipeline_run.pipeline_run_id
+    assert execution.selected_work.action_id == ACTION_RUN_ROLE_TARGETED_EMAIL_DISCOVERY
+    assert execution.incident is None
+    assert execution.review_packet is None
+    assert len(enrichment_provider.calls) == 0
+    assert len(finder.calls) == 0
+    assert updated_run is not None
+    assert updated_run.run_status == RUN_STATUS_IN_PROGRESS
+    assert updated_run.current_stage == "sending"
+    assert posting_status == "ready_for_outreach"
+
+
 def test_email_discovery_stage_escalates_when_bounded_send_set_is_terminally_exhausted(
     tmp_path: Path,
 ) -> None:

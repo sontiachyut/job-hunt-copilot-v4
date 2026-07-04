@@ -1187,6 +1187,14 @@ Feature: Job Hunt Copilot next-build acceptance
       And environment configuration does not switch production drafting back to that retired deterministic renderer
       And drafting either uses the active Codex path or fails closed
 
+    Scenario: Apollo enrichment refreshes posting-linked recipient classification before send selection
+      Given a posting-linked contact was first carried as `other_internal`
+      And Apollo enrichment later resolves that same contact to a clearer engineering-manager or engineer title
+      When the runtime reevaluates the role-targeted send slice
+      Then the linked `job_posting_contacts.recipient_type` is refreshed from the latest Apollo title
+      And send-slice selection uses that refreshed classification instead of the stale source-time recipient type
+      And the posting can become `ready_for_outreach` when the refreshed role-adjacent contact already has a usable work email
+
   @followups
   Rule: Automated Follow-Up Worker behavior
 
@@ -1786,6 +1794,15 @@ Feature: Job Hunt Copilot next-build acceptance
       And that contact counts as discovery-ready immediately for the posting frontier
       And drafting may begin for that contact once the posting-level prerequisites are satisfied
       But automatic sending for that posting still waits for the active send-slice and pacing rules
+
+    Scenario: Ready subset keeps email discovery runnable while later contacts wait on cooldown
+      Given a role-targeted posting is still at `requires_contacts` and `email_discovery`
+      And the current selected send slice already contains at least one ready contact with a usable email
+      And later selected contacts still lack usable emails only because their providers are in active cooldown
+      When the supervisor evaluates runnable `email_discovery` work
+      Then the posting is still eligible for one bounded `email_discovery` progression cycle
+      And that cycle may advance the posting to `ready_for_outreach` or `sending`
+      But the cooldown-blocked later contacts remain pending for later discovery instead of blocking the posting
 
     Scenario: Prior outreach history blocks automatic repeat send during orchestration
       Given a linked contact already has prior outreach history

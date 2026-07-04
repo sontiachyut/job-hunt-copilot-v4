@@ -36,6 +36,7 @@ from job_hunt_copilot.email_discovery import (
     PROVIDER_NAME_APOLLO,
     RECIPIENT_TYPE_ENGINEER,
     RECIPIENT_TYPE_HIRING_MANAGER,
+    RECIPIENT_TYPE_OTHER_INTERNAL,
     RECIPIENT_TYPE_RECRUITER,
     _normalize_getprospect_discovery_result,
     _normalize_hunter_discovery_result,
@@ -43,6 +44,7 @@ from job_hunt_copilot.email_discovery import (
     load_provider_budget_summary,
     refresh_same_company_contact_frontier,
     replay_historical_people_search_shortlist,
+    is_role_targeted_email_discovery_actionable_now,
     is_role_targeted_people_search_actionable_now,
     run_apollo_contact_enrichment,
     run_apollo_people_search,
@@ -1406,6 +1408,69 @@ def test_people_search_remains_actionable_for_pending_seeded_contacts_even_when_
     connection.close()
 
 
+def test_email_discovery_remains_actionable_when_ready_subset_exists_but_pending_contacts_are_cooling_down(
+    tmp_path: Path,
+):
+    project_root = bootstrap_project(tmp_path)
+    paths = ProjectPaths.from_root(project_root)
+    connection = connect_database(project_root / "job_hunt_copilot.db")
+    seed_search_ready_posting(connection, paths)
+    seed_linked_contact(
+        connection,
+        contact_id="ct_ready_now",
+        job_posting_contact_id="jpc_ready_now",
+        display_name="Avery Manager",
+        position_title="Engineering Manager",
+        recipient_type=RECIPIENT_TYPE_HIRING_MANAGER,
+        current_working_email="avery@acme.example",
+        contact_status=CONTACT_STATUS_WORKING_EMAIL_FOUND,
+        is_in_intended_outreach_set=1,
+    )
+    seed_linked_contact(
+        connection,
+        contact_id="ct_pending_cooldown",
+        job_posting_contact_id="jpc_pending_cooldown",
+        display_name="Blair Engineer",
+        position_title="Software Engineer",
+        recipient_type=RECIPIENT_TYPE_ENGINEER,
+        provider_person_id=None,
+        identity_key="jobright|cooldown|pending",
+        current_working_email=None,
+        contact_source_type="jobright_public",
+        contact_source_priority_tier=2,
+        contact_source_rank=2,
+        is_in_intended_outreach_set=1,
+    )
+    connection.execute(
+        """
+        INSERT INTO provider_budget_state (
+          provider_name, cooldown_until, updated_at
+        ) VALUES (?, ?, ?)
+        """,
+        (
+            "getprospect",
+            "2026-04-07T00:00:00Z",
+            "2026-04-06T22:00:00Z",
+        ),
+    )
+    connection.commit()
+
+    assert is_role_targeted_email_discovery_actionable_now(
+        connection,
+        project_root=project_root,
+        job_posting_id="jp_search",
+        current_time="2026-04-06T22:10:00Z",
+        providers=(
+            FakeEmailFinderProvider(
+                provider_name="getprospect",
+                responses=[{"outcome": DISCOVERY_OUTCOME_NOT_FOUND}],
+                requires_domain=False,
+            ),
+        ),
+    ) is True
+    connection.close()
+
+
 def test_apollo_people_search_reuses_same_company_apollo_key_before_company_resolution(tmp_path: Path):
     project_root = bootstrap_project(tmp_path)
     paths = ProjectPaths.from_root(project_root)
@@ -2112,6 +2177,235 @@ def test_apollo_contact_enrichment_keeps_shortlisted_contacts_when_apollo_return
         },
     ]
     assert result.posting_status == "requires_contacts"
+
+    connection.close()
+
+
+def test_apollo_contact_enrichment_refreshes_stale_other_internal_to_engineer_for_send_set(
+    tmp_path: Path,
+):
+    project_root = bootstrap_project(tmp_path)
+    paths = ProjectPaths.from_root(project_root)
+    connection = connect_database(project_root / "job_hunt_copilot.db")
+    seed_search_ready_posting(connection, paths)
+
+    timestamp = "2026-04-06T21:25:00Z"
+    connection.execute(
+        """
+        INSERT INTO contacts (
+          contact_id, identity_key, display_name, company_name, origin_component, contact_status,
+          provider_name, provider_person_id, created_at, updated_at
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        """,
+        (
+            "ct_mgr",
+            "apollo_person|pp_m1",
+            "Morgan Manager",
+            "Acme Robotics",
+            "lead_ingestion",
+            CONTACT_STATUS_IDENTIFIED,
+            PROVIDER_NAME_APOLLO,
+            "pp_m1",
+            timestamp,
+            timestamp,
+        ),
+    )
+    connection.execute(
+        """
+        INSERT INTO contacts (
+          contact_id, identity_key, display_name, company_name, origin_component, contact_status,
+          provider_name, provider_person_id, created_at, updated_at
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        """,
+        (
+            "ct_eng",
+            "apollo_person|pp_e1",
+            "Jamie Internal",
+            "Acme Robotics",
+            "lead_ingestion",
+            CONTACT_STATUS_IDENTIFIED,
+            PROVIDER_NAME_APOLLO,
+            "pp_e1",
+            timestamp,
+            timestamp,
+        ),
+    )
+    connection.execute(
+        """
+        INSERT INTO job_posting_contacts (
+          job_posting_contact_id, job_posting_id, contact_id, recipient_type, relevance_reason,
+          link_level_status, created_at, updated_at
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+        """,
+        (
+            "jpc_mgr",
+            "jp_search",
+            "ct_mgr",
+            RECIPIENT_TYPE_HIRING_MANAGER,
+            "Seeded as manager.",
+            POSTING_CONTACT_STATUS_SHORTLISTED,
+            timestamp,
+            timestamp,
+        ),
+    )
+    connection.execute(
+        """
+        INSERT INTO job_posting_contacts (
+          job_posting_contact_id, job_posting_id, contact_id, recipient_type, relevance_reason,
+          link_level_status, created_at, updated_at
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+        """,
+        (
+            "jpc_eng",
+            "jp_search",
+            "ct_eng",
+            RECIPIENT_TYPE_OTHER_INTERNAL,
+            "Seeded as generic internal from source-time carry-forward.",
+            POSTING_CONTACT_STATUS_SHORTLISTED,
+            timestamp,
+            timestamp,
+        ),
+    )
+    connection.commit()
+
+    enrichment_provider = FakeApolloEnrichmentProvider(
+        {
+            "pp_m1": {
+                "person": {
+                    "id": "pp_m1",
+                    "first_name": "Morgan",
+                    "last_name": "Manager",
+                    "name": "Morgan Manager",
+                    "linkedin_url": "https://linkedin.example/pp_m1",
+                    "title": "Engineering Manager",
+                    "email": None,
+                    "email_status": "unavailable",
+                    "organization_id": "org_acme",
+                    "organization_name": "Acme Robotics",
+                }
+            },
+            "pp_e1": {
+                "person": {
+                    "id": "pp_e1",
+                    "first_name": "Jamie",
+                    "last_name": "Engineer",
+                    "name": "Jamie Engineer",
+                    "linkedin_url": "https://linkedin.example/pp_e1",
+                    "title": "Staff Software Engineer",
+                    "email": "jamie@acmerobotics.com",
+                    "email_status": "verified",
+                    "organization_id": "org_acme",
+                    "organization_name": "Acme Robotics",
+                }
+            },
+        }
+    )
+
+    result = run_apollo_contact_enrichment(
+        project_root=project_root,
+        job_posting_id="jp_search",
+        provider=enrichment_provider,
+        recipient_profile_extractor=FakeRecipientProfileExtractor({}),
+        current_time="2026-04-06T22:30:00Z",
+    )
+
+    engineer_link = connection.execute(
+        """
+        SELECT recipient_type, relevance_reason
+        FROM job_posting_contacts
+        WHERE job_posting_contact_id = 'jpc_eng'
+        """
+    ).fetchone()
+    assert dict(engineer_link) == {
+        "recipient_type": RECIPIENT_TYPE_ENGINEER,
+        "relevance_reason": "Apollo title indicates a role-relevant internal engineer.",
+    }
+
+    send_set = evaluate_role_targeted_send_set(
+        connection,
+        job_posting_id="jp_search",
+        current_time="2026-04-06T22:30:00Z",
+    )
+    assert send_set.ready_for_outreach is True
+    assert send_set.posting_status_after_evaluation == "ready_for_outreach"
+    assert any(contact.contact_id == "ct_eng" and contact.has_usable_email for contact in send_set.selected_contacts)
+
+    posting_status = connection.execute(
+        "SELECT posting_status FROM job_postings WHERE job_posting_id = 'jp_search'"
+    ).fetchone()[0]
+    assert posting_status == "ready_for_outreach"
+    assert result.posting_status == "ready_for_outreach"
+
+    connection.close()
+
+
+def test_evaluate_send_set_self_heals_stale_other_internal_from_apollo_title(tmp_path: Path):
+    project_root = bootstrap_project(tmp_path)
+    paths = ProjectPaths.from_root(project_root)
+    connection = connect_database(project_root / "job_hunt_copilot.db")
+    seed_search_ready_posting(connection, paths)
+
+    timestamp = "2026-04-06T21:25:00Z"
+    connection.execute(
+        """
+        INSERT INTO contacts (
+          contact_id, identity_key, display_name, company_name, origin_component, contact_status,
+          position_title, apollo_current_title, current_working_email, created_at, updated_at
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        """,
+        (
+            "ct_stale",
+            "contact|stale",
+            "Jamie Internal",
+            "Acme Robotics",
+            "lead_ingestion",
+            CONTACT_STATUS_WORKING_EMAIL_FOUND,
+            "Staff Software Engineer",
+            "Staff Software Engineer",
+            "jamie@acmerobotics.com",
+            timestamp,
+            timestamp,
+        ),
+    )
+    connection.execute(
+        """
+        INSERT INTO job_posting_contacts (
+          job_posting_contact_id, job_posting_id, contact_id, recipient_type, relevance_reason,
+          link_level_status, created_at, updated_at
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+        """,
+        (
+            "jpc_stale",
+            "jp_search",
+            "ct_stale",
+            RECIPIENT_TYPE_OTHER_INTERNAL,
+            "Seeded as generic internal from source-time carry-forward.",
+            POSTING_CONTACT_STATUS_SHORTLISTED,
+            timestamp,
+            timestamp,
+        ),
+    )
+    connection.commit()
+
+    send_set = evaluate_role_targeted_send_set(
+        connection,
+        job_posting_id="jp_search",
+        current_time="2026-04-06T22:30:00Z",
+    )
+
+    refreshed_link = connection.execute(
+        """
+        SELECT recipient_type, relevance_reason
+        FROM job_posting_contacts
+        WHERE job_posting_contact_id = 'jpc_stale'
+        """
+    ).fetchone()
+    assert dict(refreshed_link) == {
+        "recipient_type": RECIPIENT_TYPE_ENGINEER,
+        "relevance_reason": "Apollo enrichment title indicates a role-relevant internal engineer.",
+    }
+    assert send_set.ready_for_outreach is True
+    assert any(contact.contact_id == "ct_stale" for contact in send_set.selected_contacts)
 
     connection.close()
 

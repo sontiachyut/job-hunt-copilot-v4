@@ -5278,6 +5278,22 @@ def _execute_selected_work_unit(
                 "for outreach and advanced the durable pipeline run directly to sending."
             )
         elif current_posting_status == JOB_POSTING_STATUS_REQUIRES_CONTACTS:
+            current_posting_status = _promote_ready_for_outreach_if_eligible()
+            if current_posting_status == JOB_POSTING_STATUS_READY_FOR_OUTREACH:
+                next_stage = "sending"
+                run_summary = (
+                    "Supervisor reevaluated the current send slice and advanced the durable "
+                    "pipeline run directly to sending because the active frontier already had "
+                    "a ready subset before more discovery work was needed."
+                )
+                pipeline_run = advance_pipeline_run(
+                    connection,
+                    selected_work.work_id,
+                    current_stage=next_stage,
+                    run_summary=run_summary,
+                    timestamp=timestamp,
+                )
+                return pipeline_run, None, None
             try:
                 enrichment_result = run_apollo_contact_enrichment(
                     project_root=paths.project_root,
