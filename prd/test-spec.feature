@@ -1173,6 +1173,13 @@ Feature: Job Hunt Copilot next-build acceptance
       And the draft is rejected if runtime validation fails
       And accepted draft-debug artifacts record the selected JD, career-step, or sender-evidence signals actually used in the draft
 
+    Scenario: Role-targeted original drafting does not fall back to the old deterministic template
+      Given a scheduled or autonomous role-targeted original draft hits a Codex runtime drafting error
+      When Email Drafting and Sending handles that failure
+      Then it fails closed instead of rendering the legacy deterministic role-targeted body
+      And it does not emit the old `Agentic AI skills` / `live example of that workflow` copy
+      And the failed draft is not labeled as `codex_role_split`
+
   @followups
   Rule: Automated Follow-Up Worker behavior
 

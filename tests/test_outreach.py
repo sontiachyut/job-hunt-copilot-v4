@@ -883,6 +883,71 @@ def test_role_targeted_drafting_fails_closed_when_codex_renderer_cannot_initiali
     connection.close()
 
 
+def test_role_targeted_drafting_records_failure_when_codex_runtime_render_raises(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+):
+    project_root, paths = bootstrap_project(tmp_path)
+    connection = connect_database(project_root / "job_hunt_copilot.db")
+    write_sender_profile(paths)
+    seed_posting(connection)
+    seed_linked_contact(
+        connection,
+        contact_id="ct_m1",
+        job_posting_contact_id="jpc_m1",
+        display_name="Morgan Manager",
+        recipient_type=RECIPIENT_TYPE_HIRING_MANAGER,
+        current_working_email="morgan@acme.example",
+        created_at="2026-04-06T20:01:00Z",
+    )
+    seed_approved_tailoring_run(connection, paths)
+
+    def _raise_runtime_render_error(**kwargs):  # type: ignore[no-untyped-def]
+        raise OutreachDraftingError("codex runtime drafting failed")
+
+    monkeypatch.setenv("JHC_OUTREACH_CODEX_BIN", "/usr/bin/true")
+    monkeypatch.setattr(
+        "job_hunt_copilot.outreach._run_codex_managerial_role_split_draft",
+        _raise_runtime_render_error,
+    )
+
+    result = generate_role_targeted_send_set_drafts(
+        connection,
+        project_root=project_root,
+        job_posting_id="jp_outreach",
+        current_time="2026-04-06T20:30:00Z",
+        local_timezone=ZoneInfo("UTC"),
+    )
+
+    assert result.drafted_messages == ()
+    assert len(result.failed_contacts) == 1
+    failed_row = connection.execute(
+        """
+        SELECT message_status, body_text
+        FROM outreach_messages
+        WHERE outreach_message_id = ?
+        """,
+        (result.failed_contacts[0].outreach_message_id,),
+    ).fetchone()
+    assert failed_row["message_status"] == MESSAGE_STATUS_FAILED
+    assert failed_row["body_text"] is None
+    leaked_legacy_count = int(
+        connection.execute(
+            """
+            SELECT COUNT(*)
+            FROM outreach_messages
+            WHERE job_posting_id = ?
+              AND body_text LIKE '%live example of that workflow%'
+            """,
+            ("jp_outreach",),
+        ).fetchone()[0]
+        or 0
+    )
+    assert leaked_legacy_count == 0
+
+    connection.close()
+
+
 def test_generate_role_targeted_send_set_drafts_allows_redraft_after_failed_only_history(
     tmp_path: Path,
 ):
@@ -1021,6 +1086,98 @@ def test_refresh_role_targeted_generated_drafts_fails_closed_when_codex_renderer
     ).fetchone()
     assert refreshed_row["outreach_message_id"] == generated_message.outreach_message_id
     assert refreshed_row["message_status"] == MESSAGE_STATUS_GENERATED
+
+    connection.close()
+
+
+def test_deterministic_role_targeted_draft_is_not_labeled_as_codex_role_split(tmp_path: Path):
+    project_root, paths = bootstrap_project(tmp_path)
+    connection = connect_database(project_root / "job_hunt_copilot.db")
+    write_sender_profile(paths)
+    seed_posting(connection)
+    seed_linked_contact(
+        connection,
+        contact_id="ct_manager_origin",
+        job_posting_contact_id="jpc_manager_origin",
+        display_name="Morgan Manager",
+        recipient_type=RECIPIENT_TYPE_HIRING_MANAGER,
+        current_working_email="morgan@acme.example",
+        created_at="2026-04-06T20:01:00Z",
+    )
+    seed_approved_tailoring_run(connection, paths)
+
+    result = generate_role_targeted_send_set_drafts(
+        connection,
+        project_root=project_root,
+        job_posting_id="jp_outreach",
+        current_time="2026-04-06T20:30:00Z",
+        local_timezone=ZoneInfo("UTC"),
+        renderer=DeterministicOutreachDraftRenderer(),
+    )
+
+    send_result_payload = json.loads(
+        Path(result.drafted_messages[0].send_result_artifact_path).read_text(encoding="utf-8")
+    )
+    body_text = Path(result.drafted_messages[0].body_text_artifact_path).read_text(
+        encoding="utf-8"
+    )
+    assert send_result_payload["draft_origin_kind"] == "deterministic"
+    assert send_result_payload["draft_posture_family"] is None
+    assert "This email is a live example of that workflow." not in body_text
+    assert "Lately, I have been spending time sharpening my Agentic AI skills." not in body_text
+
+    connection.close()
+
+
+def test_role_targeted_lint_blocks_legacy_autonomous_workflow_copy(tmp_path: Path):
+    project_root, paths = bootstrap_project(tmp_path)
+    connection = connect_database(project_root / "job_hunt_copilot.db")
+    write_sender_profile(paths)
+    seed_posting(connection)
+    seed_linked_contact(
+        connection,
+        contact_id="ct_legacy_block",
+        job_posting_contact_id="jpc_legacy_block",
+        display_name="Morgan Manager",
+        recipient_type=RECIPIENT_TYPE_HIRING_MANAGER,
+        current_working_email="morgan@acme.example",
+        created_at="2026-04-06T20:01:00Z",
+    )
+    seed_approved_tailoring_run(connection, paths)
+
+    class StubRenderer:
+        def render_role_targeted(self, context):  # type: ignore[no-untyped-def]
+            return RenderedDraft(
+                subject="Interest in the Backend Engineer role at Acme",
+                body_markdown=(
+                    "Hi Morgan,\n\n"
+                    "I am reaching out about the Backend Engineer role at Acme.\n\n"
+                    "Lately, I have been spending time sharpening my Agentic AI skills.\n"
+                    "The AI agent runs autonomously with human-in-the-loop (HITL) review, and I personally review every email before it goes out. This email is a live example of that workflow.\n\n"
+                    "Best,\nAchyutaram Sonti\n"
+                ),
+                body_html="<html><body><p>bad</p></body></html>\n",
+                include_forwardable_snippet=False,
+                debug_payload={
+                    "drafting_path": "managerial",
+                    "draft_origin_kind": "deterministic",
+                },
+            )
+
+        def render_general_learning(self, context):  # type: ignore[no-untyped-def]
+            raise AssertionError("general learning should not be used")
+
+    result = generate_role_targeted_send_set_drafts(
+        connection,
+        project_root=project_root,
+        job_posting_id="jp_outreach",
+        current_time="2026-04-06T20:30:00Z",
+        local_timezone=ZoneInfo("UTC"),
+        renderer=StubRenderer(),
+    )
+
+    assert result.drafted_messages == ()
+    assert len(result.failed_contacts) == 1
 
     connection.close()
 

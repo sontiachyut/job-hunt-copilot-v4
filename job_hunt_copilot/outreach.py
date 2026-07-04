@@ -9,7 +9,6 @@ import re
 import shutil
 import sqlite3
 import subprocess
-import tempfile
 from dataclasses import dataclass
 from datetime import UTC, date, datetime, time, timedelta, tzinfo
 from email.message import EmailMessage
@@ -646,6 +645,9 @@ ROLE_TARGETED_DRAFT_BLOCK_PATTERNS: tuple[re.Pattern[str], ...] = (
     re.compile(r"\bMS in Computer Science at ASU\b", re.IGNORECASE),
     re.compile(r"\bArizona State University\b", re.IGNORECASE),
     re.compile(r"\b(?:which is )?what prompted me to reach out\b", re.IGNORECASE),
+    re.compile(r"\bLately, I have been spending time sharpening my Agentic AI skills\b", re.IGNORECASE),
+    re.compile(r"\bThis email is a live example of that workflow\b", re.IGNORECASE),
+    re.compile(r"\bThis email is a live example of that autonomous workflow\b", re.IGNORECASE),
 )
 ROLE_SIGNAL_VERB_PREFIXES = {
     "deliver": "delivering",
@@ -2128,29 +2130,27 @@ def _is_usable_email(value: str | None) -> bool:
 
 class DeterministicOutreachDraftRenderer(OutreachDraftRenderer):
     def render_role_targeted(self, context: RoleTargetedDraftContext) -> RenderedDraft:
-        plan = _compose_role_targeted_composition_plan(context)
+        proof_point = context.proof_point or (
+            "the distributed systems work I have done across reliability, performance, and production delivery"
+        )
+        opener_paragraph = _render_role_targeted_opener(_compose_role_targeted_opener_inputs(context))
+        background_paragraph = (
+            f"{_build_role_targeted_why_line(context)} "
+            f"{_proof_point_sentence(proof_point)}"
+        )
+        ask_paragraph = (
+            "If it would be useful, I would welcome a brief 10-minute conversation "
+            "to better understand the team and whether my background could be relevant."
+        )
         body_lines = [
             f"Hi {_first_name(context.display_name)},",
             "",
-            plan.opener_paragraph,
+            opener_paragraph,
             "",
-            plan.background_paragraph,
+            background_paragraph,
             "",
-            *plan.copilot_paragraphs,
-            "",
-            plan.ask_paragraph,
+            ask_paragraph,
         ]
-        include_snippet = True
-        if include_snippet:
-            body_lines.extend(
-                [
-                    "",
-                    "I've included a short snippet below that you can paste into an IM/Email:",
-                    "[snippet]",
-                    plan.snippet_text,
-                    "[/snippet]",
-                ]
-            )
         body_lines.extend(
             [
                 "",
@@ -2164,8 +2164,11 @@ class DeterministicOutreachDraftRenderer(OutreachDraftRenderer):
             subject=_build_role_targeted_subject(context),
             body_markdown=body_markdown,
             body_html=_render_markdown_email_html(body_markdown),
-            include_forwardable_snippet=include_snippet,
+            include_forwardable_snippet=False,
             opener_decision=context.opener_decision,
+            debug_payload={
+                "draft_origin_kind": "deterministic",
+            },
         )
 
     def render_general_learning(self, context: GeneralLearningDraftContext) -> RenderedDraft:
@@ -2218,59 +2221,57 @@ class CodexRoleSplitOutreachDraftRenderer(OutreachDraftRenderer):
         self._model = model
 
     def render_role_targeted(self, context: RoleTargetedDraftContext) -> RenderedDraft:
-        fallback_renderer = DeterministicOutreachDraftRenderer()
         recipient_path = _select_role_split_recipient_path(context)
-        try:
-            if recipient_path == "technical":
-                payload = _run_codex_technical_role_split_draft(
-                    paths=self._paths,
-                    codex_bin=self._codex_bin,
-                    model=self._model,
-                    context=context,
-                )
-                body_markdown = _compose_technical_role_split_body(context, payload)
-                debug_payload = {
-                    "drafting_path": "technical",
-                    "selected_career_steps": payload.selected_career_steps,
-                    "employment_history_summary": list(context.apollo_employment_history_summary),
-                }
-                return RenderedDraft(
-                    subject=TECHNICAL_PATH_SUBJECT,
-                    body_markdown=body_markdown,
-                    body_html=_render_markdown_email_html(body_markdown),
-                    include_forwardable_snippet=False,
-                    debug_payload=debug_payload,
-                )
-
-            payload = _run_codex_managerial_role_split_draft(
+        if recipient_path == "technical":
+            payload = _run_codex_technical_role_split_draft(
                 paths=self._paths,
                 codex_bin=self._codex_bin,
                 model=self._model,
                 context=context,
             )
-            body_markdown = _compose_managerial_role_split_body(context, payload)
+            body_markdown = _compose_technical_role_split_body(context, payload)
             debug_payload = {
-                "drafting_path": "managerial",
-                "selected_jd_signals": payload.selected_jd_signals,
-                "relevant_background_evidence": [
-                    evidence.model_dump(exclude_none=True)
-                    for evidence in payload.relevant_background_evidence
-                ],
-                "retrieved_profile_evidence_pack": [
-                    chunk.as_prompt_dict() for chunk in context.managerial_retrieved_evidence_pack
-                ],
+                "draft_origin_kind": "codex_role_split",
+                "drafting_path": "technical",
+                "selected_career_steps": payload.selected_career_steps,
+                "employment_history_summary": list(context.apollo_employment_history_summary),
             }
             return RenderedDraft(
-                subject=_build_role_targeted_subject(context),
+                subject=TECHNICAL_PATH_SUBJECT,
                 body_markdown=body_markdown,
-                body_html=_apply_fixed_semantic_emphasis_html(
-                    _render_markdown_email_html(body_markdown)
-                ),
+                body_html=_render_markdown_email_html(body_markdown),
                 include_forwardable_snippet=False,
                 debug_payload=debug_payload,
             )
-        except OutreachDraftingError:
-            return fallback_renderer.render_role_targeted(context)
+
+        payload = _run_codex_managerial_role_split_draft(
+            paths=self._paths,
+            codex_bin=self._codex_bin,
+            model=self._model,
+            context=context,
+        )
+        body_markdown = _compose_managerial_role_split_body(context, payload)
+        debug_payload = {
+            "draft_origin_kind": "codex_role_split",
+            "drafting_path": "managerial",
+            "selected_jd_signals": payload.selected_jd_signals,
+            "relevant_background_evidence": [
+                evidence.model_dump(exclude_none=True)
+                for evidence in payload.relevant_background_evidence
+            ],
+            "retrieved_profile_evidence_pack": [
+                chunk.as_prompt_dict() for chunk in context.managerial_retrieved_evidence_pack
+            ],
+        }
+        return RenderedDraft(
+            subject=_build_role_targeted_subject(context),
+            body_markdown=body_markdown,
+            body_html=_apply_fixed_semantic_emphasis_html(
+                _render_markdown_email_html(body_markdown)
+            ),
+            include_forwardable_snippet=False,
+            debug_payload=debug_payload,
+        )
 
     def render_general_learning(self, context: GeneralLearningDraftContext) -> RenderedDraft:
         raise OutreachDraftingError(
@@ -2287,18 +2288,6 @@ def _resolve_role_targeted_draft_renderer(
 ) -> OutreachDraftRenderer:
     if renderer is not None:
         return renderer
-    override = _normalize_optional_text(os.environ.get("JHC_OUTREACH_ROLE_SPLIT_RENDERER"))
-    if override == "deterministic":
-        return DeterministicOutreachDraftRenderer()
-    if override != "codex":
-        resolved_root = Path(project_root).expanduser().resolve()
-        temp_roots = [
-            Path(tempfile.gettempdir()).resolve(),
-            Path("/private/var/folders"),
-            Path("/var/folders"),
-        ]
-        if any(root.exists() and resolved_root.is_relative_to(root) for root in temp_roots):
-            return DeterministicOutreachDraftRenderer()
     return CodexRoleSplitOutreachDraftRenderer(project_root=project_root)
 
 
@@ -5257,7 +5246,12 @@ def _role_targeted_origin_metadata_from_rendered(
     rendered: RenderedDraft,
 ) -> dict[str, Any]:
     posture_family = _role_targeted_posture_family_from_rendered(rendered)
-    origin_kind = "codex_role_split" if posture_family in {"technical", "managerial"} else "unknown"
+    debug_payload = rendered.debug_payload if isinstance(rendered.debug_payload, Mapping) else None
+    origin_kind = (
+        _normalize_optional_text(debug_payload.get("draft_origin_kind"))
+        if debug_payload is not None
+        else None
+    ) or "unknown"
     return {
         "autonomous_origin": True,
         "draft_origin_kind": origin_kind,
@@ -5270,10 +5264,6 @@ def _role_targeted_posture_family_from_rendered(rendered: RenderedDraft) -> str 
     drafting_path = _normalize_optional_text(debug_payload.get("drafting_path")) if debug_payload else None
     if drafting_path in {"technical", "managerial"}:
         return drafting_path
-    if rendered.subject == TECHNICAL_PATH_SUBJECT:
-        return "technical"
-    if rendered.subject and rendered.subject.startswith("Interest in the ") and " role at " in rendered.subject:
-        return "managerial"
     return None
 
 
@@ -9581,6 +9571,14 @@ def _validate_role_targeted_original_rendered_draft(
             raise OutreachDraftingError(
                 f"Technical-path rendered draft contains blocked phrase `{blocked_phrase}`."
             )
+    blocked_pattern = next(
+        (pattern for pattern in ROLE_TARGETED_DRAFT_BLOCK_PATTERNS if pattern.search(body_text)),
+        None,
+    )
+    if blocked_pattern is not None:
+        raise OutreachDraftingError(
+            f"Role-targeted rendered draft contains blocked legacy phrase matching `{blocked_pattern.pattern}`."
+        )
     max_words = ROLE_TARGETED_ORIGINAL_WORD_LIMITS[drafting_path]
     word_count = _role_targeted_lint_word_count(body_text)
     if word_count > max_words:
