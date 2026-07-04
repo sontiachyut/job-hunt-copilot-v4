@@ -1180,6 +1180,13 @@ Feature: Job Hunt Copilot next-build acceptance
       And it does not emit the old `Agentic AI skills` / `live example of that workflow` copy
       And the failed draft is not labeled as `codex_role_split`
 
+    Scenario: Built-in deterministic outreach drafting is retired from runtime resolution
+      Given the runtime resolves an outreach drafter for `role_targeted` or `general_learning`
+      When no explicit test-only stub renderer object is passed in
+      Then the built-in deterministic outreach drafter is not available for selection
+      And environment configuration does not switch production drafting back to that retired deterministic renderer
+      And drafting either uses the active Codex path or fails closed
+
   @followups
   Rule: Automated Follow-Up Worker behavior
 

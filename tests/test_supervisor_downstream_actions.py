@@ -8,7 +8,6 @@ from job_hunt_copilot.bootstrap import run_bootstrap
 from job_hunt_copilot.delivery_feedback import EVENT_STATE_NOT_BOUNCED, sync_delivery_feedback
 from job_hunt_copilot.email_discovery import DISCOVERY_OUTCOME_PROVIDER_ERROR, EmailDiscoveryError
 from job_hunt_copilot.outreach import (
-    DeterministicOutreachDraftRenderer,
     execute_role_targeted_send_set,
     generate_role_targeted_send_set_drafts,
 )
@@ -41,6 +40,7 @@ from job_hunt_copilot.supervisor import (
     upsert_control_values,
 )
 from tests.support import create_minimal_project, seed_pending_review_tailoring_run
+from tests.outreach_test_renderer import StableTestOutreachRenderer
 from tests.test_outreach import (
     ImmediateBounceObserver as OutreachImmediateBounceObserver,
     RecordingOutreachSender as OutreachRecordingSender,
@@ -3372,7 +3372,7 @@ def test_contact_rooted_general_learning_contact_is_selected_and_sent_without_pi
         started_at="2026-04-08T00:06:00Z",
         action_dependencies=SupervisorActionDependencies(
             outreach_sender=sender,
-            general_learning_draft_renderer=DeterministicOutreachDraftRenderer(),
+            general_learning_draft_renderer=StableTestOutreachRenderer(),
             feedback_observer=observer,
         ),
     )
@@ -3508,7 +3508,7 @@ def test_contact_rooted_general_learning_email_discovery_advances_to_send_ready_
         started_at="2026-04-08T00:08:00Z",
         action_dependencies=SupervisorActionDependencies(
             outreach_sender=sender,
-            general_learning_draft_renderer=DeterministicOutreachDraftRenderer(),
+            general_learning_draft_renderer=StableTestOutreachRenderer(),
             feedback_observer=observer,
         ),
     )
@@ -3601,7 +3601,7 @@ def test_contact_rooted_general_learning_delayed_feedback_is_left_to_feedback_wo
         started_at="2026-04-08T00:06:00Z",
         action_dependencies=SupervisorActionDependencies(
             outreach_sender=sender,
-            general_learning_draft_renderer=DeterministicOutreachDraftRenderer(),
+            general_learning_draft_renderer=StableTestOutreachRenderer(),
         ),
     )
     message_row = connection.execute(
@@ -3684,7 +3684,7 @@ def test_contact_rooted_general_learning_delayed_feedback_records_not_bounced_an
         started_at="2026-04-08T00:06:00Z",
         action_dependencies=SupervisorActionDependencies(
             outreach_sender=sender,
-            general_learning_draft_renderer=DeterministicOutreachDraftRenderer(),
+            general_learning_draft_renderer=StableTestOutreachRenderer(),
         ),
     )
     message_row = connection.execute(

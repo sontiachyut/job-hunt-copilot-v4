@@ -24,7 +24,6 @@ from job_hunt_copilot.outreach import (
     CONTACT_STATUS_EXHAUSTED,
     CONTACT_STATUS_OUTREACH_IN_PROGRESS,
     CONTACT_STATUS_SENT,
-    DeterministicOutreachDraftRenderer,
     JOB_POSTING_STATUS_COMPLETED,
     JOB_POSTING_STATUS_READY_FOR_OUTREACH,
     JOB_POSTING_STATUS_REQUIRES_CONTACTS,
@@ -76,6 +75,7 @@ from job_hunt_copilot.outreach import (
 from job_hunt_copilot.llm_usage import parse_codex_usage
 from job_hunt_copilot.paths import ProjectPaths
 from job_hunt_copilot.profile_evidence import build_profile_evidence_corpus
+from tests.outreach_test_renderer import StableTestOutreachRenderer
 from tests.support import create_minimal_project
 
 
@@ -519,14 +519,10 @@ class FailingRoleTargetedRenderer:
     def render_role_targeted(self, context):  # type: ignore[no-untyped-def]
         if context.contact_id in self.fail_contact_ids:
             raise RuntimeError("synthetic render failure")
-        from job_hunt_copilot.outreach import DeterministicOutreachDraftRenderer
-
-        return DeterministicOutreachDraftRenderer().render_role_targeted(context)
+        return StableTestOutreachRenderer().render_role_targeted(context)
 
     def render_general_learning(self, context):  # type: ignore[no-untyped-def]
-        from job_hunt_copilot.outreach import DeterministicOutreachDraftRenderer
-
-        return DeterministicOutreachDraftRenderer().render_general_learning(context)
+        return StableTestOutreachRenderer().render_general_learning(context)
 
 
 class RecordingRoleTargetedRenderer:
@@ -538,14 +534,10 @@ class RecordingRoleTargetedRenderer:
         self.role_targeted_calls.append(context.contact_id)
         if self.fail_on_role_targeted:
             raise AssertionError("role-targeted renderer should not have been invoked")
-        from job_hunt_copilot.outreach import DeterministicOutreachDraftRenderer
-
-        return DeterministicOutreachDraftRenderer().render_role_targeted(context)
+        return StableTestOutreachRenderer().render_role_targeted(context)
 
     def render_general_learning(self, context):  # type: ignore[no-untyped-def]
-        from job_hunt_copilot.outreach import DeterministicOutreachDraftRenderer
-
-        return DeterministicOutreachDraftRenderer().render_general_learning(context)
+        return StableTestOutreachRenderer().render_general_learning(context)
 
 
 class RecordingOutreachSender:
@@ -1004,7 +996,7 @@ def test_generate_role_targeted_send_set_drafts_allows_redraft_after_failed_only
         job_posting_id="jp_outreach",
         current_time="2026-04-06T20:30:00Z",
         local_timezone=ZoneInfo("UTC"),
-        renderer=DeterministicOutreachDraftRenderer(),
+        renderer=StableTestOutreachRenderer(),
     )
 
     assert [message.contact_id for message in result.drafted_messages] == ["ct_retry"]
@@ -1054,7 +1046,7 @@ def test_refresh_role_targeted_generated_drafts_fails_closed_when_codex_renderer
         job_posting_id="jp_outreach",
         current_time="2026-04-06T20:30:00Z",
         local_timezone=ZoneInfo("UTC"),
-        renderer=DeterministicOutreachDraftRenderer(),
+        renderer=StableTestOutreachRenderer(),
     )
     generated_message = generated.drafted_messages[0]
 
@@ -1112,7 +1104,7 @@ def test_deterministic_role_targeted_draft_is_not_labeled_as_codex_role_split(tm
         job_posting_id="jp_outreach",
         current_time="2026-04-06T20:30:00Z",
         local_timezone=ZoneInfo("UTC"),
-        renderer=DeterministicOutreachDraftRenderer(),
+        renderer=StableTestOutreachRenderer(),
     )
 
     send_result_payload = json.loads(
@@ -1121,7 +1113,8 @@ def test_deterministic_role_targeted_draft_is_not_labeled_as_codex_role_split(tm
     body_text = Path(result.drafted_messages[0].body_text_artifact_path).read_text(
         encoding="utf-8"
     )
-    assert send_result_payload["draft_origin_kind"] == "deterministic"
+    assert send_result_payload["draft_origin_kind"] == "test_stub"
+    assert send_result_payload["draft_origin_kind"] != "codex_role_split"
     assert send_result_payload["draft_posture_family"] is None
     assert "This email is a live example of that workflow." not in body_text
     assert "Lately, I have been spending time sharpening my Agentic AI skills." not in body_text
@@ -2792,7 +2785,7 @@ def test_role_targeted_composition_keeps_backend_anchor_for_backend_ai_manageria
         job_posting_id="jp_outreach",
         current_time="2026-04-06T20:30:00Z",
         local_timezone=ZoneInfo("UTC"),
-        renderer=DeterministicOutreachDraftRenderer(),
+        renderer=StableTestOutreachRenderer(),
     )
 
     assert len(result.failed_contacts) == 0
@@ -4502,7 +4495,7 @@ def test_general_learning_draft_persists_without_posting_or_resume(tmp_path: Pat
         project_root=project_root,
         contact_id="ct_general",
         current_time="2026-04-06T20:30:00Z",
-        renderer=DeterministicOutreachDraftRenderer(),
+        renderer=StableTestOutreachRenderer(),
     )
 
     drafted = result.drafted_message
@@ -4613,7 +4606,7 @@ def test_general_learning_send_execution_drafts_sends_and_polls_feedback(tmp_pat
         contact_id="ct_general_send",
         current_time="2026-04-06T20:30:00Z",
         sender=sender,
-        renderer=DeterministicOutreachDraftRenderer(),
+        renderer=StableTestOutreachRenderer(),
         feedback_observer=observer,
     )
 
@@ -6248,7 +6241,7 @@ def test_send_execution_yields_to_sendable_followup_during_followup_window(tmp_p
         current_time="2026-04-06T23:00:00Z",
         local_timezone=ZoneInfo("UTC"),
         sender=sender,
-        renderer=DeterministicOutreachDraftRenderer(),
+        renderer=StableTestOutreachRenderer(),
     )
 
     assert sender.attempted_message_ids == []
@@ -6311,7 +6304,7 @@ def test_refresh_role_targeted_generated_drafts_refreshes_stale_generated_messag
         project_root=project_root,
         job_posting_id="jp_stale_refresh",
         current_time="2026-04-06T21:00:00Z",
-        renderer=DeterministicOutreachDraftRenderer(),
+        renderer=StableTestOutreachRenderer(),
     )
 
     message_row = connection.execute(
@@ -6750,7 +6743,7 @@ def test_original_prepared_frontier_ignores_daily_cap_blocked_posting_and_multi_
         job_posting_id="jp_ready_now",
         current_time="2026-04-06T20:40:00Z",
         local_timezone="America/Phoenix",
-        renderer=DeterministicOutreachDraftRenderer(),
+        renderer=StableTestOutreachRenderer(),
     )
 
     assert [message.contact_id for message in draft_batch.drafted_messages] == ["ct_ready_now"]
@@ -6873,7 +6866,7 @@ def test_stale_generated_backlog_does_not_consume_new_draft_capacity(
         job_posting_id="jp_fresh_ready",
         current_time="2026-04-06T21:00:00Z",
         local_timezone="America/Phoenix",
-        renderer=DeterministicOutreachDraftRenderer(),
+        renderer=StableTestOutreachRenderer(),
     )
 
     assert [message.contact_id for message in draft_batch.drafted_messages] == ["ct_fresh_ready"]

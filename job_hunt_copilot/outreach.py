@@ -937,23 +937,6 @@ class RoleTargetedDraftContext:
     job_hunt_copilot_summary: str
 
 
-@dataclass(frozen=True)
-class RoleTargetedCompositionPlan:
-    opener_paragraph: str
-    background_paragraph: str
-    copilot_paragraphs: tuple[str, str, str]
-    ask_paragraph: str
-    snippet_text: str
-
-
-@dataclass(frozen=True)
-class RoleTargetedOpenerInputs:
-    company_name: str
-    role_title: str
-    technical_focus: str
-    overlap_sentence: str
-
-
 class TechnicalRoleSplitDraftPayload(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
@@ -2128,86 +2111,6 @@ def _is_usable_email(value: str | None) -> bool:
     return bool(value and "@" in value and "." in value.split("@", 1)[-1])
 
 
-class DeterministicOutreachDraftRenderer(OutreachDraftRenderer):
-    def render_role_targeted(self, context: RoleTargetedDraftContext) -> RenderedDraft:
-        proof_point = context.proof_point or (
-            "the distributed systems work I have done across reliability, performance, and production delivery"
-        )
-        opener_paragraph = _render_role_targeted_opener(_compose_role_targeted_opener_inputs(context))
-        background_paragraph = (
-            f"{_build_role_targeted_why_line(context)} "
-            f"{_proof_point_sentence(proof_point)}"
-        )
-        ask_paragraph = (
-            "If it would be useful, I would welcome a brief 10-minute conversation "
-            "to better understand the team and whether my background could be relevant."
-        )
-        body_lines = [
-            f"Hi {_first_name(context.display_name)},",
-            "",
-            opener_paragraph,
-            "",
-            background_paragraph,
-            "",
-            ask_paragraph,
-        ]
-        body_lines.extend(
-            [
-                "",
-                "Best,",
-                context.sender.name,
-                *_signature_lines(context.sender),
-            ]
-        )
-        body_markdown = "\n".join(line for line in body_lines if line is not None).strip() + "\n"
-        return RenderedDraft(
-            subject=_build_role_targeted_subject(context),
-            body_markdown=body_markdown,
-            body_html=_render_markdown_email_html(body_markdown),
-            include_forwardable_snippet=False,
-            opener_decision=context.opener_decision,
-            debug_payload={
-                "draft_origin_kind": "deterministic",
-            },
-        )
-
-    def render_general_learning(self, context: GeneralLearningDraftContext) -> RenderedDraft:
-        work_signal = _recipient_work_signal(context.recipient_profile)
-        role_hint = context.position_title or "your work"
-        subject = f"Learning from your work at {context.company_name} | {context.sender.name}"
-        opening = (
-            f"I came across your background at {context.company_name}"
-            if not work_signal
-            else f"I came across your work on {work_signal} at {context.company_name}"
-        )
-        body_lines = [
-            f"Hi {_first_name(context.display_name)},",
-            "",
-            (
-                f"{opening}, and it stood out to me because I have been trying to learn from people working close to "
-                f"{role_hint.lower()}. I have been gravitating toward backend, distributed-systems, and "
-                "AI-adjacent engineering work."
-            ),
-            "",
-            (
-                "I am reaching out in a learning-first mode rather than with a direct role ask. "
-                "If you would be open to it, I would really value a short 15-minute conversation to learn "
-                "how you think about the work, the team, and what matters most in that area."
-            ),
-            "",
-            "Best,",
-            context.sender.name,
-            *_signature_lines(context.sender),
-        ]
-        body_markdown = "\n".join(body_lines).strip() + "\n"
-        return RenderedDraft(
-            subject=subject,
-            body_markdown=body_markdown,
-            body_html=_render_markdown_email_html(body_markdown),
-            include_forwardable_snippet=False,
-        )
-
-
 class CodexRoleSplitOutreachDraftRenderer(OutreachDraftRenderer):
     def __init__(
         self,
@@ -2298,9 +2201,6 @@ def _resolve_general_learning_draft_renderer(
 ) -> OutreachDraftRenderer:
     if renderer is not None:
         return renderer
-    override = _normalize_optional_text(os.environ.get("JHC_OUTREACH_ROLE_SPLIT_RENDERER"))
-    if override == "deterministic":
-        return DeterministicOutreachDraftRenderer()
     return CodexRoleSplitOutreachDraftRenderer(project_root=project_root)
 
 
@@ -7647,227 +7547,6 @@ def _build_role_targeted_subject(context: RoleTargetedDraftContext) -> str:
     return f"Interest in the {normalized_role_title} role at {context.company_name}"
 
 
-def _compose_role_targeted_composition_plan(
-    context: RoleTargetedDraftContext,
-) -> RoleTargetedCompositionPlan:
-    proof_point = context.proof_point or (
-        "the distributed systems work I have done across reliability, performance, and production delivery"
-    )
-    opener_inputs = _compose_role_targeted_opener_inputs(context)
-    plan = RoleTargetedCompositionPlan(
-        opener_paragraph=_render_role_targeted_opener(opener_inputs),
-        background_paragraph=(
-            f"{_build_role_targeted_why_line(context)} "
-            f"{_proof_point_sentence(proof_point)}"
-        ),
-        copilot_paragraphs=tuple(_job_hunt_copilot_pitch_lines()),
-        ask_paragraph=(
-            "If it would be useful, I would welcome a short 15-minute conversation sometime this or next week "
-            "to learn a bit more about the role and get your perspective on whether my background could be relevant. "
-            "If you're not the right person, I'd also really appreciate it if you could point me to the right "
-            "person or forward my resume internally."
-        ),
-        snippet_text=_render_forwardable_snippet_text(context),
-    )
-    _validate_role_targeted_composition_plan(plan, context)
-    return plan
-
-
-def _compose_role_targeted_opener_inputs(
-    context: RoleTargetedDraftContext,
-) -> RoleTargetedOpenerInputs:
-    return RoleTargetedOpenerInputs(
-        company_name=context.company_name,
-        role_title=context.role_title,
-        technical_focus=context.opener_decision.technical_focus,
-        overlap_sentence=context.opener_decision.overlap_sentence,
-    )
-
-
-def _render_role_targeted_opener(inputs: RoleTargetedOpenerInputs) -> str:
-    return (
-        f"I'm reaching out about the {inputs.role_title} role at {inputs.company_name} because I was "
-        f"interested in the role's focus on {inputs.technical_focus}. {inputs.overlap_sentence}"
-    )
-
-
-def _build_role_targeted_why_line(context: RoleTargetedDraftContext) -> str:
-    title = _normalize_optional_text(context.position_title)
-    if context.recipient_type == RECIPIENT_TYPE_RECRUITER:
-        if title is not None:
-            return f"Given your role as {title}, I thought you might have useful perspective on the hiring context for this opening."
-        return "I thought you might have useful perspective on the hiring context for this opening."
-    if context.recipient_type == RECIPIENT_TYPE_HIRING_MANAGER:
-        if title is not None:
-            return f"Given your role as {title}, I thought you might be a good person to reach out to for some perspective on this opening."
-        return "I thought you might be a good person to reach out to for some perspective on this opening."
-    if context.recipient_type == RECIPIENT_TYPE_ALUMNI:
-        return (
-            "I'm reaching out to you specifically because you seemed like the right fellow Sun Devil to ask for a grounded perspective on this work."
-        )
-    if title is not None:
-        return f"Given your role as {title}, I thought you might have useful perspective on the day-to-day work this role touches."
-    return "I thought you might have useful perspective on the day-to-day work this role touches."
-
-
-def _recipient_work_signal(recipient_profile: Mapping[str, Any] | None) -> str | None:
-    if recipient_profile is None:
-        return None
-    work_signals = recipient_profile.get("work_signals")
-    if isinstance(work_signals, list):
-        for signal in work_signals:
-            normalized = _normalize_optional_text(signal)
-            if normalized is not None:
-                return normalized
-    about_preview = _normalize_optional_text(
-        (recipient_profile.get("about") or {}).get("preview_text")
-        if isinstance(recipient_profile.get("about"), Mapping)
-        else None
-    )
-    if about_preview is not None:
-        return about_preview
-    top_card = recipient_profile.get("top_card")
-    if isinstance(top_card, Mapping):
-        for key in ("headline", "current_title"):
-            normalized = _normalize_optional_text(top_card.get(key))
-            if normalized is not None:
-                return normalized
-    return None
-
-
-def _impact_summary_line(context: RoleTargetedDraftContext) -> str:
-    proof_point = context.proof_point or "credible impact across backend and distributed systems work"
-    return proof_point.rstrip(".")
-
-
-def _snippet_focus_phrase(context: RoleTargetedDraftContext) -> str:
-    role_theme = _compose_role_targeted_role_theme(context)
-    technical_focus = _compose_role_targeted_technical_focus(context, role_theme)
-    focus = _normalize_optional_text(technical_focus) or role_theme
-    compact_focus = _compact_focus_for_snippet(focus, role_title=context.role_title)
-    return compact_focus or focus or role_theme
-
-
-def _snippet_focus_preposition(focus: str) -> str:
-    lowered = focus.lower()
-    if "," in focus:
-        return "with"
-    if any(
-        lowered.startswith(prefix)
-        for prefix in (
-            "java",
-            "python",
-            "scala",
-            "kotlin",
-            "c#",
-            ".net",
-            "aws",
-            "azure",
-            "gcp",
-            "spring",
-            "angular",
-            "react",
-            "restful",
-            "backend services and apis",
-            "full-stack services and backend apis",
-        )
-    ):
-        return "with"
-    return "in"
-
-
-def _snippet_proof_fragment(context: RoleTargetedDraftContext) -> str | None:
-    proof = _normalize_optional_text(context.proof_point)
-    if proof is None:
-        return None
-    candidate = proof.rstrip(".")
-    candidate = re.sub(
-        r"\band automating high-volume clinical data flows that powered\b",
-        "supporting",
-        candidate,
-        flags=re.IGNORECASE,
-    )
-    candidate = re.sub(r"\s+", " ", candidate).strip(" ,.;")
-    first_word, _, remainder = candidate.partition(" ")
-    gerund = ROLE_SIGNAL_VERB_PREFIXES.get(first_word.lower())
-    if gerund is None:
-        gerund = {
-            "built": "building",
-            "designed": "designing",
-            "developed": "developing",
-            "implemented": "implementing",
-            "optimized": "optimizing",
-            "led": "leading",
-            "created": "creating",
-            "improved": "improving",
-            "shipped": "shipping",
-            "migrated": "migrating",
-            "automated": "automating",
-            "scaled": "scaling",
-            "owned": "owning",
-            "processed": "processing",
-            "ran": "running",
-            "delivered": "delivering",
-        }.get(first_word.lower())
-    if gerund is not None:
-        candidate = f"{gerund} {remainder}".strip()
-    return candidate or None
-
-
-def _snippet_intro_sentence(context: RoleTargetedDraftContext) -> str:
-    if context.recipient_type in {RECIPIENT_TYPE_HIRING_MANAGER, RECIPIENT_TYPE_FOUNDER}:
-        return (
-            f"Hi, passing along a candidate who may be worth a look for the "
-            f"{context.role_title} role at {context.company_name}."
-        )
-    return (
-        f"Hi, sharing a candidate who may be relevant for the "
-        f"{context.role_title} role at {context.company_name}."
-    )
-
-
-def _snippet_background_sentence(context: RoleTargetedDraftContext) -> str:
-    focus = _snippet_focus_phrase(context)
-    preposition = _snippet_focus_preposition(focus)
-    proof_fragment = _snippet_proof_fragment(context)
-    if context.theme_selection.interest_overlap and not context.theme_selection.direct_background_overlap:
-        sentence = (
-            context.theme_selection.interest_snippet_sentence
-            or f"He's actively building toward the role's focus on {focus} through academic and personal projects."
-        ).rstrip(".")
-        if proof_fragment is not None:
-            return f"{sentence}, while bringing supporting systems experience including {proof_fragment}."
-        return f"{sentence}."
-    if context.theme_selection.adjacent_background_overlap and not context.theme_selection.direct_background_overlap:
-        if context.theme_selection.growth_overlap:
-            sentence = (
-                f"His background overlaps well with the role's focus on {focus}, and he's intentionally "
-                "growing in that direction"
-            )
-        else:
-            sentence = f"His background overlaps well with the role's focus on {focus}"
-        if proof_fragment is not None:
-            return f"{sentence}, including {proof_fragment}."
-        return f"{sentence}."
-    if context.recipient_type in {
-        RECIPIENT_TYPE_HIRING_MANAGER,
-        RECIPIENT_TYPE_ENGINEER,
-        RECIPIENT_TYPE_FOUNDER,
-    }:
-        if preposition == "with":
-            prefix = "His background includes work with"
-        else:
-            prefix = "His background is in"
-    else:
-        if preposition == "with":
-            prefix = "He has experience with"
-        else:
-            prefix = "He has experience in"
-    if proof_fragment is not None:
-        return f"{prefix} {focus}, including {proof_fragment}."
-    return f"{prefix} {focus}."
-
-
 def _role_work_area_phrase(value: str | None) -> str:
     normalized = _normalize_optional_text(value)
     if normalized is None:
@@ -8214,111 +7893,6 @@ def _rewrite_ai_ml_focus_phrase(candidate: str) -> str | None:
     return None
 
 
-def _role_work_area_opening(work_area: str) -> str:
-    lowered = work_area.lower()
-    base_action_prefixes = (
-        "build ",
-        "design ",
-        "develop ",
-        "implement ",
-        "improve ",
-        "optimize ",
-        "scale ",
-        "modernize ",
-        "create ",
-        "lead ",
-        "support ",
-        "maintain ",
-        "drive ",
-        "own ",
-        "extract ",
-        "enrich ",
-        "process ",
-    )
-    gerund_action_prefixes = (
-        "building ",
-        "designing ",
-        "developing ",
-        "implementing ",
-        "improving ",
-        "optimizing ",
-        "scaling ",
-        "modernizing ",
-        "creating ",
-        "leading ",
-        "supporting ",
-        "maintaining ",
-        "driving ",
-        "owning ",
-        "extracting ",
-        "enriching ",
-        "processing ",
-        "delivering ",
-    )
-    if lowered.startswith(base_action_prefixes):
-        return f"the chance to {work_area}"
-    if lowered.startswith(gerund_action_prefixes):
-        return f"the chance to work on {work_area}"
-    return f"the work around {work_area}"
-
-
-def _ensure_sentence(text: str) -> str:
-    stripped = text.strip()
-    if not stripped:
-        return ""
-    if stripped.endswith((".", "!", "?")):
-        return stripped
-    return stripped + "."
-
-
-def _proof_point_sentence(proof_point: str) -> str:
-    stripped = proof_point.strip().rstrip(".")
-    if not stripped:
-        return "For example, I have worked on backend and distributed systems in production."
-    lowered = stripped.lower()
-    if lowered.startswith("i "):
-        return f"In one recent role, {stripped}."
-    verb_prefixes = (
-        "built ",
-        "designed ",
-        "developed ",
-        "implemented ",
-        "optimized ",
-        "led ",
-        "created ",
-        "improved ",
-        "shipped ",
-        "migrated ",
-        "automated ",
-        "scaled ",
-        "reduced ",
-        "owned ",
-        "processed ",
-        "ran ",
-        "delivered ",
-    )
-    if lowered.startswith(verb_prefixes):
-        return f"In one recent role, I {stripped[0].lower()}{stripped[1:]}."
-    return f"For example, {stripped}."
-
-
-def _compact_linkedin(value: str | None) -> str:
-    if value is None:
-        return "LinkedIn available on request"
-    return re.sub(r"^https?://", "", value).rstrip("/")
-
-
-def _signature_lines(sender: SenderIdentity) -> list[str]:
-    lines: list[str] = []
-    if sender.linkedin_url:
-        lines.append(sender.linkedin_url)
-    if sender.phone:
-        lines.append(sender.phone)
-    if sender.email:
-        lines.append(sender.email)
-    return lines
-
-
 def _role_split_signature_lines(sender: SenderIdentity) -> list[str]:
     lines: list[str] = []
     if sender.linkedin_url:
@@ -8330,115 +7904,6 @@ def _role_split_signature_lines(sender: SenderIdentity) -> list[str]:
     if sender.email:
         lines.append(sender.email)
     return lines
-
-
-def _job_hunt_copilot_pitch_lines() -> list[str]:
-    return [
-        "Lately, I have been spending time sharpening my Agentic AI skills.",
-        (
-            f"I built Job Hunt Copilot ({JOB_HUNT_COPILOT_REPO_URL}) for my own job search "
-            "to help me identify relevant roles and the right people to reach out to."
-        ),
-        (
-            "The AI agent runs autonomously with human-in-the-loop (HITL) review, and I personally "
-            "review every email before it goes out. This email is a live example of that workflow."
-        ),
-    ]
-
-
-def _render_forwardable_snippet_text(context: RoleTargetedDraftContext) -> str:
-    linkedin = _compact_linkedin(context.sender.linkedin_url)
-    return " ".join(
-        [
-            _snippet_intro_sentence(context),
-            _snippet_background_sentence(context),
-            f"Profile: {linkedin}",
-        ]
-    )
-
-
-def _validate_role_targeted_opener_decision(context: RoleTargetedDraftContext) -> None:
-    decision = context.opener_decision
-    rubric = context.opener_rubric
-    if decision.claim_mode not in rubric.allowed_claim_modes:
-        raise OutreachDraftingError(
-            f"Opener decision uses unsupported claim mode `{decision.claim_mode}`."
-        )
-    lowered_focus = decision.technical_focus.lower()
-    blocked_focus = next(
-        (phrase for phrase in rubric.blocked_focus_phrases if phrase in lowered_focus),
-        None,
-    )
-    if blocked_focus is not None:
-        raise OutreachDraftingError(
-            f"Opener decision technical focus `{decision.technical_focus}` contains blocked phrase `{blocked_focus}`."
-        )
-    anchor_count = len(_extract_role_focus_anchors(decision.technical_focus))
-    if anchor_count < rubric.minimum_specific_anchor_count:
-        raise OutreachDraftingError(
-            f"Opener decision technical focus `{decision.technical_focus}` does not meet minimum specificity."
-        )
-    if rubric.require_title_alignment and _fails_role_title_specific_gate(
-        decision.technical_focus,
-        decision.role_title,
-    ):
-        raise OutreachDraftingError(
-            f"Opener decision technical focus `{decision.technical_focus}` is not title-aligned for `{decision.role_title}`."
-        )
-    overlap_lower = decision.overlap_sentence.lower()
-    if decision.claim_mode == CLAIM_MODE_DIRECT_BACKGROUND and any(
-        marker in overlap_lower
-        for marker in ("actively building toward", "academic and personal projects")
-    ):
-        raise OutreachDraftingError(
-            "Direct-background opener decision cannot use interest-area wording."
-        )
-    if decision.claim_mode == CLAIM_MODE_INTEREST_AREA and any(
-        marker in overlap_lower for marker in ("i've done", "background overlaps", "background is")
-    ):
-        raise OutreachDraftingError(
-            "Interest-area opener decision cannot imply direct professional experience."
-        )
-    if decision.claim_mode == CLAIM_MODE_GROWTH_AREA and any(
-        marker in overlap_lower for marker in ("i've done", "background overlaps", "background is")
-    ):
-        raise OutreachDraftingError(
-            "Growth-area opener decision cannot imply direct professional experience."
-        )
-
-
-def _validate_role_targeted_composition_plan(
-    plan: RoleTargetedCompositionPlan,
-    context: RoleTargetedDraftContext,
-) -> None:
-    _validate_role_targeted_opener_decision(context)
-    opener_lower = plan.opener_paragraph.lower()
-    blocked_phrase = next(
-        (phrase for phrase in context.opener_rubric.blocked_opener_phrases if phrase in opener_lower),
-        None,
-    )
-    if blocked_phrase is not None:
-        raise OutreachDraftingError(
-            f"Role-targeted opener failed quality validation for blocked phrase `{blocked_phrase}`."
-        )
-    if context.opener_decision.technical_focus not in plan.opener_paragraph:
-        raise OutreachDraftingError("Rendered opener does not include the selected technical focus.")
-    if context.opener_decision.overlap_sentence not in plan.opener_paragraph:
-        raise OutreachDraftingError("Rendered opener does not include the selected overlap sentence.")
-    combined_text = " ".join(
-        [
-            plan.opener_paragraph,
-            plan.background_paragraph,
-            *plan.copilot_paragraphs,
-            plan.ask_paragraph,
-            plan.snippet_text,
-        ]
-    )
-    for pattern in ROLE_TARGETED_DRAFT_BLOCK_PATTERNS:
-        if pattern.search(combined_text):
-            raise OutreachDraftingError(
-                f"Role-targeted composition failed quality validation for pattern `{pattern.pattern}`."
-            )
 
 
 def _persist_rendered_draft(
@@ -9344,8 +8809,6 @@ def _render_markdown_email_html(body_markdown: str) -> str:
     paragraph_lines: list[str] = []
     blockquote_lines: list[str] = []
     list_items: list[str] = []
-    pitch_lines = _job_hunt_copilot_pitch_lines()
-    snippet_intro_line = "I've included a short snippet below that you can paste into an IM/Email:"
 
     def flush_paragraph() -> None:
         nonlocal paragraph_lines
@@ -9384,24 +8847,6 @@ def _render_markdown_email_html(body_markdown: str) -> str:
             flush_list()
             index += 1
             continue
-        if stripped == snippet_intro_line:
-            flush_paragraph()
-            flush_blockquote()
-            flush_list()
-            html_blocks.append(f"<p>{html.escape(snippet_intro_line)}</p>")
-            index += 1
-            if index < len(body_lines) and body_lines[index].strip() == "[snippet]":
-                snippet_lines: list[str] = []
-                index += 1
-                while index < len(body_lines):
-                    snippet_line = body_lines[index].rstrip()
-                    if snippet_line.strip() == "[/snippet]":
-                        index += 1
-                        break
-                    snippet_lines.append(snippet_line)
-                    index += 1
-                html_blocks.append(_render_forwardable_snippet_html("\n".join(snippet_lines).strip()))
-            continue
         if stripped == "Best,":
             flush_paragraph()
             flush_blockquote()
@@ -9415,28 +8860,6 @@ def _render_markdown_email_html(body_markdown: str) -> str:
                 signature_lines.append(signature_line)
                 index += 1
             html_blocks.append(_render_signature_block_html(signature_lines))
-            continue
-        if stripped == "[snippet]":
-            flush_paragraph()
-            flush_blockquote()
-            flush_list()
-            snippet_lines: list[str] = []
-            index += 1
-            while index < len(body_lines):
-                snippet_line = body_lines[index].rstrip()
-                if snippet_line.strip() == "[/snippet]":
-                    index += 1
-                    break
-                snippet_lines.append(snippet_line)
-                index += 1
-            html_blocks.append(_render_forwardable_snippet_html("\n".join(snippet_lines).strip()))
-            continue
-        if body_lines[index : index + len(pitch_lines)] == pitch_lines:
-            flush_paragraph()
-            flush_blockquote()
-            flush_list()
-            html_blocks.append(_render_job_hunt_copilot_callout_html())
-            index += len(pitch_lines)
             continue
         if stripped.startswith("> "):
             flush_paragraph()
@@ -9585,36 +9008,6 @@ def _validate_role_targeted_original_rendered_draft(
         raise OutreachDraftingError(
             f"Role-targeted rendered draft exceeds the {drafting_path} lint word limit ({word_count} > {max_words})."
         )
-
-
-def _render_job_hunt_copilot_callout_html() -> str:
-    line_one, line_two, line_three = _job_hunt_copilot_pitch_lines()
-    repo_url = html.escape(JOB_HUNT_COPILOT_REPO_URL, quote=True)
-    escaped_repo_text = html.escape(JOB_HUNT_COPILOT_REPO_URL)
-    line_two_html = html.escape(line_two).replace(
-        escaped_repo_text,
-        f'<a href="{repo_url}" style="color:#1d4ed8;text-decoration:none;font-weight:600;">{escaped_repo_text}</a>',
-    )
-    return (
-        '<div style="margin:16px 0;padding:14px 16px;'
-        'border-left:3px solid #111827;border-radius:4px;'
-        'background:#f8fafc;">'
-        f'<p style="margin:0 0 8px 0;color:#334155;line-height:1.55;">{html.escape(line_one)}</p>'
-        f'<p style="margin:0 0 8px 0;color:#111827;line-height:1.55;font-weight:600;">{line_two_html}</p>'
-        f'<p style="margin:0;color:#111827;line-height:1.55;font-weight:600;">{html.escape(line_three)}</p>'
-        "</div>"
-    )
-
-
-def _render_forwardable_snippet_html(snippet_text: str) -> str:
-    return (
-        '<div style="background:#f4f4f4;border-left:4px solid #1a73e8;'
-        "padding:12px 16px;margin:12px 0;border-radius:4px;"
-        "font-family:Arial,sans-serif;font-size:13px;color:#333;"
-        'line-height:1.5;white-space:pre-wrap;">'
-        f"{html.escape(snippet_text)}"
-        "</div>"
-    )
 
 
 def _render_signature_block_html(signature_lines: Sequence[str]) -> str:
