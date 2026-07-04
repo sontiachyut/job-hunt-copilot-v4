@@ -100,7 +100,7 @@ Now:
 - Jobright-first lead discovery with authenticated recommendation ingestion
 - promotion gating before resume tailoring or outreach
 - source-seeded contacts from Jobright
-- Apollo email enrichment for seeded contacts plus Apollo current-company top-up and manager-expansion harvest
+- Apollo email enrichment for seeded contacts plus Apollo current-company manager-expansion harvest
 - provider-based email discovery and enrichment for selected contacts
 - resume tailoring
 - full-frontier draft preparation with per-posting send pacing
@@ -137,7 +137,7 @@ Current-build required path:
 7. mandatory agent review of the tailored resume after verification/finalize
 8. DB-first Outreach bootstrap by `job_posting_id`
 9. email enrichment for all source-seeded contacts
-10. Apollo current-company search for top-up when seeded contacts are fewer than 5, plus manager-expansion harvest when additional leadership contacts are useful for the posting
+10. Apollo current-company manager-expansion harvest when additional leadership contacts are useful for the posting, plus Apollo enrichment for the kept contact set
 11. send-set-ready batch drafting
 12. paced autonomous sending
 13. immediate per-message delivery feedback plus delayed mailbox polling
@@ -322,9 +322,9 @@ This is the agreed vocabulary for design discussions.
 8. Apollo shall then be used in two ways:
    - email enrichment for all source-seeded contacts
    - company-scoped current-company manager / executive / founder harvest for additional current-company leadership contacts under an adaptive shortlist cap
-9. If the promoted posting starts with fewer than 5 Jobright-seeded contacts, Apollo current-company search should continue until the intended outreach set reaches at least 5 contacts whenever provider coverage allows it.
-10. If Jobright plus Apollo still produce fewer than 5 reachable current-company contacts after provider coverage is exhausted, the posting may proceed with that smaller reachable set rather than remaining blocked solely because the 5-contact target was not reached.
-11. Apollo current-company manager / executive / founder harvest may still shortlist additional leadership contacts even after the 5-contact minimum is met when those shortlisted contacts look useful for role-targeted outreach.
+9. The promoted posting does not maintain a separate minimum total-contact target for Apollo. All Jobright-seeded contacts stay in scope, and Apollo additions are governed by the separate manager-expansion shortlist policy.
+10. If the reachable current-company contact set remains small after provider coverage is exhausted, the posting may still proceed with that smaller reachable set rather than remaining blocked on an arbitrary floor.
+11. Apollo current-company manager / executive / founder harvest may shortlist additional leadership contacts whenever those shortlisted contacts look useful for role-targeted outreach.
 12. The system shall not treat every raw Apollo broad-search row as an outreach target. Only Apollo contacts that the system explicitly shortlists for the posting shall enter the intended outreach set.
 13. All Apollo contacts that the system explicitly shortlists for the posting shall automatically enter the intended outreach set.
 14. Apollo manager-expansion shall add additional current-company manager / executive / founder contacts when provider coverage allows. These contacts are in addition to the source-seeded Jobright contacts rather than replacing them.
@@ -355,7 +355,7 @@ This is the agreed vocabulary for design discussions.
 24. For engineering roles, Apollo profiles should be treated as most relevant when their current title and org clearly overlap the role family, such as backend, platform, infrastructure, data, AI, or ML engineering; unrelated support, success, GTM, operations, QA, or non-technical routing profiles should be excluded from the manager-expansion shortlist even when they work at the same company.
 25. When multiple Apollo candidates fall into the same priority tier, the deterministic tie-break should first prefer candidates with a usable work email already available, then candidates with fuller non-obfuscated identity and a professional-profile URL when available; if that still ties, stable alphabetical ordering by display name is acceptable.
 26. Once the initial intended outreach set has been built from Jobright-seeded contacts plus any needed Apollo-shortlisted and manager-expansion contacts, that set shall remain frozen by default rather than auto-expanding whenever new candidate contacts later appear.
-27. The system may reopen top-up or replacement selection only when the current intended outreach set degrades, becomes unusable, or falls below the needed size because of enrichment failures, repeat-contact exclusions, or other concrete loss of usable contacts.
+27. The system may reopen replacement selection only when the current intended outreach set degrades, becomes unusable, or falls below the needed size because of enrichment failures, repeat-contact exclusions, or other concrete loss of usable contacts.
 28. Source-seeded contacts remain first-class even when Apollo adds more contacts. Apollo does not replace the source-seeded set; it supplements it.
 29. Jobright-seeded contacts shall be carried forward into `contacts` plus `lead_contacts` during lead ingestion, and into `job_posting_contacts` on promotion, so downstream discovery can enrich those same contacts with Apollo-backed identity and usable-email data.
 
@@ -393,7 +393,7 @@ This is the agreed vocabulary for design discussions.
    - company name
    - role title when known
    - public professional-profile URL when known
-2. For Apollo company-scoped top-up search:
+2. For Apollo company-scoped manager-expansion search:
    - company name
    - role title or job family
    - JD text or job URL when available
@@ -403,16 +403,16 @@ This is the agreed vocabulary for design discussions.
 1. In the current workflow, promoted leads should first use source-seeded contacts rather than broad company-scoped people search.
 2. Apollo is the current provider for:
    - seeded-contact email enrichment
-   - company-scoped top-up search when fewer than 5 intended contacts exist
+   - company-scoped manager / executive / founder harvest under the adaptive manager-expansion cap
    - company-scoped manager / executive / founder harvest under the adaptive manager-expansion cap
 3. If source-seeded enrichment returns a usable work email for a contact, the system may skip separate email-finder calls for that contact.
 4. If source-seeded enrichment does not return a usable work email, that contact may continue into the separate email-discovery path.
-5. When Apollo top-up search is required, that top-up path should aim to fill the intended outreach set to 5 contacts rather than gather a broad unbounded company pool by default. A separate Apollo manager-expansion path may still harvest broader current-company technical leadership under the adaptive cap.
+5. Apollo current-company search should remain bounded and role-relevant. It should not gather a broad unbounded company pool by default; it should harvest shortlistable current-company manager / executive / founder contacts under the adaptive cap.
 6. Company domain is an internal operational field in this build, not a required user-facing input.
 
 ### 5.3 Core Outputs
 1. Tailored resume artifact(s)
-2. Source-seeded Jobright contacts plus Apollo-shortlisted top-up or manager-expansion contact candidates, with discovered email candidate(s) and confidence metadata
+2. Source-seeded Jobright contacts plus Apollo-shortlisted manager-expansion contact candidates, with discovered email candidate(s) and confidence metadata
 3. Personalized outreach draft(s)
 4. Delivery status metadata (sent/bounced/replied)
 
@@ -430,7 +430,7 @@ This is the agreed vocabulary for design discussions.
 8. Generate tailored resume
 9. Run the mandatory agent resume review, then approve, revise, retry, or escalate based on that review outcome
 10. Enrich emails for all source-seeded contacts
-11. If fewer than 5 intended contacts remain, run Apollo top-up search and enrich the added contacts
+11. Run Apollo manager-expansion search when additional current-company leadership contacts are useful, and enrich the added contacts
 12. Generate drafts across the ready posting frontier and send personalized outreach to all intended contacts, using ranked waves, active send slices, and per-posting pacing
 13. Capture delivery feedback
 14. Feed outcomes back into lead/contact history and learning signals
@@ -486,7 +486,7 @@ This is the agreed vocabulary for design discussions.
 - **FR-SYS-01G0B (Keep Public Contacts Alongside Personalized Rule):** Public Jobright connections shall remain in the intended outreach set even when the posting already has enough personalized Jobright connections; public contacts shall not be dropped merely because personalized contacts are sufficient on their own.
 - **FR-SYS-01G0C (Contact Carry-Forward Rule):** Jobright-seeded contacts shall be materialized into canonical `contacts` plus `lead_contacts` during lead ingestion, and into `job_posting_contacts` on promotion, so downstream discovery can enrich those same contacts with Apollo-backed identity and usable-email data.
 - **FR-SYS-01G1 (Seeded-Contact Enrichment Rule):** Apollo shall be used to enrich all source-seeded contacts with fuller identity and usable-email data when available.
-- **FR-SYS-01G2 (Apollo Top-Up Rule):** If the source-seeded contact count for a promoted posting is fewer than 5, Apollo shall discover and add additional current-company contacts until the intended outreach set reaches 5 contacts or provider coverage is exhausted.
+- **FR-SYS-01G2 (Apollo Addition Rule):** Apollo shall not maintain a separate minimum-total-contact top-up rule. All Jobright-seeded contacts remain first-class, and Apollo shall add only the separately shortlisted current-company contacts selected by the manager-expansion policy.
 - **FR-SYS-01G2AA (Apollo Shortlist Rule):** The system shall not treat every raw Apollo broad-search row as an outreach target. Only Apollo contacts that the system explicitly shortlists for the posting shall enter the intended outreach set.
 - **FR-SYS-01G2AB (Auto-Include Shortlisted Apollo Contacts Rule):** All Apollo contacts that the system explicitly shortlists for the posting shall automatically enter the intended outreach set.
 - **FR-SYS-01G2AC (Manager Expansion Rule):** Apollo shall also run a separate manager-expansion pass that adds additional current-company manager / executive / founder-class contacts when provider coverage allows.
@@ -500,10 +500,10 @@ This is the agreed vocabulary for design discussions.
 - **FR-SYS-01G2AF (Broad Manager Harvest Rule):** The manager-expansion search shall use a broad multi-pass current-company Apollo harvest that intentionally searches engineering leadership, lane-specific management, relevant technical CxO title families, founder/co-founder executive title families, and plain CEO / Chief Executive Officer fallback titles without location restriction so the candidate pool includes as many plausible manager-class contacts as Apollo returns before deterministic shortlisting.
 - **FR-SYS-01G2B (Ranked Apollo Inclusion Rule):** Apollo shortlist selection shall be deterministic. The system shall rank current-company Apollo manager candidates by role-family relevance, engineering-org relevance, and manager-class or technical-leadership seniority before adding them to the intended outreach set.
 - **FR-SYS-01G2BA (Apollo Same-Tier Tie-Break Rule):** When multiple Apollo candidates fall into the same priority tier, the deterministic tie-break shall first prefer candidates with a usable work email already available, then candidates with fuller non-obfuscated identity and a professional-profile URL when available; if that still ties, stable alphabetical ordering by display name is acceptable.
-- **FR-SYS-01G2C (Frozen Intended Contact Set Rule):** Once the initial intended outreach set has been built from Jobright-seeded contacts plus any needed Apollo top-up or Apollo-shortlisted manager-expansion contacts, that set shall remain frozen by default rather than auto-expanding whenever new candidate contacts later appear.
-- **FR-SYS-01G2D (Refill-On-Degradation Rule):** The system may reopen top-up or replacement selection only when the current intended outreach set degrades, becomes unusable, or falls below the needed size because of enrichment failures, repeat-contact exclusions, or other concrete loss of usable contacts.
-- **FR-SYS-01G2A (Smaller Reachable Set Continuation Rule):** If Jobright plus Apollo still produce fewer than 5 reachable current-company contacts after provider coverage is exhausted, the posting shall be allowed to continue with that smaller reachable set rather than remaining blocked solely because the 5-contact target was not reached.
-- **FR-SYS-01G3 (Apollo Current-Company-Only Rule):** Apollo top-up shall add only current-company contacts for the target employer and shall not add external alumni-style or unrelated out-of-company contacts.
+- **FR-SYS-01G2C (Frozen Intended Contact Set Rule):** Once the initial intended outreach set has been built from Jobright-seeded contacts plus any Apollo-shortlisted manager-expansion contacts, that set shall remain frozen by default rather than auto-expanding whenever new candidate contacts later appear.
+- **FR-SYS-01G2D (Refill-On-Degradation Rule):** The system may reopen replacement selection only when the current intended outreach set degrades, becomes unusable, or loses usable contacts because of enrichment failures, repeat-contact exclusions, or other concrete loss of usable contacts.
+- **FR-SYS-01G2A (Smaller Reachable Set Continuation Rule):** A posting shall be allowed to continue with whatever reachable current-company set exists after provider coverage is exhausted; there is no separate 5-contact floor.
+- **FR-SYS-01G3 (Apollo Current-Company-Only Rule):** Apollo-added contacts shall be current-company contacts for the target employer and shall not add external alumni-style or unrelated out-of-company contacts.
 - **FR-SYS-01G4 (Seeded-Contacts-First Rule):** Source-seeded contacts remain first-class even when Apollo adds more contacts; Apollo supplements the source set rather than replacing it.
 - **FR-SYS-01G5 (Apollo Current-Company Priority Rule):** Apollo current-company shortlist selection for startup-style and engineering roles should prefer engineering managers, hiring managers, and technical leads first. In very small startup-style pools it should then prefer founder-style executive routing such as founder, co-founder, founder and CEO, or founder and CTO, even when the founder title is plain, ahead of director/head/vice-president engineering leadership and relevant technical CxO roles. In larger pools it should prefer director/head/vice-president engineering leadership next, then relevant technical CxO roles, then lead-engineer variants, then founder-style executive routing, and only then plain CEO / Chief Executive Officer fallback contacts.
 - **FR-SYS-01H (Lead Handoff Rule):** `Lead Ingestion` shall hand off to downstream components through `lead-manifest.yaml` plus referenced artifacts rather than through hardcoded path assumptions.
@@ -597,12 +597,12 @@ This is the agreed vocabulary for design discussions.
 - **FR-SYS-17B (No-Contact Ready State):** If a `job_posting` has cleared tailoring and mandatory agent review but does not yet have the required linked contacts and discovered outreach-ready emails for the current role-targeted flow, its posting-level status shall remain `requires_contacts` rather than advancing to `ready_for_outreach`.
 - **FR-SYS-17B1 (Required Linked Contacts Meaning):** For this build, `required linked contacts` should mean:
   1. preserve every viable source-seeded contact for that posting
-  2. top up toward 5 intended contacts when provider coverage allows it and shortlist useful Apollo manager-expansion contacts when applicable
+  2. preserve all viable source-seeded contacts and shortlist useful Apollo manager-expansion contacts when applicable
   3. allow the posting to progress once at least 1 send-eligible contact exists and the current contact plan either reaches its minimum intended-contact target or exhausts the current applicable Apollo search and enrichment path
 - **FR-SYS-17C (Ready-for-Outreach Meaning):** A `job_posting` shall be considered `ready_for_outreach` when:
   1. resume tailoring is complete
   2. the active tailoring run is approved by the mandatory agent review
-  3. the posting has the current intended outreach set for that job, including all viable source-seeded contacts plus any Apollo-shortlisted top-up or manager-expansion contacts selected for that posting
+  3. the posting has the current intended outreach set for that job, including all viable source-seeded contacts plus any Apollo-shortlisted manager-expansion contacts selected for that posting
   4. at least one contact in the current intended outreach set has a discovered usable email address and is otherwise automatically send-eligible
 - **FR-SYS-17C1 (Ready-Subset Non-Blocking Rule):** In the current role-targeted flow, contacts in the current intended outreach set that are still missing usable emails may remain pending for continued discovery, but they shall not block the posting from becoming `ready_for_outreach` once at least one stronger-or-equal currently selected contact is ready. The posting may progress into drafting and sending for the currently ready subset while unresolved contacts continue through later discovery or replacement selection.
 - **FR-SYS-17D (Outreach-in-Progress Meaning):** A `job_posting` shall be considered `outreach_in_progress` once drafting and/or sending is actively occurring for the current outreach set tied to that posting.
@@ -715,7 +715,7 @@ This is the agreed vocabulary for design discussions.
   18. `contact_employment_history`
   19. `job_posting_provider_contexts`
 - **FR-SYS-37 (Lean Supporting-Table Rule):** This build should prefer this minimal supporting-table set rather than introducing separate per-component tables unless a clear new requirement appears. Shared needs such as artifact metadata should use shared tables where possible instead of multiplying narrowly scoped tables.
-- **FR-SYS-38 (Primary Orchestration Sequence):** The primary role-targeted workflow shall run in this dependency order: Lead Ingestion -> promotion gate -> eligibility/tailoring -> mandatory agent review of the tailored output -> source-seeded contact enrichment -> Apollo company-scoped search when the posting still needs minimum-contact top-up or useful manager-class leadership contacts -> selected-contact recipient-profile extraction -> email discovery for contacts still missing usable emails -> drafting/sending -> delivery feedback.
+- **FR-SYS-38 (Primary Orchestration Sequence):** The primary role-targeted workflow shall run in this dependency order: Lead Ingestion -> promotion gate -> eligibility/tailoring -> mandatory agent review of the tailored output -> source-seeded contact enrichment -> Apollo company-scoped search when the posting is intentionally running manager-expansion or later replacement selection -> selected-contact recipient-profile extraction -> email discovery for contacts still missing usable emails -> drafting/sending -> delivery feedback.
 - **FR-SYS-38A (General Learning Outreach Path):** When outreach is not tied to a specific job posting, the system may run a lighter contact-rooted flow: identify contact -> discover email if needed -> generate/send learning-first outreach -> capture delivery feedback. This path does not require posting-specific resume tailoring or the role-targeted agent review gate.
 - **FR-SYS-38A1 (Role-Targeted Company-Scoped Contact Search):** When a role-targeted posting lacks enough explicit internal contacts from the lead itself, the system shall be able to run company-scoped people search using company, role, and JD-linked filters to identify likely recipients before person-scoped email discovery begins.
 - **FR-SYS-38A1B (Location-Relaxation Retry Rule):** When a location-filtered company-scoped people search returns no useful candidates, the system shall be able to retry the same search with the location constraint relaxed rather than treating the location miss as final.
@@ -2742,9 +2742,10 @@ Rules:
   "job_posting_id": "jp_otter_growth_001",
   "company_name": "Otter.ai",
   "provider_name": "apollo",
-  "seeded_contact_target": 5,
   "seeded_contact_count": 3,
-  "apollo_top_up_needed": 2,
+  "active_intended_contact_count_before_apollo": 3,
+  "active_apollo_manager_contact_count_before_apollo": 0,
+  "apollo_added_contact_count": 2,
   "resolved_company": {
     "organization_id": "57c4f624a6da9869ef365999",
     "organization_name": "Otter.ai",
@@ -2786,7 +2787,7 @@ Rules:
       "professional_profile_url": null,
       "title": "Software Engineer",
       "recipient_type_inferred": "apollo_topup",
-      "relevance_reason": "technical company contact added to reach the 5-contact outreach set",
+      "relevance_reason": "current-company leadership contact shortlisted for Apollo manager expansion",
       "has_email": true,
       "has_direct_phone": true,
       "last_refreshed_at": "2026-06-27T17:50:12Z"
@@ -3693,7 +3694,7 @@ For each lead, persist an eligibility decision artifact with:
 
 ### 7.3.1 Subcomponent Responsibilities
 
-- **FR-EO-00 (Contact Search Responsibility):** The Outreach-side discovery layer shall own seeded-contact enrichment and bounded Apollo company-scoped search for role-targeted leads, including minimum-set top-up and manager-expansion leadership harvest where applicable.
+- **FR-EO-00 (Contact Search Responsibility):** The Outreach-side discovery layer shall own seeded-contact enrichment and bounded Apollo company-scoped search for role-targeted leads, including manager-expansion leadership harvest where applicable.
 - **FR-EO-00A (Selected-Contact Enrichment Responsibility):** The Outreach-side discovery layer shall own selected-contact enrichment after source-seeded contact capture or Apollo shortlist selection, including fuller identity recovery, professional-profile URL recovery, and usable-email recovery when the selected enrichment provider can supply them.
 - **FR-EO-00B (Recipient-Profile Extraction Responsibility):** When a selected contact has a usable professional-profile URL, the Outreach-side discovery layer shall own extracting and persisting as much clean workflow-relevant recipient-profile context as is actually exposed on the public page for later drafting use.
 - **FR-EO-01 (Email Discovery Responsibility):** The Email Discovery subcomponent shall own person-scoped email lookup or enrichment, provider-budget tracking, discovery confidence, persistent discovery history, and future learning-data collection.
@@ -3708,13 +3709,13 @@ For each lead, persist an eligibility decision artifact with:
 
 The current discovery behavior combines:
 1. source-seeded contact capture from Jobright during lead ingestion
-2. Apollo enrichment plus bounded Apollo current-company search for minimum-set top-up and manager-expansion leadership harvest
+2. Apollo enrichment plus bounded Apollo current-company search for manager-expansion leadership harvest
 3. person-scoped email enrichment or email-finder lookup for selected contacts that still need usable work emails
 
 It uses the active provider cascade to identify contacts, discover emails, capture provider-verified confidence signals, track budget usage, preserve bounce/outcome feedback, and collect the data needed for future learning.
 For discovery-state persistence, the system shall use discovery-specific tables inside the central SQLite database rather than splitting long-lived discovery data across multiple JSON/JSONL files.
 - **FR-ED-00 (Discovery Source of Truth):** Discovery-side persistent history, provider budget tracking, unresolved review data, bounced-email review data, and future learning state shall live inside `job_hunt_copilot.db`. JSON artifacts such as `discovery_result.json` and `delivery_outcome.json` shall be treated as runtime handoff outputs for pipeline communication rather than canonical long-term storage.
-- **FR-ED-00A (Source-Seeded Discovery Entry):** For role-targeted postings, the discovery layer shall begin from the source-seeded contacts captured during lead ingestion and may use company-scoped Apollo search when that seeded set is insufficient or when the posting is intentionally running the manager-expansion leadership harvest.
+- **FR-ED-00A (Source-Seeded Discovery Entry):** For role-targeted postings, the discovery layer shall begin from the source-seeded contacts captured during lead ingestion and may use company-scoped Apollo search only when the posting is intentionally running the manager-expansion leadership harvest or later replacement selection.
 - **FR-ED-00B (Apollo-First Contact Search):** The current first-build company-scoped people-search provider shall be Apollo.
 - **FR-ED-00B1 (Company Resolution Before Apollo People Search):** The Apollo path should first resolve the target company to an Apollo organization record and capture the resolved `organization_id` before broad people search begins.
 - **FR-ED-00B2 (Organization-ID-Anchored Search):** When Apollo organization resolution succeeds, people search should anchor on the resolved `organization_id` rather than relying only on company name or raw domain filters.
@@ -3722,7 +3723,7 @@ For discovery-state persistence, the system shall use discovery-specific tables 
 - **FR-ED-00B2B (Apollo Company-Match Validation Rule):** The Apollo company-resolution path shall not accept or persist a resolved organization record unless that organization still matches the posting's company identity using the strongest available hints in this order: a reliable company domain when one exists, a parseable employer slug or company handle from the apply URL when the posting is hosted on an ATS domain, and the normalized posting company name. Aggregator hosts such as `jobright.ai` and generic ATS hosts such as `jobs.lever.co`, `boards.greenhouse.io`, and `jobs.ashbyhq.com` shall not be treated as the employer's own company domain.
 - **FR-ED-00B2C (Invalid Resolved-Organization Rejection Rule):** If Apollo company search returns a top record whose normalized organization name and domain signals do not match the posting company identity under `FR-ED-00B2B`, the runtime shall reject that resolution, skip promotion of `provider_company_key`, and avoid materializing Apollo people-search candidates from that mismatched organization into the posting frontier.
 - **FR-ED-00B2D (Persisted Apollo-Company Reuse Validation Rule):** Before reusing a previously persisted Apollo organization identifier from `provider_company_key`, saved provider context, or historical people-search artifacts, the runtime shall revalidate that organization against the current posting company identity under `FR-ED-00B2B`. A stale or mismatched persisted Apollo organization shall be treated as invalid rather than silently reused.
-- **FR-ED-00B2E (Invalid Apollo-State Repair Rule):** When the runtime detects that a posting is already carrying a mismatched persisted Apollo organization or Apollo top-up contacts from the wrong company, it shall repair that posting before continuing discovery by clearing the invalid company-resolution anchor and removing the mismatched unsent Apollo top-up contacts from the intended outreach set so later cycles cannot continue drafting or sending against the wrong company.
+- **FR-ED-00B2E (Invalid Apollo-State Repair Rule):** When the runtime detects that a posting is already carrying a mismatched persisted Apollo organization or Apollo-added contacts from the wrong company, it shall repair that posting before continuing discovery by clearing the invalid company-resolution anchor and removing the mismatched unsent Apollo-added contacts from the intended outreach set so later cycles cannot continue drafting or sending against the wrong company.
 - **FR-ED-00B2F (Ambiguous Weak-Identity Company Resolution Rule):** When reliable employer-domain evidence is unavailable and the posting identity collapses to a weak single normalized token such as a generic company name plus the same ATS-employer slug, the Apollo company-resolution path shall fail closed unless the resolved organization name itself normalizes to that exact token and the provider returns a unique best match. If multiple Apollo organizations satisfy that weak token-only identity, or the resolved organization introduces extra unmatched brand terms such as geography or another brand word, the runtime shall treat company resolution as ambiguous and skip Apollo people search rather than routing outreach to the wrong company.
 - **FR-ED-00B3 (Company Resolution Artifact):** The people-search stage shall persist the resolved company-search outcome, including the chosen Apollo organization record when found, inside `people_search_result.json` so later review can see what company identity was actually searched.
 - **FR-ED-00B4 (Apollo Quota Exhaustion Cooldown Rule):** When Apollo company-scoped search or enrichment returns a quota-exhaustion signal such as `HTTP 422 insufficient credits`, the system shall normalize that outcome to `quota_exhausted`, persist Apollo provider cooldown state, and suppress immediate repeated Apollo retries until the cooldown expires.
@@ -3776,7 +3777,7 @@ For discovery-state persistence, the system shall use discovery-specific tables 
 - **FR-ED-00E12 (Employment History Latest-State Refresh Rule):** When a newer Apollo payload is persisted for a contact, the contact's structured Apollo employment-history rows shall be refreshed to match the newest provider snapshot rather than accumulating stale duplicate role rows indefinitely.
 - **FR-ED-00E13 (Provider Snapshot Lifecycle Rule):** `contact_provider_profiles` and `job_posting_provider_contexts` shall behave as append-only snapshot history. New Apollo search, enrichment, or company-resolution payloads create newer snapshot rows rather than overwriting earlier raw payloads.
 - **FR-ED-00E14 (Promoted Latest-State Precedence Rule):** When Apollo search-stage and enrichment-stage payloads disagree, the newer enrichment-stage payload shall take precedence for promoted latest-known contact fields on `contacts` such as current title, current company, professional-profile URL, location, and Apollo-returned work email. Search-stage fields may still backfill those promoted fields only when the newer stage does not provide a usable value.
-- **FR-ED-00F (Apollo Top-Up Breadth):** For the autonomous source-seeded mode, Apollo top-up should be broad enough to fill the intended outreach set but still bounded by the current contact target rather than unconstrained high-recall search.
+- **FR-ED-00F (Apollo Manager-Harvest Breadth):** For the autonomous source-seeded mode, Apollo manager-expansion should be broad enough to collect relevant current-company leadership candidates but still bounded by the adaptive shortlist cap rather than unconstrained high-recall search.
 - **FR-ED-00G (Autonomous Helpful-Contact Scope):** The autonomous search set is not limited to one exact title. It should include any role-relevant internal people who might realistically help route the candidate to the right hiring person.
 
 - **FR-ED-01:** System shall accept either company/job context for people search or explicit per-contact identity for each selected contact, such as name + company name, professional-profile URL, or provider-scoped person ID.
@@ -5218,10 +5219,10 @@ Current imported guidance should include, at minimum:
 28. The Tailoring-to-Outreach handoff is DB-first by `job_posting_id`, with `meta.yaml` and referenced resume artifacts available as supporting runtime references and audit surfaces.
 
 ## 12.2 Email Discovery
-1. Given a promoted role-targeted posting, the system first preserves all source-seeded contacts provided by Jobright before running any Apollo top-up search.
+1. Given a promoted role-targeted posting, the system first preserves all source-seeded contacts provided by Jobright before running any Apollo manager-expansion search.
 2. The Apollo path resolves the company to an organization record first and uses the resolved `organization_id` as the preferred anchor for people search when available.
 3. When the posting or company group already has a persisted Apollo company identifier from earlier work, the system reuses that identifier and skips a fresh company-resolution call unless that identifier is missing or invalid.
-4. `people_search_result.json` is produced and preserves the resolved company record, applied search filters, the source-seeded contacts, and any Apollo people-search candidate list returned by people search, including both top-up and manager-expansion candidates when present.
+4. `people_search_result.json` is produced and preserves the resolved company record, applied search filters, the source-seeded contacts, and any Apollo people-search candidate list returned by people search, including manager-expansion candidates when present.
 5. The system correctly handles sparse Apollo search results, including candidates whose search-stage identity is only a partial or obfuscated display name plus stable Apollo person ID.
 6. Shortlist-stage contact materialization can proceed from stable provider identity such as Apollo person ID even before a non-obfuscated full name is known.
 7. For each shortlisted/materialized Apollo contact, the main database persists the full Apollo search-stage or enrichment-stage provider payload linked to the canonical `contact_id`.
@@ -5254,7 +5255,7 @@ Current imported guidance should include, at minimum:
 33. Per-provider credit balances are auto-updated after each provider usage event when the provider exposes a reliable balance signal, and otherwise remain explicitly unknown rather than synthetic.
 34. Combined budget totals, when shown, are derived only from known provider balances rather than fabricated placeholders.
 35. Provider exhaustion automatically triggers fallback to remaining providers in cascade order.
-36. The autonomous Jobright mode can use Apollo to top up a promoted posting's source-seeded contacts to the intended 5-contact outreach set when the upstream source alone does not provide enough viable people.
+36. The autonomous Jobright mode can use Apollo to add shortlisted current-company manager / executive / founder contacts under the manager-expansion policy when useful for outreach.
 37. `discovery_result.json` is produced as the machine handoff artifact for Drafting and includes the shared contract envelope, relevant root IDs, discovery outcome, discovered email when found, and the recipient-profile artifact reference when one exists.
 
 ## 12.3 Email Drafting and Sending
@@ -5328,7 +5329,7 @@ Current imported guidance should include, at minimum:
 25. In the autonomous mode, the full recovered JD is persisted to `jd.md` before later structured extraction or tailoring interpretation begins.
 26. In the autonomous mode, structured eligibility and tailoring artifacts are derived from persisted markdown/context files rather than only from transient fetch responses.
 27. Once a valid company and role are known for a promoted lead, downstream posting files are materialized in a company/role-scoped workspace.
-28. The autonomous mode uses source-seeded contacts first and Apollo only to enrich emails or top up a promoted posting's intended contact set toward 5 people.
+28. The autonomous mode uses source-seeded contacts first and Apollo only to enrich emails or add separately shortlisted current-company leadership contacts.
 29. Jobs that stay in discovery but are not promoted do not materialize downstream postings or active outreach work.
 30. If autonomous lead ingestion encounters a duplicate canonical lead identity during fan-out, it canonicalizes or refreshes the existing lead instead of crashing on duplicate creation.
 31. For lead modes that materialize `raw/source.md`, `Lead Ingestion` runs a deterministic first pass over that artifact, persists `source-split.yaml`, `source-split-review.yaml`, and `lead-manifest.yaml`, and keeps those artifacts queryable from `artifact_records`.
@@ -5484,7 +5485,7 @@ Current imported guidance should include, at minimum:
 5. In the autonomous Jobright flow, all source observations first land in the discovery queue before the promotion gate decides whether they become downstream postings.
 6. In the autonomous Jobright flow, the full recovered JD is written to `jd.md` before eligibility or tailoring structuring runs for promoted leads.
 7. In the autonomous Jobright flow, downstream structuring reads from that persisted `jd.md` and company/role context files.
-8. Source-seeded contacts are preserved first, Apollo is used to enrich their emails, Apollo top-up is used when the intended outreach set is still smaller than 5 contacts, and Apollo manager-expansion may still add adaptive-cap manager / executive / founder contacts beyond that minimum.
+8. Source-seeded contacts are preserved first, Apollo is used to enrich their emails, and Apollo manager-expansion may add adaptive-cap manager / executive / founder contacts without any separate minimum-total-contact top-up rule.
 9. The outreach posture asks those contacts for connection or routing help to the right person, rather than assuming the discovered recipient is already the exact target.
 11. Discovery may begin per linked contact once prerequisites are satisfied, drafting may proceed across the ready untouched posting frontier as contacts become ready, and automatic sending remains separately governed by active send-slice selection and pacing.
 12. Failures resume from the last successful stage boundary rather than forcing a restart from `Lead Ingestion`.

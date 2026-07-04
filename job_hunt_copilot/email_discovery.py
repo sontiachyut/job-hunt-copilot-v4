@@ -62,7 +62,6 @@ RECIPIENT_TYPE_OTHER_INTERNAL = "other_internal"
 RECIPIENT_TYPE_FOUNDER = "founder"
 
 DEFAULT_SHORTLIST_LIMIT = 10
-MIN_INTENDED_CONTACT_TARGET = 5
 MAX_MANAGER_EXPANSION_CONTACT_TARGET = 10
 MID_MANAGER_EXPANSION_CONTACT_TARGET = 7
 LARGE_MANAGER_EXPANSION_CONTACT_TARGET = 10
@@ -1638,7 +1637,6 @@ def run_apollo_people_search(
             connection,
             job_posting_id=str(posting_row["job_posting_id"]),
         )
-        apollo_top_up_needed = max(0, MIN_INTENDED_CONTACT_TARGET - active_intended_contact_count)
         apollo_manager_search_needed = max(
             0,
             MAX_MANAGER_EXPANSION_CONTACT_TARGET - active_apollo_manager_contact_count,
@@ -1845,15 +1843,14 @@ def run_apollo_people_search(
                 "shortlist_limit": effective_shortlist_limit or shortlist_limit,
                 "seeded_shortlist_contact_ids": list(seeded_contact_ids),
                 "seeded_shortlist_job_posting_contact_ids": list(seeded_job_posting_contact_ids),
-                "active_intended_contact_count_before_top_up": active_intended_contact_count,
-                "active_manager_contact_count_before_top_up": active_manager_contact_count,
-                "active_apollo_manager_contact_count_before_top_up": active_apollo_manager_contact_count,
-                "apollo_top_up_needed": apollo_top_up_needed,
+                "active_intended_contact_count_before_apollo": active_intended_contact_count,
+                "active_manager_contact_count_before_apollo": active_manager_contact_count,
+                "active_apollo_manager_contact_count_before_apollo": active_apollo_manager_contact_count,
                 "apollo_manager_search_needed_before_search": apollo_manager_search_needed,
                 "eligible_manager_candidate_count": eligible_manager_candidate_count,
                 "manager_shortlist_target": manager_shortlist_target,
                 "apollo_manager_needed": apollo_manager_needed,
-                "apollo_top_up_added_count": len(shortlisted_contact_ids) - len(seeded_contact_ids),
+                "apollo_added_contact_count": len(shortlisted_contact_ids) - len(seeded_contact_ids),
                 "candidate_count": len(candidates),
                 "shortlisted_contact_ids": shortlisted_contact_ids,
                 "shortlisted_job_posting_contact_ids": shortlisted_job_posting_contact_ids,
@@ -7023,7 +7020,7 @@ def _materialize_shortlisted_candidate(
         job_posting_contact_id = str(existing_link[0]["job_posting_contact_id"])
         previous_status = str(existing_link[0]["link_level_status"])
         new_status = _promote_link_status(previous_status)
-        apollo_rank = _next_apollo_top_up_rank(
+        apollo_rank = _next_apollo_added_contact_rank(
             connection,
             job_posting_id=str(posting_row["job_posting_id"]),
         )
@@ -7068,7 +7065,7 @@ def _materialize_shortlisted_candidate(
     else:
         job_posting_contact_id = new_canonical_id("job_posting_contacts")
         timestamps = lifecycle_timestamps(current_time)
-        apollo_rank = _next_apollo_top_up_rank(
+        apollo_rank = _next_apollo_added_contact_rank(
             connection,
             job_posting_id=str(posting_row["job_posting_id"]),
         )
@@ -7127,7 +7124,7 @@ def _materialize_shortlisted_candidate(
     }
 
 
-def _next_apollo_top_up_rank(
+def _next_apollo_added_contact_rank(
     connection: sqlite3.Connection,
     *,
     job_posting_id: str,

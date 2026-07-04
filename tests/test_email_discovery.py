@@ -1069,11 +1069,11 @@ def test_apollo_people_search_persists_broad_result_and_shortlists_only_selected
     assert payload["resolved_company"]["organization_id"] == "org_acme"
     assert payload["search_anchor"] == "organization_id"
     assert payload["candidate_count"] == 9
-    assert payload["apollo_top_up_needed"] == 5
+    assert payload["active_intended_contact_count_before_apollo"] == 0
     assert payload["eligible_manager_candidate_count"] == 3
     assert payload["manager_shortlist_target"] == 3
     assert payload["apollo_manager_needed"] == 3
-    assert payload["apollo_top_up_added_count"] == 3
+    assert payload["apollo_added_contact_count"] == 3
     assert len(payload["shortlisted_contact_ids"]) == 3
 
     shortlist_candidates = [candidate for candidate in payload["candidates"] if candidate.get("contact_id")]
@@ -1279,7 +1279,7 @@ def test_apollo_people_search_reuses_existing_contact_and_promotes_identified_li
     connection.close()
 
 
-def test_apollo_people_search_still_runs_manager_harvest_when_seeded_contacts_already_meet_total_minimum(tmp_path: Path):
+def test_apollo_people_search_still_runs_manager_harvest_when_seeded_contacts_already_exist(tmp_path: Path):
     project_root = bootstrap_project(tmp_path)
     paths = ProjectPaths.from_root(project_root)
     connection = connect_database(project_root / "job_hunt_copilot.db")
@@ -1337,12 +1337,12 @@ def test_apollo_people_search_still_runs_manager_harvest_when_seeded_contacts_al
     assert {f"ct_seed_{index}" for index in range(1, 6)}.issubset(set(result.shortlisted_contact_ids))
 
     payload = json.loads(result.artifact_path.read_text(encoding="utf-8"))
-    assert payload["apollo_top_up_needed"] == 0
-    assert payload["active_apollo_manager_contact_count_before_top_up"] == 0
+    assert payload["active_intended_contact_count_before_apollo"] == 5
+    assert payload["active_apollo_manager_contact_count_before_apollo"] == 0
     assert payload["eligible_manager_candidate_count"] == 1
     assert payload["manager_shortlist_target"] == 1
     assert payload["apollo_manager_needed"] == 1
-    assert payload["apollo_top_up_added_count"] == 1
+    assert payload["apollo_added_contact_count"] == 1
     assert payload["candidate_count"] == 1
     assert len(payload["seeded_shortlist_contact_ids"]) == 5
 
@@ -1475,12 +1475,12 @@ def test_apollo_people_search_adds_manager_contacts_even_when_only_some_seeded_c
     assert len(result.shortlisted_contact_ids) == 6
 
     payload = json.loads(result.artifact_path.read_text(encoding="utf-8"))
-    assert payload["apollo_top_up_needed"] == 2
-    assert payload["active_apollo_manager_contact_count_before_top_up"] == 0
+    assert payload["active_intended_contact_count_before_apollo"] == 3
+    assert payload["active_apollo_manager_contact_count_before_apollo"] == 0
     assert payload["eligible_manager_candidate_count"] == 3
     assert payload["manager_shortlist_target"] == 3
     assert payload["apollo_manager_needed"] == 3
-    assert payload["apollo_top_up_added_count"] == 3
+    assert payload["apollo_added_contact_count"] == 3
     assert payload["candidate_count"] == 3
 
     source_rows = connection.execute(
@@ -1749,7 +1749,7 @@ def test_apollo_people_search_rejects_mismatched_company_resolution_and_skips_ca
     assert payload["search_anchor"] == "company_resolution_rejected"
     assert payload["company_resolution_rejected"] is True
     assert payload["candidate_count"] == 0
-    assert payload["apollo_top_up_added_count"] == 0
+    assert payload["apollo_added_contact_count"] == 0
     posting_row = connection.execute(
         """
         SELECT canonical_company_key, provider_company_key, company_key_source

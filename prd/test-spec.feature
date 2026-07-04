@@ -796,7 +796,7 @@ Feature: Job Hunt Copilot next-build acceptance
       Then that mismatched Apollo organization is rejected
       And `provider_company_key` is not promoted from that mismatched record
       And Apollo people-search candidates from company B are not added to the posting frontier
-      And any previously persisted mismatched Apollo company anchor or unsent Apollo top-up contacts for that posting are repaired before later discovery continues
+      And any previously persisted mismatched Apollo company anchor or unsent Apollo-added contacts for that posting are repaired before later discovery continues
 
     Scenario: Apollo rejects ambiguous weak-token company resolution
       Given a role-targeted posting only has a weak single-token company identity such as the normalized company name plus the same ATS employer slug
@@ -2032,7 +2032,7 @@ Feature: Job Hunt Copilot next-build acceptance
       Then a canonical `job_posting` is created immediately
       And the promoting source observation is linked to that posting
       And all Jobright-seeded contacts are carried forward into `job_posting_contacts`
-      And Apollo top-up may continue later without blocking posting creation
+      And Apollo manager-expansion may continue later without blocking posting creation
 
     Scenario: Promotion keeps all Jobright-seeded contacts and Apollo adds shortlisted current-company plus manager-class contacts
       Given a promoted Jobright lead already has some public or personalized source-seeded contacts
