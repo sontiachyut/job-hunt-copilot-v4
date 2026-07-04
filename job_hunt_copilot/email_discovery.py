@@ -10,11 +10,13 @@ from dataclasses import dataclass, replace
 from pathlib import Path
 from typing import Any, Mapping, Protocol, Sequence
 from urllib.error import HTTPError, URLError
-from urllib.parse import urlencode
+from urllib.parse import unquote, urlencode, urlparse
 from urllib.request import Request, urlopen
 
 from .artifacts import ArtifactLinkage, publish_json_artifact
 from .company_keys import (
+    build_provisional_company_key,
+    build_provider_company_key,
     ensure_missing_posting_company_keys,
     posting_company_key_from_row,
     promote_company_group_to_provider_key,
@@ -195,6 +197,44 @@ STOPWORD_TOKENS = frozenset(
         "iv",
     }
 )
+CORPORATE_SUFFIX_TOKENS = frozenset(
+    {
+        "inc",
+        "incorporated",
+        "corp",
+        "corporation",
+        "co",
+        "company",
+        "llc",
+        "ltd",
+        "limited",
+        "plc",
+        "gmbh",
+        "ag",
+        "sa",
+        "bv",
+        "pte",
+        "pty",
+        "holdings",
+        "holding",
+        "technologies",
+        "technology",
+    }
+)
+COMPANY_IDENTITY_INTERMEDIARY_HOSTS = frozenset({"jobright.ai"})
+COMPANY_IDENTITY_ATS_HOSTS = frozenset(
+    {
+        "jobs.lever.co",
+        "boards.greenhouse.io",
+        "job-boards.greenhouse.io",
+        "jobs.ashbyhq.com",
+        "apply.workable.com",
+        "jobs.jobvite.com",
+        "jobs.smartrecruiters.com",
+        "myworkdayjobs.com",
+    }
+)
+COMPANY_IDENTITY_HOST_PREFIXES = frozenset({"www", "app", "jobs", "careers"})
 
 
 class EmailDiscoveryError(ValueError):
@@ -752,6 +792,189 @@ def _load_provider_secret_payload(
     return payload
 
 
+def _normalized_company_identity_key(text: str | None) -> str | None:
+    normalized = _normalize_optional_text(text)
+    if normalized is None:
+        return None
+    tokens = [
+        token.lower()
+        for token in WORD_RE.findall(normalized)
+        if token and token.lower() not in CORPORATE_SUFFIX_TOKENS
+    ]
+    if not tokens:
+        return None
+    return "".join(tokens)
+
+
+def _url_host(url: str | None) -> str | None:
+    normalized = _normalize_optional_text(url)
+    if normalized is None:
+        return None
+    parsed = urlparse(normalized)
+    host = _normalize_optional_text(parsed.hostname)
+    if host is None:
+        return None
+    return host.lower()
+
+
+def _domain_root_key_from_value(value: str | None) -> str | None:
+    normalized = _normalize_optional_text(value)
+    if normalized is None:
+        return None
+    host = _url_host(normalized) or normalized.lower()
+    host = host.split(":", 1)[0]
+    host_parts = [part for part in host.split(".") if part]
+    while host_parts and host_parts[0] in COMPANY_IDENTITY_HOST_PREFIXES:
+        host_parts.pop(0)
+    if not host_parts:
+        return None
+    return _normalized_company_identity_key(host_parts[0])
+
+
+def _host_is_intermediary_or_ats(host: str | None) -> bool:
+    normalized = _normalize_optional_text(host)
+    if normalized is None:
+        return False
+    lowered = normalized.lower()
+    if lowered in COMPANY_IDENTITY_INTERMEDIARY_HOSTS:
+        return True
+    if lowered in COMPANY_IDENTITY_ATS_HOSTS:
+        return True
+    return any(lowered.endswith(f".{ats_host}") for ats_host in COMPANY_IDENTITY_ATS_HOSTS)
+
+
+def _ats_employer_slug_key_from_url(url: str | None) -> str | None:
+    host = _url_host(url)
+    if host is None or not _host_is_intermediary_or_ats(host):
+        return None
+    if host in COMPANY_IDENTITY_INTERMEDIARY_HOSTS:
+        return None
+    parsed = urlparse(_normalize_optional_text(url) or "")
+    path_parts = [
+        part
+        for part in (unquote(segment).strip() for segment in parsed.path.split("/"))
+        if part
+    ]
+    if not path_parts:
+        return None
+    candidate = path_parts[0]
+    if candidate.lower() in {"embed", "job_app", "jobs", "apply"} and len(path_parts) > 1:
+        candidate = path_parts[1]
+    candidate = re.sub(r"[-_]\d+$", "", workspace_slug(candidate))
+    return _normalized_company_identity_key(candidate)
+
+
+def _apollo_expected_company_identity_keys(
+    *,
+    company_name: str,
+    company_domain: str | None,
+    company_website: str | None,
+) -> set[str]:
+    keys: set[str] = set()
+    company_name_key = _normalized_company_identity_key(company_name)
+    if company_name_key:
+        keys.add(company_name_key)
+    domain_key = _domain_root_key_from_value(company_domain)
+    if domain_key:
+        keys.add(domain_key)
+    website_host = _url_host(company_website)
+    if website_host and not _host_is_intermediary_or_ats(website_host):
+        website_key = _domain_root_key_from_value(company_website)
+        if website_key:
+            keys.add(website_key)
+    ats_slug_key = _ats_employer_slug_key_from_url(company_website)
+    if ats_slug_key:
+        keys.add(ats_slug_key)
+    return keys
+
+
+def _apollo_resolved_company_identity_keys(
+    organization_name: str | None,
+    primary_domain: str | None,
+    website_url: str | None,
+) -> set[str]:
+    keys: set[str] = set()
+    name_key = _normalized_company_identity_key(organization_name)
+    if name_key:
+        keys.add(name_key)
+    domain_key = _domain_root_key_from_value(primary_domain)
+    if domain_key:
+        keys.add(domain_key)
+    website_key = _domain_root_key_from_value(website_url)
+    if website_key:
+        keys.add(website_key)
+    return keys
+
+
+def _apollo_resolved_company_matches_identity(
+    *,
+    organization_name: str | None,
+    primary_domain: str | None,
+    website_url: str | None,
+    company_name: str,
+    company_domain: str | None,
+    company_website: str | None,
+) -> bool:
+    expected_keys = _apollo_expected_company_identity_keys(
+        company_name=company_name,
+        company_domain=company_domain,
+        company_website=company_website,
+    )
+    if not expected_keys:
+        return False
+    resolved_keys = _apollo_resolved_company_identity_keys(
+        organization_name,
+        primary_domain,
+        website_url,
+    )
+    if not (expected_keys & resolved_keys):
+        return False
+
+    if _apollo_identity_is_weak_single_token(
+        company_name=company_name,
+        company_domain=company_domain,
+        company_website=company_website,
+    ):
+        expected_name_key = _normalized_company_identity_key(company_name)
+        resolved_name_key = _normalized_company_identity_key(organization_name)
+        if expected_name_key is None or resolved_name_key != expected_name_key:
+            return False
+    return True
+
+
+def _apollo_identity_is_weak_single_token(
+    *,
+    company_name: str,
+    company_domain: str | None,
+    company_website: str | None,
+) -> bool:
+    if _domain_root_key_from_value(company_domain):
+        return False
+    website_host = _url_host(company_website)
+    if website_host and not _host_is_intermediary_or_ats(website_host):
+        return False
+    expected_keys = _apollo_expected_company_identity_keys(
+        company_name=company_name,
+        company_domain=company_domain,
+        company_website=company_website,
+    )
+    return len(expected_keys) == 1
+
+
+def _apollo_resolved_company_matches_posting(
+    resolved_company: ApolloResolvedCompany,
+    posting_row: Mapping[str, Any],
+) -> bool:
+    return _apollo_resolved_company_matches_identity(
+        organization_name=resolved_company.organization_name,
+        primary_domain=resolved_company.primary_domain,
+        website_url=resolved_company.website_url,
+        company_name=_normalize_optional_text(_mapping_lookup(posting_row, "company_name")) or "",
+        company_domain=_derive_company_domain_from_row(posting_row),
+        company_website=_derive_company_resolution_url_hint(posting_row),
+    )
+
+
 class ConfiguredApolloClient:
     def __init__(self, *, api_key: str, timeout_seconds: float = 30.0) -> None:
         if not api_key.strip():
@@ -789,7 +1012,7 @@ class ConfiguredApolloClient:
         }
         if company_domain:
             payload["q_website"] = company_domain
-        elif company_website:
+        elif company_website and not _host_is_intermediary_or_ats(_url_host(company_website)):
             payload["q_website"] = company_website
 
         response = self._post_json(APOLLO_COMPANY_SEARCH_URL, payload)
@@ -799,37 +1022,58 @@ class ConfiguredApolloClient:
         )
         if not company_rows:
             return None
-
-        top_result = company_rows[0]
-        if not isinstance(top_result, Mapping):
+        best_match_score: int | None = None
+        best_matches: list[ApolloResolvedCompany] = []
+        for row in company_rows:
+            if not isinstance(row, Mapping):
+                continue
+            resolved_company = _apollo_resolved_company_from_company_search_row(
+                row,
+                fallback_company_name=company_name,
+            )
+            if resolved_company is None:
+                continue
+            if not _apollo_resolved_company_matches_identity(
+                organization_name=resolved_company.organization_name,
+                primary_domain=resolved_company.primary_domain,
+                website_url=resolved_company.website_url,
+                company_name=company_name,
+                company_domain=company_domain,
+                company_website=company_website,
+            ):
+                continue
+            match_score = 0
+            resolved_keys = _apollo_resolved_company_identity_keys(
+                resolved_company.organization_name,
+                resolved_company.primary_domain,
+                resolved_company.website_url,
+            )
+            expected_name_key = _normalized_company_identity_key(company_name)
+            expected_domain_key = _domain_root_key_from_value(company_domain)
+            expected_slug_key = _ats_employer_slug_key_from_url(company_website)
+            if expected_domain_key and expected_domain_key in resolved_keys:
+                match_score += 100
+            if expected_slug_key and expected_slug_key in resolved_keys:
+                match_score += 50
+            if expected_name_key and expected_name_key in resolved_keys:
+                match_score += 25
+            if best_match_score is None or match_score > best_match_score:
+                best_match_score = match_score
+                best_matches = [resolved_company]
+            elif match_score == best_match_score:
+                best_matches.append(resolved_company)
+        if not best_matches:
             return None
-
-        organization_id = _normalize_optional_text(
-            top_result.get("organization_id") or top_result.get("id")
-        )
-        organization_name = _normalize_optional_text(
-            top_result.get("organization_name") or top_result.get("name")
-        ) or company_name
-        if not organization_id:
+        if (
+            _apollo_identity_is_weak_single_token(
+                company_name=company_name,
+                company_domain=company_domain,
+                company_website=company_website,
+            )
+            and len(best_matches) > 1
+        ):
             return None
-
-        return ApolloResolvedCompany(
-            organization_id=organization_id,
-            organization_name=organization_name,
-            primary_domain=_normalize_optional_text(
-                top_result.get("primary_domain") or top_result.get("website_domain")
-            ),
-            website_url=_normalize_optional_text(
-                top_result.get("website_url") or top_result.get("website")
-            ),
-            linkedin_url=_normalize_optional_text(
-                top_result.get("linkedin_url") or top_result.get("linkedin_company_url")
-            ),
-            raw_payload=deepcopy(dict(top_result)),
-            provider_observed_at=_normalize_optional_text(
-                top_result.get("last_refreshed_at") or top_result.get("updated_at")
-            ),
-        )
+        return best_matches[0]
 
     def search_people(
         self,
@@ -1412,13 +1656,20 @@ def run_apollo_people_search(
         )
         company_domain = _derive_company_domain(posting_row)
         company_website = _derive_company_website(posting_row)
+        weak_company_identity = _apollo_identity_is_weak_single_token(
+            company_name=posting_row["company_name"],
+            company_domain=company_domain,
+            company_website=company_website,
+        )
         search_provider = provider if apollo_manager_search_needed > 0 else None
         attempted_filters: list[dict[str, Any]] = []
         resolved_company_from_provider_call = False
+        resolved_company_rejected = False
         resolved_company = _reuse_persisted_apollo_company(
             connection,
             paths=paths,
             posting_row=posting_row,
+            current_time=timestamp,
         )
         raw_candidates: Sequence[PeopleSearchCandidate | Mapping[str, Any]] = ()
         if apollo_manager_search_needed > 0:
@@ -1440,7 +1691,25 @@ def run_apollo_people_search(
                         company_domain=company_domain,
                         company_website=company_website,
                     )
+                    if (
+                        resolved_company is not None
+                        and not _apollo_resolved_company_matches_posting(
+                            resolved_company,
+                            posting_row,
+                        )
+                    ):
+                        with connection:
+                            _repair_invalid_apollo_company_state(
+                                connection,
+                                posting_row=posting_row,
+                                invalid_company=resolved_company,
+                                current_time=timestamp,
+                            )
+                        resolved_company = None
+                        resolved_company_rejected = True
                     resolved_company_from_provider_call = resolved_company is not None
+                    if resolved_company is None and weak_company_identity:
+                        resolved_company_rejected = True
                 if resolved_company is not None and resolved_company.organization_id:
                     with connection:
                         promote_company_group_to_provider_key(
@@ -1467,31 +1736,32 @@ def run_apollo_people_search(
                             provider_observed_at=resolved_company.provider_observed_at,
                             current_time=timestamp,
                         )
-                aggregated_raw_candidates: list[PeopleSearchCandidate | Mapping[str, Any]] = []
-                for plan_step in search_filter_plan:
-                    attempted_filters.append(
-                        {
-                            "attempt": str(plan_step["pass_name"]),
-                            "search_filters": deepcopy(plan_step["search_filters"]),
-                        }
-                    )
-                    _ensure_apollo_request_allowed(
-                        connection,
-                        endpoint_key=APOLLO_USAGE_ENDPOINT_PEOPLE_SEARCH,
-                        usage_provider=search_provider,
-                        current_time=timestamp,
-                        pipeline_run_id=pipeline_run_id,
-                        lead_id=str(posting_row["lead_id"]),
-                        job_posting_id=str(posting_row["job_posting_id"]),
-                    )
-                    aggregated_raw_candidates.extend(
-                        search_provider.search_people(
-                            company_name=posting_row["company_name"],
-                            resolved_company=resolved_company,
-                            search_filters=plan_step["search_filters"],
+                if not resolved_company_rejected:
+                    aggregated_raw_candidates: list[PeopleSearchCandidate | Mapping[str, Any]] = []
+                    for plan_step in search_filter_plan:
+                        attempted_filters.append(
+                            {
+                                "attempt": str(plan_step["pass_name"]),
+                                "search_filters": deepcopy(plan_step["search_filters"]),
+                            }
                         )
-                    )
-                raw_candidates = aggregated_raw_candidates
+                        _ensure_apollo_request_allowed(
+                            connection,
+                            endpoint_key=APOLLO_USAGE_ENDPOINT_PEOPLE_SEARCH,
+                            usage_provider=search_provider,
+                            current_time=timestamp,
+                            pipeline_run_id=pipeline_run_id,
+                            lead_id=str(posting_row["lead_id"]),
+                            job_posting_id=str(posting_row["job_posting_id"]),
+                        )
+                        aggregated_raw_candidates.extend(
+                            search_provider.search_people(
+                                company_name=posting_row["company_name"],
+                                resolved_company=resolved_company,
+                                search_filters=plan_step["search_filters"],
+                            )
+                        )
+                    raw_candidates = aggregated_raw_candidates
             except EmailDiscoveryError as exc:
                 with connection:
                     _persist_provider_budget_signal(
@@ -1563,8 +1833,13 @@ def run_apollo_people_search(
                 "search_anchor": (
                     "organization_id"
                     if resolved_company is not None
-                    else "company_name_fallback"
+                    else (
+                        "company_resolution_rejected"
+                        if resolved_company_rejected
+                        else "company_name_fallback"
+                    )
                 ),
+                "company_resolution_rejected": resolved_company_rejected,
                 "applied_filters": search_filters,
                 "attempted_filters": attempted_filters,
                 "shortlist_limit": effective_shortlist_limit or shortlist_limit,
@@ -2943,10 +3218,12 @@ def _load_existing_posting_for_people_search(
         """
         SELECT jp.job_posting_id, jp.lead_id, jp.canonical_company_key, jp.provider_company_key,
                jp.company_key_source, jp.company_name, jp.role_title, jp.posting_status,
-               jp.location, jp.jd_artifact_path, ll.source_url
+               jp.location, jp.jd_artifact_path, ll.source_url, lso.apply_url
         FROM job_postings jp
         JOIN linkedin_leads ll
           ON ll.lead_id = jp.lead_id
+        LEFT JOIN lead_source_observations lso
+          ON lso.source_observation_id = jp.promoted_from_source_observation_id
         WHERE jp.job_posting_id = ?
         """,
         (job_posting_id,),
@@ -3378,16 +3655,28 @@ def _should_apply_apollo_location_filter(location: str | None) -> bool:
     return True
 
 
-def _derive_company_domain(posting_row: sqlite3.Row) -> str | None:
-    source_url = _normalize_optional_text(posting_row["source_url"])
-    if not source_url:
-        return None
-    lowered = source_url.lower()
-    if lowered.startswith("http://") or lowered.startswith("https://"):
-        host = source_url.split("://", 1)[1].split("/", 1)[0].strip().lower()
-        if host and "." in host and "linkedin.com" not in host:
-            return host
+def _derive_company_resolution_url_hint(posting_row: Mapping[str, Any]) -> str | None:
+    for field_name in ("apply_url", "source_url"):
+        candidate = _normalize_optional_text(_mapping_lookup(posting_row, field_name))
+        if candidate:
+            return candidate
     return None
+
+
+def _derive_company_domain_from_row(posting_row: Mapping[str, Any]) -> str | None:
+    for field_name in ("apply_url", "source_url"):
+        url = _normalize_optional_text(_mapping_lookup(posting_row, field_name))
+        if not url:
+            continue
+        host = _url_host(url)
+        if host is None or _host_is_intermediary_or_ats(host) or "linkedin.com" in host:
+            continue
+        return host
+    return None
+
+
+def _derive_company_domain(posting_row: sqlite3.Row) -> str | None:
+    return _derive_company_domain_from_row(posting_row)
 
 
 def _resolved_company_domain_from_people_search_payload(
@@ -3402,13 +3691,175 @@ def _resolved_company_domain_from_people_search_payload(
 
 
 def _derive_company_website(posting_row: sqlite3.Row) -> str | None:
-    source_url = _normalize_optional_text(posting_row["source_url"])
-    if source_url and "linkedin.com" not in source_url.lower():
-        return source_url
-    return None
+    return _derive_company_resolution_url_hint(posting_row)
+
+
+def _contact_company_matches_posting(
+    *,
+    contact_company_name: str | None,
+    posting_row: Mapping[str, Any],
+) -> bool:
+    expected_keys = _apollo_expected_company_identity_keys(
+        company_name=_normalize_optional_text(_mapping_lookup(posting_row, "company_name")) or "",
+        company_domain=_derive_company_domain_from_row(posting_row),
+        company_website=_derive_company_resolution_url_hint(posting_row),
+    )
+    if not expected_keys:
+        return False
+    contact_key = _normalized_company_identity_key(contact_company_name)
+    if contact_key is None:
+        return False
+    return contact_key in expected_keys
+
+
+def _repair_invalid_apollo_company_state(
+    connection: sqlite3.Connection,
+    *,
+    posting_row: Mapping[str, Any],
+    invalid_company: ApolloResolvedCompany,
+    current_time: str,
+) -> None:
+    company_name = _normalize_optional_text(_mapping_lookup(posting_row, "company_name"))
+    company_slug = workspace_slug(company_name or "unknown-company")
+    provisional_key = build_provisional_company_key(company_name)
+    invalid_provider_key = build_provider_company_key(PROVIDER_NAME_APOLLO, invalid_company.organization_id)
+    rows = connection.execute(
+        """
+        SELECT job_posting_id, company_name, canonical_company_key, provider_company_key, company_key_source
+        FROM job_postings
+        """
+    ).fetchall()
+    for row in rows:
+        row_company_slug = workspace_slug(_normalize_optional_text(row["company_name"]) or "unknown-company")
+        if row_company_slug != company_slug:
+            continue
+        canonical_company_key = _normalize_optional_text(row["canonical_company_key"])
+        provider_company_key = _normalize_optional_text(row["provider_company_key"])
+        if canonical_company_key != invalid_provider_key and provider_company_key != invalid_provider_key:
+            continue
+        next_canonical = provisional_key if canonical_company_key == invalid_provider_key else canonical_company_key
+        connection.execute(
+            """
+            UPDATE job_postings
+            SET canonical_company_key = ?,
+                provider_company_key = CASE WHEN provider_company_key = ? THEN NULL ELSE provider_company_key END,
+                company_key_source = CASE
+                    WHEN company_key_source = ? THEN ?
+                    ELSE company_key_source
+                END,
+                updated_at = ?
+            WHERE job_posting_id = ?
+            """,
+            (
+                next_canonical,
+                invalid_provider_key,
+                PROVIDER_NAME_APOLLO,
+                "normalized_company_name",
+                current_time,
+                str(row["job_posting_id"]),
+            ),
+        )
+    invalid_links = connection.execute(
+        """
+        SELECT jpc.job_posting_contact_id, c.company_name
+        FROM job_posting_contacts jpc
+        JOIN contacts c
+          ON c.contact_id = jpc.contact_id
+        WHERE jpc.job_posting_id = ?
+          AND jpc.contact_source_type = ?
+          AND jpc.is_in_intended_outreach_set = 1
+          AND jpc.removed_from_intended_outreach_set_at IS NULL
+        """,
+        (
+            str(posting_row["job_posting_id"]),
+            CONTACT_SOURCE_TYPE_APOLLO_TOPUP,
+        ),
+    ).fetchall()
+    for row in invalid_links:
+        if _contact_company_matches_posting(
+            contact_company_name=_normalize_optional_text(row["company_name"]),
+            posting_row=posting_row,
+        ):
+            continue
+        connection.execute(
+            """
+            UPDATE job_posting_contacts
+            SET is_in_intended_outreach_set = 0,
+                removed_from_intended_outreach_set_at = ?,
+                intended_outreach_set_removal_reason = ?,
+                updated_at = ?
+            WHERE job_posting_contact_id = ?
+            """,
+            (
+                current_time,
+                "apollo_company_mismatch",
+                current_time,
+                str(row["job_posting_contact_id"]),
+            ),
+        )
 
 
 def _reuse_persisted_apollo_company(
+    connection: sqlite3.Connection,
+    *,
+    paths: ProjectPaths,
+    posting_row: Mapping[str, Any],
+    current_time: str,
+) -> ApolloResolvedCompany | None:
+    invalid_company: ApolloResolvedCompany | None = None
+    direct_evidence = _apollo_resolved_company_from_persisted_evidence(
+        connection,
+        paths=paths,
+        posting_row=posting_row,
+    )
+    if direct_evidence is not None and _apollo_resolved_company_matches_posting(
+        direct_evidence,
+        posting_row,
+    ):
+        return direct_evidence
+    invalid_company = direct_evidence or invalid_company
+
+    current_company_key = posting_company_key_from_row(posting_row)
+    current_company_slug = workspace_slug(
+        _normalize_optional_text(_mapping_lookup(posting_row, "company_name")) or "unknown-company"
+    )
+    rows = connection.execute(
+        """
+        SELECT job_posting_id, company_name, role_title, canonical_company_key, provider_company_key
+        FROM job_postings
+        WHERE job_posting_id <> ?
+        ORDER BY COALESCE(updated_at, created_at) DESC, job_posting_id DESC
+        """,
+        (str(posting_row["job_posting_id"]),),
+    ).fetchall()
+    for row in rows:
+        row_company_slug = workspace_slug(_normalize_optional_text(row["company_name"]) or "unknown-company")
+        if (
+            _normalize_optional_text(row["canonical_company_key"]) != current_company_key
+            and row_company_slug != current_company_slug
+        ):
+            continue
+        reused_company = _apollo_resolved_company_from_persisted_evidence(
+            connection,
+            paths=paths,
+            posting_row=row,
+        )
+        if reused_company is not None and _apollo_resolved_company_matches_posting(
+            reused_company,
+            posting_row,
+        ):
+            return reused_company
+    if invalid_company is not None:
+        _repair_invalid_apollo_company_state(
+            connection,
+            posting_row=posting_row,
+            invalid_company=invalid_company,
+            current_time=current_time,
+        )
+    return None
+
+
+def _apollo_resolved_company_from_persisted_evidence(
     connection: sqlite3.Connection,
     *,
     paths: ProjectPaths,
@@ -3436,61 +3887,46 @@ def _reuse_persisted_apollo_company(
         except json.JSONDecodeError:
             payload = None
         if isinstance(payload, Mapping):
-            direct_context_match = _apollo_resolved_company_from_search_payload({"resolved_company": payload})
-            if direct_context_match is not None:
-                return direct_context_match
-
-    direct_match = _apollo_resolved_company_from_company_keys(posting_row)
-    if direct_match is not None:
-        return direct_match
+            return _apollo_resolved_company_from_search_payload({"resolved_company": payload})
 
     historical_match = _apollo_resolved_company_from_search_payload(
         _load_people_search_payload(paths, posting_row)
     )
     if historical_match is not None:
         return historical_match
-
-    current_company_key = posting_company_key_from_row(posting_row)
-    current_company_slug = workspace_slug(
-        _normalize_optional_text(_mapping_lookup(posting_row, "company_name")) or "unknown-company"
-    )
-    rows = connection.execute(
-        """
-        SELECT job_posting_id, company_name, canonical_company_key, provider_company_key
-        FROM job_postings
-        WHERE job_posting_id <> ?
-        ORDER BY COALESCE(updated_at, created_at) DESC, job_posting_id DESC
-        """,
-        (str(posting_row["job_posting_id"]),),
-    ).fetchall()
-    for row in rows:
-        row_company_slug = workspace_slug(_normalize_optional_text(row["company_name"]) or "unknown-company")
-        if (
-            _normalize_optional_text(row["canonical_company_key"]) != current_company_key
-            and row_company_slug != current_company_slug
-        ):
-            continue
-        reused_company = _apollo_resolved_company_from_company_keys(row)
-        if reused_company is not None:
-            return reused_company
     return None
 
 
-def _apollo_resolved_company_from_company_keys(
+def _apollo_resolved_company_from_company_search_row(
     row: Mapping[str, Any],
+    *,
+    fallback_company_name: str,
 ) -> ApolloResolvedCompany | None:
-    for field_name in ("provider_company_key", "canonical_company_key"):
-        organization_id = _provider_company_id_from_key(
-            _normalize_optional_text(_mapping_lookup(row, field_name)),
-            provider_name=PROVIDER_NAME_APOLLO,
-        )
-        if organization_id is None:
-            continue
-        return ApolloResolvedCompany(
-            organization_id=organization_id,
-            organization_name=_normalize_optional_text(_mapping_lookup(row, "company_name")) or organization_id,
-        )
-    return None
+    organization_id = _normalize_optional_text(
+        row.get("organization_id") or row.get("id")
+    )
+    if organization_id is None:
+        return None
+    organization_name = _normalize_optional_text(
+        row.get("organization_name") or row.get("name")
+    ) or fallback_company_name
+    return ApolloResolvedCompany(
+        organization_id=organization_id,
+        organization_name=organization_name,
+        primary_domain=_normalize_optional_text(
+            row.get("primary_domain") or row.get("website_domain")
+        ),
+        website_url=_normalize_optional_text(
+            row.get("website_url") or row.get("website")
+        ),
+        linkedin_url=_normalize_optional_text(
+            row.get("linkedin_url") or row.get("linkedin_company_url")
+        ),
+        raw_payload=deepcopy(dict(row)),
+        provider_observed_at=_normalize_optional_text(
+            row.get("last_refreshed_at") or row.get("updated_at")
+        ),
+    )
 
 
 def _apollo_resolved_company_from_search_payload(
@@ -3499,18 +3935,27 @@ def _apollo_resolved_company_from_search_payload(
     resolved_company = payload.get("resolved_company")
     if not isinstance(resolved_company, Mapping):
         return None
-    organization_id = _normalize_optional_text(resolved_company.get("organization_id"))
+    organization_id = _normalize_optional_text(
+        resolved_company.get("organization_id") or resolved_company.get("id")
+    )
     if organization_id is None:
         return None
     return ApolloResolvedCompany(
         organization_id=organization_id,
-        organization_name=_normalize_optional_text(resolved_company.get("organization_name")) or organization_id,
+        organization_name=(
+            _normalize_optional_text(
+                resolved_company.get("organization_name") or resolved_company.get("name")
+            )
+            or organization_id
+        ),
         primary_domain=_normalize_optional_text(resolved_company.get("primary_domain")),
         website_url=_normalize_optional_text(resolved_company.get("website_url")),
         linkedin_url=_normalize_optional_text(resolved_company.get("linkedin_url")),
         raw_payload=deepcopy(dict(resolved_company)),
         provider_observed_at=_normalize_optional_text(
-            resolved_company.get("last_refreshed_at") or resolved_company.get("updated_at")
+            resolved_company.get("provider_observed_at")
+            or resolved_company.get("last_refreshed_at")
+            or resolved_company.get("updated_at")
         ),
     )
 
@@ -4631,7 +5076,7 @@ def _load_discovery_ready_contact_row(
     row = connection.execute(
         """
         SELECT jp.job_posting_id, jp.lead_id, jp.company_name, jp.role_title, jp.posting_status,
-               jp.location AS posting_location, jp.jd_artifact_path, ll.source_url,
+               jp.location AS posting_location, jp.jd_artifact_path, ll.source_url, lso.apply_url,
                jpc.job_posting_contact_id, jpc.recipient_type, jpc.relevance_reason, jpc.link_level_status,
                c.contact_id, c.identity_key, c.display_name, c.company_name AS contact_company_name,
                c.origin_component, c.contact_status, c.full_name, c.first_name, c.last_name,
@@ -4641,6 +5086,8 @@ def _load_discovery_ready_contact_row(
         FROM job_postings jp
         JOIN linkedin_leads ll
           ON ll.lead_id = jp.lead_id
+        LEFT JOIN lead_source_observations lso
+          ON lso.source_observation_id = jp.promoted_from_source_observation_id
         JOIN job_posting_contacts jpc
           ON jpc.job_posting_id = jp.job_posting_id
         JOIN contacts c

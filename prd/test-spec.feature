@@ -789,6 +789,23 @@ Feature: Job Hunt Copilot next-build acceptance
       Then `job_posting_provider_contexts` stores that raw Apollo company-resolution payload for the `job_posting_id`
       And newer company-resolution payloads append newer provider-context rows rather than overwriting older raw snapshots
 
+    Scenario: Apollo rejects and repairs mismatched company resolution
+      Given a role-targeted posting belongs to company A
+      And the strongest available company identity hints come from the posting company name, a real company domain, or a parseable ATS employer slug from the apply URL
+      When Apollo company resolution returns company B instead
+      Then that mismatched Apollo organization is rejected
+      And `provider_company_key` is not promoted from that mismatched record
+      And Apollo people-search candidates from company B are not added to the posting frontier
+      And any previously persisted mismatched Apollo company anchor or unsent Apollo top-up contacts for that posting are repaired before later discovery continues
+
+    Scenario: Apollo rejects ambiguous weak-token company resolution
+      Given a role-targeted posting only has a weak single-token company identity such as the normalized company name plus the same ATS employer slug
+      And Apollo company search returns a company whose extra brand terms do not exactly match that token or multiple equal-strength weak-token matches exist
+      When the runtime evaluates whether that Apollo organization can be trusted
+      Then the runtime treats company resolution as ambiguous
+      And it does not promote the Apollo provider company key
+      And it skips Apollo people search rather than routing outreach to the wrong company
+
     Scenario: Adaptive manager-expansion shortlist scales with the eligible Apollo manager pool
       Given a broad Apollo people search has returned many candidate contacts for a posting
       When the build chooses the first manager-expansion wave

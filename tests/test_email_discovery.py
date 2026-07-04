@@ -164,6 +164,113 @@ def seed_search_ready_posting(
     connection.commit()
 
 
+def seed_promoted_source_observation(
+    connection: sqlite3.Connection,
+    *,
+    job_posting_id: str = "jp_search",
+    lead_id: str = "ld_search",
+    source_observation_id: str = "lso_search",
+    ingestion_run_id: str = "ing_search",
+    source_url: str = "https://jobright.ai/jobs/info/abc123",
+    apply_url: str = "https://jobs.lever.co/acmerobotics/job-123/apply",
+    timestamp: str = "2026-04-06T21:00:00Z",
+) -> None:
+    connection.execute(
+        """
+        INSERT OR IGNORE INTO leads (
+          lead_id, lead_identity_key, lead_status, source_type, source_reference, source_mode,
+          source_url, company_name, role_title, created_at, updated_at
+        )
+        SELECT ll.lead_id, ll.lead_identity_key, 'promoted', ll.source_type, ll.source_reference,
+               ll.source_mode, ll.source_url, ll.company_name, ll.role_title, ?, ?
+        FROM linkedin_leads ll
+        WHERE ll.lead_id = ?
+        """,
+        (
+            timestamp,
+            timestamp,
+            lead_id,
+        ),
+    )
+    connection.execute(
+        """
+        INSERT INTO lead_source_observations (
+          source_observation_id, lead_id, ingestion_run_id, source_type, source_reference,
+          source_mode, source_url, observation_kind, observed_at, apply_url,
+          created_at, updated_at
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        """,
+        (
+            source_observation_id,
+            lead_id,
+            ingestion_run_id,
+            "jobright_recommendation_batch",
+            "jobright/recommendation/1",
+            "jobright_authenticated",
+            source_url,
+            "jobright_recommendation",
+            timestamp,
+            apply_url,
+            timestamp,
+            timestamp,
+        ),
+    )
+    connection.execute(
+        """
+        UPDATE job_postings
+        SET promoted_from_source_observation_id = ?, updated_at = ?
+        WHERE job_posting_id = ?
+        """,
+        (
+            source_observation_id,
+            timestamp,
+            job_posting_id,
+        ),
+    )
+    connection.commit()
+
+
+def seed_apollo_company_resolution_context(
+    connection: sqlite3.Connection,
+    *,
+    job_posting_id: str = "jp_search",
+    context_id: str = "ctx_apollo_company",
+    organization_id: str = "org_acme",
+    organization_name: str = "Acme Robotics",
+    primary_domain: str | None = "acmerobotics.com",
+    website_url: str | None = "https://acmerobotics.com",
+    linkedin_url: str | None = None,
+    timestamp: str = "2026-04-06T21:00:00Z",
+) -> None:
+    payload = {
+        "id": organization_id,
+        "name": organization_name,
+        "primary_domain": primary_domain,
+        "website_url": website_url,
+        "linkedin_url": linkedin_url,
+    }
+    connection.execute(
+        """
+        INSERT INTO job_posting_provider_contexts (
+          job_posting_provider_context_id, job_posting_id, provider_name, context_stage,
+          provider_organization_id, raw_payload_json, provider_observed_at, created_at, updated_at
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+        """,
+        (
+            context_id,
+            job_posting_id,
+            PROVIDER_NAME_APOLLO,
+            "apollo_company_resolution",
+            organization_id,
+            json.dumps(payload),
+            timestamp,
+            timestamp,
+            timestamp,
+        ),
+    )
+    connection.commit()
+
+
 def build_candidate(
     *,
     provider_person_id: str,
@@ -434,6 +541,33 @@ def test_build_apollo_search_filters_targets_manager_class_engineering_leadershi
     assert "Chief Technology Officer" in search_filters["titles"]
     assert search_filters["functions"] == ["engineering"]
     assert search_filters["locations"] == []
+
+
+def test_configured_apollo_client_rejects_ambiguous_single_token_company_resolution(monkeypatch: pytest.MonkeyPatch):
+    client = ConfiguredApolloClient(api_key="test-api-key")
+
+    def fake_post_json(_url: str, _payload: dict[str, object]) -> dict[str, object]:
+        return {
+            "organizations": [
+                {
+                    "id": "org_plus_malaysia",
+                    "name": "PLUS Malaysia",
+                    "primary_domain": "plus.com.my",
+                    "website_url": "http://www.plus.com.my",
+                    "linkedin_url": "http://www.linkedin.com/company/plusmalaysia",
+                }
+            ]
+        }
+
+    monkeypatch.setattr(client, "_post_json", fake_post_json)
+
+    resolved = client.resolve_company(
+        company_name="Plus",
+        company_domain=None,
+        company_website="https://jobs.lever.co/plus-2/b69c9b6d-483f-41d4-b487-97c99332ca40/apply",
+    )
+
+    assert resolved is None
 
 
 @pytest.mark.parametrize(
@@ -1497,6 +1631,16 @@ def test_apollo_people_search_reuses_same_company_apollo_key_before_company_reso
             "jp_existing",
         ),
     )
+    seed_apollo_company_resolution_context(
+        connection,
+        job_posting_id="jp_existing",
+        context_id="ctx_existing_apollo",
+        organization_id="org_acme",
+        organization_name="Acme Robotics",
+        primary_domain="acmerobotics.com",
+        website_url="https://acmerobotics.com",
+        timestamp="2026-04-06T22:00:00Z",
+    )
     connection.commit()
 
     provider = FakeApolloProvider(
@@ -1537,6 +1681,205 @@ def test_apollo_people_search_reuses_same_company_apollo_key_before_company_reso
         "company_key_source": "apollo",
     }
 
+    connection.close()
+
+
+def test_apollo_people_search_rejects_mismatched_company_resolution_and_skips_candidates(tmp_path: Path):
+    project_root = bootstrap_project(tmp_path)
+    paths = ProjectPaths.from_root(project_root)
+    connection = connect_database(project_root / "job_hunt_copilot.db")
+    seed_search_ready_posting(
+        connection,
+        paths,
+        company_name="Plus",
+        role_title="Machine Learning Engineer Intern",
+        source_url="https://jobright.ai/jobs/info/6a0be2c6a235d749afa89121",
+    )
+    seed_promoted_source_observation(
+        connection,
+        job_posting_id="jp_search",
+        lead_id="ld_search",
+        source_observation_id="lso_plus",
+        source_url="https://jobright.ai/jobs/info/6a0be2c6a235d749afa89121",
+        apply_url="https://jobs.lever.co/plus-2/b69c9b6d-483f-41d4-b487-97c99332ca40/apply",
+        timestamp="2026-04-06T21:00:00Z",
+    )
+
+    provider = FakeApolloProvider(
+        resolved_company=ApolloResolvedCompany(
+            organization_id="org_care_plus",
+            organization_name="Care Plus",
+            primary_domain="careplus.com.br",
+            website_url="https://careplus.com.br",
+            linkedin_url="https://www.linkedin.com/company/care-plus",
+            raw_payload={
+                "organization_id": "org_care_plus",
+                "organization_name": "Care Plus",
+                "primary_domain": "careplus.com.br",
+                "website_url": "https://careplus.com.br",
+                "linkedin_url": "https://www.linkedin.com/company/care-plus",
+            },
+        ),
+        candidates=[
+            build_candidate(
+                provider_person_id="pp_wrong",
+                display_name="Wrong Person",
+                title="Technical Manager",
+            )
+        ],
+    )
+
+    result = run_apollo_people_search(
+        project_root=project_root,
+        job_posting_id="jp_search",
+        provider=provider,
+    )
+
+    assert provider.resolve_calls == [
+        {
+            "company_name": "Plus",
+            "company_domain": None,
+            "company_website": "https://jobs.lever.co/plus-2/b69c9b6d-483f-41d4-b487-97c99332ca40/apply",
+        }
+    ]
+    assert provider.search_calls == []
+    assert result.resolved_company is None
+    payload = json.loads(result.artifact_path.read_text(encoding="utf-8"))
+    assert payload["resolved_company"] is None
+    assert payload["search_anchor"] == "company_resolution_rejected"
+    assert payload["company_resolution_rejected"] is True
+    assert payload["candidate_count"] == 0
+    assert payload["apollo_top_up_added_count"] == 0
+    posting_row = connection.execute(
+        """
+        SELECT canonical_company_key, provider_company_key, company_key_source
+        FROM job_postings
+        WHERE job_posting_id = 'jp_search'
+        """
+    ).fetchone()
+    assert dict(posting_row) == {
+        "canonical_company_key": "name:plus",
+        "provider_company_key": None,
+        "company_key_source": "normalized_company_name",
+    }
+    assert connection.execute(
+        "SELECT COUNT(*) FROM job_posting_provider_contexts WHERE job_posting_id = 'jp_search'"
+    ).fetchone()[0] == 0
+    assert connection.execute("SELECT COUNT(*) FROM contacts").fetchone()[0] == 0
+    assert connection.execute("SELECT COUNT(*) FROM job_posting_contacts").fetchone()[0] == 0
+    connection.close()
+
+
+def test_apollo_people_search_repairs_invalid_persisted_company_key_and_removes_wrong_topup_contacts(
+    tmp_path: Path,
+):
+    project_root = bootstrap_project(tmp_path)
+    paths = ProjectPaths.from_root(project_root)
+    connection = connect_database(project_root / "job_hunt_copilot.db")
+    seed_search_ready_posting(
+        connection,
+        paths,
+        company_name="Plus",
+        role_title="Machine Learning Engineer Intern",
+        source_url="https://jobright.ai/jobs/info/6a0be2c6a235d749afa89121",
+    )
+    seed_promoted_source_observation(
+        connection,
+        job_posting_id="jp_search",
+        lead_id="ld_search",
+        source_observation_id="lso_plus",
+        source_url="https://jobright.ai/jobs/info/6a0be2c6a235d749afa89121",
+        apply_url="https://jobs.lever.co/plus-2/b69c9b6d-483f-41d4-b487-97c99332ca40/apply",
+        timestamp="2026-04-06T21:00:00Z",
+    )
+    connection.execute(
+        """
+        UPDATE job_postings
+        SET canonical_company_key = ?, provider_company_key = ?, company_key_source = ?, updated_at = ?
+        WHERE job_posting_id = ?
+        """,
+        (
+            "apollo:org_care_plus",
+            "apollo:org_care_plus",
+            "apollo",
+            "2026-04-06T21:10:00Z",
+            "jp_search",
+        ),
+    )
+    seed_apollo_company_resolution_context(
+        connection,
+        job_posting_id="jp_search",
+        context_id="ctx_wrong_apollo",
+        organization_id="org_care_plus",
+        organization_name="Care Plus",
+        primary_domain="careplus.com.br",
+        website_url="https://careplus.com.br",
+        linkedin_url="https://www.linkedin.com/company/care-plus",
+        timestamp="2026-04-06T21:10:00Z",
+    )
+    seed_linked_contact(
+        connection,
+        contact_id="ct_wrong_plus",
+        job_posting_contact_id="jpc_wrong_plus",
+        job_posting_id="jp_search",
+        company_name="Care Plus",
+        display_name="Paulo Furtado",
+        position_title="Technical Manager",
+        recipient_type=RECIPIENT_TYPE_HIRING_MANAGER,
+        provider_name=PROVIDER_NAME_APOLLO,
+        provider_person_id="pp_wrong_plus",
+        identity_key="apollo_person|pp_wrong_plus",
+        contact_source_type="apollo_topup",
+        contact_source_priority_tier=3,
+        contact_source_rank=1,
+        is_in_intended_outreach_set=1,
+        created_at="2026-04-06T21:12:00Z",
+    )
+
+    provider = FakeApolloProvider(
+        resolved_company=None,
+        candidates=[],
+    )
+
+    result = run_apollo_people_search(
+        project_root=project_root,
+        job_posting_id="jp_search",
+        provider=provider,
+        current_time="2026-04-06T21:20:00Z",
+    )
+
+    assert result.resolved_company is None
+    assert provider.search_calls == []
+    posting_row = connection.execute(
+        """
+        SELECT canonical_company_key, provider_company_key, company_key_source
+        FROM job_postings
+        WHERE job_posting_id = 'jp_search'
+        """
+    ).fetchone()
+    assert dict(posting_row) == {
+        "canonical_company_key": "name:plus",
+        "provider_company_key": None,
+        "company_key_source": "normalized_company_name",
+    }
+    repaired_link = connection.execute(
+        """
+        SELECT is_in_intended_outreach_set, removed_from_intended_outreach_set_at,
+               intended_outreach_set_removal_reason
+        FROM job_posting_contacts
+        WHERE job_posting_contact_id = 'jpc_wrong_plus'
+        """
+    ).fetchone()
+    assert dict(repaired_link) == {
+        "is_in_intended_outreach_set": 0,
+        "removed_from_intended_outreach_set_at": "2026-04-06T21:20:00Z",
+        "intended_outreach_set_removal_reason": "apollo_company_mismatch",
+    }
+    payload = json.loads(result.artifact_path.read_text(encoding="utf-8"))
+    assert payload["resolved_company"] is None
+    assert payload["search_anchor"] == "company_resolution_rejected"
+    assert payload["company_resolution_rejected"] is True
+    assert payload["candidate_count"] == 0
     connection.close()
 
 
