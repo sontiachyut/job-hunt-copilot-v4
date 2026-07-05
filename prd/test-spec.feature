@@ -1803,6 +1803,15 @@ Feature: Job Hunt Copilot next-build acceptance
       Then the posting-contact relationship transitions from `identified` to `shortlisted`
       And the link remains the canonical per-pair record for later discovery and outreach state
 
+    Scenario: Removed intended-set contacts leave the current automatic frontier
+      Given a posting-contact link was previously part of the intended outreach set
+      And that link is later removed from the intended outreach set
+      When the runtime reevaluates the automatic role-targeted frontier
+      Then that removed link is excluded from send-set selection
+      And that removed link is excluded from active-wave loading
+      And that removed link is excluded from person-scoped role-targeted email discovery
+      But historical outreach messages for that removed link remain preserved for audit history
+
     Scenario: Known working email allows a contact to skip fresh discovery in orchestration
       Given a linked contact already has a clearly matched known working email
       When orchestration evaluates the next step for that contact

@@ -5091,6 +5091,8 @@ def _load_discovery_ready_contact_row(
           ON c.contact_id = jpc.contact_id
         WHERE jp.job_posting_id = ?
           AND c.contact_id = ?
+          AND jpc.is_in_intended_outreach_set = 1
+          AND jpc.removed_from_intended_outreach_set_at IS NULL
         ORDER BY jpc.created_at ASC, jpc.job_posting_contact_id ASC
         LIMIT 1
         """,

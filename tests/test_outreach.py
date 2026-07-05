@@ -52,6 +52,7 @@ from job_hunt_copilot.outreach import (
     _build_role_targeted_draft_context,
     _build_outreach_codex_exec_env,
     _load_draft_contact_row,
+    _load_active_role_targeted_wave,
     _load_global_original_prepared_frontier_message_ids,
     _load_sender_identity,
     _load_role_targeted_draft_posting_row,
@@ -167,6 +168,9 @@ def seed_linked_contact(
     contact_status: str = "identified",
     link_level_status: str = POSTING_CONTACT_STATUS_SHORTLISTED,
     contact_source_type: str | None = None,
+    is_in_intended_outreach_set: int = 1,
+    removed_from_intended_outreach_set_at: str | None = None,
+    intended_outreach_set_removal_reason: str | None = None,
     created_at: str,
 ) -> None:
     connection.execute(
@@ -193,8 +197,10 @@ def seed_linked_contact(
         """
         INSERT INTO job_posting_contacts (
           job_posting_contact_id, job_posting_id, contact_id, recipient_type, relevance_reason,
-          link_level_status, contact_source_type, created_at, updated_at
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+          link_level_status, contact_source_type, is_in_intended_outreach_set,
+          entered_intended_outreach_set_at, removed_from_intended_outreach_set_at,
+          intended_outreach_set_removal_reason, created_at, updated_at
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         """,
         (
             job_posting_contact_id,
@@ -204,6 +210,10 @@ def seed_linked_contact(
             "Selected for autonomous outreach.",
             link_level_status,
             contact_source_type,
+            is_in_intended_outreach_set,
+            created_at if is_in_intended_outreach_set else None,
+            removed_from_intended_outreach_set_at,
+            intended_outreach_set_removal_reason,
             created_at,
             created_at,
         ),
@@ -821,6 +831,117 @@ def test_send_set_prefers_apollo_manager_contact_ahead_of_jobright_manager_when_
         "ct_apollo_manager",
         "ct_jobright_manager",
     ]
+
+    connection.close()
+
+
+def test_send_set_excludes_removed_intended_outreach_contacts(tmp_path: Path):
+    project_root, _ = bootstrap_project(tmp_path)
+    connection = connect_database(project_root / "job_hunt_copilot.db")
+    seed_posting(connection)
+    seed_linked_contact(
+        connection,
+        contact_id="ct_removed",
+        job_posting_contact_id="jpc_removed",
+        display_name="Paulo Wrong Company",
+        recipient_type=RECIPIENT_TYPE_HIRING_MANAGER,
+        current_working_email="paulo@wrong.example",
+        is_in_intended_outreach_set=0,
+        removed_from_intended_outreach_set_at="2026-04-06T20:05:00Z",
+        intended_outreach_set_removal_reason="apollo_company_mismatch",
+        created_at="2026-04-06T20:01:00Z",
+    )
+    seed_linked_contact(
+        connection,
+        contact_id="ct_active",
+        job_posting_contact_id="jpc_active",
+        display_name="Morgan Manager",
+        recipient_type=RECIPIENT_TYPE_HIRING_MANAGER,
+        current_working_email="morgan@acme.example",
+        created_at="2026-04-06T20:02:00Z",
+    )
+
+    plan = evaluate_role_targeted_send_set(
+        connection,
+        job_posting_id="jp_outreach",
+        current_time="2026-04-06T20:10:00Z",
+        local_timezone=ZoneInfo("UTC"),
+    )
+
+    assert [contact.contact_id for contact in plan.selected_contacts] == ["ct_active"]
+
+    connection.close()
+
+
+def test_active_wave_excludes_removed_intended_outreach_contacts(tmp_path: Path):
+    project_root, _ = bootstrap_project(tmp_path)
+    connection = connect_database(project_root / "job_hunt_copilot.db")
+    seed_posting(connection)
+    seed_linked_contact(
+        connection,
+        contact_id="ct_removed",
+        job_posting_contact_id="jpc_removed",
+        display_name="Removed Contact",
+        recipient_type=RECIPIENT_TYPE_HIRING_MANAGER,
+        current_working_email="removed@wrong.example",
+        link_level_status=POSTING_CONTACT_STATUS_OUTREACH_IN_PROGRESS,
+        is_in_intended_outreach_set=0,
+        removed_from_intended_outreach_set_at="2026-04-06T20:05:00Z",
+        intended_outreach_set_removal_reason="apollo_company_mismatch",
+        created_at="2026-04-06T20:01:00Z",
+    )
+    seed_linked_contact(
+        connection,
+        contact_id="ct_active",
+        job_posting_contact_id="jpc_active",
+        display_name="Active Contact",
+        recipient_type=RECIPIENT_TYPE_HIRING_MANAGER,
+        current_working_email="active@acme.example",
+        link_level_status=POSTING_CONTACT_STATUS_OUTREACH_IN_PROGRESS,
+        created_at="2026-04-06T20:02:00Z",
+    )
+    connection.executemany(
+        """
+        INSERT INTO outreach_messages (
+          outreach_message_id, contact_id, outreach_mode, recipient_email, message_status,
+          job_posting_id, job_posting_contact_id, subject, body_text, created_at, updated_at
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        """,
+        (
+            (
+                "msg_removed",
+                "ct_removed",
+                "role_targeted",
+                "removed@wrong.example",
+                "generated",
+                "jp_outreach",
+                "jpc_removed",
+                "removed subject",
+                "removed body",
+                "2026-04-06T20:03:00Z",
+                "2026-04-06T20:03:00Z",
+            ),
+            (
+                "msg_active",
+                "ct_active",
+                "role_targeted",
+                "active@acme.example",
+                "generated",
+                "jp_outreach",
+                "jpc_active",
+                "active subject",
+                "active body",
+                "2026-04-06T20:04:00Z",
+                "2026-04-06T20:04:00Z",
+            ),
+        ),
+    )
+    connection.commit()
+
+    active_wave = _load_active_role_targeted_wave(connection, job_posting_id="jp_outreach")
+
+    assert [message.contact_id for message in active_wave] == ["ct_active"]
+    assert [message.outreach_message_id for message in active_wave] == ["msg_active"]
 
     connection.close()
 

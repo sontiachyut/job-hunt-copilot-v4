@@ -1838,6 +1838,8 @@ def _load_candidate_rows(
         LEFT JOIN outreach_history oh
           ON oh.contact_id = jpc.contact_id
         WHERE jpc.job_posting_id = ?
+          AND jpc.is_in_intended_outreach_set = 1
+          AND jpc.removed_from_intended_outreach_set_at IS NULL
         ORDER BY jpc.created_at ASC, jpc.job_posting_contact_id ASC
         """,
         (job_posting_id, posting_company_key, MESSAGE_STATUS_SENT, job_posting_id),
@@ -4481,6 +4483,8 @@ def _load_active_role_targeted_wave(
             LIMIT 1
           )
         WHERE jpc.job_posting_id = ?
+          AND jpc.is_in_intended_outreach_set = 1
+          AND jpc.removed_from_intended_outreach_set_at IS NULL
           AND jpc.link_level_status IN (?, ?, ?)
           AND EXISTS (
             SELECT 1
@@ -5513,6 +5517,8 @@ def _load_draft_contact_row(
           ON c.contact_id = jpc.contact_id
         WHERE jpc.job_posting_id = ?
           AND jpc.contact_id = ?
+          AND jpc.is_in_intended_outreach_set = 1
+          AND jpc.removed_from_intended_outreach_set_at IS NULL
         """,
         (job_posting_id, contact_id),
     ).fetchone()

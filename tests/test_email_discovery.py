@@ -53,6 +53,7 @@ from job_hunt_copilot.email_discovery import (
     select_initial_enrichment_shortlist,
     _build_apollo_search_filters,
     _manager_expansion_target_for_pool_size,
+    _load_discovery_ready_contact_row,
     _normalize_apollo_usage_snapshots,
     _shortlist_existing_intended_contacts,
 )
@@ -814,6 +815,8 @@ def seed_linked_contact(
     contact_source_priority_tier: int | None = None,
     contact_source_rank: int | None = None,
     is_in_intended_outreach_set: int = 0,
+    removed_from_intended_outreach_set_at: str | None = None,
+    intended_outreach_set_removal_reason: str | None = None,
     created_at: str = "2026-04-06T21:30:00Z",
 ) -> None:
     connection.execute(
@@ -854,8 +857,9 @@ def seed_linked_contact(
           job_posting_contact_id, job_posting_id, contact_id, recipient_type, relevance_reason,
           link_level_status, contact_source_type, contact_source_priority_tier,
           contact_source_rank, is_in_intended_outreach_set, entered_intended_outreach_set_at,
+          removed_from_intended_outreach_set_at, intended_outreach_set_removal_reason,
           created_at, updated_at
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         """,
         (
             job_posting_contact_id,
@@ -869,6 +873,8 @@ def seed_linked_contact(
             contact_source_rank,
             is_in_intended_outreach_set,
             created_at if is_in_intended_outreach_set else None,
+            removed_from_intended_outreach_set_at,
+            intended_outreach_set_removal_reason,
             created_at,
             created_at,
         ),
@@ -1602,6 +1608,48 @@ def test_email_discovery_remains_actionable_when_ready_subset_exists_but_pending
             ),
         ),
     ) is True
+    connection.close()
+
+
+def test_removed_intended_outreach_contact_is_not_discovery_ready(tmp_path: Path):
+    project_root = bootstrap_project(tmp_path)
+    paths = ProjectPaths.from_root(project_root)
+    connection = connect_database(project_root / "job_hunt_copilot.db")
+    seed_search_ready_posting(connection, paths)
+    seed_linked_contact(
+        connection,
+        contact_id="ct_removed",
+        job_posting_contact_id="jpc_removed",
+        display_name="Removed Contact",
+        position_title="Engineering Manager",
+        recipient_type=RECIPIENT_TYPE_HIRING_MANAGER,
+        current_working_email=None,
+        is_in_intended_outreach_set=0,
+        removed_from_intended_outreach_set_at="2026-04-06T22:05:00Z",
+        intended_outreach_set_removal_reason="apollo_company_mismatch",
+        created_at="2026-04-06T22:00:00Z",
+    )
+
+    with pytest.raises(EmailDiscoveryError, match="not linked to job posting"):
+        _load_discovery_ready_contact_row(
+            connection,
+            job_posting_id="jp_search",
+            contact_id="ct_removed",
+        )
+
+    assert is_role_targeted_email_discovery_actionable_now(
+        connection,
+        project_root=project_root,
+        job_posting_id="jp_search",
+        current_time="2026-04-06T22:10:00Z",
+        providers=(
+            FakeEmailFinderProvider(
+                provider_name="getprospect",
+                responses=[{"outcome": DISCOVERY_OUTCOME_NOT_FOUND}],
+                requires_domain=False,
+            ),
+        ),
+    ) is False
     connection.close()
 
 
