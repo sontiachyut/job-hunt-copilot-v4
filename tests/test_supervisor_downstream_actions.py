@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import sqlite3
+from functools import partial
 from pathlib import Path
 from types import SimpleNamespace
 
@@ -63,6 +64,19 @@ def connect_database(db_path: Path) -> sqlite3.Connection:
     connection.row_factory = sqlite3.Row
     connection.execute("PRAGMA foreign_keys = ON;")
     return connection
+
+
+_RealSupervisorActionDependencies = SupervisorActionDependencies
+SupervisorActionDependencies = partial(  # type: ignore[assignment]
+    _RealSupervisorActionDependencies,
+    role_targeted_draft_renderer=StableTestOutreachRenderer(),
+)
+_real_generate_role_targeted_send_set_drafts = generate_role_targeted_send_set_drafts
+
+
+def generate_role_targeted_send_set_drafts(*args, **kwargs):  # type: ignore[no-untyped-def]
+    kwargs.setdefault("renderer", StableTestOutreachRenderer())
+    return _real_generate_role_targeted_send_set_drafts(*args, **kwargs)
 
 
 def seed_role_targeted_posting(
@@ -236,8 +250,8 @@ def seed_shortlisted_contact(
         """
         INSERT INTO job_posting_contacts (
           job_posting_contact_id, job_posting_id, contact_id, recipient_type, relevance_reason,
-          link_level_status, created_at, updated_at
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+          link_level_status, is_in_intended_outreach_set, entered_intended_outreach_set_at, created_at, updated_at
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         """,
         (
             job_posting_contact_id,
@@ -246,6 +260,8 @@ def seed_shortlisted_contact(
             normalized_recipient_type,
             "Selected for bounded supervisor discovery coverage.",
             link_level_status,
+            1,
+            created_at,
             created_at,
             created_at,
         ),

@@ -374,15 +374,108 @@ def _normalize_candidate_employment_history(payload: Mapping[str, Any]) -> tuple
     return _extract_apollo_employment_history_items(payload) or ()
 
 
+_RECRUITING_OR_HR_TITLE_TOKENS: tuple[str, ...] = (
+    "recruit",
+    "talent",
+    "sourcer",
+    "people ops",
+    "people operations",
+    "people partner",
+    "people business partner",
+    "talent acquisition",
+    "human resources",
+)
+_TRUE_MANAGERIAL_TITLE_TOKENS: tuple[str, ...] = (
+    "manager",
+    "director",
+    "head",
+    "vp",
+    "vice president",
+    "chief",
+    "cto",
+    "ceo",
+)
+_LEADERSHIP_ADJACENT_TECHNICAL_TITLE_TOKENS: tuple[str, ...] = (
+    "founding engineer",
+    "technical lead",
+    "tech lead",
+    "team lead",
+    "engineering lead",
+    "lead engineer",
+    "lead software engineer",
+    "lead machine learning engineer",
+    "lead platform engineer",
+    "lead data engineer",
+)
+
+
+def _normalize_title_for_routing(title: str | None) -> str:
+    return (title or "").strip().lower()
+
+
+def _is_founder_title_text(normalized_title: str) -> bool:
+    return any(token in normalized_title for token in ("founder", "co-founder", "cofounder"))
+
+
+def _is_recruiting_or_hr_title_text(normalized_title: str) -> bool:
+    return any(token in normalized_title for token in _RECRUITING_OR_HR_TITLE_TOKENS) or bool(
+        re.search(r"\bhr\b", normalized_title)
+    )
+
+
+def _is_true_managerial_title_text(normalized_title: str) -> bool:
+    if not normalized_title or _is_recruiting_or_hr_title_text(normalized_title):
+        return False
+    return any(token in normalized_title for token in _TRUE_MANAGERIAL_TITLE_TOKENS)
+
+
+def _is_people_manager_title_text(normalized_title: str) -> bool:
+    return bool(normalized_title) and not _is_recruiting_or_hr_title_text(normalized_title) and "manager" in normalized_title
+
+
+def _is_director_head_vp_title_text(normalized_title: str) -> bool:
+    if not normalized_title or _is_recruiting_or_hr_title_text(normalized_title):
+        return False
+    return any(token in normalized_title for token in ("director", "head", "vp", "vice president"))
+
+
+def _is_technical_cxo_title_text(normalized_title: str) -> bool:
+    if not normalized_title or _is_recruiting_or_hr_title_text(normalized_title):
+        return False
+    return any(
+        token in normalized_title
+        for token in (
+            "cto",
+            "chief technology",
+            "chief engineering",
+            "chief architect",
+            "chief software architect",
+            "chief ai officer",
+        )
+    )
+
+
+def _is_plain_ceo_title_text(normalized_title: str) -> bool:
+    if not normalized_title or _is_recruiting_or_hr_title_text(normalized_title):
+        return False
+    return "chief executive" in normalized_title or re.search(r"\bceo\b", normalized_title) is not None
+
+
+def _is_leadership_adjacent_technical_title_text(normalized_title: str) -> bool:
+    if not normalized_title or _is_recruiting_or_hr_title_text(normalized_title):
+        return False
+    return any(token in normalized_title for token in _LEADERSHIP_ADJACENT_TECHNICAL_TITLE_TOKENS)
+
+
 def _recipient_type_from_title(title: str | None) -> str:
-    normalized = (title or "").lower()
-    if "founder" in normalized or "co-founder" in normalized or "cofounder" in normalized:
+    normalized = _normalize_title_for_routing(title)
+    if _is_founder_title_text(normalized):
         return RECIPIENT_TYPE_FOUNDER
-    if any(token in normalized for token in ("recruit", "talent", "sourcer", "people ops")):
+    if _is_recruiting_or_hr_title_text(normalized):
         return RECIPIENT_TYPE_RECRUITER
     if "alumni" in normalized:
         return RECIPIENT_TYPE_ALUMNI
-    if any(token in normalized for token in ("manager", "director", "head", "vp", "vice president", "chief")):
+    if _is_true_managerial_title_text(normalized) or _is_leadership_adjacent_technical_title_text(normalized):
         return RECIPIENT_TYPE_HIRING_MANAGER
     if any(token in normalized for token in ("engineer", "developer", "architect", "swe", "software")):
         return RECIPIENT_TYPE_ENGINEER
@@ -2758,21 +2851,23 @@ def _shortlist_priority_key(
     *,
     founder_priority_mode: bool = False,
 ) -> int:
-    normalized_title = (candidate.title or "").lower()
+    normalized_title = _normalize_title_for_routing(candidate.title)
     recipient_type = candidate.recipient_type
-    if any(token in normalized_title for token in ("engineering manager", "hiring manager", "technical lead", "team lead")):
+    if _is_people_manager_title_text(normalized_title):
         return 0
     if founder_priority_mode and recipient_type == RECIPIENT_TYPE_FOUNDER:
         return 1
-    if any(token in normalized_title for token in ("director", "head of engineering", "head of ", "vp", "vice president")):
+    if _is_director_head_vp_title_text(normalized_title):
         return 2
-    if any(token in normalized_title for token in ("cto", "chief technology", "chief engineering", "chief architect")):
+    if _is_technical_cxo_title_text(normalized_title):
         return 3
-    if any(token in normalized_title for token in ("lead engineer", "lead software engineer", "lead machine learning engineer", "lead platform engineer")):
+    if _is_leadership_adjacent_technical_title_text(normalized_title):
         return 4
     if recipient_type == RECIPIENT_TYPE_FOUNDER:
         return 5
-    return 6
+    if _is_plain_ceo_title_text(normalized_title):
+        return 6
+    return 7
 
 
 def _should_promote_founders_for_small_startup_pool(*, candidate_count: int) -> bool:
@@ -2780,19 +2875,16 @@ def _should_promote_founders_for_small_startup_pool(*, candidate_count: int) -> 
 
 
 def _candidate_is_manager_class(candidate: PeopleSearchCandidate) -> bool:
-    normalized_title = (candidate.title or "").lower()
+    normalized_title = _normalize_title_for_routing(candidate.title)
     if not normalized_title:
         return False
-    if any(token in normalized_title for token in ("founder", "co-founder", "cofounder")):
+    if _is_founder_title_text(normalized_title):
         return True
+    if _is_recruiting_or_hr_title_text(normalized_title):
+        return False
     if any(
         token in normalized_title
         for token in (
-            "recruit",
-            "talent",
-            "people ops",
-            "human resources",
-            "hr",
             "support",
             "customer success",
             "qa",
@@ -2806,19 +2898,9 @@ def _candidate_is_manager_class(candidate: PeopleSearchCandidate) -> bool:
         )
     ):
         return False
-    if any(token in normalized_title for token in ("manager", "director", "head", "vp", "vice president", "chief", "cto")):
+    if _is_true_managerial_title_text(normalized_title):
         return True
-    return any(
-        token in normalized_title
-        for token in (
-            "technical lead",
-            "team lead",
-            "lead engineer",
-            "lead software engineer",
-            "lead machine learning engineer",
-            "lead platform engineer",
-        )
-    )
+    return _is_leadership_adjacent_technical_title_text(normalized_title)
 
 
 def _is_senior_engineer_title(title: str) -> bool:

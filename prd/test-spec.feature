@@ -963,6 +963,7 @@ Feature: Job Hunt Copilot next-build acceptance
       When Email Drafting and Sending chooses the current role-split playbook for that contact
       Then technical individual contributors may use the technical path
       And managers, recruiters, and routing-side contacts may use the managerial path
+      And leadership-adjacent technical titles such as `Founding Engineer`, `Technical Team Lead`, or `Lead Software Engineer` also use the managerial path when they imply current-company technical-lead responsibility
       And the chosen path is recoverable from draft artifacts or review evidence
 
     Scenario: General learning outreach does not require a tailored resume or posting linkage
@@ -1144,6 +1145,12 @@ Feature: Job Hunt Copilot next-build acceptance
       And the relevant-background bullets come from real resume or project evidence
       And a `Job Hunt Copilot` background bullet appears only when it materially strengthens the dominant role-fit theme
       And the subject follows `Interest in the <Role Title> role at <Company>`
+
+    Scenario: Managerial-path source prompt no longer instructs the legacy opener family
+      Given a role-targeted managerial-path draft is being created for a linked contact
+      When the managerial Codex prompt is assembled
+      Then the live prompt does not require an opener that begins with `I came across the ... opening at ...`
+      And production managerial drafting does not rely on validation-layer phrase blocking as the primary mechanism that suppresses that legacy opener family
 
     Scenario: Managerial-path subject strips role-title formatting artifacts before send
       Given a role-targeted managerial-path draft is being created for a posting whose canonical role title contains a leading formatting artifact like `#`

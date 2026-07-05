@@ -52,9 +52,12 @@ from job_hunt_copilot.email_discovery import (
     run_general_learning_email_discovery,
     select_initial_enrichment_shortlist,
     _build_apollo_search_filters,
+    _candidate_is_manager_class,
     _manager_expansion_target_for_pool_size,
     _load_discovery_ready_contact_row,
     _normalize_apollo_usage_snapshots,
+    _recipient_type_from_title,
+    _shortlist_priority_key,
     _shortlist_existing_intended_contacts,
 )
 from job_hunt_copilot.outreach import evaluate_role_targeted_send_set
@@ -510,6 +513,49 @@ def test_select_initial_enrichment_shortlist_prefers_usable_email_within_same_pr
         "pp_m2",
         "pp_m1",
     ]
+
+
+def test_recipient_type_routing_demotes_hr_and_promotes_leadership_adjacent_technical_titles():
+    assert _recipient_type_from_title("Human Resources Director") == RECIPIENT_TYPE_RECRUITER
+    assert _recipient_type_from_title("Founding Engineer") == RECIPIENT_TYPE_HIRING_MANAGER
+    assert _recipient_type_from_title("Technical Team Lead") == RECIPIENT_TYPE_HIRING_MANAGER
+    assert _candidate_is_manager_class(
+        PeopleSearchCandidate.from_mapping(
+            build_candidate(
+                provider_person_id="pp_founding",
+                display_name="Vishnu",
+                title="Founding Engineer",
+            )
+        )
+    )
+    assert not _candidate_is_manager_class(
+        PeopleSearchCandidate.from_mapping(
+            build_candidate(
+                provider_person_id="pp_hr",
+                display_name="Karin Aviv",
+                title="Human Resources Director",
+            )
+        )
+    )
+
+
+def test_shortlist_priority_keeps_true_manager_ahead_of_leadership_adjacent_title():
+    manager_candidate = PeopleSearchCandidate.from_mapping(
+        build_candidate(
+            provider_person_id="pp_manager",
+            display_name="Morgan Manager",
+            title="Engineering Manager",
+        )
+    )
+    lead_candidate = PeopleSearchCandidate.from_mapping(
+        build_candidate(
+            provider_person_id="pp_lead",
+            display_name="Vivek Shah",
+            title="Technical Team Lead",
+        )
+    )
+
+    assert _shortlist_priority_key(manager_candidate) < _shortlist_priority_key(lead_candidate)
 
 
 def test_build_apollo_search_filters_targets_manager_class_engineering_leadership(tmp_path: Path):
@@ -2625,8 +2671,8 @@ def test_apollo_contact_enrichment_refreshes_stale_other_internal_to_engineer_fo
         """
         INSERT INTO job_posting_contacts (
           job_posting_contact_id, job_posting_id, contact_id, recipient_type, relevance_reason,
-          link_level_status, created_at, updated_at
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+          link_level_status, is_in_intended_outreach_set, entered_intended_outreach_set_at, created_at, updated_at
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         """,
         (
             "jpc_mgr",
@@ -2635,6 +2681,8 @@ def test_apollo_contact_enrichment_refreshes_stale_other_internal_to_engineer_fo
             RECIPIENT_TYPE_HIRING_MANAGER,
             "Seeded as manager.",
             POSTING_CONTACT_STATUS_SHORTLISTED,
+            1,
+            timestamp,
             timestamp,
             timestamp,
         ),
@@ -2643,8 +2691,8 @@ def test_apollo_contact_enrichment_refreshes_stale_other_internal_to_engineer_fo
         """
         INSERT INTO job_posting_contacts (
           job_posting_contact_id, job_posting_id, contact_id, recipient_type, relevance_reason,
-          link_level_status, created_at, updated_at
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+          link_level_status, is_in_intended_outreach_set, entered_intended_outreach_set_at, created_at, updated_at
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         """,
         (
             "jpc_eng",
@@ -2653,6 +2701,8 @@ def test_apollo_contact_enrichment_refreshes_stale_other_internal_to_engineer_fo
             RECIPIENT_TYPE_OTHER_INTERNAL,
             "Seeded as generic internal from source-time carry-forward.",
             POSTING_CONTACT_STATUS_SHORTLISTED,
+            1,
+            timestamp,
             timestamp,
             timestamp,
         ),
@@ -2762,8 +2812,8 @@ def test_evaluate_send_set_self_heals_stale_other_internal_from_apollo_title(tmp
         """
         INSERT INTO job_posting_contacts (
           job_posting_contact_id, job_posting_id, contact_id, recipient_type, relevance_reason,
-          link_level_status, created_at, updated_at
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+          link_level_status, is_in_intended_outreach_set, entered_intended_outreach_set_at, created_at, updated_at
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         """,
         (
             "jpc_stale",
@@ -2772,6 +2822,8 @@ def test_evaluate_send_set_self_heals_stale_other_internal_from_apollo_title(tmp
             RECIPIENT_TYPE_OTHER_INTERNAL,
             "Seeded as generic internal from source-time carry-forward.",
             POSTING_CONTACT_STATUS_SHORTLISTED,
+            1,
+            timestamp,
             timestamp,
             timestamp,
         ),
@@ -3854,6 +3906,7 @@ def test_email_discovery_uses_resolved_company_domain_from_people_search_payload
         full_name="Maya Rivera",
         first_name="Maya",
         last_name="Rivera",
+        is_in_intended_outreach_set=1,
     )
     people_search_path = (
         paths.discovery_workspace_dir("Acme Robotics", "Staff Software Engineer / AI")

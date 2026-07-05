@@ -89,6 +89,7 @@ TECHNICAL_PATH_PARAGRAPH_4 = (
     "If you're open to it, I'd really value a brief 10-minute conversation for your guidance on how you grew into this kind of work and what you'd recommend I focus on at this stage."
 )
 MANAGERIAL_PATH_OPENER_SENTENCE_1 = "I hope you're doing well."
+MANAGERIAL_PATH_ROLE_ALIGNMENT_PREFIX_TEMPLATE = "I'm reaching out about the {role_title} role at {company_name} because"
 MANAGERIAL_PATH_OPENER_SENTENCE_3 = (
     "If helpful, I'd be happy to build a small proof of concept based on my understanding "
     "of the challenges the team is working on and share the repo."
@@ -165,6 +166,40 @@ TRANSIENT_SEND_FAILURE_PATTERNS: tuple[re.Pattern[str], ...] = (
     re.compile(r"connection aborted", re.IGNORECASE),
     re.compile(r"remotedisconnected", re.IGNORECASE),
     re.compile(r"temporar(?:ily|y) unavailable", re.IGNORECASE),
+)
+
+_RECRUITING_OR_HR_TITLE_TOKENS: tuple[str, ...] = (
+    "recruit",
+    "talent",
+    "sourcer",
+    "people ops",
+    "people operations",
+    "people partner",
+    "people business partner",
+    "talent acquisition",
+    "human resources",
+)
+_TRUE_MANAGERIAL_TITLE_TOKENS: tuple[str, ...] = (
+    "manager",
+    "director",
+    "head",
+    "vp",
+    "vice president",
+    "chief",
+    "cto",
+    "ceo",
+)
+_LEADERSHIP_ADJACENT_TECHNICAL_TITLE_TOKENS: tuple[str, ...] = (
+    "founding engineer",
+    "technical lead",
+    "tech lead",
+    "team lead",
+    "engineering lead",
+    "lead engineer",
+    "lead software engineer",
+    "lead machine learning engineer",
+    "lead platform engineer",
+    "lead data engineer",
 )
 
 PROFILE_FIELD_RE = re.compile(r"^- \*\*(?P<label>[^*]+):\*\* (?P<value>.+?)\s*$")
@@ -1395,10 +1430,16 @@ class _CandidateRow:
     prior_outreach_count: int
     prior_same_company_outreach_count: int
     link_created_at: str
+    position_title: str | None
+    apollo_current_title: str | None
 
     @property
     def has_usable_email(self) -> bool:
         return _is_usable_email(self.current_working_email)
+
+    @property
+    def current_title(self) -> str | None:
+        return self.apollo_current_title or self.position_title
 
     @property
     def selection_state(self) -> str:
@@ -1722,19 +1763,66 @@ def _load_posting_row(
     return posting_row
 
 
+def _normalize_internal_title(title: str | None) -> str:
+    return (title or "").strip().lower()
+
+
+def _is_founder_title_text(normalized_title: str) -> bool:
+    return any(token in normalized_title for token in ("founder", "co-founder", "cofounder"))
+
+
+def _is_recruiting_or_hr_title_text(normalized_title: str) -> bool:
+    return any(token in normalized_title for token in _RECRUITING_OR_HR_TITLE_TOKENS) or bool(
+        re.search(r"\bhr\b", normalized_title)
+    )
+
+
+def _is_true_managerial_title_text(normalized_title: str) -> bool:
+    if not normalized_title or _is_recruiting_or_hr_title_text(normalized_title):
+        return False
+    return any(token in normalized_title for token in _TRUE_MANAGERIAL_TITLE_TOKENS)
+
+
+def _is_leadership_adjacent_technical_title_text(normalized_title: str) -> bool:
+    if not normalized_title or _is_recruiting_or_hr_title_text(normalized_title):
+        return False
+    return any(token in normalized_title for token in _LEADERSHIP_ADJACENT_TECHNICAL_TITLE_TOKENS)
+
+
+def _contact_priority_rank(*, recipient_type: str, title: str | None) -> int:
+    normalized_title = _normalize_internal_title(title)
+    if recipient_type == RECIPIENT_TYPE_FOUNDER:
+        return 0
+    if recipient_type == RECIPIENT_TYPE_HIRING_MANAGER:
+        if _is_true_managerial_title_text(normalized_title):
+            return 0
+        if _is_leadership_adjacent_technical_title_text(normalized_title):
+            return 1
+        return 2
+    if recipient_type == RECIPIENT_TYPE_ENGINEER:
+        return 3
+    if recipient_type == RECIPIENT_TYPE_RECRUITER:
+        return 4
+    if recipient_type == RECIPIENT_TYPE_OTHER_INTERNAL:
+        return 5
+    if recipient_type == RECIPIENT_TYPE_ALUMNI:
+        return 6
+    return 7
+
+
 def _recipient_type_from_current_title(
     title: str | None,
     *,
     fallback: str,
 ) -> str:
-    normalized = (title or "").lower()
-    if "founder" in normalized or "co-founder" in normalized or "cofounder" in normalized:
+    normalized = _normalize_internal_title(title)
+    if _is_founder_title_text(normalized):
         return RECIPIENT_TYPE_FOUNDER
-    if any(token in normalized for token in ("recruit", "talent", "sourcer", "people ops")):
+    if _is_recruiting_or_hr_title_text(normalized):
         return RECIPIENT_TYPE_RECRUITER
     if "alumni" in normalized:
         return RECIPIENT_TYPE_ALUMNI
-    if any(token in normalized for token in ("manager", "director", "head", "vp", "vice president", "chief")):
+    if _is_true_managerial_title_text(normalized) or _is_leadership_adjacent_technical_title_text(normalized):
         return RECIPIENT_TYPE_HIRING_MANAGER
     if any(token in normalized for token in ("engineer", "developer", "architect", "swe", "software")):
         return RECIPIENT_TYPE_ENGINEER
@@ -1830,7 +1918,8 @@ def _load_candidate_rows(
         )
         SELECT jpc.job_posting_contact_id, jpc.contact_id, jpc.recipient_type, jpc.link_level_status,
                jpc.contact_source_type, jpc.created_at AS link_created_at, c.display_name, c.current_working_email,
-               c.contact_status, COALESCE(oh.prior_outreach_count, 0) AS prior_outreach_count,
+               c.contact_status, c.position_title, c.apollo_current_title,
+               COALESCE(oh.prior_outreach_count, 0) AS prior_outreach_count,
                COALESCE(oh.prior_same_company_outreach_count, 0) AS prior_same_company_outreach_count
         FROM job_posting_contacts jpc
         JOIN contacts c
@@ -1857,6 +1946,8 @@ def _load_candidate_rows(
             prior_outreach_count=int(row["prior_outreach_count"] or 0),
             prior_same_company_outreach_count=int(row["prior_same_company_outreach_count"] or 0),
             link_created_at=str(row["link_created_at"]).strip(),
+            position_title=_normalize_optional_text(row["position_title"]),
+            apollo_current_title=_normalize_optional_text(row["apollo_current_title"]),
         )
         for row in rows
         if str(row["recipient_type"]).strip()
@@ -1980,9 +2071,10 @@ def _pick_best_candidate(
     return min(eligible_candidates, key=_preferred_sort_key)
 
 
-def _preferred_sort_key(candidate: _CandidateRow) -> tuple[int, int, str, str]:
+def _preferred_sort_key(candidate: _CandidateRow) -> tuple[int, int, int, int, str, str]:
     return (
         _selection_state_rank(candidate.selection_state),
+        _contact_priority_rank(recipient_type=candidate.recipient_type, title=candidate.current_title),
         0 if candidate.link_level_status == POSTING_CONTACT_STATUS_SHORTLISTED else 1,
         _contact_source_sort_rank(candidate.contact_source_type),
         candidate.link_created_at,
@@ -2023,20 +2115,8 @@ def _is_automatic_send_recipient_type(recipient_type: str) -> bool:
     }
 
 
-def _send_priority_rank(recipient_type: str) -> int:
-    if recipient_type == RECIPIENT_TYPE_RECRUITER:
-        return 0
-    if recipient_type == RECIPIENT_TYPE_HIRING_MANAGER:
-        return 1
-    if recipient_type == RECIPIENT_TYPE_ENGINEER:
-        return 2
-    if recipient_type == RECIPIENT_TYPE_FOUNDER:
-        return 3
-    if recipient_type == RECIPIENT_TYPE_OTHER_INTERNAL:
-        return 4
-    if recipient_type == RECIPIENT_TYPE_ALUMNI:
-        return 5
-    return 6
+def _send_priority_rank(recipient_type: str, title: str | None = None) -> int:
+    return _contact_priority_rank(recipient_type=recipient_type, title=title)
 
 
 def _count_posting_sends_today(
@@ -2413,27 +2493,30 @@ def _select_role_split_recipient_path_from_profile(
 ) -> str:
     current_title = _recipient_profile_current_title(recipient_profile) or position_title
     current_company = _recipient_profile_current_company(recipient_profile) or fallback_company_name
-    title = " at ".join(part for part in (current_title, current_company) if part).lower()
-    if any(token in title for token in ("recruit", "talent", "sourcer", "people ops")):
+    title = " at ".join(part for part in (current_title, current_company) if part)
+    normalized_title = _normalize_internal_title(title)
+    if _is_recruiting_or_hr_title_text(normalized_title):
         return "managerial"
-    if any(token in title for token in ("manager", "director", "head", "vp", "vice president", "chief", "founder", "co-founder", "cofounder")):
+    if (
+        _is_true_managerial_title_text(normalized_title)
+        or _is_founder_title_text(normalized_title)
+        or _is_leadership_adjacent_technical_title_text(normalized_title)
+    ):
         return "managerial"
     if (
         any(
-            token in title
+            token in normalized_title
             for token in (
                 "engineer",
                 "developer",
                 "architect",
                 "software",
-                "technical lead",
-                "tech lead",
                 "staff",
                 "principal",
                 "machine learning",
             )
         )
-        or re.search(r"\b(ai|ml)\b", title)
+        or re.search(r"\b(ai|ml)\b", normalized_title)
     ):
         return "technical"
     if recipient_type in {RECIPIENT_TYPE_RECRUITER, RECIPIENT_TYPE_HIRING_MANAGER, RECIPIENT_TYPE_FOUNDER}:
@@ -3098,6 +3181,10 @@ def _build_technical_role_split_prompt(context: RoleTargetedDraftContext) -> str
 
 def _build_managerial_role_split_prompt(context: RoleTargetedDraftContext) -> str:
     normalized_role_title = _normalize_role_title_for_outreach_email(context.role_title)
+    role_alignment_prefix = MANAGERIAL_PATH_ROLE_ALIGNMENT_PREFIX_TEMPLATE.format(
+        role_title=normalized_role_title,
+        company_name=context.company_name,
+    )
     bounded_jd_relevance_pack = json.dumps(list(context.bounded_jd_relevance_pack), indent=2)
     retrieved_profile_evidence_pack = json.dumps(
         [chunk.as_prompt_dict() for chunk in context.managerial_retrieved_evidence_pack],
@@ -3144,7 +3231,7 @@ def _build_managerial_role_split_prompt(context: RoleTargetedDraftContext) -> st
             "",
             "Rules for role_alignment_sentence:",
             "- It must be exactly 1 sentence.",
-            f'- It must begin with: "I came across the {normalized_role_title} opening at {context.company_name} and wanted to reach out because..."',
+            f'- It must begin with: "{role_alignment_prefix}..."',
             "- It should explain why the role looks closely aligned with the kind of role-relevant engineering problems I've been trying to work on.",
             "- Choose one dominant role-fit theme that reads like a coherent kind of work, not a stitched-together list of JD signals.",
             "- Do not combine unrelated JD themes just to increase coverage.",
@@ -3203,7 +3290,7 @@ def _build_managerial_role_split_prompt(context: RoleTargetedDraftContext) -> st
             json.dumps(
                 {
                     "role_alignment_sentence": (
-                        f"I came across the {normalized_role_title} opening at {context.company_name} and wanted to reach out because the role "
+                        f"{role_alignment_prefix} the role "
                         "looks closely aligned with the kind of backend services and integration work I've been trying to do more of in production systems."
                     ),
                     "problem_hypotheses": [
@@ -3981,6 +4068,12 @@ class _ActiveWaveMessage:
     sent_at: str | None
     message_created_at: str
     message_updated_at: str
+    position_title: str | None
+    apollo_current_title: str | None
+
+    @property
+    def current_title(self) -> str | None:
+        return self.apollo_current_title or self.position_title
 
 
 def _collect_global_original_prepared_frontier_messages(
@@ -4467,6 +4560,7 @@ def _load_active_role_targeted_wave(
         """
         SELECT jpc.job_posting_contact_id, jpc.contact_id, jpc.recipient_type, jpc.link_level_status,
                jpc.created_at AS link_created_at, c.display_name, c.current_working_email,
+               c.position_title, c.apollo_current_title,
                c.contact_status, om.outreach_message_id, om.message_status, om.subject,
                om.body_text, om.body_html, om.thread_id, om.delivery_tracking_id, om.sent_at,
                om.created_at AS message_created_at, om.updated_at AS message_updated_at
@@ -4521,6 +4615,8 @@ def _load_active_role_targeted_wave(
             sent_at=_normalize_optional_text(row["sent_at"]),
             message_created_at=str(row["message_created_at"]) if row["message_created_at"] else "",
             message_updated_at=str(row["message_updated_at"]) if row["message_updated_at"] else "",
+            position_title=_normalize_optional_text(row["position_title"]),
+            apollo_current_title=_normalize_optional_text(row["apollo_current_title"]),
         )
         for row in rows
     ]
@@ -4546,7 +4642,7 @@ def _validate_active_role_targeted_wave(
 
 def _active_wave_sort_key(message: _ActiveWaveMessage) -> tuple[int, int, str, str]:
     return (
-        _send_priority_rank(message.recipient_type),
+        _send_priority_rank(message.recipient_type, message.current_title),
         0 if message.link_level_status == POSTING_CONTACT_STATUS_SHORTLISTED else 1,
         message.link_created_at,
         message.contact_id,

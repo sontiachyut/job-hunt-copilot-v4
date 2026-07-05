@@ -361,8 +361,8 @@ def seed_send_ready_contact_with_generated_message(
         """
         INSERT INTO job_posting_contacts (
           job_posting_contact_id, job_posting_id, contact_id, recipient_type, relevance_reason,
-          link_level_status, created_at, updated_at
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+          link_level_status, is_in_intended_outreach_set, entered_intended_outreach_set_at, created_at, updated_at
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         """,
         (
             job_posting_contact_id,
@@ -371,6 +371,8 @@ def seed_send_ready_contact_with_generated_message(
             "hiring_manager",
             "Selected for bounded supervisor sending coverage.",
             "outreach_in_progress",
+            1,
+            created_at,
             created_at,
             created_at,
         ),
@@ -2207,8 +2209,8 @@ def test_run_supervisor_cycle_reconciles_stale_sending_run_back_to_email_discove
         """
         INSERT INTO job_posting_contacts (
           job_posting_contact_id, job_posting_id, contact_id, recipient_type, relevance_reason,
-          link_level_status, created_at, updated_at
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+          link_level_status, is_in_intended_outreach_set, entered_intended_outreach_set_at, created_at, updated_at
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         """,
         (
             "jpc_stale_needs_email",
@@ -2217,6 +2219,8 @@ def test_run_supervisor_cycle_reconciles_stale_sending_run_back_to_email_discove
             "engineer",
             "Later-wave contact still needs a usable email.",
             "shortlisted",
+            1,
+            "2026-04-06T00:05:00Z",
             "2026-04-06T00:05:00Z",
             "2026-04-06T00:05:00Z",
         ),

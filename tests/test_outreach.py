@@ -835,6 +835,117 @@ def test_send_set_prefers_apollo_manager_contact_ahead_of_jobright_manager_when_
     connection.close()
 
 
+def test_send_set_prefers_true_manager_before_leadership_adjacent_manager_lane_contact(tmp_path: Path):
+    project_root, _ = bootstrap_project(tmp_path)
+    connection = connect_database(project_root / "job_hunt_copilot.db")
+    seed_posting(connection)
+    seed_linked_contact(
+        connection,
+        contact_id="ct_lead",
+        job_posting_contact_id="jpc_lead",
+        display_name="Taylor Team Lead",
+        recipient_type=RECIPIENT_TYPE_ENGINEER,
+        current_working_email="taylor@acme.example",
+        contact_source_type="apollo_topup",
+        created_at="2026-04-06T20:01:00Z",
+    )
+    seed_linked_contact(
+        connection,
+        contact_id="ct_manager",
+        job_posting_contact_id="jpc_manager",
+        display_name="Morgan Manager",
+        recipient_type=RECIPIENT_TYPE_HIRING_MANAGER,
+        current_working_email="morgan@acme.example",
+        contact_source_type="apollo_topup",
+        created_at="2026-04-06T20:02:00Z",
+    )
+    connection.execute(
+        """
+        UPDATE contacts
+        SET position_title = CASE contact_id
+          WHEN 'ct_lead' THEN 'Technical Team Lead'
+          WHEN 'ct_manager' THEN 'Engineering Manager'
+        END,
+            updated_at = '2026-04-06T20:03:00Z'
+        WHERE contact_id IN ('ct_lead', 'ct_manager')
+        """
+    )
+    connection.commit()
+
+    plan = evaluate_role_targeted_send_set(
+        connection,
+        job_posting_id="jp_outreach",
+        current_time="2026-04-06T20:10:00Z",
+        local_timezone=ZoneInfo("UTC"),
+    )
+
+    assert [contact.contact_id for contact in plan.selected_contacts[:2]] == [
+        "ct_manager",
+        "ct_lead",
+    ]
+
+    connection.close()
+
+
+def test_send_set_reclassifies_hr_out_of_manager_lane_and_promotes_technical_team_lead(tmp_path: Path):
+    project_root, _ = bootstrap_project(tmp_path)
+    connection = connect_database(project_root / "job_hunt_copilot.db")
+    seed_posting(connection)
+    seed_linked_contact(
+        connection,
+        contact_id="ct_hr",
+        job_posting_contact_id="jpc_hr",
+        display_name="Karin Aviv",
+        recipient_type=RECIPIENT_TYPE_HIRING_MANAGER,
+        current_working_email="karin@acme.example",
+        created_at="2026-04-06T20:01:00Z",
+    )
+    seed_linked_contact(
+        connection,
+        contact_id="ct_lead",
+        job_posting_contact_id="jpc_lead",
+        display_name="Vivek Shah",
+        recipient_type=RECIPIENT_TYPE_ENGINEER,
+        current_working_email="vivek@acme.example",
+        created_at="2026-04-06T20:02:00Z",
+    )
+    connection.execute(
+        """
+        UPDATE contacts
+        SET position_title = CASE contact_id
+          WHEN 'ct_hr' THEN 'Human Resources Director'
+          WHEN 'ct_lead' THEN 'Technical Team Lead'
+        END,
+            updated_at = '2026-04-06T20:03:00Z'
+        WHERE contact_id IN ('ct_hr', 'ct_lead')
+        """
+    )
+    connection.commit()
+
+    plan = evaluate_role_targeted_send_set(
+        connection,
+        job_posting_id="jp_outreach",
+        current_time="2026-04-06T20:10:00Z",
+        local_timezone=ZoneInfo("UTC"),
+    )
+
+    assert [contact.contact_id for contact in plan.selected_contacts] == ["ct_lead"]
+    refreshed_types = {
+        row["contact_id"]: row["recipient_type"]
+        for row in connection.execute(
+            """
+            SELECT contact_id, recipient_type
+            FROM job_posting_contacts
+            WHERE job_posting_id = 'jp_outreach'
+            """
+        ).fetchall()
+    }
+    assert refreshed_types["ct_hr"] == RECIPIENT_TYPE_RECRUITER
+    assert refreshed_types["ct_lead"] == RECIPIENT_TYPE_HIRING_MANAGER
+
+    connection.close()
+
+
 def test_send_set_excludes_removed_intended_outreach_contacts(tmp_path: Path):
     project_root, _ = bootstrap_project(tmp_path)
     connection = connect_database(project_root / "job_hunt_copilot.db")
@@ -5043,7 +5154,7 @@ def test_load_sender_identity_keeps_personal_github_when_projects_define_other_g
 
 def test_normalize_managerial_role_split_payload_truncates_debug_signal_lists() -> None:
     payload = {
-        "role_alignment_sentence": "I came across the role and wanted to reach out because it looks closely aligned with the kind of backend systems work I've been trying to do more of.",
+        "role_alignment_sentence": "I'm reaching out about the role because it looks closely aligned with the kind of backend systems work I've been trying to do more of.",
         "problem_hypotheses": [
             "backend service stability",
             "systems integration",
@@ -5184,7 +5295,7 @@ def test_normalize_managerial_role_split_payload_drops_weak_job_hunt_copilot_for
     )
     payload = {
         "role_alignment_sentence": (
-            "I came across the Data Platform Engineer opening at Figma and wanted to reach out because the role looks closely aligned with the kind of platform and workflow systems work I've been trying to do more of."
+            "I'm reaching out about the Data Platform Engineer role at Figma because the role looks closely aligned with the kind of platform and workflow systems work I've been trying to do more of."
         ),
         "problem_hypotheses": [
             "scalable pipelines for product data",
@@ -5302,12 +5413,12 @@ def test_managerial_role_split_normalizes_role_title_artifacts_in_prompt_and_sub
     build_profile_evidence_corpus(connection, paths)
 
     def fake_run(command, *, input, text, capture_output, check, env, timeout):  # type: ignore[no-untyped-def]
-        assert "I came across the Software Engineer – Engineer opening at Qualcomm" in input
-        assert "I came across the #Software Engineer – Engineer opening at Qualcomm" not in input
+        assert "I'm reaching out about the Software Engineer – Engineer role at Qualcomm because" in input
+        assert "I'm reaching out about the #Software Engineer – Engineer role at Qualcomm because" not in input
         output_path = Path(command[command.index("-o") + 1])
         payload = {
             "role_alignment_sentence": (
-                "I came across the Software Engineer – Engineer opening at Qualcomm and wanted to reach out because the role looks closely aligned with the kind of production software and platform work I've been trying to do more of."
+                "I'm reaching out about the Software Engineer – Engineer role at Qualcomm because the role looks closely aligned with the kind of production software and platform work I've been trying to do more of."
             ),
             "problem_hypotheses": [
                 "backend service reliability",
@@ -5673,7 +5784,7 @@ def test_codex_role_split_renderer_generates_managerial_path_body_and_debug_arti
         output_path = Path(command[command.index("-o") + 1])
         payload = {
             "role_alignment_sentence": (
-                "I came across the Software Engineer, GenAI opening at Abridge and wanted to reach out because the role "
+                "I'm reaching out about the Software Engineer, GenAI role at Abridge because the role "
                 "looks closely aligned with the kind of workflow and systems problems I've been trying to work on."
             ),
             "problem_hypotheses": [
@@ -5885,7 +5996,7 @@ def test_role_targeted_original_lint_blocks_plain_text_markdown_leakage_before_p
                 subject="Interest in the Software Engineer, GenAI role at Abridge",
                 body_markdown=(
                     "Hi Alex,\n\n"
-                    "I hope you're doing well. I came across the Software Engineer, GenAI opening at Abridge and wanted to reach out because the role looks closely aligned with the kind of backend systems work I've been trying to do more of. "
+                    "I hope you're doing well. I'm reaching out about the Software Engineer, GenAI role at Abridge because the role looks closely aligned with the kind of backend systems work I've been trying to do more of. "
                     "**If helpful, I'd be happy to build a small proof of concept based on my understanding of the challenges the team is working on and share the repo.**\n"
                 ),
                 body_html="<html><body><p>bad</p></body></html>\n",
@@ -5981,7 +6092,7 @@ def test_role_targeted_original_lint_ignores_posting_link_and_signature_url_infl
         subject="Interest in the Software Engineer role at Viasat",
         body_markdown=(
             "Hi Jay,\n\n"
-            "I hope you're doing well. I came across the Software Engineer opening at Viasat and wanted to reach out because it looks closely aligned with the kind of backend API design work in production systems that I've been trying to do more of. If helpful, I'd be happy to build a small proof of concept based on my understanding of the challenges the team is working on and share the repo.\n\n"
+            "I hope you're doing well. I'm reaching out about the Software Engineer role at Viasat because it looks closely aligned with the kind of backend API design work in production systems that I've been trying to do more of. If helpful, I'd be happy to build a small proof of concept based on my understanding of the challenges the team is working on and share the repo.\n\n"
             "Posting link: https://www.linkedin.com/jobs/view/4430132772/\n\n"
             "Based on the JD, would it be fair to say the team is likely working on the following?\n"
             "- new API design with clear interface boundaries\n"
