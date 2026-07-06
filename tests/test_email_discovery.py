@@ -37,6 +37,7 @@ from job_hunt_copilot.email_discovery import (
     _normalize_getprospect_discovery_result,
     _normalize_hunter_discovery_result,
     _normalize_prospeo_discovery_result,
+    is_role_targeted_email_discovery_contact_actionable_now,
     load_provider_budget_summary,
     refresh_same_company_contact_frontier,
     replay_historical_people_search_shortlist,
@@ -2193,6 +2194,101 @@ def test_email_discovery_does_not_exhaust_contact_when_transient_provider_failur
         """
     ).fetchone()
     assert unresolved_row["unresolved_reason"] == "latest_outcome_domain_unresolved"
+
+    connection.close()
+
+
+def test_email_discovery_exhausts_contact_after_repeated_provider_failures_without_retry_signal(tmp_path: Path):
+    project_root = bootstrap_project(tmp_path)
+    paths = ProjectPaths.from_root(project_root)
+    connection = connect_database(project_root / "job_hunt_copilot.db")
+    seed_search_ready_posting(
+        connection,
+        paths,
+        source_url="https://careers.acmerobotics.com/jobs/123",
+    )
+    seed_linked_contact(connection, linkedin_url=None, provider_person_id=None, identity_key="manual|maya")
+
+    providers = (
+        FakeEmailFinderProvider(
+            provider_name="prospeo",
+            requires_domain=True,
+            responses=[
+                {"outcome": DISCOVERY_OUTCOME_PROVIDER_ERROR},
+                {"outcome": DISCOVERY_OUTCOME_PROVIDER_ERROR},
+                {"outcome": DISCOVERY_OUTCOME_PROVIDER_ERROR},
+            ],
+        ),
+        FakeEmailFinderProvider(
+            provider_name="getprospect",
+            requires_domain=True,
+            responses=[
+                {"outcome": DISCOVERY_OUTCOME_PROVIDER_ERROR},
+                {"outcome": DISCOVERY_OUTCOME_PROVIDER_ERROR},
+                {"outcome": DISCOVERY_OUTCOME_PROVIDER_ERROR},
+            ],
+        ),
+        FakeEmailFinderProvider(
+            provider_name="hunter",
+            responses=[
+                {"outcome": DISCOVERY_OUTCOME_RATE_LIMITED},
+                {"outcome": DISCOVERY_OUTCOME_RATE_LIMITED},
+                {"outcome": DISCOVERY_OUTCOME_RATE_LIMITED},
+            ],
+        ),
+    )
+
+    for timestamp in (
+        "2026-04-06T21:48:00Z",
+        "2026-04-06T22:04:00Z",
+        "2026-04-06T22:20:00Z",
+    ):
+        run_email_discovery_for_contact(
+            project_root=project_root,
+            job_posting_id="jp_search",
+            contact_id="ct_target",
+            providers=providers,
+            current_time=timestamp,
+        )
+
+    contact_row = connection.execute(
+        """
+        SELECT contact_status, discovery_summary
+        FROM contacts
+        WHERE contact_id = 'ct_target'
+        """
+    ).fetchone()
+    assert dict(contact_row) == {
+        "contact_status": CONTACT_STATUS_EXHAUSTED,
+        "discovery_summary": "all_providers_exhausted",
+    }
+
+    link_row = connection.execute(
+        """
+        SELECT link_level_status
+        FROM job_posting_contacts
+        WHERE job_posting_contact_id = 'jpc_target'
+        """
+    ).fetchone()
+    assert link_row["link_level_status"] == POSTING_CONTACT_STATUS_EXHAUSTED
+
+    unresolved_row = connection.execute(
+        """
+        SELECT unresolved_reason
+        FROM unresolved_contacts_review
+        WHERE contact_id = 'ct_target'
+        """
+    ).fetchone()
+    assert unresolved_row["unresolved_reason"] == "contact_exhausted"
+
+    assert not is_role_targeted_email_discovery_contact_actionable_now(
+        connection,
+        project_root=project_root,
+        job_posting_id="jp_search",
+        contact_id="ct_target",
+        current_time="2026-04-06T22:21:00Z",
+        providers=providers,
+    )
 
     connection.close()
 

@@ -2310,6 +2310,10 @@ def run_supervisor_cycle(
         connection,
         current_time=cycle_started_at,
     )
+    _retire_non_runnable_generated_role_targeted_drafts(
+        connection,
+        current_time=cycle_started_at,
+    )
     control_state = read_agent_control_state(connection, timestamp=cycle_started_at)
     selected_work: SupervisorWorkUnit | None = None
     action_id: str | None = None
@@ -6352,6 +6356,82 @@ def _validate_selected_work_result(
         return None
 
     return f"Catalog action {catalog_entry.action_id!r} has no postcondition validator."
+
+
+def _retire_non_runnable_generated_role_targeted_drafts(
+    connection: sqlite3.Connection,
+    *,
+    current_time: str,
+) -> tuple[str, ...]:
+    from .outreach import (
+        MESSAGE_STATUS_FAILED,
+        MESSAGE_STATUS_GENERATED,
+    )
+
+    jpc_columns = {
+        str(row["name"])
+        for row in connection.execute("PRAGMA table_info(job_posting_contacts)").fetchall()
+    }
+    retirement_conditions = [
+        "jpc.job_posting_contact_id IS NULL",
+        "jpc.link_level_status IN ('outreach_done', 'exhausted')",
+    ]
+    if "is_in_intended_outreach_set" in jpc_columns:
+        retirement_conditions.append("COALESCE(jpc.is_in_intended_outreach_set, 0) != 1")
+    if "removed_from_intended_outreach_set_at" in jpc_columns:
+        retirement_conditions.append("jpc.removed_from_intended_outreach_set_at IS NOT NULL")
+
+    query = f"""
+        SELECT om.outreach_message_id
+        FROM outreach_messages AS om
+        LEFT JOIN job_posting_contacts AS jpc
+          ON jpc.job_posting_contact_id = om.job_posting_contact_id
+        LEFT JOIN job_postings AS jp
+          ON jp.job_posting_id = om.job_posting_id
+        WHERE om.outreach_mode = 'role_targeted'
+          AND om.message_status = ?
+          AND (
+            {" OR ".join(retirement_conditions)}
+            OR (
+              jp.posting_status = 'completed'
+              AND NOT EXISTS (
+                SELECT 1
+                FROM pipeline_runs AS pr
+                WHERE pr.job_posting_id = om.job_posting_id
+                  AND pr.run_status IN (?, ?)
+              )
+            )
+          )
+        """
+
+    rows = connection.execute(
+        query,
+        (
+            MESSAGE_STATUS_GENERATED,
+            RUN_STATUS_IN_PROGRESS,
+            RUN_STATUS_PAUSED,
+        ),
+    ).fetchall()
+    retired_ids = tuple(str(row["outreach_message_id"]) for row in rows)
+    if not retired_ids:
+        return ()
+
+    connection.executemany(
+        """
+        UPDATE outreach_messages
+        SET message_status = ?, updated_at = ?
+        WHERE outreach_message_id = ?
+        """,
+        (
+            (
+                MESSAGE_STATUS_FAILED,
+                current_time,
+                outreach_message_id,
+            )
+            for outreach_message_id in retired_ids
+        ),
+    )
+    return retired_ids
 
 
 def _record_progression_failure(

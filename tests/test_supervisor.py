@@ -38,6 +38,7 @@ from job_hunt_copilot.supervisor import (
     SUPERVISOR_CYCLE_RESULT_AUTO_PAUSED,
     SUPERVISOR_CYCLE_RESULT_DEFERRED,
     SUPERVISOR_CYCLE_RESULT_FAILED,
+    SUPERVISOR_CYCLE_RESULT_NO_WORK,
     SUPERVISOR_CYCLE_RESULT_SUCCESS,
     SUPERVISOR_LEASE_NAME,
     DuplicateActivePipelineRun,
@@ -1915,6 +1916,57 @@ def test_run_supervisor_cycle_recovers_orphaned_send_stage_run_into_sending(tmp_
             ),
         },
     ]
+
+
+def test_run_supervisor_cycle_retires_generated_draft_for_completed_posting_before_selection(tmp_path):
+    project_root = bootstrap_project(tmp_path)
+    paths = ProjectPaths.from_root(project_root)
+    connection = connect_database(project_root / "job_hunt_copilot.db")
+    _lead_id, job_posting_id = seed_named_role_targeted_posting(
+        connection,
+        lead_id="ld_completed_stale",
+        job_posting_id="jp_completed_stale",
+        company_name="Dormant Co",
+        role_title="Platform Engineer",
+        posting_status="completed",
+        timestamp="2026-04-06T00:00:00Z",
+    )
+    seed_send_ready_contact_with_generated_message(
+        connection,
+        contact_id="ct_completed_stale",
+        job_posting_contact_id="jpc_completed_stale",
+        job_posting_id=job_posting_id,
+        company_name="Dormant Co",
+        display_name="Riley Dormant",
+        recipient_email="riley@dormant.example",
+        created_at="2026-04-06T00:01:00Z",
+    )
+    resume_agent(
+        connection,
+        manual_command="jhc-agent-start",
+        timestamp="2026-04-06T00:02:00Z",
+    )
+
+    execution = run_supervisor_cycle(
+        connection,
+        paths,
+        trigger_type="launchd_heartbeat",
+        scheduler_name="launchd",
+        started_at="2026-04-06T00:03:00Z",
+        action_dependencies=SupervisorActionDependencies(local_timezone="UTC"),
+    )
+    message_row = connection.execute(
+        """
+        SELECT message_status
+        FROM outreach_messages
+        WHERE outreach_message_id = 'msg_ct_completed_stale'
+        """
+    ).fetchone()
+    connection.close()
+
+    assert execution.cycle.result == SUPERVISOR_CYCLE_RESULT_NO_WORK
+    assert execution.selected_work is None
+    assert message_row["message_status"] == "failed"
 
 
 def test_run_supervisor_cycle_repairs_stale_blocked_gmail_lead(tmp_path, monkeypatch):

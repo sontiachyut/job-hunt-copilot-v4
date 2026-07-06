@@ -96,12 +96,20 @@ DISCOVERY_PROVIDER_COOLDOWN_OUTCOMES = frozenset(
         DISCOVERY_OUTCOME_PROVIDER_ERROR,
     }
 )
+DISCOVERY_REPEATED_PROVIDER_FAILURE_EXHAUSTION_THRESHOLD = 3
+DISCOVERY_PROVIDER_REPEATED_EXHAUSTION_OUTCOMES = frozenset(
+    {
+        DISCOVERY_OUTCOME_PROVIDER_ERROR,
+        DISCOVERY_OUTCOME_RATE_LIMITED,
+    }
+)
 DISCOVERY_PROVIDER_EXHAUSTION_OUTCOMES = frozenset(
     {
         DISCOVERY_OUTCOME_DOMAIN_UNRESOLVED,
         DISCOVERY_OUTCOME_NOT_FOUND,
         DISCOVERY_OUTCOME_BOUNCED_MATCH,
         DISCOVERY_OUTCOME_SKIPPED_BOUNCED_PROVIDER,
+        DISCOVERY_OUTCOME_INVALID_API_KEY,
     }
 )
 
@@ -1862,6 +1870,12 @@ def run_email_discovery_for_contact(
                 attempted_provider_names.append(provider_name)
 
                 if provider_name in feedback_reuse_state["blocked_providers"]:
+                    if _provider_path_spent_for_contact(
+                        connection,
+                        contact_id=contact_id,
+                        provider_name=provider_name,
+                    ):
+                        continue
                     skipped_result = EmailDiscoveryProviderResult(
                         provider_name=provider_name,
                         outcome=DISCOVERY_OUTCOME_SKIPPED_BOUNCED_PROVIDER,
@@ -1875,6 +1889,13 @@ def run_email_discovery_for_contact(
                             contact_id=contact_id,
                             created_at=timestamp,
                         )
+                    continue
+
+                if _provider_path_spent_for_contact(
+                    connection,
+                    contact_id=contact_id,
+                    provider_name=provider_name,
+                ):
                     continue
 
                 if _provider_cooldown_active(
@@ -2077,6 +2098,12 @@ def run_general_learning_email_discovery(
                 attempted_provider_names.append(provider_name)
 
                 if provider_name in feedback_reuse_state["blocked_providers"]:
+                    if _provider_path_spent_for_contact(
+                        connection,
+                        contact_id=contact_id,
+                        provider_name=provider_name,
+                    ):
+                        continue
                     skipped_result = EmailDiscoveryProviderResult(
                         provider_name=provider_name,
                         outcome=DISCOVERY_OUTCOME_SKIPPED_BOUNCED_PROVIDER,
@@ -2090,6 +2117,13 @@ def run_general_learning_email_discovery(
                             contact_id=contact_id,
                             created_at=timestamp,
                         )
+                    continue
+
+                if _provider_path_spent_for_contact(
+                    connection,
+                    contact_id=contact_id,
+                    provider_name=provider_name,
+                ):
                     continue
 
                 if _provider_cooldown_active(
@@ -3035,6 +3069,74 @@ def _provider_cooldown_active(
     return _parse_iso_datetime(cooldown_until) > _parse_iso_datetime(current_time)
 
 
+def _provider_failure_path_has_retry_signal(
+    connection: sqlite3.Connection,
+    *,
+    provider_name: str,
+) -> bool:
+    row = connection.execute(
+        """
+        SELECT remaining_credits, credit_limit, reset_at
+        FROM provider_budget_state
+        WHERE provider_name = ?
+        """,
+        (provider_name,),
+    ).fetchone()
+    if row is None:
+        return False
+    if _normalize_optional_text(row["reset_at"]) is not None:
+        return True
+    return row["remaining_credits"] is not None and row["credit_limit"] is not None
+
+
+def _provider_path_spent_for_contact(
+    connection: sqlite3.Connection,
+    *,
+    contact_id: str,
+    provider_name: str,
+) -> bool:
+    recent_rows = connection.execute(
+        """
+        SELECT event_type
+        FROM provider_budget_events
+        WHERE related_contact_id = ?
+          AND provider_name = ?
+        ORDER BY created_at DESC, provider_budget_event_id DESC
+        LIMIT ?
+        """,
+        (
+            contact_id,
+            provider_name,
+            DISCOVERY_REPEATED_PROVIDER_FAILURE_EXHAUSTION_THRESHOLD,
+        ),
+    ).fetchall()
+    if not recent_rows:
+        return False
+
+    recent_outcomes = [
+        _normalize_optional_text(row["event_type"])
+        for row in recent_rows
+    ]
+    latest_outcome = recent_outcomes[0]
+    if latest_outcome is None:
+        return False
+    if latest_outcome in DISCOVERY_PROVIDER_EXHAUSTION_OUTCOMES:
+        return True
+    if latest_outcome not in DISCOVERY_PROVIDER_REPEATED_EXHAUSTION_OUTCOMES:
+        return False
+    if (
+        latest_outcome == DISCOVERY_OUTCOME_RATE_LIMITED
+        and _provider_failure_path_has_retry_signal(
+            connection,
+            provider_name=provider_name,
+        )
+    ):
+        return False
+    if len(recent_outcomes) < DISCOVERY_REPEATED_PROVIDER_FAILURE_EXHAUSTION_THRESHOLD:
+        return False
+    return all(outcome == latest_outcome for outcome in recent_outcomes)
+
+
 def _build_provider_cooldown_skip_result(
     connection: sqlite3.Connection,
     *,
@@ -3113,12 +3215,11 @@ def is_role_targeted_email_discovery_contact_actionable_now(
     )
     provider_sequence = tuple(providers) if providers is not None else _build_default_email_finder_providers(paths)
     saw_eligible_provider = False
+    saw_unspent_provider = False
     for provider in provider_sequence:
         provider_name = _normalize_optional_text(getattr(provider, "provider_name", None))
         if provider_name is None:
             raise EmailDiscoveryError("Email-finder providers must expose a non-empty `provider_name`.")
-        if provider_name in feedback_reuse_state["blocked_providers"]:
-            continue
         if provider_name == PROVIDER_NAME_PROSPEO:
             linkedin_url = _normalize_optional_text(target_row.get("linkedin_url"))
             first_name, last_name = _contact_name_parts(target_row)
@@ -3135,12 +3236,23 @@ def is_role_targeted_email_discovery_contact_actionable_now(
         if not eligible:
             continue
         saw_eligible_provider = True
+        if provider_name in feedback_reuse_state["blocked_providers"]:
+            continue
+        if _provider_path_spent_for_contact(
+            connection,
+            contact_id=contact_id,
+            provider_name=provider_name,
+        ):
+            continue
+        saw_unspent_provider = True
         if not _provider_cooldown_active(
             connection,
             provider_name=provider_name,
             current_time=current_time,
         ):
             return True
+    if saw_unspent_provider:
+        return False
     return not saw_eligible_provider
 
 
@@ -3930,27 +4042,14 @@ def _all_email_finder_providers_exhausted(
     *,
     contact_id: str,
 ) -> bool:
-    rows = connection.execute(
-        """
-        SELECT DISTINCT provider_name
-        FROM provider_budget_events
-        WHERE related_contact_id = ?
-          AND event_type IN (?, ?, ?, ?)
-        """,
-        (
-            contact_id,
-            DISCOVERY_OUTCOME_DOMAIN_UNRESOLVED,
-            DISCOVERY_OUTCOME_NOT_FOUND,
-            DISCOVERY_OUTCOME_BOUNCED_MATCH,
-            DISCOVERY_OUTCOME_SKIPPED_BOUNCED_PROVIDER,
-        ),
-    ).fetchall()
-    exhausted_provider_names = {
-        str(row["provider_name"]).strip()
-        for row in rows
-        if str(row["provider_name"]).strip()
-    }
-    return all(provider_name in exhausted_provider_names for provider_name in EMAIL_FINDER_PROVIDER_ORDER)
+    return all(
+        _provider_path_spent_for_contact(
+            connection,
+            contact_id=contact_id,
+            provider_name=provider_name,
+        )
+        for provider_name in EMAIL_FINDER_PROVIDER_ORDER
+    )
 
 
 def _publish_discovery_result_artifact(
