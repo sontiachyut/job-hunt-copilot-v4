@@ -3178,7 +3178,7 @@ def _select_open_pipeline_run_work_unit(
     send_ready_only: bool = False,
     defer_ordinary_discovery_backlog: bool = False,
 ) -> SupervisorWorkUnit | None:
-    from .email_discovery import is_role_targeted_email_discovery_actionable_now
+    from .email_discovery import summarize_role_targeted_email_discovery_frontier
     from .outreach import (
         MESSAGE_STATUS_GENERATED,
         _find_next_send_frontier_message,
@@ -3341,12 +3341,13 @@ def _select_open_pipeline_run_work_unit(
                     job_posting_id=job_posting_id,
                 )
                 if posting_status == "requires_contacts":
-                    if not is_role_targeted_email_discovery_actionable_now(
+                    frontier_summary = summarize_role_targeted_email_discovery_frontier(
                         connection,
                         project_root=project_root,
                         job_posting_id=job_posting_id,
                         current_time=current_time,
-                    ):
+                    )
+                    if not frontier_summary.actionable_now and not frontier_summary.requires_settlement:
                         continue
         if pipeline_run.current_stage == "people_search":
             job_posting_id = _optional_text(pipeline_run.job_posting_id)
@@ -4270,7 +4271,7 @@ def _validate_selected_work(
         return None
 
     if catalog_entry.action_id == ACTION_RUN_ROLE_TARGETED_EMAIL_DISCOVERY:
-        from .email_discovery import is_role_targeted_email_discovery_actionable_now
+        from .email_discovery import summarize_role_targeted_email_discovery_frontier
 
         pipeline_run = get_pipeline_run(connection, selected_work.work_id)
         if pipeline_run is None:
@@ -4319,19 +4320,18 @@ def _validate_selected_work(
                 f"job_posting {job_posting_id!r} is not backed by an approved tailoring "
                 "review for email discovery."
             )
-        if (
-            posting_row[1] == "requires_contacts"
-            and not is_role_targeted_email_discovery_actionable_now(
+        if posting_row[1] == "requires_contacts":
+            frontier_summary = summarize_role_targeted_email_discovery_frontier(
                 connection,
                 project_root=project_root,
                 job_posting_id=job_posting_id,
                 current_time=current_time,
             )
-        ):
-            return (
-                f"pipeline_run {selected_work.work_id!r} is at email_discovery without "
-                "any pending contact that has a callable provider now."
-            )
+            if not frontier_summary.actionable_now and not frontier_summary.requires_settlement:
+                return (
+                    f"pipeline_run {selected_work.work_id!r} is at email_discovery without "
+                    "any pending contact that has a callable provider now."
+                )
         return None
 
     if catalog_entry.action_id == ACTION_RUN_ROLE_TARGETED_SENDING:
@@ -5197,14 +5197,14 @@ def _execute_selected_work_unit(
             EmailDiscoveryError,
             JOB_POSTING_STATUS_READY_FOR_OUTREACH,
             JOB_POSTING_STATUS_REQUIRES_CONTACTS,
-            _list_pending_email_discovery_contact_ids,
             _promote_posting_ready_for_outreach_if_eligible,
-            is_role_targeted_email_discovery_contact_actionable_now,
             refresh_same_company_contact_frontier,
             run_apollo_contact_enrichment,
             run_email_discovery_for_contact,
+            settle_role_targeted_email_discovery_exhausted_contacts,
+            summarize_role_targeted_email_discovery_frontier,
         )
-        from .outreach import evaluate_role_targeted_send_set
+        from .outreach import JOB_POSTING_STATUS_COMPLETED, evaluate_role_targeted_send_set
 
         job_posting_id = _require_text(selected_work.job_posting_id, "job_posting_id")
         lead_id = _require_text(selected_work.lead_id, "lead_id")
@@ -5227,28 +5227,15 @@ def _execute_selected_work_unit(
             current_time=timestamp,
             connection=connection,
         )
-        def _load_pending_email_discovery_contact_ids() -> list[str]:
-            return _list_pending_email_discovery_contact_ids(
+
+        def _load_email_discovery_frontier_summary():
+            return summarize_role_targeted_email_discovery_frontier(
                 connection,
+                project_root=paths.project_root,
                 job_posting_id=job_posting_id,
                 current_time=timestamp,
+                providers=action_dependencies.email_finder_providers,
             )
-
-        def _load_actionable_email_discovery_contact_ids(
-            contact_ids: list[str],
-        ) -> list[str]:
-            return [
-                contact_id
-                for contact_id in contact_ids
-                if is_role_targeted_email_discovery_contact_actionable_now(
-                    connection,
-                    project_root=paths.project_root,
-                    job_posting_id=job_posting_id,
-                    contact_id=contact_id,
-                    current_time=timestamp,
-                    providers=action_dependencies.email_finder_providers,
-                )
-            ]
 
         def _force_requires_contacts() -> None:
             latest_posting_status = _load_posting_status(connection, job_posting_id=job_posting_id)
@@ -5273,6 +5260,81 @@ def _execute_selected_work_unit(
                 job_posting_id=job_posting_id,
                 lead_id=lead_id,
                 current_time=timestamp,
+            )
+
+        def _complete_exhausted_email_discovery(
+            *,
+            exhausted_contact_count: int,
+        ) -> tuple[PipelineRunRecord, None, None]:
+            previous_status = _load_posting_status(connection, job_posting_id=job_posting_id)
+            if previous_status != JOB_POSTING_STATUS_COMPLETED:
+                with connection:
+                    connection.execute(
+                        """
+                        UPDATE job_postings
+                        SET posting_status = ?, updated_at = ?
+                        WHERE job_posting_id = ?
+                        """,
+                        (
+                            JOB_POSTING_STATUS_COMPLETED,
+                            timestamp,
+                            job_posting_id,
+                        ),
+                    )
+                    _record_state_transition(
+                        connection,
+                        object_type="job_posting",
+                        object_id=job_posting_id,
+                        stage="posting_status",
+                        previous_state=previous_status,
+                        new_state=JOB_POSTING_STATUS_COMPLETED,
+                        transition_timestamp=timestamp,
+                        transition_reason=(
+                            "Supervisor settled role-targeted email discovery because the remaining "
+                            "automatic manager/engineer frontier no longer had any callable or "
+                            "recoverable email-discovery path."
+                        ),
+                        lead_id=posting_lead_id,
+                        job_posting_id=job_posting_id,
+                        contact_id=None,
+                    )
+            sent_count = _count_posting_outreach_messages_with_status(
+                connection,
+                job_posting_id=job_posting_id,
+                message_status="sent",
+            )
+            if sent_count > 0:
+                return (
+                    advance_pipeline_run(
+                        connection,
+                        selected_work.work_id,
+                        current_stage="delivery_feedback",
+                        run_summary=(
+                            "Supervisor exhausted "
+                            f"{exhausted_contact_count} stale email-discovery contact(s), "
+                            "found no remaining automatic send frontier, and advanced the durable "
+                            "pipeline run to delivery_feedback because prior outreach history exists."
+                        ),
+                        timestamp=timestamp,
+                    ),
+                    None,
+                    None,
+                )
+            return (
+                complete_pipeline_run(
+                    connection,
+                    selected_work.work_id,
+                    current_stage="completed",
+                    run_summary=(
+                        "Supervisor exhausted "
+                        f"{exhausted_contact_count} stale email-discovery contact(s), "
+                        "found no remaining automatic send frontier, and closed the durable "
+                        "pipeline run because no automatic outreach remained."
+                    ),
+                    timestamp=timestamp,
+                ),
+                None,
+                None,
             )
 
         if current_posting_status == JOB_POSTING_STATUS_READY_FOR_OUTREACH:
@@ -5344,52 +5406,78 @@ def _execute_selected_work_unit(
                 )
                 return pipeline_run, None, None
 
-            def _escalate_exhausted_email_discovery() -> tuple[PipelineRunRecord, None, None]:
-                return (
-                    escalate_pipeline_run(
-                        connection,
-                        selected_work.work_id,
-                        current_stage="email_discovery",
-                        error_summary=(
-                            "Bounded email discovery exhausted the current send set "
-                            f"without a usable email for job_posting {job_posting_id!r}."
-                        ),
-                        run_summary=(
-                            "Supervisor escalated the durable pipeline run at the "
-                            "email_discovery boundary because bounded discovery "
-                            "exhausted the current send set without a usable email."
-                        ),
-                        timestamp=timestamp,
-                    ),
-                    None,
-                    None,
-                )
-
-            pending_contact_ids = _load_pending_email_discovery_contact_ids()
-            if not pending_contact_ids:
+            frontier_summary = _load_email_discovery_frontier_summary()
+            if not frontier_summary.pending_contact_ids:
                 send_set_plan = evaluate_role_targeted_send_set(
                     connection,
                     job_posting_id=job_posting_id,
                     current_time=timestamp,
                 )
                 if not send_set_plan.selected_contacts:
-                    return _escalate_exhausted_email_discovery()
+                    return _complete_exhausted_email_discovery(exhausted_contact_count=0)
                 next_stage = "sending"
                 run_summary = (
                     "Supervisor confirmed that email discovery had already settled for "
                     "all shortlisted contacts and advanced the durable pipeline run to sending."
                 )
             else:
-                actionable_contact_ids = _load_actionable_email_discovery_contact_ids(
-                    pending_contact_ids
-                )
+                actionable_contact_ids = list(frontier_summary.actionable_contact_ids)
                 if not actionable_contact_ids:
+                    if frontier_summary.cooldown_only:
+                        _force_requires_contacts()
+                        next_stage = "email_discovery"
+                        run_summary = (
+                            "Supervisor kept the durable pipeline run at email_discovery "
+                            "because pending contacts are waiting for provider cooldowns "
+                            "to expire before another discovery attempt is due."
+                        )
+                        pipeline_run = advance_pipeline_run(
+                            connection,
+                            selected_work.work_id,
+                            current_stage=next_stage,
+                            run_summary=run_summary,
+                            timestamp=timestamp,
+                        )
+                        return pipeline_run, None, None
+                    exhausted_contact_ids = settle_role_targeted_email_discovery_exhausted_contacts(
+                        connection,
+                        project_root=paths.project_root,
+                        job_posting_id=job_posting_id,
+                        contact_ids=frontier_summary.pending_contact_ids,
+                        current_time=timestamp,
+                        providers=action_dependencies.email_finder_providers,
+                    )
+                    refreshed_send_set_plan = evaluate_role_targeted_send_set(
+                        connection,
+                        job_posting_id=job_posting_id,
+                        current_time=timestamp,
+                    )
+                    current_posting_status = _promote_ready_for_outreach_if_eligible()
+                    if current_posting_status == JOB_POSTING_STATUS_READY_FOR_OUTREACH:
+                        next_stage = "sending"
+                        run_summary = (
+                            "Supervisor exhausted stale email-discovery contacts and advanced "
+                            "the durable pipeline run to sending because a ready subset still "
+                            "remained in the active send frontier."
+                        )
+                        pipeline_run = advance_pipeline_run(
+                            connection,
+                            selected_work.work_id,
+                            current_stage=next_stage,
+                            run_summary=run_summary,
+                            timestamp=timestamp,
+                        )
+                        return pipeline_run, None, None
+                    if not refreshed_send_set_plan.selected_contacts:
+                        return _complete_exhausted_email_discovery(
+                            exhausted_contact_count=len(exhausted_contact_ids),
+                        )
                     _force_requires_contacts()
                     next_stage = "email_discovery"
                     run_summary = (
-                        "Supervisor kept the durable pipeline run at email_discovery "
-                        "because pending contacts are waiting for provider cooldowns "
-                        "to expire before another discovery attempt is due."
+                        "Supervisor exhausted stale email-discovery contacts and kept the durable "
+                        "pipeline run at email_discovery because other pending selected contacts "
+                        "still remain for later automatic discovery."
                     )
                     pipeline_run = advance_pipeline_run(
                         connection,
@@ -5408,10 +5496,7 @@ def _execute_selected_work_unit(
                         current_time=timestamp,
                     )
 
-                remaining_pending_contact_ids = _load_pending_email_discovery_contact_ids()
-                remaining_actionable_contact_ids = _load_actionable_email_discovery_contact_ids(
-                    remaining_pending_contact_ids
-                )
+                remaining_frontier_summary = _load_email_discovery_frontier_summary()
                 current_posting_status = _promote_ready_for_outreach_if_eligible()
                 refreshed_send_set_plan = evaluate_role_targeted_send_set(
                     connection,
@@ -5420,7 +5505,7 @@ def _execute_selected_work_unit(
                 )
                 if current_posting_status == JOB_POSTING_STATUS_READY_FOR_OUTREACH:
                     next_stage = "sending"
-                    if remaining_pending_contact_ids:
+                    if remaining_frontier_summary.pending_contact_ids:
                         run_summary = (
                             "Supervisor ran full-frontier email discovery for "
                             f"{len(actionable_contact_ids)} shortlisted contacts and advanced the durable "
@@ -5433,24 +5518,51 @@ def _execute_selected_work_unit(
                             f"{len(actionable_contact_ids)} shortlisted contacts and advanced the durable "
                             "pipeline run to sending once discovery settled across the current frontier."
                         )
-                elif remaining_pending_contact_ids:
-                    _force_requires_contacts()
-                    next_stage = "email_discovery"
-                    if remaining_actionable_contact_ids:
-                        run_summary = (
-                            "Supervisor ran full-frontier email discovery for "
-                            f"{len(actionable_contact_ids)} shortlisted contacts and kept the durable "
-                            "pipeline run at email_discovery because some contacts still need usable emails."
-                        )
-                    else:
+                elif remaining_frontier_summary.pending_contact_ids:
+                    if remaining_frontier_summary.cooldown_only:
+                        _force_requires_contacts()
+                        next_stage = "email_discovery"
                         run_summary = (
                             "Supervisor ran bounded email discovery for "
                             f"{len(actionable_contact_ids)} shortlisted contacts and kept the durable "
                             "pipeline run at email_discovery because the remaining contacts are waiting "
                             "for provider cooldowns to expire."
                         )
+                    elif remaining_frontier_summary.actionable_contact_ids:
+                        _force_requires_contacts()
+                        next_stage = "email_discovery"
+                        run_summary = (
+                            "Supervisor ran full-frontier email discovery for "
+                            f"{len(actionable_contact_ids)} shortlisted contacts and kept the durable "
+                            "pipeline run at email_discovery because some contacts still need usable emails."
+                        )
+                    else:
+                        exhausted_contact_ids = settle_role_targeted_email_discovery_exhausted_contacts(
+                            connection,
+                            project_root=paths.project_root,
+                            job_posting_id=job_posting_id,
+                            contact_ids=remaining_frontier_summary.pending_contact_ids,
+                            current_time=timestamp,
+                            providers=action_dependencies.email_finder_providers,
+                        )
+                        refreshed_send_set_plan = evaluate_role_targeted_send_set(
+                            connection,
+                            job_posting_id=job_posting_id,
+                            current_time=timestamp,
+                        )
+                        if not refreshed_send_set_plan.selected_contacts:
+                            return _complete_exhausted_email_discovery(
+                                exhausted_contact_count=len(exhausted_contact_ids),
+                            )
+                        _force_requires_contacts()
+                        next_stage = "email_discovery"
+                        run_summary = (
+                            "Supervisor exhausted the remaining stale email-discovery contacts "
+                            f"after {len(actionable_contact_ids)} discovery attempt(s) and kept the durable "
+                            "pipeline run at email_discovery because a different pending frontier still remains."
+                        )
                 elif not refreshed_send_set_plan.selected_contacts:
-                    return _escalate_exhausted_email_discovery()
+                    return _complete_exhausted_email_discovery(exhausted_contact_count=0)
                 else:
                     next_stage = "sending"
                     run_summary = (
@@ -6320,14 +6432,22 @@ def _validate_selected_work_result(
             return "Supervisor failed to load the selected pipeline_run after email discovery."
         if pipeline_run.pipeline_run_id != selected_work.work_id:
             return "Email discovery changed the selected pipeline_run identity."
-        if pipeline_run.run_status not in {RUN_STATUS_IN_PROGRESS, RUN_STATUS_ESCALATED}:
+        if pipeline_run.run_status not in {
+            RUN_STATUS_IN_PROGRESS,
+            RUN_STATUS_ESCALATED,
+            RUN_STATUS_COMPLETED,
+        }:
             return (
                 "Email discovery left the pipeline_run outside the expected active/terminal state; found "
                 f"{pipeline_run.run_status!r}."
             )
+        allowed_terminal_transition = (
+            pipeline_run.current_stage in {"delivery_feedback", "completed"}
+            and pipeline_run.run_status in {RUN_STATUS_IN_PROGRESS, RUN_STATUS_COMPLETED}
+        )
         if pipeline_run.current_stage != "email_discovery" and not (
             pipeline_run.run_status == RUN_STATUS_IN_PROGRESS and pipeline_run.current_stage == "sending"
-        ):
+        ) and not allowed_terminal_transition:
             return (
                 "Email discovery did not keep the durable pipeline run at the current "
                 f"boundary or advance it to sending; found {pipeline_run.current_stage!r}."
@@ -6377,6 +6497,13 @@ def _validate_selected_work_result(
                 return (
                     "Email discovery should advance to sending when "
                     f"posting_status=ready_for_outreach, but found {pipeline_run.current_stage!r}."
+                )
+            return None
+        if posting_row[0] == "completed":
+            if pipeline_run.current_stage not in {"delivery_feedback", "completed"}:
+                return (
+                    "Email discovery should close the stale discovery run once the "
+                    f"automatic frontier is exhausted, but found {pipeline_run.current_stage!r}."
                 )
             return None
         if posting_row[0] not in {"requires_contacts", "ready_for_outreach"}:

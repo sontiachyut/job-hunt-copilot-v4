@@ -82,6 +82,9 @@ DISCOVERY_OUTCOME_PROVIDER_PAUSED = "provider_paused"
 DISCOVERY_OUTCOME_SKIPPED_BOUNCED_PROVIDER = "skipped_bounced_provider"
 DISCOVERY_OUTCOME_BOUNCED_MATCH = "bounced_match"
 DISCOVERY_SUMMARY_APOLLO_NO_USABLE_EMAIL = "apollo_enrichment_no_usable_email"
+DISCOVERY_CONTACT_STATE_ACTIONABLE_NOW = "actionable_now"
+DISCOVERY_CONTACT_STATE_COOLDOWN_ONLY = "cooldown_only"
+DISCOVERY_CONTACT_STATE_EXHAUSTED = "exhausted"
 
 EMAIL_FINDER_PROVIDER_ORDER = (
     PROVIDER_NAME_PROSPEO,
@@ -731,6 +734,39 @@ class EmailDiscoveryRunResult:
     contact_status: str
     link_level_status: str
     reused_existing_email: bool
+
+
+@dataclass(frozen=True)
+class RoleTargetedEmailDiscoveryFrontierSummary:
+    ready_for_outreach: bool
+    selected_contact_ids: tuple[str, ...]
+    pending_contact_ids: tuple[str, ...]
+    actionable_contact_ids: tuple[str, ...]
+    cooldown_contact_ids: tuple[str, ...]
+    exhausted_contact_ids: tuple[str, ...]
+
+    @property
+    def actionable_now(self) -> bool:
+        return self.ready_for_outreach or bool(self.actionable_contact_ids)
+
+    @property
+    def cooldown_only(self) -> bool:
+        return (
+            bool(self.pending_contact_ids)
+            and not self.actionable_contact_ids
+            and bool(self.cooldown_contact_ids)
+            and not self.exhausted_contact_ids
+        )
+
+    @property
+    def requires_settlement(self) -> bool:
+        if self.ready_for_outreach or self.actionable_contact_ids:
+            return False
+        if not self.selected_contact_ids:
+            return True
+        if not self.pending_contact_ids:
+            return False
+        return len(self.exhausted_contact_ids) == len(self.pending_contact_ids)
 
 
 @dataclass(frozen=True)
@@ -2496,9 +2532,11 @@ def run_email_discovery_for_contact(
             else:
                 _apply_discovery_failure(
                     connection,
+                    project_root=paths.project_root,
                     target_row=target_row,
                     result=final_result,
                     current_time=timestamp,
+                    providers=provider_sequence,
                 )
 
             posting_status = _promote_posting_ready_for_outreach_if_eligible(
@@ -5039,6 +5077,133 @@ def _build_provider_cooldown_skip_result(
     )
 
 
+def _provider_is_email_discovery_eligible(
+    *,
+    provider_name: str,
+    provider: EmailFinderProvider,
+    target_row: Mapping[str, Any],
+    company_domain: str | None,
+) -> bool:
+    if provider_name == PROVIDER_NAME_PROSPEO:
+        linkedin_url = _normalize_optional_text(target_row.get("linkedin_url"))
+        first_name, last_name = _contact_name_parts(target_row)
+        return bool(linkedin_url or (company_domain and first_name and last_name))
+    if provider_name == PROVIDER_NAME_GETPROSPECT:
+        return bool(company_domain and _best_known_contact_name(target_row))
+    if provider_name == PROVIDER_NAME_HUNTER:
+        first_name, last_name = _contact_name_parts(target_row)
+        company_name = _normalize_optional_text(target_row.get("company_name"))
+        return bool(first_name and last_name and (company_domain or company_name))
+    requires_domain = bool(getattr(provider, "requires_domain", False))
+    return not requires_domain or company_domain is not None
+
+
+def classify_role_targeted_email_discovery_contact_state(
+    connection: sqlite3.Connection,
+    *,
+    project_root: Path | str,
+    job_posting_id: str,
+    contact_id: str,
+    current_time: str,
+    providers: Sequence[EmailFinderProvider] | None = None,
+) -> str:
+    paths = ProjectPaths.from_root(project_root)
+    target_row = _load_discovery_ready_contact_row(
+        connection,
+        job_posting_id=job_posting_id,
+        contact_id=contact_id,
+    )
+    feedback_reuse_state = _load_contact_feedback_reuse_state(
+        connection,
+        contact_id=contact_id,
+    )
+    company_domain = (
+        _resolved_company_domain_from_people_search_payload(paths, target_row)
+        or _derive_company_domain(target_row)
+    )
+    provider_sequence = tuple(providers) if providers is not None else _build_default_email_finder_providers(paths)
+    saw_recoverable_provider = False
+    saw_cooldown_only_provider = False
+    for provider in provider_sequence:
+        provider_name = _normalize_optional_text(getattr(provider, "provider_name", None))
+        if provider_name is None:
+            raise EmailDiscoveryError("Email-finder providers must expose a non-empty `provider_name`.")
+        if provider_name in feedback_reuse_state["blocked_providers"]:
+            continue
+        if not _provider_is_email_discovery_eligible(
+            provider_name=provider_name,
+            provider=provider,
+            target_row=target_row,
+            company_domain=company_domain,
+        ):
+            continue
+        if _provider_path_spent_for_contact(
+            connection,
+            contact_id=contact_id,
+            provider_name=provider_name,
+        ):
+            continue
+        saw_recoverable_provider = True
+        if not _provider_cooldown_active(
+            connection,
+            provider_name=provider_name,
+            current_time=current_time,
+        ):
+            return DISCOVERY_CONTACT_STATE_ACTIONABLE_NOW
+        saw_cooldown_only_provider = True
+    if saw_cooldown_only_provider:
+        return DISCOVERY_CONTACT_STATE_COOLDOWN_ONLY
+    if not saw_recoverable_provider:
+        return DISCOVERY_CONTACT_STATE_EXHAUSTED
+    return DISCOVERY_CONTACT_STATE_EXHAUSTED
+
+
+def summarize_role_targeted_email_discovery_frontier(
+    connection: sqlite3.Connection,
+    *,
+    project_root: Path | str,
+    job_posting_id: str,
+    current_time: str,
+    providers: Sequence[EmailFinderProvider] | None = None,
+) -> RoleTargetedEmailDiscoveryFrontierSummary:
+    send_set_plan = evaluate_role_targeted_send_set(
+        connection,
+        job_posting_id=job_posting_id,
+        current_time=current_time,
+    )
+    pending_contact_ids = tuple(
+        contact.contact_id
+        for contact in send_set_plan.selected_contacts
+        if not contact.has_usable_email
+    )
+    actionable_contact_ids: list[str] = []
+    cooldown_contact_ids: list[str] = []
+    exhausted_contact_ids: list[str] = []
+    for contact_id in pending_contact_ids:
+        state = classify_role_targeted_email_discovery_contact_state(
+            connection,
+            project_root=project_root,
+            job_posting_id=job_posting_id,
+            contact_id=contact_id,
+            current_time=current_time,
+            providers=providers,
+        )
+        if state == DISCOVERY_CONTACT_STATE_ACTIONABLE_NOW:
+            actionable_contact_ids.append(contact_id)
+        elif state == DISCOVERY_CONTACT_STATE_COOLDOWN_ONLY:
+            cooldown_contact_ids.append(contact_id)
+        else:
+            exhausted_contact_ids.append(contact_id)
+    return RoleTargetedEmailDiscoveryFrontierSummary(
+        ready_for_outreach=send_set_plan.ready_for_outreach and bool(send_set_plan.selected_contacts),
+        selected_contact_ids=tuple(contact.contact_id for contact in send_set_plan.selected_contacts),
+        pending_contact_ids=pending_contact_ids,
+        actionable_contact_ids=tuple(actionable_contact_ids),
+        cooldown_contact_ids=tuple(cooldown_contact_ids),
+        exhausted_contact_ids=tuple(exhausted_contact_ids),
+    )
+
+
 def _list_pending_email_discovery_contact_ids(
     connection: sqlite3.Connection,
     *,
@@ -5066,62 +5231,17 @@ def is_role_targeted_email_discovery_contact_actionable_now(
     current_time: str,
     providers: Sequence[EmailFinderProvider] | None = None,
 ) -> bool:
-    paths = ProjectPaths.from_root(project_root)
-    target_row = _load_discovery_ready_contact_row(
-        connection,
-        job_posting_id=job_posting_id,
-        contact_id=contact_id,
-    )
-    feedback_reuse_state = _load_contact_feedback_reuse_state(
-        connection,
-        contact_id=contact_id,
-    )
-    company_domain = (
-        _resolved_company_domain_from_people_search_payload(paths, target_row)
-        or _derive_company_domain(target_row)
-    )
-    provider_sequence = tuple(providers) if providers is not None else _build_default_email_finder_providers(paths)
-    saw_eligible_provider = False
-    saw_unspent_provider = False
-    for provider in provider_sequence:
-        provider_name = _normalize_optional_text(getattr(provider, "provider_name", None))
-        if provider_name is None:
-            raise EmailDiscoveryError("Email-finder providers must expose a non-empty `provider_name`.")
-        if provider_name in feedback_reuse_state["blocked_providers"]:
-            saw_eligible_provider = True
-            continue
-        if provider_name == PROVIDER_NAME_PROSPEO:
-            linkedin_url = _normalize_optional_text(target_row.get("linkedin_url"))
-            first_name, last_name = _contact_name_parts(target_row)
-            eligible = bool(linkedin_url or (company_domain and first_name and last_name))
-        elif provider_name == PROVIDER_NAME_GETPROSPECT:
-            eligible = bool(company_domain and _best_known_contact_name(target_row))
-        elif provider_name == PROVIDER_NAME_HUNTER:
-            first_name, last_name = _contact_name_parts(target_row)
-            company_name = _normalize_optional_text(target_row.get("company_name"))
-            eligible = bool(first_name and last_name and (company_domain or company_name))
-        else:
-            requires_domain = bool(getattr(provider, "requires_domain", False))
-            eligible = not requires_domain or company_domain is not None
-        if not eligible:
-            continue
-        saw_eligible_provider = True
-        if _provider_path_spent_for_contact(
+    return (
+        classify_role_targeted_email_discovery_contact_state(
             connection,
+            project_root=project_root,
+            job_posting_id=job_posting_id,
             contact_id=contact_id,
-            provider_name=provider_name,
-        ):
-            continue
-        saw_unspent_provider = True
-        if not _provider_cooldown_active(
-            connection,
-            provider_name=provider_name,
             current_time=current_time,
-        ):
-            return True
-    if saw_eligible_provider and not saw_unspent_provider:
-        return False
-    return not saw_eligible_provider
+            providers=providers,
+        )
+        == DISCOVERY_CONTACT_STATE_ACTIONABLE_NOW
+    )
 
 
 def is_role_targeted_email_discovery_actionable_now(
@@ -5132,31 +5252,13 @@ def is_role_targeted_email_discovery_actionable_now(
     current_time: str,
     providers: Sequence[EmailFinderProvider] | None = None,
 ) -> bool:
-    send_set_plan = evaluate_role_targeted_send_set(
+    return summarize_role_targeted_email_discovery_frontier(
         connection,
+        project_root=project_root,
         job_posting_id=job_posting_id,
         current_time=current_time,
-    )
-    if send_set_plan.ready_for_outreach and send_set_plan.selected_contacts:
-        return True
-    pending_contact_ids = [
-        contact.contact_id
-        for contact in send_set_plan.selected_contacts
-        if not contact.has_usable_email
-    ]
-    if not pending_contact_ids:
-        return False
-    return any(
-        is_role_targeted_email_discovery_contact_actionable_now(
-            connection,
-            project_root=project_root,
-            job_posting_id=job_posting_id,
-            contact_id=contact_id,
-            current_time=current_time,
-            providers=providers,
-        )
-        for contact_id in pending_contact_ids
-    )
+        providers=providers,
+    ).actionable_now
 
 
 def is_role_targeted_people_search_actionable_now(
@@ -5773,13 +5875,22 @@ def _apply_discovery_success(
 def _apply_discovery_failure(
     connection: sqlite3.Connection,
     *,
+    project_root: Path | str,
     target_row: Mapping[str, Any],
     result: EmailDiscoveryProviderResult,
     current_time: str,
+    providers: Sequence[EmailFinderProvider] | None = None,
 ) -> None:
-    exhausted = _all_email_finder_providers_exhausted(
-        connection,
-        contact_id=str(target_row["contact_id"]),
+    exhausted = (
+        classify_role_targeted_email_discovery_contact_state(
+            connection,
+            project_root=project_root,
+            job_posting_id=str(target_row["job_posting_id"]),
+            contact_id=str(target_row["contact_id"]),
+            current_time=current_time,
+            providers=providers,
+        )
+        == DISCOVERY_CONTACT_STATE_EXHAUSTED
     )
     discovery_summary = "all_providers_exhausted" if exhausted else result.outcome
     connection.execute(
@@ -5851,6 +5962,49 @@ def _apply_discovery_failure(
             job_posting_id=str(target_row["job_posting_id"]),
             contact_id=str(target_row["contact_id"]),
         )
+
+
+def settle_role_targeted_email_discovery_exhausted_contacts(
+    connection: sqlite3.Connection,
+    *,
+    project_root: Path | str,
+    job_posting_id: str,
+    contact_ids: Sequence[str],
+    current_time: str,
+    providers: Sequence[EmailFinderProvider] | None = None,
+) -> tuple[str, ...]:
+    exhausted_contact_ids: list[str] = []
+    for contact_id in contact_ids:
+        if (
+            classify_role_targeted_email_discovery_contact_state(
+                connection,
+                project_root=project_root,
+                job_posting_id=job_posting_id,
+                contact_id=contact_id,
+                current_time=current_time,
+                providers=providers,
+            )
+            != DISCOVERY_CONTACT_STATE_EXHAUSTED
+        ):
+            continue
+        target_row = _load_discovery_ready_contact_row(
+            connection,
+            job_posting_id=job_posting_id,
+            contact_id=contact_id,
+        )
+        _apply_discovery_failure(
+            connection,
+            project_root=project_root,
+            target_row=target_row,
+            result=EmailDiscoveryProviderResult(
+                provider_name="",
+                outcome=DISCOVERY_OUTCOME_NOT_FOUND,
+            ),
+            current_time=current_time,
+            providers=providers,
+        )
+        exhausted_contact_ids.append(contact_id)
+    return tuple(exhausted_contact_ids)
 
 
 def _apply_role_targeted_apollo_no_email_exhaustion(

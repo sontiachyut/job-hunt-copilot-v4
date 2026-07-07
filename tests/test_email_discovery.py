@@ -25,6 +25,7 @@ from job_hunt_copilot.email_discovery import (
     DISCOVERY_OUTCOME_PROVIDER_PAUSED,
     DISCOVERY_OUTCOME_QUOTA_EXHAUSTED,
     DISCOVERY_OUTCOME_RATE_LIMITED,
+    DISCOVERY_CONTACT_STATE_EXHAUSTED,
     EmailDiscoveryError,
     EmailDiscoveryProviderResult,
     FEEDBACK_REUSE_PROVIDER_NAME,
@@ -44,6 +45,7 @@ from job_hunt_copilot.email_discovery import (
     load_provider_budget_summary,
     refresh_same_company_contact_frontier,
     replay_historical_people_search_shortlist,
+    classify_role_targeted_email_discovery_contact_state,
     is_role_targeted_email_discovery_actionable_now,
     is_role_targeted_people_search_actionable_now,
     run_apollo_contact_enrichment,
@@ -51,6 +53,8 @@ from job_hunt_copilot.email_discovery import (
     run_email_discovery_for_contact,
     run_general_learning_email_discovery,
     select_initial_enrichment_shortlist,
+    settle_role_targeted_email_discovery_exhausted_contacts,
+    summarize_role_targeted_email_discovery_frontier,
     _build_apollo_search_filters,
     _candidate_is_manager_class,
     _manager_expansion_target_for_pool_size,
@@ -1058,7 +1062,7 @@ def test_apollo_people_search_persists_broad_result_and_shortlists_only_selected
     project_root = bootstrap_project(tmp_path)
     paths = ProjectPaths.from_root(project_root)
     connection = connect_database(project_root / "job_hunt_copilot.db")
-    seed_search_ready_posting(connection, paths)
+    seed_search_ready_posting(connection, paths, source_url="")
 
     provider = FakeApolloProvider(
         resolved_company=ApolloResolvedCompany(
@@ -1227,7 +1231,7 @@ def test_apollo_people_search_reuses_existing_contact_and_promotes_identified_li
     project_root = bootstrap_project(tmp_path)
     paths = ProjectPaths.from_root(project_root)
     connection = connect_database(project_root / "job_hunt_copilot.db")
-    seed_search_ready_posting(connection, paths)
+    seed_search_ready_posting(connection, paths, source_url="")
 
     connection.execute(
         """
@@ -1697,6 +1701,84 @@ def test_removed_intended_outreach_contact_is_not_discovery_ready(tmp_path: Path
         ),
     ) is False
     connection.close()
+
+
+def test_email_discovery_frontier_requires_settlement_when_selected_contact_has_no_recoverable_provider_path(
+    tmp_path: Path,
+):
+    project_root = bootstrap_project(tmp_path)
+    paths = ProjectPaths.from_root(project_root)
+    connection = connect_database(project_root / "job_hunt_copilot.db")
+    seed_search_ready_posting(connection, paths, source_url="")
+    seed_linked_contact(
+        connection,
+        contact_id="ct_unrecoverable",
+        job_posting_contact_id="jpc_unrecoverable",
+        display_name="Unrecoverable",
+        full_name=None,
+        first_name=None,
+        last_name=None,
+        linkedin_url=None,
+        position_title="Software Engineer",
+        recipient_type=RECIPIENT_TYPE_ENGINEER,
+        current_working_email=None,
+        provider_name=None,
+        provider_person_id=None,
+        identity_key="jobright|unrecoverable",
+        contact_source_type="jobright_public",
+        contact_source_priority_tier=2,
+        contact_source_rank=1,
+        is_in_intended_outreach_set=1,
+        created_at="2026-04-06T22:00:00Z",
+    )
+
+    providers = (
+        FakeEmailFinderProvider(provider_name="prospeo", responses=[]),
+        FakeEmailFinderProvider(provider_name="getprospect", responses=[]),
+        FakeEmailFinderProvider(provider_name="hunter", responses=[]),
+    )
+    summary = summarize_role_targeted_email_discovery_frontier(
+        connection,
+        project_root=project_root,
+        job_posting_id="jp_search",
+        current_time="2026-04-06T22:10:00Z",
+        providers=providers,
+    )
+    contact_state = classify_role_targeted_email_discovery_contact_state(
+        connection,
+        project_root=project_root,
+        job_posting_id="jp_search",
+        contact_id="ct_unrecoverable",
+        current_time="2026-04-06T22:10:00Z",
+        providers=providers,
+    )
+    settled_contact_ids = settle_role_targeted_email_discovery_exhausted_contacts(
+        connection,
+        project_root=project_root,
+        job_posting_id="jp_search",
+        contact_ids=["ct_unrecoverable"],
+        current_time="2026-04-06T22:10:00Z",
+        providers=providers,
+    )
+    settled_row = connection.execute(
+        """
+        SELECT c.contact_status, c.discovery_summary, jpc.link_level_status
+        FROM contacts c
+        JOIN job_posting_contacts jpc ON jpc.contact_id = c.contact_id
+        WHERE c.contact_id = ?
+        """,
+        ("ct_unrecoverable",),
+    ).fetchone()
+    connection.close()
+
+    assert contact_state == DISCOVERY_CONTACT_STATE_EXHAUSTED
+    assert summary.actionable_now is False
+    assert summary.requires_settlement is True
+    assert summary.exhausted_contact_ids == ("ct_unrecoverable",)
+    assert settled_contact_ids == ("ct_unrecoverable",)
+    assert settled_row["contact_status"] == CONTACT_STATUS_EXHAUSTED
+    assert settled_row["discovery_summary"] == "all_providers_exhausted"
+    assert settled_row["link_level_status"] == POSTING_CONTACT_STATUS_EXHAUSTED
 
 
 def test_apollo_people_search_reuses_same_company_apollo_key_before_company_resolution(tmp_path: Path):

@@ -1845,6 +1845,15 @@ Feature: Job Hunt Copilot next-build acceptance
       And the contact is not left pending forever only because those same provider calls could be retried again
       And the posting may exhaust that contact once no callable or plausibly recoverable provider path remains
 
+    Scenario: Stale email discovery settles once no auto-sendable contact remains recoverable
+      Given a role-targeted posting is still at `requires_contacts` and `email_discovery`
+      And its remaining selected contacts no longer have any callable or plausibly recoverable provider path
+      And no ready outreach subset remains in the current automatic send frontier
+      When the supervisor reevaluates that durable `email_discovery` run
+      Then those remaining posting-contact links are exhausted for the current automatic flow
+      And the runtime reevaluates the frontier instead of leaving the run stranded at `email_discovery`
+      And the posting either advances to `sending` if a ready subset appears or closes the stale discovery run into the appropriate downstream terminal state
+
     Scenario: Completed or removed postings do not keep stale generated drafts active
       Given a role-targeted generated draft still exists for a posting-contact pair
       And that posting-contact pair has left the intended outreach set or the posting is already terminally completed

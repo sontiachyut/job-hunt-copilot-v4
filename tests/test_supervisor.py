@@ -2414,6 +2414,167 @@ def test_run_supervisor_cycle_completes_stale_sending_run_without_new_frontier(
     assert current_posting_message_count == 0
 
 
+def test_run_supervisor_cycle_settles_stale_email_discovery_run_without_recoverable_contact_paths(
+    tmp_path,
+):
+    project_root = bootstrap_project(tmp_path)
+    paths = ProjectPaths.from_root(project_root)
+    connection = connect_database(project_root / "job_hunt_copilot.db")
+    lead_id, job_posting_id = seed_named_role_targeted_posting(
+        connection,
+        lead_id="ld_stale_discovery",
+        job_posting_id="jp_stale_discovery",
+        company_name="Settled Co",
+        role_title="Backend Engineer",
+        posting_status="requires_contacts",
+        timestamp="2026-04-06T00:00:00Z",
+    )
+    seed_tailoring_run(
+        connection,
+        run_id="rtr_stale_discovery_approved",
+        job_posting_id=job_posting_id,
+        tailoring_status="tailored",
+        resume_review_status="approved",
+        verification_outcome="pass",
+        final_resume_path="resume-tailoring/output/rtr_stale_discovery_approved/final.pdf",
+        timestamp="2026-04-06T00:01:00Z",
+    )
+    stale_run, _ = ensure_role_targeted_pipeline_run(
+        connection,
+        lead_id=lead_id,
+        job_posting_id=job_posting_id,
+        current_stage="email_discovery",
+        started_at="2026-04-06T00:02:00Z",
+    )
+    seed_send_ready_contact_with_generated_message(
+        connection,
+        contact_id="ct_settled_sent",
+        job_posting_contact_id="jpc_settled_sent",
+        job_posting_id=job_posting_id,
+        company_name="Settled Co",
+        display_name="Taylor Hiring Manager",
+        recipient_email="taylor@settled.example",
+        created_at="2026-04-06T00:03:00Z",
+    )
+    connection.execute(
+        """
+        UPDATE outreach_messages
+        SET message_status = ?, sent_at = ?, updated_at = ?
+        WHERE outreach_message_id = ?
+        """,
+        (
+            "sent",
+            "2026-04-06T00:04:00Z",
+            "2026-04-06T00:04:00Z",
+            "msg_ct_settled_sent",
+        ),
+    )
+    connection.execute(
+        """
+        UPDATE job_posting_contacts
+        SET link_level_status = ?, updated_at = ?
+        WHERE job_posting_contact_id = ?
+        """,
+        (
+            "outreach_done",
+            "2026-04-06T00:04:00Z",
+            "jpc_settled_sent",
+        ),
+    )
+    connection.execute(
+        """
+        INSERT INTO contacts (
+          contact_id, identity_key, display_name, company_name, origin_component, contact_status,
+          full_name, first_name, last_name, linkedin_url, current_working_email, position_title,
+          created_at, updated_at
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        """,
+        (
+            "ct_settled_pending",
+            "settled co|pending-engineer",
+            "Pending",
+            "Settled Co",
+            "email_discovery",
+            "identified",
+            None,
+            None,
+            None,
+            None,
+            None,
+            "Software Engineer",
+            "2026-04-06T00:05:00Z",
+            "2026-04-06T00:05:00Z",
+        ),
+    )
+    connection.execute(
+        """
+        INSERT INTO job_posting_contacts (
+          job_posting_contact_id, job_posting_id, contact_id, recipient_type, relevance_reason,
+          link_level_status, is_in_intended_outreach_set, entered_intended_outreach_set_at, created_at, updated_at
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        """,
+        (
+            "jpc_settled_pending",
+            job_posting_id,
+            "ct_settled_pending",
+            "engineer",
+            "Selected contact still needs a usable email.",
+            "shortlisted",
+            1,
+            "2026-04-06T00:05:00Z",
+            "2026-04-06T00:05:00Z",
+            "2026-04-06T00:05:00Z",
+        ),
+    )
+    resume_agent(
+        connection,
+        manual_command="jhc-agent-start",
+        timestamp="2026-04-06T00:06:00Z",
+    )
+
+    execution = run_supervisor_cycle(
+        connection,
+        paths,
+        trigger_type="launchd_heartbeat",
+        scheduler_name="launchd",
+        started_at="2026-04-06T00:07:00Z",
+        action_dependencies=SupervisorActionDependencies(
+            local_timezone="UTC",
+            email_finder_providers=(
+                SimpleNamespace(provider_name="prospeo", requires_domain=False),
+                SimpleNamespace(provider_name="getprospect", requires_domain=False),
+                SimpleNamespace(provider_name="hunter", requires_domain=False),
+            ),
+        ),
+    )
+    posting_status = connection.execute(
+        "SELECT posting_status FROM job_postings WHERE job_posting_id = ?",
+        (job_posting_id,),
+    ).fetchone()[0]
+    settled_row = connection.execute(
+        """
+        SELECT c.contact_status, c.discovery_summary, jpc.link_level_status
+        FROM contacts c
+        JOIN job_posting_contacts jpc ON jpc.contact_id = c.contact_id
+        WHERE c.contact_id = 'ct_settled_pending'
+        """
+    ).fetchone()
+    connection.close()
+
+    assert execution.cycle.result == SUPERVISOR_CYCLE_RESULT_SUCCESS
+    assert execution.selected_work is not None
+    assert execution.selected_work.action_id == "run_role_targeted_email_discovery"
+    assert execution.selected_work.pipeline_run_id == stale_run.pipeline_run_id
+    assert execution.pipeline_run is not None
+    assert execution.pipeline_run.pipeline_run_id == stale_run.pipeline_run_id
+    assert execution.pipeline_run.current_stage == "delivery_feedback"
+    assert execution.pipeline_run.run_status == RUN_STATUS_IN_PROGRESS
+    assert posting_status == "completed"
+    assert settled_row["contact_status"] == "exhausted"
+    assert settled_row["discovery_summary"] == "all_providers_exhausted"
+    assert settled_row["link_level_status"] == "exhausted"
+
+
 def test_run_supervisor_cycle_reuses_existing_pipeline_run_without_duplicate_history(tmp_path):
     project_root = bootstrap_project(tmp_path)
     paths = ProjectPaths.from_root(project_root)
