@@ -94,7 +94,6 @@ MANAGERIAL_PATH_OPENER_SENTENCE_3 = (
     "If helpful, I'd be happy to build a small proof of concept based on my understanding "
     "of the challenges the team is working on and share the repo."
 )
-MANAGERIAL_PATH_JD_HEADING = "Based on the JD, would it be fair to say the team is likely working on the following?"
 MANAGERIAL_PATH_BACKGROUND_HEADING = "Relevant background from my side:"
 MANAGERIAL_PATH_CTA_RESUME = "I've attached my resume for context."
 MANAGERIAL_PATH_CTA_QUESTION = "Would you be open to a brief 10-minute conversation?"
@@ -1021,7 +1020,6 @@ class ManagerialRoleSplitDraftPayload(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     role_alignment_sentence: str
-    problem_hypotheses: list[str]
     relevant_background: list[str]
     selected_jd_signals: list[str]
     relevant_background_evidence: list[ManagerialRelevantBackgroundEvidence]
@@ -1033,7 +1031,7 @@ class ManagerialRoleSplitDraftPayload(BaseModel):
             raise ValueError("managerial role_alignment_sentence must contain exactly 1 sentence")
         return value.strip()
 
-    @field_validator("problem_hypotheses", "relevant_background")
+    @field_validator("relevant_background")
     @classmethod
     def _validate_managerial_bullets(cls, value: list[str], info: Any) -> list[str]:
         cleaned = [item.strip() for item in value if item and item.strip()]
@@ -2580,7 +2578,6 @@ def _compose_managerial_role_split_body(
     context: RoleTargetedDraftContext,
     payload: ManagerialRoleSplitDraftPayload,
 ) -> str:
-    problem_lines = [f"- {bullet}" for bullet in payload.problem_hypotheses]
     background_lines = [f"- {bullet}" for bullet in payload.relevant_background]
     posting_link_line = (
         [f"Posting link: {context.public_posting_url}", ""]
@@ -2593,9 +2590,6 @@ def _compose_managerial_role_split_body(
         f"{MANAGERIAL_PATH_OPENER_SENTENCE_1} {payload.role_alignment_sentence.strip()} {MANAGERIAL_PATH_OPENER_SENTENCE_3}",
         "",
         *posting_link_line,
-        MANAGERIAL_PATH_JD_HEADING,
-        *problem_lines,
-        "",
         MANAGERIAL_PATH_BACKGROUND_HEADING,
         *background_lines,
         "",
@@ -3199,7 +3193,6 @@ def _build_managerial_role_split_prompt(context: RoleTargetedDraftContext) -> st
             "",
             "Output schema:",
             "- role_alignment_sentence: string",
-            "- problem_hypotheses: list[string]",
             "- relevant_background: list[string]",
             "- selected_jd_signals: list[string]",
             "- relevant_background_evidence: list[object]",
@@ -3218,8 +3211,6 @@ def _build_managerial_role_split_prompt(context: RoleTargetedDraftContext) -> st
                 if context.public_posting_url
                 else "- No posting-link line will be rendered for this draft."
             ),
-            f'- Then render the fixed heading: "{MANAGERIAL_PATH_JD_HEADING}"',
-            "- Then render the problem_hypotheses bullets.",
             f'- Then render the fixed heading: "{MANAGERIAL_PATH_BACKGROUND_HEADING}"',
             "- Then render the relevant_background bullets.",
             "- Then render the fixed CTA block exactly as:",
@@ -3235,20 +3226,9 @@ def _build_managerial_role_split_prompt(context: RoleTargetedDraftContext) -> st
             "- It should explain why the role looks closely aligned with the kind of role-relevant engineering problems I've been trying to work on.",
             "- Choose one dominant role-fit theme that reads like a coherent kind of work, not a stitched-together list of JD signals.",
             "- Do not combine unrelated JD themes just to increase coverage.",
-            "- Troubleshooting or root-cause language should usually stay in the problem_hypotheses bullets rather than becoming the main self-description in the opener, unless the role is clearly incident- or operations-heavy.",
             "- Keep it natural and concise.",
             "- Avoid a comma-heavy list of themes.",
             "- Prefer one clean closing idea over stacked buzzwords.",
-            "",
-            "Rules for problem_hypotheses:",
-            "- Return exactly 3 bullets.",
-            "- Each bullet should be short and easy to scan.",
-            "- Each bullet should be a compact phrase, not a long sentence.",
-            "- Infer likely team challenges from the JD only.",
-            "- Do not copy JD wording verbatim.",
-            "- Do not assume unsupported internal facts.",
-            "- Keep bullets specific enough to be useful, but cautious.",
-            "- Use lowercase unless a proper noun requires capitalization.",
             "",
             "Rules for relevant_background:",
             "- Return exactly 3 bullets.",
@@ -3293,11 +3273,6 @@ def _build_managerial_role_split_prompt(context: RoleTargetedDraftContext) -> st
                         f"{role_alignment_prefix} the role "
                         "looks closely aligned with the kind of backend services and integration work I've been trying to do more of in production systems."
                     ),
-                    "problem_hypotheses": [
-                        "backend service stability and maintainability",
-                        "internal and third-party systems integration",
-                        "root-cause debugging and preventative fixes",
-                    ],
                     "relevant_background": [
                         "distributed data services at ~580 TPS, 99.95% uptime",
                         "monitoring and alerting, incident response, and governed workflow checks",

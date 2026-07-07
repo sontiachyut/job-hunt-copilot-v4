@@ -5155,11 +5155,6 @@ def test_load_sender_identity_keeps_personal_github_when_projects_define_other_g
 def test_normalize_managerial_role_split_payload_truncates_debug_signal_lists() -> None:
     payload = {
         "role_alignment_sentence": "I'm reaching out about the role because it looks closely aligned with the kind of backend systems work I've been trying to do more of.",
-        "problem_hypotheses": [
-            "backend service stability",
-            "systems integration",
-            "preventative fixes",
-        ],
         "relevant_background": [
             "distributed data services at ~580 TPS",
             "monitoring and alerting",
@@ -5297,11 +5292,6 @@ def test_normalize_managerial_role_split_payload_drops_weak_job_hunt_copilot_for
         "role_alignment_sentence": (
             "I'm reaching out about the Data Platform Engineer role at Figma because the role looks closely aligned with the kind of platform and workflow systems work I've been trying to do more of."
         ),
-        "problem_hypotheses": [
-            "scalable pipelines for product data",
-            "dependable shared platform workflows",
-            "faster iteration on data infrastructure",
-        ],
         "relevant_background": [
             "Azure and Databricks data services processing 50M+ daily HL7 records",
             "built Job Hunt Copilot, an AI workflow automation system: https://github.com/sontiachyut/job-hunt-copilot-v4",
@@ -5420,11 +5410,6 @@ def test_managerial_role_split_normalizes_role_title_artifacts_in_prompt_and_sub
             "role_alignment_sentence": (
                 "I'm reaching out about the Software Engineer – Engineer role at Qualcomm because the role looks closely aligned with the kind of production software and platform work I've been trying to do more of."
             ),
-            "problem_hypotheses": [
-                "backend service reliability",
-                "performance and scale tuning",
-                "shared platform efficiency",
-            ],
             "relevant_background": [
                 "high-volume backend production workflows",
                 "monitoring and alerting for 24/7 systems",
@@ -5767,7 +5752,6 @@ def test_codex_role_split_renderer_generates_managerial_path_body_and_debug_arti
         assert "- public_posting_url: https://careers.acme.example/jobs/123" in input
         assert "production AI workflow problems" not in input
         assert "Choose one dominant role-fit theme that reads like a coherent kind of work" in input
-        assert "Troubleshooting or root-cause language should usually stay in the problem_hypotheses bullets" in input
         assert "dependable AI workflows in production" not in input
         schema_path = Path(command[command.index("--output-schema") + 1])
         schema = json.loads(schema_path.read_text(encoding="utf-8"))
@@ -5787,11 +5771,6 @@ def test_codex_role_split_renderer_generates_managerial_path_body_and_debug_arti
                 "I'm reaching out about the Software Engineer, GenAI role at Abridge because the role "
                 "looks closely aligned with the kind of workflow and systems problems I've been trying to work on."
             ),
-            "problem_hypotheses": [
-                "dependable llm workflows for clinical use",
-                "evaluation and failure-mode stress testing",
-                "low-latency monitoring and guardrails",
-            ],
             "relevant_background": [
                 "50M+ daily HL7 records, ~580 TPS, 24/7 uptime",
                 "monitoring, alerting, incident response, and data-quality triage",
@@ -5828,7 +5807,6 @@ def test_codex_role_split_renderer_generates_managerial_path_body_and_debug_arti
     assert message.subject == "Interest in the Software Engineer, GenAI role at Abridge"
     assert "I hope you're doing well." in body
     assert "Posting link: https://careers.acme.example/jobs/123" in body
-    assert "Based on the JD, would it be fair to say the team is likely working on the following?" in body
     assert "Relevant background from my side:" in body
     assert (
         "If helpful, I'd be happy to build a small proof of concept based on my understanding of the challenges the team is working on and share the repo."
@@ -5842,7 +5820,7 @@ def test_codex_role_split_renderer_generates_managerial_path_body_and_debug_arti
     assert "If this is better routed elsewhere, I'd appreciate a forward to the right person internally." in body
     assert message.body_html is not None
     assert "<ul>" in message.body_html
-    assert "<li>dependable llm workflows for clinical use</li>" in message.body_html
+    assert "<li>50M+ daily HL7 records, ~580 TPS, 24/7 uptime</li>" in message.body_html
     assert "<strong>If helpful, I&#x27;d be happy to build a small proof of concept based on my understanding of the challenges the team is working on and share the repo.</strong>" in message.body_html
     assert "**If helpful, I'd be happy to build a small proof of concept based on my understanding of the challenges the team is working on and share the repo.**" not in message.body_html
     assert message.opener_decision_artifact_path is not None
@@ -6094,10 +6072,6 @@ def test_role_targeted_original_lint_ignores_posting_link_and_signature_url_infl
             "Hi Jay,\n\n"
             "I hope you're doing well. I'm reaching out about the Software Engineer role at Viasat because it looks closely aligned with the kind of backend API design work in production systems that I've been trying to do more of. If helpful, I'd be happy to build a small proof of concept based on my understanding of the challenges the team is working on and share the repo.\n\n"
             "Posting link: https://www.linkedin.com/jobs/view/4430132772/\n\n"
-            "Based on the JD, would it be fair to say the team is likely working on the following?\n"
-            "- new API design with clear interface boundaries\n"
-            "- keeping JSON/YAML contracts and docs in sync\n"
-            "- supporting both REST and Python library consumers\n\n"
             "Relevant background from my side:\n"
             "- backend APIs for a kubernetes optimization platform spanning 200+ microservices\n"
             "- python and scala data services processing 50M+ daily HL7 records\n"
