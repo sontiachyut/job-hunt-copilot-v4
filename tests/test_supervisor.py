@@ -37,6 +37,7 @@ from job_hunt_copilot.supervisor import (
     SUPERVISOR_CYCLE_RESULT_AUTO_PAUSED,
     SUPERVISOR_CYCLE_RESULT_DEFERRED,
     SUPERVISOR_CYCLE_RESULT_FAILED,
+    SUPERVISOR_CYCLE_RESULT_NO_WORK,
     SUPERVISOR_CYCLE_RESULT_SUCCESS,
     SUPERVISOR_LEASE_NAME,
     DuplicateActivePipelineRun,
@@ -1791,6 +1792,57 @@ def test_classify_orphaned_completed_posting_with_actionable_unsent_frontier_rec
     assert recovery == ("sending", "generated_frontier")
 
 
+def test_run_supervisor_cycle_retires_generated_draft_for_completed_posting_before_selection(tmp_path):
+    project_root = bootstrap_project(tmp_path)
+    connection = connect_database(project_root / "job_hunt_copilot.db")
+    resume_agent(
+        connection,
+        manual_command="jhc-agent-start",
+        timestamp="2026-04-06T00:00:00Z",
+    )
+
+    _, job_posting_id = seed_named_role_targeted_posting(
+        connection,
+        lead_id="ld_completed_stale",
+        job_posting_id="jp_completed_stale",
+        company_name="Completed Co",
+        role_title="AI Engineer",
+        posting_status="completed",
+        timestamp="2026-04-06T00:01:00Z",
+    )
+    seed_send_ready_contact_with_generated_message(
+        connection,
+        contact_id="ct_completed_stale",
+        job_posting_contact_id="jpc_completed_stale",
+        job_posting_id=job_posting_id,
+        company_name="Completed Co",
+        display_name="Harald Morjan",
+        recipient_email="harald@example.com",
+        created_at="2026-04-06T00:01:30Z",
+    )
+
+    execution = run_supervisor_cycle(
+        connection,
+        ProjectPaths.from_root(project_root),
+        trigger_type="launchd_heartbeat",
+        scheduler_name="launchd",
+        started_at="2026-04-06T00:02:00Z",
+    )
+
+    retired_row = connection.execute(
+        """
+        SELECT message_status
+        FROM outreach_messages
+        WHERE outreach_message_id = 'msg_ct_completed_stale'
+        """
+    ).fetchone()
+    connection.close()
+
+    assert execution.cycle.result == SUPERVISOR_CYCLE_RESULT_NO_WORK
+    assert execution.selected_work is None
+    assert dict(retired_row) == {"message_status": "failed"}
+
+
 def test_generated_frontier_only_prepass_returns_none_instead_of_falling_back_to_discovery(
     tmp_path,
 ):
@@ -2002,68 +2054,33 @@ def test_run_supervisor_cycle_recovers_orphaned_send_stage_run_into_sending(tmp_
     ]
 
 
-def test_run_supervisor_cycle_recovers_completed_orphaned_send_stage_run_into_sending(
-    tmp_path,
-):
+def test_run_supervisor_cycle_retires_generated_draft_for_completed_posting_before_selection(tmp_path):
     project_root = bootstrap_project(tmp_path)
     paths = ProjectPaths.from_root(project_root)
     connection = connect_database(project_root / "job_hunt_copilot.db")
-    orphaned_lead_id, orphaned_job_posting_id = seed_named_role_targeted_posting(
+    _lead_id, job_posting_id = seed_named_role_targeted_posting(
         connection,
-        lead_id="ld_completed_orphaned",
-        job_posting_id="jp_completed_orphaned",
-        company_name="Recovered Co",
-        role_title="Senior AI Engineer",
+        lead_id="ld_completed_stale",
+        job_posting_id="jp_completed_stale",
+        company_name="Dormant Co",
+        role_title="Platform Engineer",
         posting_status="completed",
         timestamp="2026-04-06T00:00:00Z",
     )
-    seed_tailoring_run(
-        connection,
-        run_id="rtr_completed_orphaned_approved",
-        job_posting_id=orphaned_job_posting_id,
-        tailoring_status="tailored",
-        resume_review_status="approved",
-        verification_outcome="pass",
-        final_resume_path="resume-tailoring/output/rtr_completed_orphaned_approved/final.pdf",
-        timestamp="2026-04-06T00:01:00Z",
-    )
-    original_run, _ = ensure_role_targeted_pipeline_run(
-        connection,
-        lead_id=orphaned_lead_id,
-        job_posting_id=orphaned_job_posting_id,
-        current_stage="sending",
-        started_at="2026-04-06T00:02:00Z",
-    )
-    fail_pipeline_run(
-        connection,
-        original_run.pipeline_run_id,
-        current_stage="sending",
-        error_summary="retired while June backlog was reprioritized",
-        timestamp="2026-04-06T00:03:00Z",
-    )
-    connection.execute(
-        """
-        UPDATE job_postings
-        SET posting_status = 'completed',
-            updated_at = '2026-04-06T00:03:30Z'
-        WHERE job_posting_id = ?
-        """,
-        (orphaned_job_posting_id,),
-    )
     seed_send_ready_contact_with_generated_message(
         connection,
-        contact_id="ct_completed_orphaned",
-        job_posting_contact_id="jpc_completed_orphaned",
-        job_posting_id=orphaned_job_posting_id,
-        company_name="Recovered Co",
-        display_name="Taylor Hiring Manager",
-        recipient_email="taylor@recovered.example",
-        created_at="2026-04-06T00:04:00Z",
+        contact_id="ct_completed_stale",
+        job_posting_contact_id="jpc_completed_stale",
+        job_posting_id=job_posting_id,
+        company_name="Dormant Co",
+        display_name="Riley Dormant",
+        recipient_email="riley@dormant.example",
+        created_at="2026-04-06T00:01:00Z",
     )
     resume_agent(
         connection,
         manual_command="jhc-agent-start",
-        timestamp="2026-04-06T00:05:00Z",
+        timestamp="2026-04-06T00:02:00Z",
     )
 
     execution = run_supervisor_cycle(
@@ -2071,50 +2088,21 @@ def test_run_supervisor_cycle_recovers_completed_orphaned_send_stage_run_into_se
         paths,
         trigger_type="launchd_heartbeat",
         scheduler_name="launchd",
-        started_at="2026-04-06T00:06:00Z",
+        started_at="2026-04-06T00:03:00Z",
         action_dependencies=SupervisorActionDependencies(local_timezone="UTC"),
     )
-    pipeline_runs = connection.execute(
+    message_row = connection.execute(
         """
-        SELECT pipeline_run_id, run_status, current_stage, run_summary
-        FROM pipeline_runs
-        WHERE job_posting_id = ?
-        ORDER BY started_at ASC, pipeline_run_id ASC
-        """,
-        (orphaned_job_posting_id,),
-    ).fetchall()
+        SELECT message_status
+        FROM outreach_messages
+        WHERE outreach_message_id = 'msg_ct_completed_stale'
+        """
+    ).fetchone()
     connection.close()
 
-    assert execution.cycle.result == SUPERVISOR_CYCLE_RESULT_SUCCESS
-    assert execution.selected_work is not None
-    assert execution.selected_work.action_id == "bootstrap_role_targeted_run"
-    assert execution.selected_work.work_id == orphaned_job_posting_id
-    assert execution.selected_work.current_stage == "sending"
-    assert execution.pipeline_run is not None
-    assert execution.pipeline_run.pipeline_run_id != original_run.pipeline_run_id
-    assert execution.pipeline_run.current_stage == "sending"
-    assert execution.pipeline_run.run_status == RUN_STATUS_IN_PROGRESS
-    assert execution.pipeline_run.run_summary == (
-        "Supervisor recovered orphaned send-stage work by recreating a durable "
-        "role-targeted run at sending."
-    )
-    assert [dict(row) for row in pipeline_runs] == [
-        {
-            "pipeline_run_id": original_run.pipeline_run_id,
-            "run_status": "failed",
-            "current_stage": "sending",
-            "run_summary": None,
-        },
-        {
-            "pipeline_run_id": execution.pipeline_run.pipeline_run_id,
-            "run_status": "in_progress",
-            "current_stage": "sending",
-            "run_summary": (
-                "Supervisor recovered orphaned send-stage work by recreating a durable "
-                "role-targeted run at sending."
-            ),
-        },
-    ]
+    assert execution.cycle.result == SUPERVISOR_CYCLE_RESULT_NO_WORK
+    assert execution.selected_work is None
+    assert message_row["message_status"] == "failed"
 
 
 def test_run_supervisor_cycle_reconciles_stale_sending_run_back_to_email_discovery(

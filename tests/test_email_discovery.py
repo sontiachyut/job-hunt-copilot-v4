@@ -3619,7 +3619,13 @@ def test_email_discovery_records_domain_unresolved_but_continues_hunter(tmp_path
         paths,
         source_url="https://www.linkedin.com/jobs/view/123",
     )
-    seed_linked_contact(connection, linkedin_url=None, provider_person_id=None, identity_key="manual|maya")
+    seed_linked_contact(
+        connection,
+        linkedin_url=None,
+        provider_person_id=None,
+        identity_key="manual|maya",
+        is_in_intended_outreach_set=1,
+    )
 
     prospeo = FakeEmailFinderProvider(
         provider_name="prospeo",
@@ -3702,7 +3708,13 @@ def test_email_discovery_does_not_exhaust_contact_when_transient_provider_failur
         paths,
         source_url="https://www.linkedin.com/jobs/view/123",
     )
-    seed_linked_contact(connection, linkedin_url=None, provider_person_id=None, identity_key="manual|maya")
+    seed_linked_contact(
+        connection,
+        linkedin_url=None,
+        provider_person_id=None,
+        identity_key="manual|maya",
+        is_in_intended_outreach_set=1,
+    )
 
     providers = (
         FakeEmailFinderProvider(
@@ -3784,6 +3796,95 @@ def test_email_discovery_does_not_exhaust_contact_when_transient_provider_failur
     connection.close()
 
 
+def test_email_discovery_exhausts_contact_after_repeated_provider_failures_without_retry_signal(
+    tmp_path: Path,
+):
+    project_root = bootstrap_project(tmp_path)
+    paths = ProjectPaths.from_root(project_root)
+    connection = connect_database(project_root / "job_hunt_copilot.db")
+    seed_search_ready_posting(connection, paths)
+    seed_linked_contact(
+        connection,
+        linkedin_url=None,
+        provider_person_id=None,
+        identity_key="manual|maya",
+        is_in_intended_outreach_set=1,
+    )
+
+    providers = (
+        FakeEmailFinderProvider(
+            provider_name="prospeo",
+            requires_domain=False,
+            responses=[
+                {"outcome": DISCOVERY_OUTCOME_PROVIDER_ERROR},
+                {"outcome": DISCOVERY_OUTCOME_PROVIDER_ERROR},
+                {"outcome": DISCOVERY_OUTCOME_PROVIDER_ERROR},
+            ],
+        ),
+        FakeEmailFinderProvider(
+            provider_name="getprospect",
+            requires_domain=False,
+            responses=[
+                {"outcome": DISCOVERY_OUTCOME_PROVIDER_ERROR},
+                {"outcome": DISCOVERY_OUTCOME_PROVIDER_ERROR},
+                {"outcome": DISCOVERY_OUTCOME_PROVIDER_ERROR},
+            ],
+        ),
+        FakeEmailFinderProvider(
+            provider_name="hunter",
+            requires_domain=False,
+            responses=[
+                {"outcome": DISCOVERY_OUTCOME_RATE_LIMITED},
+                {"outcome": DISCOVERY_OUTCOME_RATE_LIMITED},
+                {"outcome": DISCOVERY_OUTCOME_RATE_LIMITED},
+            ],
+        ),
+    )
+
+    for timestamp in (
+        "2026-04-06T21:48:00Z",
+        "2026-04-06T22:04:00Z",
+        "2026-04-06T22:20:00Z",
+    ):
+        run_email_discovery_for_contact(
+            project_root=project_root,
+            job_posting_id="jp_search",
+            contact_id="ct_target",
+            providers=providers,
+            current_time=timestamp,
+        )
+
+    contact_row = connection.execute(
+        """
+        SELECT contact_status, discovery_summary
+        FROM contacts
+        WHERE contact_id = 'ct_target'
+        """
+    ).fetchone()
+    link_row = connection.execute(
+        """
+        SELECT link_level_status
+        FROM job_posting_contacts
+        WHERE job_posting_contact_id = 'jpc_target'
+        """
+    ).fetchone()
+
+    assert dict(contact_row) == {
+        "contact_status": CONTACT_STATUS_EXHAUSTED,
+        "discovery_summary": "all_providers_exhausted",
+    }
+    assert link_row["link_level_status"] == POSTING_CONTACT_STATUS_EXHAUSTED
+    assert is_role_targeted_email_discovery_actionable_now(
+        connection,
+        project_root=project_root,
+        job_posting_id="jp_search",
+        current_time="2026-04-06T22:36:00Z",
+        providers=providers,
+    ) is False
+
+    connection.close()
+
+
 def test_email_discovery_persists_provider_cooldown_for_transient_provider_unavailability(tmp_path: Path):
     project_root = bootstrap_project(tmp_path)
     paths = ProjectPaths.from_root(project_root)
@@ -3793,7 +3894,7 @@ def test_email_discovery_persists_provider_cooldown_for_transient_provider_unava
         paths,
         source_url="https://www.linkedin.com/jobs/view/123",
     )
-    seed_linked_contact(connection)
+    seed_linked_contact(connection, is_in_intended_outreach_set=1)
 
     providers = (
         FakeEmailFinderProvider(

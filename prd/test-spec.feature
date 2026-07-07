@@ -1837,6 +1837,22 @@ Feature: Job Hunt Copilot next-build acceptance
       And that cycle may advance the posting to `ready_for_outreach` or `sending`
       But the cooldown-blocked later contacts remain pending for later discovery instead of blocking the posting
 
+    Scenario: Repeated provider failures do not keep a contact pending forever
+      Given a selected role-targeted contact still lacks a usable email
+      And the same provider paths have already returned bounded repeated non-usable failure outcomes for that contact
+      When the runtime reevaluates whether that contact is still actionable for `email_discovery`
+      Then those repeated failed provider paths are treated as spent for that contact
+      And the contact is not left pending forever only because those same provider calls could be retried again
+      And the posting may exhaust that contact once no callable or plausibly recoverable provider path remains
+
+    Scenario: Completed or removed postings do not keep stale generated drafts active
+      Given a role-targeted generated draft still exists for a posting-contact pair
+      And that posting-contact pair has left the intended outreach set or the posting is already terminally completed
+      When the runtime reevaluates automatic sendability
+      Then that generated draft is retired into a terminal non-runnable state
+      And the supervisor does not later resurrect it as an active generated send frontier
+      But the historical row remains preserved for audit history
+
     Scenario: Prior outreach history blocks automatic repeat send during orchestration
       Given a linked contact already has prior outreach history
       When the current automatic role-targeted flow reaches that contact
