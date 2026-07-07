@@ -5204,7 +5204,7 @@ def _execute_selected_work_unit(
             settle_role_targeted_email_discovery_exhausted_contacts,
             summarize_role_targeted_email_discovery_frontier,
         )
-        from .outreach import JOB_POSTING_STATUS_COMPLETED, evaluate_role_targeted_send_set
+        from .outreach import evaluate_role_targeted_send_set
 
         job_posting_id = _require_text(selected_work.job_posting_id, "job_posting_id")
         lead_id = _require_text(selected_work.lead_id, "lead_id")
@@ -5266,8 +5266,9 @@ def _execute_selected_work_unit(
             *,
             exhausted_contact_count: int,
         ) -> tuple[PipelineRunRecord, None, None]:
+            completed_status = "completed"
             previous_status = _load_posting_status(connection, job_posting_id=job_posting_id)
-            if previous_status != JOB_POSTING_STATUS_COMPLETED:
+            if previous_status != completed_status:
                 with connection:
                     connection.execute(
                         """
@@ -5276,7 +5277,7 @@ def _execute_selected_work_unit(
                         WHERE job_posting_id = ?
                         """,
                         (
-                            JOB_POSTING_STATUS_COMPLETED,
+                            completed_status,
                             timestamp,
                             job_posting_id,
                         ),
@@ -5287,7 +5288,7 @@ def _execute_selected_work_unit(
                         object_id=job_posting_id,
                         stage="posting_status",
                         previous_state=previous_status,
-                        new_state=JOB_POSTING_STATUS_COMPLETED,
+                        new_state=completed_status,
                         transition_timestamp=timestamp,
                         transition_reason=(
                             "Supervisor settled role-targeted email discovery because the remaining "
