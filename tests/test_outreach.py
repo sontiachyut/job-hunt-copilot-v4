@@ -4397,11 +4397,6 @@ def test_load_sender_identity_keeps_personal_github_when_projects_define_other_g
 def test_normalize_managerial_role_split_payload_truncates_debug_signal_lists() -> None:
     payload = {
         "role_alignment_sentence": "I came across the role and wanted to reach out because it looks closely aligned with the kind of backend systems work I've been trying to do more of.",
-        "problem_hypotheses": [
-            "backend service stability",
-            "systems integration",
-            "preventative fixes",
-        ],
         "relevant_background": [
             "distributed data services at ~580 TPS",
             "monitoring and alerting",
@@ -4558,11 +4553,6 @@ def test_normalize_managerial_role_split_payload_drops_weak_job_hunt_copilot_for
             "role_alignment_sentence": (
                 "I came across the Data Platform Engineer opening at Figma and wanted to reach out because the role looks closely aligned with the kind of platform and backend systems work I've been trying to do more of."
             ),
-            "problem_hypotheses": [
-                "governed data platform workflows",
-                "backend service reliability",
-                "cloud efficiency across production systems",
-            ],
             "relevant_background": [
                 "50M+ daily HL7 records, ~580 TPS, 24/7 uptime",
                 "built Job Hunt Copilot, an AI workflow automation tool: https://github.com/sontiachyut/job-hunt-copilot-v4",
@@ -4792,7 +4782,6 @@ def test_codex_role_split_renderer_generates_managerial_path_body_and_debug_arti
         assert "- public_posting_url: https://careers.acme.example/jobs/123" in input
         assert "production AI workflow problems" not in input
         assert "Choose one dominant role-fit theme that reads like a coherent kind of work" in input
-        assert "Troubleshooting or root-cause language should usually stay in the problem_hypotheses bullets" in input
         assert "dependable AI workflows in production" not in input
         assert "Prefer relevant technical signal density over generic impressiveness." in input
         assert "Use Job Hunt Copilot only when the dominant role-fit theme clearly relates to applied AI" in input
@@ -4802,11 +4791,6 @@ def test_codex_role_split_renderer_generates_managerial_path_body_and_debug_arti
                 "I came across the Software Engineer, GenAI opening at Abridge and wanted to reach out because the role "
                 "looks closely aligned with the kind of workflow and systems problems I've been trying to work on."
             ),
-            "problem_hypotheses": [
-                "dependable llm workflows for clinical use",
-                "evaluation and failure-mode stress testing",
-                "low-latency monitoring and guardrails",
-            ],
             "relevant_background": [
                 "50M+ daily HL7 records, ~580 TPS, 24/7 uptime",
                 "monitoring, alerting, incident response, and data-quality triage",
@@ -4839,7 +4823,6 @@ def test_codex_role_split_renderer_generates_managerial_path_body_and_debug_arti
     assert message.subject == "Interest in the Software Engineer, GenAI role at Abridge"
     assert "I hope you're doing well." in body
     assert "Posting link: https://careers.acme.example/jobs/123" in body
-    assert "Based on the JD, would it be fair to say the team is likely working on the following?" in body
     assert "Relevant background from my side:" in body
     assert "If helpful, I'd be happy to build a small proof of concept based on my understanding of the challenges the team is working on and share the repo." in body
     assert "**If helpful, I'd be happy to build a small proof of concept based on my understanding of the challenges the team is working on and share the repo.**" not in body
@@ -4851,7 +4834,7 @@ def test_codex_role_split_renderer_generates_managerial_path_body_and_debug_arti
     assert "If this is better routed elsewhere, I'd appreciate a forward to the right person internally." in body
     assert message.body_html is not None
     assert "<ul>" in message.body_html
-    assert "<li>dependable llm workflows for clinical use</li>" in message.body_html
+    assert "<li>50M+ daily HL7 records, ~580 TPS, 24/7 uptime</li>" in message.body_html
     assert "<strong>If helpful, I&#x27;d be happy to build a small proof of concept based on my understanding of the challenges the team is working on and share the repo.</strong>" in message.body_html
     assert "**If helpful, I'd be happy to build a small proof of concept based on my understanding of the challenges the team is working on and share the repo.**" not in message.body_html
     assert message.opener_decision_artifact_path is not None
@@ -4916,11 +4899,6 @@ def test_managerial_role_split_normalizes_role_title_artifacts_in_prompt_and_sub
                 "I came across the Software Engineer – Engineer opening at Qualcomm and wanted to reach out because the role "
                 "looks closely aligned with the kind of production software and systems work I've been trying to do more of."
             ),
-            "problem_hypotheses": [
-                "backend service reliability",
-                "performance and scale tuning",
-                "cloud cost and platform efficiency",
-            ],
             "relevant_background": [
                 "distributed data services at ~580 TPS",
                 "monitoring and alerting for 24/7 workflows",
