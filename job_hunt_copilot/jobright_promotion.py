@@ -138,7 +138,8 @@ INTERMEDIARY_COMPANY_TOKENS = (
 SOURCE_PRIORITY_FOR_APOLLO = {
     "jobright_personal_school": 1,
     "jobright_personal_company": 1,
-    "jobright_public": 2,
+    "jobright_named_contact": 2,
+    "jobright_public": 3,
 }
 
 

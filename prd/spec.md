@@ -254,17 +254,20 @@ This is the agreed vocabulary for design discussions.
    - job URL and Jobright job identifier
    - company, role title, location, freshness, salary, work model, and employment type
    - `displayScore`, `rankDesc`, and available recommendation-score breakdowns
+   - the separate Jobright page-named contact block, even when the UI labels it `Hiring Manager`
    - public `socialConnections`
    - personalized `personalSocialConnections`
-5. The Jobright job page shall be the source for canonical JD enrichment, public connections, personalized connections, and other job-page metadata.
-6. When the Jobright job page exposes structured JD sections such as responsibilities, qualifications, requirements, benefits, or role-summary blocks, the ingestor shall assemble those sections into the persisted canonical `jd.md` rather than relying only on one narrow free-text field.
-7. If the Jobright job page still does not yield a full usable JD after structured-section extraction, the lead shall remain in discovery and shall not be promoted based on score and connections alone.
-7. Personalized connections are optional enrichment. Missing personalized connections is a valid source result, not an ingestion failure.
-8. Missing salary or compensation metadata is a valid source result and shall not by itself block promotion or keep a lead in discovery.
-9. Jobright recommendation observations shall remain in the discovery queue even when they are not promoted.
-10. In the current build, auto-promotion shall not require a separate deterministic employer/apply-page liveness verification step beyond the captured Jobright evidence and canonical JD artifact.
-11. Once a lead has been promoted and materialized, later disappearance of that role from new Jobright recommendation runs shall not by itself alter the downstream posting lifecycle or invalidate the already captured lead state.
-12. Jobright recommendation polling shall follow the same supervisor-heartbeat model used by the prior autonomous lead-ingestion path rather than a separate long-interval batch scheduler. In the current local deployment, Jobright polling may be evaluated on each normal `launchd` supervisor heartbeat.
+5. The Jobright job page shall be the source for canonical JD enrichment, the separate page-named contact block, public connections, personalized connections, and other job-page metadata.
+6. The Jobright page-named contact block shall be captured as a distinct source-seeded contact signal rather than folded into generic public suggestions.
+7. The system shall not treat Jobright's page label alone as proof that the named contact is a true hiring manager. Later title/profile classification and enrichment shall decide whether that person belongs in the manager, recruiter, engineer, or fallback internal lane.
+8. When the Jobright job page exposes structured JD sections such as responsibilities, qualifications, requirements, benefits, or role-summary blocks, the ingestor shall assemble those sections into the persisted canonical `jd.md` rather than relying only on one narrow free-text field.
+9. If the Jobright job page still does not yield a full usable JD after structured-section extraction, the lead shall remain in discovery and shall not be promoted based on score and connections alone.
+10. Personalized connections are optional enrichment. Missing personalized connections is a valid source result, not an ingestion failure.
+11. Missing salary or compensation metadata is a valid source result and shall not by itself block promotion or keep a lead in discovery.
+12. Jobright recommendation observations shall remain in the discovery queue even when they are not promoted.
+13. In the current build, auto-promotion shall not require a separate deterministic employer/apply-page liveness verification step beyond the captured Jobright evidence and canonical JD artifact.
+14. Once a lead has been promoted and materialized, later disappearance of that role from new Jobright recommendation runs shall not by itself alter the downstream posting lifecycle or invalidate the already captured lead state.
+15. Jobright recommendation polling shall follow the same supervisor-heartbeat model used by the prior autonomous lead-ingestion path rather than a separate long-interval batch scheduler. In the current local deployment, Jobright polling may be evaluated on each normal `launchd` supervisor heartbeat.
 
 ### 5.1.3 Lead Normalization, Dedup, and Promotion
 1. All source observations shall first normalize into a canonical lead record in a discovery queue.
@@ -289,8 +292,8 @@ This is the agreed vocabulary for design discussions.
 7. Staffing, consulting, or recruiter-intermediary roles shall be excluded from promotion in the current build even when their Jobright score is high.
 8. The system shall apply a contactability gate before promotion:
    - preferred: at least 1 personalized Jobright connection
-   - acceptable fallback: at least 2 public Jobright connections
-   - if personalized connections are 0 and public connections are only 1, the lead shall remain in discovery and shall not be promoted
+   - acceptable fallback: at least 2 non-personal Jobright source contacts, where the separate Jobright page-named contact counts toward that fallback inventory alongside public Jobright connections
+   - if personalized connections are 0 and the total non-personal Jobright source contacts are only 1, the lead shall remain in discovery and shall not be promoted
    - if total Jobright connections are 0, the lead shall remain in discovery and shall not be promoted
 9. If Jobright surfaces multiple candidate roles from the same company, only the highest-fit role from that company should remain eligible for promotion in the current build unless the owner explicitly overrides that rule.
 10. If one promoted role from a company is already active in the downstream pipeline, later roles from that same company shall remain in discovery until the active role finishes, is blocked, or is otherwise explicitly removed from the active frontier.
@@ -307,12 +310,13 @@ This is the agreed vocabulary for design discussions.
 
 ### 5.1.4 Source-Seeded Contact Strategy
 1. During lead ingestion, the system shall persist the named contacts the source already provides instead of starting with broad company search.
-2. For Jobright leads, all available public and personalized Jobright contacts shall be persisted as source-seeded contacts.
+2. For Jobright leads, all available public and personalized Jobright contacts plus the separate Jobright page-named contact block, when present, shall be persisted as source-seeded contacts.
 3. The outreach priority within the intended contact set shall be:
    - first: Apollo manager / executive / founder contacts
    - second: role-relevant engineer contacts
    - third: personalized Jobright connections when the remaining contacts are otherwise comparable
-   - fourth: public Jobright connections when the remaining contacts are otherwise comparable
+   - fourth: the separate Jobright page-named contact when the remaining contacts are otherwise comparable
+   - fifth: public Jobright connections when the remaining contacts are otherwise comparable
    - recruiter / talent contacts are retained only as manual-review fallback
    Personalized `school_connection` and `company_connection` contacts are equal-priority within the personalized Jobright tier.
 4. All Jobright-seeded contacts shall automatically enter the intended outreach set for that promoted posting.
@@ -334,6 +338,7 @@ This is the agreed vocabulary for design discussions.
    - if the eligible manager/executive pool is `>= 11`, keep up to `10`
 16. This adaptive cap applies only to Apollo-added manager/executive contacts. It does not reduce or replace the Jobright-seeded contact set.
 17. Apollo search shall only add current-company contacts for the target employer and shall not add external alumni-style or unrelated out-of-company contacts.
+18. The separate Jobright page-named contact shall keep its own `contact_source_type` lineage and shall not be auto-upgraded to `hiring_manager` solely because Jobright labeled the block `Hiring Manager`.
 18. Apollo company-scoped search in the current build should target manager-class technical leadership only. It should not deliberately search recruiter, talent, HR, or unrelated internal operational contacts.
 19. Apollo manager-expansion priority for engineering roles should prefer:
    - engineering manager / hiring manager / technical lead
@@ -451,7 +456,8 @@ This is the agreed vocabulary for design discussions.
 - **FR-SYS-01D1 (Jobright Session Recovery Rule):** If the Jobright authenticated session is missing or expired, the run shall persist a recoverable `reauth_required` outcome rather than corrupting canonical lead state or creating partial promoted postings.
 - **FR-SYS-01D1A (Session-Expiry Boundary Rule):** `reauth_required` shall block new Jobright ingestion only and shall not pause or invalidate already-promoted leads that already have their persisted canonical JD, fit metadata, and source-contact artifacts.
 - **FR-SYS-01D2 (Jobright Score Capture Rule):** When available, Jobright observations shall persist `displayScore`, `rankDesc`, and recommendation-score breakdowns as structured fit metadata.
-- **FR-SYS-01D3 (Jobright Connection Capture Rule):** Jobright observations shall persist both public `socialConnections` and personalized `personalSocialConnections` when present.
+- **FR-SYS-01D3 (Jobright Connection Capture Rule):** Jobright observations shall persist public `socialConnections`, personalized `personalSocialConnections`, and the separate page-named Jobright contact block when present.
+- **FR-SYS-01D3A (Jobright Named-Contact Classification Rule):** The separate Jobright page-named contact block shall be captured as its own source-seeded contact signal, but the system shall not infer `hiring_manager` solely from Jobright's UI label. Later title/profile classification and enrichment shall determine that contact's true lane.
 - **FR-SYS-01D4 (Optional Personalized Connections Rule):** Missing personalized connections on a Jobright job shall be treated as a valid source result, not as an ingestion failure.
 - **FR-SYS-01D4A (Usable-JD Promotion Requirement Rule):** If the Jobright job page does not yield a full usable JD, the lead shall remain in discovery and shall not be promoted based on score and connections alone.
 - **FR-SYS-01D4B (Structured Jobright JD Assembly Rule):** When the Jobright page exposes JD content in structured fields such as responsibilities, qualifications, requirements, benefits, or other role-summary sections, the ingestor shall assemble that structured content into canonical `jd.md` so those sections count toward JD usability instead of being silently dropped.
@@ -1176,7 +1182,7 @@ This section defines the next-build logical schema shape for `job_hunt_copilot.d
   - unique (`lead_id`, `contact_id`)
 - Notes:
   - This table preserves lead-to-contact traceability even when a canonical contact is later reused elsewhere.
-  - `contact_source_type` should distinguish `jobright_public`, `jobright_personal_school`, `jobright_personal_company`, or `apollo_topup`.
+  - `contact_source_type` should distinguish `jobright_public`, `jobright_personal_school`, `jobright_personal_company`, `jobright_named_contact`, or `apollo_topup`.
   - `source_priority_tier` and `source_priority_rank` preserve the Jobright-first then Apollo ordering used to build the intended outreach set.
   - `lead_contacts` is the bridge that carries Jobright-provided contacts into downstream discovery so Apollo can enrich those same contacts with fuller identity and usable-email data.
 

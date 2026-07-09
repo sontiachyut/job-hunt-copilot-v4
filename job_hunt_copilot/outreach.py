@@ -2085,8 +2085,10 @@ def _contact_source_sort_rank(contact_source_type: str | None) -> int:
         return 0
     if contact_source_type in {"jobright_personal_school", "jobright_personal_company"}:
         return 1
-    if contact_source_type == "jobright_public":
+    if contact_source_type == "jobright_named_contact":
         return 2
+    if contact_source_type == "jobright_public":
+        return 3
     return 9
 
 

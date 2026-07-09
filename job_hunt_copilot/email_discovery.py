@@ -3279,7 +3279,8 @@ def _shortlist_existing_intended_contacts(
           CASE
             WHEN contact_source_type = 'apollo_topup' THEN 0
             WHEN contact_source_type IN ('jobright_personal_school', 'jobright_personal_company') THEN 1
-            WHEN contact_source_type = 'jobright_public' THEN 2
+            WHEN contact_source_type = 'jobright_named_contact' THEN 2
+            WHEN contact_source_type = 'jobright_public' THEN 3
             ELSE 9
           END ASC,
           COALESCE(contact_source_priority_tier, 999) ASC,

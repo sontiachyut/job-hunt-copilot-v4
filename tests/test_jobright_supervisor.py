@@ -96,6 +96,7 @@ def _recommendation() -> JobrightRecommendation:
         recommendation_scores={"Skill Match": 88},
         skill_matching_scores={"python": 0.9},
         industry_matching_scores={"platform": 0.85},
+        jobright_named_contact=None,
         social_connections=[
             {
                 "fullName": "Taylor Public",

@@ -101,6 +101,7 @@ class JobrightRecommendation:
     recommendation_scores: dict[str, Any]
     skill_matching_scores: dict[str, Any]
     industry_matching_scores: dict[str, Any]
+    jobright_named_contact: dict[str, Any] | None
     social_connections: list[dict[str, Any]]
     personal_social_connections: dict[str, list[dict[str, Any]]] | None
     jd_text: str | None
@@ -269,6 +270,27 @@ def _normalize_connection_list(
         normalized_item["sourceRank"] = index
         normalized.append(normalized_item)
     return normalized
+
+
+def _extract_jobright_named_contact(
+    next_data: dict[str, Any] | None,
+    *,
+    fallback_company_name: str,
+) -> dict[str, Any] | None:
+    if next_data is None:
+        return None
+    full_name = _normalize_optional_text(_find_first_key(next_data, "jobRecruiter"))
+    if full_name is None:
+        return None
+    return {
+        "fullName": full_name,
+        "title": _normalize_optional_text(_find_first_key(next_data, "jobRecruiterTitle")),
+        "linkedinUrl": _normalize_linkedin_url(
+            _normalize_optional_text(_find_first_key(next_data, "jobRecruiterProfileUrl"))
+        ),
+        "companyName": fallback_company_name,
+        "sourceRank": 1,
+    }
 
 
 def _extract_job_summary(
@@ -468,6 +490,10 @@ def _extract_page_payload(
     company_name = _normalize_optional_text(summary.get("company")) or _normalize_optional_text(
         fallback_entry.get("companyName")
     ) or "Unknown Company"
+    jobright_named_contact = _extract_jobright_named_contact(
+        next_data,
+        fallback_company_name=company_name,
+    )
     social_connections = _normalize_connection_list(
         _find_first_key(next_data, "socialConnections"),
         fallback_company_name=company_name,
@@ -496,6 +522,7 @@ def _extract_page_payload(
             "next_data_found": next_data is not None,
         },
         "job_summary": summary,
+        "jobright_named_contact": jobright_named_contact,
         "social_connections": social_connections,
         "personal_social_connections": personal_connections,
         "jd_text": jd_text,
@@ -946,6 +973,7 @@ class JobrightRecommendationCollector:
                     recommendation_scores=feed_entry["recommendation_scores"],
                     skill_matching_scores=feed_entry["skill_matching_scores"],
                     industry_matching_scores=feed_entry["industry_matching_scores"],
+                    jobright_named_contact=page_payload["jobright_named_contact"],
                     social_connections=list(page_payload["social_connections"]),
                     personal_social_connections=page_payload["personal_social_connections"],
                     jd_text=_normalize_optional_text(page_payload["jd_text"]),
@@ -955,6 +983,7 @@ class JobrightRecommendationCollector:
                     page_payload={
                         "fetch": page_payload["fetch"],
                         "job_summary": job_summary,
+                        "jobright_named_contact": page_payload["jobright_named_contact"],
                         "social_connections": page_payload["social_connections"],
                         "personal_social_connections": page_payload["personal_social_connections"],
                     },
@@ -1135,6 +1164,7 @@ def _sync_lead_contacts(
     lead_id: str,
     source_observation_id: str,
     company_name: str,
+    jobright_named_contact: dict[str, Any] | None,
     social_connections: list[dict[str, Any]],
     personal_social_connections: dict[str, list[dict[str, Any]]] | None,
     timestamp: str,
@@ -1180,7 +1210,9 @@ def _sync_lead_contacts(
             source_type="jobright_personal_company",
             priority_tier=1,
         )
-    add_people(social_connections, source_type="jobright_public", priority_tier=2)
+    if jobright_named_contact is not None:
+        add_people([jobright_named_contact], source_type="jobright_named_contact", priority_tier=2)
+    add_people(social_connections, source_type="jobright_public", priority_tier=3)
 
     linked_count = 0
     for payload in merged_contacts.values():
@@ -1425,6 +1457,7 @@ def ingest_jobright_recommendation_batch(
                         "salary": recommendation.salary,
                         "apply_url": recommendation.apply_url,
                     },
+                    "jobright_named_contact": recommendation.jobright_named_contact,
                     "social_connections": recommendation.social_connections,
                     "personal_social_connections": recommendation.personal_social_connections,
                     "jd_is_usable": recommendation.jd_is_usable,
@@ -1438,7 +1471,8 @@ def ingest_jobright_recommendation_batch(
             feed_observation_id = new_canonical_id("lead_source_observations")
             page_observation_id = new_canonical_id("lead_source_observations")
             timestamps = lifecycle_timestamps(recommendation.observed_at)
-            public_connection_count = len(recommendation.social_connections)
+            named_contact_count = 1 if recommendation.jobright_named_contact is not None else 0
+            public_connection_count = len(recommendation.social_connections) + named_contact_count
             personal_connection_count = (
                 len(recommendation.personal_social_connections.get("school", []))
                 + len(recommendation.personal_social_connections.get("company", []))
@@ -1553,6 +1587,7 @@ def ingest_jobright_recommendation_batch(
                 lead_id=lead_id,
                 source_observation_id=page_observation_id,
                 company_name=recommendation.company_name,
+                jobright_named_contact=recommendation.jobright_named_contact,
                 social_connections=recommendation.social_connections,
                 personal_social_connections=recommendation.personal_social_connections,
                 timestamp=recommendation.observed_at,
@@ -1635,6 +1670,7 @@ def ingest_jobright_recommendation_batch(
                 "display_score": recommendation.display_score,
                 "rank_desc": recommendation.rank_desc,
                 "connections": {
+                    "named_count": named_contact_count,
                     "public_count": public_connection_count,
                     "personal_count": personal_connection_count,
                     "total_count": total_connection_count,

@@ -835,6 +835,46 @@ def test_send_set_prefers_apollo_manager_contact_ahead_of_jobright_manager_when_
     connection.close()
 
 
+def test_send_set_prefers_jobright_named_contact_ahead_of_jobright_public_when_recipient_types_match(tmp_path: Path):
+    project_root, _ = bootstrap_project(tmp_path)
+    connection = connect_database(project_root / "job_hunt_copilot.db")
+    seed_posting(connection)
+    seed_linked_contact(
+        connection,
+        contact_id="ct_named",
+        job_posting_contact_id="jpc_named",
+        display_name="Jamie Named Contact",
+        recipient_type=RECIPIENT_TYPE_ENGINEER,
+        current_working_email="jamie@acme.example",
+        contact_source_type="jobright_named_contact",
+        created_at="2026-04-06T20:01:00Z",
+    )
+    seed_linked_contact(
+        connection,
+        contact_id="ct_public",
+        job_posting_contact_id="jpc_public",
+        display_name="Taylor Public Contact",
+        recipient_type=RECIPIENT_TYPE_ENGINEER,
+        current_working_email="taylor@acme.example",
+        contact_source_type="jobright_public",
+        created_at="2026-04-06T20:02:00Z",
+    )
+
+    plan = evaluate_role_targeted_send_set(
+        connection,
+        job_posting_id="jp_outreach",
+        current_time="2026-04-06T20:10:00Z",
+        local_timezone=ZoneInfo("UTC"),
+    )
+
+    assert [contact.contact_id for contact in plan.selected_contacts[:2]] == [
+        "ct_named",
+        "ct_public",
+    ]
+
+    connection.close()
+
+
 def test_send_set_prefers_true_manager_before_leadership_adjacent_manager_lane_contact(tmp_path: Path):
     project_root, _ = bootstrap_project(tmp_path)
     connection = connect_database(project_root / "job_hunt_copilot.db")

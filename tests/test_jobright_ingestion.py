@@ -51,6 +51,7 @@ def build_recommendation(
     display_score: float,
     rank_desc: str,
     extra_social_count: int = 0,
+    include_named_contact: bool = False,
 ) -> JobrightRecommendation:
     social_connections = [
         {
@@ -91,6 +92,15 @@ def build_recommendation(
             }
         ],
     }
+    jobright_named_contact = None
+    if include_named_contact:
+        jobright_named_contact = {
+            "fullName": "Jamie Named",
+            "title": None,
+            "linkedinUrl": "https://www.linkedin.com/in/jamie-named/",
+            "companyName": "Acme AI",
+            "sourceRank": 1,
+        }
     return JobrightRecommendation(
         jobright_job_id="jobright-job-001",
         lead_identity_key="jobright:jobright-job-001",
@@ -105,13 +115,18 @@ def build_recommendation(
         recommendation_scores={"Skill Match": 92},
         skill_matching_scores={"python": 0.95},
         industry_matching_scores={"ai": 0.9},
+        jobright_named_contact=jobright_named_contact,
         social_connections=social_connections,
         personal_social_connections=personal_social_connections,
         jd_text=_long_jd(),
         jd_is_usable=True,
         observed_at=observed_at,
         feed_payload={"jobId": "jobright-job-001", "displayScore": display_score},
-        page_payload={"fetch": {"http_status": 200}, "job_summary": {"title": "Backend AI Engineer"}},
+        page_payload={
+            "fetch": {"http_status": 200},
+            "job_summary": {"title": "Backend AI Engineer"},
+            "jobright_named_contact": jobright_named_contact,
+        },
     )
 
 
@@ -193,7 +208,7 @@ def test_ingest_jobright_recommendation_batch_persists_leads_observations_and_co
         },
         {
             "contact_source_type": "jobright_public",
-            "contact_source_priority_tier": 2,
+            "contact_source_priority_tier": 3,
         },
     ]
     assert contact_count == 3
@@ -276,6 +291,80 @@ def test_ingest_jobright_recommendation_batch_refreshes_existing_lead(tmp_path):
         .read_text(encoding="utf-8")
     )
     assert summary_payload["leads_updated"] == 1
+
+
+def test_ingest_jobright_recommendation_batch_persists_jobright_named_contact_separately(tmp_path):
+    project_root = bootstrap_project(tmp_path)
+    batch = JobrightRecommendationBatch(
+        ingestion_run_id="jobright-auto-20260627T011500Z",
+        result=JOBRIGHT_BATCH_RESULT_READY,
+        collected_at="2026-06-27T01:15:00Z",
+        recommendations=(
+            build_recommendation(
+                observed_at="2026-06-27T01:15:00Z",
+                display_score=87.2,
+                rank_desc="Strong Match",
+                include_named_contact=True,
+            ),
+        ),
+        raw_feed_payload={"jobs": [{"jobId": "jobright-job-001"}]},
+    )
+
+    result = ingest_jobright_recommendation_batch(project_root, batch=batch)
+
+    connection = connect_database(project_root / "job_hunt_copilot.db")
+    lead_row = connection.execute(
+        """
+        SELECT latest_public_connection_count, latest_total_connection_count
+        FROM leads
+        """
+    ).fetchone()
+    lead_contact_rows = connection.execute(
+        """
+        SELECT contact_source_type, contact_source_priority_tier, contact_source_rank
+        FROM lead_contacts
+        ORDER BY contact_source_priority_tier ASC, contact_source_rank ASC
+        """
+    ).fetchall()
+    connection.close()
+
+    assert result.contacts_linked == 4
+    assert dict(lead_row) == {
+        "latest_public_connection_count": 2,
+        "latest_total_connection_count": 4,
+    }
+    assert [dict(row) for row in lead_contact_rows] == [
+        {
+            "contact_source_type": "jobright_personal_school",
+            "contact_source_priority_tier": 1,
+            "contact_source_rank": 1,
+        },
+        {
+            "contact_source_type": "jobright_personal_company",
+            "contact_source_priority_tier": 1,
+            "contact_source_rank": 1,
+        },
+        {
+            "contact_source_type": "jobright_named_contact",
+            "contact_source_priority_tier": 2,
+            "contact_source_rank": 1,
+        },
+        {
+            "contact_source_type": "jobright_public",
+            "contact_source_priority_tier": 3,
+            "contact_source_rank": 1,
+        },
+    ]
+
+    lead_id = result.lead_ids[0]
+    workspace_dir = ProjectPaths.from_root(project_root).lead_ingestion_lead_workspace_dir(
+        "Acme AI",
+        "Backend AI Engineer",
+        lead_id,
+    )
+    page_payload = json.loads((workspace_dir / "raw" / "job-page.json").read_text(encoding="utf-8"))
+    assert page_payload["jobright_named_contact"]["fullName"] == "Jamie Named"
+    assert page_payload["page_payload"]["jobright_named_contact"]["fullName"] == "Jamie Named"
 
 
 def test_extract_recommendation_entries_supports_live_joblist_jobresult_shape():
@@ -402,3 +491,43 @@ def test_extract_page_payload_assembles_structured_jobright_sections_into_usable
     assert "Benefits" in jd_text
     assert "public TTS API" in jd_text
     assert "Proficiency in deploying high availability applications on Kubernetes" in jd_text
+
+
+def test_extract_page_payload_captures_jobright_named_contact_block():
+    next_data = {
+        "props": {
+            "pageProps": {
+                "dataSource": {
+                    "jobResult": {
+                        "jobTitle": "AI Engineer",
+                        "companyName": "SoftStandard Solutions",
+                        "jobLocation": "Remote",
+                        "jobRecruiter": "Garima Patankar",
+                        "jobRecruiterProfileUrl": "https://in.linkedin.com/in/garima-patankar-905018257?trk=feed",
+                    }
+                }
+            }
+        }
+    }
+    html = (
+        "<html><head><title>SoftStandard</title></head><body>"
+        f'<script id="__NEXT_DATA__" type="application/json">{json.dumps(next_data)}</script>'
+        "</body></html>"
+    )
+
+    payload = _extract_page_payload(
+        html,
+        fallback_entry={
+            "jobTitle": "AI Engineer",
+            "companyName": "SoftStandard Solutions",
+            "location": "Remote",
+        },
+    )
+
+    assert payload["jobright_named_contact"] == {
+        "fullName": "Garima Patankar",
+        "title": None,
+        "linkedinUrl": "https://in.linkedin.com/in/garima-patankar-905018257",
+        "companyName": "SoftStandard Solutions",
+        "sourceRank": 1,
+    }

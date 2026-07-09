@@ -448,6 +448,15 @@ Feature: Job Hunt Copilot next-build acceptance
       And `lead_contacts` preserves whether each one came from `jobright_public`, `jobright_personal_school`, or `jobright_personal_company`
       And the lead-contact records preserve the intended-set priority order needed by downstream outreach
 
+    Scenario: Jobright page-named contact is persisted separately from generic public suggestions
+      Given a Jobright job page exposes a separate named contact block labeled `Hiring Manager`
+      And the underlying page payload provides that named contact through the Jobright recruiter-style fields
+      When source contacts are materialized
+      Then canonical contacts are created or reused for that named person
+      And the corresponding `lead_contacts.contact_source_type` is `jobright_named_contact`
+      And that named contact remains distinct from `jobright_public` suggestions
+      And the system does not infer `hiring_manager` solely from the Jobright page label
+
     Scenario: Component-oriented layout keeps runtime artifacts under the owning component folders
       Given a role-targeted lead has progressed through lead intake, tailoring, discovery, and drafting boundaries
       When the resulting filesystem artifacts are inspected
