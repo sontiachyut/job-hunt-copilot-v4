@@ -2093,6 +2093,16 @@ Feature: Job Hunt Copilot next-build acceptance
       And all Apollo manager-class contacts explicitly shortlisted for that posting enter the intended outreach set
       And Apollo may also add current-company manager-class contacts for that posting under the adaptive manager-expansion cap
 
+    Scenario: Tailoring-blocked escalations do not consume Jobright promotion capacity
+      Given several Jobright-promoted postings are already active
+      And some of those postings are still truly active in outreach or other runnable downstream stages
+      And others are no longer runnable because their latest downstream `pipeline_run` is `escalated`
+      And at least one fresh Jobright discovery lead is otherwise fully promotable
+      When the Jobright promotion frontier is refreshed
+      Then only the truly active runnable postings count against the active promotion cap
+      And the escalated postings do not keep same-company or capacity slots artificially occupied
+      And the fresh promotable lead may be selected immediately when runnable active capacity remains below the cap
+
   @end_to_end
   Rule: End-to-end acceptance
 

@@ -36,6 +36,7 @@ JOBRIGHT_PROMOTION_COMPONENT = "jobright_promotion"
 PROMOTION_DECISION_ARTIFACT_TYPE = "lead_promotion_decision"
 JD_PROVENANCE_ARTIFACT_TYPE = "lead_jd_provenance"
 PROMOTION_ACTIVE_CAP = 6
+RUN_STATUS_ESCALATED = "escalated"
 
 ACTIVE_PROMOTED_POSTING_STATUSES = frozenset(
     {
@@ -192,6 +193,39 @@ class JobrightLeadPromotionResult:
     message: str | None = None
 
 
+def _load_promoted_posting_rows(
+    connection: sqlite3.Connection,
+    *,
+    posting_statuses: frozenset[str],
+) -> list[sqlite3.Row]:
+    return connection.execute(
+        f"""
+        SELECT jp.job_posting_id, jp.canonical_company_key, jp.company_name, jp.posting_status,
+               latest_pr.current_stage AS latest_current_stage,
+               latest_pr.run_status AS latest_run_status,
+               latest_pr.last_error_summary AS latest_last_error_summary
+        FROM job_postings jp
+        LEFT JOIN pipeline_runs latest_pr
+          ON latest_pr.pipeline_run_id = (
+            SELECT pr2.pipeline_run_id
+            FROM pipeline_runs pr2
+            WHERE pr2.job_posting_id = jp.job_posting_id
+            ORDER BY pr2.updated_at DESC, pr2.created_at DESC, pr2.pipeline_run_id DESC
+            LIMIT 1
+          )
+        WHERE jp.posting_status IN ({", ".join("?" for _ in posting_statuses)})
+        """,
+        tuple(sorted(posting_statuses)),
+    ).fetchall()
+
+
+def _posting_counts_toward_active_promotion_capacity(row: sqlite3.Row) -> bool:
+    latest_run_status = str(row["latest_run_status"] or "").strip().lower()
+    if latest_run_status == RUN_STATUS_ESCALATED:
+        return False
+    return True
+
+
 def refresh_jobright_promotion_frontier(
     connection: sqlite3.Connection,
     paths: ProjectPaths,
@@ -228,29 +262,28 @@ def refresh_jobright_promotion_frontier(
             "closed",
         ),
     ).fetchall()
-    active_company_rows = connection.execute(
-        f"""
-        SELECT canonical_company_key, company_name, posting_status
-        FROM job_postings
-        WHERE posting_status IN ({", ".join("?" for _ in ACTIVE_PROMOTED_POSTING_STATUSES)})
-        """,
-        tuple(sorted(ACTIVE_PROMOTED_POSTING_STATUSES)),
-    ).fetchall()
+    active_company_rows = [
+        row
+        for row in _load_promoted_posting_rows(
+            connection,
+            posting_statuses=ACTIVE_PROMOTED_POSTING_STATUSES,
+        )
+        if _posting_counts_toward_active_promotion_capacity(row)
+    ]
     active_company_keys = {
         str(row["canonical_company_key"] or derive_company_key_values(row["company_name"])[0])
         for row in active_company_rows
     }
     active_promoted_count = len(active_company_rows)
-    stalled_count = int(
-        connection.execute(
-            f"""
-            SELECT COUNT(*)
-            FROM job_postings
-            WHERE posting_status IN ({", ".join("?" for _ in BACKLOG_PRESSURE_STATUSES)})
-            """,
-            tuple(sorted(BACKLOG_PRESSURE_STATUSES)),
-        ).fetchone()[0]
-        or 0
+    stalled_count = len(
+        [
+            row
+            for row in _load_promoted_posting_rows(
+                connection,
+                posting_statuses=BACKLOG_PRESSURE_STATUSES,
+            )
+            if _posting_counts_toward_active_promotion_capacity(row)
+        ]
     )
     backlog_pressure = active_promoted_count >= active_cap or stalled_count >= 3
 

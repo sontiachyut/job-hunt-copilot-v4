@@ -307,3 +307,163 @@ def test_refresh_jobright_promotion_frontier_prefers_personalized_connections_wh
     assert frontier.selected_candidate is not None
     assert frontier.selected_candidate.company_name == "Connection First"
     assert frontier.selected_candidate.latest_fit_score == 78.0
+
+
+def test_refresh_jobright_promotion_frontier_excludes_escalated_tailoring_from_active_capacity(tmp_path):
+    project_root = bootstrap_project(tmp_path)
+    paths = ProjectPaths.from_root(project_root)
+    recommendations = tuple(
+        _recommendation(
+            company_name=f"Capacity Co {index}",
+            role_title="Software Engineer",
+            jobright_job_id=f"jobright-capacity-{index:03d}",
+            display_score=99.0 - index,
+            rank_desc="Strong Match",
+        )
+        for index in range(1, 8)
+    )
+    batch = JobrightRecommendationBatch(
+        ingestion_run_id="jobright-auto-20260627T060000Z",
+        result=JOBRIGHT_BATCH_RESULT_READY,
+        collected_at="2026-06-27T06:00:00Z",
+        recommendations=recommendations,
+        raw_feed_payload={"jobs": [{"jobId": rec.jobright_job_id} for rec in recommendations]},
+    )
+    ingestion_result = ingest_jobright_recommendation_batch(project_root, batch=batch)
+    lead_ids = list(ingestion_result.lead_ids)
+    promoted_posting_ids: list[str] = []
+
+    for index in range(6):
+        connection = connect_database(project_root / "job_hunt_copilot.db")
+        frontier = refresh_jobright_promotion_frontier(
+            connection,
+            paths,
+            current_time=f"2026-06-27T06:0{index}:00Z",
+        )
+        connection.close()
+        assert frontier.selected_candidate is not None
+        result = promote_jobright_lead(
+            project_root,
+            lead_id=frontier.selected_candidate.lead_id,
+            current_time=f"2026-06-27T06:1{index}:00Z",
+        )
+        assert result.result == "promoted"
+        assert result.job_posting_id is not None
+        promoted_posting_ids.append(result.job_posting_id)
+
+    connection = connect_database(project_root / "job_hunt_copilot.db")
+    full_frontier = refresh_jobright_promotion_frontier(
+        connection,
+        paths,
+        current_time="2026-06-27T06:30:00Z",
+    )
+    blocked_lead_before = connection.execute(
+        """
+        SELECT lead_status, reason_code
+        FROM leads
+        WHERE lead_id = ?
+        """,
+        (lead_ids[6],),
+    ).fetchone()
+
+    assert full_frontier.selected_candidate is None
+    assert full_frontier.active_promoted_count == 6
+    assert dict(blocked_lead_before) == {
+        "lead_status": "discovered",
+        "reason_code": "waiting_active_capacity",
+    }
+
+    for index, posting_id in enumerate(promoted_posting_ids[:3], start=1):
+        current_time = f"2026-06-27T06:4{index}:00Z"
+        connection.execute(
+            """
+            UPDATE job_postings
+            SET posting_status = 'outreach_in_progress',
+                updated_at = ?
+            WHERE job_posting_id = ?
+            """,
+            (current_time, posting_id),
+        )
+        connection.execute(
+            """
+            INSERT INTO pipeline_runs (
+              pipeline_run_id, run_scope_type, run_status, current_stage, lead_id,
+              job_posting_id, completed_at, last_error_summary, review_packet_status,
+              run_summary, started_at, created_at, updated_at
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """,
+            (
+                f"pr_sending_{index}",
+                "job_posting",
+                "in_progress",
+                "sending",
+                lead_ids[index - 1],
+                posting_id,
+                None,
+                None,
+                "not_required",
+                "sending frontier active",
+                current_time,
+                current_time,
+                current_time,
+            ),
+        )
+
+    for offset, posting_id in enumerate(promoted_posting_ids[3:6], start=1):
+        current_time = f"2026-06-27T06:5{offset}:00Z"
+        connection.execute(
+            """
+            UPDATE job_postings
+            SET posting_status = 'tailoring_in_progress',
+                updated_at = ?
+            WHERE job_posting_id = ?
+            """,
+            (current_time, posting_id),
+        )
+        connection.execute(
+            """
+            INSERT INTO pipeline_runs (
+              pipeline_run_id, run_scope_type, run_status, current_stage, lead_id,
+              job_posting_id, completed_at, last_error_summary, review_packet_status,
+              run_summary, started_at, created_at, updated_at
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """,
+            (
+                f"pr_escalated_{offset}",
+                "job_posting",
+                "escalated",
+                "resume_tailoring",
+                lead_ids[offset + 2],
+                posting_id,
+                current_time,
+                "Autonomous resume tailoring did not reach the pending-review gate: verification_blocked.",
+                "pending_expert_review",
+                "verification blocked",
+                current_time,
+                current_time,
+                current_time,
+            ),
+        )
+
+    recovered_frontier = refresh_jobright_promotion_frontier(
+        connection,
+        paths,
+        current_time="2026-06-27T07:00:00Z",
+    )
+    unblocked_lead_after = connection.execute(
+        """
+        SELECT lead_status, reason_code
+        FROM leads
+        WHERE lead_id = ?
+        """,
+        (lead_ids[6],),
+    ).fetchone()
+    connection.close()
+
+    assert recovered_frontier.active_promoted_count == 3
+    assert recovered_frontier.selected_candidate is not None
+    assert recovered_frontier.selected_candidate.lead_id == lead_ids[6]
+    assert dict(unblocked_lead_after) == {
+        "lead_status": "discovered",
+        "reason_code": None,
+    }

@@ -300,13 +300,14 @@ This is the agreed vocabulary for design discussions.
 11. A prior application to the same company does not by itself block promotion of a later Jobright lead when the job is materially different and the intended contact set is also materially different from the earlier posting's contacted set.
 12. A previously completed or otherwise inactive posting at the same company shall not by itself block promotion of a new qualifying lead. Only currently active same-company postings apply the active-company block rule.
 13. When an active promoted slot opens because a posting finishes, is blocked, or otherwise leaves the active frontier, the system may refill that slot after the current ingestion/reranking cycle by promoting the best currently eligible discovery lead rather than waiting for the next day.
-14. Backlog pressure shall be considered active when 3 or more promoted postings are simultaneously stalled in pre-send states such as `resume_review_pending`, `requires_contacts`, or `ready_for_outreach` without an actionable send frontier, or when the active promoted in-flight count is already at the configured cap.
-15. When backlog pressure is high, the promotion gate shall tighten rather than widen. In that mode, leads without strong connection leverage should be held in discovery rather than promoted.
-16. When multiple eligible leads are competing for promotion and their `displayScore` gap is 5 points or less, stronger Jobright connection quality may outrank the modest score advantage.
-17. For this ranking tie-break, connection quality order is:
+14. A promoted posting whose latest downstream `pipeline_run` is `escalated` shall no longer consume Jobright active-promotion capacity or same-company active-frontier blocking. This includes `tailoring_in_progress` postings whose latest `resume_tailoring` run is escalated, such as `verification_blocked`.
+15. Backlog pressure shall be considered active when 3 or more promoted postings are simultaneously stalled in pre-send states such as `resume_review_pending`, `requires_contacts`, or `ready_for_outreach` without an actionable send frontier, or when the active promoted in-flight count is already at the configured cap.
+16. When backlog pressure is high, the promotion gate shall tighten rather than widen. In that mode, leads without strong connection leverage should be held in discovery rather than promoted.
+17. When multiple eligible leads are competing for promotion and their `displayScore` gap is 5 points or less, stronger Jobright connection quality may outrank the modest score advantage.
+18. For this ranking tie-break, connection quality order is:
    - personalized Jobright connections
    - public Jobright connections
-18. When the eligible-lead `displayScore` gap is greater than 5 points, the higher score shall win over connection-quality tie-breaks.
+19. When the eligible-lead `displayScore` gap is greater than 5 points, the higher score shall win over connection-quality tie-breaks.
 
 ### 5.1.4 Source-Seeded Contact Strategy
 1. During lead ingestion, the system shall persist the named contacts the source already provides instead of starting with broad company search.
