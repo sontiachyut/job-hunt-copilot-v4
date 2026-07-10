@@ -24,6 +24,7 @@ from job_hunt_copilot.followups import (
     PLAN_STATUS_SENT,
     PLAN_STATUS_SKIPPED,
     PLAN_STATUS_WAITING_FOR_PACING,
+    SKIP_REASON_DRAFT_RETRY,
     SKIP_REASON_DRAFT_RETRY_EXHAUSTED,
     SKIP_REASON_MISSING_SENDER_IDENTITY,
     SKIP_REASON_NON_CODEX_ORIGIN,
@@ -62,6 +63,14 @@ LEGACY_BODY = (
     "Given your role as Staff Software Engineer, I thought you might have useful perspective on the role.\n\n"
     "Lately, I have been spending time sharpening my Agentic AI skills.\n\n"
     "I built Job Hunt Copilot for my own job search.\n\n"
+    "Best,\n"
+    "Achyutaram Sonti"
+)
+CODEX_MANAGERIAL_BODY = (
+    "Hi Kavita,\n\n"
+    "I hope you're doing well. I reached out about the Applied AI Engineer role at Console because it lines up with "
+    "the kind of applied AI and systems work I want to keep growing in.\n\n"
+    "Would you be open to a brief 10-minute conversation to hear your perspective on the role or team?\n\n"
     "Best,\n"
     "Achyutaram Sonti"
 )
@@ -396,16 +405,133 @@ def _write_cached_followup_artifacts(
     *,
     plan_id: str,
     body_text: str,
+    include_policy_version: bool = True,
 ) -> tuple[str, str]:
     artifact_dir = project_root / "ops" / "followups" / plan_id
     artifact_dir.mkdir(parents=True, exist_ok=True)
     draft_path = artifact_dir / "followup_draft.md"
     review_path = artifact_dir / "followup_review_evidence.json"
     draft_path.write_text(body_text + "\n", encoding="utf-8")
-    review_path.write_text(json.dumps({"payload": {"cached": True}}), encoding="utf-8")
+    payload = {"cached": True}
+    if include_policy_version:
+        payload["followup_template_policy_version"] = followups_module.FOLLOWUP_TEMPLATE_POLICY_VERSION
+    review_path.write_text(json.dumps({"payload": payload}), encoding="utf-8")
     return (
         str(Path("ops") / "followups" / plan_id / "followup_draft.md"),
         str(Path("ops") / "followups" / plan_id / "followup_review_evidence.json"),
+    )
+
+
+def _make_followup_context(*, posture_family: str) -> followups_module.FollowUpDraftContext:
+    if posture_family == "technical":
+        candidate = FollowUpCandidate(
+            outreach_followup_plan_id="fp_technical",
+            original_outreach_message_id="om_original",
+            contact_id="ct_1",
+            job_posting_id="jp_1",
+            job_posting_contact_id="jpc_1",
+            recipient_email="alex@example.com",
+            outreach_mode="role_targeted",
+            subject=TECHNICAL_PATH_SUBJECT,
+            body_text=CODEx_TECHNICAL_BODY,
+            thread_id="thread_1",
+            delivery_tracking_id="gmail_original_1",
+            sent_at=ORIGINAL_SENT_AT,
+            eligible_after=NOW,
+            followup_sequence=1,
+            contact_display_name="Alex Rivera",
+            contact_first_name="Alex",
+            contact_status="sent",
+            company_name="ExampleCo",
+            role_title="Backend Developer",
+            jd_artifact_path=None,
+            tailored_resume_path=None,
+            plan_status="pending",
+            retry_count=0,
+            next_retry_at=None,
+            draft_artifact_path=None,
+            review_evidence_artifact_path=None,
+            last_evaluated_at=None,
+            agent_reviewed_at=None,
+            updated_at=None,
+        )
+        role_title = "Backend Developer"
+        company_name = "ExampleCo"
+        salutation = "Hi Alex,"
+        original_subject = TECHNICAL_PATH_SUBJECT
+        original_body = CODEx_TECHNICAL_BODY
+    else:
+        candidate = FollowUpCandidate(
+            outreach_followup_plan_id="fp_managerial",
+            original_outreach_message_id="om_managerial",
+            contact_id="ct_2",
+            job_posting_id="jp_2",
+            job_posting_contact_id="jpc_2",
+            recipient_email="kavita@example.com",
+            outreach_mode="role_targeted",
+            subject="Interest in the Applied AI Engineer role at Console",
+            body_text=CODEX_MANAGERIAL_BODY,
+            thread_id="thread_2",
+            delivery_tracking_id="gmail_original_2",
+            sent_at=ORIGINAL_SENT_AT,
+            eligible_after=NOW,
+            followup_sequence=1,
+            contact_display_name="Kavita Rao",
+            contact_first_name="Kavita",
+            contact_status="sent",
+            company_name="Console",
+            role_title="Applied AI Engineer",
+            jd_artifact_path=None,
+            tailored_resume_path=None,
+            plan_status="pending",
+            retry_count=0,
+            next_retry_at=None,
+            draft_artifact_path=None,
+            review_evidence_artifact_path=None,
+            last_evaluated_at=None,
+            agent_reviewed_at=None,
+            updated_at=None,
+        )
+        role_title = "Applied AI Engineer"
+        company_name = "Console"
+        salutation = "Hi Kavita,"
+        original_subject = "Interest in the Applied AI Engineer role at Console"
+        original_body = CODEX_MANAGERIAL_BODY
+
+    return followups_module.FollowUpDraftContext(
+        candidate=candidate,
+        sequence=1,
+        posture_family=posture_family,
+        role_title=role_title,
+        company_name=company_name,
+        salutation=salutation,
+        original_subject=original_subject,
+        original_body_text=original_body,
+        prior_followups=(),
+        sender_evidence_summary="Built distributed systems in Python and Scala.",
+        role_company_summary=followups_module._build_role_company_summary(
+            role_title,
+            company_name,
+            sequence=1,
+            posture_family=posture_family,
+        ),
+        thread_context_summary="No prior sent follow-ups exist on this thread.",
+        original_metadata=followups_module.OriginalSendMetadata(
+            source_path=None,
+            cc_emails=(),
+            message_id_header=None,
+            role_title=role_title,
+            company_name=company_name,
+            autonomous_origin=True,
+            draft_origin_kind="codex_role_split",
+            draft_posture_family=posture_family,
+        ),
+        origin=followups_module.OriginalOutreachOrigin(
+            status="codex",
+            posture_family=posture_family,
+            proof_source="send_result_metadata",
+            autonomous_origin=True,
+        ),
     )
 
 
@@ -833,6 +959,34 @@ def test_codex_followup_schema_requires_why_sent_summary(tmp_path, monkeypatch):
     assert "why_sent_summary" in captured_schema["required"]
 
 
+def test_technical_followup_prompt_stays_guidance_oriented():
+    context = _make_followup_context(posture_family="technical")
+
+    prompt = followups_module._build_followup_prompt(context)
+
+    assert "This is a learning/career-guidance thread, not a direct role-interest follow-up." in prompt
+    assert "Do not anchor the reminder around a specific opening" in prompt
+    assert "brief 15-minute conversation" not in prompt
+    assert "background_fit_areas" not in prompt
+
+
+def test_managerial_followup_prompt_uses_role_interest_rules_without_background_fit_areas():
+    context = _make_followup_context(posture_family="managerial")
+
+    prompt = followups_module._build_followup_prompt(context)
+
+    assert "Follow-up 1 should explicitly mention the role and company." in prompt
+    assert "The CTA should ask for a brief 15-minute conversation about the role, team, or what tends to matter in the process." in prompt
+    assert "background_fit_areas" not in prompt
+
+
+def test_cached_followup_render_requires_current_policy_version():
+    assert followups_module._cached_followup_render_is_compatible(
+        {"followup_template_policy_version": followups_module.FOLLOWUP_TEMPLATE_POLICY_VERSION}
+    )
+    assert not followups_module._cached_followup_render_is_compatible({})
+
+
 def test_missing_sender_identity_hold_reopens_once_runtime_is_fixed(tmp_path):
     project_root, connection = _bootstrap_connection(tmp_path)
     _seed_sent_role_targeted_message(
@@ -1000,6 +1154,88 @@ def test_draft_failures_retry_then_hold(tmp_path):
     plan = connection.execute("SELECT * FROM outreach_followup_plans").fetchone()
     assert plan["plan_status"] == PLAN_STATUS_HELD_FOR_REVIEW
     assert plan["last_skip_reason"] == SKIP_REASON_DRAFT_RETRY_EXHAUSTED
+
+
+def test_technical_followup_role_interest_drift_is_retried(tmp_path):
+    project_root, connection = _bootstrap_connection(tmp_path)
+    _seed_sent_role_targeted_message(
+        connection,
+        project_root,
+        send_result_payload={
+            "draft_origin_kind": "codex_role_split",
+            "draft_posture_family": "technical",
+            "autonomous_origin": True,
+        },
+    )
+
+    result = run_followup_cycle(
+        connection,
+        project_root=project_root,
+        current_time=NOW,
+        dry_run=True,
+        thread_inspector=FakeThreadInspector(ThreadInspectionResult(result="clear", checked_at=NOW)),
+        renderer=FakeRenderer(
+            (
+                "I wanted to briefly follow up on my earlier note about the Backend Developer role at ExampleCo.",
+                "I believe the role could be a strong mutual fit. If you are open to it, I would be grateful for a brief 15-minute conversation to hear your perspective on the role, the team, or what tends to matter in the process.",
+            )
+        ),
+    )
+
+    plan = connection.execute("SELECT plan_status, last_skip_reason, retry_count FROM outreach_followup_plans").fetchone()
+    assert result.drafts_created == 0
+    assert result.retryable_count == 1
+    assert plan["plan_status"] == PLAN_STATUS_RETRYABLE
+    assert plan["last_skip_reason"] == SKIP_REASON_DRAFT_RETRY
+    assert plan["retry_count"] == 1
+
+
+def test_managerial_followup_career_guidance_drift_is_retried(tmp_path):
+    project_root, connection = _bootstrap_connection(tmp_path)
+    _seed_sent_role_targeted_message(
+        connection,
+        project_root,
+        outreach_message_id="om_managerial",
+        lead_id="ld_managerial",
+        job_posting_id="jp_managerial",
+        job_posting_contact_id="jpc_managerial",
+        contact_id="ct_managerial",
+        recipient_email="kavita@example.com",
+        thread_id="thread_managerial",
+        company_name="Console",
+        role_title="Applied AI Engineer",
+        subject="Interest in the Applied AI Engineer role at Console",
+        body_text=CODEX_MANAGERIAL_BODY,
+        send_result_payload={
+            "draft_origin_kind": "codex_role_split",
+            "draft_posture_family": "managerial",
+            "autonomous_origin": True,
+        },
+    )
+
+    result = run_followup_cycle(
+        connection,
+        project_root=project_root,
+        current_time=NOW,
+        dry_run=True,
+        thread_inspector=FakeThreadInspector(ThreadInspectionResult(result="clear", checked_at=NOW)),
+        renderer=FakeRenderer(
+            (
+                "I wanted to briefly follow up on my earlier note and say I still admired your path into this kind of work.",
+                "If you're open to it, I'd still really value a brief 10-minute conversation to hear how you grew into this kind of work and what you'd recommend I focus on at this stage.",
+            )
+        ),
+    )
+
+    plan = connection.execute(
+        "SELECT plan_status, last_skip_reason, retry_count FROM outreach_followup_plans WHERE original_outreach_message_id = ?",
+        ("om_managerial",),
+    ).fetchone()
+    assert result.drafts_created == 0
+    assert result.retryable_count == 1
+    assert plan["plan_status"] == PLAN_STATUS_RETRYABLE
+    assert plan["last_skip_reason"] == SKIP_REASON_DRAFT_RETRY
+    assert plan["retry_count"] == 1
 
 
 def test_codex_timeout_pauses_followup_auto_send(tmp_path):
@@ -1253,6 +1489,92 @@ def test_followup_cycle_reuses_fresh_cached_draft_without_redrafting(tmp_path):
     assert result.messages_sent == 1
     assert renderer.calls == 0
     assert sender.sent_bodies[0].startswith("Hi Alex,\n\nJust wanted to briefly follow up")
+
+
+def test_followup_cycle_ignores_fresh_cached_draft_without_policy_version(tmp_path):
+    project_root, connection = _bootstrap_connection(tmp_path)
+    _seed_sent_role_targeted_message(
+        connection,
+        project_root,
+        send_result_payload={
+            "draft_origin_kind": "codex_role_split",
+            "draft_posture_family": "technical",
+            "autonomous_origin": True,
+            "message_id_header": "<msg@example.com>",
+        },
+    )
+    followups_module._materialize_candidate_plans(
+        connection,
+        paths=ProjectPaths.from_root(project_root),
+        current_time=NOW,
+        limit=25,
+    )
+    plan_id = connection.execute(
+        "SELECT outreach_followup_plan_id FROM outreach_followup_plans ORDER BY created_at DESC LIMIT 1"
+    ).fetchone()[0]
+    draft_path, review_path = _write_cached_followup_artifacts(
+        project_root,
+        plan_id=str(plan_id),
+        body_text=(
+            "Hi Alex,\n\n"
+            "I wanted to briefly follow up on my earlier note about the Backend Developer role at ExampleCo.\n\n"
+            "I believe the role could be a strong mutual fit and would value a brief 15-minute conversation.\n\n"
+            "Best,\n"
+            "Achyutaram Sonti"
+        ),
+        include_policy_version=False,
+    )
+    connection.execute(
+        """
+        UPDATE outreach_followup_plans
+        SET plan_status = ?, draft_artifact_path = ?, review_evidence_artifact_path = ?,
+            last_evaluated_at = ?, agent_reviewed_at = ?, updated_at = ?
+        WHERE outreach_followup_plan_id = ?
+        """,
+        (
+            "agent_reviewed",
+            draft_path,
+            review_path,
+            NOW,
+            NOW,
+            NOW,
+            str(plan_id),
+        ),
+    )
+    connection.commit()
+    _enable_followup_auto_send(connection)
+    renderer = FakeRenderer(
+        (
+            "I wanted to briefly follow up on my earlier note.",
+            "If you're open to it, I would still value a brief 10-minute conversation to hear your perspective on the work and what you'd recommend I focus on at this stage.",
+        )
+    )
+    sender = FakeSender([])
+
+    result = run_followup_cycle(
+        connection,
+        project_root=project_root,
+        current_time=NOW,
+        dry_run=False,
+        thread_inspector=FakeThreadInspector(ThreadInspectionResult(result="clear", checked_at=NOW)),
+        renderer=renderer,
+        sender=sender,
+        role_targeted_priority_checker=lambda conn, now: False,
+    )
+
+    refreshed_paths = connection.execute(
+        """
+        SELECT draft_artifact_path, review_evidence_artifact_path
+        FROM outreach_followup_plans
+        WHERE outreach_followup_plan_id = ?
+        """,
+        (str(plan_id),),
+    ).fetchone()
+    assert result.messages_sent == 1
+    assert renderer.calls == 1
+    assert refreshed_paths["draft_artifact_path"] != draft_path
+    assert refreshed_paths["review_evidence_artifact_path"] != review_path
+    assert sender.sent_bodies[0].startswith("Hi Alex,\n\nI wanted to briefly follow up on my earlier note.")
 
 
 def test_followup_cycle_does_not_prepare_new_due_plan_when_prepared_frontier_is_full(tmp_path):

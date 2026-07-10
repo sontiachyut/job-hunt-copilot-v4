@@ -22,7 +22,6 @@ from .outreach import (
     AUTONOMOUS_CODEX_DRAFT_TIMEOUT_SECONDS,
     CODEX_TIMEOUT_EXIT_CODE,
     JOB_HUNT_COPILOT_REPO_URL,
-    MANAGERIAL_PATH_CTA_QUESTION,
     MAX_AUTOMATIC_TRANSIENT_SEND_RETRIES,
     MAX_INTER_SEND_GAP_MINUTES,
     MESSAGE_STATUS_BLOCKED,
@@ -73,6 +72,7 @@ FOLLOWUP_DAY_GAPS = {
 }
 FOLLOWUP_BUSINESS_TIMEZONE = SEND_LANE_TIMEZONE
 FOLLOWUP_DRAFT_RETRY_LIMIT = 3
+FOLLOWUP_TEMPLATE_POLICY_VERSION = "2026-07-10-thread-posture-v1"
 
 POSTURE_TECHNICAL = "technical"
 POSTURE_MANAGERIAL = "managerial"
@@ -171,6 +171,16 @@ MARKDOWN_BLOCK_PATTERNS = (
     re.compile(r"^\s*[-*]\s+", re.MULTILINE),
     re.compile(r"^\s*#+\s+", re.MULTILINE),
     re.compile(r"```"),
+)
+TECHNICAL_FOLLOWUP_DRIFT_PATTERNS = (
+    re.compile(r"\bmutual fit\b", re.IGNORECASE),
+    re.compile(r"\bthe .+ role at .+\b", re.IGNORECASE),
+    re.compile(r"\bperspective on the role, the team, or what tends to matter in the process\b", re.IGNORECASE),
+)
+MANAGERIAL_FOLLOWUP_DRIFT_PATTERNS = (
+    re.compile(r"\badmired your path\b", re.IGNORECASE),
+    re.compile(r"\bhow you grew into this kind of work\b", re.IGNORECASE),
+    re.compile(r"\bwhat you'd recommend i focus on at this stage\b", re.IGNORECASE),
 )
 
 
@@ -430,12 +440,21 @@ def _load_cached_followup_render(
     evidence = evidence_contract.get("payload", {})
     if not isinstance(evidence, Mapping):
         evidence = {}
+    if not _cached_followup_render_is_compatible(evidence):
+        return None
     return RenderedFollowUpDraft(
         body_text=body_text,
         first_name_or_salutation=_resolve_salutation(candidate),
         draft_artifact_path=draft_artifact_path,
         review_evidence_artifact_path=review_evidence_artifact_path,
         evidence=evidence,
+    )
+
+
+def _cached_followup_render_is_compatible(evidence: Mapping[str, Any]) -> bool:
+    return (
+        _normalize_optional_text(evidence.get("followup_template_policy_version"))
+        == FOLLOWUP_TEMPLATE_POLICY_VERSION
     )
 
 
@@ -1078,7 +1097,12 @@ def render_followup_draft(
     salutation = _resolve_salutation(candidate)
     prior_followups = _load_prior_sent_followups(connection, candidate.original_outreach_message_id)
     sender_evidence_summary = _build_sender_evidence_summary(candidate.body_text)
-    role_company_summary = _build_role_company_summary(role_title, company_name, sequence=candidate.followup_sequence)
+    role_company_summary = _build_role_company_summary(
+        role_title,
+        company_name,
+        sequence=candidate.followup_sequence,
+        posture_family=origin.posture_family or _infer_posture_from_body(candidate.subject, candidate.body_text),
+    )
     thread_context_summary = _build_thread_context_summary(candidate, prior_followups)
 
     context = FollowUpDraftContext(
@@ -1108,6 +1132,9 @@ def render_followup_draft(
     )
     if not validate_followup_body(body_text, followup_sequence=candidate.followup_sequence):
         raise FollowUpDraftingError("Rendered follow-up failed deterministic body validation.")
+    posture_error = _validate_followup_body_for_context(body_text, context=context)
+    if posture_error is not None:
+        raise FollowUpDraftingError(posture_error)
 
     artifact_dir = _followup_artifact_dir(paths, candidate)
     artifact_dir.mkdir(parents=True, exist_ok=True)
@@ -1125,6 +1152,7 @@ def render_followup_draft(
     }
     evidence = {
         "dry_run": dry_run,
+        "followup_template_policy_version": FOLLOWUP_TEMPLATE_POLICY_VERSION,
         "original_outreach_message_id": candidate.original_outreach_message_id,
         "outreach_followup_plan_id": candidate.outreach_followup_plan_id,
         "followup_sequence": candidate.followup_sequence,
@@ -2749,7 +2777,20 @@ def _build_sender_evidence_summary(original_body_text: str) -> str:
     return paragraphs[0] if paragraphs else ""
 
 
-def _build_role_company_summary(role_title: str | None, company_name: str | None, *, sequence: int) -> str:
+def _build_role_company_summary(
+    role_title: str | None,
+    company_name: str | None,
+    *,
+    sequence: int,
+    posture_family: str | None,
+) -> str:
+    if posture_family == POSTURE_TECHNICAL:
+        company_fragment = f" at {company_name}" if company_name else ""
+        return (
+            "This thread is learning-first and guidance-oriented. "
+            f"If you mention the recipient's work{company_fragment}, keep it light. "
+            "Do not recast the follow-up as a direct role-interest or mutual-fit ask."
+        )
     if sequence == 1 and role_title and company_name:
         return f"Follow-up 1 must explicitly refer to the {role_title} role at {company_name}."
     if role_title and company_name:
@@ -3097,21 +3138,16 @@ def _build_followup_prompt(context: FollowUpDraftContext) -> str:
         "paragraphs must contain 2 or 3 short paragraphs only.",
         "Do not include greeting, signoff, subject, quoted thread text, bullets, markdown, Job Hunt Copilot details, resume mention, or attachment mention.",
         "Keep the follow-up lighter than the original email.",
-        f"Follow-up {context.sequence} must keep the primary CTA as: {MANAGERIAL_PATH_CTA_QUESTION}",
         "Stay anchored to the original sent email and prior sent follow-ups only. Do not introduce new candidate evidence.",
+        "Do not restate multiple JD bullets, challenge lists, or heavy proof paragraphs from the original thread.",
     ]
     if context.sequence == 1:
-        shared_rules.extend(
-            [
-                "This is follow-up 1: keep it mostly as a light reminder.",
-                "It must explicitly mention the role and company.",
-            ]
-        )
+        shared_rules.append("This is follow-up 1: keep it mostly as a light reminder.")
     elif context.sequence == 2:
         shared_rules.extend(
             [
-                "This is follow-up 2: allow one compact mutual-fit reminder from the original evidence.",
-                "Role/company can be thread-implied if that reads more naturally.",
+                "This is follow-up 2: keep it lighter than follow-up 1.",
+                "Use thread context rather than restating the same opener language.",
             ]
         )
     else:
@@ -3119,19 +3155,26 @@ def _build_followup_prompt(context: FollowUpDraftContext) -> str:
             [
                 "This is follow-up 3: keep it respectful, final, and light.",
                 "Do not add your own final-stop sentence; deterministic runtime will insert that exact final sentence separately.",
-                "Role/company can be thread-implied if the thread already makes them clear.",
             ]
         )
     if context.posture_family == POSTURE_TECHNICAL:
         family_rules = [
+            "This is a learning/career-guidance thread, not a direct role-interest follow-up.",
             "Keep the tone career-guidance oriented.",
-            "Do not switch into direct application or referral language.",
-            "A very light callback to the recipient's career path is acceptable, but do not restate the original hook heavily.",
+            "Do not switch into mutual-fit, application, referral, hiring-process, or team-needs language.",
+            "Do not anchor the reminder around a specific opening or write `the role at company` as the main frame.",
+            "A very light callback to the recipient's work or path is acceptable, but do not restate the original hook heavily.",
+            "The CTA should ask for brief perspective on the work, path, or what to focus on at this stage.",
+            "Avoid phrases like `mutual fit` and avoid role/team/process phrasing from the managerial template.",
         ]
     else:
         family_rules = [
             "Keep the thread role-interest oriented with the specific role as the anchor.",
-            "Later follow-ups may soften into perspective on the role, team, or work, but do not turn this into generic networking.",
+            "Follow-up 1 should explicitly mention the role and company.",
+            "Later follow-ups may rely on thread context instead of repeating both strings verbatim when that reads more naturally.",
+            "If you mention fit, keep it to one compact sentence and do not build background-fit lists.",
+            "The CTA should ask for a brief 15-minute conversation about the role, team, or what tends to matter in the process.",
+            "Do not drift into career-guidance language about the recipient's path or what to focus on at this stage.",
         ]
     return "\n".join(
         [
@@ -3161,6 +3204,27 @@ def _build_followup_prompt(context: FollowUpDraftContext) -> str:
             "- original_outreach_context_fallback",
         ]
     )
+
+
+def _validate_followup_body_for_context(
+    body_text: str,
+    *,
+    context: FollowUpDraftContext,
+) -> str | None:
+    if context.posture_family == POSTURE_TECHNICAL:
+        if any(pattern.search(body_text) for pattern in TECHNICAL_FOLLOWUP_DRIFT_PATTERNS):
+            return (
+                "Rendered follow-up drifted from the original learning/career-guidance thread into "
+                "role-interest language."
+            )
+        return None
+    if context.posture_family == POSTURE_MANAGERIAL:
+        if any(pattern.search(body_text) for pattern in MANAGERIAL_FOLLOWUP_DRIFT_PATTERNS):
+            return (
+                "Rendered follow-up drifted from the original role-interest thread into "
+                "career-guidance language."
+            )
+    return None
 
 
 def _run_followup_codex_payload(

@@ -91,7 +91,7 @@ Hi {first_name},
 
 I wanted to briefly follow up on my earlier note about the {role_title} role at {company_name}.
 
-I reached out because I believe the role could be a strong mutual fit with my background in {background_fit_areas}. I know you are busy, so I appreciate you taking the time to read this.
+I reached out because I believe the role could be a strong mutual fit. I know you are busy, so I appreciate you taking the time to read this.
 
 If you are open to it, I would be grateful for a brief 15-minute conversation to hear your perspective on the role, the team, or what tends to matter in the process.
 
@@ -101,7 +101,9 @@ Best,
 Achyutaram Sonti
 ```
 
-Use 2-3 concise `background_fit_areas` grounded in the original email, JD, and resume/profile evidence, such as `Go/Golang services, backend APIs, and production engineering` or `data engineering, Spark/Python pipelines, and production analytics systems`. Do not repeat the full first-email proof point or the full contact block in follow-ups. Do not let unrelated roles collapse into the same generic background phrase across a batch.
+Keep the follow-up brief and role-specific. Do not repeat the full first-email proof point or the full contact block in follow-ups.
+
+If the original thread was a learning-first `Learning from your career path` technical email rather than a direct role-interest email, preserve that posture in the follow-up. Do not recast that thread into `the {role_title} role at {company_name}` or `mutual fit` language just because later worker context knows the posting details.
 
 ## Unreplied Follow-Up Operating Workflow
 
@@ -111,9 +113,11 @@ When preparing follow-ups for a requested date or batch:
 2. Skip any message that has bounced or received a reply.
 3. Skip any contact that already has a later sent follow-up or later sent outreach.
 4. Load the original sent body and the linked JD artifact.
-5. Choose 2-3 concise `background_fit_areas` from the original email, JD, and resume/profile evidence.
+5. Preserve the original thread posture:
+   - direct role-interest threads stay role-interest oriented
+   - learning-first technical threads stay learning/guidance oriented
 6. Draft locally under `ops/followups/<run-id>/` and create both per-email draft files and a combined `drafts.md`.
-7. Review the batch for repeated generic `background_fit_areas`; revise any role where the fit areas are not specific to that JD and the sender's actual profile.
+7. Review the batch for posture drift or repeated generic filler before showing drafts.
 8. Show the owner sample drafts for review.
 9. Send only after the owner explicitly approves.
 10. Send as replies in the same Gmail threads, preserving the original thread context.

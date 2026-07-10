@@ -1241,16 +1241,16 @@ Feature: Job Hunt Copilot next-build acceptance
       And it processes due candidates oldest original sent email first
       And it does not render follow-up draft bodies before the 4-calendar-day eligibility threshold
 
-    Scenario: Follow-up rendering uses the strict approved template
+    Scenario: Follow-up rendering preserves the original thread posture
       Given an eligible unreplied original `role_targeted` outreach message exists
       And the original email body, role, company, recipient salutation, and grounding evidence are available
       When the follow-up worker renders the follow-up draft
-      Then the body matches the approved warmer mutual-fit template shape
-      And the only filled fields are first name or preserved salutation, role title, company name, and `background_fit_areas`
-      And `background_fit_areas` contains 2 to 3 concise role-specific noun phrases grounded in allowed evidence
+      Then a role-interest original thread stays role/company oriented
+      And a learning-first technical original thread stays guidance oriented rather than being reframed as a direct role-mutual-fit follow-up
+      And a role-interest follow-up may use one compact fit reminder but does not restate JD bullet lists or heavy proof paragraphs
       And the draft uses the short signature only
       And the draft does not include attachments, quoted original content, full contact signature, retired terse JD-theme wording, internal artifact text, or metric-heavy proof paragraphs
-      And a generic ungrounded background phrase blocks or escalates the candidate rather than being sent
+      And posture drift blocks or escalates the candidate rather than being sent
 
     Scenario: Reply, bounce, and duplicate-follow-up guards suppress automatic follow-ups
       Given an original sent `role_targeted` outreach message is due for follow-up
