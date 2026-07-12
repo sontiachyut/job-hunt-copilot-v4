@@ -23,6 +23,18 @@ This repository contains two connected systems:
 
 ![System Overview](./assets/readme/system-overview.svg)
 
+## Architecture
+
+![Architecture Overview](./assets/readme/architecture-overview.svg)
+
+The project is organized around four explicit layers:
+- **External systems:** job sources, Apollo, Gmail, and review inputs provide signals, recipients, and delivery outcomes.
+- **Product runtime:** lead ingestion, tailoring, contact discovery, outreach, and follow-up are separate modules with explicit handoffs.
+- **Durable state and artifacts:** SQLite stores canonical workflow state while stage workspaces persist inspectable files like JDs, drafts, search results, and feedback artifacts.
+- **Control planes:** the launchd-driven supervisor advances the runtime one bounded unit at a time, while the build control plane evolves the product through spec, acceptance coverage, and validation reports.
+
+The core design choice is that the model is used for reasoning, not for memory. Memory lives in canonical state, artifacts, and audit history.
+
 ## Why this project reads differently
 
 | Typical AI demo | Job Hunt Copilot v4 |
