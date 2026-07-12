@@ -1,0 +1,24 @@
+{
+  "generated_at": "2026-07-11 18:50 MST",
+  "code": {
+    "tracked_code_total": 101784,
+    "source_lines": 61492,
+    "test_lines": 40292,
+    "python_lines": 100597,
+    "sql_lines": 1187
+  },
+  "acceptance": {
+    "scenario_count": 279,
+    "implemented_count": 276,
+    "partial_count": 1
+  },
+  "runtime": {
+    "companies_tracked": 546,
+    "job_postings": 1158,
+    "contacts": 4715,
+    "pipeline_runs": 1056,
+    "sent_messages": 4058,
+    "sent_followups": 1786,
+    "companies_reached": 241
+  }
+}

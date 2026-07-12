@@ -15,6 +15,8 @@ REPO_ROOT = Path(__file__).resolve().parents[2]
 OUTPUT_DIR = REPO_ROOT / "assets" / "readme"
 DB_PATH = REPO_ROOT / "job_hunt_copilot.db"
 TRACE_MATRIX_PATH = REPO_ROOT / "build-agent" / "reports" / "ba-10-acceptance-trace-matrix.md"
+SNAPSHOT_JSON = OUTPUT_DIR / "project-snapshot.json"
+SNAPSHOT_SVG = OUTPUT_DIR / "project-snapshot.svg"
 
 
 @dataclass(frozen=True)
@@ -131,37 +133,38 @@ def _format_int(value: int) -> str:
 
 
 def _metric_cards(snapshot: dict[str, object]) -> list[MetricCard]:
+    code_stats = snapshot["code"]  # type: ignore[index]
     acceptance_stats = snapshot["acceptance"] or {}  # type: ignore[index]
     runtime_stats = snapshot["runtime"] or {}  # type: ignore[index]
     return [
         MetricCard(
+            label="Lines of code",
+            value=_format_int(int(code_stats["tracked_code_total"])),
+            note="Tracked Python and SQL in git",
+            accent="#2563EB",
+        ),
+        MetricCard(
             label="Companies reached",
             value=_format_int(int(runtime_stats.get("companies_reached", 0))),
             note="Distinct companies with sent outreach",
-            accent="#2563EB",
+            accent="#0F766E",
         ),
         MetricCard(
             label="Job postings processed",
             value=_format_int(int(runtime_stats.get("job_postings", 0))),
             note="Canonical posting records in runtime history",
-            accent="#0F766E",
+            accent="#7C3AED",
         ),
         MetricCard(
             label="Contacts mapped",
             value=_format_int(int(runtime_stats.get("contacts", 0))),
             note="People discovered, enriched, or reused",
-            accent="#7C3AED",
+            accent="#EA580C",
         ),
         MetricCard(
             label="Emails sent",
             value=_format_int(int(runtime_stats.get("sent_messages", 0))),
             note="Production outreach messages delivered",
-            accent="#EA580C",
-        ),
-        MetricCard(
-            label="Follow-ups sent",
-            value=_format_int(int(runtime_stats.get("sent_followups", 0))),
-            note="Reply-aware follow-up messages sent",
             accent="#DC2626",
         ),
         MetricCard(
@@ -225,16 +228,16 @@ def main() -> None:
         "runtime": _runtime_stats(),
     }
     cards = _metric_cards(snapshot)
-    (OUTPUT_DIR / "runtime-snapshot.json").write_text(
+    SNAPSHOT_JSON.write_text(
         json.dumps(snapshot, indent=2) + "\n",
         encoding="utf-8",
     )
-    (OUTPUT_DIR / "runtime-snapshot.svg").write_text(
+    SNAPSHOT_SVG.write_text(
         _render_svg(snapshot, cards),
         encoding="utf-8",
     )
-    print(f"Wrote {OUTPUT_DIR / 'runtime-snapshot.json'}")
-    print(f"Wrote {OUTPUT_DIR / 'runtime-snapshot.svg'}")
+    print(f"Wrote {SNAPSHOT_JSON}")
+    print(f"Wrote {SNAPSHOT_SVG}")
 
 
 if __name__ == "__main__":

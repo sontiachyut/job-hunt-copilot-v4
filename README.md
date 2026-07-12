@@ -2,7 +2,7 @@
 
 > A stateful AI workflow that turns job leads into tailored resumes, contact discovery, targeted outreach, and reply-aware follow-ups.
 
-![Project Snapshot](./assets/readme/runtime-snapshot.svg)
+![Project Snapshot](./assets/readme/project-snapshot.svg)
 
 Job Hunt Copilot v4 is built as an operating system for a narrow workflow, not as a one-shot prompt demo.
 It ingests leads, materializes artifacts, runs bounded background workers, keeps durable state in SQLite, and leaves an inspectable audit trail for every important step.
@@ -54,7 +54,7 @@ The core design choice is that the model is used for reasoning, not for memory. 
 
 ## Snapshot notes
 
-The metric cards at the top of this README emphasize shipped workflow scale and validation depth. They are generated from:
+The metric cards at the top of this README emphasize shipped workflow scale, engineering depth, and validation coverage. They are generated from:
 - runtime history in `job_hunt_copilot.db`
 - the acceptance trace matrix in `build-agent/reports/`
 - tracked repo code statistics for the accompanying JSON snapshot
@@ -66,8 +66,8 @@ python3 scripts/ops/generate_readme_metrics.py
 ```
 
 The generated assets live in:
-- [`assets/readme/runtime-snapshot.svg`](./assets/readme/runtime-snapshot.svg)
-- [`assets/readme/runtime-snapshot.json`](./assets/readme/runtime-snapshot.json)
+- [`assets/readme/project-snapshot.svg`](./assets/readme/project-snapshot.svg)
+- [`assets/readme/project-snapshot.json`](./assets/readme/project-snapshot.json)
 
 ## Repository guide
 
