@@ -1,10 +1,10 @@
 {
-  "generated_at": "2026-07-11 18:38 MST",
+  "generated_at": "2026-07-11 18:46 MST",
   "code": {
-    "tracked_code_total": 101540,
-    "source_lines": 61248,
+    "tracked_code_total": 101781,
+    "source_lines": 61489,
     "test_lines": 40292,
-    "python_lines": 100353,
+    "python_lines": 100594,
     "sql_lines": 1187
   },
   "acceptance": {
@@ -17,6 +17,8 @@
     "job_postings": 1158,
     "contacts": 4715,
     "pipeline_runs": 1056,
+    "sent_messages": 4058,
+    "sent_followups": 1786,
     "companies_reached": 241
   }
 }

@@ -92,6 +92,19 @@ def _runtime_stats() -> dict[str, int] | None:
             "job_postings": _scalar(connection, "SELECT COUNT(*) FROM job_postings"),
             "contacts": _scalar(connection, "SELECT COUNT(*) FROM contacts"),
             "pipeline_runs": _scalar(connection, "SELECT COUNT(*) FROM pipeline_runs"),
+            "sent_messages": _scalar(
+                connection,
+                "SELECT COUNT(*) FROM outreach_messages WHERE message_status = 'sent'",
+            ),
+            "sent_followups": _scalar(
+                connection,
+                """
+                SELECT COUNT(*)
+                FROM outreach_messages
+                WHERE outreach_mode = 'role_targeted_followup'
+                  AND message_status = 'sent'
+                """,
+            ),
             "companies_reached": _scalar(
                 connection,
                 """
@@ -118,44 +131,43 @@ def _format_int(value: int) -> str:
 
 
 def _metric_cards(snapshot: dict[str, object]) -> list[MetricCard]:
-    code_stats = snapshot["code"]  # type: ignore[index]
     acceptance_stats = snapshot["acceptance"] or {}  # type: ignore[index]
     runtime_stats = snapshot["runtime"] or {}  # type: ignore[index]
     return [
         MetricCard(
-            label="Tracked code",
-            value=_format_int(int(code_stats["tracked_code_total"])),
-            note="Python and SQL tracked in git",
-            accent="#2563EB",
-        ),
-        MetricCard(
-            label="Acceptance scenarios",
-            value=_format_int(int(acceptance_stats.get("scenario_count", 0))),
-            note="Spec-backed behavior checks",
-            accent="#0F766E",
-        ),
-        MetricCard(
-            label="Companies tracked",
-            value=_format_int(int(runtime_stats.get("companies_tracked", 0))),
-            note="Historical runtime coverage",
-            accent="#7C3AED",
-        ),
-        MetricCard(
-            label="Job postings",
-            value=_format_int(int(runtime_stats.get("job_postings", 0))),
-            note="Posting records in canonical state",
-            accent="#EA580C",
-        ),
-        MetricCard(
-            label="Contacts stored",
-            value=_format_int(int(runtime_stats.get("contacts", 0))),
-            note="Contact graph accumulated by the system",
-            accent="#DC2626",
-        ),
-        MetricCard(
             label="Companies reached",
             value=_format_int(int(runtime_stats.get("companies_reached", 0))),
             note="Distinct companies with sent outreach",
+            accent="#2563EB",
+        ),
+        MetricCard(
+            label="Job postings processed",
+            value=_format_int(int(runtime_stats.get("job_postings", 0))),
+            note="Canonical posting records in runtime history",
+            accent="#0F766E",
+        ),
+        MetricCard(
+            label="Contacts mapped",
+            value=_format_int(int(runtime_stats.get("contacts", 0))),
+            note="People discovered, enriched, or reused",
+            accent="#7C3AED",
+        ),
+        MetricCard(
+            label="Emails sent",
+            value=_format_int(int(runtime_stats.get("sent_messages", 0))),
+            note="Production outreach messages delivered",
+            accent="#EA580C",
+        ),
+        MetricCard(
+            label="Follow-ups sent",
+            value=_format_int(int(runtime_stats.get("sent_followups", 0))),
+            note="Reply-aware follow-up messages sent",
+            accent="#DC2626",
+        ),
+        MetricCard(
+            label="Acceptance scenarios",
+            value=_format_int(int(acceptance_stats.get("implemented_count", 0))),
+            note="Implemented spec-backed behavior checks",
             accent="#0891B2",
         ),
     ]

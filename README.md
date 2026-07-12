@@ -54,10 +54,10 @@ The core design choice is that the model is used for reasoning, not for memory. 
 
 ## Snapshot notes
 
-The metric cards at the top of this README are generated from:
-- tracked repo code statistics
+The metric cards at the top of this README emphasize shipped workflow scale and validation depth. They are generated from:
+- runtime history in `job_hunt_copilot.db`
 - the acceptance trace matrix in `build-agent/reports/`
-- local runtime history in `job_hunt_copilot.db`
+- tracked repo code statistics for the accompanying JSON snapshot
 
 Refresh them with:
 
