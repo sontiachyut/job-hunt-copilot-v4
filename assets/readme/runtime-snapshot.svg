@@ -1,0 +1,39 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1400" height="760" viewBox="0 0 1400 760" role="img" aria-labelledby="title desc">
+<title id="title">Job Hunt Copilot v4 project snapshot</title>
+<desc id="desc">Six-card metrics summary covering code size, acceptance depth, and runtime history.</desc>
+<rect width="1400" height="760" rx="28" fill="#F8FAFC"/>
+<rect x="32" y="32" width="1336" height="696" rx="24" fill="white" stroke="#E2E8F0" stroke-width="2"/>
+<text x="80" y="104" font-family="Arial, Helvetica, sans-serif" font-size="42" font-weight="700" fill="#0F172A">Project Snapshot</text>
+<text x="80" y="142" font-family="Arial, Helvetica, sans-serif" font-size="22" fill="#475569">Generated from tracked repo files, the acceptance matrix, and local runtime history.</text>
+<rect x="80" y="180" width="400" height="180" rx="24" fill="#FFFFFF" stroke="#E2E8F0" stroke-width="2"/>
+<rect x="80" y="180" width="400" height="10" rx="24" fill="#2563EB"/>
+<text x="108" y="234" font-family="Arial, Helvetica, sans-serif" font-size="18" font-weight="700" fill="#334155">Tracked code</text>
+<text x="108" y="292" font-family="Arial, Helvetica, sans-serif" font-size="46" font-weight="700" fill="#0F172A">101,540</text>
+<text x="108" y="328" font-family="Arial, Helvetica, sans-serif" font-size="18" fill="#64748B">Python and SQL tracked in git</text>
+<rect x="520" y="180" width="400" height="180" rx="24" fill="#FFFFFF" stroke="#E2E8F0" stroke-width="2"/>
+<rect x="520" y="180" width="400" height="10" rx="24" fill="#0F766E"/>
+<text x="548" y="234" font-family="Arial, Helvetica, sans-serif" font-size="18" font-weight="700" fill="#334155">Acceptance scenarios</text>
+<text x="548" y="292" font-family="Arial, Helvetica, sans-serif" font-size="46" font-weight="700" fill="#0F172A">279</text>
+<text x="548" y="328" font-family="Arial, Helvetica, sans-serif" font-size="18" fill="#64748B">Spec-backed behavior checks</text>
+<rect x="960" y="180" width="400" height="180" rx="24" fill="#FFFFFF" stroke="#E2E8F0" stroke-width="2"/>
+<rect x="960" y="180" width="400" height="10" rx="24" fill="#7C3AED"/>
+<text x="988" y="234" font-family="Arial, Helvetica, sans-serif" font-size="18" font-weight="700" fill="#334155">Companies tracked</text>
+<text x="988" y="292" font-family="Arial, Helvetica, sans-serif" font-size="46" font-weight="700" fill="#0F172A">546</text>
+<text x="988" y="328" font-family="Arial, Helvetica, sans-serif" font-size="18" fill="#64748B">Historical runtime coverage</text>
+<rect x="80" y="396" width="400" height="180" rx="24" fill="#FFFFFF" stroke="#E2E8F0" stroke-width="2"/>
+<rect x="80" y="396" width="400" height="10" rx="24" fill="#EA580C"/>
+<text x="108" y="450" font-family="Arial, Helvetica, sans-serif" font-size="18" font-weight="700" fill="#334155">Job postings</text>
+<text x="108" y="508" font-family="Arial, Helvetica, sans-serif" font-size="46" font-weight="700" fill="#0F172A">1,158</text>
+<text x="108" y="544" font-family="Arial, Helvetica, sans-serif" font-size="18" fill="#64748B">Posting records in canonical state</text>
+<rect x="520" y="396" width="400" height="180" rx="24" fill="#FFFFFF" stroke="#E2E8F0" stroke-width="2"/>
+<rect x="520" y="396" width="400" height="10" rx="24" fill="#DC2626"/>
+<text x="548" y="450" font-family="Arial, Helvetica, sans-serif" font-size="18" font-weight="700" fill="#334155">Contacts stored</text>
+<text x="548" y="508" font-family="Arial, Helvetica, sans-serif" font-size="46" font-weight="700" fill="#0F172A">4,715</text>
+<text x="548" y="544" font-family="Arial, Helvetica, sans-serif" font-size="18" fill="#64748B">Contact graph accumulated by the system</text>
+<rect x="960" y="396" width="400" height="180" rx="24" fill="#FFFFFF" stroke="#E2E8F0" stroke-width="2"/>
+<rect x="960" y="396" width="400" height="10" rx="24" fill="#0891B2"/>
+<text x="988" y="450" font-family="Arial, Helvetica, sans-serif" font-size="18" font-weight="700" fill="#334155">Companies reached</text>
+<text x="988" y="508" font-family="Arial, Helvetica, sans-serif" font-size="46" font-weight="700" fill="#0F172A">241</text>
+<text x="988" y="544" font-family="Arial, Helvetica, sans-serif" font-size="18" fill="#64748B">Distinct companies with sent outreach</text>
+<text x="80" y="700" font-family="Arial, Helvetica, sans-serif" font-size="18" fill="#64748B">Snapshot generated: 2026-07-11 18:38 MST</text>
+</svg>

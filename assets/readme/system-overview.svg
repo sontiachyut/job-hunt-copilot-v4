@@ -1,0 +1,71 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1400" height="760" viewBox="0 0 1400 760" role="img" aria-labelledby="title desc">
+  <title id="title">Job Hunt Copilot v4 system overview</title>
+  <desc id="desc">Five-stage product pipeline with a durable control plane underneath.</desc>
+
+  <rect width="1400" height="760" rx="28" fill="#F8FAFC"/>
+  <rect x="32" y="32" width="1336" height="696" rx="24" fill="#FFFFFF" stroke="#E2E8F0" stroke-width="2"/>
+
+  <text x="80" y="100" font-family="Arial, Helvetica, sans-serif" font-size="42" font-weight="700" fill="#0F172A">End-to-end system</text>
+  <text x="80" y="138" font-family="Arial, Helvetica, sans-serif" font-size="22" fill="#475569">A stateful workflow that moves from raw leads to feedback-aware outreach, with durable control underneath.</text>
+
+  <rect x="80" y="190" width="210" height="150" rx="24" fill="#EFF6FF" stroke="#BFDBFE" stroke-width="2"/>
+  <text x="108" y="234" font-family="Arial, Helvetica, sans-serif" font-size="20" font-weight="700" fill="#1D4ED8">1. Lead intake</text>
+  <text x="108" y="268" font-family="Arial, Helvetica, sans-serif" font-size="18" fill="#334155">Collect job alerts,</text>
+  <text x="108" y="294" font-family="Arial, Helvetica, sans-serif" font-size="18" fill="#334155">materialize postings,</text>
+  <text x="108" y="320" font-family="Arial, Helvetica, sans-serif" font-size="18" fill="#334155">and store JD artifacts.</text>
+
+  <rect x="332" y="190" width="210" height="150" rx="24" fill="#ECFDF5" stroke="#A7F3D0" stroke-width="2"/>
+  <text x="360" y="234" font-family="Arial, Helvetica, sans-serif" font-size="20" font-weight="700" fill="#047857">2. Resume tailoring</text>
+  <text x="360" y="268" font-family="Arial, Helvetica, sans-serif" font-size="18" fill="#334155">Generate role-specific</text>
+  <text x="360" y="294" font-family="Arial, Helvetica, sans-serif" font-size="18" fill="#334155">resume variants with</text>
+  <text x="360" y="320" font-family="Arial, Helvetica, sans-serif" font-size="18" fill="#334155">verification gates.</text>
+
+  <rect x="584" y="190" width="210" height="150" rx="24" fill="#F5F3FF" stroke="#DDD6FE" stroke-width="2"/>
+  <text x="612" y="234" font-family="Arial, Helvetica, sans-serif" font-size="20" font-weight="700" fill="#6D28D9">3. Contact discovery</text>
+  <text x="612" y="268" font-family="Arial, Helvetica, sans-serif" font-size="18" fill="#334155">Resolve companies,</text>
+  <text x="612" y="294" font-family="Arial, Helvetica, sans-serif" font-size="18" fill="#334155">find people, enrich</text>
+  <text x="612" y="320" font-family="Arial, Helvetica, sans-serif" font-size="18" fill="#334155">and discover emails.</text>
+
+  <rect x="836" y="190" width="210" height="150" rx="24" fill="#FFF7ED" stroke="#FED7AA" stroke-width="2"/>
+  <text x="864" y="234" font-family="Arial, Helvetica, sans-serif" font-size="20" font-weight="700" fill="#C2410C">4. Outreach engine</text>
+  <text x="864" y="268" font-family="Arial, Helvetica, sans-serif" font-size="18" fill="#334155">Draft targeted emails,</text>
+  <text x="864" y="294" font-family="Arial, Helvetica, sans-serif" font-size="18" fill="#334155">pace sends, and keep</text>
+  <text x="864" y="320" font-family="Arial, Helvetica, sans-serif" font-size="18" fill="#334155">thread-level history.</text>
+
+  <rect x="1088" y="190" width="210" height="150" rx="24" fill="#FDF2F8" stroke="#FBCFE8" stroke-width="2"/>
+  <text x="1116" y="234" font-family="Arial, Helvetica, sans-serif" font-size="20" font-weight="700" fill="#BE185D">5. Feedback loop</text>
+  <text x="1116" y="268" font-family="Arial, Helvetica, sans-serif" font-size="18" fill="#334155">Track replies, bounces,</text>
+  <text x="1116" y="294" font-family="Arial, Helvetica, sans-serif" font-size="18" fill="#334155">follow-ups, and route</text>
+  <text x="1116" y="320" font-family="Arial, Helvetica, sans-serif" font-size="18" fill="#334155">the next action.</text>
+
+  <path d="M290 265 H332" stroke="#94A3B8" stroke-width="4" fill="none"/>
+  <polygon points="332,265 318,257 318,273" fill="#94A3B8"/>
+  <path d="M542 265 H584" stroke="#94A3B8" stroke-width="4" fill="none"/>
+  <polygon points="584,265 570,257 570,273" fill="#94A3B8"/>
+  <path d="M794 265 H836" stroke="#94A3B8" stroke-width="4" fill="none"/>
+  <polygon points="836,265 822,257 822,273" fill="#94A3B8"/>
+  <path d="M1046 265 H1088" stroke="#94A3B8" stroke-width="4" fill="none"/>
+  <polygon points="1088,265 1074,257 1074,273" fill="#94A3B8"/>
+
+  <rect x="80" y="402" width="1218" height="258" rx="28" fill="#0F172A"/>
+  <text x="112" y="454" font-family="Arial, Helvetica, sans-serif" font-size="26" font-weight="700" fill="#FFFFFF">Durable control plane</text>
+  <text x="112" y="490" font-family="Arial, Helvetica, sans-serif" font-size="20" fill="#CBD5E1">The pipeline above is coordinated by explicit state and bounded workers below.</text>
+
+  <rect x="112" y="530" width="254" height="94" rx="18" fill="#111827" stroke="#334155" stroke-width="2"/>
+  <text x="140" y="568" font-family="Arial, Helvetica, sans-serif" font-size="20" font-weight="700" fill="#F8FAFC">Supervisor loop</text>
+  <text x="140" y="598" font-family="Arial, Helvetica, sans-serif" font-size="17" fill="#CBD5E1">launchd-driven heartbeats</text>
+
+  <rect x="396" y="530" width="254" height="94" rx="18" fill="#111827" stroke="#334155" stroke-width="2"/>
+  <text x="424" y="568" font-family="Arial, Helvetica, sans-serif" font-size="20" font-weight="700" fill="#F8FAFC">Canonical SQLite state</text>
+  <text x="424" y="598" font-family="Arial, Helvetica, sans-serif" font-size="17" fill="#CBD5E1">durable memory and queues</text>
+
+  <rect x="680" y="530" width="254" height="94" rx="18" fill="#111827" stroke="#334155" stroke-width="2"/>
+  <text x="708" y="568" font-family="Arial, Helvetica, sans-serif" font-size="20" font-weight="700" fill="#F8FAFC">Artifact contracts</text>
+  <text x="708" y="598" font-family="Arial, Helvetica, sans-serif" font-size="17" fill="#CBD5E1">stage outputs stay inspectable</text>
+
+  <rect x="964" y="530" width="302" height="94" rx="18" fill="#111827" stroke="#334155" stroke-width="2"/>
+  <text x="992" y="568" font-family="Arial, Helvetica, sans-serif" font-size="20" font-weight="700" fill="#F8FAFC">Review and override surfaces</text>
+  <text x="992" y="598" font-family="Arial, Helvetica, sans-serif" font-size="17" fill="#CBD5E1">human control without losing autonomy</text>
+
+  <text x="80" y="708" font-family="Arial, Helvetica, sans-serif" font-size="18" fill="#64748B">The repo also includes a build control plane for evolving the system itself, but the runtime above is the core product story.</text>
+</svg>

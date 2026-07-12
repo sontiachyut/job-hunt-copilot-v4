@@ -1,133 +1,83 @@
 # Job Hunt Copilot v4
 
-An autonomous, spec-first job-search system designed to:
-- ingest role leads from LinkedIn-style alerts
-- tailor a resume to a specific posting
-- find internal contacts
-- draft and send targeted outreach
-- observe delivery outcomes
-- operate through a dedicated supervisor agent
+> A stateful AI workflow that turns job leads into tailored resumes, contact discovery, targeted outreach, and reply-aware follow-ups.
 
-## Why This Repo Exists
+![Project Snapshot](./assets/readme/runtime-snapshot.svg)
 
-This repository is the fourth-generation design and build workspace for a serious agentic software project.
+Job Hunt Copilot v4 is built as an operating system for a narrow workflow, not as a one-shot prompt demo.
+It ingests leads, materializes artifacts, runs bounded background workers, keeps durable state in SQLite, and leaves an inspectable audit trail for every important step.
 
-The goal is not just to "send job emails."
-The goal is to build a reliable autonomous workflow with:
-- durable state
-- strict handoff contracts
-- auditability
-- bounded repair and escalation
-- human-overseeable control planes
+This repository contains two connected systems:
+- the product runtime that executes the lead-to-outreach workflow
+- the build control plane used to evolve and validate the product itself
 
-## Current Status
+## What the runtime does
 
-This repo is currently in a **spec-complete, implementation-complete** phase.
+- Collects job leads and turns them into canonical posting and JD artifacts
+- Generates role-specific resume variants with verification gates
+- Finds internal contacts, enriches them, and discovers work emails
+- Drafts and sends paced outreach with durable message history
+- Tracks replies, bounces, and follow-ups as first-class workflow stages
 
-What already exists:
-- a detailed product specification in [prd/spec.md](./prd/spec.md)
-- an acceptance spec in [prd/test-spec.feature](./prd/test-spec.feature)
-- an autonomous operations-agent design
-- an unattended multi-agent build system scaffold under [build-agent/](./build-agent/)
-- a foundation runtime bootstrap package for support-directory setup, secret materialization, and DB migration scaffolding
-- a canonical SQLite schema migration set with review views plus shared ID and timestamp helpers for downstream components
-- shared artifact publication helpers for YAML/JSON contracts, canonical workspace path building, and `artifact_records` registration
-- supervisor control-plane persistence helpers for canonical control state, pipeline runs, supervisor cycles, and runtime leases
-- a bounded supervisor cycle executor with incident-aware work selection, cycle snapshots, lease-guarded single-flight execution, and auto-pause or escalation handling for unsupported progression
-- persisted expert review packets, expert review decisions, and override audit events with filesystem review-packet artifacts under `ops/review-packets/`
-- a generated product-side runtime pack under `ops/agent/` with identity, policy, action-catalog, service-goal, escalation, progress-log, ops-plan, and bootstrap prompt surfaces
-- repo-local launchd wiring under `ops/launchd/` plus `bin/jhc-agent-start`, `bin/jhc-agent-stop`, `bin/jhc-agent-cycle`, `bin/jhc-feedback-sync-cycle`, and `bin/jhc-chat` for local heartbeat, delayed feedback polling, and operator control, with `jhc-chat` now printing a persisted clean-first startup dashboard plus grouped review snapshot before Codex opens, `scripts/ops/chat_state.py` now providing explicit persisted-state `review-queue` and `change-summary` reads for chat-time inspection, `scripts/ops/control_agent.py handoff-background-task` and `return-background-task` now persisting explicit expert-requested background-task handoffs plus review returns with exclusive-focus control-state semantics, `scripts/ops/control_agent.py guidance` and `clarify-guidance` now persisting live expert guidance plus conflict or uncertainty clarification incidents into canonical state, `scripts/ops/control_agent.py review-maintenance` now providing explicit approve-or-reject routing for retained daily maintenance batches, supervisor heartbeats now auto-resuming safely after a 15-minute idle timeout when `jhc-chat` exits unexpectedly, and `scripts/ops/control_agent.py abandon --job-posting-id <id>` now providing a posting-scoped abandon override that records canonical history and retires live pipeline work safely
-- the current Jobright lead-ingestion runtime under `job_hunt_copilot.jobright_ingestion` and `job_hunt_copilot.jobright_promotion`, including authenticated recommendation polling, canonical `leads` / `lead_source_observations` / `lead_contacts` persistence, promotion-time `job_postings` materialization, Jobright-seeded contact carry-forward, and lead-workspace artifacts under `lead-ingestion/runtime/`
-- retained LinkedIn/Gmail ingestion modules now serve only legacy data compatibility and historical artifact support; they are no longer active supervisor entrypoints in the implementation runtime
-- the current Resume Tailoring runtime under `job_hunt_copilot.resume_tailoring`, including `job_posting_id`-rooted eligibility evaluation from persisted `jd.md`, application-local `applications/{company}/{role}/eligibility.yaml` audit artifacts, honest `hard_ineligible` posting short-circuiting, active `resume_tailoring_runs` bootstrap or reuse, per-posting workspace materialization under `resume-tailoring/output/tailored/{company}/{role}/`, shared-contract `meta.yaml`, mirrored `jd.md` / optional `post.md` / `poster-profile.md`, working `resume.tex`, `scope-baseline.resume.tex`, deterministic Step 3 through Step 7 intelligence artifacts, scope-guarded Step 6 apply, compile-safe finalize into `Achyutaram Sonti.pdf`, one-page verification, persisted mandatory review decisions under `resume-tailoring/output/tailored/<company>/<role>/review/<run_id>/`, direct `resume_review_pending -> approved|rejected` run transitions, posting handoff into `requires_contacts` or `ready_for_outreach`, owner override lineage in `override_events`, and snapshot-backed retailoring history across multiple runs
-- the completed Outreach discovery epic under `job_hunt_copilot.email_discovery`, including DB-first bootstrap from approved `requires_contacts` postings, Apollo-first company resolution plus broad people search, persisted `discovery/output/{company}/{role}/people_search_result.json` artifacts, shortlist selection capped to the current 6-contact policy across recruiter, manager-adjacent, and engineer buckets, shortlist-time canonical `contacts` / `job_posting_contacts` materialization with `identified -> shortlisted` link promotion for reused contacts, selective Apollo enrichment only for shortlisted contacts that still need fuller identity or usable emails, optional `recipient_profile.json` capture under `discovery/output/{company}/{role}/recipient-profiles/{contact_id}/`, person-scoped `prospeo -> getprospect -> hunter` email discovery with working-email reuse plus feedback-aware bounce retry handling that no longer auto-clears contact email state, persisted `discovery_result.json` handoff artifacts plus `discovery_attempts`, `provider_budget_state`, and `provider_budget_events`, dead-end shortlist cleanup for unusable sparse contacts, unresolved or exhausted review visibility through the canonical SQLite views, and the contact-level readiness data that now feeds the BA-08 send-set planner
-- the current Drafting and Sending runtime under `job_hunt_copilot.outreach`, including DB-first role-targeted send-set assembly across recruiter, manager-adjacent, engineer, and fallback contacts, honest `requires_contacts` versus `ready_for_outreach` evaluation based on the full currently selected send set, repeat-outreach review exclusion from the automatic set, queryable company pacing plus randomized inter-send-gap calculations, deterministic role-targeted and general-learning draft generation, per-message `outreach_messages` persistence with final subject/body plus rendered HTML, draft-triggered `outreach_in_progress` state transitions for postings and linked contacts, stable `messages/<outreach_message_id>/email_draft.md` plus `send_result.json` artifacts under `outreach/output/`, root-level `email_draft.md` / `send_result.json` mirrors for the active role-targeted workspace, and paced send execution that persists canonical `sent_at` plus thread or delivery identifiers while blocking automatic repeat-outreach or ambiguous resend cases instead of double-sending
-- the completed Delivery Feedback and review-surface epic under `job_hunt_copilot.delivery_feedback` and `job_hunt_copilot.review_queries`, including reusable immediate or delayed mailbox polling over canonical sent-message records, `feedback_sync_runs` audit rows, exact-message `delivery_feedback_events` persistence for `bounced`, `not_bounced`, and `replied` outcomes, logical-event dedupe for repeated mailbox ingestion, per-event `delivery_outcome.json` artifacts under each message workspace plus root-level latest mirrors, a grouped read-only review snapshot over postings, contacts, sent messages, unresolved discovery, incidents, and expert review packets, a queryable delivery-feedback reuse surface that keeps bounced and `not_bounced` signals available to discovery while replies stay review-only, outstanding blocked/failed/repeat-outreach review-item queries with artifact-backed reason recovery, override history retrieval, and per-object traceability over artifacts, state transitions, and downstream records
-- the current BA-10 quality layer under `build-agent/reports/` and `scripts/quality/`, including the committed acceptance trace matrix, blocker audit, latest validation-suite report snapshot, smoke harness, and a reproducible `run_ba10_validation_suite.py` entrypoint for the automated hardening checks
+## End-to-end system
 
-Current closeout state:
-- required acceptance is complete at `212 implemented / 0 partial / 0 gap`
-- BA-10 closeout includes bounded daily maintenance automation with isolated git branches, retained `maintenance_change.json` / `maintenance_change.md` audit artifacts, and explicit approval-only merges through the runtime control surface
-- host-side validation is complete for both the product launchd helpers and the unattended build wrapper; the closeout notes live in [build-agent/reports/host-validation-closeout.md](./build-agent/reports/host-validation-closeout.md)
-- the quickest current build snapshot lives in [build-agent/reports/repo-readiness-summary.md](./build-agent/reports/repo-readiness-summary.md)
-- the current readiness and validation evidence lives in [build-agent/reports/repo-readiness-summary.md](./build-agent/reports/repo-readiness-summary.md), [build-agent/reports/ba-10-acceptance-trace-matrix.md](./build-agent/reports/ba-10-acceptance-trace-matrix.md), [build-agent/reports/ba-10-blocker-audit.md](./build-agent/reports/ba-10-blocker-audit.md), [build-agent/reports/ba-10-validation-suite-latest.md](./build-agent/reports/ba-10-validation-suite-latest.md), and [build-agent/reports/host-validation-closeout.md](./build-agent/reports/host-validation-closeout.md)
+![System Overview](./assets/readme/system-overview.svg)
 
-## System Overview
+## Why this project reads differently
 
-```mermaid
-flowchart LR
-    A[LinkedIn / Gmail Lead Intake] --> B[Canonical Lead + JD Artifacts]
-    B --> C[Resume Tailoring]
-    C --> D[Agent Review Gate]
-    D --> E[People Search + Enrichment]
-    E --> F[Email Discovery]
-    F --> G[Drafting + Sending]
-    G --> H[Delivery Feedback]
+| Typical AI demo | Job Hunt Copilot v4 |
+| --- | --- |
+| One prompt chain | Multi-stage runtime with explicit state transitions |
+| Ephemeral chat memory | SQLite-backed queues, artifacts, and audit history |
+| Ad hoc scripts | Scheduled workers, pacing, retries, and review gates |
+| Output only | Delivery feedback and follow-up loops built into the system |
+| Lightweight README claims | Spec, acceptance matrix, runtime history, and test coverage |
 
-    I[Supervisor Agent] --> A
-    I --> C
-    I --> E
-    I --> G
-    I --> H
+## What makes it technically interesting
 
-    J[Expert via Chat] --> I
+- **Durable autonomy:** the system keeps its own memory in canonical state, not in model context windows.
+- **Spec-first development:** behavior is driven by product rules and acceptance scenarios before implementation details.
+- **Bounded control planes:** workers do one safe unit of work at a time and persist every result, pause, or escalation.
+- **Real workflow pressure:** this repo is built around actual operational concerns like retries, pacing, thread safety, reviewability, and failure recovery.
+
+## Snapshot notes
+
+The metric cards at the top of this README are generated from:
+- tracked repo code statistics
+- the acceptance trace matrix in `build-agent/reports/`
+- local runtime history in `job_hunt_copilot.db`
+
+Refresh them with:
+
+```bash
+python3 scripts/ops/generate_readme_metrics.py
 ```
 
-A more detailed view is in [docs/ARCHITECTURE.md](./docs/ARCHITECTURE.md).
+The generated assets live in:
+- [`assets/readme/runtime-snapshot.svg`](./assets/readme/runtime-snapshot.svg)
+- [`assets/readme/runtime-snapshot.json`](./assets/readme/runtime-snapshot.json)
 
-## Why It Is Interesting
+## Repository guide
 
-From a software-engineering perspective, this project is about:
-- translating a complex operational workflow into explicit state machines
-- using artifact contracts instead of vague agent memory
-- separating a runtime ops agent from a build agent
-- designing bounded autonomy instead of uncontrolled automation
-- building systems that can recover, explain themselves, and be reviewed
+| Path | Purpose |
+| --- | --- |
+| [`job_hunt_copilot/`](./job_hunt_copilot/) | Core runtime: ingestion, tailoring, discovery, outreach, feedback, supervisor control |
+| [`prd/spec.md`](./prd/spec.md) | Product contract and system rules |
+| [`prd/test-spec.feature`](./prd/test-spec.feature) | Acceptance behavior in executable-spec form |
+| [`docs/ARCHITECTURE.md`](./docs/ARCHITECTURE.md) | Fast technical walkthrough of the system |
+| [`build-agent/`](./build-agent/) | Build control plane and validation reports |
+| [`tests/`](./tests/) | Regression and workflow coverage |
+| [`assets/`](./assets/) | Prompting, outreach, and resume-tailoring source assets |
 
-## Repository Map
+## Good places to start
 
-```text
-.
-├── prd/          Product spec and acceptance spec
-├── job_hunt_copilot/  Product runtime bootstrap, schema, and persistence scaffolding
-├── build-agent/  Long-run Codex build control plane
-├── docs/         Human-readable architecture and repo explanation
-├── assets/       Source assets for tailoring and outreach
-├── tests/        Bootstrap and runtime validation
-└── secrets/      Local runtime secrets (ignored from git)
-```
-
-## Key Documents
-
-- [Product Specification](./prd/spec.md)
-- [Acceptance Specification](./prd/test-spec.feature)
-- [Architecture Overview](./docs/ARCHITECTURE.md)
-- [Agent Autonomy Q&A](./docs/agent-autonomy-qna.md)
-- [Build Agent Guide](./build-agent/README.md)
-
-## For Recruiters And Engineering Managers
-
-If you want the shortest path through this repo:
-1. read this file
-2. open [docs/ARCHITECTURE.md](./docs/ARCHITECTURE.md)
-3. skim [prd/spec.md](./prd/spec.md) for the system depth
-4. inspect [build-agent/](./build-agent/) for how the build itself is being automated
-
-The most important engineering ideas here are:
-- spec-first development
-- agentic control planes with safety boundaries
-- explicit operational state
-- human-reviewable autonomous systems
-
-## Build Philosophy
-
-This repository is intentionally being built in a way that is itself part of the project:
-- the runtime product has an autonomous supervisor-agent design
-- the implementation process also has a long-run Codex build agent
-- both are designed around durable state, fresh-session recovery, and bounded work units
+1. Read [docs/ARCHITECTURE.md](./docs/ARCHITECTURE.md) for the system walkthrough.
+2. Open [prd/spec.md](./prd/spec.md) to see the product depth and operating model.
+3. Inspect [build-agent/reports/repo-readiness-summary.md](./build-agent/reports/repo-readiness-summary.md) for the implementation snapshot.
+4. Review [build-agent/reports/ba-10-acceptance-trace-matrix.md](./build-agent/reports/ba-10-acceptance-trace-matrix.md) for the spec-to-code evidence trail.
 
 ## Notes
 
-- Local secrets are intentionally excluded from version control.
-- Generated runtime state for the build agent is intentionally excluded from version control.
-- This README is meant to stay concise and navigable; deeper detail belongs in the linked docs.
+- Local secrets are excluded from version control.
+- Runtime artifacts under `ops/` are intentionally noisy and are not the best first entry point.
+- The README is now optimized for quick comprehension; deeper implementation detail lives in the linked docs and reports.
